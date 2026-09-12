@@ -24,6 +24,20 @@ export const CITY_POIS = {
       { name: 'UT Tower', lat: 30.2862, lon: -97.7394, alt: 500, pitch: -22, heading: 180, buildingHeight: 50 },
     ],
   },
+  saintjohn: {
+    name: 'Saint John',
+    groundElevation: 10, // meters above WGS84 ellipsoid
+    viewBounds: { southwest: { lat: 45.20, lng: -66.15 }, northeast: { lat: 45.36, lng: -65.95 } },
+    pois: [
+      // Placed over the uptown harbourfront, the centre of the city. Move this
+      // lat/lon to put the zone somewhere more specific.
+      { name: 'Danger Zone', lat: 45.2733, lon: -66.0633, alt: 2600, pitch: -38, heading: 20, buildingHeight: 0 },
+      { name: 'Reversing Falls Rapids', lat: 45.2578, lon: -66.0878, alt: 1200, pitch: -30, heading: 200, buildingHeight: 10 },
+      { name: 'Saint John City Market', lat: 45.2731, lon: -66.0597, alt: 500, pitch: -30, heading: 180, buildingHeight: 20 },
+      { name: 'Carleton Martello Tower', lat: 45.2600, lon: -66.0736, alt: 700, pitch: -30, heading: 90, buildingHeight: 12 },
+      { name: 'Partridge Island', lat: 45.2386, lon: -66.0487, alt: 1500, pitch: -28, heading: 340, buildingHeight: 20 },
+    ],
+  },
   sf: {
     name: 'San Francisco',
     groundElevation: 15,
@@ -171,6 +185,164 @@ export const LOCATIONS = Object.entries(CITY_POIS).map(([id, city]) => ({
   lat: city.pois[0].lat,
   lon: city.pois[0].lon,
 }));
+
+/** Camera distance used when the gazetteer answers a search: a whole-city view. */
+export const CITY_OVERVIEW_RANGE_M = 14000;
+/** Camera distance for a gazetteer city when a close view was asked for. */
+export const CITY_CLOSE_RANGE_M = 2000;
+
+/**
+ * Built-in gazetteer of Canadian cities.
+ *
+ * The search box normally geocodes through Google, which needs a key and so
+ * answers nothing on a keyless build. These entries resolve locally, so
+ * searching any of them works with no key at all. Coordinates are city centres,
+ * which is the right precision for framing a metro view.
+ */
+export const CANADIAN_CITIES = Object.freeze([
+  { name: 'Toronto', province: 'Ontario', abbr: 'ON', lat: 43.6532, lon: -79.3832 },
+  { name: 'Montreal', province: 'Quebec', abbr: 'QC', lat: 45.5019, lon: -73.5674 },
+  { name: 'Calgary', province: 'Alberta', abbr: 'AB', lat: 51.0447, lon: -114.0719 },
+  { name: 'Edmonton', province: 'Alberta', abbr: 'AB', lat: 53.5461, lon: -113.4938 },
+  { name: 'Ottawa', province: 'Ontario', abbr: 'ON', lat: 45.4215, lon: -75.6972 },
+  { name: 'Winnipeg', province: 'Manitoba', abbr: 'MB', lat: 49.8951, lon: -97.1384 },
+  { name: 'Vancouver', province: 'British Columbia', abbr: 'BC', lat: 49.2827, lon: -123.1207 },
+  { name: 'Mississauga', province: 'Ontario', abbr: 'ON', lat: 43.589, lon: -79.6441 },
+  { name: 'Surrey', province: 'British Columbia', abbr: 'BC', lat: 49.1913, lon: -122.849 },
+  { name: 'Quebec City', province: 'Quebec', abbr: 'QC', lat: 46.8139, lon: -71.208 },
+  { name: 'Halifax', province: 'Nova Scotia', abbr: 'NS', lat: 44.6488, lon: -63.5752 },
+  { name: 'Laval', province: 'Quebec', abbr: 'QC', lat: 45.6066, lon: -73.7124 },
+  { name: 'Brampton', province: 'Ontario', abbr: 'ON', lat: 43.7315, lon: -79.7624 },
+  { name: 'Hamilton', province: 'Ontario', abbr: 'ON', lat: 43.2557, lon: -79.8711 },
+  { name: 'London', province: 'Ontario', abbr: 'ON', lat: 42.9849, lon: -81.2453 },
+  { name: 'Victoria', province: 'British Columbia', abbr: 'BC', lat: 48.4284, lon: -123.3656 },
+  { name: 'Markham', province: 'Ontario', abbr: 'ON', lat: 43.8561, lon: -79.337 },
+  { name: 'Vaughan', province: 'Ontario', abbr: 'ON', lat: 43.8361, lon: -79.4983 },
+  { name: 'Gatineau', province: 'Quebec', abbr: 'QC', lat: 45.4765, lon: -75.7013 },
+  { name: 'Kitchener', province: 'Ontario', abbr: 'ON', lat: 43.4516, lon: -80.4925 },
+  { name: 'Longueuil', province: 'Quebec', abbr: 'QC', lat: 45.5312, lon: -73.5182 },
+  { name: 'Burnaby', province: 'British Columbia', abbr: 'BC', lat: 49.2488, lon: -122.9805 },
+  { name: 'Windsor', province: 'Ontario', abbr: 'ON', lat: 42.3149, lon: -83.0364 },
+  { name: 'Regina', province: 'Saskatchewan', abbr: 'SK', lat: 50.4452, lon: -104.6189 },
+  { name: 'Oakville', province: 'Ontario', abbr: 'ON', lat: 43.4675, lon: -79.6877 },
+  { name: 'Richmond', province: 'British Columbia', abbr: 'BC', lat: 49.1666, lon: -123.1336 },
+  { name: 'Richmond Hill', province: 'Ontario', abbr: 'ON', lat: 43.8828, lon: -79.4403 },
+  { name: 'Burlington', province: 'Ontario', abbr: 'ON', lat: 43.3255, lon: -79.799 },
+  { name: 'Oshawa', province: 'Ontario', abbr: 'ON', lat: 43.8971, lon: -78.8658 },
+  { name: 'Sherbrooke', province: 'Quebec', abbr: 'QC', lat: 45.4042, lon: -71.8929 },
+  { name: 'Saskatoon', province: 'Saskatchewan', abbr: 'SK', lat: 52.1332, lon: -106.67 },
+  { name: 'Greater Sudbury', province: 'Ontario', abbr: 'ON', lat: 46.4917, lon: -80.993 },
+  { name: 'Abbotsford', province: 'British Columbia', abbr: 'BC', lat: 49.0504, lon: -122.3045 },
+  { name: 'Levis', province: 'Quebec', abbr: 'QC', lat: 46.8033, lon: -71.1779 },
+  { name: 'Coquitlam', province: 'British Columbia', abbr: 'BC', lat: 49.2838, lon: -122.7932 },
+  { name: 'Saguenay', province: 'Quebec', abbr: 'QC', lat: 48.428, lon: -71.0684 },
+  { name: 'Kelowna', province: 'British Columbia', abbr: 'BC', lat: 49.888, lon: -119.496 },
+  { name: 'St. Catharines', province: 'Ontario', abbr: 'ON', lat: 43.1594, lon: -79.2469 },
+  { name: 'Barrie', province: 'Ontario', abbr: 'ON', lat: 44.3894, lon: -79.6903 },
+  { name: 'Kamloops', province: 'British Columbia', abbr: 'BC', lat: 50.6745, lon: -120.3273 },
+  { name: 'Nanaimo', province: 'British Columbia', abbr: 'BC', lat: 49.1659, lon: -123.9401 },
+  { name: 'Sault Ste. Marie', province: 'Ontario', abbr: 'ON', lat: 46.5136, lon: -84.3358 },
+  { name: 'Lethbridge', province: 'Alberta', abbr: 'AB', lat: 49.6956, lon: -112.8451 },
+  { name: 'Moncton', province: 'New Brunswick', abbr: 'NB', lat: 46.0878, lon: -64.7782 },
+  { name: 'Saint John', province: 'New Brunswick', abbr: 'NB', lat: 45.2733, lon: -66.0633 },
+  { name: 'Prince George', province: 'British Columbia', abbr: 'BC', lat: 53.9171, lon: -122.7497 },
+  { name: 'Saint-Jerome', province: 'Quebec', abbr: 'QC', lat: 45.7803, lon: -74.0037 },
+  { name: 'Drummondville', province: 'Quebec', abbr: 'QC', lat: 45.8833, lon: -72.4833 },
+  { name: 'North Vancouver', province: 'British Columbia', abbr: 'BC', lat: 49.32, lon: -123.0724 },
+  { name: 'Fredericton', province: 'New Brunswick', abbr: 'NB', lat: 45.9636, lon: -66.6431 },
+  { name: "St. John's", province: 'Newfoundland and Labrador', abbr: 'NL', lat: 47.5615, lon: -52.7126 },
+]);
+
+/**
+ * Lowercase a place name to a comparable form: accents folded so "Lévis"
+ * matches "levis", punctuation dropped so "St. Catharines" matches
+ * "st catharines", and the Saint abbreviations spelled out so "st john" and
+ * "sault ste marie" both land.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+function normalizePlaceName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    // Apostrophes vanish rather than split, so "St. John's" and "st johns" agree.
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .map((w) => {
+      if (w === 'st') return 'saint';
+      if (w === 'ste') return 'sainte';
+      return w;
+    })
+    .join(' ');
+}
+
+/** Curated POI city ids by normalized name; the gazetteer must not shadow these. */
+const PRESET_CITY_IDS = new Map(
+  Object.entries(CITY_POIS).map(([id, city]) => [normalizePlaceName(city.name), id]),
+);
+
+/**
+ * The curated preset city a search query names outright, if any.
+ * @param {string} query
+ * @returns {string|null} CITY_POIS id.
+ */
+export function presetCityIdForQuery(query) {
+  return PRESET_CITY_IDS.get(normalizePlaceName(query)) || null;
+}
+
+/** Attach the display label a search result reports and whether the query named the province. */
+function gazetteerResult(city, qualified) {
+  return { ...city, qualified, label: city.name + ', ' + city.province };
+}
+
+/**
+ * Resolve a search query against the built-in Canadian gazetteer.
+ *
+ * A bare city name resolves when it is unambiguous. Where it collides with a
+ * curated POI city — "London" means London, England in this app — the query has
+ * to name the province, so "London Ontario" lands in Canada and "London" still
+ * means the original. Province may be spelled out or abbreviated, with or
+ * without a comma.
+ *
+ * @param {string} query
+ * The result says whether the query was `qualified` (named the province), so a
+ * caller with a geocoder available can let it decide the bare-name cases.
+ *
+ * @returns {{name:string, province:string, lat:number, lon:number, label:string, qualified:boolean}|null}
+ */
+export function findCanadianCity(query) {
+  const q = normalizePlaceName(query);
+  if (!q) return null;
+
+  const qualified = [];
+  const bare = [];
+  for (const city of CANADIAN_CITIES) {
+    const name = normalizePlaceName(city.name);
+    const province = normalizePlaceName(city.province);
+    const abbr = normalizePlaceName(city.abbr);
+    if (
+      q === name + ' ' + province
+      || q === name + ' ' + abbr
+      || q === name + ' ' + province + ' canada'
+      || q === name + ' ' + abbr + ' canada'
+    ) {
+      qualified.push(city);
+    } else if (q === name || q === name + ' canada') {
+      bare.push(city);
+    }
+  }
+
+  if (qualified.length === 1) return gazetteerResult(qualified[0], true);
+  // More than one match is genuinely ambiguous; let the caller geocode instead.
+  if (qualified.length > 1) return null;
+  if (bare.length !== 1) return null;
+  if (PRESET_CITY_IDS.has(normalizePlaceName(bare[0].name))) return null;
+  return gazetteerResult(bare[0], false);
+}
 
 /**
  * Fly the camera to a landmark using lookAt-based targeting.
@@ -347,11 +519,64 @@ export const CANCELLED_SEARCH = Object.freeze({ cancelled: true });
  * default; precise landmarks/buildings use close landmark framing.
  */
 export async function searchAndFlyTo(viewer, query, options = {}) {
-  const apiKey = window.__GOOGLE_MAPS_API_KEY__ || import.meta.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) throw new Error('No Google Maps API key available for geocoding');
-
+  const apiKey = window.__GOOGLE_MAPS_API_KEY__ || import.meta.env?.GOOGLE_MAPS_API_KEY;
   const beforeFly = typeof options.beforeFly === 'function' ? options.beforeFly : null;
   const mayFly = () => beforeFly === null || beforeFly() !== false;
+  const requestedRange = finitePositive(options.range);
+  const duration = finitePositive(options.duration) || 3.0;
+
+  // On a keyless build a curated preset city named outright ("Saint John",
+  // "Tokyo") is the app's own answer: fly its hand-tuned first stop, or frame
+  // its bounds when an overview was asked for. Without this the search box sent
+  // the one city this fork was built for to a geocoder it did not have. With a
+  // key the viewport-biased geocoder keeps its contract for every query.
+  const presetId = presetCityIdForQuery(query);
+  if (presetId && !apiKey) {
+    if (!mayFly()) return CANCELLED_SEARCH;
+    const overview = options.viewMode === 'overview' && !requestedRange && !options.forceClose;
+    const presetFlight = flyToPresetLocation(viewer, presetId, {
+      ...(overview ? { viewMode: 'overview' } : {}),
+      ...(requestedRange ? { range: requestedRange } : {}),
+      duration,
+      onStart: options.onStart,
+      onComplete: options.onComplete,
+      onCancel: options.onCancel,
+    });
+    if (presetFlight === CANCELLED_SEARCH) return CANCELLED_SEARCH;
+    return {
+      label: CITY_POIS[presetId].name,
+      navigationMode: overview ? 'city-overview' : (requestedRange ? 'explicit-range' : 'precise-place'),
+      rangeM: Number.isFinite(presetFlight?.range) ? Math.round(presetFlight.range) : null,
+    };
+  }
+
+  // Built-in gazetteer next. A province-qualified name is unambiguous and
+  // resolves locally with or without a key. A bare name resolves locally only
+  // on a keyless build, where the alternative is no answer at all; with a key
+  // the viewport-biased geocoder decides, so "Windsor" over England stays in
+  // England.
+  const localCity = findCanadianCity(query);
+  if (localCity && (localCity.qualified || !apiKey)) {
+    if (!mayFly()) return CANCELLED_SEARCH;
+    const close = Boolean(options.forceClose) || options.viewMode === 'close';
+    const localFlight = flyToLandmark(viewer, localCity.lat, localCity.lon, {
+      range: requestedRange || (close ? CITY_CLOSE_RANGE_M : CITY_OVERVIEW_RANGE_M),
+      pitch: close ? -30 : -45,
+      heading: 20,
+      buildingHeight: 0,
+      duration,
+      onStart: options.onStart,
+      onComplete: options.onComplete,
+      onCancel: options.onCancel,
+    });
+    return {
+      label: localCity.label,
+      navigationMode: requestedRange ? 'explicit-range' : (close ? 'precise-place' : 'city-overview'),
+      rangeM: Math.round(localFlight.range),
+    };
+  }
+
+  if (!apiKey) throw new Error('No Google Maps API key available for geocoding');
 
   // Viewport-biased geocode — the same bias annotationResolver's geocodePlace uses:
   // "Sixth Street" spoken over Austin must prefer the Sixth Street on screen, not a
@@ -383,8 +608,6 @@ export async function searchAndFlyTo(viewer, query, options = {}) {
     return null;
   }
 
-  const requestedRange = finitePositive(options.range);
-  const duration = finitePositive(options.duration) || 3.0;
   const navigationMode = geocodeNavigationMode(types);
 
   const explicitOverview = options.viewMode === 'overview';

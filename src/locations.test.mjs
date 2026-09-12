@@ -19,6 +19,11 @@ import {
   REGION_SWATH_SPAN_KM,
   GLOBE_VIEW,
   searchAndFlyTo,
+  findCanadianCity,
+  presetCityIdForQuery,
+  CANADIAN_CITIES,
+  CITY_POIS,
+  CITY_OVERVIEW_RANGE_M,
 } from './locations.js';
 
 function stubViewer() {
@@ -526,15 +531,20 @@ test('geocoded Location branches forward the resolved-navigation ownership hook'
   const search = source.slice(searchStart, searchEnd);
   assert.equal(
     (search.match(/onStart: options\.onStart/g) || []).length,
-    3,
-    'swath, viewport, and landmark flights must each forward onStart',
+    5,
+    'preset, gazetteer, swath, viewport, and landmark flights must each forward onStart',
   );
   assert.equal(
     (search.match(/onCancel: options\.onCancel/g) || []).length,
-    3,
-    'swath, viewport, and landmark flights must each forward onCancel',
+    5,
+    'preset, gazetteer, swath, viewport, and landmark flights must each forward onCancel',
   );
-  assert.ok(search.indexOf('return null;') < search.indexOf('onStart: options.onStart'));
+  // The ordering rule belongs to the geocoding half of the function: a geocode
+  // that resolves nothing must bail before any flight is started. The gazetteer
+  // branch runs ahead of all of that and flies on its own hit, so the slice
+  // starts where geocoding does.
+  const geocoded = search.slice(search.indexOf('let url = '));
+  assert.ok(geocoded.indexOf('return null;') < geocoded.indexOf('onStart: options.onStart'));
 });
 
 test('globe and city-overview flights name the world frame explicitly', () => {
@@ -596,4 +606,187 @@ test('search without an authority hook preserves the existing caller contract', 
   const result = await runSearch(viewer, {});
   assert.equal(result.navigationMode, 'city-overview');
   assert.equal(viewer.flights.length, 1);
+});
+
+
+// ---------------------------------------------------------------------------
+// Built-in Canadian gazetteer
+//
+// Geocoding needs a Google key, so on a keyless build the search box could not
+// answer anything at all. These entries resolve locally instead. The tests that
+// matter are the disambiguation rules: a bare name must not quietly send the
+// camera to the wrong continent.
+// ---------------------------------------------------------------------------
+
+test('gazetteer resolves a city named with its province', () => {
+  const hit = findCanadianCity('Saint John, NB');
+  assert.ok(hit, 'expected Saint John to resolve');
+  assert.equal(hit.province, 'New Brunswick');
+  assert.ok(Math.abs(hit.lat - 45.2733) < 0.01);
+  assert.ok(Math.abs(hit.lon - -66.0633) < 0.01);
+  assert.equal(hit.label, 'Saint John, New Brunswick');
+});
+
+test('gazetteer accepts the spelled-out province and a missing comma', () => {
+  const a = findCanadianCity('saint john new brunswick');
+  const b = findCanadianCity('Saint John, New Brunswick');
+  assert.ok(a && b);
+  assert.equal(a.name, b.name);
+});
+
+test('gazetteer expands the Saint abbreviation', () => {
+  assert.equal(findCanadianCity('st john nb').name, 'Saint John');
+  assert.equal(findCanadianCity('Sault Ste. Marie').name, 'Sault Ste. Marie');
+  assert.equal(findCanadianCity('sault ste marie on').name, 'Sault Ste. Marie');
+});
+
+test('gazetteer folds accents and punctuation', () => {
+  assert.equal(findCanadianCity('L\u00e9vis').name, 'Levis');
+  assert.equal(findCanadianCity('St. Catharines').name, 'St. Catharines');
+  assert.equal(findCanadianCity('st catharines ontario').name, 'St. Catharines');
+});
+
+test('a bare name that collides with a curated city stays with the curated one', () => {
+  // London is London, England in this app. Only naming the province moves it.
+  assert.equal(findCanadianCity('London'), null);
+  const ontario = findCanadianCity('London Ontario');
+  assert.ok(ontario);
+  assert.ok(ontario.lon < -80, 'expected London, Ontario rather than London, England');
+});
+
+test('an unambiguous bare name resolves on its own', () => {
+  assert.equal(findCanadianCity('Saskatoon').name, 'Saskatoon');
+  assert.equal(findCanadianCity('moncton').name, 'Moncton');
+});
+
+test('a name that is in neither list does not resolve', () => {
+  assert.equal(findCanadianCity('Nowhere Junction'), null);
+  assert.equal(findCanadianCity(''), null);
+  assert.equal(findCanadianCity(null), null);
+});
+
+test('every gazetteer entry has a plausible Canadian coordinate', () => {
+  assert.ok(CANADIAN_CITIES.length >= 50);
+  for (const city of CANADIAN_CITIES) {
+    assert.ok(city.name && city.province && city.abbr, `${city.name} is missing a field`);
+    assert.ok(city.lat > 41.5 && city.lat < 83.5, `${city.name} latitude out of range`);
+    assert.ok(city.lon > -141.5 && city.lon < -52, `${city.name} longitude out of range`);
+  }
+  const ids = new Set(CANADIAN_CITIES.map((c) => `${c.name}|${c.province}`));
+  assert.equal(ids.size, CANADIAN_CITIES.length, 'duplicate gazetteer entry');
+});
+
+test('search flies to a gazetteer city with no API key present', async () => {
+  const viewer = stubViewer();
+  const hadWindow = Object.hasOwn(globalThis, 'window');
+  const priorWindow = globalThis.window;
+  const priorFetch = globalThis.fetch;
+  // No key, and any network call is a failure: the gazetteer must answer alone.
+  globalThis.window = {};
+  globalThis.fetch = async () => {
+    throw new Error('search must not reach the network for a gazetteer city');
+  };
+  try {
+    const result = await searchAndFlyTo(viewer, 'Halifax, Nova Scotia');
+    assert.equal(result.label, 'Halifax, Nova Scotia');
+    assert.equal(result.navigationMode, 'city-overview');
+    assert.equal(result.rangeM, CITY_OVERVIEW_RANGE_M);
+    assert.equal(viewer.flights.length, 1, 'expected exactly one flight');
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (hadWindow) globalThis.window = priorWindow;
+    else delete globalThis.window;
+  }
+});
+
+test('Saint John is a preset city whose first stop is the Danger Zone', () => {
+  const city = CITY_POIS.saintjohn;
+  assert.ok(city, 'expected a Saint John preset city');
+  assert.equal(city.name, 'Saint John');
+  // The first POI is the default fly-to for the city.
+  assert.equal(city.pois[0].name, 'Danger Zone');
+  assert.ok(Math.abs(city.pois[0].lat - 45.2733) < 0.02);
+  assert.ok(Math.abs(city.pois[0].lon - -66.0633) < 0.02);
+  for (const poi of city.pois) {
+    assert.ok(poi.lat > 45.2 && poi.lat < 45.36, `${poi.name} is outside Saint John`);
+    assert.ok(poi.lon > -66.15 && poi.lon < -65.95, `${poi.name} is outside Saint John`);
+  }
+});
+
+// Search-box resolution order: preset city, then gazetteer, then geocoder.
+
+async function withKeylessWindow(run) {
+  const hadWindow = Object.hasOwn(globalThis, 'window');
+  const priorWindow = globalThis.window;
+  const priorFetch = globalThis.fetch;
+  globalThis.window = {};
+  globalThis.fetch = async () => {
+    throw new Error('search must not reach the network for a local answer');
+  };
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (hadWindow) globalThis.window = priorWindow;
+    else delete globalThis.window;
+  }
+}
+
+test('typing a preset city name flies its curated first stop with no key present', async () => {
+  await withKeylessWindow(async () => {
+    const viewer = stubViewer();
+    assert.equal(presetCityIdForQuery('saint john'), 'saintjohn');
+    const result = await searchAndFlyTo(viewer, 'Saint John');
+    assert.equal(result.label, 'Saint John');
+    assert.equal(viewer.flights.length, 1, 'the preset flies without a geocoder');
+    assert.equal(result.navigationMode, 'precise-place');
+  });
+});
+
+test('a province-qualified gazetteer hit resolves locally even when a key is present', async () => {
+  const viewer = stubViewer();
+  const hadWindow = Object.hasOwn(globalThis, 'window');
+  const priorWindow = globalThis.window;
+  const priorFetch = globalThis.fetch;
+  globalThis.window = { __GOOGLE_MAPS_API_KEY__: 'AIza-test' };
+  let fetched = 0;
+  globalThis.fetch = async () => { fetched += 1; throw new Error('geocoder reached'); };
+  try {
+    const result = await searchAndFlyTo(viewer, 'Windsor, ON');
+    assert.equal(result.label, 'Windsor, Ontario');
+    assert.equal(fetched, 0, 'a qualified name never needs the geocoder');
+    // A bare, globally ambiguous name defers to the viewport-biased geocoder.
+    await assert.rejects(() => searchAndFlyTo(viewer, 'Windsor'), /geocoder reached/);
+    assert.equal(fetched, 1);
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (hadWindow) globalThis.window = priorWindow;
+    else delete globalThis.window;
+  }
+});
+
+test('gazetteer flights honour the authority veto, explicit range, and close view', async () => {
+  await withKeylessWindow(async () => {
+    const vetoed = stubViewer();
+    const veto = await searchAndFlyTo(vetoed, 'Halifax, NS', { beforeFly: () => false });
+    assert.equal(veto, CANCELLED_SEARCH);
+    assert.equal(vetoed.flights.length, 0, 'a vetoed gazetteer search starts no flight');
+
+    const ranged = stubViewer();
+    const explicit = await searchAndFlyTo(ranged, 'Halifax, NS', { range: 3000 });
+    assert.equal(explicit.navigationMode, 'explicit-range');
+    assert.equal(explicit.rangeM, 3000);
+
+    const close = await searchAndFlyTo(stubViewer(), 'Halifax, NS', { forceClose: true });
+    assert.equal(close.navigationMode, 'precise-place');
+    assert.ok(close.rangeM < CITY_OVERVIEW_RANGE_M);
+  });
+});
+
+test("St. John's resolves separately from Saint John", () => {
+  assert.equal(findCanadianCity("St. John's").province, 'Newfoundland and Labrador');
+  assert.equal(findCanadianCity('st johns nl').province, 'Newfoundland and Labrador');
+  assert.equal(findCanadianCity('saint john nb').name, 'Saint John');
+  assert.equal(findCanadianCity('toronto on canada').qualified, true);
+  assert.equal(findCanadianCity('saskatoon').qualified, false);
 });

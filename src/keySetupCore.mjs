@@ -14,8 +14,8 @@
 /** Longest accepted key/token value. Real provider keys are all far shorter. */
 export const KEY_SETUP_VALUE_LIMIT = 512;
 
-/** Most env vars accepted in one save. The registry defines ten. */
-export const KEY_SETUP_UPDATE_LIMIT = 16;
+/** Most env var NAMES accepted in one save. The registry defines seventeen. */
+export const KEY_SETUP_UPDATE_LIMIT = 20;
 
 /** Header line written above keys the panel appends to a .env file. */
 export const KEY_SETUP_APPEND_HEADER = '# Keys added by the in-app POWER UP panel';
@@ -100,6 +100,59 @@ export const KEY_SETUP_KEYS = Object.freeze([
     unlocks: 'Higher space-missions request allowance',
     getUrl: 'https://thespacedevs.com',
     envVars: Object.freeze(['LL2_API_TOKEN']),
+    tier: 'free',
+  }),
+  // Ask-panel language models. Each one that carries a key gets its own input
+  // box and buttons under the LLM heading, so several can be compared side by
+  // side on the same view. They share a group: any ONE of them powers the
+  // panel, so the POWER UP chip counts the group once and retires as soon as
+  // one key is in, rather than nagging for all five.
+  Object.freeze({
+    id: 'nvidia',
+    group: 'llm',
+    title: 'NVIDIA NIM',
+    unlocks: 'Ask panel: typed questions and one-click overviews of the view',
+    getUrl: 'https://build.nvidia.com/',
+    envVars: Object.freeze(['NVIDIA_API_KEY']),
+    tier: 'free',
+  }),
+  Object.freeze({
+    id: 'xai',
+    group: 'llm',
+    title: 'xAI GROK',
+    unlocks: 'Ask panel: adds Grok as a second opinion on the current view',
+    getUrl: 'https://console.x.ai/',
+    envVars: Object.freeze(['XAI_API_KEY']),
+    tier: 'metered',
+  }),
+  Object.freeze({
+    id: 'anthropic',
+    group: 'llm',
+    title: 'ANTHROPIC CLAUDE',
+    unlocks: 'Ask panel: adds Claude as a second opinion on the current view',
+    getUrl: 'https://console.anthropic.com/',
+    envVars: Object.freeze(['ANTHROPIC_API_KEY']),
+    tier: 'metered',
+  }),
+  Object.freeze({
+    id: 'openrouter',
+    group: 'llm',
+    title: 'OPENROUTER',
+    unlocks: 'Ask panel: one key that reaches many models (set OPENROUTER_MODEL)',
+    getUrl: 'https://openrouter.ai/keys',
+    envVars: Object.freeze(['OPENROUTER_API_KEY']),
+    tier: 'metered',
+  }),
+  // Escape hatch: any other OpenAI-compatible endpoint, including one running
+  // on this machine. Needs a base URL and model name as well as the key, which
+  // is why it carries three env vars rather than one.
+  Object.freeze({
+    id: 'custom',
+    group: 'llm',
+    title: 'CUSTOM LLM',
+    unlocks: 'Ask panel: any OpenAI-compatible endpoint, local or hosted',
+    getUrl: 'https://platform.openai.com/docs/api-reference/chat',
+    envVars: Object.freeze(['CUSTOM_LLM_API_KEY', 'CUSTOM_LLM_BASE_URL', 'CUSTOM_LLM_MODEL']),
     tier: 'free',
   }),
 ]);
@@ -313,14 +366,22 @@ export function keySetupStatus(env = {}) {
       getUrl: entry.getUrl,
       envVars: [...entry.envVars],
       tier: entry.tier,
+      group: entry.group || null,
       clientExposed: Boolean(entry.clientExposed),
       set,
     };
   });
+  // Alternatives share a group: it counts once in the total and any member
+  // satisfies it. Everything else is its own slot.
+  const slots = new Map();
+  for (const key of keys) {
+    const slot = key.group || key.id;
+    slots.set(slot, Boolean(slots.get(slot)) || key.set);
+  }
   return {
     keys,
-    setCount: keys.filter((key) => key.set).length,
-    total: keys.length,
+    setCount: [...slots.values()].filter(Boolean).length,
+    total: slots.size,
   };
 }
 

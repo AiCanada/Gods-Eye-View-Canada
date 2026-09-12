@@ -31,6 +31,11 @@ export const CREDENTIALS = Object.freeze([
     )),
   },
   { name: 'LL2_API_TOKEN', label: 'Launch Library 2', keychain: [] },
+  { name: 'NVIDIA_API_KEY', label: 'NVIDIA NIM (Ask panel)', keychain: [] },
+  { name: 'XAI_API_KEY', label: 'xAI Grok (Ask panel)', keychain: [] },
+  { name: 'ANTHROPIC_API_KEY', label: 'Anthropic Claude (Ask panel)', keychain: [] },
+  { name: 'OPENROUTER_API_KEY', label: 'OpenRouter (Ask panel)', keychain: [] },
+  { name: 'CUSTOM_LLM_API_KEY', label: 'Custom LLM (Ask panel)', keychain: [] },
 ]);
 
 export function isConfiguredValue(value) {
@@ -205,7 +210,9 @@ export function formatSetupReport(report, { readyMessage } = {}) {
     '',
     'Configured providers:',
     ...CREDENTIALS.map((spec) => {
-      const state = report.credentials[spec.name];
+      // A snapshot taken before a credential joined the registry has no entry
+      // for it; report it as absent rather than crashing the whole report.
+      const state = report.credentials[spec.name] || { configured: false };
       return state.configured
         ? `  [OK] ${spec.label} (${state.source})`
         : `  [--] ${spec.label}`;

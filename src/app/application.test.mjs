@@ -217,3 +217,30 @@ test('the separate viewer export imports without constructing a browser viewer',
   assert.equal(typeof createApplicationViewer, 'function');
   assert.throws(() => createApplicationViewer({}), /containers are required/);
 });
+
+test('the viewer zooms on the ctrl-modified wheel a trackpad pinch produces', async () => {
+  const { globeZoomEventTypes } =
+    await import('gods-eye-view/application/viewer');
+  const cesium = {
+    CameraEventType: {
+      RIGHT_DRAG: 'right-drag',
+      WHEEL: 'wheel',
+      PINCH: 'pinch',
+    },
+    KeyboardEventModifier: { CTRL: 'ctrl' },
+  };
+  const types = globeZoomEventTypes(cesium);
+  assert.deepEqual(
+    types.slice(0, 3),
+    ['right-drag', 'wheel', 'pinch'],
+    "Cesium's defaults stay in front",
+  );
+  assert.deepEqual(types[3], { eventType: 'wheel', modifier: 'ctrl' });
+  // The set is only useful if the viewer installs it.
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('./viewer.js', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /screenSpaceCameraController\.zoomEventTypes =\s*globeZoomEventTypes\(\)/,
+  );
+});

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   commandCompletedSuccessfully,
   parseWindowsUserSid,
@@ -160,4 +161,126 @@ export function hardenCredentialFile(filepath, {
   } catch {
     return false;
   }
+}
+
+/** Rename errors Windows raises when the caller lacks DELETE on the target. */
+const REPLACE_REFUSED_CODES = new Set(['EPERM', 'EACCES']);
+
+function pathExists(fileSystem, filepath) {
+  try {
+    fileSystem.lstatSync(filepath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Replace a credential store's content atomically.
+ *
+ * A fresh same-directory temp file is created 0600 with the exclusive flag,
+ * hardened BEFORE the secret touches it, written in full, fsynced, then
+ * renamed over the target. That closes the window where a plain writeFileSync
+ * leaves a world-readable file holding a real key, and the truncate-in-place
+ * data-loss path: on any failure the previous store is untouched and the
+ * staged temp is removed.
+ *
+ * Windows replaces a file through rename only when the caller holds DELETE on
+ * the target. A store whose DACL was tightened by hand to, say, (R,W) is still
+ * writable yet refuses the swap with EPERM. The store is this panel's own
+ * credential file and every store it writes carries the owner-only DACL the
+ * hardener applies, so on that refusal the target is hardened in place — the
+ * DACL the staged file already has — and the rename is retried once. A second
+ * refusal fails closed with its own path-free message.
+ *
+ * Dependencies are injectable so every fail-closed branch is unit-testable.
+ *
+ * @param {string} filepath Target store path.
+ * @param {string} text Full store content to write, UTF-8.
+ * @returns {void}
+ */
+export function replaceCredentialStore(filepath, text, {
+  fileSystem = fs,
+  platform = process.platform,
+  harden = hardenCredentialFile,
+  tempSuffix = () => randomUUID().slice(0, 8),
+} = {}) {
+  // Never write THROUGH a symlink into a credential path.
+  try {
+    if (fileSystem.lstatSync(filepath).isSymbolicLink()) {
+      throw new Error('refusing to write a credential store that is a symlink');
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error; // absent is fine — first save.
+  }
+  // Random suffix, not the pid: a stale temp from a failed rename would
+  // otherwise make every later save in this process fail EEXIST forever.
+  const tmp = path.join(
+    path.dirname(filepath),
+    `.${path.basename(filepath)}.${tempSuffix()}.tmp`,
+  );
+  const fd = fileSystem.openSync(tmp, 'wx', 0o600);
+  let staged = false;
+  try {
+    // Restrict the EMPTY temp file BEFORE the secret touches it. On Windows
+    // a fresh file inherits the directory's ACL (world-readable under a
+    // C:-rooted Pinokio home) and the 0600 open mode is a no-op — and NTFS
+    // renames carry the file object's ACL with it, so hardening the temp IS
+    // hardening the final file. Ordering this before the write means a
+    // hardening failure aborts with the previous store fully intact and the
+    // secret never on disk unprotected — no rollback path to get wrong.
+    if (!harden(tmp)) {
+      const error = new Error('could not restrict the credential file to your account; nothing was saved');
+      error.code = 'GEV_HARDEN_FAILED';
+      throw error;
+    }
+    // writeSync may write fewer bytes than asked; loop until the whole
+    // buffer lands or a truncated store gets fsynced and renamed into place.
+    const buffer = Buffer.from(text, 'utf8');
+    let written = 0;
+    while (written < buffer.length) {
+      written += fileSystem.writeSync(fd, buffer, written, buffer.length - written);
+    }
+    fileSystem.fsyncSync(fd);
+    staged = true;
+  } finally {
+    fileSystem.closeSync(fd);
+    if (!staged) fileSystem.rmSync(tmp, { force: true });
+  }
+
+  let failure;
+  try {
+    fileSystem.renameSync(tmp, filepath);
+    return;
+  } catch (error) {
+    failure = error;
+  }
+
+  if (platform === 'win32' && REPLACE_REFUSED_CODES.has(failure?.code) && pathExists(fileSystem, filepath)) {
+    let repaired = false;
+    try {
+      repaired = harden(filepath) === true;
+    } catch {
+      repaired = false;
+    }
+    if (repaired) {
+      try {
+        fileSystem.renameSync(tmp, filepath);
+        return;
+      } catch (error) {
+        failure = error;
+      }
+    }
+    // Never strand a staged secret on disk when the swap itself fails.
+    fileSystem.rmSync(tmp, { force: true });
+    const refused = new Error(
+      'the existing configuration file could not be replaced because its permissions block the swap; nothing was saved',
+    );
+    refused.code = 'GEV_STORE_REPLACE_REFUSED';
+    refused.cause = failure;
+    throw refused;
+  }
+
+  fileSystem.rmSync(tmp, { force: true });
+  throw failure;
 }

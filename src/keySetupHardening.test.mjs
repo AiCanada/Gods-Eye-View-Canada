@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { hardenCredentialFile } from './keySetupHardening.mjs';
+import { hardenCredentialFile, replaceCredentialStore } from './keySetupHardening.mjs';
 
 const FILE = path.join(os.tmpdir(), 'provider-settings-test');
 const USER_SID = 'S-1-5-21-1111111111-2222222222-3333333333-1001';
@@ -271,4 +271,163 @@ test('Windows production hardener applies its exact DACL with native tools', {
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
+});
+
+// ---------------------------------------------------------------------------
+// replaceCredentialStore — the atomic stage/harden/write/fsync/rename swap the
+// Provider Settings panel persists through, and its one repair branch.
+// ---------------------------------------------------------------------------
+
+const STORE = 'A:\\repo\\.env';
+
+/**
+ * In-memory stand-in for the fs surface the swap touches. `renameErrors` is
+ * consumed one entry per rename attempt; a null entry means that attempt
+ * succeeds.
+ */
+function swapFileSystem({ exists = true, symlink = false, renameErrors = [], writeChunk = Infinity } = {}) {
+  const calls = [];
+  const renameQueue = [...renameErrors];
+  return {
+    calls,
+    lstatSync(filepath) {
+      calls.push(['lstat', filepath]);
+      if (!exists) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      return { isSymbolicLink: () => symlink };
+    },
+    openSync(filepath, flags, mode) { calls.push(['open', filepath, flags, mode]); return 7; },
+    writeSync(fd, buffer, offset, length) {
+      const n = Math.min(length, writeChunk);
+      calls.push(['write', fd, buffer.subarray(offset, offset + n).toString('utf8')]);
+      return n;
+    },
+    fsyncSync(fd) { calls.push(['fsync', fd]); },
+    closeSync(fd) { calls.push(['close', fd]); },
+    rmSync(filepath, options) { calls.push(['rm', filepath, options]); },
+    renameSync(from, to) {
+      calls.push(['rename', from, to]);
+      const error = renameQueue.shift();
+      if (error) throw Object.assign(new Error(error), { code: error });
+    },
+  };
+}
+
+const TMP = 'A:\\repo\\..env.abcdef12.tmp';
+const swapOptions = (fileSystem, overrides = {}) => ({
+  fileSystem,
+  platform: 'win32',
+  tempSuffix: () => 'abcdef12',
+  harden: () => true,
+  ...overrides,
+});
+const renames = (fileSystem) => fileSystem.calls.filter(([op]) => op === 'rename');
+const removals = (fileSystem) => fileSystem.calls.filter(([op]) => op === 'rm');
+
+test('store swap hardens the empty temp before writing, then renames it over the target', () => {
+  const fileSystem = swapFileSystem();
+  const hardened = [];
+  replaceCredentialStore(STORE, 'OPENAI_API_KEY=sk-1\n', swapOptions(fileSystem, {
+    harden: (filepath) => { hardened.push([filepath, fileSystem.calls.length]); return true; },
+  }));
+  assert.deepEqual(hardened.map(([f]) => f), [TMP], 'only the temp is hardened on the happy path');
+  const openIndex = fileSystem.calls.findIndex(([op]) => op === 'open');
+  const writeIndex = fileSystem.calls.findIndex(([op]) => op === 'write');
+  assert.ok(openIndex < hardened[0][1] && hardened[0][1] <= writeIndex, 'harden runs after open and before any byte lands');
+  assert.equal(fileSystem.calls.filter(([op]) => op === 'write').map(([, , text]) => text).join(''), 'OPENAI_API_KEY=sk-1\n');
+  assert.deepEqual(renames(fileSystem), [['rename', TMP, STORE]]);
+  assert.deepEqual(removals(fileSystem), [], 'a successful swap leaves nothing to clean up');
+});
+
+test('store swap loops short writes until the whole buffer lands', () => {
+  const fileSystem = swapFileSystem({ writeChunk: 4 });
+  replaceCredentialStore(STORE, 'ABCDEFGHIJ', swapOptions(fileSystem));
+  const chunks = fileSystem.calls.filter(([op]) => op === 'write').map(([, , text]) => text);
+  assert.deepEqual(chunks, ['ABCD', 'EFGH', 'IJ']);
+  assert.ok(fileSystem.calls.findIndex(([op]) => op === 'fsync') > fileSystem.calls.findIndex(([, , text]) => text === 'IJ'));
+});
+
+test('store swap refuses a symlinked target before staging anything', () => {
+  const fileSystem = swapFileSystem({ symlink: true });
+  assert.throws(() => replaceCredentialStore(STORE, 'X=1', swapOptions(fileSystem)), /symlink/);
+  assert.deepEqual(fileSystem.calls.filter(([op]) => op !== 'lstat'), [], 'no temp file is created');
+});
+
+test('store swap fails closed when the temp cannot be hardened: no bytes written, temp removed', () => {
+  const fileSystem = swapFileSystem();
+  assert.throws(
+    () => replaceCredentialStore(STORE, 'X=1', swapOptions(fileSystem, { harden: () => false })),
+    (error) => error.code === 'GEV_HARDEN_FAILED' && /nothing was saved/.test(error.message),
+  );
+  assert.deepEqual(fileSystem.calls.filter(([op]) => op === 'write'), [], 'the secret never touches the unprotected temp');
+  assert.deepEqual(renames(fileSystem), []);
+  assert.deepEqual(removals(fileSystem), [['rm', TMP, { force: true }]]);
+});
+
+test('a Windows rename refused by the target DACL hardens the target in place and retries once', () => {
+  // Observed on a real install: .env hand-tightened to (R,W) for the user, which
+  // lacks the DELETE right a replacing rename needs, so the swap threw EPERM
+  // even though the file was perfectly writable.
+  const fileSystem = swapFileSystem({ renameErrors: ['EPERM', null] });
+  const hardened = [];
+  replaceCredentialStore(STORE, 'X=1', swapOptions(fileSystem, {
+    harden: (filepath) => { hardened.push(filepath); return true; },
+  }));
+  assert.deepEqual(hardened, [TMP, STORE], 'the existing store gets the same owner-only DACL the temp carries');
+  assert.deepEqual(renames(fileSystem), [['rename', TMP, STORE], ['rename', TMP, STORE]]);
+  assert.deepEqual(removals(fileSystem), [], 'the retried swap succeeded, so the temp became the store');
+});
+
+test('a Windows rename still refused after the repair fails closed with its own message', () => {
+  const fileSystem = swapFileSystem({ renameErrors: ['EPERM', 'EPERM'] });
+  assert.throws(
+    () => replaceCredentialStore(STORE, 'X=1', swapOptions(fileSystem)),
+    (error) => error.code === 'GEV_STORE_REPLACE_REFUSED'
+      && /permissions block the swap/.test(error.message)
+      && !/A:\\\\/.test(error.message)
+      && error.cause?.code === 'EPERM',
+  );
+  assert.equal(renames(fileSystem).length, 2, 'exactly one retry');
+  assert.deepEqual(removals(fileSystem), [['rm', TMP, { force: true }]], 'the staged secret is not stranded');
+});
+
+test('a Windows rename refusal is not retried when the target cannot be re-hardened', () => {
+  const fileSystem = swapFileSystem({ renameErrors: ['EPERM'] });
+  const hardened = [];
+  assert.throws(
+    () => replaceCredentialStore(STORE, 'X=1', swapOptions(fileSystem, {
+      harden: (filepath) => { hardened.push(filepath); return filepath === TMP; },
+    })),
+    (error) => error.code === 'GEV_STORE_REPLACE_REFUSED',
+  );
+  assert.deepEqual(hardened, [TMP, STORE]);
+  assert.equal(renames(fileSystem).length, 1, 'no blind second rename');
+  assert.deepEqual(removals(fileSystem), [['rm', TMP, { force: true }]]);
+});
+
+test('a rename refusal on a first save (no existing target) is not treated as a DACL problem', () => {
+  const fileSystem = swapFileSystem({ exists: false, renameErrors: ['EPERM'] });
+  const hardened = [];
+  assert.throws(
+    () => replaceCredentialStore(STORE, 'X=1', swapOptions(fileSystem, {
+      harden: (filepath) => { hardened.push(filepath); return true; },
+    })),
+    (error) => error.code === 'EPERM',
+  );
+  assert.deepEqual(hardened, [TMP], 'nothing to repair when the target does not exist');
+  assert.deepEqual(removals(fileSystem), [['rm', TMP, { force: true }]]);
+});
+
+test('a POSIX rename failure is rethrown untouched and never triggers the Windows repair', () => {
+  const fileSystem = swapFileSystem({ renameErrors: ['EPERM'] });
+  const hardened = [];
+  assert.throws(
+    () => replaceCredentialStore(STORE, 'X=1', swapOptions(fileSystem, {
+      platform: 'linux',
+      harden: (filepath) => { hardened.push(filepath); return true; },
+    })),
+    (error) => error.code === 'EPERM',
+  );
+  assert.deepEqual(hardened, [TMP]);
+  assert.equal(renames(fileSystem).length, 1);
+  assert.deepEqual(removals(fileSystem), [['rm', TMP, { force: true }]]);
 });

@@ -185,6 +185,11 @@ const CITY_ALIASES = new Map([
   ['washington', 'dc'],
   ['washington dc', 'dc'],
   ['washington d.c.', 'dc'],
+  ['saint john', 'saintjohn'],
+  ['st john', 'saintjohn'],
+  ['st. john', 'saintjohn'],
+  ['saint john nb', 'saintjohn'],
+  ['saint john new brunswick', 'saintjohn'],
 ]);
 
 // Basemap stack vocabulary. Switching requires an explicit stack name

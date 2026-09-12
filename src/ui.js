@@ -20,6 +20,7 @@ import {
   enterCockpitWithTracking,
 } from './cockpitTracking.js';
 import { IntelHUD } from './hud.js';
+import { AskPanel } from './askPanel.js';
 import { ShareLinkManager } from './sharelink.js';
 import {
   isExplicitLayerStateOrigin,
@@ -281,6 +282,7 @@ const COCKPIT_BRIEF_PAGES = [
  * intersect it at the current viewport size.
  */
 const LEFT_STACK_OBSTACLE_SELECTOR = [
+  '#ask-panel',
   '#cockpit-hud .cockpit-topline',
   '#cockpit-hud .cockpit-topline > div',
   '#title-bar',
@@ -2470,6 +2472,9 @@ export class StyleManager {
 
     // Intel HUD
     this.hud = new IntelHUD(viewer);
+    // Question box for the current view. Contacts its provider only when the
+    // operator presses Ask or Overview.
+    this.askPanel = new AskPanel(viewer);
     this._cockpitVisionMode = 'optical';
     this._cockpitVisionRestore = null;
     this._cockpitPanelRestore = null;
@@ -4510,6 +4515,7 @@ export class StyleManager {
     }
     this._dataManager = dataManager || null;
     this.hud.attachDataManager(this._dataManager);
+    this.askPanel?.attachDataManager(this._dataManager);
     this._updateTrafficSyncChip();
     if (this._dataManagerUnsubscribe) {
       this._dataManagerUnsubscribe();

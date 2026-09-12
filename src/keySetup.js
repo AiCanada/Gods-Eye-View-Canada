@@ -113,8 +113,9 @@ function buildRow(documentRef, key) {
     for (const envVar of key.envVars) {
       const input = documentRef.createElement('input');
       // Passwords-style so a pasted key never shows on a shared or recorded
-      // screen — this app gets screen-recorded a lot.
-      input.type = 'password';
+      // screen — this app gets screen-recorded a lot. A base URL or model name
+      // is not a secret and must stay readable to be typed correctly.
+      input.type = /(_KEY|_TOKEN|_SECRET)$/.test(envVar) ? 'password' : 'text';
       input.autocomplete = 'off';
       input.spellcheck = false;
       input.dataset.envVar = envVar;
