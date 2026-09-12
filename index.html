@@ -684,6 +684,28 @@
 
   </div>
 
+  <!-- Ask Panel: operator-driven questions about the current view -->
+  <!-- A sibling of #left-panel-stack, not a member: the stack manager hides
+       collapsed panels and remembers that choice, which would bury a box the
+       operator is meant to reach at any moment, and its layout observer would
+       re-solve the column on every status tick. The panel owns its placement
+       and its own show/hide button, and the left accordion treats it as an
+       obstacle. Rows are built at runtime, one per model that holds a key, so
+       this markup carries no provider names. -->
+  <div id="ask-panel">
+    <div class="ask-panel-inner">
+      <div class="panel-header">
+        <span class="panel-title">LLM</span>
+        <span class="panel-divider"></span>
+        <button id="ask-toggle" class="panel-collapse-btn" type="button" title="Hide the LLM panel" aria-expanded="true" aria-controls="ask-body">-</button>
+      </div>
+      <div id="ask-body" class="ask-body">
+        <div id="ask-empty" class="ask-status" aria-live="polite" hidden></div>
+        <div id="ask-rows"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Global Context is deliberately independent from the left layer accordion. -->
   <aside id="right-context-rail">
     <div id="global-context-panel" class="panel-collapsible collapsed" data-panel-id="global-context-panel">

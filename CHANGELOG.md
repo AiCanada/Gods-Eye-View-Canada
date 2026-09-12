@@ -1,5 +1,13 @@
 # Changelog
 
+## September 12, 2026
+
+An LLM panel in the bottom-left corner answers typed questions and one-click overviews about the current view. One row appears per configured model (NVIDIA NIM, xAI Grok, Anthropic Claude, OpenRouter, or any OpenAI-compatible endpoint); nothing is called until Ask or Overview is pressed, and the route shares the opt-in `GEV_RATELIMIT_OPENAI_PER_MIN` throttle with the other paid LLM routes.
+
+CCTV sources can be gated by country with `CCTV_COUNTRIES`; the catalogue ceiling is 2000 cameras, configured packs are never the part that gets truncated, and a camera may declare a page plus a frame resolver instead of a fixed URL. A Canadian camera pack ships in `config/cctv_sources.canada.json`, built by `tools/camera-pack/`. Failed frames back off before touching the paid Street View fallback.
+
+Saint John, New Brunswick is a preset city, and a built-in Canadian gazetteer answers the search box without a Google key. A trackpad pinch now zooms the globe. Provider Settings repairs a hand-tightened `.env` DACL instead of failing the save with a generic error.
+
 ## September 8, 2026
 
 Earthquake refreshes validate the complete feed and construct replacement entities before clearing the previous snapshot. Malformed rows and duplicate rendered IDs retain the last good entities, overlays, count and timestamp and report a malformed response; unknown magnitude is excluded from M2.5+ rendering.

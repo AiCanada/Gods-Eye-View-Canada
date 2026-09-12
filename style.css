@@ -23,6 +23,9 @@
   --left-stack-x: 52px;
   --right-rail-x: 52px;
   --left-stack-top: 26vh;
+  /* Vertical band kept clear in the bottom-left corner for the LLM panel, so
+     the coordinate readout above it moves by exactly what the panel occupies. */
+  --llm-panel-reserve: 7.5rem;
   --left-stack-gap: 72px;
   --left-collapsed-width: 176px;
   --display-panel-expanded-width: 272px;
@@ -4425,11 +4428,17 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   box-shadow: 0 0 24px rgba(0, 255, 255, 0.08);
 }
 
+/* Tucked directly under the NO PLACE LEFT BEHIND subtitle, which ends at 90px.
+   Reclaims roughly 40px of BOTH top corners in the tactical and operator
+   variants; the left panel stack measures its safe top from this block, so the
+   space freed here propagates down the column and leaves the bottom corner to
+   the LLM panel. The minimal variant has always sat at 88px, so this is the
+   layout the HUD already supported. */
 #intel-hud[data-variant='tactical'] .hud-top-left,
 #intel-hud[data-variant='tactical'] .hud-top-right,
 #intel-hud[data-variant='operator'] .hud-top-left,
 #intel-hud[data-variant='operator'] .hud-top-right {
-  top: max(14vh, 136px);
+  top: max(11vh, 96px);
 }
 
 #intel-hud[data-variant='operator'] .hud-bottom-bar {
@@ -7354,7 +7363,7 @@ body.recording-mode #cesium-credits {
 }
 
 #intel-hud[data-variant='minimal'] .hud-bottom-left {
-  bottom: calc(2vh + 7.5rem);
+  bottom: calc(2vh + 7.5rem + var(--llm-panel-reserve));
 }
 
 #intel-hud[data-variant='minimal'] .hud-bottom-bar {
@@ -7389,7 +7398,7 @@ body.recording-mode #cesium-credits {
   }
 
   #intel-hud[data-variant='minimal'] .hud-bottom-left {
-    bottom: calc(2vh + 12rem);
+    bottom: calc(2vh + 12rem + var(--llm-panel-reserve));
   }
 
   #intel-hud[data-variant='minimal'] .hud-bottom-bar {
@@ -8253,9 +8262,16 @@ body:not(.ui-clean-view):not(.recording-mode):has(#intel-hud[data-variant='minim
   text-align: left;
 }
 
+/* The left readout lifts clear of the LLM panel that now occupies the
+   bottom-left corner (the minimal variant does the same below; cockpit mode
+   hides the panel instead). The right one keeps its original offset: nothing
+   was added under it. */
 #intel-hud[data-variant='tactical'] .hud-bottom-left,
+#intel-hud[data-variant='operator'] .hud-bottom-left {
+  bottom: calc(2vh + 6.5rem + var(--llm-panel-reserve));
+}
+
 #intel-hud[data-variant='tactical'] .hud-bottom-right,
-#intel-hud[data-variant='operator'] .hud-bottom-left,
 #intel-hud[data-variant='operator'] .hud-bottom-right {
   bottom: calc(2vh + 6.5rem);
 }
@@ -9682,4 +9698,142 @@ body.scene-playback-mode #key-setup {
   color: rgba(255, 190, 170, 1);
   border-color: rgba(255, 170, 150, 0.65);
   outline: none;
+}
+
+
+/* ── Ask panel ─────────────────────────────────────────────────────────────
+   Questions about the current view. Sits with the other collapsible panels
+   and borrows their chrome; only the input, answer box and status line are
+   new. */
+/* Bottom-left, directly above the attribution line. The credit keeps the exact
+   size and position the codebase models and tests for — Esri, Cesium and Google
+   all require it to stay visible — so the ASK box stacks on top of it rather
+   than taking its place. */
+#ask-panel {
+  position: fixed;
+  left: 36px;
+  /* Clears the attribution line beneath it: the credit line sits at bottom:36px
+     and is 28px tall, plus 8px of air. At rest the panel is one row tall, so
+     it does not reach the panel stack above; the answer grows upward over the
+     globe instead, bounded by #ask-body below. */
+  bottom: calc(36px + 28px + 8px);
+  width: 340px;
+  max-width: calc(100vw - 72px);
+  z-index: 91;
+  /* Explicit because the panel sits over the globe canvas like every other
+     fixed control; the stack's pointer-events:none does not apply to it. */
+  pointer-events: auto;
+}
+
+/* The modes whose point is an unobstructed globe hide it, as they hide the
+   other panels; cockpit mode hides it because the CONTACT briefing card owns
+   the same band. Narrow viewports give the corner to the credit line. */
+body.ui-clean-view #ask-panel,
+body.recording-mode #ask-panel,
+body.scene-playback-mode #ask-panel,
+body.cockpit-mode #ask-panel {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  #ask-panel {
+    display: none;
+  }
+}
+
+.ask-panel-inner {
+  padding: 10px 12px 12px;
+}
+
+.ask-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.ask-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--hud-color, #7fe7ff);
+  background: rgba(0, 20, 30, 0.55);
+  border: 1px solid rgba(127, 231, 255, 0.35);
+  border-radius: 2px;
+  outline: none;
+}
+
+.ask-input::placeholder {
+  color: rgba(127, 231, 255, 0.45);
+}
+
+.ask-input:focus {
+  border-color: rgba(127, 231, 255, 0.75);
+  box-shadow: 0 0 6px rgba(127, 231, 255, 0.25);
+}
+
+.ask-overview-btn {
+  white-space: nowrap;
+}
+
+.ask-output {
+  margin-bottom: 8px;
+  max-height: 168px;
+  overflow-y: auto;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(220, 245, 255, 0.92);
+  background: rgba(0, 18, 26, 0.5);
+  border-left: 2px solid rgba(127, 231, 255, 0.4);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ask-output:empty {
+  display: none;
+}
+
+.ask-status:empty {
+  display: none;
+}
+
+.ask-status {
+  margin-bottom: 6px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: rgba(127, 231, 255, 0.6);
+  min-height: 12px;
+}
+
+.ask-controls .scene-btn[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+
+/* One block per model. With a single key this reads as one search box; with
+   several, each row is labelled so the answers can be told apart. */
+.ask-row + .ask-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(127, 231, 255, 0.15);
+}
+
+.ask-row-label {
+  flex: 0 0 auto;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(127, 231, 255, 0.7);
+  white-space: nowrap;
+}
+
+/* Several rows of answers must not push the panel off-screen. */
+#ask-body {
+  max-height: 40vh;
+  overflow-y: auto;
 }

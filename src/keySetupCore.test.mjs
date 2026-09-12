@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   KEY_SETUP_APPEND_HEADER,
   KEY_SETUP_KEYS,
+  KEY_SETUP_UPDATE_LIMIT,
   KEY_SETUP_VALUE_LIMIT,
   commandCompletedSuccessfully,
   isKeySetupExternallyManaged,
@@ -63,7 +64,8 @@ test('the status payload reports presence without any credential material', () =
     // Secret missing: the OpenSky pair must read as NOT set.
   };
   const status = keySetupStatus(env);
-  assert.equal(status.total, KEY_SETUP_KEYS.length);
+  // Grouped alternatives (the LLM providers) count once.
+  assert.equal(status.total, new Set(KEY_SETUP_KEYS.map((key) => key.group || key.id)).size);
   const google = status.keys.find((key) => key.id === 'google-maps');
   assert.equal(google.set, true);
   const opensky = status.keys.find((key) => key.id === 'opensky');
@@ -353,4 +355,33 @@ test('server Google key can be saved and removed without appearing in status val
   assert.equal(entry.set, true);
   assert.ok(!entry.clientExposed);
   assert.ok(!JSON.stringify(status).includes(secret));
+});
+
+test('the key registry keeps its invariants as entries are added', () => {
+  const ids = new Set();
+  const names = new Set();
+  for (const entry of KEY_SETUP_KEYS) {
+    assert.ok(entry.id && !ids.has(entry.id), `duplicate or missing id ${entry.id}`);
+    ids.add(entry.id);
+    assert.ok(entry.title && entry.unlocks, `${entry.id} needs a title and an unlocks line`);
+    assert.match(entry.getUrl, /^https:\/\//, `${entry.id} getUrl must be https`);
+    assert.ok(['free', 'metered'].includes(entry.tier), `${entry.id} tier`);
+    assert.ok(Array.isArray(entry.envVars) && entry.envVars.length > 0, `${entry.id} envVars`);
+    for (const name of entry.envVars) {
+      assert.match(name, /^[A-Z][A-Z0-9_]*$/, `${name} is not an env var name`);
+      assert.ok(!names.has(name), `${name} appears under two entries`);
+      names.add(name);
+    }
+  }
+  assert.ok(names.size <= KEY_SETUP_UPDATE_LIMIT, 'one save must be able to carry every registry name');
+});
+
+test('a grouped provider satisfies the group with one key and never inflates the total', () => {
+  const none = keySetupStatus({});
+  const one = keySetupStatus({ XAI_API_KEY: 'x' });
+  const two = keySetupStatus({ XAI_API_KEY: 'x', ANTHROPIC_API_KEY: 'a' });
+  assert.equal(one.total, none.total);
+  assert.equal(one.setCount, none.setCount + 1);
+  assert.equal(two.setCount, one.setCount, 'a second provider in the same group adds nothing');
+  assert.equal(one.keys.find((key) => key.id === 'xai').group, 'llm');
 });

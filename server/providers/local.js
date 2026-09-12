@@ -71,7 +71,7 @@ import {
   upsertDotenvValues,
   validateKeySetupUpdates,
 } from '../../src/keySetupCore.mjs';
-import { hardenCredentialFile } from '../../src/keySetupHardening.mjs';
+import { replaceCredentialStore } from '../../src/keySetupHardening.mjs';
 import {
   fetchTerrainChunkWithRetry,
   parseTerrainPoints,
@@ -2523,6 +2523,332 @@ const DEFAULT_CCTV_SOURCE_FILE = 'config/cctv_sources.austin.json';
 const DEFAULT_AUSTIN_ROWS_URL = 'https://data.austintexas.gov/api/views/b4k4-adkb/rows.json?accessType=DOWNLOAD';
 /** Default cap on Austin cameras after distance-based prioritization. */
 const DEFAULT_AUSTIN_MAX_SOURCES = 250;
+/** Countries whose cameras load when CCTV_COUNTRIES is unset. */
+// Every country, so an install that sets nothing keeps the stock behaviour and
+// the built-in Austin/Caltrans/TfL packs load exactly as before. Set
+// CCTV_COUNTRIES in .env to narrow it (see .env.example).
+const DEFAULT_CCTV_COUNTRIES = '*';
+
+/**
+ * Parse CCTV_COUNTRIES into the set of ISO country codes to serve.
+ *
+ * Country gating is what keeps the catalogue from pulling every camera on the
+ * planet: a country that is switched off is never fetched and never cached, so
+ * its streams cost nothing. "*" or "ALL" serves every country; an explicitly
+ * empty value serves none.
+ *
+ * @returns {Set<string>|null} Enabled codes, or null meaning every country.
+ */
+export function enabledCctvCountries(env = process.env) {
+  const raw = String(env.CCTV_COUNTRIES ?? DEFAULT_CCTV_COUNTRIES).trim();
+  if (!raw) return new Set();
+  const codes = raw.split(',').map((c) => c.trim().toUpperCase()).filter(Boolean);
+  if (codes.includes('*') || codes.includes('ALL')) return null;
+  return new Set(codes);
+}
+
+/**
+ * Language models the Ask panel can query, keyed by id.
+ *
+ * All five speak one dialect: POST /chat/completions with a Bearer token and
+ * the system prompt as the first message. NVIDIA NIM, xAI and OpenRouter are
+ * natively that shape, Anthropic publishes a compatibility endpoint that is,
+ * and the custom slot exists for anything else that is.
+ *
+ * Every base URL and model id is env-overridable, because model names change
+ * far more often than this file does.
+ */
+const LLM_PROVIDERS = Object.freeze({
+  nvidia: Object.freeze({
+    id: 'nvidia',
+    label: 'NVIDIA NIM',
+    keyEnv: 'NVIDIA_API_KEY',
+    baseUrlEnv: 'NVIDIA_BASE_URL',
+    baseUrlDefault: 'https://integrate.api.nvidia.com/v1',
+    modelEnv: 'NVIDIA_MODEL',
+    modelDefault: 'moonshotai/kimi-k3',
+    // NIM's reasoning models spend tokens thinking before they write anything.
+    supportsReasoningEffort: true,
+  }),
+  xai: Object.freeze({
+    id: 'xai',
+    label: 'xAI Grok',
+    keyEnv: 'XAI_API_KEY',
+    baseUrlEnv: 'XAI_BASE_URL',
+    baseUrlDefault: 'https://api.x.ai/v1',
+    modelEnv: 'XAI_MODEL',
+    modelDefault: 'grok-4.6',
+  }),
+  openrouter: Object.freeze({
+    id: 'openrouter',
+    label: 'OpenRouter',
+    keyEnv: 'OPENROUTER_API_KEY',
+    baseUrlEnv: 'OPENROUTER_BASE_URL',
+    baseUrlDefault: 'https://openrouter.ai/api/v1',
+    modelEnv: 'OPENROUTER_MODEL',
+    // OpenRouter fronts many vendors, so the model id carries its vendor
+    // prefix. Override with OPENROUTER_MODEL.
+    modelDefault: 'openai/gpt-5.2',
+    // OpenRouter asks callers to identify themselves for its leaderboards.
+    extraHeaders: Object.freeze({
+      'HTTP-Referer': 'http://localhost:4173',
+      'X-Title': "God's Eye View",
+    }),
+  }),
+  custom: Object.freeze({
+    id: 'custom',
+    label: 'Custom LLM',
+    keyEnv: 'CUSTOM_LLM_API_KEY',
+    baseUrlEnv: 'CUSTOM_LLM_BASE_URL',
+    // No default: a custom endpoint has no address we could guess, so the
+    // roster reports it unready until CUSTOM_LLM_BASE_URL names one.
+    baseUrlDefault: '',
+    modelEnv: 'CUSTOM_LLM_MODEL',
+    modelDefault: '',
+    requiresBaseUrl: true,
+  }),
+  anthropic: Object.freeze({
+    id: 'anthropic',
+    label: 'Anthropic Claude',
+    // Anthropic publishes an OpenAI-compatible endpoint at this base, which is
+    // what the reference integration uses: same Bearer auth, same
+    // /chat/completions shape, system prompt as a message. The native Messages
+    // API (x-api-key, anthropic-version, content blocks) is the alternative if
+    // the compatibility layer ever falls short.
+    keyEnv: 'ANTHROPIC_API_KEY',
+    baseUrlEnv: 'ANTHROPIC_BASE_URL',
+    baseUrlDefault: 'https://api.anthropic.com/v1',
+    modelEnv: 'ANTHROPIC_MODEL',
+    modelDefault: 'claude-fable-5-1',
+  }),
+});
+
+/** Providers whose id is a real registry key (never an inherited Object member). */
+export function resolveLlmProvider(id) {
+  const key = String(id || 'nvidia');
+  return Object.hasOwn(LLM_PROVIDERS, key) ? LLM_PROVIDERS[key] : null;
+}
+
+/**
+ * Read the per-request LLM limits from the LIVE environment.
+ *
+ * These are functions, not module constants, because Vite's loadEnv copies .env
+ * into process.env inside the config factory, AFTER this module was imported
+ * (the same hazard openAiRateLimiter() documents). A module-scope read would
+ * silently ignore .env, while the route's own error text tells the operator to
+ * set these very variables there.
+ */
+export function llmMaxTokens(env = process.env) {
+  const value = Math.floor(Number(env.LLM_MAX_TOKENS));
+  return Number.isFinite(value) && value > 0 ? value : 2048;
+}
+
+/**
+ * A reasoning model can think for a long time. Measured on NVIDIA NIM's
+ * kimi-k3, a one-word answer takes ~100s and the Overview prompt takes longer,
+ * so 120s was cutting off answers that were still coming. Four minutes is
+ * generous rather than optimistic; lower it if you point the panel at a faster
+ * model. The panel reads this value from /api/llm/providers so its own client
+ * abort always lands after the server's.
+ */
+export function llmAskTimeoutMs(env = process.env) {
+  const value = Math.floor(Number(env.LLM_ASK_TIMEOUT_MS));
+  return Number.isFinite(value) && value > 0 ? value : 240000;
+}
+
+/** Resolve a provider's live settings from the environment. */
+export function llmProviderSettings(provider, env = process.env) {
+  return {
+    apiKey: env[provider.keyEnv] || '',
+    baseUrl: String(env[provider.baseUrlEnv] || provider.baseUrlDefault).replace(/\/+$/, ''),
+    model: env[provider.modelEnv] || provider.modelDefault,
+  };
+}
+
+/** Which models currently hold a key, for the panel to render a row each. */
+export function llmProviderRoster(env = process.env) {
+  return Object.values(LLM_PROVIDERS).map((provider) => {
+    const { apiKey, baseUrl, model } = llmProviderSettings(provider, env);
+    // A custom endpoint needs an address and a model name as well as a key;
+    // without them there is nothing to call.
+    const complete = provider.requiresBaseUrl ? Boolean(baseUrl && model) : true;
+    return { id: provider.id, label: provider.label, model, ready: Boolean(apiKey) && complete };
+  });
+}
+
+/**
+ * Admission for the paid Ask route: same shape the key-setup endpoint uses
+ * against cross-site writes. A simple-request POST (text/plain, no preflight)
+ * is exactly what a hostile page can fire at localhost without CORS consent,
+ * so JSON is required, and a browser-supplied Origin must name this server.
+ * Absent Origin (curl, same-origin GET-less clients) is allowed: the guard is
+ * against browsers acting for another site, not against the operator.
+ *
+ * @returns {{ok: true} | {ok: false, status: number, error: string}}
+ */
+export function admitLlmAskRequest({ method, contentType, origin, host } = {}) {
+  if (method !== 'POST') return { ok: false, status: 405, error: 'Method not allowed' };
+  if (!/^application\/json\b/i.test(String(contentType || '').trim())) {
+    return { ok: false, status: 415, error: 'Content-Type must be application/json' };
+  }
+  if (origin) {
+    let originHost = '';
+    try {
+      originHost = new URL(String(origin)).host.toLowerCase();
+    } catch {
+      return { ok: false, status: 403, error: 'Origin not allowed' };
+    }
+    if (!host || originHost !== String(host).trim().toLowerCase()) {
+      return { ok: false, status: 403, error: 'Origin not allowed' };
+    }
+  }
+  return { ok: true };
+}
+
+/** Longest question the Ask route forwards. */
+export const LLM_QUESTION_MAX_CHARS = 2000;
+
+/**
+ * Turn a raw Ask body into a validated request, or say exactly why not.
+ * Every branch here used to run outside the JSON try/catch: a body of `null`
+ * parsed fine and then threw on `.provider` inside an async middleware, which
+ * is an unhandled rejection that ends the dev-server process.
+ *
+ * @param {string} rawBody
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {{ok: true, provider: object, settings: object, question: string, context: object}
+ *   | {ok: false, status: number, payload: object}}
+ */
+export function parseLlmAskRequest(rawBody, env = process.env) {
+  let request;
+  try {
+    request = JSON.parse(rawBody || '{}');
+  } catch {
+    return { ok: false, status: 400, payload: { error: 'Malformed request body' } };
+  }
+  if (!request || typeof request !== 'object' || Array.isArray(request)) {
+    return { ok: false, status: 400, payload: { error: 'Malformed request body' } };
+  }
+  const provider = resolveLlmProvider(request.provider);
+  if (!provider) {
+    return { ok: false, status: 400, payload: { error: `Unknown model provider: ${String(request.provider).slice(0, 40)}` } };
+  }
+  const settings = llmProviderSettings(provider, env);
+  if (!settings.apiKey) {
+    // Distinct from a failure: the panel says "add a key" rather than
+    // reporting the provider as broken.
+    return {
+      ok: false,
+      status: 501,
+      payload: { error: `${provider.keyEnv} is not configured`, unconfigured: true, provider: provider.id },
+    };
+  }
+  if (provider.requiresBaseUrl && (!settings.baseUrl || !settings.model)) {
+    return {
+      ok: false,
+      status: 501,
+      payload: {
+        error: `${provider.label} also needs ${provider.baseUrlEnv} and ${provider.modelEnv}`,
+        unconfigured: true,
+        provider: provider.id,
+      },
+    };
+  }
+  const question = String(request.question || '').trim().slice(0, LLM_QUESTION_MAX_CHARS);
+  if (!question) return { ok: false, status: 400, payload: { error: 'A question is required' } };
+  const context = request.context && typeof request.context === 'object' && !Array.isArray(request.context)
+    ? request.context
+    : {};
+  return { ok: true, provider, settings, question, context };
+}
+
+const LLM_ASK_INSTRUCTIONS = [
+  "You are the analyst console for God's Eye View, a 3D globe showing live public data.",
+  'The user is looking at the scene described by the SCENE JSON below.',
+  'Answer their question about what is on screen using ONLY that JSON.',
+  'It carries the camera position, the place and street labels under the view,',
+  'the enabled data layers, the active visual style, and the selected camera if any.',
+  'Never invent a place, a reading, or a layer that the JSON does not contain.',
+  'Say plainly when the JSON does not cover something rather than guessing.',
+  'Write prose for an operator: no markdown, no headings, no bullet characters.',
+  'Be specific and brief, at most one short paragraph unless asked for more.',
+].join(' ');
+
+/**
+ * The upstream call: POST /chat/completions with a Bearer token and a system
+ * message. NVIDIA, xAI, OpenRouter and Anthropic's compatibility endpoint all
+ * accept exactly this.
+ */
+export function buildLlmAskCall(provider, settings, question, context, env = process.env) {
+  const payload = {
+    model: settings.model,
+    messages: [
+      { role: 'system', content: LLM_ASK_INSTRUCTIONS },
+      { role: 'user', content: `SCENE:\n${JSON.stringify(context ?? {})}\n\nQUESTION:\n${question}` },
+    ],
+    max_tokens: llmMaxTokens(env),
+    temperature: 0.3,
+    stream: false,
+  };
+  // Only NIM's reasoning models accept this; sending it elsewhere is a 400, so
+  // it is opt-in per provider, and NVIDIA_REASONING_EFFORT=none switches it off
+  // for a NIM model that is not a reasoning model.
+  const effort = env.NVIDIA_REASONING_EFFORT ?? 'low';
+  if (provider.supportsReasoningEffort && effort && !/^(none|off|0)$/i.test(String(effort).trim())) {
+    payload.reasoning_effort = String(effort).trim();
+  }
+  return {
+    url: `${settings.baseUrl}/chat/completions`,
+    headers: {
+      Authorization: `Bearer ${settings.apiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...(provider.extraHeaders || {}),
+    },
+    payload,
+  };
+}
+
+/**
+ * Map an upstream response body to the route's own answer.
+ * Upstream status codes are never relayed verbatim: an upstream 501 would
+ * otherwise read as "add a key" in the panel, and a 401/403 would be mistaken
+ * for this server rejecting the operator.
+ */
+export function llmAnswerFromUpstream({ ok, status }, data, provider, settings) {
+  if (!ok) {
+    return {
+      status: 502,
+      payload: {
+        error: data?.error?.message || data?.detail || `${provider.label} returned ${status}`,
+        provider: provider.id,
+        upstreamStatus: status,
+      },
+    };
+  }
+  const choice = data?.choices?.[0];
+  const answer = String(choice?.message?.content || '').trim();
+  if (!answer) {
+    const truncated = choice?.finish_reason === 'length';
+    return {
+      status: 502,
+      payload: {
+        error: truncated
+          ? 'The model spent its whole token budget before writing an answer. Raise LLM_MAX_TOKENS.'
+          : `${provider.label} returned no answer.`,
+        provider: provider.id,
+      },
+    };
+  }
+  return {
+    status: 200,
+    payload: { answer, provider: provider.id, model: data?.model || settings.model, usage: data?.usage || null },
+  };
+}
+
+/** Hard ceiling on the served CCTV catalogue; the health map is sized to it. */
+export const CCTV_MAX_SOURCES_HARD_CAP = 2000;
+
 /** Global cap on total CCTV sources served by the proxy. */
 const DEFAULT_CCTV_MAX_SOURCES = 900;
 /** Reference point for Austin camera prioritization (Congress & 6th). */
@@ -2953,6 +3279,7 @@ async function loadAustinSourcesFromOpenData() {
         feedType: 'image',
         url: `https://cctv.austinmobility.io/image/${encodeURIComponent(cameraId)}.jpg`,
         snapshotUrl: `https://cctv.austinmobility.io/image/${encodeURIComponent(cameraId)}.jpg`,
+        country: 'US',
         sourceKind: 'austin-open-data',
         license: 'Public city traffic camera frame',
       });
@@ -3033,6 +3360,7 @@ async function loadCaltransSourcesFromOpenData() {
       const hasHeading = Number.isFinite(heading);
       const label = locationName.replace(/^([A-Za-z0-9_-]+)\s*--\s*/, '') || `Caltrans D${district} ${code}`;
       cameras.push({
+        country: 'US',
         id: cameraId,
         name: loc.nearbyPlace ? `${label} (${loc.nearbyPlace})` : label,
         city: String(loc.nearbyPlace || `Caltrans D${district}`),
@@ -3117,6 +3445,7 @@ async function loadTflSourcesFromOpenData() {
       const cameraId = `tfl-${rawId}`;
 
       cameras.push({
+        country: 'GB',
         id: cameraId,
         name: String(place?.commonName || `JamCam ${rawId}`),
         city: 'London',
@@ -3158,7 +3487,7 @@ async function loadTflSourcesFromOpenData() {
  * @param {object} item - Raw source from file, env, or Austin Open Data.
  * @returns {object} Normalized source with all expected fields populated.
  */
-function normalizeSourceItem(item) {
+export function normalizeSourceItem(item) {
   return {
     id: String(item.id || '').trim(),
     name: String(item.name || item.id || '').trim(),
@@ -3167,7 +3496,11 @@ function normalizeSourceItem(item) {
     provider: String(item.provider || 'Configured CCTV Source'),
     lat: toFiniteNumber(item.lat),
     lon: toFiniteNumber(item.lon),
-    headingDeg: toFiniteNumber(item.headingDeg),
+    // null / '' mean "unknown": leave it non-finite so the client's id-hash
+    // fallback applies instead of a fabricated due-north bearing (Number(null) is 0).
+    headingDeg: item.headingDeg === null || item.headingDeg === undefined || item.headingDeg === ''
+      ? NaN
+      : toFiniteNumber(item.headingDeg),
     headingConfidence: String(item.headingConfidence || item.headingSource || '').toLowerCase(),
     pitchDeg: toFiniteNumber(item.pitchDeg),
     fovDeg: toFiniteNumber(item.fovDeg),
@@ -3177,7 +3510,21 @@ function normalizeSourceItem(item) {
     feedType: normalizeFeedType(item.feedType || item.type || ''),
     url: typeof item.url === 'string' ? item.url : '',
     snapshotUrl: typeof item.snapshotUrl === 'string' ? item.snapshotUrl : '',
+    // Some operators publish only a frame whose URL carries the capture
+    // timestamp, so no single URL stays valid. Such a camera declares the page
+    // that advertises its current frame plus the strategy for reading it, and
+    // the frame route resolves the real URL per request instead of storing one.
+    pageUrl: typeof item.pageUrl === 'string' ? item.pageUrl : '',
+    frameResolver: FRAME_RESOLVERS.has(item.frameResolver) ? item.frameResolver : '',
+    // Extra hosts the resolver may accept a frame from, beyond the page's own.
+    frameHosts: normalizeFrameHosts(item.frameHosts),
+    // Operators that advertise a thumbnail in the page metadata also keep a
+    // full-size sibling; set this when that substitution is valid.
+    framePreferLarge: item.framePreferLarge === true,
     license: String(item.license || item.licenseNote || ''),
+    // ISO country code used by the CCTV_COUNTRIES gate. An entry that declares
+    // no country cannot be classified, so it is never filtered out.
+    country: String(item.country || '').trim().toUpperCase(),
     sourceKind: String(item.sourceKind || item.kind || 'configured'),
     // Optional CAL badge input (cctv-v2 design §3b/§9.2, additive-only per the
     // global constraints — nothing else in this file changes): hand-authored
@@ -3223,10 +3570,24 @@ async function refreshCctvSources() {
 
   const forceAustin = String(process.env.CCTV_FORCE_AUSTIN || '').trim() === '1';
   const preferAustin = String(process.env.CCTV_PREFER_AUSTIN || '1').trim() !== '0';
+  // Country gate. A disabled country is never fetched, so its frames are never
+  // requested and never cached — that is the point of the switch, not just a
+  // tidier list.
+  const countries = enabledCctvCountries();
+  const countryEnabled = (code) => countries === null || countries.has(String(code || '').toUpperCase());
   // Live open-data packs (Austin + Caltrans + TfL) load unless a file/env pack
   // is configured and live packs aren't forced — same gate that governed the
   // Austin-only fetch, now governing all three. Each pack fails independently.
-  const needsLiveSources = forceAustin || ((fromFile.length + fromEnv.length) === 0 && preferAustin);
+  // Naming US or GB in CCTV_COUNTRIES is itself a request for those packs, so a
+  // single switch turns a country on even when a file pack is configured.
+  const liveCountryNamed = countries !== null && (countries.has('US') || countries.has('GB'));
+  const liveSourcesWanted = forceAustin
+    || liveCountryNamed
+    || ((fromFile.length + fromEnv.length) === 0 && preferAustin);
+  // The built-in live packs are American (Austin, Caltrans) and British (TfL).
+  const needsUsSources = liveSourcesWanted && countryEnabled('US');
+  const needsGbSources = liveSourcesWanted && countryEnabled('GB');
+  const needsLiveSources = needsUsSources || needsGbSources;
   const tflEnabled = String(process.env.CCTV_TFL_ENABLED || '1').trim() !== '0';
 
   let fromAustin = [];
@@ -3234,16 +3595,19 @@ async function refreshCctvSources() {
   let fromTfl = [];
   if (needsLiveSources) {
     const [austinResult, caltransResult, tflResult] = await Promise.allSettled([
-      loadAustinSourcesFromOpenData(),
-      loadCaltransSourcesFromOpenData(),
-      tflEnabled ? loadTflSourcesFromOpenData() : Promise.resolve([]),
+      needsUsSources ? loadAustinSourcesFromOpenData() : Promise.resolve([]),
+      needsUsSources ? loadCaltransSourcesFromOpenData() : Promise.resolve([]),
+      needsGbSources && tflEnabled ? loadTflSourcesFromOpenData() : Promise.resolve([]),
     ]);
     fromAustin = austinResult.status === 'fulfilled' ? austinResult.value : [];
     fromCaltrans = caltransResult.status === 'fulfilled' ? caltransResult.value : [];
     fromTfl = tflResult.status === 'fulfilled' ? tflResult.value : [];
   }
   // Live sources first so file/env overrides win on duplicate IDs (Map last-write).
-  const merged = [...fromAustin, ...fromCaltrans, ...fromTfl, ...fromFile, ...fromEnv];
+  // Configured packs first: the cap below keeps the FIRST N entries, so the
+  // operator's own catalogue must never be the part that gets truncated when
+  // a live pack is switched on beside it.
+  const merged = [...fromFile, ...fromEnv, ...fromAustin, ...fromCaltrans, ...fromTfl];
 
   // Deduplicate by camera ID (last-write wins because of Map.set)
   const byId = new Map();
@@ -3251,12 +3615,14 @@ async function refreshCctvSources() {
     if (!item || typeof item !== 'object') continue;
     const normalized = normalizeSourceItem(item);
     if (!normalized.id) continue;
+    // An entry with no country cannot be classified, so it is always kept.
+    if (normalized.country && !countryEnabled(normalized.country)) continue;
     byId.set(normalized.id, normalized);
   }
 
   const mergedSources = Array.from(byId.values());
   const maxRaw = Number(process.env.CCTV_MAX_SOURCES || DEFAULT_CCTV_MAX_SOURCES);
-  const maxCount = Number.isFinite(maxRaw) ? Math.max(8, Math.min(1200, Math.floor(maxRaw))) : DEFAULT_CCTV_MAX_SOURCES;
+  const maxCount = Number.isFinite(maxRaw) ? Math.max(8, Math.min(CCTV_MAX_SOURCES_HARD_CAP, Math.floor(maxRaw))) : DEFAULT_CCTV_MAX_SOURCES;
   if (mergedSources.length > maxCount) {
     console.warn(`[CCTV] source catalog ${mergedSources.length} exceeds cap ${maxCount}; keeping the first ${maxCount} (raise CCTV_MAX_SOURCES or lower a per-pack cap to change which).`);
   }
@@ -3411,6 +3777,143 @@ async function proxyMediaResponse(res, upstream, { sourceHeader = 'upstream' } =
   stream.pipe(res);
 }
 
+/** Resolved frame URLs, keyed by camera id: { url, at, failedAt }. */
+const _frameUrlCache = new Map();
+/** Frames advance on the order of minutes; re-reading the page more often than
+ * this buys nothing and only adds load to the operator's site. A page that just
+ * failed is not re-read within the same window either. */
+const FRAME_RESOLVE_CACHE_MS = 90 * 1000;
+/** Longest a last-good URL is reused while the page stays unreachable. Past
+ * this the frame is more likely frozen than live, and the synthetic card is
+ * the honest picture. */
+const FRAME_RESOLVE_STALE_MAX_MS = 30 * 60 * 1000;
+/** The page read is a serial stage ahead of the image fetch on the frame
+ * route, so it gets a shorter budget than the image itself. */
+const FRAME_RESOLVE_TIMEOUT_MS = 4 * 1000;
+/** Resolver strategies the proxy knows. Anything else is dropped at
+ * normalisation so a typo never costs an HTML fetch per frame request. */
+const FRAME_RESOLVERS = new Set(['og-image']);
+
+function normalizeFrameHosts(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((host) => String(host || '').trim().toLowerCase()).filter(Boolean);
+}
+
+function decodeHtmlEntities(text) {
+  return String(text || '')
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+/** A hostname the proxy may contact on a page's say-so: public DNS names only. */
+function isPublicHostname(host) {
+  const name = String(host || '').toLowerCase();
+  if (!name || name === 'localhost' || name.endsWith('.localhost')) return false;
+  if (name.endsWith('.local') || name.endsWith('.internal') || name.endsWith('.home.arpa')) return false;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return false; // IPv4 literal: loopback, RFC1918, link-local, metadata
+  if (name.includes(':')) return false; // IPv6 literal
+  return name.includes('.');
+}
+
+/**
+ * May the proxy fetch this resolved frame URL for this catalogue entry?
+ *
+ * The page names the frame, so the page's operator controls where the proxy
+ * goes next. The frame must therefore live on the page's own host or on a host
+ * the catalogue entry lists in `frameHosts`, must be https, and must never be
+ * an address literal or an internal name.
+ */
+export function frameHostAllowed(source, resolved) {
+  if (!resolved || resolved.protocol !== 'https:') return false;
+  const host = String(resolved.hostname || '').toLowerCase();
+  if (!isPublicHostname(host)) return false;
+  let pageHost = '';
+  try {
+    pageHost = new URL(source?.pageUrl || '').hostname.toLowerCase();
+  } catch {
+    pageHost = '';
+  }
+  return host === pageHost || normalizeFrameHosts(source?.frameHosts).includes(host);
+}
+
+/**
+ * Read the current frame URL from a camera's own page.
+ *
+ * Only `pageUrl` values that came from the server-registered catalogue are ever
+ * passed here — never a client-supplied one — and the URL the page advertises
+ * is accepted only when frameHostAllowed() says so.
+ *
+ * @param {object} source - Normalized catalogue entry.
+ * @param {{fetchImpl?: typeof fetch, now?: () => number, cache?: Map}} [options] - Test seams.
+ * @returns {Promise<string>} Absolute frame URL, or '' when it cannot be read.
+ */
+export async function resolveFrameUrl(source, { fetchImpl = fetch, now = Date.now, cache = _frameUrlCache } = {}) {
+  const pageUrl = source?.pageUrl || '';
+  if (!pageUrl || !/^https?:\/\//i.test(pageUrl) || !FRAME_RESOLVERS.has(source?.frameResolver)) return '';
+
+  const at = now();
+  const cached = cache.get(source.id);
+  if (cached?.url && at - cached.at <= FRAME_RESOLVE_CACHE_MS) return cached.url;
+  // Serve the last good URL through a transient page outage rather than
+  // dropping straight to the synthetic frame, but not indefinitely.
+  const lastGood = cached?.url && at - cached.at <= FRAME_RESOLVE_STALE_MAX_MS ? cached.url : '';
+  if (cached?.failedAt && at - cached.failedAt <= FRAME_RESOLVE_CACHE_MS) return lastGood;
+  const failed = () => {
+    cache.set(source.id, { url: cached?.url || '', at: cached?.at || 0, failedAt: at });
+    return lastGood;
+  };
+
+  try {
+    const page = await fetchImpl(pageUrl, {
+      headers: { 'User-Agent': 'gods-eye-view-cctv-proxy/1.0' },
+      signal: AbortSignal.timeout(FRAME_RESOLVE_TIMEOUT_MS),
+    });
+    if (!page.ok) return failed();
+    const html = await page.text();
+
+    let found = '';
+    if (source.frameResolver === 'og-image') {
+      // Attribute order and spacing vary between operators, so match either
+      // ordering rather than one exact spelling.
+      const meta =
+        html.match(/<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+      found = decodeHtmlEntities(meta?.[1] || '');
+    }
+    if (!found) return failed();
+
+    // Resolve protocol-relative and root-relative values against the page.
+    let resolved;
+    try {
+      resolved = new URL(found, pageUrl);
+    } catch {
+      return failed();
+    }
+    if (!frameHostAllowed(source, resolved)) return failed();
+    // Operators often advertise a thumbnail; take the full-size sibling when the
+    // entry says one exists.
+    const url = source.framePreferLarge ? resolved.toString().replace('/mini/', '/large/') : resolved.toString();
+    cache.set(source.id, { url, at, failedAt: 0 });
+    return url;
+  } catch {
+    return failed();
+  }
+}
+
+/** Per-camera frame failures: { failures, until }. While `until` is in the
+ * future the frame route serves the synthetic card without touching the
+ * upstream or the paid Street View fallback. */
+const _frameFailures = new Map();
+/** 15 s, doubling per consecutive failure, capped at five minutes. */
+export function frameFailureBackoffMs(failures) {
+  return Math.min(15 * 1000 * 2 ** Math.max(0, failures - 1), 5 * 60 * 1000);
+}
+
 /**
  * Fetch one upstream CCTV image within the frame-refresh budget.
  *
@@ -3468,10 +3971,10 @@ export async function fetchCctvImageFromUpstream(url, {
 function cctvProxy() {
   /** @type {Map<string,{id:string,status:string,sourceKind:string,label:string,message:string,updatedAt:number}>} */
   const health = new Map();
-  /** Cap on health map entries to prevent unbounded growth. Sized to cover the
-   * full served catalog (CCTV_MAX_SOURCES hard-bounds at 1200) so health/status
-   * observability isn't silently evicted for a default 800-camera catalog. */
-  const HEALTH_MAX_ENTRIES = 1200;
+  /** Cap on health map entries to prevent unbounded growth. Sized to the
+   * catalogue's own hard ceiling so health/status observability is never
+   * silently evicted for a fully served catalogue. */
+  const HEALTH_MAX_ENTRIES = CCTV_MAX_SOURCES_HARD_CAP;
 
   /** Update the health entry for a camera, evicting the oldest entry if at capacity. */
   const setHealth = (cameraId, patch) => {
@@ -3481,6 +3984,9 @@ function cctvProxy() {
       health.delete(oldest);
     }
     const prev = health.get(cameraId) || {};
+    // Re-insert on every write so eviction is least-recently-updated: an active
+    // camera must never be the one dropped because it was registered first.
+    health.delete(cameraId);
     health.set(cameraId, {
       id: cameraId,
       status: patch.status || prev.status || 'unknown',
@@ -3563,6 +4069,7 @@ function cctvProxy() {
                 name: source.name,
                 city: source.city,
                 cityId: source.cityId,
+                country: source.country || '',
                 provider: source.provider,
                 lat: source.lat,
                 lon: source.lon,
@@ -3637,12 +4144,23 @@ function cctvProxy() {
                 return;
               }
 
-              if (isVideoFeedType(feedType) && !(contentType.startsWith('video/') || contentType.includes('mpegurl'))) {
+              const hlsPlaylist = contentType.toLowerCase().includes('mpegurl');
+              if (isVideoFeedType(feedType) && !(contentType.startsWith('video/') || hlsPlaylist)) {
                 setHealth(cameraId, {
                   status: 'degraded',
                   sourceKind: 'upstream',
                   label: source?.provider || 'Configured source',
                   message: `Unexpected media type ${contentType || 'unknown'}`,
+                });
+              } else if (hlsPlaylist) {
+                // A playlist is bytes, not a picture: the browser still has to
+                // decode HLS itself, and this app ships no HLS player. Do not
+                // report a green 'Live stream connected' for it.
+                setHealth(cameraId, {
+                  status: 'degraded',
+                  sourceKind: 'live',
+                  label: source?.provider || 'Configured source',
+                  message: 'HLS playlist proxied; playback depends on browser support',
                 });
               } else {
                 setHealth(cameraId, {
@@ -3688,12 +4206,19 @@ function cctvProxy() {
 
           // Only use server-registered upstream URLs — never accept client-supplied URLs
           // (prevents SSRF via ?upstream= query parameter)
-          const upstreamCandidate =
-            source?.snapshotUrl
-            || (!isVideoFeedType(normalizeFeedType(source?.feedType)) ? source?.url : '');
+          const failure = _frameFailures.get(cameraId);
+          const backingOff = Boolean(failure && Date.now() < failure.until);
+          const resolvedUrl = !backingOff && source?.frameResolver ? await resolveFrameUrl(source) : '';
+          const videoFeed = isVideoFeedType(normalizeFeedType(source?.feedType));
+          const upstreamCandidate = resolvedUrl || source?.snapshotUrl || (!videoFeed ? source?.url : '');
+          // A video-only camera has no still to fetch, and a camera inside its
+          // failure backoff is not retried yet: neither may reach the paid Street
+          // View fallback, which used to fire on every failed frame request.
+          const skipFallbacks = backingOff || (videoFeed && !upstreamCandidate);
 
-          const upstreamImage = await fetchCctvImageFromUpstream(upstreamCandidate);
+          const upstreamImage = skipFallbacks ? null : await fetchCctvImageFromUpstream(upstreamCandidate);
           if (upstreamImage?.ok) {
+            _frameFailures.delete(cameraId);
             setHealth(cameraId, {
               status: 'ok',
               sourceKind: 'snapshot',
@@ -3709,7 +4234,11 @@ function cctvProxy() {
             return;
           }
 
-          const sv = await streetViewFallback({ lat, lon, heading, fov, pitch });
+          if (!skipFallbacks && upstreamCandidate) {
+            const failures = (failure?.failures || 0) + 1;
+            _frameFailures.set(cameraId, { failures, until: Date.now() + frameFailureBackoffMs(failures) });
+          }
+          const sv = skipFallbacks ? null : await streetViewFallback({ lat, lon, heading, fov, pitch });
           if (sv?.ok) {
             setHealth(cameraId, {
               status: 'degraded',
@@ -3730,7 +4259,7 @@ function cctvProxy() {
             cameraId,
             label,
             city,
-            status: source?.url ? 'UPSTREAM UNAVAILABLE' : 'NO UPSTREAM CONFIGURED',
+            status: (source?.url || source?.pageUrl) ? 'UPSTREAM UNAVAILABLE' : 'NO UPSTREAM CONFIGURED',
           });
 
           setHealth(cameraId, {
@@ -3823,6 +4352,78 @@ export function openAiRealtimeProxy() {
         res.statusCode = 502;
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ error: error?.message || 'OpenAI HUD summary request failed' }));
+      }
+    });
+
+    // On-demand only. Nothing in the client calls this on a timer, on camera
+    // movement, or at startup: it runs when the operator presses Ask or
+    // Overview, and at no other time. That keeps a paid endpoint off the
+    // per-frame path and makes the cost of a session equal to the number of
+    // questions asked.
+    const llmJson = (res, statusCode, payload) => {
+      res.statusCode = statusCode;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(JSON.stringify(payload));
+    };
+
+    // Which models are available to ask. Read by the panel to decide how many
+    // input rows to draw and how long to wait; costs nothing and contacts no
+    // provider.
+    middlewares.use('/api/llm/providers', (req, res) => {
+      if (req.method !== 'GET') return llmJson(res, 405, { error: 'Method not allowed' });
+      llmJson(res, 200, { providers: llmProviderRoster(), askTimeoutMs: llmAskTimeoutMs() });
+    });
+
+    middlewares.use('/api/llm/ask', async (req, res) => {
+      const admission = admitLlmAskRequest({
+        method: req.method,
+        contentType: req.headers?.['content-type'],
+        origin: req.headers?.origin,
+        host: req.headers?.host,
+      });
+      if (!admission.ok) return llmJson(res, admission.status, { error: admission.error });
+
+      let rawBody;
+      try {
+        rawBody = await readRequestBody(req, 64 * 1024);
+      } catch {
+        return llmJson(res, 413, { error: 'Request too large' });
+      }
+      const parsed = parseLlmAskRequest(rawBody);
+      if (!parsed.ok) return llmJson(res, parsed.status, parsed.payload);
+      const { provider, settings, question, context } = parsed;
+
+      // Same opt-in per-IP throttle the other paid LLM route uses. It sits
+      // after validation so a keyless, malformed or unknown-provider request
+      // costs no quota slot, exactly as hud-summary's keyless path does.
+      if (!enforceOptInRateLimit(openAiRateLimiter(), req, res)) return;
+
+      const call = buildLlmAskCall(provider, settings, question, context);
+      // A closed browser tab must not leave a billed upstream call running to
+      // completion: abort it the moment the response socket goes away.
+      const disconnect = new AbortController();
+      res.on('close', () => disconnect.abort());
+
+      try {
+        const upstream = await fetch(call.url, {
+          method: 'POST',
+          headers: call.headers,
+          body: JSON.stringify(call.payload),
+          signal: AbortSignal.any([AbortSignal.timeout(llmAskTimeoutMs()), disconnect.signal]),
+        });
+        const data = await upstream.json().catch(() => ({}));
+        const answer = llmAnswerFromUpstream(upstream, data, provider, settings);
+        llmJson(res, answer.status, answer.payload);
+      } catch (error) {
+        if (disconnect.signal.aborted) return; // nobody is listening any more
+        const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+        llmJson(res, 504, {
+          error: timedOut
+            ? `${provider.label} did not answer in time. Try again, or pick a faster model.`
+            : (error?.message || 'Request to the model failed'),
+          provider: provider.id,
+        });
       }
     });
 
@@ -4084,7 +4685,7 @@ const GEV_REALTIME_TOOLS = [
       properties: {
         locationId: {
           type: 'string',
-          enum: ['austin', 'sf', 'nyc', 'tokyo', 'london', 'paris', 'dubai', 'dc'],
+          enum: ['austin', 'saintjohn', 'sf', 'nyc', 'tokyo', 'london', 'paris', 'dubai', 'dc'],
           description: 'Known city preset ID. Use when the requested place matches one of these cities.',
         },
         query: {
@@ -4126,7 +4727,7 @@ const GEV_REALTIME_TOOLS = [
         },
         locationId: {
           type: 'string',
-          enum: ['austin', 'sf', 'nyc', 'tokyo', 'london', 'paris', 'dubai', 'dc'],
+          enum: ['austin', 'saintjohn', 'sf', 'nyc', 'tokyo', 'london', 'paris', 'dubai', 'dc'],
           description: 'Known city preset ID when the place matches one of these cities.',
         },
         locationQuery: {
@@ -4474,7 +5075,7 @@ const GEV_REALTIME_TOOLS = [
         },
         locationId: {
           type: 'string',
-          enum: ['austin', 'sf', 'nyc', 'tokyo', 'london', 'paris', 'dubai', 'dc'],
+          enum: ['austin', 'saintjohn', 'sf', 'nyc', 'tokyo', 'london', 'paris', 'dubai', 'dc'],
           description: 'Known nearby-city anchor for select.',
         },
         locationQuery: { type: 'string', maxLength: 120, description: 'Place to search near, such as "Austin, Texas" or "Seattle". Selection does not fly the camera.' },
@@ -5434,6 +6035,13 @@ function weatherEffectsProxy() {
  * keys exist. Prod builds never register this middleware (apply: 'serve'), so
  * the panel's status fetch fails and the client removes the whole surface.
  */
+/** Store-write failures whose messages are path-free and worth relaying. */
+const KEY_SETUP_HONEST_FAILURE_CODES = new Set([
+  'GEV_HARDEN_FAILED',
+  'GEV_STORE_UNREADABLE',
+  'GEV_STORE_REPLACE_REFUSED',
+]);
+
 function keySetupEndpoint() {
   const respond = (res, statusCode, payload) => {
     res.statusCode = statusCode;
@@ -5530,61 +6138,11 @@ function keySetupEndpoint() {
     return { ...status, store: storeName() };
   };
   // Atomically replace the store's content: fresh same-dir temp created 0600
-  // with the exclusive flag, fsync, rename over the target. Closes the window
-  // where writeFileSync leaves a 0644 file holding a real key before any later
-  // chmod, and the truncate-in-place data-loss path.
-  const persistStore = (text) => {
-    const filepath = storePath();
-    // Never write THROUGH a symlink into a credential path.
-    try {
-      if (fs.lstatSync(filepath).isSymbolicLink()) {
-        throw new Error('refusing to write a credential store that is a symlink');
-      }
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error; // absent is fine — first save.
-    }
-    // Random suffix, not the pid: a stale temp from a failed rename would
-    // otherwise make every later save in this process fail EEXIST forever.
-    const tmp = path.join(
-      path.dirname(filepath),
-      `.${path.basename(filepath)}.${randomUUID().slice(0, 8)}.tmp`,
-    );
-    const fd = fs.openSync(tmp, 'wx', 0o600);
-    let staged = false;
-    try {
-      // Restrict the EMPTY temp file BEFORE the secret touches it. On Windows
-      // a fresh file inherits the directory's ACL (world-readable under a
-      // C:-rooted Pinokio home) and the 0600 open mode is a no-op — and NTFS
-      // renames carry the file object's ACL with it, so hardening the temp IS
-      // hardening the final file. Ordering this before the write means a
-      // hardening failure aborts with the previous store fully intact and the
-      // secret never on disk unprotected — no rollback path to get wrong.
-      if (!hardenCredentialFile(tmp)) {
-        const error = new Error('could not restrict the credential file to your account; nothing was saved');
-        error.code = 'GEV_HARDEN_FAILED';
-        throw error;
-      }
-      // writeSync may write fewer bytes than asked; loop until the whole
-      // buffer lands or a truncated store gets fsynced and renamed into place.
-      const buffer = Buffer.from(text, 'utf8');
-      let written = 0;
-      while (written < buffer.length) {
-        written += fs.writeSync(fd, buffer, written, buffer.length - written);
-      }
-      fs.fsyncSync(fd);
-      staged = true;
-    } finally {
-      fs.closeSync(fd);
-      if (!staged) fs.rmSync(tmp, { force: true });
-    }
-    try {
-      fs.renameSync(tmp, filepath);
-    } catch (error) {
-      // Never strand a staged secret on disk when the swap itself fails.
-      fs.rmSync(tmp, { force: true });
-      throw error;
-    }
-  };
+  // with the exclusive flag, hardened before the secret touches it, fsynced,
+  // renamed over the target. The mechanics — and the Windows DELETE-right
+  // repair for a store whose DACL was tightened by hand — live in
+  // src/keySetupHardening.mjs so every fail-closed branch is unit-tested.
+  const persistStore = (text) => replaceCredentialStore(storePath(), text);
   return {
     name: 'gev-key-setup',
     // serve AND not preview: `vite preview` resolves with command 'serve' too,
@@ -5639,11 +6197,14 @@ function keySetupEndpoint() {
           try {
             persistStore(upsertDotenvValues(readStore(), verdict.updates));
           } catch (error) {
-            // The hardening failure carries its own honest, path-free message —
-            // "saved world-readable" must never be reported as a generic write
-            // error. Everything else returns a fixed message (a raw filesystem
-            // error can carry an absolute path; that stays in the server log).
-            if (error?.code === 'GEV_HARDEN_FAILED' || error?.code === 'GEV_STORE_UNREADABLE') {
+            // The raw error can carry an absolute path, so it goes to the
+            // server log only; the client always gets a path-free message.
+            console.warn('[KeySetup] Store write failed:', error);
+            // The hardening, unreadable-store and refused-replace failures
+            // carry their own honest, path-free messages — "saved
+            // world-readable" or "the file's permissions block the swap" must
+            // never be reported as a generic write error.
+            if (KEY_SETUP_HONEST_FAILURE_CODES.has(error?.code)) {
               return respond(res, 500, { error: `The key was not saved: ${error.message}` });
             }
             return respond(res, 500, { error: `Could not write the ${storeName()} store` });

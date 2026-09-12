@@ -115,6 +115,13 @@ export const DATA_CREDITS = [
       '<a href="https://data.austintexas.gov" target="_blank" rel="noopener">data.austintexas.gov</a>',
   },
   {
+    key: 'canada-cctv',
+    html:
+      'CCTV cameras &amp; frames (Canada): Ontario 511, NB 511 / nbcams.ca, Nova Scotia Webcams &amp; NS Public Works, ' +
+      'PEI 511, Quebec 511, NL Government, NAV CANADA, City of Saint John, Windy, SkylineWebcams, WebcamTaxi, ' +
+      'Skaping (Pursuit) and other operators named per camera',
+  },
+  {
     key: 'caltrans-cctv',
     html:
       'CCTV cameras &amp; frames (California): Caltrans — ' +

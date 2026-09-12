@@ -21,6 +21,15 @@
 # OPENSKY_CLIENT_SECRET=
 # LL2_API_TOKEN=
 
+# Ask panel language models (any one powers the panel; custom needs all three)
+# NVIDIA_API_KEY=
+# XAI_API_KEY=
+# ANTHROPIC_API_KEY=
+# OPENROUTER_API_KEY=
+# CUSTOM_LLM_API_KEY=
+# CUSTOM_LLM_BASE_URL=
+# CUSTOM_LLM_MODEL=
+
 # Keep sharing off. The current supported Pinokio release logs successful
 # tunnel-login passcodes, so the launcher refuses to create a tunnel.
 PINOKIO_SHARE_CLOUDFLARE=false
