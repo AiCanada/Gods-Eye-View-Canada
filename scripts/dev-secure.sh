@@ -148,7 +148,7 @@ resolve_opensky_credentials() {
 resolve_opensky_credentials
 
 CCTV_AUSTIN_MAX_SOURCES="${CCTV_AUSTIN_MAX_SOURCES:-36}"
-CCTV_MAX_SOURCES="${CCTV_MAX_SOURCES:-48}"
+CCTV_MAX_SOURCES="${CCTV_MAX_SOURCES:-5000}"
 
 echo "Starting God's Eye View dev server..."
 echo "URL: http://localhost:${PORT}/"

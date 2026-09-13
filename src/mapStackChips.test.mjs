@@ -343,8 +343,9 @@ test('the Visual Presets tray owns Map Source and the retired left panel is abse
     /<button id="control-panel-toggle"[\s\S]*?data-dock-toggle-target="control-panel"[\s\S]*?aria-controls="control-panel-popover"/,
     'the compact wing must expose a semantic keyboard disclosure',
   );
-  assert.match(ui, /event\.key !== 'Escape'[\s\S]*?disclosure\?\.focus/);
-  assert.match(ui, /querySelector\('\.map-stack-chip\.active'\)\s*\|\| panelEl\.querySelector\('\.map-stack-chip'\)/);
+  const panels = readFileSync(new URL('./ui/panelDisclosure.js', import.meta.url), 'utf8');
+  assert.match(panels, /event\.key !== 'Escape'[\s\S]*?disclosure\?\.focus/);
+  assert.match(ui, /querySelector\('\.map-stack-chip\.active'\)\s*\|\| panel\.querySelector\('\.map-stack-chip'\)/);
 
   assert.match(
     ui,

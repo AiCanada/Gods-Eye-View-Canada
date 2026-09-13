@@ -1,15 +1,22 @@
 import { StyleManager } from '../ui.js';
-import { flyToAustin } from '../camera.js';
+import { flyToStartupLocation } from '../camera.js';
+import { CITY_POIS } from '../locations.js';
+import { STARTUP_LOCATION_ID } from '../startupDefaults.js';
 import { initCockpitCloudEffects } from '../cockpitCloudEffects.js';
+import { initSeaSurfaceTemperaturePanel } from '../data/seaSurfaceTemperature.js';
 
 /** Construct the existing controls and camera presentation. */
 export function createStandaloneControls({
   scene: { viewer, mapStackController },
   loaderStatus,
+  placeSearch,
   defer,
 }) {
   // Initialize the style manager (post-processing, HUD, locations, share links)
-  const styleManager = new StyleManager(viewer, { mapStackController });
+  const styleManager = new StyleManager(viewer, {
+    mapStackController,
+    placeSearch,
+  });
   defer(() => styleManager.orbitController.stop());
   defer(() => styleManager.hud.destroy());
   defer(() => styleManager.dispose());
@@ -19,11 +26,15 @@ export function createStandaloneControls({
   const weatherEffects = null;
   const cockpitCloudEffects = initCockpitCloudEffects(viewer);
   defer(() => cockpitCloudEffects?.destroy());
+  // Sea Surface Temperature box: always off at launch, never persisted.
+  defer(initSeaSurfaceTemperaturePanel({ viewer }));
 
-  // If no share link state, do default fly-to Austin
+  // If no share link state, fly to the launch location
   if (!styleManager.hasShareState) {
-    loaderStatus.textContent = 'Flying to Austin, TX...';
-    defer(flyToAustin(viewer));
+    const city = CITY_POIS[STARTUP_LOCATION_ID];
+    loaderStatus.textContent = `Flying to ${city.name}...`;
+    defer(flyToStartupLocation(viewer, city.pois[0]));
+    styleManager.markActiveLocation(STARTUP_LOCATION_ID);
   } else {
     loaderStatus.textContent = 'Restoring shared view...';
   }

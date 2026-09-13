@@ -74,6 +74,14 @@ export const DATA_CREDITS = [
       '(ODbL 1.0)',
   },
   {
+    key: 'photon-geocoder',
+    html:
+      'Keyless place search: ' +
+      '<a href="https://photon.komoot.io" target="_blank" rel="noopener">Photon</a> (komoot) over ' +
+      '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
+      '(ODbL 1.0)',
+  },
+  {
     key: 'military-installations-osm',
     html:
       'Mapped installation context: ' +
@@ -118,8 +126,13 @@ export const DATA_CREDITS = [
     key: 'canada-cctv',
     html:
       'CCTV cameras &amp; frames (Canada): Ontario 511, NB 511 / nbcams.ca, Nova Scotia Webcams &amp; NS Public Works, ' +
-      'PEI 511, Quebec 511, NL Government, NAV CANADA, City of Saint John, Windy, SkylineWebcams, WebcamTaxi, ' +
-      'Skaping (Pursuit) and other operators named per camera',
+      'PEI 511, Quebec 511, DriveBC (BC Ministry of Transportation and Transit), Alberta 511 (Alberta Transportation ' +
+      'and Economic Corridors), NL Government, NAV CANADA, City of Saint John, Windy, SkylineWebcams, WebcamTaxi, ' +
+      'Skaping (Pursuit) and other operators named per camera. Québec traffic cameras: Ministère des Transports ' +
+      'et de la Mobilité durable, <a href="https://www.donneesquebec.ca/recherche/fr/dataset/d2f1dce5-35c5-4bb5-a54c-3b8ec9ac9de9" ' +
+      'target="_blank" rel="noopener">Données Québec</a> (CC-BY 4.0). Additional city, news and tourism webcams ' +
+      '(CBC, Castanet, BC Ferries, Nova Scotia TIR and others) as listed by ' +
+      '<a href="https://transcanadahighway.com/traveltips/trans-canada-webcams-and-photos/" target="_blank" rel="noopener">transcanadahighway.com</a>',
   },
   {
     key: 'caltrans-cctv',

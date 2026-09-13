@@ -618,6 +618,9 @@
         <button id="cctv-auto-hop-btn" class="scene-btn">AUTO HOP OFF</button>
       </div>
       <div class="cctv-controls">
+        <button id="cctv-region-cap-btn" class="scene-btn active" title="Limit cameras to 2,500 per province, territory or state (per country elsewhere)">REGION CAP ON</button>
+      </div>
+      <div class="cctv-controls">
         <button id="cctv-projection-btn" class="scene-btn">PROJECTION ON</button>
         <span id="cctv-quality-chip">CAL · --</span>
       </div>
@@ -642,6 +645,38 @@
       </div>
       <div class="cctv-summary-label">SCENE SUMMARY</div>
       <div id="cctv-summary">Enable CCTV to start camera-linked intelligence summaries.</div>
+    </div>
+  </div>
+
+  <!-- Sea Surface Temperature Panel -->
+  <div id="sst-panel" class="panel-collapsible collapsed" data-panel-id="sst-panel">
+    <div class="panel-glow"></div>
+    <div class="sst-panel-inner">
+      <div class="panel-header">
+        <span class="panel-title" data-collapsed-title="SEA TEMP (SST)">SEA SURFACE TEMPERATURE (SST)</span>
+        <span class="panel-divider"></span>
+        <button class="panel-collapse-btn" data-collapse-target="sst-panel" title="Collapse panel">+</button>
+      </div>
+      <div class="sst-subtitle">For temperature-sensitive fish that follow moving thermal fronts</div>
+      <div class="cctv-controls">
+        <button id="sst-enable-btn" class="scene-btn" type="button" aria-pressed="false">SST OFF</button>
+        <button id="sst-fronts-btn" class="scene-btn" type="button" aria-pressed="true" title="Detect thermal fronts in Level-3 data">FRONTS ON</button>
+        <select id="sst-fronts-sensitivity" aria-label="Thermal front sensitivity" title="How strong a temperature change must be to count as a front"></select>
+      </div>
+      <div class="cctv-controls">
+        <select id="sst-product-select" aria-label="Sea surface temperature product"></select>
+      </div>
+      <label class="sst-opacity">
+        <span class="cctv-summary-label">OPACITY</span>
+        <input id="sst-opacity" type="range" min="10" max="100" step="5" value="75" aria-label="Sea surface temperature opacity" />
+      </label>
+      <div class="sst-legend" aria-hidden="true">
+        <span id="sst-legend-min">COLD</span><span class="sst-legend-bar"></span><span id="sst-legend-max">WARM</span>
+      </div>
+      <div id="sst-date" class="sst-readout">DATA DATE · --</div>
+      <div id="sst-fronts" class="sst-readout">FRONTS · --</div>
+      <div id="sst-earthdata" class="sst-readout" role="status" aria-live="polite">EARTHDATA · --</div>
+      <div id="sst-note" class="sst-note">Off. Turn on to drape NASA sea surface temperature over the oceans.</div>
     </div>
   </div>
 

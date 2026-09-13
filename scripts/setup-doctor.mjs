@@ -31,6 +31,7 @@ export const CREDENTIALS = Object.freeze([
     )),
   },
   { name: 'LL2_API_TOKEN', label: 'Launch Library 2', keychain: [] },
+  { name: 'EARTHDATA_TOKEN', label: 'NASA Earthdata (Sea Surface Temperature)', keychain: [] },
   { name: 'NVIDIA_API_KEY', label: 'NVIDIA NIM (Ask panel)', keychain: [] },
   { name: 'XAI_API_KEY', label: 'xAI Grok (Ask panel)', keychain: [] },
   { name: 'ANTHROPIC_API_KEY', label: 'Anthropic Claude (Ask panel)', keychain: [] },

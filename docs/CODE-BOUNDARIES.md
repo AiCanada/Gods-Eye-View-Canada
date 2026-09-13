@@ -79,11 +79,10 @@ use build-only dependency exceptions.
 
 `server/standalone/vite.config.js` loads the root environment and passes selected
 browser keys, host/port and the ordered local provider plugins to this helper.
-`server/providers/local.js` still owns provider process state, routes and
-credential-store paths. Provider Settings writes to the same root `.env` or
-Pinokio store as before. `vite.config.js` preserves the default configuration and
-existing named provider exports for tools/tests. The provider module remains
-large; later extractions should split complete provider families and their tests.
+`server/providers/local.js` composes provider factories and re-exports existing
+helpers for compatibility. Provider Settings lives in `server/standalone/key-setup.js`
+and writes to the same root `.env` or Pinokio store as before. `vite.config.js`
+preserves the default configuration and named provider exports for tools/tests.
 
 ## Aircraft and vessel providers
 
@@ -117,3 +116,100 @@ this entry independently and rejects Node imports.
 
 The browser's direct geocoding, annotation rendering and full Overpass query
 service remain in their existing modules.
+
+## Satellite and launch providers
+
+`gods-eye-view/server/providers/space` is a Node-only entry for the CelesTrak
+and Launch Library 2 middleware. Separate files under `server/providers/space/`
+own each feed's acquisition, memory/disk cache and error handling. The existing
+local composition mounts them in the same order. Importing the entry performs
+no acquisition; factory calls create independent cache state.
+
+`gods-eye-view/sources/space` owns only fixed upstream URL construction: the
+CelesTrak group/TLE query and Launch Library's recent 30-day detailed feed.
+Callers supply the group or end date and own validation, credentials, transport,
+response limits and cache policy. The boundary gate checks this portable entry
+separately from the Node providers. Satellite rendering and launch replay remain
+in their existing browser modules.
+
+## Terrain, traffic, fires and bike-share providers
+
+`gods-eye-view/server/providers/terrain`, `/traffic`, `/firms` and `/gbfs`
+are separate Node-only entries. Each owns its existing middleware and
+process-scoped cache or request handling. Standalone composition mounts them in
+the original order; their imports do not start acquisition.
+
+`gods-eye-view/sources/terrain` exports existing point-key, retry and cache
+reconstruction mechanics with injectable acquisition dependencies.
+`gods-eye-view/sources/traffic` exports tile math and budget calculations.
+`gods-eye-view/sources/gbfs` exports host/path acceptance and cache-header rules.
+These entries import no Node middleware, application configuration or rendering.
+Callers retain their request admission and transport policy. FIRMS CSV parsing
+remains an owned dependency of the FIRMS Node provider. The boundary gate
+checks each entry independently.
+
+Browser terrain sampling, traffic matching/drawing, fire overlays and bike-share
+layer lifecycle remain in their current modules. This extraction changes no
+source defaults, credentials, quotas, data interpretation or visual behavior.
+
+## Local search, regional context, voice and setup
+
+Node-only exports `server/providers/overpass`, `server/providers/military-installations`,
+`server/providers/regional` and `server/providers/openai` own request handling
+without importing the standalone configuration or browser rendering. Overpass
+separates query admission, geometry simplification, cache and transport; military
+search shares the bounded transport. Regional place/news/weather acquisition is
+separate from briefing and weather-effect response caches. Voice handlers share
+existing rate limits and request reading; schemas and instructions are separate.
+
+`server/standalone/key-setup` is explicitly standalone Node functionality.
+Its factory and the local voice factory accept `sourceRoot` for application-owned
+configuration/log files; defaults resolve the repository root. Local voice also
+accepts an optional `annotationGuidance` paragraph. Neither factory starts
+acquisition on import. Setup retains its pre-environment-load provenance capture
+and development-only registration. Package checks enumerate every owned module
+and reject browser imports of these Node entries.
+
+## Browser place search
+
+`gods-eye-view/search` exports an explicit geocoding service and Google/Photon
+adapters. The entry owns normalization, bounded caches, deadlines and fallback
+sequencing. It imports no application state, environment configuration, rendering
+or Node server code. Google transport is supplied by its caller.
+
+`src/standalone/placeSearch.js` constructs the configured Google request and
+keyless Photon fallback. The application passes this service to location
+controls, annotation resolution and voice/radio actions. Those consumers retain
+framing, landmark recovery, footprint matching and playback decisions. Existing
+reverse geocoding and nearby/text-search routes remain separate.
+
+## Panel controls
+
+`gods-eye-view/ui/panels` owns collapse-button binding, nearest-panel Escape
+handling, hover delays and delayed content-focus handoff. It accepts existing
+DOM elements and callbacks; importing it creates no browser state. `destroy()`
+removes owned listeners and cancels pending work without changing saved state
+or moving focus. Call it before removing or replacing the controls.
+
+`src/ui.js` retains panel layout, persistence, share restoration and application
+reactions to state changes. Map Source selection and Location draft cleanup are
+provided through callbacks. The component imports no globe, data, application
+or server modules. Package checks and scoped formatting cover this entry.
+
+## Surface keyboard handling
+
+`gods-eye-view/ui/surfaces` exports `createSurfaceKeyboard` from
+`src/ui/surfaceKeyboard.js`. It receives a root DOM node, an optional document,
+an `isActive` predicate, an `onEscape` action and an optional return-focus fallback.
+Construction is inert. `activate()` remembers the opener and installs one capture
+listener; repeated activation is harmless. `deactivate({ restoreFocus: true })`
+removes that listener and restores the opener when connected, otherwise invoking
+the supplied fallback. Omit return focus when yielding to another surface.
+`destroy()` permanently releases ownership without moving focus.
+
+The welcome launcher and Provider Settings retain content, visibility, initial
+focus, animation and screen-specific policy. Tab boundaries are read from the
+current visible/enabled controls for each key; ordinary movement within those
+boundaries remains native. The component honors already-handled keys and has no
+app, server, storage or network dependencies. Its package boundary is checked
+independently from the standalone screens that consume it.

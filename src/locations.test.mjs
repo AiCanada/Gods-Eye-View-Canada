@@ -1,3 +1,4 @@
+import { createStandalonePlaceSearch } from './standalone/placeSearch.js';
 // Camera-framing mode contract for fly_to_location (field test 8 + rootcause doc §3):
 // parks/lakes/campuses and streets are NOT precise POIs — flying to "Zilker Park" at
 // building range (250 m) lands on a random rooftop. Pure mapping tests, no network.
@@ -67,7 +68,7 @@ async function runSearch(viewer, options, { result = AUSTIN_RESULT, query = 'aus
     json: async () => ({ status: 'OK', results: [result] }),
   });
   try {
-    return await searchAndFlyTo(viewer, query, options);
+    return await searchAndFlyTo(viewer, query, { placeSearch: createStandalonePlaceSearch({ resolveApiKey: () => globalThis.window?.__GOOGLE_MAPS_API_KEY__ }), ...options });
   } finally {
     globalThis.fetch = priorFetch;
     if (hadWindow) globalThis.window = priorWindow;
@@ -543,7 +544,7 @@ test('geocoded Location branches forward the resolved-navigation ownership hook'
   // that resolves nothing must bail before any flight is started. The gazetteer
   // branch runs ahead of all of that and flies on its own hit, so the slice
   // starts where geocoding does.
-  const geocoded = search.slice(search.indexOf('let url = '));
+  const geocoded = search.slice(search.indexOf('placeSearch.geocode('));
   assert.ok(geocoded.indexOf('return null;') < geocoded.indexOf('onStart: options.onStart'));
 });
 
@@ -702,9 +703,9 @@ test('search flies to a gazetteer city with no API key present', async () => {
 test('Saint John is a preset city whose first stop is the Danger Zone', () => {
   const city = CITY_POIS.saintjohn;
   assert.ok(city, 'expected a Saint John preset city');
-  assert.equal(city.name, 'Saint John');
+  assert.equal(city.name, 'Saint John Danger Zone');
   // The first POI is the default fly-to for the city.
-  assert.equal(city.pois[0].name, 'Danger Zone');
+  assert.equal(city.pois[0].name, 'Saint John Danger Zone');
   assert.ok(Math.abs(city.pois[0].lat - 45.2733) < 0.02);
   assert.ok(Math.abs(city.pois[0].lon - -66.0633) < 0.02);
   for (const poi of city.pois) {
@@ -736,8 +737,9 @@ test('typing a preset city name flies its curated first stop with no key present
   await withKeylessWindow(async () => {
     const viewer = stubViewer();
     assert.equal(presetCityIdForQuery('saint john'), 'saintjohn');
+    assert.equal(presetCityIdForQuery('Saint John Danger Zone'), 'saintjohn');
     const result = await searchAndFlyTo(viewer, 'Saint John');
-    assert.equal(result.label, 'Saint John');
+    assert.equal(result.label, 'Saint John Danger Zone');
     assert.equal(viewer.flights.length, 1, 'the preset flies without a geocoder');
     assert.equal(result.navigationMode, 'precise-place');
   });
@@ -749,20 +751,37 @@ test('a province-qualified gazetteer hit resolves locally even when a key is pre
   const priorWindow = globalThis.window;
   const priorFetch = globalThis.fetch;
   globalThis.window = { __GOOGLE_MAPS_API_KEY__: 'AIza-test' };
-  let fetched = 0;
-  globalThis.fetch = async () => { fetched += 1; throw new Error('geocoder reached'); };
+  let geocoded = 0;
+  const placeSearch = { async geocode() { geocoded += 1; throw new Error('geocoder reached'); } };
   try {
-    const result = await searchAndFlyTo(viewer, 'Windsor, ON');
+    const result = await searchAndFlyTo(viewer, 'Windsor, ON', { placeSearch });
     assert.equal(result.label, 'Windsor, Ontario');
-    assert.equal(fetched, 0, 'a qualified name never needs the geocoder');
+    assert.equal(geocoded, 0, 'a qualified name never needs the geocoder');
     // A bare, globally ambiguous name defers to the viewport-biased geocoder.
-    await assert.rejects(() => searchAndFlyTo(viewer, 'Windsor'), /geocoder reached/);
-    assert.equal(fetched, 1);
+    await assert.rejects(() => searchAndFlyTo(viewer, 'Windsor', { placeSearch }), /geocoder reached/);
+    assert.equal(geocoded, 1);
   } finally {
     globalThis.fetch = priorFetch;
     if (hadWindow) globalThis.window = priorWindow;
     else delete globalThis.window;
   }
+});
+
+test('a keyless search with no local answer falls through to the place search', async () => {
+  await withKeylessWindow(async () => {
+    const queries = [];
+    const placeSearch = {
+      async geocode(query) {
+        queries.push(query);
+        return { place: null, answered: true };
+      },
+    };
+    // Bare "Windsor" resolves locally only without a key; an unknown name must
+    // reach the composed service (keyless Photon) instead of throwing.
+    const result = await searchAndFlyTo(stubViewer(), 'Nowhere Junction', { placeSearch });
+    assert.deepEqual(queries, ['Nowhere Junction']);
+    assert.equal(result, null);
+  });
 });
 
 test('gazetteer flights honour the authority veto, explicit range, and close view', async () => {
@@ -789,4 +808,66 @@ test("St. John's resolves separately from Saint John", () => {
   assert.equal(findCanadianCity('saint john nb').name, 'Saint John');
   assert.equal(findCanadianCity('toronto on canada').qualified, true);
   assert.equal(findCanadianCity('saskatoon').qualified, false);
+});
+
+// ---------------------------------------------------------------------------
+// Ten largest Canadian metropolitan areas (2021 Census) in the location bar
+// ---------------------------------------------------------------------------
+
+const CANADA_TOP_TEN = [
+  'toronto', 'montreal', 'vancouver', 'ottawa', 'calgary',
+  'edmonton', 'quebec', 'winnipeg', 'hamilton', 'kitchener',
+];
+
+test('the location bar lists Saint John Danger Zone, the ten largest Canadian metros, Fort McMurray and Halifax, then the world', () => {
+  const ids = Object.keys(CITY_POIS);
+  assert.deepEqual(ids.slice(0, 13), ['saintjohn', ...CANADA_TOP_TEN, 'fortmcmurray', 'halifax']);
+  for (const id of ['austin', 'sf', 'nyc', 'tokyo', 'london', 'paris', 'dubai', 'dc']) {
+    assert.ok(ids.includes(id), `${id} is still listed`);
+  }
+});
+
+test('every Canadian metro preset has five stops inside its bounds and near its city centre', () => {
+  const centreName = {
+    toronto: 'Toronto', montreal: 'Montreal', vancouver: 'Vancouver', ottawa: 'Ottawa', calgary: 'Calgary',
+    edmonton: 'Edmonton', quebec: 'Quebec City', winnipeg: 'Winnipeg', hamilton: 'Hamilton', kitchener: 'Kitchener',
+    fortmcmurray: 'Fort McMurray', halifax: 'Halifax',
+  };
+  for (const id of [...CANADA_TOP_TEN, 'fortmcmurray', 'halifax']) {
+    const city = CITY_POIS[id];
+    assert.equal(city.pois.length, 5, `${id} has five stops`);
+    const { southwest: sw, northeast: ne } = city.viewBounds;
+    const centre = CANADIAN_CITIES.find((entry) => entry.name === centreName[id]);
+    for (const poi of city.pois) {
+      assert.ok(
+        poi.lat > sw.lat && poi.lat < ne.lat && poi.lon > sw.lng && poi.lon < ne.lng,
+        `${poi.name} is inside ${city.name}`,
+      );
+      const km = Math.hypot(
+        (poi.lat - centre.lat) * 111,
+        (poi.lon - centre.lon) * 111 * Math.cos((centre.lat * Math.PI) / 180),
+      );
+      assert.ok(km < 25, `${poi.name} is ${km.toFixed(1)} km from ${centre.name}`);
+    }
+  }
+});
+
+test('Canadian metro names match camera spellings and search wording', () => {
+  assert.equal(CITY_POIS.montreal.name, 'Montréal');
+  assert.equal(CITY_POIS.quebec.name, 'Québec City');
+  assert.equal(presetCityIdForQuery('Toronto'), 'toronto');
+  assert.equal(presetCityIdForQuery('Montreal'), 'montreal');
+  assert.equal(presetCityIdForQuery('Montréal'), 'montreal');
+  assert.equal(presetCityIdForQuery('Quebec City'), 'quebec');
+  assert.equal(presetCityIdForQuery('Ottawa'), 'ottawa');
+  assert.equal(presetCityIdForQuery('Gatineau'), 'ottawa');
+  assert.equal(presetCityIdForQuery('Waterloo'), 'kitchener');
+  assert.equal(presetCityIdForQuery('Kitchener-Waterloo'), 'kitchener');
+  assert.equal(presetCityIdForQuery('Vancouver BC'), 'vancouver');
+  assert.equal(presetCityIdForQuery('Ft McMurray'), 'fortmcmurray');
+  assert.equal(presetCityIdForQuery('Fort McMurray, AB'), 'fortmcmurray');
+  assert.equal(presetCityIdForQuery('Halifax, NS'), 'halifax');
+  // A bare metro name now names the preset; naming the province still reaches the gazetteer.
+  assert.equal(findCanadianCity('Toronto'), null);
+  assert.equal(findCanadianCity('Toronto, ON').name, 'Toronto');
 });

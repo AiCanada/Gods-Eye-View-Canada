@@ -1,0 +1,160 @@
+skip  Victoria Webcams       Inner Harbour (Coast Hotel)              still not updated since 2025-03-15
+keep  Victoria Webcams       Patricia Bay, Saanich, Vancouver Island  http://patbaywebcam.com/webcam/pb_header.jpg (48.652,-123.447 ~ Canadian Coast Guard Base Patricia Bay)
+keep  Victoria Webcams       BC Ferries                               https://ccimg.bcferries.com/cc/support/terminals/cam1_DUK.jpg (48.426,-123.361 ~ BC Ferries)
+skip  Victoria Webcams       Royal BC Museum                          page HTTP 404
+skip  Victoria Webcams       Island Highway, Malahat                  provincial system or portal handled elsewhere
+skip  Victoria Webcams       Race Rocks Ecological Preserve           page unreachable (TypeError)
+skip  Whistler & North Shore Whistler Resort-Peak 2 Peak              still not updated since 2026-07-20
+skip  Whistler & North Shore Whistler Resort-Blackcomb Mountain       page HTTP 403
+skip  Whistler & North Shore Horseshoe Bay Ferry                      no still image found on the page
+skip  Whistler & North Shore Lions Gate Bridge                        provincial system or portal handled elsewhere
+skip  Whistler & North Shore Second Narrows Bridge                    provincial system or portal handled elsewhere
+keep  Vancouver webcams      Peace Arch border cross webcams          https://ambassador.solutionspal.com/cams/camimage.jpg?t=1777574377611 (49.005,-122.757 ~ Canadian Border - Douglas (Peace Arch) Crossing)
+skip  Vancouver webcams      English Bay/Burrard Bridge               no still image found on the page
+skip  Vancouver webcams      Stamley Park heron cam                   page HTTP 403
+skip  Vancouver webcams      Vancouver waterfront/Seabus Terminal     page unreachable (TypeError)
+skip  Vancouver webcams      Jericho Beach                            no still image found on the page
+skip  Vancouver webcams      Westin Bayshore, overlooking Coal Harbou still not updated since 2026-08-25
+skip  Vancouver webcams      Dundarave Pier Sea Walk                  still not updated since 2020-07-18
+skip  South & East of Vancou Transportation-Canada Highway at Port Ma provincial system or portal handled elsewhere
+keep  South & East of Vancou BC Ferries                               https://ccimg.bcferries.com/cc/support/terminals/cam1_DUK.jpg (48.426,-123.361 ~ BC Ferries)
+skip  South & East of Vancou US Border                                provincial system or portal handled elsewhere
+skip  South & East of Vancou Boundary Airport                         page HTTP 404
+skip  South & East of Vancou Coquihalla Highway                       provincial system or portal handled elsewhere
+skip  South & East of Vancou Highway 15 US border crossings           provincial system or portal handled elsewhere
+keep  Okanagan Webcams       Sunpeaks Resort                          https://www.sunpeaksresort.com/sites/default/files/styles/1536/public/ (50.117,-122.954 ~ Whistler)
+skip  Okanagan Webcams       Sicamous                                 no still image found on the page
+skip  Okanagan Webcams       Kelowna Airport                          still not updated since 2026-08-25
+keep  Okanagan Webcams       Silver Star Resort                       https://s3-us-west-2.amazonaws.com/skisilverstar.webcams/webcams/SnowC (50.369,-119.049 ~ Silver Star Mountain Resort)
+keep  Okanagan Webcams       Silver Star Resort web cams              https://s3-us-west-2.amazonaws.com/skisilverstar.webcams/webcams/SnowC (50.369,-119.049 ~ Silver Star Mountain Resort)
+keep  Okanagan Webcams       Downtown Kelowna                         https://www.castanet.net/scenic-web-cams/assets/cameras/scenic5/now.jp (49.887,-119.500 ~ Kelowna Downtown Marina)
+keep  Okanagan Webcams       View of Kelowna from Knox Mountain       https://www.castanet.net/scenic-web-cams/assets/cameras/scenic6/now.jp (49.953,-119.442 ~ Central Okanagan)
+keep  Okanagan Webcams       Lake Okanagan View                       https://www.castanet.net/scenic-web-cams/assets/cameras/scenic5/now.jp (50.693,-119.161 ~ Lake View)
+keep  Okanagan Webcams       Kelowna Stewart park                     https://apps.kelowna.ca/CityPage/images/Sport%20and%20Recreation/Parks (49.827,-119.455 ~ Stewart Road West)
+skip  Okanagan Webcams       Kalamalka Lookout, Highway 97            provincial system or portal handled elsewhere
+skip  Okanagan Webcams       Lake Okanagan View                       no still image found on the page
+skip  Okanagan Webcams       Dockside Marine                          still not updated since 2026-08-25
+keep  Okanagan Webcams       Penticton Casa Grande                    https://www.castanet.net/scenic-web-cams/assets/cameras/scenic5/now.jp (49.500,-119.593 ~ Penticton)
+skip  Okanagan Webcams       Penticton Marina                         page unreachable (TypeError)
+keep  Okanagan Webcams       Penticton - Barefoot Beach               https://www.castanet.net/scenic-web-cams/assets/cameras/scenic12/now.j (49.452,-119.607 ~ Barefoot Beach Resort)
+skip  Okanagan Webcams       Red Mountain Resort - Granite Mountain   not a still image (image/svg+xml)
+skip  Banff & Rockies Webcam Panorama Resort - Base                   image too small (3801 B)
+skip  Banff & Rockies Webcam Lake Louise Webcams                      page HTTP 404
+skip  Banff & Rockies Webcam Sunshine Village- webcams                not a still image (text/html; charset=UTF-8)
+skip  Banff & Rockies Webcam Eye on Banff                             page HTTP 522
+skip  Banff & Rockies Webcam Canmore Main Street                      still not updated since 2022-05-26
+skip  Banff & Rockies Webcam Three Sisters Mountain                   still not updated since 2022-05-26
+skip  Banff & Rockies Webcam Canmore Nordic Centre                    still not updated since 2022-05-26
+skip  Banff & Rockies Webcam Mount Rundle above Spring Creek Canmore  still not updated since 2022-05-26
+skip  Banff & Rockies Webcam Main Street & Grotto Mountain            still not updated since 2022-05-26
+skip  Calgary Webcams        City of Calgary Traffic Cams             still not updated since 2021-05-27
+skip  Edmonton Webcams       Edmonton Skyline                         page HTTP 403
+skip  Edmonton Webcams       Snow Valley Ski Hill                     no still image found on the page
+skip  Edmonton Webcams       Edmonton Traffic cams                    still not updated since 2024-01-22
+skip  Saskatoon              North Battleford                         no still image found on the page
+skip  Saskatoon              CBC downtown Saskatoon                   image too small (1252 B)
+skip  Saskatoon              CBC Regina, view to Legislature          image too small (1252 B)
+skip  Regina                 Regina Airport                           still not updated since 2016-04-25
+keep  Regina                 Regina Webcam                            http://users.accesscomm.ca/saskweather/webcam/webcam32.jpg (50.448,-104.616 ~ Regina)
+skip  Regina                 Saskatchewan Legislature                 still not updated since 2026-07-24
+skip  Manitoba webcams       Edgewood Bridge                          image too small (0 B)
+skip  Manitoba webcams       Chur                                     provincial system or portal handled elsewhere
+keep  Manitoba webcams       Red River webcam                         https://globalnews.ca/wp-content/uploads/2013/04/web-cam-image.jpg?qua (49.925,-96.966 ~ Red River Floodway)
+skip  Northern Ontario webca International Bridge                     no still image found on the page
+skip  Northern Ontario webca Sault Ste Marie Civic Centre             no still image found on the page
+keep  Northern Ontario webca WaterTowr Inn, view Northwest            https://www.vmcdn.ca/f/files/shared/site_images/live_webcams_2017.jpg; (46.183,-82.947 ~ Lake View Inn Motel)
+keep  Northern Ontario webca Sault Ste Marie Waterfront               https://www.vmcdn.ca/f/files/shared/site_images/live_webcams_2017.jpg; (46.510,-84.338 ~ Delta Hotels by Marriott Sault Ste. Marie Waterfront)
+skip  Northern Ontario webca Sault Canal                              provincial system or portal handled elsewhere
+skip  Northern Ontario webca Mackinac Bridge (Michigan)               provincial system or portal handled elsewhere
+skip  Northern Ontario webca Timmins City Hall                        not a still image (image/gif)
+skip  Northern Ontario webca Silver Lake Cottage Resort               page HTTP 404
+skip  Northern Ontario webca Mount St Louis Moonstone -Base Cam       provincial system or portal handled elsewhere
+skip  Northern Ontario webca Collingwood webcam                       page HTTP 404
+skip  Northern Ontario webca Blue Mountain Resort web cams, Collingwo provincial system or portal handled elsewhere
+keep  Toronto & Central Onta Toronto Skyline                          https://www.cbc.ca/toronto/webcam/toronto-webcam.jpg (43.641,-79.435 ~ Skyline Restaurant)
+keep  Toronto & Central Onta Lake Ontario, from Westin Harbour Castle https://cdn.jwplayer.com/v2/media/Gr3ufHjO/poster.jpg?width=320 (43.658,-79.422 ~ Central Toronto Academy)
+skip  Toronto & Central Onta Toward Yonge & Bloor                     page unreachable (TypeError)
+skip  Toronto & Central Onta Mississauga Civic Centre and Civic Squar image too small (3020 B)
+skip  Toronto & Central Onta Turkey Point Marina (Lake Erie)          page HTTP 403
+skip  Toronto & Central Onta Niagara Falls                            still not updated since 2016-04-25
+skip  Ottawa & Eastern Ontar Confederation Park, National War Memoria page HTTP 403
+skip  Ottawa & Eastern Ontar Parliament Hill                          page unreachable (TypeError)
+skip  Ottawa & Eastern Ontar National Gallery                         page unreachable (TypeError)
+skip  Quebec webcams         Mont Tremblant - various                 no still image found on the page
+skip  Quebec webcams         Place d'Armes, Montreal                  page HTTP 403
+skip  Quebec webcams         Mount Royal Avenue                       page HTTP 404
+skip  Quebec webcams         Montreal Taffic cams                     provincial system or portal handled elsewhere
+skip  Quebec webcams         Jacques Cartier Bridge, Montreal         still not updated since 2021-08-23
+skip  Quebec webcams         Champlain Bridge, Montreal               page HTTP 404
+skip  New Brunswick webcams  Fredericton City Hall                    image too small (7508 B)
+skip  New Brunswick webcams  St John River, Fredericton               image too small (7508 B)
+skip  New Brunswick webcams  Officer's Square, Fredericton            image too small (7508 B)
+skip  New Brunswick webcams  Westmorland Street Bridge                image too small (7508 B)
+keep  New Brunswick webcams  CBC Saint John                           https://www.cbc.ca/nb/webcam/webcam.jpg (45.276,-66.072 ~ CBC)
+skip  Halifax & Southern Nov Chebucto Web Cam                         page unreachable (TypeError)
+skip  Halifax & Southern Nov Nova Scotia Highway cams                 no still image found on the page
+keep  Halifax & Southern Nov Pictou Causeway Highway cam              https://novascotia.ca/tran/webcam/secure/images/rwis_cam/Pictou_1.jpg (45.662,-62.726 ~ Highway 106)
+keep  Halifax & Southern Nov Highway 102 @ Bedford                    https://novascotia.ca/tran/webcam/secure/images/rwis_cam/Bedford_1.jpg (44.742,-63.659 ~ Highway 102)
+keep  Halifax & Southern Nov North Sydney Webcam                      https://novascotia.ca/tran/webcam/secure/images/rwis_cam/North%20Sydne (46.211,-60.247 ~ North Sydney)
+skip  Halifax & Southern Nov Ski Martock                              page HTTP 403
+keep  Halifax & Southern Nov Lunenburg Harbour                        https://cdn.jwplayer.com/v2/media/Gr3ufHjO/poster.jpg?width=320 (44.369,-64.303 ~ Lunenburg Harbour)
+keep  Halifax & Southern Nov Halifax Harbour - Waterfront             https://images.novascotiawebcams.com/waterfront/og_image.jpg (44.647,-63.570 ~ Harbour Watercraft)
+keep  Halifax & Southern Nov Halifax Harbour-boardwalk                https://images.novascotiawebcams.com/waterfront/og_image.jpg (44.647,-63.570 ~ Harbour Watercraft)
+keep  Halifax & Southern Nov MacKay Bridge, Halifax                   https://www.novascotiawebcams.com/_next/image?url=https%3A%2F%2Fimages (44.678,-63.611 ~ A. Murray MacKay Bridge)
+keep  Halifax & Southern Nov King's Wharf, Dartmouth                  https://images.novascotiawebcams.com/waterfront/og_image.jpg (44.663,-63.564 ~ King's Wharf)
+keep  Halifax & Southern Nov Chebucto Head, Duncans Cove (Halifax)    https://images.novascotiawebcams.com/sambroharbour/og_image.jpg (44.502,-63.519 ~ Chebucto Head)
+keep  Halifax & Southern Nov Pier 21, Halifax                         https://images.novascotiawebcams.com/pier21/og_image.jpg (44.638,-63.565 ~ Pier 21)
+keep  Halifax & Southern Nov Ferry Terminal, The Cable Wharf, Halifax https://www.novascotiawebcams.com/_next/image?url=https%3A%2F%2Fimages (44.649,-63.571 ~ Murphy's The Cable Wharf)
+keep  Cape Breton webcams    Canso Causeway                           https://novascotia.ca/tran/webcam/secure/images/rwis_cam/Canso%20Cause (45.647,-61.413 ~ Canso Causeway)
+skip  Cape Breton webcams    French Mountain, Cape Breton             no still image found on the page
+skip  Cape Breton webcams    South Mountain                           no still image found on the page
+keep  Cape Breton webcams    Hwy 125, North Sydney                    https://novascotia.ca/tran/webcam/secure/images/rwis_cam/North%20Sydne (46.211,-60.247 ~ North Sydney)
+skip  Prince Edward Island w Anne of Green Gables                     page unreachable (TypeError)
+skip  Prince Edward Island w Lower Queen Street, Charlottetown        no still image found on the page
+skip  Prince Edward Island w Brookvale Skipark web cam                still not updated since 2023-11-28
+skip  Prince Edward Island w Province House                           still not updated since 2026-08-25
+skip  Prince Edward Island w CBC Charlottetown                        page HTTP 404
+skip  Prince Edward Island w Confederation Bridge                     no still image found on the page
+skip  Prince Edward Island w Stanley Bridge webcam                    page unreachable (TypeError)
+skip  Prince Edward Island w University Ave                           page unreachable (TypeError)
+skip  Prince Edward Island w St Peter's Cathedral                     page unreachable (TypeError)
+skip  Newfoundland & Labrado Trans-Canada Highway                     provincial system or portal handled elsewhere
+keep  Newfoundland & Labrado Corner Brook web cam                     https://ntv.ca/cams/thumb_admirals-green-cam.jpg?ts=1789268892 (48.953,-57.947 ~ Corner Brook)
+keep  Newfoundland & Labrado Grand Falls-Windsor Web cam              https://ntv.ca/cams/thumb_admirals-green-cam.jpg?ts=1789268892 (48.944,-55.653 ~ Grand Falls-Windsor)
+keep  Newfoundland & Labrado St Phillips web cam                      https://ntv.ca/cams/thumb_admirals-green-cam.jpg?ts=1789268892 (47.573,-52.733 ~ Memorial University of Newfoundland and Labrador)
+skip  Newfoundland & Labrado City of St. John's traffic cams          page HTTP 404
+skip  Newfoundland & Labrado St John's Harbourcam                     page HTTP 404
+skip  Newfoundland & Labrado St John's 9from The Rooms)               still not updated since 2025-10-08
+keep  Newfoundland & Labrado St John's Skycam (Signal Hill Road)      https://ntv.ca/cams/thumb_admirals-green-cam.jpg?ts=1789268892 (47.574,-52.691 ~ Memorial University of Newfoundland and Labrador)
+keep  Newfoundland & Labrado St John's Downtown                       https://ntv.ca/cams/thumb_admirals-green-cam.jpg?ts=1789268892 (47.556,-52.723 ~ Extended Stay Canada - St. John's - Downtown)
+keep  Newfoundland & Labrado Quidi Vidi Gut Webcam                    https://ntv.ca/cams/thumb_admirals-green-cam.jpg?ts=1789268892 (47.579,-52.685 ~ Quidi Vidi)
+skip  Yukon Territory webcam Yukon Aurora Webcam                      page HTTP 404
+skip  Yukon Territory webcam Dawson Riverview webcam                  no still image found on the page
+skip  Northwest Territories  Yelllowknife Aurora MAX webcam           no still image found on the page
+curate Patricia Bay, Saanich, Vancouver Island  site banner
+curate BC Ferries                               same camera as "BC Ferries"
+curate Sunpeaks Resort                          CMS image style
+curate Silver Star Resort web cams              same camera as "Silver Star Resort"
+curate Downtown Kelowna                         one image claimed by cameras 93 km apart
+curate Lake Okanagan View                       one image claimed by cameras 93 km apart
+curate Penticton Casa Grande                    one image claimed by cameras 93 km apart
+curate Kelowna Stewart park                     CMS page photo
+curate Red River webcam                         article upload
+curate WaterTowr Inn, view Northwest            site banner
+curate Sault Ste Marie Waterfront               site banner
+curate Lake Ontario, from Westin Harbour Castle video poster frame
+curate Lunenburg Harbour                        video poster frame
+curate Hwy 125, North Sydney                    same camera as "North Sydney Webcam"
+curate Halifax Harbour - Waterfront             page share image
+curate Halifax Harbour-boardwalk                page share image
+curate King's Wharf, Dartmouth                  page share image
+curate MacKay Bridge, Halifax                   website image resizer, not the camera
+curate Chebucto Head, Duncans Cove (Halifax)    page share image
+curate Pier 21, Halifax                         page share image
+curate Ferry Terminal, The Cable Wharf, Halifax website image resizer, not the camera
+curate Corner Brook web cam                     thumbnail of another camera
+curate Grand Falls-Windsor Web cam              thumbnail of another camera
+curate St Phillips web cam                      thumbnail of another camera
+curate St John's Skycam (Signal Hill Road)      thumbnail of another camera
+curate St John's Downtown                       thumbnail of another camera
+curate Quidi Vidi Gut Webcam                    thumbnail of another camera

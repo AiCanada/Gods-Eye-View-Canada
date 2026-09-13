@@ -1,5 +1,8 @@
 import * as Cesium from 'cesium';
 
+/** Wheel and trackpad zoom speed; Cesium's default is 5. */
+export const GLOBE_ZOOM_FACTOR = 10;
+
 /**
  * Camera inputs that zoom the globe.
  *
@@ -51,6 +54,8 @@ export function createApplicationViewer({ container, creditContainer }) {
     viewer.targetFrameRate = 60;
     viewer.scene.screenSpaceCameraController.zoomEventTypes =
       globeZoomEventTypes();
+    // Twice Cesium's default of 5: wheel and trackpad zoom felt sluggish.
+    viewer.scene.screenSpaceCameraController.zoomFactor = GLOBE_ZOOM_FACTOR;
     viewer.scene.globe.show = false;
     viewer.scene.skyAtmosphere.show = true;
     viewer.scene.skyAtmosphere.atmosphereLightIntensity = 18;

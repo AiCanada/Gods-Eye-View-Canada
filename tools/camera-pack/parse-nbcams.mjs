@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isSchoolCamera } from './school-cams.mjs';
 
 const SOURCES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'sources');
 const src = (name) => path.join(SOURCES, name);
@@ -80,6 +81,9 @@ for (const block of blocks) {
   const url = feed.replace(/[?&]TIME=\d+/i, '');
 
   const isTraffic = /511\.gnb\.ca/i.test(url);
+
+  // School cameras are never stored (school-cams.mjs).
+  if (isSchoolCamera({ id, name, url })) continue;
 
   cams.push({
     id,

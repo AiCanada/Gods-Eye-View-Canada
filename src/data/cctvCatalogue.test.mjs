@@ -32,7 +32,7 @@ test('normalised catalogue entries carry the resolver fields and an honest headi
 });
 
 test('the catalogue hard cap and the frame backoff schedule', () => {
-  assert.equal(CCTV_MAX_SOURCES_HARD_CAP, 2000);
+  assert.equal(CCTV_MAX_SOURCES_HARD_CAP, 5000);
   assert.equal(frameFailureBackoffMs(1), 15000);
   assert.equal(frameFailureBackoffMs(3), 60000);
   assert.equal(frameFailureBackoffMs(12), 300000, 'capped at five minutes');
@@ -55,7 +55,7 @@ test('a page may only send the proxy to its own host, a listed host, over https'
 
 function pageFetch(html, { ok = true } = {}) {
   const calls = [];
-  const fetchImpl = async (url) => { calls.push(url); return { ok, text: async () => html }; };
+  const fetchImpl = async (url) => { calls.push(url); return { ok, headers: new Headers(), text: async () => html }; };
   return { fetchImpl, calls };
 }
 

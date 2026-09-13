@@ -3256,3 +3256,14 @@ test('a layer that surrenders its row controls hides the block entirely', async 
     else globalThis.document = originalDocument;
   }
 });
+
+test('layer metadata shows a guidance prompt without reporting it as a fault', () => {
+  const mgr = new DataLayerManager({});
+  const text = mgr._buildMetaText({
+    enabled: true,
+    source: 'OpenStreetMap',
+    stats: { status: 'zoom-in', error: null, count: 0, statusMessage: 'Zoom in to search mapped installations' },
+  });
+  assert.match(text, /Zoom in to search mapped installations$/);
+  assert.doesNotMatch(text, /UNAVAILABLE|DEGRADED/);
+});

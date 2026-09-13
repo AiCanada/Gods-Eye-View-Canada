@@ -29,10 +29,10 @@ test('the boot provenance snapshot survives in-process Vite config re-evaluation
   // panel save has already set its values live on process.env. A recomputed
   // snapshot would classify the panel's own keys as external (read-only) until
   // a full process relaunch, so the first evaluation's snapshot must win.
-  const source = readFileSync(new URL('../server/providers/local.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../server/standalone/key-setup.js', import.meta.url), 'utf8');
   assert.match(
     source,
-    /const PROVIDER_ENV_AT_BOOT = globalThis\.__GEV_PROVIDER_ENV_AT_BOOT \?\?= Object\.freeze\(/,
+    /const PROVIDER_ENV_AT_BOOT\s*=\s*\(?globalThis\.__GEV_PROVIDER_ENV_AT_BOOT\s*\?\?=\s*Object\.freeze\(/,
   );
 });
 
@@ -64,8 +64,11 @@ test('the status payload reports presence without any credential material', () =
     // Secret missing: the OpenSky pair must read as NOT set.
   };
   const status = keySetupStatus(env);
-  // Grouped alternatives (the LLM providers) count once.
-  assert.equal(status.total, new Set(KEY_SETUP_KEYS.map((key) => key.group || key.id)).size);
+  // Hidden keys stay out of the count; grouped alternatives (the LLM providers) count once.
+  assert.equal(
+    status.total,
+    new Set(KEY_SETUP_KEYS.filter((key) => !key.hidden).map((key) => key.group || key.id)).size,
+  );
   const google = status.keys.find((key) => key.id === 'google-maps');
   assert.equal(google.set, true);
   const opensky = status.keys.find((key) => key.id === 'opensky');
@@ -344,16 +347,19 @@ test('validation rejects dotenv metacharacters that would round-trip wrong', () 
   }
 });
 
-test('server Google key can be saved and removed without appearing in status values', () => {
+test('server Google key is offered in setup as its own slot', () => {
   const secret = 'server-key-fixture';
   assert.deepEqual(validateKeySetupUpdates({ GOOGLE_MAPS_SERVER_API_KEY: secret }), {
     ok: true, updates: { GOOGLE_MAPS_SERVER_API_KEY: secret },
   });
   assert.equal(validateKeySetupUpdates({ GOOGLE_MAPS_SERVER_API_KEY: null }).ok, true);
   const status = keySetupStatus({ GOOGLE_MAPS_SERVER_API_KEY: secret });
-  const entry = status.keys.find((key) => key.id === 'google-maps-server');
-  assert.equal(entry.set, true);
-  assert.ok(!entry.clientExposed);
+  const server = status.keys.find((key) => key.id === 'google-maps-server');
+  assert.ok(server, 'the server key has a paste field of its own');
+  assert.equal(server.set, true);
+  assert.equal(server.title, 'GOOGLE MAPS — SERVER');
+  assert.equal(status.keys.find((key) => key.id === 'google-maps').set, false, 'the browser key stays a separate slot');
+  assert.equal(status.setCount, 1);
   assert.ok(!JSON.stringify(status).includes(secret));
 });
 
