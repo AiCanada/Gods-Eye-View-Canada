@@ -11,8 +11,9 @@
  * behavior below unit-testable.
  */
 
-/** Longest accepted key/token value. Real provider keys are all far shorter. */
-export const KEY_SETUP_VALUE_LIMIT = 512;
+/** Longest accepted key/token value. NASA Earthdata Login tokens are JWTs of
+ * roughly 700 characters; every other provider key is far shorter. */
+export const KEY_SETUP_VALUE_LIMIT = 4096;
 
 /** Most env var NAMES accepted in one save. The registry defines seventeen. */
 export const KEY_SETUP_UPDATE_LIMIT = 20;
@@ -21,16 +22,17 @@ export const KEY_SETUP_UPDATE_LIMIT = 20;
 export const KEY_SETUP_APPEND_HEADER = '# Keys added by the in-app POWER UP panel';
 
 /**
- * Every key the panel offers, in the order it offers them — most magic per
+ * Provider credentials, in display order — most magic per
  * minute first. `tier` mirrors the README's color legend: 'metered' (🔴) is a
  * billing-enabled account, 'free' (🟡) is a register-and-paste key.
  * `clientExposed` marks the two keys that are injected into the browser
  * bundle by design (restrict them at the provider, per SECURITY.md).
+ * `hidden` keeps advanced configuration out of the panel and missing-key count.
  */
 export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'google-maps',
-    title: 'GOOGLE MAPS — BROWSER',
+    title: 'GOOGLE MAPS',
     unlocks: 'The photorealistic 3D planet + place search',
     getUrl: 'https://developers.google.com/maps/documentation/tile/get-api-key',
     envVars: Object.freeze(['GOOGLE_MAPS_API_KEY']),
@@ -100,6 +102,14 @@ export const KEY_SETUP_KEYS = Object.freeze([
     unlocks: 'Higher space-missions request allowance',
     getUrl: 'https://thespacedevs.com',
     envVars: Object.freeze(['LL2_API_TOKEN']),
+    tier: 'free',
+  }),
+  Object.freeze({
+    id: 'earthdata',
+    title: 'NASA EARTHDATA',
+    unlocks: 'Sea Surface Temperature: OceanColor MODIS Aqua data access',
+    getUrl: 'https://urs.earthdata.nasa.gov/profile',
+    envVars: Object.freeze(['EARTHDATA_TOKEN']),
     tier: 'free',
   }),
   // Ask-panel language models. Each one that carries a key gets its own input
@@ -327,7 +337,7 @@ export function knownKeySetupEnvVars() {
 /** Tooltip guidance for a control gated by one registry entry. */
 export function keySetupRequirement(id) {
   const entry = KEY_SETUP_KEYS.find((candidate) => candidate.id === id);
-  if (!entry) return '';
+  if (!entry || entry.hidden) return '';
   return `Needs ${entry.envVars.join(' + ')} — add it in Provider Settings`;
 }
 
@@ -356,7 +366,7 @@ export function isKeySetupExternallyManaged({
  * @param {Record<string, string|undefined>} env e.g. process.env
  */
 export function keySetupStatus(env = {}) {
-  const keys = KEY_SETUP_KEYS.map((entry) => {
+  const keys = KEY_SETUP_KEYS.filter((entry) => !entry.hidden).map((entry) => {
     const values = entry.envVars.map((name) => String(env[name] ?? '').trim());
     const set = values.every((value) => value.length > 0);
     return {

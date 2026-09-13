@@ -126,7 +126,7 @@
   },
   {
     "id": "nb-saint-john-nb-highway-1",
-    "name": "Saint John (NB Highway 1)",
+    "name": "Saint John NB Highway 1 DZ",
     "city": "New Brunswick",
     "cityId": "nb",
     "provider": "NB 511 (GNB)",
@@ -308,7 +308,7 @@
   },
   {
     "id": "nb-saint-john-nb-highway-1-2",
-    "name": "Saint John (NB Highway 1)",
+    "name": "Saint John NB Highway 1 DZ",
     "city": "New Brunswick",
     "cityId": "nb",
     "provider": "nbcams.ca directory",
@@ -328,7 +328,7 @@
   },
   {
     "id": "nb-saint-john-nb-highway-1-3",
-    "name": "Saint John (NB Highway 1)",
+    "name": "Saint John NB Highway 1 DZ",
     "city": "New Brunswick",
     "cityId": "nb",
     "provider": "nbcams.ca directory",
@@ -349,7 +349,7 @@
   },
   {
     "id": "nb-saint-john-nb-highway-1-4",
-    "name": "Saint John (NB Highway 1)",
+    "name": "Saint John NB Highway 1 DZ",
     "city": "New Brunswick",
     "cityId": "nb",
     "provider": "nbcams.ca directory",
@@ -429,7 +429,7 @@
   },
   {
     "id": "nb-saint-john-millidgeville",
-    "name": "Saint John (Millidgeville)",
+    "name": "Saint John Millidgeville DZ",
     "city": "New Brunswick",
     "cityId": "nb",
     "provider": "nbcams.ca directory",
@@ -1289,26 +1289,6 @@
     "mountHeightM": 9,
     "groundElevationM": 10,
     "license": "Mont Farlagne"
-  },
-  {
-    "id": "nb-edmundston-umce",
-    "name": "Edmundston (UMCE)",
-    "city": "New Brunswick",
-    "cityId": "nb",
-    "provider": "nbcams.ca directory",
-    "sourceKind": "configured",
-    "feedType": "image",
-    "url": "https://cache3.nbcams.ca/camera/EdmundstonUdeM",
-    "lat": 47.370695,
-    "lon": -68.315703,
-    "headingDeg": 0,
-    "headingConfidence": "unknown",
-    "pitchDeg": -5,
-    "fovDeg": 70,
-    "rangeM": 450,
-    "mountHeightM": 9,
-    "groundElevationM": 10,
-    "license": "Universit&eacute; de Moncton, campus d'Edmundston"
   },
   {
     "id": "nb-perth-andover",

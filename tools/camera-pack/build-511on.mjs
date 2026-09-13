@@ -1,73 +1,33 @@
-// Convert the keyless Ontario 511 camera API dump into source-pack entries.
+// Convert Ontario 511's public camera list into source-pack entries.
+//
+// Source: the list behind https://511on.ca/cctv, paged 100 sites at a time and
+// saved as sources/511on-cameras.json. Ministry of Transportation Ontario. Raw
+// download, not committed. See ibi511-list.mjs.
+//
+// The keyless /api/v2/get/cameras endpoint this pack used to read lists the
+// same 944 sites, but only the first view of each was kept; the list carries
+// every view (1,672), so a pole looking both ways now shows both.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { listSitesToEntries, summary } from './ibi511-list.mjs';
 
-// Inputs and outputs live in sources/ beside this script, where merge-pack
-// reads them, so the build works from any cwd.
 const SOURCES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'sources');
 const src = (name) => path.join(SOURCES, name);
 
-const raw = JSON.parse(fs.readFileSync(src('511on.json'), 'utf8'));
+const raw = JSON.parse(fs.readFileSync(src('511on-cameras.json'), 'utf8'));
+const sites = Array.isArray(raw) ? raw : raw.data || [];
 
-// The API reports the direction of travel the camera faces, which is a usable
-// heading prior for the projected frustum. Anything else stays unknown.
-const COMPASS = {
-  north: 0, northeast: 45, east: 90, southeast: 135,
-  south: 180, southwest: 225, west: 270, northwest: 315,
-};
+const { entries, skipped } = listSitesToEntries(sites, {
+  host: '511on.ca',
+  idPrefix: 'on511',
+  cityId: 'on',
+  provider: 'Ontario 511',
+  operator: 'Ontario 511 — Ministry of Transportation Ontario',
+  regionFallback: 'Ontario',
+  // Ontario, generously bounded, to drop any stray or placeholder record.
+  bounds: { latMin: 41.5, latMax: 57, lonMin: -95.5, lonMax: -74 },
+});
 
-const slug = (s) =>
-  String(s || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-
-const out = [];
-const seen = new Set();
-
-for (const cam of raw) {
-  const lat = Number(cam.Latitude);
-  const lon = Number(cam.Longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-  // Ontario bounding box, to drop any stray or placeholder record.
-  if (lat < 41.5 || lat > 57 || lon < -95.5 || lon > -74) continue;
-
-  const view = (cam.Views || []).find((v) => v.Status === 'Enabled');
-  if (!view?.Url) continue;
-
-  const dir = String(cam.Direction || '').trim().toLowerCase();
-  const heading = COMPASS[dir];
-
-  let id = `on-${slug(cam.Location || cam.SourceId || cam.Id)}`;
-  let n = 2;
-  while (seen.has(id)) id = `on-${slug(cam.Location || cam.Id)}-${n++}`;
-  seen.add(id);
-
-  out.push({
-    id,
-    name: [cam.Roadway, cam.Location].filter(Boolean).join(' - ') || `Camera ${cam.Id}`,
-    city: cam.Roadway || 'Ontario',
-    cityId: 'on',
-    provider: cam.Source || 'Ontario 511',
-    sourceKind: 'configured',
-    feedType: 'image',
-    url: view.Url,
-    lat,
-    lon,
-    headingDeg: Number.isFinite(heading) ? heading : 0,
-    headingConfidence: Number.isFinite(heading) ? 'estimated' : 'unknown',
-    pitchDeg: -6,
-    fovDeg: 70,
-    rangeM: 500,
-    mountHeightM: 10,
-    groundElevationM: 10,
-    license: `${cam.Source || 'Ontario 511'} - ${view.Description || 'traffic camera'}`,
-    coordConfidence: 'exact',
-  });
-}
-
-fs.writeFileSync(src('cams-on.json'), JSON.stringify(out, null, 2));
-const withHeading = out.filter((c) => c.headingConfidence === 'estimated').length;
-process.stderr.write(`ontario: ${out.length} cameras (${withHeading} with a direction-derived heading)\n`);
+fs.writeFileSync(src('cams-on.json'), JSON.stringify(entries, null, 2));
+process.stderr.write(summary('ontario511', entries, sites.length, skipped));

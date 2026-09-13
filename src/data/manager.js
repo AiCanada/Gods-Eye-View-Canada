@@ -1,4 +1,5 @@
 import { governorRequestRender } from '../renderGovernor.js';
+import { GUIDANCE_STATUSES } from '../loadingFeedback.js';
 import { markDetectionSourcesChanged } from './detection.js';
 function cloneLayerParams(value) {
   if (Array.isArray(value)) return value.map(cloneLayerParams);
@@ -80,7 +81,7 @@ export function layerFeedState(stats = {}) {
   if (
     (presentedError || state.unavailable === true || state.available === false)
     && !hasPriorData
-    && !['zoom-in', 'empty', 'idle'].includes(status)
+    && !GUIDANCE_STATUSES.includes(status)
   ) {
     return 'unavailable';
   }
@@ -89,7 +90,7 @@ export function layerFeedState(stats = {}) {
   // operation, not feed faults. One honesty carve-out: layers keep their
   // rendered records through the guidance state, so a genuinely stale cache
   // still reads STALE; a guidance prompt alone never reads DEGRADED.
-  if (['zoom-in', 'empty', 'idle'].includes(status)) {
+  if (GUIDANCE_STATUSES.includes(status)) {
     return state.stale ? 'stale' : 'nominal';
   }
   if (
@@ -2232,6 +2233,12 @@ export class DataLayerManager {
         return `${stateLabel} · ${source} · ${presentedError} · retry ${stats.retryInSec}s`;
       }
       return `${stateLabel} · ${source} · ${presentedError}`;
+    }
+    // A guidance status carries its prompt in `statusMessage`, not `error`, so
+    // the row still tells the operator what to do without reporting a fault.
+    if (GUIDANCE_STATUSES.includes(String(stats.status || '').toLowerCase())
+        && typeof stats.statusMessage === 'string' && stats.statusMessage.trim()) {
+      return `${source} · ${stats.statusMessage.trim()}`;
     }
     const ago = stats.lastUpdate ? this._timeAgo(stats.lastUpdate) : 'never';
     if (stats.loading) {

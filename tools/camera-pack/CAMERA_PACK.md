@@ -11,13 +11,22 @@ a JSON file, an inline env variable, and the built-in live packs. Supplying a
 file pack switches the live Austin/Caltrans/TfL fetches off unless
 `CCTV_COUNTRIES` names `US` or `GB`, which switches them back on beside it.
 
-Configuration lives in the repo-root `.env`:
+**Nothing to configure.** The pack is the app's built-in default: a fresh
+download with no `.env` loads all 4,767 cameras, with the per-country limit
+already at its 5,000 ceiling, the region cap at 2,500 per province, territory
+or state, and Québec 511 stills loaded by the browser. These are the defaults,
+which a repo-root `.env` can override:
 
 ```
 CCTV_SOURCES_FILE=config/cctv_sources.canada.json
-CCTV_MAX_SOURCES=2000
-CCTV_COUNTRIES=CA
+CCTV_MAX_SOURCES=5000
+CCTV_REGION_CAP=2500
+CCTV_BROWSER_DIRECT_HOSTS=quebec511.info
 ```
+
+Add `CCTV_COUNTRIES=CA` to serve Canada only (the default serves every
+country, which for this pack is the same thing unless `US` or `GB` packs are
+switched on).
 
 ## Activating cameras by country
 
@@ -41,19 +50,39 @@ Naming `US` or `GB` is enough on its own; the older `CCTV_FORCE_AUSTIN`,
 `CCTV_TFL_ENABLED` and `CCTV_CALTRANS_DISTRICTS` switches still work but are
 left at their stock values here so they cannot veto a country the gate enabled.
 
-The code default is every country, so an install that sets nothing behaves
-exactly as the upstream app always did.
+The code default is every country. Because the Canadian pack is the default
+catalogue, an install that sets nothing serves exactly that pack; the stock
+Austin, Caltrans and TfL packs come back beside it with `CCTV_COUNTRIES=CA,US`
+or `CA,GB`, or on their own with `CCTV_SOURCES_FILE=config/cctv_sources.austin.json`.
 
 Every entry in the pack carries a `country` field, and the field is also exposed
 on `/api/cctv/sources` so a client can group or filter by it. An entry that
 declares no country cannot be classified and is therefore never filtered out.
 
-`CCTV_MAX_SOURCES` matters: the default is 900 and the hard ceiling in the code
-is 2000, so set it to 2000 for this pack. When the catalogue exceeds the cap the
-loader keeps the **first** N entries, configured packs ahead of live ones, and
-the merge step orders every pack nearest-to-Saint-John first. If the cap ever
-bites it drops a live pack or the far side of the country, never the cameras
-this was built for.
+`CCTV_MAX_SOURCES` caps cameras **per country**; the default and the hard
+ceiling in the code are both 5000, so this pack loads whole. When
+a country exceeds the cap the loader keeps that country's **first** N entries,
+configured packs ahead of live ones, and the merge step orders every pack
+nearest-to-Saint-John first. The merge itself never thins cameras: it writes
+every accepted entry and warns if a country would pass the ceiling. One large
+country never crowds out another.
+
+### Region cap
+
+On top of the per-country ceiling, the server limits how many cameras a viewer
+loads **per region**: each Canadian province or territory, each US state, and
+each other country as a whole. The default is 2,500 (`CCTV_REGION_CAP`). The
+region comes from an entry's optional `region` code or, failing that, its
+`cityId` (`on` → `CA-ON`, `saint-john` → `CA-NB`, Austin → `US-TX`, Caltrans
+districts → `US-CA`). A Canadian or US camera whose province or state cannot be
+told counts against its country.
+
+The **REGION CAP** button in the CCTV panel turns the limit on and off for that
+viewer (remembered in the browser; `CCTV_REGION_CAP_DEFAULT` sets the starting
+state). Toggling reloads the camera list at once. Its tooltip names any region
+over the cap and how many cameras it held back. With the cap off, only the
+per-country ceiling applies. The client asks `/api/cctv/sources?regionCap=1`
+or `=0`, and the response carries `regionCap: { enabled, limit, dropped }`.
 
 ## Sources
 
@@ -64,9 +93,13 @@ this was built for.
 | `cams-windy.json` | Windy cameras that meteoblue lists around Saint John | estimated |
 | `cams-ns.json` | Nova Scotia Webcams and NS Public Works highway cameras | mixed |
 | `cams-pei.json` | PEI 511 map layer and Government of PEI streams | exact for traffic cams |
+| `cams-quebec511.json` | Québec's open traffic-camera dataset (MTMD, the Québec 511 map), 678 cameras | exact |
 | `cams-aggregators.json` | SkylineWebcams and WebcamTaxi | estimated |
+| `cams-drivebc.json` | DriveBC's own camera list, every camera | exact |
+| `cams-alberta511.json` | Alberta 511's own camera list, every view | exact |
 | `cams-transcanada.json` | Provincial systems linked from transcanadahighway.com | mixed |
-| `cams-on.json` | Ontario 511 public API | exact |
+| `cams-transcanada-links.json` | Individual city, news and tourism webcams listed on the same page | estimated, geocoded from the listing |
+| `cams-on.json` | Ontario 511's own camera list, every view | exact |
 
 ### Notes on individual sources
 
@@ -77,13 +110,67 @@ hand-set and a good number point above the horizon, which would aim the
 projected frustum at the sky, so only downward tilts are kept.
 
 **Ontario 511** exposes `https://511on.ca/api/v2/get/cameras` with no key: 944
-cameras, every one with exact coordinates. The same path on the New Brunswick
+camera sites, every one with exact coordinates. The same path on the New Brunswick
 and Nova Scotia 511 hosts returns `Invalid Key`, which is why those provinces
-had to be scraped instead.
+had to be scraped instead. That API was read for the first view of each site
+only; the pack now comes from the list behind `https://511on.ca/cctv` (the same
+feed as Alberta 511, see below), which gives all 1,672 views of the 944 sites.
+A heading is taken from "Looking North"-style labels; "Toronto Bound" names a
+destination and stays unknown.
 
 **PEI** blocks plain HTTP clients on its provincial webcam page behind a bot
 check. The camera list was recovered from the 511 PEI map layer, and every feed
 URL was then verified against the live origin.
+
+**Québec 511** comes from the ministry's open dataset
+([Données Québec](https://www.donneesquebec.ca/recherche/fr/dataset/d2f1dce5-35c5-4bb5-a54c-3b8ec9ac9de9),
+CC-BY 4.0), whose GeoJSON export gives every camera an exact point. The dataset
+only links each camera's viewer page, so `build-quebec511.mjs` derives the still
+from the camera code: its letter picks the regional folder (Q Quebec, M
+Montreal, G Gatineau, T TroisRivieres) and the rest is the image number, so
+`Q19901` is `…/Images/Cameras/Quebec/cam/19901.jpg`. Every Québec 511 still the
+directories had already listed follows this rule. The pack ranks above those
+directories, so their 119 copies drop out as duplicate feed URLs. A heading is
+taken from descriptions that name a direction ("westward", "direction ouest").
+
+**DriveBC** publishes its whole camera list at `https://www.drivebc.ca/api/webcams/`
+(the data behind `https://www.drivebc.ca/cameras`). `build-drivebc.mjs` keeps
+every camera, switched off or not, with its exact point and the compass
+direction DriveBC gives it; the still is `https://www.drivebc.ca/images/<id>.jpg`.
+The pack ranks above the Trans-Canada directory, whose DriveBC copies drop out.
+
+**Alberta 511** has no keyless `/api/v2` endpoint (it answers `400`), but the
+list behind `https://511.alberta.ca/cctv` is a DataTables feed,
+`https://511.alberta.ca/List/GetData/Cameras?query=<json>&lang=en-US`, that
+serves 100 camera sites a page with exact points. A site can hold several
+views, each its own still at `https://511.alberta.ca/map/Cctv/<id>`, so
+`build-alberta511.mjs` writes one entry per view, including views the operator
+has switched off. A heading is taken
+only from a view label that is nothing but a direction ("North", "Road W").
+
+**transcanadahighway.com webcams** are the individual cameras that page lists by
+name under regional headings, with no coordinates. `build-transcanada-links.mjs`
+fetches each page with an honest identity, one at a time, looks for a recent
+still, and geocodes the listed name. `curate-link-cameras.mjs` then drops share
+images, video posters, banners and article photos, and any single image the
+page attached to cameras in different places. Of 136 links, 12 survive and 8
+are not already in the pack.
+
+**Offline cameras stay.** Cameras drop out for minutes, days or a season and
+come back, so no builder removes a camera for being down. The 511 and DriveBC
+builders keep views their operator has switched off. The Trans-Canada crawler
+still asks a newly found link to show a fresh frame once, because a static
+banner or share image is indistinguishable from a frozen webcam, but every
+camera an earlier build kept is carried over whether or not the current run
+reaches it or finds its frame fresh.
+
+**No school cameras.** Cameras on a school, university, college or library are
+never requested or stored (`school-cams.mjs`): the crawler skips such links
+before fetching anything, `parse-nbcams.mjs` leaves them out, and the merge
+refuses one arriving in any pack. Roads named after a school ("University
+Avenue", "boul. Université") are traffic cameras and stay. While a camera is down the proxy
+backs off from it and shows the placeholder card, so an offline camera costs
+one failed request per backoff window, not one per refresh.
 
 **Direct media only.** Every entry's `url` must return an image. HLS playlists
 are excluded until the app ships an HLS player: a plain `<video>` element cannot
@@ -97,14 +184,23 @@ catalogue. The Confederation Bridge camera falls in this category.
 ```bash
 node parse-nbcams.mjs      # nbcams.ca directory  (sources/nbcams.html -> sources/nbcams.json)
 node build-extra.mjs       # Saint John + Windy   (sources/meteoblue.html -> sources/cams-*.json)
-node build-511on.mjs       # Ontario 511          (sources/511on.json -> sources/cams-on.json)
+node build-511on.mjs       # Ontario 511          (sources/511on-cameras.json -> sources/cams-on.json)
 node build-skaping.mjs     # resolver-backed Banff/Jasper/Golden cameras
+node build-quebec511.mjs   # Québec 511 open data (sources/quebec511-cameras.geojson -> sources/cams-quebec511.json)
+node build-drivebc.mjs     # DriveBC              (sources/drivebc-webcams.json -> sources/cams-drivebc.json)
+node build-alberta511.mjs  # Alberta 511          (sources/alberta511-cameras.json -> sources/cams-alberta511.json)
+node build-transcanada-links.mjs  # listed webcams (sources/transcanada-webcams.html -> sources/cams-transcanada-links.json)
 node merge-pack.mjs        # validate, dedupe, order, cap -> ../../config/cctv_sources.canada.json
 ```
 
 Every script reads and writes inside `sources/` beside itself, so the rebuild
-works from any directory. The raw scrapes (`nbcams.html`, `meteoblue.html`,
-`511on.json`) are not committed; only the parsed `cams-*.json` are.
+works from any directory. The raw inputs (`nbcams.html`, `meteoblue.html`,
+`511on-cameras.json`, `alberta511-cameras.json`, `drivebc-webcams.json`, `quebec511-cameras.geojson`, `quebec511-cameras.csv`,
+`transcanada-webcams.html`) are not committed; only the parsed `cams-*.json` are.
+The Québec GeoJSON is the dataset's WFS export
+(`ms:infos_cameras`, `srsname=EPSG:4326`, `outputformat=geojson`). The
+Trans-Canada crawl writes `cams-transcanada-links.report.txt` with the reason
+every listed webcam was kept or left out.
 
 `merge-pack.mjs` is the gate. It drops entries whose feed URL points at an HTML
 page, whose `feedType` the app cannot play, whose coordinates fall outside
@@ -116,12 +212,17 @@ uses its own prior instead of pointing every such camera north.
 
 ## Upstream hosts that throttle
 
-**Quebec 511 rate-limits by IP.** Its 75 cameras return `403` in bursts and
-recover after a pause. A same-origin `Referer` was tested against it head to
-head and made no difference, so nothing in the app was changed for it; those
-cameras will intermittently show the synthetic fallback frame rather than a
-picture. Enabling the CCTV layer fires one request per camera, which is what
-provokes the throttle in the first place.
+**Québec 511 refuses every server.** Its stills sit behind a Cloudflare bot
+filter that answers `403` to the proxy whatever identity or headers it sends:
+Cloudflare recognises the server's connection itself, not just its headers, and
+only a real browser (or Windows' own `curl.exe`) gets a picture. So the proxy does
+not try. `CCTV_BROWSER_DIRECT_HOSTS=quebec511.info` makes `/api/cctv/sources`
+hand each Québec camera's still address to the viewer's browser as
+`browserImageUrl`, and the CCTV panel loads it directly, the way quebec511.info's
+own map does, refreshing at most once a minute. Québec 511 sends no CORS header,
+so the still can never become a WebGL texture: those cameras' monitor planes and
+map cards keep their placeholder, and their `/api/cctv/frame` route answers with
+the synthetic card at once without contacting Québec 511 or Street View.
 
 **SkylineWebcams HLS is a decoy.** Its `hd-auth.skylinewebcams.com` playlists
 return HTTP 200 with a valid content type but serve segments named
@@ -182,7 +283,7 @@ territory, so once carried they would be tagged `PM` and load only when
 
 Enabling the CCTV layer makes the app build geometry for every camera in the
 catalogue and batch ground-height priors for all of them, then fetch frames
-for the cameras the view selects. With 2000 cameras the cold start is
+for the cameras the view selects. With about 3,500 cameras the cold start is
 noticeably longer than with the stock packs, and every camera that fails puts
 a frame request on its host until the proxy's backoff (15 s doubling to five
 minutes) engages, after which the synthetic card is served for free. With a

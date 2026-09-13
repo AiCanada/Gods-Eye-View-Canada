@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { viewportBias, placesNearViewRecovery } from './annotations/annotationResolver.js';
+import { unavailablePlaceSearch } from './search/placeSearch.js';
 
 /**
  * Points of Interest per city.
@@ -12,6 +13,175 @@ import { viewportBias, placesNearViewRecovery } from './annotations/annotationRe
  *   buildingHeight — estimated height of landmark center above ground (meters)
  */
 export const CITY_POIS = {
+  saintjohn: {
+    name: 'Saint John Danger Zone',
+    // Plain "Saint John" still names this preset in the search box.
+    aliases: ['Saint John'],
+    groundElevation: 10, // meters above WGS84 ellipsoid
+    viewBounds: { southwest: { lat: 45.20, lng: -66.15 }, northeast: { lat: 45.36, lng: -65.95 } },
+    pois: [
+      // Placed over the uptown harbourfront, the centre of the city. Move this
+      // lat/lon to put the zone somewhere more specific.
+      { name: 'Saint John Danger Zone', lat: 45.2733, lon: -66.0633, alt: 2600, pitch: -38, heading: 20, buildingHeight: 0 },
+      { name: 'Saint John Reversing Falls Rapids DZ', lat: 45.2578, lon: -66.0878, alt: 1200, pitch: -30, heading: 200, buildingHeight: 10 },
+      { name: 'Saint John City Market DZ', lat: 45.2731, lon: -66.0597, alt: 500, pitch: -30, heading: 180, buildingHeight: 20 },
+      { name: 'Saint John Carleton Martello Tower DZ', lat: 45.2600, lon: -66.0736, alt: 700, pitch: -30, heading: 90, buildingHeight: 12 },
+      { name: 'Saint John Partridge Island DZ', lat: 45.2386, lon: -66.0487, alt: 1500, pitch: -28, heading: 340, buildingHeight: 20 },
+    ],
+  },
+  // The ten largest Canadian metropolitan areas (Statistics Canada, 2021
+  // Census), in population order. Names follow the camera catalogue's
+  // spellings so Canadian cameras group under these cities.
+  toronto: {
+    name: 'Toronto',
+    groundElevation: 80,
+    viewBounds: { southwest: { lat: 43.58, lng: -79.64 }, northeast: { lat: 43.86, lng: -79.12 } },
+    pois: [
+      { name: 'CN Tower', lat: 43.6426, lon: -79.3871, alt: 1100, pitch: -22, heading: 20, buildingHeight: 250 },
+      { name: 'Toronto City Hall', lat: 43.6536, lon: -79.3840, alt: 500, pitch: -30, heading: 180, buildingHeight: 40 },
+      { name: 'Royal Ontario Museum', lat: 43.6677, lon: -79.3947, alt: 450, pitch: -30, heading: 180, buildingHeight: 25 },
+      { name: 'Toronto Islands', lat: 43.6229, lon: -79.3943, alt: 1600, pitch: -35, heading: 0, buildingHeight: 5 },
+      { name: 'Casa Loma', lat: 43.6781, lon: -79.4094, alt: 450, pitch: -30, heading: 0, buildingHeight: 30 },
+    ],
+  },
+  montreal: {
+    name: 'Montréal',
+    groundElevation: 30,
+    viewBounds: { southwest: { lat: 45.40, lng: -73.98 }, northeast: { lat: 45.72, lng: -73.47 } },
+    pois: [
+      { name: 'Notre-Dame Basilica', lat: 45.5044, lon: -73.5560, alt: 500, pitch: -28, heading: 330, buildingHeight: 35 },
+      { name: 'Mount Royal Cross', lat: 45.5088, lon: -73.5879, alt: 900, pitch: -28, heading: 120, buildingHeight: 20 },
+      { name: 'Olympic Stadium', lat: 45.5578, lon: -73.5516, alt: 800, pitch: -28, heading: 0, buildingHeight: 90 },
+      { name: 'Jacques Cartier Bridge', lat: 45.5214, lon: -73.5406, alt: 900, pitch: -25, heading: 45, buildingHeight: 40 },
+      { name: "Saint Joseph's Oratory", lat: 45.4921, lon: -73.6167, alt: 500, pitch: -25, heading: 330, buildingHeight: 60 },
+    ],
+  },
+  vancouver: {
+    name: 'Vancouver',
+    aliases: ['Vancouver BC'],
+    groundElevation: 10,
+    viewBounds: { southwest: { lat: 49.00, lng: -123.30 }, northeast: { lat: 49.40, lng: -122.70 } },
+    pois: [
+      { name: 'Canada Place', lat: 49.2888, lon: -123.1111, alt: 700, pitch: -28, heading: 180, buildingHeight: 30 },
+      { name: 'Stanley Park', lat: 49.3021, lon: -123.1413, alt: 1800, pitch: -35, heading: 0, buildingHeight: 0 },
+      { name: 'Lions Gate Bridge', lat: 49.3150, lon: -123.1390, alt: 900, pitch: -25, heading: 330, buildingHeight: 60 },
+      { name: 'Granville Island', lat: 49.2708, lon: -123.1343, alt: 500, pitch: -30, heading: 0, buildingHeight: 15 },
+      { name: 'BC Place', lat: 49.2767, lon: -123.1120, alt: 600, pitch: -30, heading: 90, buildingHeight: 40 },
+    ],
+  },
+  ottawa: {
+    name: 'Ottawa–Gatineau',
+    aliases: ['Ottawa', 'Gatineau'],
+    groundElevation: 70,
+    viewBounds: { southwest: { lat: 45.25, lng: -75.95 }, northeast: { lat: 45.55, lng: -75.50 } },
+    pois: [
+      { name: 'Parliament Hill', lat: 45.4236, lon: -75.7009, alt: 700, pitch: -28, heading: 180, buildingHeight: 50 },
+      { name: 'Canadian Museum of History', lat: 45.4291, lon: -75.7090, alt: 600, pitch: -28, heading: 90, buildingHeight: 25 },
+      { name: 'Château Laurier', lat: 45.4256, lon: -75.6952, alt: 450, pitch: -28, heading: 270, buildingHeight: 40 },
+      { name: 'National Gallery of Canada', lat: 45.4295, lon: -75.6988, alt: 450, pitch: -28, heading: 90, buildingHeight: 30 },
+      { name: 'Rideau Hall', lat: 45.4437, lon: -75.6864, alt: 600, pitch: -30, heading: 0, buildingHeight: 15 },
+    ],
+  },
+  calgary: {
+    name: 'Calgary',
+    groundElevation: 1045,
+    viewBounds: { southwest: { lat: 50.84, lng: -114.32 }, northeast: { lat: 51.21, lng: -113.86 } },
+    pois: [
+      { name: 'Calgary Tower', lat: 51.0443, lon: -114.0631, alt: 800, pitch: -25, heading: 0, buildingHeight: 100 },
+      { name: 'Scotiabank Saddledome', lat: 51.0374, lon: -114.0520, alt: 600, pitch: -30, heading: 0, buildingHeight: 40 },
+      { name: 'Peace Bridge', lat: 51.0539, lon: -114.0789, alt: 450, pitch: -30, heading: 180, buildingHeight: 10 },
+      { name: 'Bow Tower', lat: 51.0474, lon: -114.0597, alt: 750, pitch: -22, heading: 200, buildingHeight: 120 },
+      { name: 'Calgary Zoo', lat: 51.0454, lon: -114.0232, alt: 700, pitch: -35, heading: 0, buildingHeight: 5 },
+    ],
+  },
+  edmonton: {
+    name: 'Edmonton',
+    groundElevation: 670,
+    viewBounds: { southwest: { lat: 53.40, lng: -113.72 }, northeast: { lat: 53.68, lng: -113.27 } },
+    pois: [
+      { name: 'Alberta Legislature', lat: 53.5336, lon: -113.5066, alt: 600, pitch: -28, heading: 180, buildingHeight: 40 },
+      { name: 'Muttart Conservatory', lat: 53.5352, lon: -113.4773, alt: 500, pitch: -30, heading: 270, buildingHeight: 20 },
+      { name: 'Rogers Place', lat: 53.5468, lon: -113.4978, alt: 550, pitch: -30, heading: 0, buildingHeight: 30 },
+      { name: 'West Edmonton Mall', lat: 53.5231, lon: -113.6227, alt: 1000, pitch: -35, heading: 0, buildingHeight: 20 },
+      { name: 'High Level Bridge', lat: 53.5296, lon: -113.5113, alt: 700, pitch: -25, heading: 90, buildingHeight: 30 },
+    ],
+  },
+  quebec: {
+    name: 'Québec City',
+    groundElevation: 60,
+    viewBounds: { southwest: { lat: 46.70, lng: -71.45 }, northeast: { lat: 46.95, lng: -71.10 } },
+    pois: [
+      { name: 'Château Frontenac', lat: 46.8118, lon: -71.2051, alt: 500, pitch: -25, heading: 270, buildingHeight: 50 },
+      { name: 'Citadelle of Québec', lat: 46.8074, lon: -71.2073, alt: 700, pitch: -35, heading: 0, buildingHeight: 15 },
+      { name: 'Parliament Building', lat: 46.8087, lon: -71.2140, alt: 500, pitch: -28, heading: 90, buildingHeight: 40 },
+      { name: 'Montmorency Falls', lat: 46.8908, lon: -71.1477, alt: 800, pitch: -25, heading: 330, buildingHeight: 40 },
+      { name: 'Plains of Abraham', lat: 46.7977, lon: -71.2288, alt: 900, pitch: -35, heading: 90, buildingHeight: 0 },
+    ],
+  },
+  winnipeg: {
+    name: 'Winnipeg',
+    groundElevation: 235,
+    viewBounds: { southwest: { lat: 49.75, lng: -97.35 }, northeast: { lat: 49.98, lng: -96.95 } },
+    pois: [
+      { name: 'The Forks', lat: 49.8901, lon: -97.1304, alt: 700, pitch: -30, heading: 270, buildingHeight: 10 },
+      { name: 'Canadian Museum for Human Rights', lat: 49.8906, lon: -97.1311, alt: 550, pitch: -25, heading: 180, buildingHeight: 60 },
+      { name: 'Manitoba Legislative Building', lat: 49.8845, lon: -97.1468, alt: 550, pitch: -28, heading: 0, buildingHeight: 40 },
+      { name: 'Esplanade Riel', lat: 49.8908, lon: -97.1268, alt: 450, pitch: -25, heading: 270, buildingHeight: 30 },
+      { name: 'Assiniboine Park', lat: 49.8708, lon: -97.2347, alt: 1200, pitch: -35, heading: 0, buildingHeight: 5 },
+    ],
+  },
+  hamilton: {
+    name: 'Hamilton',
+    groundElevation: 100,
+    viewBounds: { southwest: { lat: 43.15, lng: -80.05 }, northeast: { lat: 43.35, lng: -79.70 } },
+    pois: [
+      { name: 'Hamilton City Hall', lat: 43.2555, lon: -79.8733, alt: 600, pitch: -28, heading: 330, buildingHeight: 40 },
+      { name: 'Dundurn Castle', lat: 43.2695, lon: -79.8842, alt: 500, pitch: -28, heading: 0, buildingHeight: 15 },
+      { name: 'Burlington Bay Skyway', lat: 43.2960, lon: -79.7959, alt: 1200, pitch: -25, heading: 330, buildingHeight: 40 },
+      { name: 'McMaster University', lat: 43.2639, lon: -79.9178, alt: 700, pitch: -30, heading: 0, buildingHeight: 20 },
+      { name: 'Albion Falls', lat: 43.2003, lon: -79.8199, alt: 500, pitch: -30, heading: 180, buildingHeight: 10 },
+    ],
+  },
+  kitchener: {
+    name: 'Kitchener–Cambridge–Waterloo',
+    aliases: ['Kitchener', 'Waterloo', 'Kitchener-Waterloo'],
+    groundElevation: 330,
+    viewBounds: { southwest: { lat: 43.32, lng: -80.62 }, northeast: { lat: 43.55, lng: -80.22 } },
+    pois: [
+      { name: 'Kitchener City Hall', lat: 43.4516, lon: -80.4922, alt: 600, pitch: -28, heading: 330, buildingHeight: 30 },
+      { name: 'University of Waterloo', lat: 43.4702, lon: -80.5452, alt: 900, pitch: -30, heading: 0, buildingHeight: 20 },
+      { name: 'Uptown Waterloo', lat: 43.4640, lon: -80.5223, alt: 600, pitch: -28, heading: 330, buildingHeight: 20 },
+      { name: 'Cambridge Galt Core', lat: 43.3601, lon: -80.3144, alt: 700, pitch: -28, heading: 0, buildingHeight: 15 },
+      { name: 'Kitchener Market', lat: 43.4480, lon: -80.4835, alt: 450, pitch: -28, heading: 0, buildingHeight: 15 },
+    ],
+  },
+  fortmcmurray: {
+    name: 'Fort McMurray',
+    // Also written "Ft McMurray" (the camera catalogue's own spelling).
+    aliases: ['Ft McMurray', 'Fort McMurray AB', 'Wood Buffalo'],
+    groundElevation: 250,
+    viewBounds: { southwest: { lat: 56.60, lng: -111.55 }, northeast: { lat: 56.80, lng: -111.15 } },
+    pois: [
+      { name: 'Downtown Fort McMurray', lat: 56.7292, lon: -111.3885, alt: 1500, pitch: -32, heading: 20, buildingHeight: 0 },
+      { name: 'MacDonald Island Park', lat: 56.7390, lon: -111.3827, alt: 700, pitch: -30, heading: 180, buildingHeight: 20 },
+      { name: 'Grant MacEwan Bridge', lat: 56.7312, lon: -111.3978, alt: 900, pitch: -25, heading: 90, buildingHeight: 20 },
+      { name: 'Oil Sands Discovery Centre', lat: 56.6711, lon: -111.3460, alt: 500, pitch: -28, heading: 0, buildingHeight: 10 },
+      { name: 'Fort McMurray International Airport', lat: 56.6518, lon: -111.2284, alt: 1800, pitch: -35, heading: 0, buildingHeight: 10 },
+    ],
+  },
+  halifax: {
+    name: 'Halifax',
+    aliases: ['Halifax NS'],
+    groundElevation: 20,
+    viewBounds: { southwest: { lat: 44.58, lng: -63.70 }, northeast: { lat: 44.72, lng: -63.50 } },
+    pois: [
+      { name: 'Halifax Citadel', lat: 44.6472, lon: -63.5802, alt: 600, pitch: -30, heading: 90, buildingHeight: 20 },
+      { name: 'Pier 21', lat: 44.6377, lon: -63.5661, alt: 500, pitch: -28, heading: 270, buildingHeight: 15 },
+      { name: 'Macdonald Bridge', lat: 44.6654, lon: -63.5850, alt: 1100, pitch: -25, heading: 150, buildingHeight: 50 },
+      { name: 'Point Pleasant Park', lat: 44.6228, lon: -63.5681, alt: 1200, pitch: -35, heading: 0, buildingHeight: 0 },
+      { name: 'Georges Island', lat: 44.6412, lon: -63.5595, alt: 600, pitch: -30, heading: 270, buildingHeight: 15 },
+    ],
+  },
   austin: {
     name: 'Austin',
     groundElevation: 150, // meters above WGS84 ellipsoid
@@ -22,20 +192,6 @@ export const CITY_POIS = {
       { name: 'Pennybacker Bridge', lat: 30.3451, lon: -97.7951, alt: 500, pitch: -25, heading: 90, buildingHeight: 40 },
       { name: 'The Jenga Tower', lat: 30.2642, lon: -97.7500, alt: 500, pitch: -18, heading: 45, buildingHeight: 60 },
       { name: 'UT Tower', lat: 30.2862, lon: -97.7394, alt: 500, pitch: -22, heading: 180, buildingHeight: 50 },
-    ],
-  },
-  saintjohn: {
-    name: 'Saint John',
-    groundElevation: 10, // meters above WGS84 ellipsoid
-    viewBounds: { southwest: { lat: 45.20, lng: -66.15 }, northeast: { lat: 45.36, lng: -65.95 } },
-    pois: [
-      // Placed over the uptown harbourfront, the centre of the city. Move this
-      // lat/lon to put the zone somewhere more specific.
-      { name: 'Danger Zone', lat: 45.2733, lon: -66.0633, alt: 2600, pitch: -38, heading: 20, buildingHeight: 0 },
-      { name: 'Reversing Falls Rapids', lat: 45.2578, lon: -66.0878, alt: 1200, pitch: -30, heading: 200, buildingHeight: 10 },
-      { name: 'Saint John City Market', lat: 45.2731, lon: -66.0597, alt: 500, pitch: -30, heading: 180, buildingHeight: 20 },
-      { name: 'Carleton Martello Tower', lat: 45.2600, lon: -66.0736, alt: 700, pitch: -30, heading: 90, buildingHeight: 12 },
-      { name: 'Partridge Island', lat: 45.2386, lon: -66.0487, alt: 1500, pitch: -28, heading: 340, buildingHeight: 20 },
     ],
   },
   sf: {
@@ -251,6 +407,7 @@ export const CANADIAN_CITIES = Object.freeze([
   { name: 'North Vancouver', province: 'British Columbia', abbr: 'BC', lat: 49.32, lon: -123.0724 },
   { name: 'Fredericton', province: 'New Brunswick', abbr: 'NB', lat: 45.9636, lon: -66.6431 },
   { name: "St. John's", province: 'Newfoundland and Labrador', abbr: 'NL', lat: 47.5615, lon: -52.7126 },
+  { name: 'Fort McMurray', province: 'Alberta', abbr: 'AB', lat: 56.7292, lon: -111.3885 },
 ]);
 
 /**
@@ -282,7 +439,8 @@ function normalizePlaceName(value) {
 
 /** Curated POI city ids by normalized name; the gazetteer must not shadow these. */
 const PRESET_CITY_IDS = new Map(
-  Object.entries(CITY_POIS).map(([id, city]) => [normalizePlaceName(city.name), id]),
+  Object.entries(CITY_POIS).flatMap(([id, city]) =>
+    [city.name, ...(city.aliases || [])].map((name) => [normalizePlaceName(name), id])),
 );
 
 /**
@@ -476,7 +634,8 @@ export function flyToPOI(viewer, cityId, poiIndex, options = {}) {
   });
 }
 
-const POI_STOPWORDS = new Set(['the', 'a', 'an', 'at', 'of', 'in', 'on', 'to']);
+// 'dz' tags the Saint John Danger Zone landmarks; nobody says it aloud.
+const POI_STOPWORDS = new Set(['the', 'a', 'an', 'at', 'of', 'in', 'on', 'to', 'dz']);
 /** Significant lowercased word set of a name (punctuation stripped, stopwords dropped). */
 function poiNameTokens(s) {
   return new Set(
@@ -514,22 +673,25 @@ export function findPoiByName(query) {
 export const CANCELLED_SEARCH = Object.freeze({ cancelled: true });
 
 /**
- * Geocode a place name using Google Geocoding API, then fly there at a scale
+ * Geocode a place name through the supplied service, then fly there at a scale
  * appropriate to the request. Countries and cities use their viewport by
  * default; precise landmarks/buildings use close landmark framing.
  */
 export async function searchAndFlyTo(viewer, query, options = {}) {
-  const apiKey = window.__GOOGLE_MAPS_API_KEY__ || import.meta.env?.GOOGLE_MAPS_API_KEY;
+  const { placeSearch = unavailablePlaceSearch, signal } = options;
+  signal?.throwIfAborted();
+  const apiKey = globalThis.window?.__GOOGLE_MAPS_API_KEY__ || import.meta.env?.GOOGLE_MAPS_API_KEY;
   const beforeFly = typeof options.beforeFly === 'function' ? options.beforeFly : null;
-  const mayFly = () => beforeFly === null || beforeFly() !== false;
+  const mayFly = () => !signal?.aborted && (beforeFly === null || beforeFly() !== false);
   const requestedRange = finitePositive(options.range);
   const duration = finitePositive(options.duration) || 3.0;
 
   // On a keyless build a curated preset city named outright ("Saint John",
   // "Tokyo") is the app's own answer: fly its hand-tuned first stop, or frame
   // its bounds when an overview was asked for. Without this the search box sent
-  // the one city this fork was built for to a geocoder it did not have. With a
-  // key the viewport-biased geocoder keeps its contract for every query.
+  // the one city this fork was built for to a keyless fallback geocoder with no
+  // notion of its curated pose. With a key the viewport-biased geocoder keeps
+  // its contract for every query.
   const presetId = presetCityIdForQuery(query);
   if (presetId && !apiKey) {
     if (!mayFly()) return CANCELLED_SEARCH;
@@ -576,37 +738,29 @@ export async function searchAndFlyTo(viewer, query, options = {}) {
     };
   }
 
-  if (!apiKey) throw new Error('No Google Maps API key available for geocoding');
-
-  // Viewport-biased geocode — the same bias annotationResolver's geocodePlace uses:
-  // "Sixth Street" spoken over Austin must prefer the Sixth Street on screen, not a
-  // same-named road in another city (or the wrong end of town — the W 6th vs E 6th bug).
-  let url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${apiKey}`;
-  const bias = viewportBias(viewer);
-  if (bias) url += `&bounds=${bias}`;
-  const response = await fetch(url);
-  const data = await response.json();
-
-  const result = (data.status === 'OK' && data.results?.length) ? data.results[0] : null;
-  let lat = result?.geometry.location.lat;
-  let lng = result?.geometry.location.lng;
-  let label = result ? result.formatted_address : null;
+  // Everything else goes to the composed place search (Google when configured,
+  // keyless Photon otherwise), viewport-biased so "Sixth Street" spoken over
+  // Austin prefers the Sixth Street on screen.
+  const outcome = await placeSearch.geocode(query, { bias: viewportBias(viewer), signal });
+  signal?.throwIfAborted();
+  const result = outcome.place;
+  let lat = result?.lat;
+  let lng = result?.lng;
+  let label = result?.label || query;
   let types = result?.types || [];
-  let viewport = result ? (result.geometry.bounds || result.geometry.viewport) : null;
+  let viewport = result?.viewport || null;
 
-  // Places-near-view recovery (annotationResolver's twin): a missed geocode, or one
-  // that landed implausibly far from the view centre, snaps back to a view-biased
-  // Places hit within the trust bound — "the Capitol" means the one on screen.
-  const recovered = await placesNearViewRecovery(viewer, query, result ? { lat, lon: lng } : null);
+  // Nearby landmark recovery retains precedence over a fallback geocoder hit.
+  const recovered = await placesNearViewRecovery(viewer, query,
+    result && !outcome.fallbackUsed ? { lat, lon: lng } : null, signal);
+  signal?.throwIfAborted();
   if (recovered) {
     lat = recovered.lat;
     lng = recovered.lon;
-    label = recovered.label || label || query;
+    label = recovered.label || label;
     types = recovered.types || [];
     viewport = placesViewportToBounds(recovered.viewport) || viewport;
-  } else if (!result) {
-    return null;
-  }
+  } else if (!result) return null;
 
   const navigationMode = geocodeNavigationMode(types);
 

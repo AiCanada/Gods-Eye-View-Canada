@@ -571,7 +571,12 @@ export class LayerStateCoordinator {
     this.lastRestoreResults = [];
   }
 
-  start({ shareLayerState = null, allowLocalState = true, shareCreatedAtMs = null } = {}) {
+  start({
+    shareLayerState = null,
+    allowLocalState = true,
+    shareCreatedAtMs = null,
+    startupDefaults = null,
+  } = {}) {
     if (this._destroyed) throw new Error('Layer-state coordinator is destroyed');
     let selected = shareLayerState ? normalizeLayerState(shareLayerState) : null;
     if (selected) {
@@ -582,6 +587,14 @@ export class LayerStateCoordinator {
       try { stored = parseStoredLayerState(this.storage?.getItem?.(LAYER_STATE_STORAGE_KEY)); } catch { /* best effort */ }
       if (stored) {
         selected = stored;
+        this._source = 'local';
+      }
+      // A normal launch (never a share link) applies the launch layer policy
+      // on top of whatever the last session saved.
+      if (typeof startupDefaults === 'function') {
+        selected = normalizeLayerState(
+          startupDefaults(cloneLayerState(selected || createDefaultLayerState())),
+        );
         this._source = 'local';
       }
     } else {

@@ -22,6 +22,11 @@ test('explicit build inputs preserve browser-only defines, plugin order and loop
   ]);
   assert.ok(config.server.fs.deny.includes('**/ENVIRONMENT'));
   assert.ok(config.server.fs.deny.includes('.env.*'));
+  // The nested RuView checkout is a separate project: never watched, served
+  // or scanned for dependencies by this app's dev server.
+  assert.ok(config.server.watch.ignored.includes('**/RuView/**'));
+  assert.ok(config.server.fs.deny.includes('**/RuView/**'));
+  assert.deepEqual(config.optimizeDeps.entries, ['index.html', 'tools/*.html']);
   assert.equal(config.server.headers['X-Frame-Options'], 'DENY');
   assert.equal(
     config.server.headers['Content-Security-Policy'],
@@ -63,10 +68,11 @@ test('root config retains existing named exports and standalone provider order',
     assert.equal(compatibility[name], value, name);
   const config = standaloneConfig({ mode: 'test' });
   assert.deepEqual(
-    config.plugins.slice(1).map((plugin) => plugin.name),
+    config.plugins.slice(1, -1).map((plugin) => plugin.name),
     providers.localProviderPlugins().map((plugin) => plugin.name),
   );
-  assert.equal(config.plugins.at(-1).name, 'gev-key-setup');
+  assert.equal(config.plugins.at(-2).name, 'gev-key-setup');
+  assert.equal(config.plugins.at(-1).name, 'api-not-found');
 });
 
 test('build export resolves in Node and has no browser fallback', async () => {

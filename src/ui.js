@@ -1,3 +1,4 @@
+import { bindPanelDisclosure, collapsePanelOnEscape, createHoverDisclosure } from './ui/panelDisclosure.js';
 import * as Cesium from 'cesium';
 import { retroShader } from './styles/retro.js';
 import { animeShader } from './styles/anime.js';
@@ -26,6 +27,7 @@ import {
   isExplicitLayerStateOrigin,
   LayerStateCoordinator,
 } from './data/layerState.js';
+import { applyStartupLayerDefaults } from './startupDefaults.js';
 import { renderMapStackChips, syncMapStackChips } from './mapStackChips.js';
 import { OrbitController } from './orbit.js';
 import {
@@ -217,6 +219,7 @@ const SHARE_PANEL_STATE_SPECS = Object.freeze([
 const COCKPIT_ENTRY_COLLAPSE_PANEL_IDS = Object.freeze([
   'data-panel',
   'cctv-panel',
+  'sst-panel',
   'scene-panel',
   'pp-toggles',
   'global-context-panel',
@@ -2191,9 +2194,10 @@ export class StyleManager {
    * @param {Cesium.Viewer} viewer - The CesiumJS viewer instance.
    * @param {object} [options]
    */
-  constructor(viewer, { mapStackController = null } = {}) {
+  constructor(viewer, { mapStackController = null, placeSearch } = {}) {
     this.viewer = viewer;
     this.mapStackController = mapStackController;
+    this.placeSearch = placeSearch;
     this.stages = {};
     this.activeStyle = 'normal';
     document.documentElement.dataset.gevStyle = this.activeStyle;
@@ -2415,6 +2419,7 @@ export class StyleManager {
     this._cctvFocusBtn = document.getElementById('cctv-focus-btn');
     this._cctvCoverageBtn = document.getElementById('cctv-coverage-btn');
     this._cctvAutoHopBtn = document.getElementById('cctv-auto-hop-btn');
+    this._cctvRegionCapBtn = document.getElementById('cctv-region-cap-btn');
     this._cctvProjectionBtn = document.getElementById('cctv-projection-btn');
     this._cctvQualityChip = document.getElementById('cctv-quality-chip');
     this._cctvAdjustBtn = document.getElementById('cctv-adjust-btn');
@@ -4013,23 +4018,24 @@ export class StyleManager {
    * @returns {void}
    */
   _initPanelChrome() {
-    const targets = new Set();
-    document.querySelectorAll('.panel-collapse-btn[data-collapse-target]').forEach((btn) => {
-      const targetId = btn.dataset.collapseTarget;
-      if (targetId) targets.add(targetId);
-      btn.addEventListener('click', () => {
-        const targetId = btn.dataset.collapseTarget;
-        if (!targetId) return;
-        const nextCollapsed = !document.getElementById(targetId)?.classList.contains('collapsed');
-        this.setPanelCollapsed(targetId, nextCollapsed, { explicit: true });
-      });
+    for (const control of this._panelDisclosureControls || []) control.destroy();
+    this._panelDisclosureControls = [];
+    const targets = new Map();
+    document.querySelectorAll('.panel-collapse-btn[data-collapse-target]').forEach((button) => {
+      const targetId = button.dataset.collapseTarget;
+      if (!targetId) return;
+      if (!targets.has(targetId)) targets.set(targetId, []);
+      targets.get(targetId).push(button);
     });
-
-    for (const targetId of targets) {
-      const panelEl = document.getElementById(targetId);
-      panelEl?.addEventListener('keydown', (event) => {
-        this._collapsePanelOnEscape(event, targetId);
-      });
+    for (const [targetId, buttons] of targets) {
+      const panel = document.getElementById(targetId);
+      if (!panel) continue;
+      this._panelDisclosureControls.push(bindPanelDisclosure({
+        panel,
+        buttons,
+        onChange: (collapsed, options) => this.setPanelCollapsed(targetId, collapsed, options),
+        onEscape: (event) => this._collapsePanelOnEscape(event, targetId),
+      }));
       this._restorePanelCollapsedState(targetId, {
         allowStored: !this._initialShareState,
       });
@@ -4056,33 +4062,16 @@ export class StyleManager {
    * @returns {boolean} Whether this panel handled the key.
    */
   _collapsePanelOnEscape(event, panelId) {
-    if (event.key !== 'Escape' || event.defaultPrevented) return false;
-    const panelEl = document.getElementById(panelId);
-    if (!panelEl || panelEl.classList.contains('collapsed') || !panelEl.contains(event.target)) {
-      return false;
-    }
-    const focusedPanel = event.target?.closest?.(
-      '.panel-collapsible:not(.collapsed), #param-slider-panel:not(.collapsed)',
-    );
-    if (focusedPanel && focusedPanel !== panelEl) return false;
-    event.preventDefault();
-    event.stopPropagation();
-    if (panelId === 'location-bar' && this._locationSearch) {
-      // The document-level Escape cleanup cannot run after this panel consumes
-      // the event. Mirror that cleanup here so reopening Location never reveals
-      // a hidden draft query or expanded search field.
-      this._locationSearch.classList.remove('expanded');
-      this._locationSearch.value = '';
-      this._locationSearch.blur();
-    }
-    this.setPanelCollapsed(panelId, true, { explicit: true });
-    const disclosure = panelEl.querySelector(`[data-dock-toggle-target="${panelId}"]`)
-      || panelEl.querySelector(`[data-collapse-target="${panelId}"]`);
-    const escapedFromDisclosure = event.target === disclosure
-      || disclosure?.contains?.(event.target);
-    if (escapedFromDisclosure) disclosure?.blur?.();
-    else disclosure?.focus?.({ preventScroll: true });
-    return true;
+    return collapsePanelOnEscape(event, {
+      panel: document.getElementById(panelId),
+      onChange: (collapsed, options) => this.setPanelCollapsed(panelId, collapsed, options),
+      beforeCollapse: () => {
+        if (panelId !== 'location-bar' || !this._locationSearch) return;
+        this._locationSearch.classList.remove('expanded');
+        this._locationSearch.value = '';
+        this._locationSearch.blur();
+      },
+    });
   }
 
   /**
@@ -4224,191 +4213,28 @@ export class StyleManager {
    * @returns {void}
    */
   _initAutoHoverPanel(panelId, { openDelayMs = 850, closeDelayMs = 1000 } = {}) {
-    const panelEl = document.getElementById(panelId);
-    if (!panelEl) return;
-    const disclosure = panelEl.querySelector(`[data-dock-toggle-target="${panelId}"]`);
-    let openTimer = null;
-    let closeTimer = null;
-    let lastWheelTime = 0;
-    let disclosureFocusTimer = null;
-    let focusRequest = 0;
-
-    const cancelMapSourceFocus = () => {
-      clearTimeout(disclosureFocusTimer);
-      disclosureFocusTimer = null;
-      focusRequest += 1;
-    };
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    this._hoverPanelControls ??= new Map();
+    this._hoverPanelControls.get(panelId)?.destroy();
+    const controller = createHoverDisclosure({
+      panel,
+      documentRef: document,
+      disclosure: panel.querySelector(`[data-dock-toggle-target="${panelId}"]`),
+      openDelayMs,
+      closeDelayMs,
+      isActive: () => !this._disposed,
+      onChange: (collapsed, options) => this.setPanelCollapsed(panelId, collapsed, options),
+      onEscape: (event) => this._collapsePanelOnEscape(event, panelId),
+      focusTarget: panelId === 'control-panel' ? () => (
+        panel.querySelector('.map-stack-chip.active') || panel.querySelector('.map-stack-chip')
+      ) : null,
+    });
+    this._hoverPanelControls.set(panelId, controller);
     if (panelId === 'control-panel') {
       this._cancelMapSourceFocus?.();
-      this._cancelMapSourceFocus = cancelMapSourceFocus;
+      this._cancelMapSourceFocus = controller.cancelPendingFocus;
     }
-
-    const clearOpen = () => {
-      if (!openTimer) return;
-      clearTimeout(openTimer);
-      openTimer = null;
-    };
-
-    const clearClose = () => {
-      if (!closeTimer) return;
-      clearTimeout(closeTimer);
-      closeTimer = null;
-    };
-
-    const scheduleOpen = () => {
-      clearOpen();
-      openTimer = window.setTimeout(() => {
-        openTimer = null;
-        if (!panelEl.matches(':hover')) return;
-        if (performance.now() - lastWheelTime < 280) return;
-        if (!panelEl.classList.contains('collapsed')) return;
-        this.setPanelCollapsed(panelId, false);
-      }, openDelayMs);
-    };
-
-    // Focus inside the tray defers the unpinned auto-dismiss, but only for the
-    // KEYBOARD: the disclosure hands focus to a Map Source tile on Enter/Space,
-    // and closing the tray out from under that focus would strand the caret.
-    // Plain `document.activeElement` is the wrong test — Chromium focuses a
-    // <button> on mouse press, so once Map Source moved into this tray a tile
-    // CLICK left focus parked inside and the popover never dismissed on
-    // mouse-away (owner field report; Location, whose input is genuinely
-    // keyboard-focused when clicked, still dismissed). `:focus-visible` is the
-    // platform's own pointer-vs-keyboard focus signal, so a typed-into field
-    // still holds the tray open while a clicked tile does not. A browser
-    // without `:focus-visible` keeps the conservative hold.
-    const keyboardFocusInside = () => {
-      const active = document.activeElement;
-      if (!active || !panelEl.contains(active)) return false;
-      try { return active.matches(':focus-visible'); } catch { return true; }
-    };
-
-    const scheduleClose = () => {
-      clearClose();
-      closeTimer = window.setTimeout(() => {
-        closeTimer = null;
-        if (panelEl.matches(':hover') || keyboardFocusInside()) return;
-        if (panelEl.classList.contains('dock-pinned')) return;
-        if (panelEl.classList.contains('collapsed')) return;
-        this.setPanelCollapsed(panelId, true);
-      }, closeDelayMs);
-    };
-
-    panelEl.addEventListener('wheel', () => {
-      lastWheelTime = performance.now();
-      clearOpen();
-    }, { passive: true });
-
-    panelEl.addEventListener('click', (event) => {
-      if (event.target.closest('.panel-collapse-btn, .dock-tray-toggle')) return;
-      clearOpen();
-      clearClose();
-      if (panelEl.classList.contains('collapsed')) {
-        this.setPanelCollapsed(panelId, false, { explicit: true });
-      }
-    });
-
-    panelEl.addEventListener('pointerenter', (event) => {
-      const pointerType = event.pointerType || 'mouse';
-      if (pointerType !== 'mouse' && pointerType !== 'pen') return;
-      clearClose();
-      if (panelEl.classList.contains('collapsed')) {
-        scheduleOpen();
-      }
-    });
-
-    panelEl.addEventListener('pointerleave', (event) => {
-      const pointerType = event.pointerType || 'mouse';
-      if (pointerType !== 'mouse' && pointerType !== 'pen') return;
-      clearOpen();
-      scheduleClose();
-    });
-
-    panelEl.addEventListener('pointerdown', () => {
-      cancelMapSourceFocus();
-      clearOpen();
-      clearClose();
-    });
-
-    const focusMapSource = () => {
-      if (panelId !== 'control-panel') return false;
-      const chip = panelEl.querySelector('.map-stack-chip.active')
-        || panelEl.querySelector('.map-stack-chip');
-      if (!chip?.focus) return false;
-      chip.focus({ preventScroll: true });
-      // .focus() on a still-hidden element is a SILENT no-op, so the caller
-      // has to check whether focus actually landed rather than assume it did.
-      return document.activeElement === chip;
-    };
-
-    // The tray opens behind a 180ms `visibility` transition (.dock-popover-content
-    // in style.css), and a chip inside it cannot take focus until that lands.
-    // A single fixed delay therefore races the transition: when the machine is
-    // slow enough that the fade has not finished by the time the timer fires,
-    // focus() silently does nothing and the keyboard user is stranded on the
-    // disclosure with an open tray they cannot reach (#54). Retry on a short
-    // cadence until focus actually lands, bounded so a permanently hidden tray
-    // cannot spin.
-    const scheduleMapSourceFocus = () => {
-      cancelMapSourceFocus();
-      if (panelId !== 'control-panel') return;
-      const request = focusRequest;
-      let attempts = 0;
-      const attemptFocus = () => {
-        if (request !== focusRequest) return;
-        disclosureFocusTimer = null;
-        if (this._disposed || panelEl.classList.contains('collapsed')) return;
-        // A Tab or click elsewhere owns focus now. A delayed transition must
-        // not pull the keyboard back into a tray the user has already left.
-        if (document.activeElement !== disclosure) return;
-        if (focusMapSource()) return;
-        if (request !== focusRequest) return;
-        if (++attempts > 24) return; // ~720ms past the first try, then give up
-        disclosureFocusTimer = window.setTimeout(attemptFocus, 30);
-      };
-      disclosureFocusTimer = window.setTimeout(attemptFocus, 240);
-    };
-
-    const toggleDisclosure = ({ focusSource = false } = {}) => {
-      cancelMapSourceFocus();
-      clearOpen();
-      clearClose();
-      const shouldOpen = panelEl.classList.contains('collapsed');
-      this.setPanelCollapsed(panelId, !shouldOpen, { explicit: true });
-      if (shouldOpen && focusSource) scheduleMapSourceFocus();
-    };
-
-    disclosure?.addEventListener('click', (event) => {
-      event.stopPropagation();
-      // Keep native button activation semantics: Enter activates on keydown,
-      // Space on keyup, and pointer clicks report a non-zero detail. Scheduling
-      // focus from the synthesized click avoids a key latch that can outlive the
-      // disclosure after a long Enter hold moves focus into the tray.
-      toggleDisclosure({ focusSource: event.detail === 0 });
-    });
-    disclosure?.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter') return;
-      // Preserve immediate Enter activation while leaving Space to the native
-      // button path, which emits its synthesized click only after key release.
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.repeat) return;
-      toggleDisclosure({ focusSource: true });
-    });
-
-    panelEl.addEventListener('focusin', () => clearClose());
-    panelEl.addEventListener('focusout', (event) => {
-      cancelMapSourceFocus();
-      if (panelEl.contains(event.relatedTarget)) return;
-      scheduleClose();
-    });
-    panelEl.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape') return;
-      if (!event.defaultPrevented) this._collapsePanelOnEscape(event, panelId);
-      cancelMapSourceFocus();
-      clearOpen();
-      clearClose();
-    });
   }
 
   /**
@@ -4684,6 +4510,8 @@ export class StyleManager {
         // Any valid camera/style share isolates recipient-local preferences,
         // including legacy and malformed-v2 layer payloads.
         allowLocalState: !this._initialShareState,
+        // Normal launches: traffic on, Space Missions off (src/startupDefaults.js).
+        startupDefaults: applyStartupLayerDefaults,
       });
       if (this._initialShareSelectionSuperseded) {
         this._layerStateCoordinator.cancelPendingShareTracking(
@@ -6382,6 +6210,12 @@ export class StyleManager {
       this._dataManager?.setLayerParams('cctv', { autoHop: !current }, { origin: 'user' });
     });
 
+    this._cctvRegionCapBtn?.addEventListener('click', () => {
+      const cap = this._cctvState?.regionCap;
+      if (cap?.reloading) return;
+      this._dataManager?.setLayerParams('cctv', { regionCap: cap?.enabled === false }, { origin: 'user' });
+    });
+
     this._cctvProjectionBtn?.addEventListener('click', () => {
       const current = this._cctvState?.showProjection !== false;
       this._dataManager?.setLayerParams('cctv', { showProjection: !current }, { origin: 'user' });
@@ -6783,6 +6617,25 @@ export class StyleManager {
       this._cctvAutoHopBtn.classList.toggle('active', autoHop);
       this._cctvAutoHopBtn.textContent = autoHop ? 'AUTO HOP ON' : 'AUTO HOP OFF';
       this._cctvAutoHopBtn.disabled = !enabled;
+    }
+
+    if (this._cctvRegionCapBtn) {
+      // A viewer preference, so it stays usable while the layer is off; the
+      // next load honours it.
+      const cap = state?.regionCap || {};
+      const on = cap.enabled !== false;
+      const limit = (Number(cap.limit) || 2500).toLocaleString('en-CA');
+      const over = Object.entries(cap.dropped || {}).filter(([, count]) => count > 0);
+      this._cctvRegionCapBtn.classList.toggle('active', on);
+      this._cctvRegionCapBtn.textContent = cap.reloading
+        ? 'REGION CAP · LOADING'
+        : on ? `REGION CAP ${limit} ON` : 'REGION CAP OFF';
+      this._cctvRegionCapBtn.title = !on
+        ? `Every camera loaded. Turn on to limit to ${limit} per province, territory or state (per country elsewhere).`
+        : over.length
+          ? `Limited to ${limit} per region. Over the cap: ${over.map(([region, count]) => `${region || 'unclassified'} −${count}`).join(', ')}`
+          : `Limited to ${limit} per province, territory or state (per country elsewhere). No region is over the cap.`;
+      this._cctvRegionCapBtn.disabled = Boolean(cap.reloading);
     }
 
     if (this._cctvProjectionBtn) {
@@ -9464,6 +9317,17 @@ export class StyleManager {
       this._locationPills.appendChild(pill);
     }
 
+    // The city row has no visible scrollbar and holds more cities than fit, so
+    // a plain mouse wheel scrolls it sideways. Trackpads already scroll it.
+    this._locationPillsWheelHandler = (event) => {
+      const row = this._locationPills;
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      if (row.scrollWidth <= row.clientWidth) return;
+      row.scrollLeft += event.deltaY;
+      event.preventDefault();
+    };
+    this._locationPills.addEventListener('wheel', this._locationPillsWheelHandler, { passive: false });
+
     // QWERTY keyboard navigation for POIs
     this._poiKeydownHandler = (e) => {
       if (!this._expandedCityId) return;
@@ -9503,9 +9367,14 @@ export class StyleManager {
           return;
         }
         this._activeLocationSearchGeneration = generation;
+        this._locationSearchController?.abort();
+        const searchController = new AbortController();
+        this._locationSearchController = searchController;
         this._locationSearch.classList.add('searching');
         try {
           const destination = await searchAndFlyTo(this.viewer, query, {
+            placeSearch: this.placeSearch,
+            signal: searchController.signal,
             beforeFly: () => this._reassertNavigationHandoff(generation),
           });
           if (this._disposed || generation !== this._navigationGeneration) return;
@@ -9529,10 +9398,12 @@ export class StyleManager {
             this._showToast('Location not found');
           }
         } catch (err) {
+          if (searchController.signal.aborted) return;
           console.error('[Search] Geocoding failed:', err);
           if (this._disposed || generation !== this._navigationGeneration) return;
           this._showToast('Search failed');
         } finally {
+          if (this._locationSearchController === searchController) this._locationSearchController = null;
           this._settleLocationSearchUi(generation);
         }
       }
@@ -9717,6 +9588,19 @@ export class StyleManager {
     if (this._searchedLocationLabel === null) return;
     this._searchedLocationLabel = null;
     this._updateLocationMiniStatus();
+  }
+
+  /**
+   * Mark a preset city as the current location without flying; the launch
+   * fly-in owns the camera. Unknown ids and a missing locations bar are ignored.
+   * @param {string} locationId - CITY_POIS id.
+   * @returns {void}
+   */
+  markActiveLocation(locationId) {
+    if (!CITY_POIS[locationId] || !this._locationPills) return;
+    this._setActiveLocation(locationId);
+    this._activePoiIndex = 0;
+    this._currentPoi = CITY_POIS[locationId].pois[0];
   }
 
   /**
@@ -10316,6 +10200,11 @@ export class StyleManager {
     this._globalStatusNotice = null;
     if (this._globalLoadingStatus) this._globalLoadingStatus.hidden = true;
     this._disposed = true;
+    for (const control of this._panelDisclosureControls || []) control.destroy();
+    this._panelDisclosureControls = [];
+    this._hoverPanelControls?.forEach((control) => control.destroy());
+    this._hoverPanelControls?.clear();
+    this._locationSearchController?.abort();
     this._cancelMapSourceFocus?.();
     // Revoke persistence/hash authority before teardown can emit manager changes.
     this._layerStateCoordinator?.destroy();
@@ -10427,6 +10316,10 @@ export class StyleManager {
     if (this._poiKeydownHandler) {
       document.removeEventListener('keydown', this._poiKeydownHandler);
       this._poiKeydownHandler = null;
+    }
+    if (this._locationPillsWheelHandler) {
+      this._locationPills?.removeEventListener('wheel', this._locationPillsWheelHandler);
+      this._locationPillsWheelHandler = null;
     }
     // Cancel the rAF animation loop and release its governor hold; also stop
     // the traffic-chip ticker the loop no longer carries. (perf wave 2 fix)

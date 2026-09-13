@@ -5,6 +5,8 @@ export const LOADING_TERMINAL_DWELL_MS = 2200;
 export const LOADING_FAILURE_DWELL_MS = 5000;
 export const LOADING_LONG_THRESHOLD_MS = 30000;
 export const TRAFFIC_SYNC_CONFIRM_MS = 1500;
+/** Layer statuses that are user guidance, not feed faults (see manager.js layerFeedState). */
+export const GUIDANCE_STATUSES = Object.freeze(['zoom-in', 'empty', 'idle']);
 
 function finiteCount(value) {
   const number = Number(value);
@@ -20,7 +22,12 @@ export function normalizeLayerLoading(layer = {}) {
   const loading = lifecycleState === 'enabling' || disabling || stats.loading === true || stats.refreshing === true;
   const count = finiteCount(stats.count);
   const stoppingInstallations = layer.id === 'military-installations' && disabling;
-  const error = stoppingInstallations ? null : stats.error || stats.lastError || stats.managerRefreshError || null;
+  // Guidance statuses ask the user to act (zoom in, run a search). They are
+  // normal operation, never a batch failure — mirrors layerFeedState's carve-out
+  // so a prompt stored alongside the status cannot turn the chip red.
+  const guidance = GUIDANCE_STATUSES.includes(status);
+  const error = stoppingInstallations ? null
+    : (!guidance && stats.error) || stats.lastError || stats.managerRefreshError || null;
   const unavailable = !stoppingInstallations && (stats.unavailable === true
     || stats.available === false
     || ['unavailable', 'offline', 'down', 'error'].includes(status));

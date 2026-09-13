@@ -1,9 +1,9 @@
 // Merge every collected camera pack into one God's Eye View CCTV source file.
 //
-// Order matters: the server caps the catalogue (CCTV_MAX_SOURCES, hard ceiling
-// 2000) by slicing the FIRST N entries, so the output is ordered nearest-to-
-// Saint-John first, pack by pack. If the cap ever bites, it drops the far side
-// of the country rather than the cameras this was built for.
+// The merge never thins: every accepted camera is written. The server caps each
+// country (CCTV_MAX_SOURCES per country, hard ceiling 5000) by keeping the FIRST
+// N entries, so the output is still ordered nearest-to-Saint-John first, pack
+// by pack, and the merge warns when the catalogue would exceed that ceiling.
 //
 // Writes the capped catalogue the app reads straight into config/ (the single
 // copy) and keeps the complete, uncapped merge beside this script as an
@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isSchoolCamera } from './school-cams.mjs';
 
 // Scraper outputs live beside this script, so the build works from any cwd.
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -18,8 +19,8 @@ const SOURCE_DIR = path.join(HERE, 'sources');
 const CONFIG_DIR = path.resolve(HERE, '..', '..', 'config');
 const sourcePath = (f) => path.join(SOURCE_DIR, f);
 
-// Matches the server ceiling (CCTV_MAX_SOURCES clamps to 2000).
-const CAP = Number(process.env.PACK_CAP || 2000);
+// Matches the server's per-country ceiling (CCTV_MAX_SOURCES clamps to 5000).
+const CAP = Number(process.env.PACK_CAP || 5000);
 
 // ISO country code per entry, so CCTV_COUNTRIES can switch whole countries on
 // and off. Everything collected here is Canadian except the two
@@ -37,8 +38,20 @@ const PACKS = [
   'cams-ns.json',
   'cams-pei.json',
   'cams-skaping.json',
+  // Québec's official open dataset ranks above the directories that re-list
+  // the same Québec 511 cameras, so its entries win the duplicate checks.
+  'cams-quebec511.json',
   'cams-aggregators.json',
+  // Every switched-on DriveBC camera, from DriveBC's own list; it ranks above
+  // the directory that re-lists 150 of them, so those copies drop out.
+  'cams-drivebc.json',
+  // Every Alberta 511 camera view, from Alberta 511's own list; it ranks above
+  // the directory that re-lists 121 of them, so those copies drop out.
+  'cams-alberta511.json',
   'cams-transcanada.json',
+  // Individual city, tourism and news webcams listed on the same
+  // transcanadahighway.com page (build-transcanada-links.mjs).
+  'cams-transcanada-links.json',
   'cams-on.json',
 ];
 
@@ -122,6 +135,8 @@ for (const file of PACKS) {
   const accepted = [];
   for (const cam of ordered) {
     if (!cam.id || !cam.name) { reject('missing id or name'); continue; }
+    // School cameras are never stored, whichever pack they arrive in.
+    if (isSchoolCamera(cam)) { reject('school camera'); continue; }
 
     // A resolver-backed camera carries no feed URL by design: the proxy reads
     // the current frame from the operator's page on each request. Validate the
@@ -206,64 +221,18 @@ for (const file of PACKS) {
   report.push(`${file.padEnd(26)} ${String(items.length).padStart(5)} read  ->${String(kept).padStart(5)} kept`);
 }
 
-// The two provincial traffic-camera dumps dwarf everything else. If the whole
-// catalogue exceeds the server cap, thin THOSE rather than letting a blind slice
-// delete one province outright: stride-sampling a longitude-sorted list keeps
-// coverage spread across the province instead of clustering it at one end.
-const BULK_PACKS = new Set(['cams-on.json', 'cams-transcanada.json']);
-
-const byDistance = (a, b) => haversineKm(SAINT_JOHN, a) - haversineKm(SAINT_JOHN, b);
-
-const strideSample = (list, keep) => {
-  if (keep >= list.length) return list;
-  if (keep <= 0) return [];
-  const sorted = [...list].sort((a, b) => a.lon - b.lon);
-  const out = [];
-  for (let i = 0; i < keep; i += 1) {
-    out.push(sorted[Math.floor((i * sorted.length) / keep)]);
-  }
-  // Sampled by longitude for spread, emitted by distance so the server's
-  // first-N slice still drops the far side of the country.
-  return out.sort(byDistance);
-};
-
-const priority = [];
-const bulk = [];
-for (const [file, entries] of perPack) {
-  if (BULK_PACKS.has(file)) bulk.push(entries);
-  else priority.push(...entries);
-}
-
+// No thinning: every accepted camera is written, in pack priority order. When
+// the catalogue outgrows the server's per-country ceiling the merge says so,
+// and the server keeps the first CAP entries.
 const all = [...byId.values()];
 const total = all.length;
-
-let merged;
-if (total <= CAP) {
-  merged = all;
-} else {
-  const budget = Math.max(0, CAP - priority.length);
-  const bulkTotal = bulk.reduce((n, p) => n + p.length, 0);
-  const thinned = [];
-  let spent = 0;
-  bulk.forEach((pack, i) => {
-    // Proportional share, with the last pack absorbing any rounding remainder.
-    const share = i === bulk.length - 1
-      ? budget - spent
-      : Math.round((pack.length / bulkTotal) * budget);
-    const kept = strideSample(pack, share);
-    spent += kept.length;
-    thinned.push(...kept);
-  });
-  merged = [...priority, ...thinned];
-  // The priority packs can outgrow the cap on their own. Keep the nearest
-  // rather than emitting a file the server would silently truncate at load.
-  if (merged.length > CAP) merged = [...merged].sort(byDistance).slice(0, CAP);
+const merged = all;
+if (total > CAP) {
+  console.warn(`WARNING: ${total} cameras exceed the per-country ceiling of ${CAP}; the server will keep the first ${CAP}. Raise CCTV_MAX_SOURCES_HARD_CAP and PACK_CAP to serve them all.`);
 }
 
-// The server clamps CCTV_MAX_SOURCES to 2000, so anything past the cap would be
-// silently dropped at load. Write the capped catalogue the app actually reads
-// into config/, plus the complete one beside this script so nothing collected
-// is lost.
+// Write the catalogue the app reads into config/, plus the same complete merge
+// beside this script as the archive copy.
 fs.mkdirSync(CONFIG_DIR, { recursive: true });
 fs.writeFileSync(path.join(CONFIG_DIR, 'cctv_sources.canada.json'), JSON.stringify(merged, null, 2) + '\n');
 fs.writeFileSync(path.join(HERE, 'cctv_sources.canada.full.json'), JSON.stringify(all, null, 2) + '\n');
@@ -278,6 +247,6 @@ console.log(report.join('\n'));
 console.log('');
 console.log(`accepted ${total}, rejected ${rejected}`);
 if (rejected) console.log('reject reasons:', JSON.stringify(rejectReasons));
-console.log(`written ${merged.length}${total > CAP ? ` (capped from ${total})` : ''}`);
+console.log(`written ${merged.length} (no thinning; server ceiling ${CAP} per country)`);
 console.log(`within 50 km of Saint John: ${near}`);
 console.log('by region:', JSON.stringify(byRegion));

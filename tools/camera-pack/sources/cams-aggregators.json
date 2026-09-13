@@ -4705,8 +4705,8 @@
   },
   {
     "id": "agg-stormpost-saint-john-saint-john",
-    "name": "Saint John (NB Highway 1)",
-    "city": "Saint John",
+    "name": "Saint John NB Highway 1 DZ",
+    "city": "Saint John Danger Zone",
     "cityId": "nb",
     "provider": "StormPost",
     "sourceKind": "configured",

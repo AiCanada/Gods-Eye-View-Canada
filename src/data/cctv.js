@@ -59,6 +59,8 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { CITY_POIS } from '../locations.js';
+import { cityIdByName } from './cctvCityMatch.js';
+import { browserDirectFrameUrl, isBrowserDirect } from './cctvBrowserDirect.js';
 import {
   registerPickOwner,
   resolvePickId,
@@ -289,6 +291,14 @@ let _autoHop = false;
 // AUTO HOP toggle-on releases the hold.
 let _autoHopSuspended = false;
 let _autoHopSec = 18;
+/** Region cap: at most 2,500 cameras per Canadian province or territory, per US
+ * state, and per country elsewhere (the server applies it). A per-viewer
+ * preference, so it is kept in localStorage rather than in the share link. */
+const REGION_CAP_STORAGE_KEY = 'gev.cctv.regionCap';
+let _regionCapEnabled = loadRegionCapPreference();
+let _regionCapInfo = { limit: 0, dropped: {} };
+/** In-flight catalogue rebuild after a region-cap toggle, or null. */
+let _catalogReload = null;
 let _lastHopAt = 0;
 let _lastViewContext = '';
 let _clickHandler = null;
@@ -1071,36 +1081,79 @@ function seedCatalog() {
 }
 
 /**
- * Looks up a city ID from CITY_POIS by exact or partial name match.
- * @param {string} cityName
- * @returns {string|null} Matching city ID or null.
- */
-function cityIdByName(cityName) {
-  const probe = String(cityName || '').trim().toLowerCase();
-  if (!probe) return null;
-  for (const [cityId, city] of Object.entries(CITY_POIS)) {
-    if (city.name.toLowerCase() === probe) return cityId;
-  }
-  for (const [cityId, city] of Object.entries(CITY_POIS)) {
-    if (city.name.toLowerCase().includes(probe) || probe.includes(city.name.toLowerCase())) return cityId;
-  }
-  return null;
-}
-
-/**
  * Fetches configured camera sources from the backend.
  * @returns {Promise<Object[]>} Array of raw source objects, or empty on failure.
  */
 async function loadCameraSources() {
   try {
-    const resp = await fetch(SOURCE_ENDPOINT, { cache: 'no-store' });
+    const resp = await fetch(`${SOURCE_ENDPOINT}?regionCap=${_regionCapEnabled ? '1' : '0'}`, { cache: 'no-store' });
     if (!resp.ok) return [];
     const data = await resp.json();
     if (!Array.isArray(data?.sources)) return [];
+    if (data.regionCap && typeof data.regionCap === 'object') {
+      _regionCapInfo = {
+        limit: Number(data.regionCap.limit) || 0,
+        dropped: data.regionCap.dropped && typeof data.regionCap.dropped === 'object' ? { ...data.regionCap.dropped } : {},
+      };
+    }
     return data.sources;
   } catch {
     return [];
   }
+}
+
+/** Reads the saved region-cap choice; on unless the viewer turned it off. */
+function loadRegionCapPreference() {
+  try {
+    return globalThis.localStorage?.getItem(REGION_CAP_STORAGE_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+/** Saves the region-cap choice for this viewer. */
+function saveRegionCapPreference(enabled) {
+  try {
+    globalThis.localStorage?.setItem(REGION_CAP_STORAGE_KEY, enabled ? 'on' : 'off');
+  } catch {
+    // Storage blocked (private window): the choice lasts for this session only.
+  }
+}
+
+/**
+ * Rebuilds the camera catalogue in place after the region cap is toggled: the
+ * layer tears its records down and re-initializes against the newly capped
+ * source list, keeping its panel subscribers, its enabled state and, when it
+ * survives the cap, the selected camera. Toggles made while a rebuild runs
+ * queue behind it.
+ */
+function scheduleCatalogReload() {
+  const run = async () => {
+    const viewer = _viewer;
+    if (!viewer) return;
+    const wasEnabled = _enabled;
+    const activeId = _activeCameraId;
+    // destroy() clears subscribers; carry the panel's over to the new catalogue.
+    const listeners = [..._listeners];
+    if (wasEnabled) cctvLayer.disable();
+    cctvLayer.destroy(viewer);
+    for (const listener of listeners) _listeners.add(listener);
+    await cctvLayer.init(viewer);
+    if (activeId && _recordById.has(activeId)) _activeCameraId = activeId;
+    if (wasEnabled) cctvLayer.enable();
+  };
+  const current = (_catalogReload || Promise.resolve())
+    .catch(() => {})
+    .then(run)
+    .catch((error) => {
+      _lastError = `Camera list reload failed: ${error?.message || error}`;
+      console.warn('[Data:CCTV] region-cap reload failed:', error);
+    })
+    .finally(() => {
+      if (_catalogReload === current) _catalogReload = null;
+      notifyListeners();
+    });
+  _catalogReload = current;
 }
 
 /**
@@ -1123,12 +1176,12 @@ function buildCatalogFromSources(rawSources) {
     const id = String(source.id || '').trim();
     if (!id) continue;
     const seed = seedById.get(id);
-    const cityId = String(source.cityId || '').trim() || cityIdByName(source.city) || seed?.cityId || '';
-    const city = cityId && CITY_POIS[cityId] ? CITY_POIS[cityId] : null;
-
     const lat = safeNumber(source.lat, seed?.lat ?? NaN);
     const lon = safeNumber(source.lon, seed?.lon ?? NaN);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    // A named city only counts when the camera actually sits near it.
+    const cityId = String(source.cityId || '').trim() || cityIdByName(source.city, lat, lon) || seed?.cityId || '';
+    const city = cityId && CITY_POIS[cityId] ? CITY_POIS[cityId] : null;
 
     const sourceHeading = safeNumber(source.headingDeg, NaN);
     const headingDeg = normalizeHeading(
@@ -1169,6 +1222,11 @@ function buildCatalogFromSources(rawSources) {
       pitchDeg,
       license: String(source.license || source.licenseNote || ''),
       poseSource,
+      // Set by the server for operators that refuse server-side clients: the
+      // viewer's browser loads this still itself (panel only, see cctvBrowserDirect.js).
+      browserImageUrl: typeof source.browserImageUrl === 'string' && /^https:\/\//i.test(source.browserImageUrl)
+        ? source.browserImageUrl
+        : '',
     };
     ensureCameraPose(camera);
     catalog.push(camera);
@@ -1804,6 +1862,9 @@ function destroyProjectionRuntime(runtime) {
 function refreshProjectionImage(record, force = false) {
   const runtime = record?.projection;
   if (!runtime || runtime.mode !== 'image' || !runtime.image) return;
+  // A browser-direct still carries no CORS header, so it can never become the
+  // monitor-plane texture; the plane keeps its placeholder.
+  if (isBrowserDirect(record.camera)) return;
   // Hidden-state gate (perf wave 2): no new frame fetch/decode for a canvas
   // nobody can see. The refresh interval re-fills naturally on return.
   if (typeof document !== 'undefined' && document.hidden && !force) return;
@@ -3082,6 +3143,12 @@ function cardFrameTick() {
  */
 function fetchCardFrame(record, slot, refreshMs, { userGesture = false } = {}) {
   if (typeof document !== 'undefined' && document.hidden && !userGesture) return;
+  // Drawing a browser-direct still (no CORS header) would taint the card canvas
+  // and break its texture upload, so these cards keep their placeholder.
+  if (isBrowserDirect(record.camera)) {
+    Object.assign(slot, applyFrameResult(slot, { ok: false, frame: null }, Date.now()));
+    return;
+  }
   const now = Date.now();
   const cameraId = record.camera.id;
   _cardFetchInFlightCount += 1;
@@ -3432,7 +3499,9 @@ function getPublicCameraState(record, activeId = null) {
     calBadge: deriveCalBadge(camera),
     poseSource: camera.poseSource || null,
     basePose: camera.basePose ? { ...camera.basePose } : null,
-    frameUrl: frameUrlFor(camera, refreshMs),
+    // A browser-direct camera's still comes straight from its operator into the
+    // panel's <img>; every other camera goes through the proxy.
+    frameUrl: isBrowserDirect(camera) ? browserDirectFrameUrl(camera, refreshMs) : frameUrlFor(camera, refreshMs),
     mediaUrl: mediaUrlFor(camera),
   };
 }
@@ -3455,6 +3524,12 @@ function uiState() {
     autoHop: _autoHop,
     autoHopSuspended: _autoHopSuspended,
     autoHopSec: _autoHopSec,
+    regionCap: {
+      enabled: _regionCapEnabled,
+      limit: _regionCapInfo.limit,
+      dropped: { ..._regionCapInfo.dropped },
+      reloading: Boolean(_catalogReload),
+    },
     count: _count,
     lastUpdate: _lastUpdate,
     error: _lastError,
@@ -4580,6 +4655,12 @@ const cctvLayer = {
     if (typeof params.autoHopSec === 'number' && Number.isFinite(params.autoHopSec)) {
       _autoHopSec = clamp(Math.round(params.autoHopSec), MIN_AUTO_HOP_SEC, MAX_AUTO_HOP_SEC);
     }
+    if (typeof params.regionCap === 'boolean' && params.regionCap !== _regionCapEnabled) {
+      _regionCapEnabled = params.regionCap;
+      saveRegionCapPreference(_regionCapEnabled);
+      // Before init the choice simply applies to the first load.
+      if (_viewer) scheduleCatalogReload();
+    }
     if (typeof params.selectedCameraId === 'string' && _recordById.has(params.selectedCameraId)) {
       setActiveCamera(params.selectedCameraId);
     }
@@ -4664,6 +4745,7 @@ const cctvLayer = {
       calibrationMode: _calibrationMode,
       autoHop: _autoHop,
       autoHopSec: _autoHopSec,
+      regionCap: _regionCapEnabled,
       selectedCameraId: active?.camera.id || null,
       calibration: active?.camera ? {
         cameraId: active.camera.id,
