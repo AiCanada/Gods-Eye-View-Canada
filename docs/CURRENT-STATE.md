@@ -1,5 +1,162 @@
 # God's Eye View Current State
 
+## State and action outcomes
+
+Share preferences, place lookups and Scene playback expose immutable snapshots
+and disposable subscriptions. Share settings drive URL updates; lookup outcomes
+drive Location labels and busy/error feedback. Superseded or disposed lookups
+cannot publish accepted destinations. Each completion carries its own request
+identity so an older completion cannot clear the current search indicator.
+
+Scene controls consume playback state and editing outcomes from the director.
+Progress updates carry a small playback snapshot and preserve shot-row identity;
+editing outcomes include a copy of the affected scene or shot. Subscriptions
+start with current state, isolate listener failures and stop on disposal.
+`gods-eye-view/scenes` exports the same director used by the standalone app.
+
+## UI shell and component ownership
+
+The standalone entry composes the UI with the application's existing layer,
+terrain, navigation and rendering operations. The shell receives those instances
+and assembles the controls. Panel layout scheduling, position preferences and
+active drags, loading notices, recording presentation and DOM lookup have focused
+owners. Disposal revokes queued presentation and listeners before asynchronous
+Context restoration, cancels an unfinished drag without saving it, restores the
+recording HUD and releases status decoration without replacing accessible text.
+The ordinary control snapshot includes the current 3D model toggle and mode.
+
+`style.css` imports component styles in their original cascade order. Scene,
+share, HUD and layer engines retain their existing behavior and entry points.
+
+## Scene control ownership
+
+Scene controls own creation/deletion prompts, panel listeners, shot rows, playback/recording presentation
+and keyboard cancellation. The director supplies project reads and explicit
+editing/playback actions while retaining persistence, camera and layer sequencing.
+Shot selection updates the highlight without replacing the row, preserving
+native double-click rename. Replacing rows revokes their old listeners. Disposal stops controls immediately;
+late file and failed-action completions cannot update removed presentation.
+
+## Cockpit component ownership
+
+Cockpit presentation is separated from its camera/controller behavior. Existing
+layer, terrain and rendering operations are supplied by composition, retaining
+the same tracked identity, ground acquisition, motion correction and cadence.
+The Display portal owns group anchors, focus/scroll restoration and listeners.
+Superseded portal frames cannot repaint old state or steal focus after disposal;
+retained Cockpit actions cannot restart a disposed controller. Input, subscriptions
+and queued panel work stop before asynchronous layer restoration; final camera
+and portal cleanup follows that restoration.
+
+
+## Context coordination
+
+Context controls own Contacts/Space Missions state, entry and exit transactions,
+layer snapshots and restoration. The application supplies the existing manager,
+installations search and camera/panel actions. Tab listeners and pending
+presentation work stop during disposal; layer restoration retains its existing
+compensation and latest-intent rules. Clear Selected Layers shares this owner,
+so an older restore cannot replay over a newer Clear action.
+
+
+## Camera panel ownership
+
+CCTV controls receive the existing camera port and explicit application actions.
+Frame loading, calibration editing and status display have separate modules;
+providers, camera placement and navigation policy retain their existing owners.
+Changing cameras invalidates old image callbacks and cancels an unfinished
+calibration edit. Failed refreshes preserve settled pixels for the same camera,
+while a newly selected camera never shows the prior camera's image. Disposal
+releases listeners, subscriptions, image handlers, summary timers and chip-hide timers.
+
+
+## UI disposal
+
+UI disposal releases the CCTV subscription, command-dock observer, legacy drag
+resize observer and window resize listener. These remain independent of the
+Location component and are included in whole-UI browser teardown acceptance.
+
+## Radio controls
+
+Radio panel, compact controls and tuner presentation have a dedicated owner.
+It receives playback, layer actions and layout callbacks; station ingestion,
+marker placement, audio playback and camera policy stay with their existing
+owners. Tuner calculations have a pure entry, with existing layer exports
+preserved. Destruction removes listeners and state subscriptions before ending
+tuning; a delayed Enable result cannot reveal or refocus removed controls.
+
+
+## Location control ownership
+
+City/POI rows, search/reset bindings, location readouts and the orbit indicator
+have a dedicated component with explicit navigation actions. A separate lookup
+controller cancels superseded searches and checks camera authority before flight
+and result presentation. Existing search providers and camera handoff policy are
+preserved. Replacing or closing a POI row cancels its pending expansion frame;
+destruction releases listeners, pending searches and the orbit indicator.
+
+
+## Layer panel ownership
+
+Layer rows, feed feedback, counts, focus-preserving chips and toggle listeners
+are owned by a renderer-free panel component. The layer manager supplies current
+snapshots, lifecycle actions and row descriptors. Remount and teardown remove
+listeners and row subscriptions; obsolete completions do not repaint old rows.
+The clear control presents busy state while its existing action owns the transaction.
+
+
+## Map Source control ownership
+
+Map Source controls own chip listeners, source-state subscriptions and selection
+feedback. Loading remains with the supplied map controller. The active chip
+follows the source actually displayed, including fallback; obsolete completions
+cannot overwrite a newer selection. Refresh and destruction revoke old listeners
+and destruction suppresses late UI updates. Available choices and setup behavior
+remain unchanged.
+
+## Visual effects ownership
+
+VisualEffects owns style-stage creation, crossfades, animation scheduling, bloom
+and sharpen. Display supplies actions and renders settings; effect execution has
+no DOM dependency. Existing presets and the 500 ms transition remain unchanged.
+Stopping the controller revokes animation before asynchronous UI teardown; final
+destruction removes its stages and restores the borrowed bloom configuration.
+
+## Display control ownership
+
+Display button, selector and slider listeners have a single destroyable owner.
+The application supplies actions and retains effect settings, restore claims and
+rendering. Native keyboard editing, model modes and current defaults are preserved.
+Destroying the UI removes these listeners before asynchronous teardown.
+
+## Application shortcuts and shader parameter controls
+
+`ui/input` supplies the bubbling application shortcut listener and generated
+shader-parameter rows. Number/style keys, H/O/V/F/D/C actions, native form-control
+typing and Escape behavior retain their existing mappings. Capture-phase
+surfaces continue to arbitrate their own keyboard events first.
+
+The UI facade retains shader values, share-restore authority, render requests,
+search dismissal, visibility and Cockpit portal policy. Parameter rows preserve
+labels, bounds, steps and precision. Rebuilding rows removes their previous
+listeners; disposal removes shortcuts and parameter listeners synchronously
+before asynchronous application teardown.
+
+## Adaptive panel rail layout
+
+`ui/layout` supplies the left/right rail layout passes, natural-height
+measurement and pure corridor/allocation helpers. The UI facade passes live DOM
+nodes, obstacle nodes, HUD presentation, preferred panels and callbacks. It
+retains observers, frame scheduling, saved/share preferences and Cockpit portals.
+
+The left rail keeps its measured collapsed heights and obstacle-safe corridor;
+the right rail follows its top baseline and preserves Display's scroll owner.
+Automatic collapse remains presentation only, prioritizes the latest explicit
+panel, and honors keyboard focus on the right. Mobile layout still releases
+desktop allocation styles. Stable Display allocation avoids unnecessary style
+writes. This extraction does not change panel positions or layout defaults.
+
+
 ## Surface keyboard lifecycle
 
 `ui/surfaces` owns the capture-phase keyboard listener, Tab cycling and return

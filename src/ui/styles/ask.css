@@ -1,0 +1,135 @@
+/* ── Ask panel ─────────────────────────────────────────────────────────────
+   Questions about the current view. Sits with the other collapsible panels
+   and borrows their chrome; only the input, answer box and status line are
+   new. */
+/* Bottom-left, directly above the attribution line. The credit keeps the exact
+   size and position the codebase models and tests for — Esri, Cesium and Google
+   all require it to stay visible — so the ASK box stacks on top of it rather
+   than taking its place. */
+#ask-panel {
+  position: fixed;
+  left: 36px;
+  /* Clears the attribution line beneath it: the credit line sits at bottom:36px
+     and is 28px tall, plus 8px of air. At rest the panel is one row tall, so
+     it does not reach the panel stack above; the answer grows upward over the
+     globe instead, bounded by #ask-body below. */
+  bottom: calc(36px + 28px + 8px);
+  width: 340px;
+  max-width: calc(100vw - 72px);
+  z-index: 91;
+  /* Explicit because the panel sits over the globe canvas like every other
+     fixed control; the stack's pointer-events:none does not apply to it. */
+  pointer-events: auto;
+}
+
+/* The modes whose point is an unobstructed globe hide it, as they hide the
+   other panels; cockpit mode hides it because the CONTACT briefing card owns
+   the same band. Narrow viewports give the corner to the credit line. */
+body.ui-clean-view #ask-panel,
+body.recording-mode #ask-panel,
+body.scene-playback-mode #ask-panel,
+body.cockpit-mode #ask-panel {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  #ask-panel {
+    display: none;
+  }
+}
+
+.ask-panel-inner {
+  padding: 10px 12px 12px;
+}
+
+.ask-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.ask-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--hud-color, #7fe7ff);
+  background: rgba(0, 20, 30, 0.55);
+  border: 1px solid rgba(127, 231, 255, 0.35);
+  border-radius: 2px;
+  outline: none;
+}
+
+.ask-input::placeholder {
+  color: rgba(127, 231, 255, 0.45);
+}
+
+.ask-input:focus {
+  border-color: rgba(127, 231, 255, 0.75);
+  box-shadow: 0 0 6px rgba(127, 231, 255, 0.25);
+}
+
+.ask-overview-btn {
+  white-space: nowrap;
+}
+
+.ask-output {
+  margin-bottom: 8px;
+  max-height: 168px;
+  overflow-y: auto;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(220, 245, 255, 0.92);
+  background: rgba(0, 18, 26, 0.5);
+  border-left: 2px solid rgba(127, 231, 255, 0.4);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ask-output:empty {
+  display: none;
+}
+
+.ask-status:empty {
+  display: none;
+}
+
+.ask-status {
+  margin-bottom: 6px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: rgba(127, 231, 255, 0.6);
+  min-height: 12px;
+}
+
+.ask-controls .scene-btn[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* One block per model. With a single key this reads as one search box; with
+   several, each row is labelled so the answers can be told apart. */
+.ask-row + .ask-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(127, 231, 255, 0.15);
+}
+
+.ask-row-label {
+  flex: 0 0 auto;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(127, 231, 255, 0.7);
+  white-space: nowrap;
+}
+
+/* Several rows of answers must not push the panel off-screen. */
+#ask-body {
+  max-height: 40vh;
+  overflow-y: auto;
+}
