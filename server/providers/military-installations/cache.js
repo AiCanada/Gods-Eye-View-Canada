@@ -8,6 +8,7 @@ import {
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
+import { haversineKm } from '../common/geo.js';
 
 const _militaryInstallationCache = new Map();
 
@@ -159,8 +160,49 @@ function trimMilitaryInstallationCache() {
   }
 }
 
+/**
+ * Release memory-tier installation entries whose bbox centre lies farther than
+ * `radiusKm` from a point, after the user switches location. Memory only: the
+ * disk tier keeps every entry, so a return to the old area reads it back from
+ * disk instead of asking Overpass. A key that is not a bbox is kept.
+ * @param {{latitude: number, longitude: number}} point
+ * @param {number} radiusKm
+ * @param {Map<string, object>} [cache]
+ * @returns {number} How many entries were removed.
+ */
+function pruneMilitaryInstallationMemoryOutside(
+  point,
+  radiusKm,
+  cache = _militaryInstallationCache,
+) {
+  const latitude = point?.latitude;
+  const longitude = point?.longitude;
+  if (![latitude, longitude, radiusKm].every(Number.isFinite) || radiusKm < 0)
+    return 0;
+  let removed = 0;
+  for (const key of cache.keys()) {
+    // Snapped keys are `s,w,n,e`; exact-viewport keys carry an `exact:` prefix.
+    const [south, west, north, east] = String(key)
+      .replace(/^exact:/, '')
+      .split(',')
+      .map(Number);
+    if (![south, west, north, east].every(Number.isFinite)) continue;
+    const distanceKm = haversineKm(
+      latitude,
+      longitude,
+      (south + north) / 2,
+      (west + east) / 2,
+    );
+    if (distanceKm <= radiusKm) continue;
+    cache.delete(key);
+    removed += 1;
+  }
+  return removed;
+}
+
 export {
   _militaryInstallationCache,
+  pruneMilitaryInstallationMemoryOutside,
   trimMilitaryInstallationCache,
   writeMilitaryInstallationDisk,
   resolveMilitaryInstallationTier,

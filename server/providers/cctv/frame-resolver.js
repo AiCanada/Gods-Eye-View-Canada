@@ -1,3 +1,4 @@
+import net from 'node:net';
 import { readResponseTextCapped } from '../common/http.js';
 import { CCTV_PROXY_USER_AGENT } from './upstream-headers.js';
 import {
@@ -39,9 +40,15 @@ function decodeHtmlEntities(text) {
     .replace(/&amp;/g, '&');
 }
 
-/** A hostname the proxy may contact on a page's say-so: public DNS names only. */
-function isPublicHostname(host) {
-  const name = String(host || '').toLowerCase();
+/** A hostname the proxy may contact on a page's (or a lookup service's) say-so:
+ * public DNS names only. This reads the name alone; isPublicAddress checks
+ * what it resolves to. */
+export function isPublicHostname(host) {
+  // A fully qualified name may end in dots ("localhost."); resolvers ignore
+  // them, so the checks do too.
+  const name = String(host || '')
+    .toLowerCase()
+    .replace(/\.+$/, '');
   if (!name || name === 'localhost' || name.endsWith('.localhost'))
     return false;
   if (
@@ -53,6 +60,83 @@ function isPublicHostname(host) {
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return false; // IPv4 literal: loopback, RFC1918, link-local, metadata
   if (name.includes(':')) return false; // IPv6 literal
   return name.includes('.');
+}
+
+/** IPv4 ranges a still on an unvouched host may never be fetched from:
+ * "this network", RFC 1918, shared CGNAT space, loopback, link-local, IETF
+ * protocol assignments, benchmarking, multicast and reserved. */
+const NON_PUBLIC_IPV4 = new net.BlockList();
+for (const [prefix, bits] of [
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.0.0.0', 24],
+  ['192.168.0.0', 16],
+  ['198.18.0.0', 15],
+  ['224.0.0.0', 4],
+  ['240.0.0.0', 4],
+]) {
+  NON_PUBLIC_IPV4.addSubnet(prefix, bits, 'ipv4');
+}
+
+/** IPv6 ranges likewise: unspecified, loopback and IPv4-compatible (::/96),
+ * unique-local, link-local, site-local and multicast. */
+const NON_PUBLIC_IPV6 = new net.BlockList();
+for (const [prefix, bits] of [
+  ['::', 96],
+  ['fc00::', 7],
+  ['fe80::', 10],
+  ['fec0::', 10],
+  ['ff00::', 8],
+]) {
+  NON_PUBLIC_IPV6.addSubnet(prefix, bits, 'ipv6');
+}
+
+/** The IPv4 address inside an IPv4-mapped (::ffff:a.b.c.d) or NAT64
+ * (64:ff9b::a.b.c.d) address, or ''. */
+function embeddedIpv4(address) {
+  let host;
+  try {
+    host = new URL(`http://[${address}]`).hostname;
+  } catch {
+    return '';
+  }
+  const match =
+    /^\[::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})\]$/.exec(host) ||
+    /^\[64:ff9b::(?:(?:([0-9a-f]{1,4}):)?([0-9a-f]{1,4}))?\]$/.exec(host);
+  if (!match) return '';
+  const value =
+    parseInt(match[1] || '0', 16) * 65536 + parseInt(match[2] || '0', 16);
+  return [value >>> 24, (value >>> 16) & 255, (value >>> 8) & 255, value & 255]
+    .map(String)
+    .join('.');
+}
+
+/**
+ * Whether a resolved address is one the proxy may fetch a still from: a
+ * public unicast address. Loopback, private (RFC 1918), CGNAT, link-local,
+ * unique-local, unspecified, multicast and reserved addresses are refused,
+ * including when wrapped in an IPv4-mapped or NAT64 IPv6 address. Anything
+ * that is not an IP address is refused too.
+ *
+ * @param {unknown} address
+ * @returns {boolean}
+ */
+export function isPublicAddress(address) {
+  const bare = String(address || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\[(.*)\]$/, '$1')
+    .replace(/%.*$/, '');
+  const family = net.isIP(bare);
+  if (family === 4) return !NON_PUBLIC_IPV4.check(bare, 'ipv4');
+  if (family !== 6) return false;
+  const embedded = embeddedIpv4(bare);
+  if (embedded) return !NON_PUBLIC_IPV4.check(embedded, 'ipv4');
+  return !NON_PUBLIC_IPV6.check(bare, 'ipv6');
 }
 
 /**

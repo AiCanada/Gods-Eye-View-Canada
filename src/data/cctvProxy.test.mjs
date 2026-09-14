@@ -1,10 +1,14 @@
 import { CCTV_FRAME_FETCH_TIMEOUT_MS, CCTV_FRAME_MAX_BODY_BYTES, CCTV_MEDIA_FETCH_TIMEOUT_MS, CCTV_MEDIA_MAX_BODY_BYTES } from '../../server/providers/cctv/constants.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import {
+  createPublicOnlyFetch,
   fetchCctvImageFromUpstream,
   fetchCctvMediaUpstream,
 } from '../../server/providers/cctv/media.js';
+import { isPublicAddress, isPublicHostname } from '../../server/providers/cctv/frame-resolver.js';
+import { safeRoad511StillUrl } from '../../server/providers/cctv/road511-lookup.js';
 
 /** A body that arrives in chunks and never declares a Content-Length. */
 function chunkedImageResponse(chunkBytes, chunkCount, { onChunk = () => {}, onCancel = () => {} } = {}) {
@@ -244,6 +248,146 @@ test('the snapshot deadline remains active after headers while reading a stalled
   });
   assert.equal(result, null);
   assert.equal(signal.aborted, true);
+});
+
+test('only public addresses and public names pass the checks, trailing dots included', () => {
+  for (const address of [
+    '127.0.0.1', '127.8.9.10', '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.5', '169.254.169.254',
+    '100.64.0.1', '100.127.255.254', '0.0.0.0', '0.1.2.3', '224.0.0.1', '255.255.255.255',
+    '::', '::1', 'fc00::1', 'fd12:3456::1', 'fe80::1', 'fe80::1%eth0', '[::1]',
+    '::ffff:127.0.0.1', '::ffff:10.0.0.1', '::ffff:0:0', '64:ff9b::a9fe:a9fe', '64:ff9b::',
+    '', 'not-an-ip', 'localhost',
+  ]) {
+    assert.equal(isPublicAddress(address), false, address);
+  }
+  for (const address of ['8.8.8.8', '1.1.1.1', '172.32.0.1', '100.128.0.1', '2606:4700:4700::1111', '::ffff:8.8.8.8', '64:ff9b::808:808']) {
+    assert.equal(isPublicAddress(address), true, address);
+  }
+  for (const host of ['localhost.', 'foo.localhost.', 'metadata.google.internal.', 'nas.local.', 'router.home.arpa..', '127.0.0.1.']) {
+    assert.equal(isPublicHostname(host), false, host);
+  }
+  assert.equal(isPublicHostname('cams.example.org.'), true);
+});
+
+async function localServer(t, handler) {
+  const hits = [];
+  const server = http.createServer((req, res) => {
+    hits.push(req.url);
+    handler(req, res);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  return { port: server.address().port, hits };
+}
+
+test('the public-only fetch refuses a name that resolves to a private address, before connecting', async (t) => {
+  const { port, hits } = await localServer(t, (_req, res) => {
+    res.writeHead(200, { 'content-type': 'image/jpeg' });
+    res.end('secretbytes');
+  });
+  const lookups = [];
+  const guarded = createPublicOnlyFetch({
+    lookup: (hostname, options, callback) => {
+      lookups.push({ hostname, all: options?.all });
+      callback(null, [{ address: '203.0.113.9', family: 4 }, { address: '127.0.0.1', family: 4 }]);
+    },
+  });
+  await assert.rejects(guarded(`http://cams.example.test:${port}/secret.jpg`), /non-public/);
+  assert.deepEqual(lookups[0], { hostname: 'cams.example.test', all: true }, 'every address is checked');
+  // The system resolver: these names and literals never reach the local service.
+  const real = createPublicOnlyFetch();
+  for (const href of [`http://localhost:${port}/a.jpg`, `http://localhost.:${port}/b.jpg`, `http://127.0.0.1:${port}/c.jpg`, `http://[::1]:${port}/d.jpg`]) {
+    await assert.rejects(real(href), href);
+  }
+  await assert.rejects(real(`ftp://localhost:${port}/e.jpg`));
+  assert.equal(
+    await fetchCctvImageFromUpstream(`http://localhost:${port}/f.jpg`, { allowUrl: () => true }),
+    null,
+    'a guarded still uses the public-only fetch by default',
+  );
+  assert.deepEqual(hits, [], 'the loopback service was never contacted');
+});
+
+test('the public-only fetch connects to the address it checked, and never follows a redirect', async (t) => {
+  const { port, hits } = await localServer(t, (req, res) => {
+    if (req.url === '/moved') {
+      res.writeHead(302, { location: `http://localhost:${port}/secret.jpg` });
+      res.end();
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'image/jpeg', 'x-frame': 'one' });
+    res.end('frame');
+  });
+  // cams.example.test resolves nowhere: an answer proves the socket used the checked lookup's address.
+  const guarded = createPublicOnlyFetch({
+    lookup: (_hostname, _options, callback) => callback(null, [{ address: '127.0.0.1', family: 4 }]),
+    addressAllowed: (address) => address === '127.0.0.1',
+  });
+  const ok = await guarded(`http://cams.example.test:${port}/frame.jpg`, { headers: { 'User-Agent': 'test' } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get('content-type'), 'image/jpeg');
+  assert.equal(ok.headers.get('x-frame'), 'one');
+  assert.equal(await ok.text(), 'frame');
+  const moved = await guarded(`http://cams.example.test:${port}/moved`);
+  assert.equal(moved.status, 302);
+  assert.equal(moved.headers.get('location'), `http://localhost:${port}/secret.jpg`);
+  assert.deepEqual(hits, ['/frame.jpg', '/moved'], 'the redirect target is never requested');
+  const image = await fetchCctvImageFromUpstream(`http://cams.example.test:${port}/frame.jpg`, {
+    allowUrl: () => true,
+    fetchImpl: guarded,
+  });
+  assert.equal(image?.body?.toString(), 'frame');
+});
+
+test('a still no catalogue vouches for follows at most two redirects, each hop re-checked', async () => {
+  const jpeg = () => new Response(Uint8Array.from([1, 2, 3]), { status: 200, headers: { 'Content-Type': 'image/jpeg' } });
+  const moved = (location) => () => new Response(null, { status: 302, headers: { location } });
+  const allowUrl = (href) => Boolean(safeRoad511StillUrl(href));
+  const run = async (answers, options = { allowUrl }) => {
+    const calls = [];
+    const statuses = [];
+    const result = await fetchCctvImageFromUpstream('https://cams.example.org/a.jpg', {
+      ...options,
+      onResponse: ({ status }) => statuses.push(status),
+      fetchImpl: async (url, init) => {
+        calls.push({ url: String(url), redirect: init.redirect });
+        return answers[calls.length - 1]();
+      },
+    });
+    return { result, calls, statuses };
+  };
+
+  let { result, calls, statuses } = await run([moved('http://localhost:8123/api/camera_proxy/x')]);
+  assert.equal(result, null, 'a hop to a local name is refused');
+  assert.deepEqual(calls, [{ url: 'https://cams.example.org/a.jpg', redirect: 'manual' }]);
+  assert.deepEqual(statuses, [302]);
+  for (const location of ['http://169.254.169.254/latest/meta-data', 'http://metadata.google.internal./x', 'ftp://cams.example.org/x.jpg', 'https://u:p@cams.example.org/x.jpg']) {
+    ({ result, calls } = await run([moved(location)]));
+    assert.equal(result, null, location);
+    assert.equal(calls.length, 1, location);
+  }
+
+  ({ result, calls } = await run([moved('/b.jpg'), moved('https://cdn.example.org/c.jpg'), jpeg]));
+  assert.equal(result?.ok, true, 'two public hops are followed');
+  assert.deepEqual(calls.map((c) => c.url), ['https://cams.example.org/a.jpg', 'https://cams.example.org/b.jpg', 'https://cdn.example.org/c.jpg']);
+  assert.ok(calls.every((c) => c.redirect === 'manual'));
+
+  ({ result, calls } = await run([moved('/1.jpg'), moved('/2.jpg'), moved('/3.jpg'), jpeg]));
+  assert.equal(result, null, 'a third hop is one too many');
+  assert.equal(calls.length, 3);
+
+  ({ result, calls } = await run([() => ({ type: 'opaqueredirect', status: 0, ok: false, headers: new Headers(), body: null })]));
+  assert.equal(result, null, 'an opaque redirect has nowhere checked to go');
+  ({ result, calls } = await run([moved('')]));
+  assert.equal(result, null);
+
+  ({ result, calls } = await run([jpeg], { allowUrl: () => false }));
+  assert.equal(result, null, 'the first URL is checked too');
+  assert.equal(calls.length, 0);
+
+  ({ result, calls } = await run([jpeg], {}));
+  assert.equal(result?.ok, true);
+  assert.equal(calls[0].redirect, undefined, 'a catalogue still keeps fetch\'s own redirect handling');
 });
 
 test('rejected snapshot responses abort the upstream download', async () => {

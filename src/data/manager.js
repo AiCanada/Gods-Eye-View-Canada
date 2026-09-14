@@ -382,6 +382,78 @@ export class DataLayerManager {
   }
 
   /**
+   * Start a location switch: the user selected a place in another province,
+   * state, territory or country. Every initialized layer that defines
+   * `onLocationLeave` stops feeding the old place and releases what it holds
+   * for it, and an enabled layer's in-flight periodic result is dropped so a
+   * poll for the old place cannot land. Visibility is never touched: enabled
+   * layers stay enabled, and nothing is persisted.
+   * @param {{from?: ?object, to?: ?object, signal?: ?AbortSignal}} [change]
+   * @returns {Promise<void>}
+   */
+  async beginLocationSwitch({ from = null, to = null, signal = null } = {}) {
+    await Promise.all([...this.layers].map(([layerId, entry]) => {
+      if (!entry.initialized || entry.destroying || typeof entry.module.onLocationLeave !== 'function') return null;
+      const enabled = this._effectiveEnabled(entry);
+      if (enabled) this._invalidateRefresh(layerId, entry, 'location-switch');
+      return this._runLocationHook(layerId, 'onLocationLeave', { from, to, signal, enabled });
+    }));
+  }
+
+  /**
+   * Finish a location switch once the camera has arrived. Every enabled layer
+   * that defines `onLocationArrive` loads the new place, and a layer that sets
+   * `refreshOnLocationArrive` also gets one fresh update.
+   * @param {{from?: ?object, to?: ?object, signal?: ?AbortSignal}} [change]
+   * @returns {Promise<void>}
+   */
+  async completeLocationSwitch({ from = null, to = null, signal = null } = {}) {
+    await Promise.all([...this.layers].map(async ([layerId, entry]) => {
+      if (
+        !entry.initialized
+        || entry.destroying
+        || !entry.enabled
+        || entry.lifecycleState !== 'enabled'
+        || signal?.aborted
+      ) return;
+      const { module } = entry;
+      if (typeof module.onLocationArrive === 'function') {
+        await this._runLocationHook(layerId, 'onLocationArrive', { from, to, signal });
+      }
+      if (module.refreshOnLocationArrive === true && !signal?.aborted) {
+        await this.refreshLayer(layerId, { signal });
+      }
+    }));
+  }
+
+  /**
+   * A place was selected (a pill, search result or map click), in this region
+   * or another. Every initialized layer that defines `onLocationSelect` hears
+   * it, on or off, so an area-scoped layer can re-centre what it loads; a
+   * layer that is off only remembers the point. `arrival` settles when a
+   * camera flight to the place lands (null when the camera is already there).
+   * Visibility is never touched and nothing is persisted.
+   * @param {{point?: ?{lat:number, lon:number}, arrival?: ?Promise<unknown>, details?: ?object}} [selection]
+   * @returns {Promise<void>}
+   */
+  async selectLocationArea({ point = null, arrival = null, details = null } = {}) {
+    await Promise.all([...this.layers].map(([layerId, entry]) => {
+      if (!entry.initialized || entry.destroying || typeof entry.module.onLocationSelect !== 'function') return null;
+      const enabled = this._effectiveEnabled(entry);
+      return this._runLocationHook(layerId, 'onLocationSelect', { point, arrival, details, enabled });
+    }));
+  }
+
+  /** Run one layer's location hook; a failing layer never stops the others. */
+  async _runLocationHook(layerId, hook, change) {
+    try {
+      await this.layers.get(layerId)?.module[hook](change);
+    } catch (error) {
+      if (error?.name !== 'AbortError') console.warn(`[Data] ${layerId} ${hook} error:`, error);
+    }
+  }
+
+  /**
    * Refresh one enabled tracked layer at the destination, then let that layer
    * decide whether the requested ID was present in an authoritative snapshot.
    * Lifecycle success alone is deliberately insufficient for this decision.

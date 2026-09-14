@@ -193,7 +193,7 @@ Choose a first-run mission, or try these in order. The GIFs show Google Photorea
 
 ![Moving from a full airport overhead down to close taxiway inspection with 3D flight models](docs/media/start-here/airport-ground-traffic-google-3d.gif)
 
-4. **Look through a public camera.** Turn on **CCTV** anywhere in Canada — 4,767 public cameras load out of the box, no setup (Austin, California and London come back with `CCTV_COUNTRIES=CA,US` or `CA,GB`). The feeds aren't webcam embeds — they project *into* the 3D city. Cycle coverage to **VIEWSHED** and every camera draws its estimated coverage volume — where it reaches, and where it goes blind.
+4. **Look through a public camera.** Pick a city in Canada or the US and turn on **CCTV** — the nearest public cameras load, up to 2,500 within 50 km of the place you picked. Pick a city outside that area and the cameras move with you, even within one state. Austin and London add their live city packs when you select them (California's Caltrans pack also needs `CCTV_CALTRANS_DISTRICTS`). The feeds aren't webcam embeds — they project *into* the 3D city. Cycle coverage to **VIEWSHED** and every camera draws its estimated coverage volume — where it reaches, and where it goes blind.
 
 ![Diving into an Austin intersection with a live public camera projected into the 3D scene](docs/media/03-austin-cctv.gif)
 
@@ -279,8 +279,8 @@ Thirteen layers and map sources. **Eleven have a keyless path.** Some offer addi
 | 🚢 **Live Vessels** | Thousands of ships worldwide | AISStream | 🟡 |
 | 🛰️ **Satellites** | 838-object catalog, color-coded by class with a live legend — the **DENSE** chip drops in the whole Starlink shell | CelesTrak | 🟢 |
 | 🌍 **Earthquakes** | Global seismic activity, last 24h | USGS | 🟢 |
-| 🚗 **Traffic** | Simulated vehicles on OSM roads. With TomTom, live flow speeds drive the simulation and congestion colors below ~8 km; individual vehicle positions are not live observations | TomTom + OSM | 🟢 simulation · 🟡 live flow speeds |
-| 📹 **CCTV Mesh** | 4,767 Canadian public cameras by default (Ontario 511 · DriveBC · Alberta 511 · Québec 511 · Atlantic provinces and more; see [CAMERA_PACK.md](tools/camera-pack/CAMERA_PACK.md)), capped at 2,500 per province/state with a panel toggle, projected *into* the 3D space. Austin · California (Caltrans) · London (TfL) packs are one setting away. Positions are published; poses are estimated priors **you calibrate by dragging a gizmo on the camera itself** | City APIs | 🟢 |
+| 🚗 **Traffic** | Simulated vehicles on OSM roads, with road geometry from OpenFreeMap vector tiles (Overpass is the fallback). With TomTom, live flow speeds drive the simulation and congestion colors below ~8 km; individual vehicle positions are not live observations | TomTom + OpenFreeMap / OSM | 🟢 simulation · 🟡 live flow speeds |
+| 📹 **CCTV Mesh** | Public cameras from the Canadian pack (4,767: Ontario 511 · DriveBC · Alberta 511 · Québec 511 · Atlantic provinces and more) and the US state DOT pack (listed via Road511); see [CAMERA_PACK.md](tools/camera-pack/CAMERA_PACK.md). Every camera is stored, but only the nearest 2,500 within 50 km of the place you select load, projected *into* the 3D space. Austin · California (Caltrans) · London (TfL) live packs download only when their area is selected. US cameras that publish no image are looked up through Road511 only when you open one. Positions are published; poses are estimated priors **you calibrate by dragging a gizmo on the camera itself** | City APIs + state DOTs | 🟢 (🔴 Road511 key for US cameras with no public image) |
 | 📻 **Radio** | Geolocated world radio with an **analog tuner** — drag the needle across up to 750 stations and the globe flies to each broadcaster | Radio Browser / broadcasters | 🟢 |
 | 🚲 **Bikeshare** | Live station availability | GBFS | 🟢 |
 | 🔥 **Active Fires** | Live NASA FIRMS detections, trailing 24h | NASA FIRMS | 🟡 |
@@ -302,6 +302,8 @@ Thirteen layers and map sources. **Eleven have a keyless path.** Some offer addi
 **Also on the globe:** neighborhood overlays · an optional cockpit WX cloud effect. **Bundled static infrastructure:** Datacenters (4,351), Dams (704), and Submarine Cables (712).
 
 ![Diving into the Bahamas and revealing labeled submarine cable routes beneath the globe](docs/media/09-undersea-cables.gif)
+
+**Switching places.** Pick a spot in another province, state or territory (or another country) by search, a LOCATION or site pill, or by scrolling there and clicking the map, and the data layers move with you. The old place's feeds stop and the memory held for it is released: layer data in the browser, its 3D map tiles once the new view has loaded, and the local server's in-memory caches. The on-disk cache stays, so going back is still fast. The same layers stay on and load at the new place. Moving around inside one province or state changes nothing. Worldwide feeds (flights, ships, satellites, earthquakes, fires) keep their global data and only drop what was built for the old view.
 
 **Missing a layer you want?** Open an issue — or add it and send the PR.
 
@@ -456,7 +458,7 @@ How the globe handles live data:
 - **Honest satellites.** SGP4 propagation with orbit rings that stay locked to their satellites via GMST realignment — no drift, no per-second flicker.
 - **Sits on the real ground.** Entity heights run through a real vertical datum — geoid-aware, sampled against the *rendered* terrain mesh — so aircraft park on aprons and cameras stand on street corners instead of floating.
 - **Caching and request budgets.** An OpenSky credit governor, a TomTom daily tile budget, and disk-cached TLEs reduce repeated requests. These controls do not replace provider quotas or billing controls.
-- **Server-side credentials.** Every API that touches a private key (OpenAI, AISStream, OpenSky OAuth, camera frames) is brokered through a hardened server-side proxy with SSRF protection, response caps, and sanitized errors. The only keys the browser sees are Google Maps and Cesium ion (restrict both at the provider).
+- **Server-side credentials.** Every API that touches a private key (OpenAI, AISStream, OpenSky OAuth, Road511 camera lookups, camera frames) is brokered through a hardened server-side proxy with SSRF protection, response caps, and sanitized errors. The only keys the browser sees are Google Maps and Cesium ion (restrict both at the provider).
 - **No framework.** Vanilla JavaScript, **CesiumJS**, and **Vite** — plus **Google Photorealistic 3D Tiles** for the planet and the **OpenAI Realtime API** for voice. Fast to read, fast to hack on.
 
 ```
@@ -509,8 +511,9 @@ Six keys. Four have a free tier, and the two 🔴 ones are metered:
 |---|-----|-----|--------|
 | 🟡 | **OpenSky** | ✈️ More flight-polling credits (🟢 anonymous works without) | [opensky-network.org](https://opensky-network.org) |
 | 🟡 | **Launch Library 2** | 🚀 Higher space-missions request allowance (🟢 works without) | [thespacedevs.com](https://thespacedevs.com) |
+| 🔴 | **Road511** | 📹 Images for US traffic cameras that publish none. The server looks one up only when you open that camera, caches the answer for 24 h and spaces calls at least 1 s apart. The key stays server-side (🟢 the cameras still appear without it) | [road511.com](https://road511.com) — the free trial allows 60 requests/min and 1,000/day |
 
-Add these if you need higher polling allowances.
+Add these if you need higher polling allowances, or images for US cameras that publish none.
 
 `npm run doctor` reports Node/npm readiness, the primary provider routes, and
 where each configured provider was found without printing credential values.

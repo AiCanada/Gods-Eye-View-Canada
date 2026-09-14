@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  locationRegionKey,
   normalizeRegionalArticles,
   normalizeRegionalPlace,
   normalizeRegionalWeather,
@@ -13,9 +14,21 @@ test('normalizes a regional place with stable locality fallback', () => {
     town: 'Davis', state: 'California', country: 'United States', country_code: 'us',
   } }), {
     label: 'Davis, California', locality: 'Davis', region: 'California',
-    country: 'United States', countryCode: 'US',
+    country: 'United States', countryCode: 'US', regionCode: null,
   });
   assert.equal(normalizeRegionalPlace({ address: {} }), null);
+});
+
+test('a place resolves to its province, state or territory, else its country', () => {
+  const place = (address) => normalizeRegionalPlace({ address });
+  const toronto = place({ city: 'Toronto', state: 'Ontario', 'ISO3166-2-lvl4': 'CA-ON', country: 'Canada', country_code: 'ca' });
+  assert.equal(toronto.regionCode, 'CA-ON');
+  assert.equal(locationRegionKey(toronto), 'CA-ON');
+  assert.equal(locationRegionKey(place({ town: 'Davis', 'ISO3166-2-lvl4': 'us-ca', country: 'United States', country_code: 'us' })), 'US-CA');
+  assert.equal(locationRegionKey(place({ city: 'Sydney', 'ISO3166-2-lvl4': 'AU-NSW', country: 'Australia', country_code: 'au' })), 'AU-NSW');
+  assert.equal(locationRegionKey(place({ city: 'Monaco', country: 'Monaco', country_code: 'mc' })), 'MC', 'no subdivision: the country');
+  assert.equal(locationRegionKey(place({ city: 'Paris', 'ISO3166-2-lvl4': '<b>', country: 'France', country_code: 'fr' })), 'FR', 'a malformed code is ignored');
+  assert.equal(locationRegionKey(null), '');
 });
 
 test('normalizes, deduplicates, and rejects unsafe regional-news rows', () => {

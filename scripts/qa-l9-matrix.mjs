@@ -896,25 +896,47 @@ check({
   },
 });
 
+// /api/cctv/sources lists one selected area (at most 2,500 cameras within
+// 50 km of lat/lon); without a point it lists nothing. A live pack still
+// downloading for the area (Austin open data) is named in area.pending, and the
+// client asks once more — so does this check.
+async function cctvAreaSources(lat, lon) {
+  const path = `/api/cctv/sources?lat=${lat}&lon=${lon}&radiusKm=50`;
+  let r = await jget(path, { timeoutMs: 60000 });
+  if (r.ok && r.json?.area?.pending?.length) {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    r = await jget(path, { timeoutMs: 60000 });
+  }
+  return r;
+}
+
 check({
-  id: 'B12', group: 'B', desc: 'CCTV source packs registered (Austin + at least one more city)',
+  id: 'B12', group: 'B', desc: 'CCTV area sources load per selected place (Austin, Toronto), capped at 2,500, none without a point',
   run: async () => {
-    const r = await jget('/api/cctv/sources', { timeoutMs: 60000 });
-    if (!r.ok) return fail(`HTTP ${r.status}`);
-    const src = r.json?.sources || [];
-    const cities = [...new Set(src.map((s) => s.cityId || s.city))];
-    const austin = src.some((s) => /austin/i.test(s.cityId || s.city || ''));
-    return src.length > 0 && austin && cities.length >= 2
-      ? pass(`${src.length} cameras across ${cities.length} packs: ${cities.slice(0, 6).join(', ')}`)
-      : fail(`${src.length} cameras, austin=${austin}, packs=${cities.join(',')}`);
+    const [austin, toronto, noPoint] = [
+      await cctvAreaSources(30.2672, -97.7431),
+      await cctvAreaSources(43.6532, -79.3832),
+      await jget('/api/cctv/sources', { timeoutMs: 60000 }),
+    ];
+    if (!austin.ok || !toronto.ok || !noPoint.ok) return fail(`HTTP austin=${austin.status} toronto=${toronto.status} no-point=${noPoint.status}`);
+    const a = austin.json?.sources || [];
+    const t = toronto.json?.sources || [];
+    const cities = [...new Set([...a, ...t].map((s) => s.cityId || s.city))];
+    const austinPack = a.some((s) => /austin/i.test(s.cityId || s.city || ''));
+    const withinCap = a.length <= 2500 && t.length <= 2500;
+    const emptyWithoutPoint = (noPoint.json?.sources || []).length === 0 && noPoint.json?.area?.pointRequired === true;
+    return a.length + t.length > 0 && withinCap && emptyWithoutPoint && cities.length >= 2
+      ? pass(`austin=${a.length} (open data: ${austinPack}) toronto=${t.length} across ${cities.length} packs: ${cities.slice(0, 6).join(', ')}`)
+      : fail(`austin=${a.length} toronto=${t.length} cap-ok=${withinCap} no-point-empty=${emptyWithoutPoint} packs=${cities.join(',')}`);
   },
 });
 
 check({
   id: 'B13', group: 'B', desc: 'CCTV frame proxy returns real image bytes',
   run: async () => {
-    const list = await jget('/api/cctv/sources', { timeoutMs: 60000 });
-    const first = (list.json?.sources || [])[0];
+    const areas = [await cctvAreaSources(43.6532, -79.3832), await cctvAreaSources(30.2672, -97.7431)];
+    const sampled = areas.flatMap((r) => r.json?.sources || []);
+    const first = sampled.find((s) => s.feedType === 'image' && !s.browserImageUrl) || sampled[0];
     if (!first) return fail('no CCTV sources to sample');
     const res = await fetch(`${APP_URL}/api/cctv/frame/${encodeURIComponent(first.id)}`, { signal: AbortSignal.timeout(45000) });
     const ct = res.headers.get('content-type') || '';

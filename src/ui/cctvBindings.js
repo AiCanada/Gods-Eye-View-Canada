@@ -123,15 +123,6 @@ export function _initCctvPanel() {
     this.actions.setParams({ autoHop: !current }, { origin: 'user' });
   });
 
-  this.listen(this._cctvRegionCapBtn, 'click', () => {
-    const cap = this._cctvState?.regionCap;
-    if (cap?.reloading) return;
-    this.actions.setParams(
-      { regionCap: cap?.enabled === false },
-      { origin: 'user' },
-    );
-  });
-
   this.listen(this._cctvProjectionBtn, 'click', () => {
     const current = this._cctvState?.showProjection !== false;
     this.actions.setParams({ showProjection: !current }, { origin: 'user' });

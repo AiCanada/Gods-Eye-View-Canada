@@ -455,7 +455,8 @@ export function cachedMeshFloor(lat, lon) {
   return h != null ? h : null;
 }
 
-/** Test hook: clears mesh cells (never called at runtime — cells are valid all session). */
+/** Test hook: clears every mesh cell. At runtime cells stay latched until a
+ *  location switch prunes the far ones (`pruneGroundFloorOutside`). */
 export function _clearMeshFloorCellsForTest() {
   _meshCells.clear();
 }
@@ -577,4 +578,55 @@ export function warmGroundFloor(points) {
     return;
   }
   _resolveFloorCells(cells);
+}
+
+// --- Location switch -------------------------------------------------------
+// Selecting a place in another region releases what this module holds for
+// the place being left. Mesh cells are a latch sampled near the viewer, so a
+// cell far from the destination will not be read again until the user flies
+// back — and re-sampling it then is cheap. Cells near the destination stay:
+// re-sampling those needs tilesLoaded and a low camera, and until it lands
+// floors drop back to the bare-earth DEM (~17 m low under photoreal).
+
+const EARTH_RADIUS_KM = 6371;
+
+/** Great-circle distance in km. */
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const d2r = Math.PI / 180;
+  const dLat = (lat2 - lat1) * d2r;
+  const dLon = (lon2 - lon1) * d2r;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * d2r) * Math.cos(lat2 * d2r) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/**
+ * Location switch: deletes mesh-floor cells farther than `radiusKm` from
+ * `center` and drops queued warm cells outside that radius, so the batch that
+ * follows the in-flight one serves the destination instead of the old view.
+ * Queued cells inside the radius stay queued. The in-flight batch itself is
+ * trimmed by terrainHeights' switch generation, not here. A consumer that
+ * still holds a dropped cell re-queues it on its next poll. Idempotent; an
+ * invalid centre or radius changes nothing.
+ * @param {{lat: number, lon: number}} center - The place being switched to.
+ * @param {number} radiusKm - Keep radius.
+ * @returns {{meshCells: number, pendingCells: number}} Entries removed.
+ */
+export function pruneGroundFloorOutside(center, radiusKm) {
+  const out = { meshCells: 0, pendingCells: 0 };
+  const lat = center?.lat;
+  const lon = center?.lon;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(radiusKm) || radiusKm < 0) return out;
+  for (const key of _meshCells.keys()) {
+    const comma = key.indexOf(',');
+    if (haversineKm(lat, lon, Number(key.slice(0, comma)), Number(key.slice(comma + 1))) <= radiusKm) continue;
+    _meshCells.delete(key);
+    out.meshCells += 1;
+  }
+  for (const [key, cell] of _pendingFloorCells) {
+    if (haversineKm(lat, lon, cell.lat, cell.lon) <= radiusKm) continue;
+    _pendingFloorCells.delete(key);
+    out.pendingCells += 1;
+  }
+  return out;
 }

@@ -12,6 +12,7 @@
 // rendered detection costs at most one DEM lookup EVER — and detections
 // sharing a ~111 m coarse cell share that lookup.
 import { cachedGroundFloor, resolveGroundFloorCells } from './groundFloor.js';
+import { terrainHeightsSwitchGeneration, terrainPointSurvivesSwitch } from './terrainHeights.js';
 
 /** @constant {number} Metres above the resolved floor for a fire anchor.
  *  The DEM is bare earth while the fire glow represents a 375 m VIIRS pixel;
@@ -37,7 +38,10 @@ export function fireAnchorHeight(lat, lon) {
  *  sequentially so overlapping renders can't stack concurrent requests on
  *  the single dev-server proxy (same courtesy as terrainHeights' sequential
  *  chunking). Each queued batch re-filters against the warm cache when it
- *  actually runs, so cells resolved by an earlier batch are never refetched. */
+ *  actually runs, so cells resolved by an earlier batch are never refetched.
+ *  A batch queued before a location switch drops its points outside the
+ *  destination's keep area when it runs (terrainHeights' switch generation),
+ *  so the old view's fires never delay the new view's anchors. */
 let _chain = null;
 
 /**
@@ -53,8 +57,9 @@ let _chain = null;
 export function warmFireAnchorFloors(points) {
   const cold = collectCold(points);
   if (!cold.length) return Promise.resolve(false);
+  const generation = terrainHeightsSwitchGeneration();
   const prev = _chain;
-  const run = prev ? prev.then(() => resolveBatch(cold)) : resolveBatch(cold);
+  const run = prev ? prev.then(() => resolveBatch(cold, generation)) : resolveBatch(cold, generation);
   _chain = run.then(() => true, () => false);
   return run;
 }
@@ -71,9 +76,14 @@ function collectCold(points) {
   return cold;
 }
 
-/** Resolves one batch (re-filtered at run time) and reports whether it warmed anything. */
-async function resolveBatch(points) {
-  const cold = points.filter((p) => cachedGroundFloor(p.lat, p.lon) == null);
+/**
+ * Resolves one batch (re-filtered at run time) and reports whether it warmed anything.
+ * @param {Array<{lat: number, lon: number}>} points
+ * @param {number} generation - Location-switch generation the batch was queued in.
+ */
+async function resolveBatch(points, generation) {
+  const cold = points.filter((p) => cachedGroundFloor(p.lat, p.lon) == null
+    && terrainPointSurvivesSwitch(p.lat, p.lon, generation));
   if (!cold.length) return false;
   try {
     await resolveGroundFloorCells(cold);

@@ -1,0 +1,620 @@
+Road511 US camera pack: build report
+====================================
+Input:   us_public_webcams.tsv (listing updated up to 2026-09-14T17:44:14Z)
+Output:  config/cctv_sources.us.json (10.8 MB, 1.4 MB gzipped)
+Built by tools/camera-pack/build-road511-us.mjs with no network requests.
+Offline cameras are kept. School cameras are removed. The server loads at most
+2,500 cameras, the nearest within 50 km of the selected place.
+
+Headline
+--------
+TSV rows                                    48,508
+  identical duplicate rows                     111  dropped
+  conflicting duplicate ids                      0  first row kept
+  rows with no camera id                         0  dropped
+  coordinates fixed                              5
+  coordinates rejected                           6
+  school cameras removed                        35
+  switched off in the listing                    0  kept
+Cameras written                             48,697  162 multi-view rows split into views
+  image (public still)                      38,143
+  none (Road511 lookup on open)             10,554
+    no link at all                           9,088
+    stream only (HLS or video)               1,465  videoUrl kept, never served
+    link is not a still                          1  web page or private address
+  with an estimated heading                 14,683
+  names rebuilt from location/details/road   7,579
+Providers                                       59
+Duplicate pack ids after view split              0  dropped
+
+Cameras per state
+-----------------
+State  Cameras  Image  Lookup  Heading  Renamed
+FL       4,956  4,956       0        0        0
+GA       4,313  4,313       0    4,054        0
+CA       3,588  3,588       0    3,169       28
+TX       3,491      0   3,491      341    2,442
+NY       2,924  2,924       0    1,335    1,103
+UT       2,075  2,075       0    1,360    2,075
+VA       1,755  1,755       0        0    1,332
+WA       1,705  1,705       0      508        0
+PA       1,541  1,541       0        0        0
+MN       1,526      0   1,526        0        0
+IL       1,361  1,361       0        0        0
+NC       1,182  1,136      46    1,077       58
+OH       1,119  1,119       0        0        0
+OR       1,105  1,105       0        0        7
+CO       1,014  1,014       0        0        0
+OK         898      0     898      692        0
+MO         875    321     554        0        0
+IA         851    851       0        0        0
+MI         820      1     819        0        0
+NJ         808      0     808        0        0
+SC         774    774       0        9        0
+IN         748    748       0        0        7
+NE         690    690       0      503        5
+TN         668    668       0        0        0
+ID         664    664       0      265        8
+NV         661    661       0        0        0
+AZ         644    644       0        0        0
+KS         608    608       0        0        0
+AR         553    553       0      553        0
+MD         551      0     551        0      306
+WI         455    455       0        0        0
+MS         454      0     454        0        0
+LA         422    422       0       10        4
+KY         362    361       1      211      204
+DE         360      0     360        0        0
+CT         347      0     347        0        0
+MA         314    314       0        0        0
+WY         292    219      73       65        0
+ME         214      0     214      214        0
+NH         190      0     190      190        0
+ND         189    189       0        0        0
+NM         183    183       0        0        0
+AK         147    147       0       38        0
+WV         133      0     133        0        0
+VT          89      0      89       89        0
+SD          40     40       0        0        0
+MT          38     38       0        0        0
+
+Cameras per provider
+--------------------
+Key                Provider                      Cameras  Image  Lookup  States
+fl511              FL511                           4,956  4,956       0  FL
+ga511              511 Georgia                     4,313  4,313       0  GA
+caltrans           Caltrans                        3,588  3,588       0  CA
+drivetexas         DriveTexas                      3,491      0   3,491  TX
+ny511              511NY                           2,924  2,924       0  NY
+udot               UDOT Traffic                    2,075  2,075       0  UT
+vdot               VDOT 511                        1,755  1,755       0  VA
+wsdot              WSDOT                           1,634  1,634       0  WA
+pa511              511PA                           1,541  1,541       0  PA
+mn511              511 Minnesota                   1,526      0   1,526  MN
+drivenc            DriveNC                         1,182  1,136      46  NC
+tripcheck          TripCheck                       1,170  1,170       0  OR,WA
+ohgo               OHGO                            1,119  1,119       0  OH
+cotrip             COtrip                          1,013  1,013       0  CO
+oktraffic          OKTraffic                         898      0     898  OK
+travelmidwest      Travel Midwest                    885    885       0  IL
+iowadot            511 Iowa                          851    851       0  IA
+midrive            Mi Drive                          820      1     819  MI
+nj511              511NJ                             808      0     808  NJ
+sc511              SC511                             774    774       0  SC
+indot              TrafficWise                       754    754       0  IN,KY
+modot              MoDOT Traveler Information        710    321     389  MO
+ne511              Nebraska 511                      690    690       0  NE
+smartway           TDOT SmartWay                     668    668       0  TN
+id511              Idaho 511                         664    664       0  ID
+nvroads            NVRoads                           661    661       0  NV
+az511              AZ511                             644    644       0  AZ
+idrivearkansas     IDriveArkansas                    553    553       0  AR
+mdchart            MDOT SHA CHART                    551      0     551  MD
+lakecountypassage  Lake County PASSAGE               476    476       0  IL
+wi511              511 Wisconsin                     455    455       0  WI
+mdot_ms            MDOTtraffic                       454      0     454  MS
+la511              511 Louisiana                     422    422       0  LA
+deldot             DelDOT                            360      0     360  DE
+ctroads            CTroads                           347      0     347  CT
+kcscout            KC Scout                          347    347       0  KS
+massdot            Mass511                           314    314       0  MA
+wyoroad            WYDOT 511                         292    219      73  WY
+kdot               KanDrive                          261    261       0  KS
+trimarc            TRIMARC                           248    248       0  KY
+mainedot           New England 511                   214      0     214  ME
+nhdot              New England 511                   190      0     190  NH
+ndroads            ND Roads                          189    189       0  ND
+nmroads            NMRoads                           183    183       0  NM
+ozarkstraffic      Ozarks Traffic                    165      0     165  MO
+ak511              Alaska 511                        147    147       0  AK
+wv511              WV511                             133      0     133  WV
+lexington          Lexington traffic cameras         107    107       0  KY
+vtrans             New England 511                    89      0      89  VT
+sd511              SD511                              40     40       0  SD
+mdt                MDT Travel Info                    38     38       0  MT
+coloradosprings    Colorado Springs Traffic            1      1       0  CO
+goky               GoKY                                1      0       1  KY
+lewiscounty        Lewis County webcam                 1      1       0  WA
+nps                National Park Service webcam        1      1       0  WA
+pangborn           Pangborn Airport webcam             1      1       0  WA
+seattledot         Seattle traffic cameras             1      1       0  WA
+sunmountainlodge   Sun Mountain Lodge webcam           1      1       0  WA
+yakimaairport      Yakima Air Terminal webcam          1      1       0  WA
+
+Coordinate fixes (5)
+--------------------
+GA-cam-18120  GA  33.925580260563,84.308849594281 -> 33.925580260563,-84.308849594281  longitude sign restored
+ID-cam-765  ID  46.414993,117.001274 -> 46.414993,-117.001274  longitude sign restored
+IN-cam-22689  IN  39.429599,87.302586 -> 39.429599,-87.302586  longitude sign restored
+NY-cam-17293  NY  40.812794,73.221827 -> 40.812794,-73.221827  longitude sign restored
+VA-cam-3656  VA  38.880113,77.266727 -> 38.880113,-77.266727  longitude sign restored
+
+Coordinate rejects (6)
+----------------------
+LA-cam-381  LA  43.652677,-79.109117  1831 km from the median LA camera point (reach 800 km)  "office"
+LA-cam-378  LA  43.652678,-79.109116  1831 km from the median LA camera point (reach 800 km)  "test location"
+LA-cam-379  LA  43.652678,-79.109116  1831 km from the median LA camera point (reach 800 km)  "test location"
+NE-cam-385  NE  38,-121  1994 km from the median NE camera point (reach 800 km)  "S. Gothenburg"
+NY-cam-icdhy1zlpqf  NY  45,-50  outside the US  "KATHY ROADWAY"
+NY-cam-ointde2p2jj  NY  42,-45  outside the US  "test"
+
+Conflicting duplicate ids (0)
+-----------------------------
+
+School cameras removed (35)
+---------------------------
+us511-CO-cam-913  CO  camera_name: Quebec St MP 001.00 SB at Rock Canyon High School
+us511-CO-cam-11693  CO  camera_name: US 50 MP 277.00 EB at Pueblo Community College Fremont Campus
+us511-DE-cam-SCAM196  DE  camera_name: DE 24 @ BEACON MIDDLE SCHOOL
+us511-DE-cam-NCAM247  DE  camera_name: FOULK RD @ BRANDYWINE HS
+us511-DE-cam-KCAM185  DE  camera_name: S LITTLE CREEK RD @ E DOVER ELEM
+us511-GA-cam-16424  GA  camera_name: ALPH-0032: Webb Bridge Rd at Alpharetta HS (Alpharetta)
+us511-GA-cam-16447  GA  camera_name: ATL-0047: SR 3/Northside Pkwy at N Atlanta High School (Atlanta)
+us511-GA-cam-16827  GA  camera_name: ATL-0076: SR 3 at Atlanta Metro College (Atlanta)
+us511-GA-cam-16556  GA  camera_name: CHER-0114: SR 5 Bus at Cherokee High School (CHEROKEE)
+us511-GA-cam-17968  GA  camera_name: CLAY-272_051113: Mount Zion Pkwy at Mount Zion HS (CLAYTON)
+us511-GA-cam-17983  GA  camera_name: CLAY-900_092113: Garden Walk Blvd at Drew High School (CLAYTON)
+us511-GA-cam-18030  GA  camera_name: COBB-1323: Due West Rd at Harrison High School (COBB)
+us511-GA-cam-16209  GA  camera_name: DEK-0035: SR 12/Covington Hwy at Bethune Middle School (DEKALB)
+us511-GA-cam-12598  GA  camera_name: DEK-0451: N Druid Hills Rd NE at Briarcliff HS (DEKALB)
+us511-GA-cam-15590  GA  camera_name: GWIN-261_669: Old Peachtree Rd at Peachtree Ridge Hs
+us511-GA-cam-15721  GA  camera_name: GWIN-399_523: SR 124 at Mill Creek Hs
+us511-GA-cam-15752  GA  camera_name: GWIN-433_538: Spalding Dr at Norcross HS
+us511-GA-cam-15765  GA  camera_name: GWIN-454_768: Sardis Church Rd at Seckinger Hs
+us511-GA-cam-15780  GA  camera_name: GWIN-509_197: Steve Reynolds Blvd at Meadowcreek High Sch Dw N
+us511-GA-cam-15808  GA  camera_name: GWIN-540_198: Pleasant Hill Rd at Berkmar HS
+us511-GA-cam-15814  GA  camera_name: GWIN-546_422: W Pike St at Phoenix Hs
+us511-GA-cam-16711  GA  camera_name: HALL-0050: Spout Springs Rd at Cherokee Bluff HS (HALL)
+us511-GA-cam-12218  GA  camera_name: PAUL-0056: SR 61 at Paulding HS/Aiken Dr (PAULDING)
+us511-IA-cam-59616875  IA  camera_name: IC - I-380 @ MM 1 (Oak Hill School)
+us511-IL-cam-IL-LAKECOUNTY-369  IL  camera_name: Hart at Barrington HS (Cell)
+us511-IL-cam-IL-LAKECOUNTY-357  IL  camera_name: IL 43 at Deerfield HS
+us511-IL-cam-IL-IDOTD4-camera_335  IL  camera_name: US 6 at High School Access (#3035)
+us511-MD-cam-fb00078a0045000c004a02366d235daa  MD  camera_name: Sheriff Rd at William Paca Elementary School
+us511-MN-cam-502544  MN  camera_name: MN 120: T.H.120 NB (Century College)
+us511-MO-cam-MODOT_CAM_386  MO  camera_name: 94 @ Francis Howell HS
+us511-NY-cam-10223  NY  location: I-490 at Gates HS
+us511-NY-cam-4n0ieijedyw  NY  location: NY 32 at Elementary School Parking Lot
+us511-TX-cam-910d2df346ed49f9ab92037f  TX  camera_details: SH321 @ Dayton HS Driveway
+us511-TX-cam-324b0c28fc4c47968f871ce9  TX  camera_details: US69/287 @ Lumberton Middle
+us511-TX-cam-dd3f5f7e3c0a40a6a3ae74f4  TX  camera_details: US69/287 @ Lumberton HS N
+
+School words kept as road names (355)
+-------------------------------------
+us511-AK-cam-35  AK  camera_name: University Avenue @ Chena River Bridge (#28)
+us511-AR-cam-23  AR  camera_name: I-30 at University Ave.
+us511-AR-cam-370  AR  camera_name: I-630 @ University Ave
+us511-AR-cam-157  AR  camera_name: US 49 at Brookland School Rd.
+us511-AR-cam-158  AR  camera_name: US 49 at Brookland School Rd.
+us511-AZ-cam-792  AZ  camera_name: I-10 @University Dr
+us511-AZ-cam-1255  AZ  camera_name: I-10 @W of University Dr
+us511-AZ-cam-846  AZ  camera_name: I-17 @S of Indian School
+us511-AZ-cam-935  AZ  camera_name: SR-101 @Indian School Rd
+us511-AZ-cam-993  AZ  camera_name: SR-101 @Indian School Rd
+us511-AZ-cam-994  AZ  camera_name: SR-101 @S of Indian School
+us511-AZ-cam-1000  AZ  camera_name: SR-101 @University Dr
+us511-AZ-cam-1013  AZ  camera_name: SR-143 @N of University Dr
+us511-AZ-cam-1012  AZ  camera_name: SR-143 @University Dr
+us511-AZ-cam-1028  AZ  camera_name: SR-202 @Alma School Rd
+us511-AZ-cam-1070  AZ  camera_name: SR-202 @Alma School Rd
+us511-AZ-cam-1048  AZ  camera_name: SR-202 @University Dr
+us511-AZ-cam-1106  AZ  camera_name: SR-303 @Indian School Rd
+us511-AZ-cam-910  AZ  camera_name: US-60 @E of Alma School Rd
+us511-CA-cam-8-1425  CA  camera_name: (488) Campus Ave.
+us511-CA-cam-11-68  CA  camera_name: (C068) I-805 Just South of University
+us511-CA-cam-11-73  CA  camera_name: (C073) I-15 : University Avenue
+us511-CA-cam-11-212  CA  camera_name: (C212) WB 8 : College B
+us511-CA-cam-11-213  CA  camera_name: (C213) WB 8 : College T
+us511-CA-cam-11-537  CA  camera_name: (C290) NB 15 : University
+us511-CA-cam-6-105  CA  camera_name: FRE-180-AT ACADEMY AVE
+us511-CA-cam-8-1401  CA  camera_name: I-10: (276) University Dr.
+us511-CA-cam-7-971  CA  camera_name: I-110 : (193) Academy Road
+us511-CA-cam-8-113  CA  camera_name: I-210 : (113) Campus
+us511-CA-cam-8-188  CA  camera_name: I-215 : (188) University Avenue
+us511-CA-cam-8-216  CA  camera_name: I-215 : (216) S of University Pkwy
+us511-CA-cam-8-223  CA  camera_name: I-215 : (223) Onramp University Parkway
+us511-CA-cam-8-224  CA  camera_name: I-215 : (224) 1 Mi N/O University Parkway
+us511-CA-cam-12-109  CA  camera_name: I-5 : (109) State College Boulevard
+us511-CA-cam-12-389  CA  camera_name: I-5 : (526) State College & City Drive
+us511-CA-cam-12-390  CA  camera_name: I-5 : (527) State College & Anaheim
+us511-CA-cam-12-391  CA  camera_name: I-5 : (528) State College & Orange Center
+us511-CA-cam-7-1197  CA  camera_name: I-5 : (971) Gorman School Dr
+us511-CA-cam-12-350  CA  camera_name: SR-73 : (350) South of University Drive Undercross
+us511-CA-cam-12-37  CA  camera_name: SR-73 : (37) North of Campus Drive Overcross
+us511-CA-cam-12-364  CA  camera_name: SR-90 : (512) State College SE Corner
+us511-CA-cam-12-136  CA  camera_name: SR-91 : (136) State College Boulevard
+us511-CA-cam-12-466  CA  camera_name: SR-91 : (571) State College Blvd
+us511-CA-cam-12-475  CA  camera_name: SR-91 : (572) State College
+us511-CA-cam-12-507  CA  camera_name: SR-91 : (711) State College Blvd
+us511-CA-cam-4-226  CA  camera_name: T253E -- SR-123 : University Avenue - Looking East
+us511-CA-cam-4-225  CA  camera_name: T253N -- SR-123 : University Avenue - Looking North
+us511-CA-cam-4-228  CA  camera_name: T253S -- SR-123 : University Avenue - Looking South
+us511-CA-cam-4-227  CA  camera_name: T253W -- SR-123 : University Avenue - Looking West
+us511-CA-cam-4-212  CA  camera_name: TV141 -- US-101 : College Avenue
+us511-CA-cam-4-384  CA  camera_name: TV436 -- US-101 : AT JSO UNIVERSITY AV
+us511-CA-cam-4-103  CA  camera_name: TV514 -- I-80 : University Avenue
+us511-CA-cam-4-155  CA  camera_name: TV949 -- SR-84 : University Avenue
+us511-CA-cam-4-104  CA  camera_name: TVH05 -- I-80 : University Avenue Onramp
+us511-CA-cam-7-713  CA  camera_name: US-101 : (713) Conejo School
+us511-CO-cam-11393  CO  camera_name: C-470 MP 020.35 WB : 0.7 miles W of S University Blvd/CO 177
+us511-CO-cam-11409  CO  camera_name: C-470 MP 020.75 EB : 0.4 miles W of S University Blvd/CO 177
+us511-CO-cam-11861  CO  camera_name: C-470 MP 021.10 EB at S University Blvd/CO 177
+us511-CO-cam-11792  CO  camera_name: C-470 MP 021.65 WB : 0.6 miles E of S University Blvd/CO 177
+us511-CO-cam-11369  CO  camera_name: CO 115 MP 043.85 SB at S Academy Blvd in Fort Carson
+us511-CO-cam-11494  CO  road: CO 177/University Boulevard
+us511-CO-cam-11495  CO  road: CO 177/University Boulevard
+us511-CO-cam-11496  CO  road: CO 177/University Boulevard
+us511-CO-cam-11497  CO  road: CO 177/University Boulevard
+us511-CO-cam-11931  CO  road: CO 177/University Boulevard
+us511-CO-cam-11932  CO  road: CO 177/University Boulevard
+us511-CO-cam-11950  CO  road: CO 177/University Boulevard
+us511-CO-cam-11969  CO  camera_name: CO-88 MP 011.55 EB at S University Blvd
+us511-CO-cam-12072  CO  camera_name: I-25 MP 135.30 NB at S Academy Blvd in Fountain
+us511-CO-cam-11890  CO  camera_name: I-25 MP 150.65 NB : 0.4 miles N of N Academy Blvd
+us511-CO-cam-11847  CO  camera_name: I-25 MP 204.95 NB : 0.1 miles S of S University Blvd
+us511-CO-cam-11390  CO  camera_name: I-25 MP 205.40 SB : 0.4 miles N of S University Blvd
+us511-CO-cam-928  CO  camera_name: Quebec St MP 002.00 NB at Lincoln Ave / University Ave
+us511-CO-cam-11991  CO  camera_name: US 285 MP 261.75 NB at S University Blvd/CO 177
+us511-CO-cam-912  CO  camera_name: University Blvd MP 001.00 NB at Wildcat Reserve Pkwy
+us511-CO-cam-910  CO  camera_name: University Blvd MP 002.00 NB at Highlands Ranch Pkwy / S Colorado Blvd
+us511-CO-cam-938  CO  camera_name: University Blvd MP 003.00 NB at Dad Clark Dr
+us511-DE-cam-NCAM163  DE  camera_name: DE 1 @ NORTH OF SCHOOL BELL BR
+us511-DE-cam-KCAM192  DE  camera_name: DE 15 (MCKEE RD) @ COLLEGE RD
+us511-DE-cam-NCAM070  DE  camera_name: DE 2 @ S COLLEGE AVE
+us511-DE-cam-NCAM069  DE  camera_name: DE 273 @ LIBRARY AVE
+us511-FL-cam-1557  FL  camera_name: 3068_I95_346.5_N University
+us511-GA-cam-16037  GA  camera_name: ALPH-0002: SR 9/N Main St at Academy St/Milton Ave (Alpharetta)
+us511-GA-cam-16423  GA  camera_name: ALPH-0029: Academy St at Park Plaza (Alpharetta)
+us511-GA-cam-16429  GA  camera_name: ALPH-0048: Academy St at Haynes Bridge Rd (Alpharetta)
+us511-GA-cam-16075  GA  camera_name: ATL-0080: SR 3/Metropolitan Pkwy at University Ave (Atlanta)
+us511-GA-cam-16873  GA  camera_name: BART-0009: SR 20 at Highlands College Blvd (BARTOW)
+us511-GA-cam-17863  GA  camera_name: CLAY-074_071063: Main St at College St (CLAYTON)
+us511-GA-cam-17944  GA  camera_name: CLAY-215_112013: SR 54 at SR 160/Thurman Rd/College St (CLAYTON)
+us511-GA-cam-17957  GA  camera_name: CLAY-238_113063: College St at North Ave (CLAYTON)
+us511-GA-cam-17970  GA  camera_name: CLAY-600_112083: SR 54 at South Of College St (CLAYTON)
+us511-GA-cam-15185  GA  camera_name: COBB-1215: Frey Rd at Campus Loop Rd (COBB)
+us511-GA-cam-18007  GA  camera_name: COFF-0009: SR 31/Madison Ave at College Park Dr (COFFEE)
+us511-GA-cam-16188  GA  camera_name: COFF-0010: SR 32 WB at College Ave (COFFEE)
+us511-GA-cam-16595  GA  camera_name: DEK-0162: SR 10/E College Ave at E Trinity Pl/Candler (DEKALB)
+us511-GA-cam-16969  GA  camera_name: DEK-0163: SR 10/E College Ave at McDonough St (DEKALB)
+us511-GA-cam-15953  GA  camera_name: DEK-0165: SR 10/W College Ave at Atlanta Ave (DEKALB)
+us511-GA-cam-12014  GA  camera_name: DEK-0516: Chamblee Tucker Rd at Mercer University Rd (DEKALB)
+us511-GA-cam-12037  GA  camera_name: DEK-0680: Henderson Mill Rd at Mercer University Dr (DEKALB)
+us511-GA-cam-18096  GA  camera_name: DUN-0121: Perimeter Center Pkwy at Campus Way (Dunwoody)
+us511-GA-cam-15334  GA  camera_name: GWIN-001_062: US 29 at Bethesda School Rd
+us511-GA-cam-15713  GA  camera_name: GWIN-391_284: SR 20 at Taylor School Rd
+us511-GA-cam-15796  GA  camera_name: GWIN-527_084: Jimmy Carter Blvd at Rockbridge School Rd
+us511-GA-cam-15024  GA  camera_name: PAUL-0103: SR 6 at Academy Dr (PAULDING)
+us511-IA-cam-59616980  IA  camera_name: AM - US 30 @ MM 146.7 (W of University Blvd)
+us511-IA-cam-59617080  IA  camera_name: AM - US 30 @ MM 147 (University Blvd)
+us511-IA-cam-59616880  IA  camera_name: DM - I-235 @ MM 10.1 (EB Exit to University Ave)
+us511-IA-cam-59616966  IA  camera_name: DM - I-235 @ MM 10.53 (University Blvd.)
+us511-IA-cam-59617257  IA  camera_name: DM - I-35/80 @ MM 123.8 (University Ave)
+us511-IA-cam-59616474  IA  road: University Ave
+us511-IA-cam-59617049  IA  camera_name: DM - US 65 @ MM 78.2 (University Ave)
+us511-IA-cam-59616907  IA  camera_name: WL - US 63 @ MM 164.2 (Sergeant Rd @ University Ave - S) - C
+us511-IA-cam-59617112  IA  camera_name: WWD - US 30 @ MM 147 (S University Blvd)
+us511-ID-cam-498  ID  camera_name: Broadway (US-20) & University
+us511-ID-cam-41  ID  camera_name: Broadway University
+us511-ID-cam-499  ID  camera_name: Capitol & University
+us511-ID-cam-42  ID  camera_name: Capitol University
+us511-ID-cam-565  ID  camera_name: University & Joyce
+us511-ID-cam-115  ID  camera_name: University Joyce-LL
+us511-IL-cam-IL-DUPAGECOUNTY-95  IL  camera_name: College Rd / Abbeywood
+us511-IL-cam-IL-DUPAGECOUNTY-94  IL  camera_name: College Rd / Green Trails
+us511-IL-cam-IL-LAKECOUNTY-cam172_30_39_161  IL  camera_name: Dilleys at Stearns School
+us511-IL-cam-IL-LAKECOUNTY-9  IL  camera_name: Fremont Center at School (Wireless)
+us511-IL-cam-IL-LAKECOUNTY-cam172_30_39_97  IL  camera_name: Hunt Club at Stearns School
+us511-IL-cam-IL-IDOTD4-camera_221  IL  camera_name: I-74 at Bell School Rd. (Exit 71) (#4221)
+us511-IL-cam-IL-IDOTD4-camera_519  IL  camera_name: I-74 at University Ave. (#5019)
+us511-IL-cam-IL-IDOTD4-camera_22  IL  camera_name: I-74 at University St. (#4022)
+us511-IL-cam-IL-IDOTD4-camera_237  IL  camera_name: IL 17 (Third St.) at IL 94 (College Ave.) (#4237)
+us511-IL-cam-IL-LAKECOUNTY-32666  IL  camera_name: IL 59 at Washington-School
+us511-IL-cam-IL-LAKECOUNTY-361  IL  camera_name: IL 60 at Academy
+us511-IL-cam-IL-IDOTD4-camera_112  IL  camera_name: IL 8 (Washington St.) at Campus St. (#4112)
+us511-IL-cam-IL-IDOTD4-camera_113  IL  camera_name: IL 8 (Washington St.) at School St. (#4113)
+us511-IL-cam-IL-IDOTD4-camera_15  IL  camera_name: Main St. at University St. (#4015)
+us511-IL-cam-IL-DUPAGECOUNTY-96  IL  camera_name: Maple Ave / Yackley-College
+us511-IL-cam-IL-DUPAGECOUNTY-84  IL  camera_name: Park Blvd / College Rd (cell)
+us511-IL-cam-IL-LAKECOUNTY-cam172_30_39_129  IL  camera_name: Stearns School at North Creek
+us511-IL-cam-IL-IDOTD4-camera_82  IL  camera_name: US 150 (Main St.) at Academy St. (#4082)
+us511-IL-cam-IL-IDOTD4-camera_537  IL  camera_name: US 150 (Prospect) at University (#5037)
+us511-IL-cam-IL-IDOTD4-camera_546  IL  camera_name: US 150 (University) at Cunningham (#5046)
+us511-IL-cam-IL-IDOTD4-camera_547  IL  camera_name: US 150 (University) at High Cross (#5047)
+us511-IL-cam-IL-IDOTD4-camera_545  IL  camera_name: US 150 (University) at Lincoln (#5045)
+us511-IL-cam-IL-IDOTD4-camera_27  IL  camera_name: US 150 (War Dr.) at University St. (#4027)
+us511-IL-cam-IL-IDOTD4-camera_68  IL  camera_name: US 24 at College/Village Dr. (#4068)
+us511-IL-cam-IL-LAKECOUNTY-348  IL  camera_name: US 41 at Stearns School
+us511-IL-cam-IL-LAKECOUNTY-731  IL  camera_name: US 45 at Sand Lake - Stearns School
+us511-IL-cam-IL-IDOTD4-camera_132  IL  camera_name: University St. at Columbia Terrace (#4132)
+us511-IL-cam-IL-IDOTD4-camera_134  IL  camera_name: University St. at Florence Ave. (#4134)
+us511-IL-cam-IL-IDOTD4-camera_133  IL  camera_name: University St. at Forrest Hill Ave. (#4133)
+us511-IL-cam-IL-IDOTD4-camera_100  IL  camera_name: University St. at Glen Ave. (#4100)
+us511-IL-cam-IL-IDOTD4-camera_102  IL  camera_name: University St. at Pioneer Parkway (#4102)
+us511-IL-cam-IL-DUPAGECOUNTY-98  IL  camera_name: Wehrli-College / Hobson
+us511-IL-cam-IL-LAKECOUNTY-31844  IL  camera_name: Weiland at Tripp School
+us511-IL-cam-IL-DUPAGECOUNTY-161  IL  camera_name: Wood Dale / School St-Foster Ave(cell)
+us511-IN-cam-22863  IN  camera_name: 1-069-209-1-1 BROOKS SCHOOL RD
+us511-IN-cam-22616  IN  camera_name: 1-069-210-2-1 CAMPUS PKWY
+us511-IN-cam-22607  IN  camera_name: 1-069-210-2-2 CAMPUS PKWY
+us511-IN-cam-22862  IN  camera_name: 1-070-072-3-_-_-cam-1 I-70/72.3 HIGH SCHOOL RD
+us511-IN-cam-22883  IN  camera_name: 11-049-044-cam CRAWFORDSVILLE RD & HIGH SCHOOL RD
+us511-KS-cam-4069  KS  camera_name: US-69 S @ SOUTH OF COLLEGE
+us511-KS-cam-2371  KS  camera_name: US-69 SB at College Blvd
+us511-KS-cam-2372  KS  camera_name: US-69 SB past College Blvd
+us511-KY-cam-fay-137  KY  camera_name: Cooper/University
+us511-LA-cam-86  LA  camera_name: Ambassador at Verot School
+us511-LA-cam-254  LA  camera_name: Camellia at Academy - MT Vernon
+us511-LA-cam-93  LA  camera_name: College at Coolidge/Bendel
+us511-LA-cam-334  LA  camera_name: I-10 at College Dr.
+us511-LA-cam-386  LA  camera_name: I-10 at LA 182 (N University)
+us511-LA-cam-152  LA  camera_name: I-49 at N University Ave
+us511-LA-cam-100  LA  camera_name: Johnston at College
+us511-LA-cam-105  LA  camera_name: Johnston at University
+us511-LA-cam-120  LA  camera_name: Pinhook at University
+us511-LA-cam-121  LA  camera_name: Pinhook at Verot School
+us511-LA-cam-130  LA  camera_name: Thruway at Surrey/University
+us511-LA-cam-131  LA  camera_name: Thruway at Verot School
+us511-LA-cam-132  LA  camera_name: University at Cameron
+us511-LA-cam-251  LA  camera_name: University at Congress at
+us511-LA-cam-133  LA  camera_name: University at I-10 WB
+us511-LA-cam-134  LA  camera_name: University at Pont Des Mouton
+us511-LA-cam-135  LA  camera_name: University at Willow
+us511-LA-cam-136  LA  camera_name: Verot School at Camellia
+us511-MA-cam-12828  MA  camera_name: 290-MM015.8EB-Worcester-Ex 15 College Sq.
+us511-MA-cam-13038  MA  camera_name: 290-MM016.3WB-Worcester-before Ex 15 College Sq.
+us511-MA-cam-13149  MA  camera_name: I-95-SB-MM27.4-Dedham-Ex 27 University Ave
+us511-MD-cam-e000990f025f0075004d823633235daa  MD  camera_name: Georgia Ave (MD 97) at University Blvd (MD 193)
+us511-MD-cam-e4ff858700010075004d823633235daa  MD  location: I-495 & University Blvd (MD 193)
+us511-MD-cam-a000d98902650075004d823633235daa  MD  location: Colesville Rd (US 29) at University Blvd (MD 193)
+us511-MD-cam-be00f98402680075004d823633235daa  MD  location: Connecticut Ave (MD 185) at University Blvd (MD 193)
+us511-MD-cam-0c0159ba01210075004d823633235daa  MD  camera_name: University Blvd (MD 193) & Veirs Mill Rd (MD 586)
+us511-MI-cam-504  MI  camera_name: I-196 @ College Ave
+us511-MI-cam-2550  MI  camera_name: I-75 @ University
+us511-MI-cam-2551  MI  camera_name: I-75 @ University
+us511-MN-cam-503642  MN  camera_name: I-35E: I-35E NB @ University Ave
+us511-MN-cam-502415  MN  camera_name: I-35W: I-35W NB @ University Ave
+us511-MN-cam-502898  MN  camera_name: MN 280: T.H.280 SB @ University Ave
+us511-MN-cam-503886  MN  camera_name: MN 47: T.H.47 NB @ University Ave
+us511-MN-cam-503417  MN  camera_name: US 10: T.H.10 EB @ University Ave
+us511-MN-cam-502430  MN  camera_name: US 169: U.S.169 SB @ School Street NW (Elk Hills Dr)
+us511-MN-cam-502587  MN  camera_name: US 169: U.S.169 SB N of School Street NW
+us511-MO-cam-MODOT_CAM_242  MO  camera_name: 364 AT CENTRAL SCHOOL, MM 10
+us511-MO-cam-CAM141  MO  camera_name: CHESTNUT AND COLLEGE
+us511-MO-cam-he3670ca2a845  MO  camera_name: US-69 SB Past College Blvd
+us511-MS-cam-107  MS  camera_name: Jackson Ave at College Hill Rd
+us511-MS-cam-173  MS  camera_name: Lakeland Dr at University Dr
+us511-MS-cam-109  MS  camera_name: MS 7 at University Ave
+us511-MS-cam-224  MS  camera_name: US 49 at School Rd
+us511-MS-cam-195  MS  camera_name: US 51 at School St
+us511-MS-cam-108  MS  camera_name: University Ave at Lamar Blvd
+us511-NC-cam-5945  NC  road: University Pkwy
+us511-NC-cam-5943  NC  road: University Pkwy
+us511-NC-cam-5946  NC  road: University Pkwy
+us511-NC-cam-5944  NC  road: University Pkwy
+us511-NC-cam-5947  NC  road: University Pkwy
+us511-NC-cam-5949  NC  road: University Pkwy
+us511-ND-cam-13334  ND  camera_name: Fargo University Dr - West (I 94 MP 351.613) - NDDOT
+us511-ND-cam-13737  ND  camera_name: Fargo University Dr - West (I 94 MP 351.615) - NDDOT
+us511-ND-cam-14946  ND  camera_name: Fargo University Dr - West (I 94 MP 351.617) - NDDOT
+us511-NJ-cam-14170  NJ  camera_name: NJ-42 @ College Road
+us511-NJ-cam-10000130  NJ  camera_name: US-1 @ College Road Camera #1
+us511-NJ-cam-10000131  NJ  camera_name: US-1 @ College Road Camera #2
+us511-NJ-cam-10000132  NJ  camera_name: US-1 @ College Road Camera #3
+us511-NM-cam-I-25@UniversityNB  NM  camera_name: I-25 @ University NB
+us511-NM-cam-I-25@UniversitySB  NM  camera_name: I-25 @ University SB
+us511-NM-cam-I-40@University  NM  camera_name: I-40 @ University
+us511-NV-cam-6926  NV  camera_name: I-11 NB S of College
+us511-NV-cam-6925  NV  camera_name: I-11 SB College
+us511-NV-cam-7196  NV  camera_name: I580 @ College
+us511-NY-cam-4366644  NY  location: Van Wyck Expressway @ College Point Blvd.
+us511-NY-cam-13915  NY  location: Culver Rd at University Ave
+us511-NY-cam-13928  NY  location: Goodman St at University Ave
+us511-NY-cam-5038  NY  location: Main St at University / Inner Loop
+us511-NY-cam-5041  NY  location: North Chestnut St at Andrews St & University Ave
+us511-NY-cam-4616666  NY  location: Victory Blvd West of Campus Drive
+us511-OH-cam-00000000001348  OH  camera_name: (City of Columbus) College Ave at Livingston Ave
+us511-OH-cam-00000000001116  OH  camera_name: SR-128 at School Rd, 4338
+us511-OH-cam-00000000001121  OH  camera_name: SR-146 at Dillon School, D05-013
+us511-OH-cam-00000000000575  OH  camera_name: US-23 at Campus View Blvd, 2205
+us511-PA-cam-3552  PA  camera_name: ATHERTON ST @ WEST COLLEGE AVE
+us511-PA-cam-2939  PA  camera_name: I-76 @ EXIT 346B (UNIVERSITY AVE/ GRAYS FERRY)
+us511-PA-cam-3196  PA  camera_name: I-76 @ EXIT 364B (UNIVERSITY AVE)
+us511-PA-cam-28  PA  camera_name: I-80 MM 67 @ CL School Rd Clarion Co.
+us511-PA-cam-3609  PA  camera_name: I-81 @ EXIT 45 (COLLEGE ST)
+us511-PA-cam-3109  PA  camera_name: I-81 @ EXIT 67B (US 22/322 WEST LEWISTOWN/STATE COLLEGE)
+us511-PA-cam-3566  PA  camera_name: I-95 @ Exit 32/ ACADEMY RD
+us511-PA-cam-3648  PA  camera_name: I-95 @ MM 32.5 (NORTH OF ACADEMY RD)
+us511-PA-cam-3707  PA  camera_name: I-95@ MM 31.4 (SOUTH OF ACADEMY RD)
+us511-PA-cam-2891  PA  camera_name: LIBRARY RD @ SAW MILL RUN BLVD
+us511-PA-cam-4363  PA  camera_name: PA 113/BROAD ST @ SCHOOL LN
+us511-PA-cam-4365  PA  camera_name: PA 283 @ SCHOOL HOUSE RD OVERPASS
+us511-PA-cam-3704  PA  camera_name: PA 332 EB EAST OF CAMPUS DR
+us511-PA-cam-3220  PA  camera_name: PA-63 (WOODHAVEN RD) WEST OF ACADEMY RD
+us511-PA-cam-3541  PA  camera_name: US 202 N @ SCHOOL HOUSE LN
+us511-PA-cam-3039  PA  camera_name: US 322 EAST OF PA 26 (E COLLEGE AVE)
+us511-SC-cam-e7248777-d2a0-11e6-8996-0123456789ab  SC  camera_name: I-26 W @ MM 203 (College Park Rd)
+us511-SC-cam-4aac1664-690e-11e7-8996-0123456789ab  SC  camera_name: US 501 N @ Academy Dr
+us511-SC-cam-0c6a5ba7774449c7b96d9459  SC  camera_name: US 501 S @ University Blvd (Coastal Carolina)
+us511-TX-cam-40223b30f0354a58b5598d64  TX  camera_details: IH20 @ Houston School Rd
+us511-TX-cam-273a8a2eb5334610ba11a4a2  TX  camera_details: IH20 @ Campus
+us511-TX-cam-cd993acb83f04c2ca08393cb  TX  camera_details: IH30 @ University
+us511-TX-cam-f186d8f473a44617bda918d6  TX  camera_details: IH35E @ Mayhill/State School Rd.
+us511-TX-cam-8b0c1744f2da4a1db0baabc1  TX  camera_details: IH35W @ Sycamore School
+us511-TX-cam-3e5f0cc59e2b4e7e96b4c23b  TX  camera_details: LP20 @ University
+us511-TX-cam-8f58f668e6f24878ba4517bd  TX  camera_details: College Hills BLVD @ LP 306
+us511-TX-cam-7de574afda124347a60e7d99  TX  camera_details: SH6 @ University Drive
+us511-TX-cam-6210b7e9d76c47d2b67af703  TX  camera_details: IH-45 Gulf @ College-Airport
+us511-TX-cam-cb5c4fe6115b4e06a9149626  TX  camera_details: IH-69 Southwest @ University Blvd.
+us511-TX-cam-a5271f06c58f4eae9a731606  TX  camera_details: IH-69 Southwest @ University Blvd (S)
+us511-TX-cam-ffb5ef55860b41bd9b6f4758  TX  camera_details: CCTV_Loop 289 @ University
+us511-TX-cam-339b6776cd2f44878c20fb80  TX  camera_details: CCTV_Marsha Sharp Fwy @ University
+us511-TX-cam-0966ebf064c54b1ebaa2cfae  TX  camera_details: CCTV_N Loop 289 @ University
+us511-TX-cam-530c784e1ba84557a2efe13e  TX  camera_details: US75 @ University
+us511-UT-cam-103379  UT  location: 100 S @ University Ave / 700 E, STG
+us511-UT-cam-104378  UT  location: University Pkwy / 1650 N @ 450 E, PVO
+us511-UT-cam-104072  UT  location: 700 S @ University Ave / 700 E, STG
+us511-UT-cam-103301  UT  camera_name: College Dr
+us511-UT-cam-103738  UT  camera_name: College Dr
+us511-UT-cam-102720  UT  location: I-15 NB @ University Pkwy / SR-265 / MP 269.1, ORM
+us511-UT-cam-102788  UT  location: I-15 NB @ University Ave / US-189 / 1860 S / MP 263.4, PVO
+us511-UT-cam-103699  UT  location: 1300 S / SR-120 @ Technology Dr / College Ave, RFD
+us511-UT-cam-104132  UT  location: Main St / SR-130 @ University Blvd/SR-289 / Center St/SR-14, CDC
+us511-UT-cam-102603  UT  location: 500 S / University Blvd / SR-186 @ 1300 E, SLC
+us511-UT-cam-102701  UT  location: 500 S / University Blvd / SR-186 @ 1580 E / Guardsman Way, SLC
+us511-UT-cam-102794  UT  location: 400 S / University Blvd / SR-186 @ 700 E / SR-71, SLC
+us511-UT-cam-102934  UT  location: South Campus Dr / SR-282 @ 1725 E, SLC
+us511-UT-cam-104368  UT  location: 400 S / University Blvd / SR-186 @ 300 E, SLC
+us511-UT-cam-104394  UT  location: 400 S / University Blvd / SR-186 @ 900 E, SLC
+us511-UT-cam-104367  UT  location: 400 S / University Blvd / SR-186 @ 500 E, SLC
+us511-UT-cam-102820  UT  location: University Pkwy / SR-265 @ 2230 N / 550 W, PVO
+us511-UT-cam-102851  UT  location: University Pkwy / SR-265 @ 400 W, ORM
+us511-UT-cam-103022  UT  location: University Pkwy / SR-265 @ Freedom Blvd / 200 W, PVO
+us511-UT-cam-103661  UT  location: University Pkwy / SR-265 @ 1400 S, ORM
+us511-UT-cam-103662  UT  location: University Pkwy / SR-265 @ 1700 S, ORM
+us511-UT-cam-104182  UT  location: University Pkwy / SR-265 @ 200 E, ORM
+us511-UT-cam-102935  UT  location: South Campus Dr / SR-282 @ Mario Capecchi Dr, SLC
+us511-UT-cam-104187  UT  location: North Campus Dr / Medical Dr / SR-282 @  Mario Capecchi Dr / SR-282, SLC
+us511-UT-cam-104365  UT  location: North Campus Dr / SR-282 @ Central Campus Rd, SLC
+us511-UT-cam-104366  UT  location: South Campus Dr / SR-282 @ 1500 E, SLC
+us511-UT-cam-104146  UT  location: University Blvd / Center St / SR-289 @ 300 W, CDC
+us511-UT-cam-104147  UT  location: University Blvd / Center St / SR-289 @ 800 W, CDC
+us511-UT-cam-104342  UT  location: St George Blvd / SR-34 @ University Ave / 700 E, STG
+us511-UT-cam-104149  UT  location: 200 N / SR-56 @ Airport Rd / College Way, CDC
+us511-UT-cam-103830  UT  location: Mountain View / SR-85 @ Academy Pkwy / 15200 S, HRR
+us511-UT-cam-2721760  UT  location: University Pkwy / SR-265 @ Event Parking, PVO
+us511-UT-cam-102760  UT  location: University Ave / US-189 @ 500 N, PVO
+us511-UT-cam-102775  UT  location: University Ave / US-189 @ 800 N, PVO
+us511-UT-cam-102784  UT  location: University Ave / US-189 @ 3700 N, PVO
+us511-UT-cam-103311  UT  location: University Ave / US-189 @ 5200 N / River Park Dr, PVO
+us511-UT-cam-103328  UT  location: University Ave / US-189 @ 4200 N, PVO
+us511-UT-cam-104195  UT  location: University Ave / US-189 @ Stone Gate Ln / 4400 N, PVO
+us511-UT-cam-104196  UT  location: University Ave / US-189 @ East Bay Blvd / Town Center Dr / 1420 S, PVO
+us511-UT-cam-104229  UT  location: University Ave / US-189 @ 1200 S, PVO
+us511-UT-cam-104230  UT  location: University Ave / US-189 @ 200 N, PVO
+us511-UT-cam-104231  UT  location: University Ave / US-189 @ 3300 N, PVO
+us511-UT-cam-104237  UT  location: University Ave / US-189 @ 2680 N, PVO
+us511-UT-cam-104247  UT  location: University Ave / US-189 @ 700 N, PVO
+us511-UT-cam-103982  UT  location: Main St / US-89 @ 100 N / College Ave / SR-290, EPH
+us511-UT-cam-1021898  UT  location: University Ave / US-189 @ 400 S, PVO
+us511-UT-cam-3104714  UT  location: University Ave / US-189 @ 5600 N, PVO
+us511-UT-cam-102639  UT  location: State St / US-89 @ 400 S / University Blvd / SR-186, SLC
+us511-UT-cam-102719  UT  location: State St / US-89 @ University Pkwy / SR-265, ORM
+us511-UT-cam-102721  UT  location: University Pkwy / SR-265 @ Sandhill Rd, ORM
+us511-UT-cam-102725  UT  location: University Pkwy / SR-265 @ 800 E, ORM
+us511-UT-cam-102757  UT  location: University Ave / US-189 @ 920 S, PVO
+us511-UT-cam-102759  UT  location: University Ave / US-189 @ Center St, PVO
+us511-UT-cam-102776  UT  location: University Ave / US-189 @ Cougar Blvd / 1230 N, PVO
+us511-UT-cam-102777  UT  location: University Pkwy / 1650 N @ Canyon Rd / 150 E, PVO
+us511-UT-cam-102779  UT  location: 900 E @ University Pkwy, PVO
+us511-UT-cam-102783  UT  location: University Ave / US-189 @ 2230 N, PVO
+us511-UT-cam-102785  UT  location: University Ave / US-189 @ 4800 N / Foothill Blvd, PVO
+us511-UT-cam-102790  UT  location: University Ave / US-189 @ University Pkwy / 1650 N / SR-265, PVO
+us511-UT-cam-102852  UT  location: University Pkwy / SR-265 @ Main St, ORM
+us511-UT-cam-102933  UT  location: Geneva Rd / SR-114 @ University Pkwy / SR-265, ORM
+us511-UT-cam-102937  UT  location: University Ave / US-189 @ 300 S / US-89, PVO
+us511-UT-cam-103215  UT  location: I-15 SB @ University Pkwy / SR-265 / MP 269.12, ORM
+us511-UT-cam-103220  UT  location: I-15 SB @ University Ave / 2260 S / MP 263, PVO
+us511-UT-cam-104087  UT  location: 7800 S @ 3800 W / Campus View Dr, WJD
+us511-VA-cam-4197  VA  road: University Blvd.
+us511-WA-cam-3083  WA  camera_name: College @ Martin Way (Lacey)
+us511-WA-cam-9526  WA  camera_name: I-5 at MP 165.7: University St Ramp
+us511-WA-cam-9525  WA  camera_name: I-5 at MP 165.7: University St, SB
+us511-WA-cam-9527  WA  camera_name: I-5 at MP 165.8: University St, NB
+us511-WA-cam-1316  WA  camera_name: I-5 at MP 227.7: College Way
+us511-WA-cam-8059  WA  camera_name: I-5 at MP 227.7: College Way NB Ramps (SR 538)
+us511-WA-cam-3071  WA  camera_name: I-90 at MP 288.8: University
+us511-WA-cam-10251  WA  camera_name: SR 305 @ MP 1: High School Rd
+us511-WA-cam-9478  WA  camera_name: SR 305 at MP 0.2: High School Rd North
+us511-WA-cam-9479  WA  camera_name: SR 305 at MP 0.2: High School Rd South
+us511-WA-cam-9077  WA  camera_name: SR 522 at MP 10.5: S Campus Way
+us511-WI-cam-59  WI  camera_name: I-41/94 at College Ave
+us511-WI-cam-276  WI  camera_name: I-43 at University Ave
+us511-WI-cam-143  WI  camera_name: US 12/14 at University Ave
+us511-WI-cam-197  WI  camera_name: WIS 241/S 27th St at College Ave
+us511-WI-cam-421  WI  camera_name: WIS 54/57 at Nicolet Dr/University Ave
+us511-WV-cam-CAM066  WV  camera_name: University Dr.
+us511-WY-cam-2050  WY  camera_name: College Dr
+us511-WY-cam-477  WY  camera_name: College Drive
+
+Links that are not a still or a stream (3)
+------------------------------------------
+us511-CA-cam-8-1439  CA  invalid: ttps://wzmedia.dot.ca.gov/D8/LB-8_10_282.stream/playlist.m3u8
+us511-KY-cam-fay-136  KY  private: http://172.19.40.191/aca/index.html#view
+us511-NY-cam-16408861  NY  invalid: .
+
+Hosts with no operator in us-providers.mjs (12)
+-----------------------------------------------
+Host                             Links  State fallback used  States
+w28webcam.blob.core.windows.net      3                    3  WA
+166.145.221.185                      2                    0  NY
+166.141.137.96                       1                    0  NY
+166.141.178.28                       1                    0  NY
+166.143.37.13                        1                    0  NY
+166.145.221.183                      1                    0  NY
+166.145.221.188                      1                    0  NY
+166.151.117.119                      1                    0  NY
+166.151.117.120                      1                    0  NY
+172.19.40.191                        1                    1  KY
+assets2.webcam.io                    1                    1  WA
+d2g22ywzrs8q02.cloudfront.net        1                    0  PA
+
+IBI 511 still hosts (/map/Cctv/): server budget 20 requests/min and 1,000/day per host
+--------------------------------------------------------------------------------------
+Host                      Cameras
+fl511.com                   4,956
+511ga.org                   4,313
+511ny.org                   2,924
+www.udottraffic.utah.gov    2,075
+511pa.com                   1,541
+www.drivenc.gov             1,136
+511.idaho.gov                 664
+www.nvroads.com               661
+az511.com                     644
+511wi.gov                     455
+511la.org                     422
+511.alaska.gov                147
+
+Lookup cameras the Road511 lookup route refuses (0)
+---------------------------------------------------
+Checked with road511FeatureId from server/providers/cctv/road511-lookup.js, the function the lookup route uses,
+and its feature id pattern /^[A-Z]{2}-cam-[A-Za-z0-9 _.,()?-]{1,80}$/. Ids are written exactly as Road511 lists them.
+
+Densest 50 km circles (load cap 2,500 per selected area)
+--------------------------------------------------------
+ #  Cameras  Centre           Nearest camera                                                 At the cap
+ 1    2,971  33.851,-84.246   GDOT-0240: I-285 CCW past SR236 MM 36.1 (DeKalb) (DeKalb, GA)  loads 2,500, 471 more nearby
+ 2    2,023  40.816,-73.810   Queens-Bound (New York, NY)
+ 3    1,186  40.657,-111.807  I-215 E NB @ 5200 S / MP 4.65, HDY (Utah, UT)
+ 4    1,040  45.035,-93.287   I-94: I-94 EB N of 42nd Ave (Minnesota, MN)
+ 5    1,038  33.904,-117.842  SR-90 : (520) Rose Dr SE Corner (California, CA)
+ 6      933  32.837,-96.966   SH183 @ Story Rd East (Texas, TX)
+ 7      932  26.076,-80.361   IPV-75SB014.1-GP (Florida, FL)
+ 8      890  42.038,-88.031   Higgins SB Exit HD (Illinois, IL)
+ 9      852  28.499,-81.244   SR-417 MM 28.80 HD (Florida, FL)
+10      851  39.963,-75.334   I-476 @ MM 7.5 (NORTH OF REED RD) (Pennsylvania, PA)
+11      790  47.590,-122.289  I-90 at MP 4.2: East Portal, Mt Baker Tunnel (Washington, WA)
+12      784  27.704,-82.391   CCTV I-75 239.4 NB A (Florida, FL)
+13      755  45.745,-122.661  I-5 at MP 9.1: S of 179th St (Washington, WA)
+14      748  38.978,-77.099   Arlington Rd at Bradley Blvd (MD 191) (Maryland, MD)
+15      699  29.880,-95.325   IH-69 Eastex @ Hopper (Texas, TX)

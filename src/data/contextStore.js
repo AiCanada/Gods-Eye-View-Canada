@@ -145,8 +145,12 @@ export function getSelectedEntityContext({ dataManager = null } = {}) {
  * @param {boolean} [options.evicted=false] The record aged out of its feed
  *   rather than being deselected. Readouts that stay on screen hold their
  *   last-known values for an eviction and only tear down on a deliberate clear.
+ * @param {?string} [options.reason=null] Explicit origin, overriding `evicted`.
+ *   A layer releasing its selection for a location switch passes
+ *   'location-switch': that is neither a deselect nor an eviction, so Contacts
+ *   keeps its subject and shows no CONTACT LOST cue.
  */
-export function clearSelectedEntityContextForLayer(layerId, { evicted = false } = {}) {
+export function clearSelectedEntityContextForLayer(layerId, { evicted = false, reason = null } = {}) {
   const store = getContextStore();
   if (!store.selectedEntityId) return;
   const record = store.entities.get(store.selectedEntityId);
@@ -154,7 +158,7 @@ export function clearSelectedEntityContextForLayer(layerId, { evicted = false } 
     store.selectedEntityId = null;
     store.selectedAt = null;
     window.dispatchEvent(new CustomEvent('gev:entity-selection-cleared', {
-      detail: { layerId, reason: evicted ? 'evicted' : 'deliberate' },
+      detail: { layerId, reason: reason || (evicted ? 'evicted' : 'deliberate') },
     }));
   }
 }

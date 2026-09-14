@@ -32,6 +32,8 @@ function fixture(name, overrides = {}, preview = false) {
     LL2_CACHE_TTL_MS: 15 * 60_000,
     parseTerrainPoints: () => [[1, 2]],
     resolveTerrainHeightRequest: async () => { throw new Error(detail); },
+    // terrain.js registers each installed proxy for location-switch memory release.
+    _terrainMemoryTiers: new Set(),
     ...overrides,
   };
   const helpers = ['readResponseTextCapped', 'coalesceProxyRequest', 'launchLibraryRequestHeaders', 'celestrakTleUrl', 'launchLibraryRecentUrl'].map(extract).join('\n');

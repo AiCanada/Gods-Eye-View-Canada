@@ -1641,3 +1641,122 @@ test('a vessel analyst record carries the MMSI the tracker keys on', () => {
   assert.equal(nameless.id, '366999124');
   assert.equal(nameless.mmsi, '366999124');
 });
+
+const SWITCH_FROM = { key: 'CA-ON', region: 'CA-ON', country: 'CA', lat: 43.65, lon: -79.38 };
+const SWITCH_TO = { key: 'NL-ZH', region: 'NL-ZH', country: 'NL', lat: 51.92, lon: 4.48 };
+
+test('location leave clears the vessel selection and trail but keeps worldwide records', () => {
+  const harness = installWireHarness(undefined);
+  const cleared = [];
+  let trailDestroyCalls = 0;
+  harness.trail.destroy = () => { trailDestroyCalls += 1; };
+  try {
+    registerEntityContext(harness.record, {
+      id: `ais-${harness.record.mmsi}`,
+      layerId: 'ais-live-vessels',
+      label: harness.record.name,
+    });
+    selectEntityContext(harness.record);
+    harness.windowTarget.addEventListener('gev:entity-selection-cleared', (event) => {
+      cleared.push(event.detail);
+    });
+
+    aisLiveVesselsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    aisLiveVesselsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    assert.equal(aisLiveVesselsLayer.getSelectedInfo(), null);
+    assert.equal(harness.hud.textContent, 'AIS: --');
+    assert.equal(trailDestroyCalls, 1, 'the trail primitive is freed once; a repeat leave is a no-op');
+    assert.deepEqual(_getVesselStateForTest(), {
+      trailMmsi: null,
+      trailPositionCount: 0,
+      vesselCount: 1,
+    });
+    // Not a deliberate deselect: a Contacts subject on this vessel must survive
+    // the switch whatever order the manager runs the leave hooks in.
+    assert.deepEqual(cleared, [{ layerId: 'ais-live-vessels', reason: 'location-switch' }]);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+/**
+ * Run `body` with a counting fetch and a fake AIS clock, restoring both after.
+ * Each fetch records its signal; `setResponse` swaps what the next fetch returns.
+ * @param {function({requests: Array<AbortSignal>, clock: object, setResponse: function}): Promise<void>} body
+ */
+async function withArrivalFeed(body) {
+  const hadWindow = Object.hasOwn(globalThis, 'window');
+  const priorWindow = globalThis.window;
+  const priorFetch = globalThis.fetch;
+  const requests = [];
+  let respond = () => Promise.resolve(jsonResponse({ status: 'open', lastMessageAt: null, rows: [] }));
+  const clock = makeFakeAisRuntime(10_000_000);
+  globalThis.window = { location: { origin: 'http://localhost:4173' } };
+  globalThis.fetch = (_url, options = {}) => {
+    requests.push(options.signal);
+    return respond();
+  };
+  _setAisRuntimeForTest(clock.runtime);
+  try {
+    await body({ requests, clock, setResponse: (next) => { respond = next; } });
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (hadWindow) globalThis.window = priorWindow;
+    else delete globalThis.window;
+    _setVesselStateForTest({ enabled: false });
+    _setAisRuntimeForTest();
+  }
+}
+
+test('location arrival never aborts an in-flight AIS poll or starts a second one', async () => {
+  await withArrivalFeed(async ({ requests, setResponse }) => {
+    const inFlight = deferredFetchResponse();
+    setResponse(() => inFlight.promise);
+    // No successful poll yet, so only the poll in flight holds arrival back.
+    _setVesselStateForTest({ viewer: {}, records: [], loaded: true });
+    const load = _loadLivePositionsForTest({});
+    assert.equal(requests.length, 1);
+
+    const arrival = aisLiveVesselsLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO });
+    assert.equal(requests.length, 1, 'arrival does not download the worldwide snapshot again');
+    assert.equal(requests[0].aborted, false, 'the poll already in flight keeps running');
+    assert.equal(_getVesselFeedStateForTest().loading, true);
+
+    inFlight.resolve(jsonResponse({ status: 'open', lastMessageAt: null, rows: [] }));
+    await Promise.all([load, arrival]);
+    const feed = _getVesselFeedStateForTest();
+    assert.equal(feed.loading, false, 'the kept poll still settles its own loading state');
+    assert.equal(feed.error, 'awaiting first AIS message…');
+    assert.equal(requests.length, 1);
+  });
+});
+
+test('location arrival polls only when the last successful AIS poll is older than the refresh interval', async () => {
+  await withArrivalFeed(async ({ requests, clock }) => {
+    const refreshMs = aisLiveVesselsLayer.updateInterval;
+    const arriveWith = async (stateOptions, change = {}) => {
+      _setVesselStateForTest({ viewer: {}, records: [], loaded: true, ...stateOptions });
+      const before = requests.length;
+      await aisLiveVesselsLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO, ...change });
+      return requests.length - before;
+    };
+
+    assert.equal(
+      await arriveWith({ lastUpdate: clock.nowMs - (refreshMs - 1) }),
+      0,
+      'the worldwide vessels already in memory cover the destination',
+    );
+    assert.equal(await arriveWith({ lastUpdate: clock.nowMs }), 0, 'a poll that just landed is not repeated');
+    assert.equal(await arriveWith({ lastUpdate: clock.nowMs - (refreshMs + 1) }), 1, 'a stale snapshot is refreshed once');
+    assert.equal(await arriveWith({ lastUpdate: null }), 1, 'a feed that never landed a poll tries now');
+
+    assert.equal(await arriveWith({ lastUpdate: null, enabled: false }), 0, 'a disabled layer does not poll on arrival');
+    const replaced = new AbortController();
+    replaced.abort();
+    assert.equal(
+      await arriveWith({ lastUpdate: null }, { signal: replaced.signal }),
+      0,
+      'a superseded arrival does not poll',
+    );
+  });
+});

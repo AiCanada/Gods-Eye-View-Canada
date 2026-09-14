@@ -103,6 +103,46 @@ test('a mid-session flow outage degrades instead of reporting stale live coverag
   assert.deepEqual(busy, down, 'the degraded state reads the same whether or not a load is in flight');
 });
 
+test('missing road geometry reads as unavailable, never as simulated or live traffic', () => {
+  for (const liveMode of [false, true]) {
+    const feed = trafficFeedPresentation({
+      liveMode,
+      roadsError: 'unavailable',
+      flowError: 'TomTom flow unavailable',
+      coveragePct: 90,
+    });
+    assert.equal(feed.error, 'ROADS UNAVAILABLE — road tiles and Overpass unreachable');
+    assert.equal(feed.loadingLabel, feed.error);
+    assert.ok(!LIVE_CLAIM.test(feed.loadingLabel), feed.loadingLabel);
+    assert.equal(layerFeedState({ count: 0, lastUpdate: null, ...feed }), 'unavailable');
+  }
+  assert.equal(
+    trafficFeedPresentation({ liveMode: true, roadsError: null, coveragePct: 87 }).loadingLabel,
+    'LIVE · TomTom flow · 87% cov',
+    'no road error, no change',
+  );
+});
+
+test('roads missing beside rendered ones read as degraded ROADS PARTIAL, never as a clean feed', () => {
+  const settled = { count: 900, lastUpdate: Date.now() };
+  const partial = 'ROADS PARTIAL — some road tiles failed, retrying';
+  const live = trafficFeedPresentation({ liveMode: true, roadsError: 'partial', coveragePct: 87 });
+  assert.deepEqual(live, { mode: 'live', error: partial, loadingLabel: partial });
+  assert.equal(layerFeedState({ ...settled, ...live }), 'degraded');
+
+  const keyless = trafficFeedPresentation({ liveMode: false, roadsError: 'partial' });
+  assert.deepEqual(keyless, { mode: 'sim', error: partial, loadingLabel: partial });
+  assert.ok(!LIVE_CLAIM.test(keyless.loadingLabel), keyless.loadingLabel);
+
+  const flowDown = trafficFeedPresentation({
+    liveMode: true,
+    roadsError: 'partial',
+    flowError: 'TomTom flow unavailable',
+  });
+  assert.equal(flowDown.error, 'SIMULATED — TomTom flow unavailable · ROADS PARTIAL');
+  assert.equal(flowDown.loadingLabel, flowDown.error);
+});
+
 test('the rendered steady-state meta line carries the SIMULATED copy', () => {
   const mgr = new DataLayerManager({});
   const stats = (feed) => ({ count: 544, lastUpdate: Date.now(), ...feed });

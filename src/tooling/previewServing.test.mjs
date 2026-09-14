@@ -44,7 +44,9 @@ test('real dev and built-preview servers serve provider JSON and terminate unkno
     OPENSKY_AUTH_MODE: 'anon',
     OPENSKY_CLIENT_ID: '',
     OPENSKY_CLIENT_SECRET: '',
-    CCTV_FORCE_AUSTIN: '0',
+    // The fixture camera sits in Austin: with the US off, its area never
+    // triggers the Austin open-data pack download.
+    CCTV_COUNTRIES: 'CA',
     CCTV_SOURCES_FILE: path.join(root, 'absent.json'),
     CCTV_SOURCES_JSON: JSON.stringify([
       { id: 'fixture', lat: 30.27, lon: -97.74 },
@@ -71,8 +73,13 @@ test('real dev and built-preview servers serve provider JSON and terminate unkno
       ac: [],
     });
   });
+  // An isolated optimizer cache: the default (node_modules/.vite) is shared
+  // with a running dev server, whose pre-bundled deps this must not replace.
+  const cacheDir = await mkdtemp(path.join(tmpdir(), 'gev-preview-vite-'));
+  t.after(() => rm(cacheDir, { recursive: true, force: true }));
   const base = {
     root,
+    cacheDir,
     configFile: false,
     envFile: false,
     publicDir: false,
@@ -99,7 +106,7 @@ test('real dev and built-preview servers serve provider JSON and terminate unkno
         ['/api/firms/status', 200],
         ['/api/terrain/heights?points=invalid', 400],
         ['/api/overpass', 405],
-        ['/api/cctv/sources', 200],
+        ['/api/cctv/sources?lat=30.27&lon=-97.74', 200],
         ['/api/gbfs/', 400],
         ['/api/tomtom/status', 200],
         ['/api/radio/unknown', 404],
@@ -120,7 +127,7 @@ test('real dev and built-preview servers serve provider JSON and terminate unkno
           route,
         );
         const body = await response.json();
-        if (route === '/api/cctv/sources')
+        if (route.startsWith('/api/cctv/sources'))
           assert.equal(body.sources[0].id, 'fixture');
         if (
           route === '/api/does-not-exist' ||

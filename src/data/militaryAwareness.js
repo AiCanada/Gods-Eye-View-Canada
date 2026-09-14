@@ -147,6 +147,23 @@ export function awarenessClearIsEviction(cleared) {
 }
 
 /**
+ * Decide whether a source-scoped clear was caused by a location switch.
+ *
+ * On a switch the source layers release their own selection for the place
+ * being left: AIS drops its card and trail, and installations drops its site
+ * records. That is neither the operator deselecting nor the contact leaving its
+ * feed, so the subject survives with no CONTACT LOST cue and FOCUS can return
+ * to it. The manager runs leave hooks in registration order, so such a clear
+ * can land before or after Contacts' own leave; keying on the origin keeps the
+ * outcome the same either way.
+ * @param {{reason?: string}|null} cleared Cleared source detail.
+ * @returns {boolean} Whether a location switch caused the clear.
+ */
+export function awarenessClearIsLocationSwitch(cleared) {
+  return cleared?.reason === 'location-switch';
+}
+
+/**
  * Decide whether proximity cohorts need an expensive rescan.
  * @param {object} input Refresh evidence.
  * @param {boolean} input.force Explicit invalidation.
@@ -216,6 +233,8 @@ const state = {
   /** Whether the view currently counts as moving (hysteretic, not per-frame). */
   cameraMoving: false,
   lastEvaluatedPosition: null,
+  /** Set from a location switch's leave until arrival: cohort rescans wait. */
+  locationSwitching: false,
   sourceRevision: '',
   panelMarkup: '',
   directionFrame: null,
@@ -1390,7 +1409,9 @@ function resolveSubjectLabel(subject) {
 
 /** Refresh proximity counts/distances against the subject's current live position. */
 function refreshSelectedSubject(force = false) {
-  if (!state.enabled || !state.subject) return;
+  // Mid location switch the cohorts would be evaluated for a place the camera
+  // is leaving; arrival forces the rescan instead.
+  if (!state.enabled || !state.subject || state.locationSwitching) return;
   const sources = collectSourceStates();
   const nextSourceRevision = sourceRevision(sources);
   const sourceRevisionChanged = nextSourceRevision !== state.sourceRevision;
@@ -1793,6 +1814,9 @@ const militaryAwarenessLayer = {
     state.clearListener = (event) => {
       if (!state.enabled || state.pendingSelectionKey) return;
       if (!awarenessClearMatchesSubject(state.subject, event.detail)) return;
+      // A location switch keeps the subject exactly as it was: no teardown and
+      // no CONTACT LOST cue, whichever leave hook ran first.
+      if (awarenessClearIsLocationSwitch(event.detail)) return;
       // An eviction keeps the subject so the readout can hold last-known
       // values; only a deliberate clear tears the selection down.
       if (awarenessClearIsEviction(event.detail)) {
@@ -1809,6 +1833,9 @@ const militaryAwarenessLayer = {
         awarenessClearMatchesSubject(state.subject, cleared)
         && String(state.subject?.id) === String(cleared?.id)
       ) {
+        // A location switch keeps the subject exactly as it was. Like an
+        // eviction it leaves autoFocusAttempted alone: nothing was deselected.
+        if (awarenessClearIsLocationSwitch(cleared)) return;
         if (awarenessClearIsEviction(cleared)) {
           // Deliberately does NOT set autoFocusAttempted: the subject survives,
           // so the entry fallback has nothing to replace and the settlement
@@ -1825,6 +1852,9 @@ const militaryAwarenessLayer = {
   },
   enable() {
     state.enabled = true;
+    // Arrival only reaches enabled layers, so a switch that happened while
+    // Contacts was off never lifted its rescan hold.
+    state.locationSwitching = false;
     // NO unconditional continuous-render hold here. Contacts animates per frame
     // only while the VIEW is moving (the direction arrows are screen-projected);
     // parked, it is a throttled readout with nothing to animate. The hold is
@@ -1851,6 +1881,7 @@ const militaryAwarenessLayer = {
     state.results = null;
     state.lastSubjectRefreshMs = 0;
     state.lastEvaluatedPosition = null;
+    state.locationSwitching = false;
     state.sourceRevision = '';
     state.navigationHistory = [];
     state.navigationVisited.clear();
@@ -1937,6 +1968,63 @@ const militaryAwarenessLayer = {
       }
     }
     return Boolean(state.subject);
+  },
+  /**
+   * Location switch start. Contacts fetches nothing of its own, but its cohort
+   * results, cohort paging and PREVIOUS/NEXT history all describe contacts
+   * around the place being left. They are released so NEXT cannot fly the
+   * camera back there, and so arrival rescans instead of reusing them. The
+   * selected subject survives on purpose, as on reset, so FOCUS can still
+   * return to it. That holds for vessel and installation subjects alike and
+   * whatever order the manager runs leave hooks in: the AIS and installations
+   * leaves release their own selection with a 'location-switch' clear, which
+   * both clear listeners ignore (see {@link awarenessClearIsLocationSwitch}).
+   * While Contacts is on, its camera ownership is released the way explicit
+   * navigation releases it (the vessel selection is left to the AIS layer's
+   * own leave), and every cohort rescan is held until
+   * {@link militaryAwarenessLayer.onLocationArrive}. Idempotent, no network,
+   * never throws.
+   */
+  onLocationLeave() {
+    state.locationSwitching = true;
+    try {
+      if (state.enabled) {
+        militaryAwarenessLayer.releaseCameraOwnership({ preserveVesselSelection: true, origin: 'tool' });
+      }
+    } catch (error) {
+      console.warn('[Data:military-awareness] location switch camera release failed:', error);
+    }
+    state.results = null;
+    state.lastEvaluatedPosition = null;
+    state.navigationHistory = [];
+    // The index points into the history just emptied.
+    state.navigationIndex = -1;
+    state.navigationVisited.clear();
+    state.cohortPages.clear();
+    if (!state.enabled) return;
+    try {
+      // With no results the panel drops to standby and the compass arrows
+      // hide, instead of listing old-area contacts through the flight.
+      renderResults();
+      scheduleDirectionOverlayUpdate(true);
+    } catch (error) {
+      console.warn('[Data:military-awareness] location switch repaint failed:', error);
+    }
+  },
+  /**
+   * Location switch end (camera arrived, Contacts on): lift the rescan hold
+   * and evaluate the kept subject's cohorts now rather than on the next
+   * refresh tick. An aborted arrival belongs to a superseded switch, which
+   * still owns the hold.
+   */
+  onLocationArrive({ signal } = {}) {
+    if (signal?.aborted) return;
+    state.locationSwitching = false;
+    try {
+      refreshSelectedSubject(true);
+    } catch (error) {
+      console.warn('[Data:military-awareness] location switch rescan failed:', error);
+    }
   },
   navigatePrevious(options = {}) { return navigateHistory(-1, options); },
   focusCurrent(options = {}) { return focusCurrentSubject(options); },

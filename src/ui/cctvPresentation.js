@@ -11,6 +11,45 @@ export function _calBadgeLabel(badge) {
   }
 }
 
+/**
+ * Chip text for the loaded camera area: at most 2,500 cameras within 50 km
+ * of the selected place, the server's hard cap with no off switch.
+ * @param {?object} area - `state.area` from the CCTV layer.
+ * @returns {{text: string, description: string, capped: boolean}}
+ */
+export function cctvAreaChip(area) {
+  const count = (value) =>
+    Math.max(0, Math.round(Number(value) || 0)).toLocaleString('en-US');
+  const radius = Number(area?.radiusKm) > 0 ? Math.round(area.radiusKm) : 50;
+  const limit = count(Number(area?.limit) > 0 ? area.limit : 2500);
+  if (area?.loading) {
+    return {
+      text: 'AREA LOADING',
+      description: `Loading the cameras nearest this place: at most ${limit} within ${radius} km.`,
+      capped: false,
+    };
+  }
+  if (!area?.ready) {
+    return {
+      text: 'AREA --',
+      description: `No camera area loaded yet. Cameras load for the selected place: at most ${limit} within ${radius} km.`,
+      capped: false,
+    };
+  }
+  if (area.capped) {
+    return {
+      text: `AREA ${radius} KM · ${limit} CAP · ${count(area.dropped)} MORE NEARBY`,
+      description: `The ${limit} cameras nearest this place are loaded; ${count(area.dropped)} more within ${radius} km are not.`,
+      capped: true,
+    };
+  }
+  return {
+    text: `AREA ${radius} KM · ${count(area.loaded)} CAMERAS`,
+    description: `${count(area.loaded)} cameras within ${radius} km of the selected place are loaded (at most ${limit}).`,
+    capped: false,
+  };
+}
+
 export function _renderCctvState(state) {
   if (this.destroyed) return;
   if (
@@ -79,11 +118,10 @@ export function _renderCctvState(state) {
     }
   }
 
-  for (const btn of [
-    this._cctvNearestBtn,
-    this._cctvPrevBtn,
-    this._cctvNextBtn,
-  ]) {
+  // NEAREST re-centres an empty area on the view, so it needs only the layer
+  // on; PREV and NEXT step through cameras that are loaded.
+  if (this._cctvNearestBtn) this._cctvNearestBtn.disabled = !enabled;
+  for (const btn of [this._cctvPrevBtn, this._cctvNextBtn]) {
     if (!btn) continue;
     btn.disabled = !enabled || cameras.length === 0;
   }
@@ -112,27 +150,14 @@ export function _renderCctvState(state) {
     this._cctvAutoHopBtn.disabled = !enabled;
   }
 
-  if (this._cctvRegionCapBtn) {
-    // A viewer preference, so it stays usable while the layer is off; the
-    // next load honours it.
-    const cap = state?.regionCap || {};
-    const on = cap.enabled !== false;
-    const limit = (Number(cap.limit) || 2500).toLocaleString('en-CA');
-    const over = Object.entries(cap.dropped || {}).filter(
-      ([, count]) => count > 0,
-    );
-    this._cctvRegionCapBtn.classList.toggle('active', on);
-    this._cctvRegionCapBtn.textContent = cap.reloading
-      ? 'REGION CAP · LOADING'
-      : on
-        ? `REGION CAP ${limit} ON`
-        : 'REGION CAP OFF';
-    this._cctvRegionCapBtn.title = !on
-      ? `Every camera loaded. Turn on to limit to ${limit} per province, territory or state (per country elsewhere).`
-      : over.length
-        ? `Limited to ${limit} per region. Over the cap: ${over.map(([region, count]) => `${region || 'unclassified'} −${count}`).join(', ')}`
-        : `Limited to ${limit} per province, territory or state (per country elsewhere). No region is over the cap.`;
-    this._cctvRegionCapBtn.disabled = Boolean(cap.reloading);
+  if (this._cctvRegionCapChip) {
+    // The camera area: a hard server cap with no off switch, shown so the
+    // viewer knows why a dense city stops at 2,500 cameras.
+    const chip = cctvAreaChip(state?.area);
+    this._cctvRegionCapChip.textContent = chip.text;
+    this._cctvRegionCapChip.dataset.over = chip.capped ? 'true' : 'false';
+    this._cctvRegionCapChip.title = chip.description;
+    this._cctvRegionCapChip.setAttribute('aria-label', chip.description);
   }
 
   if (this._cctvProjectionBtn) {
@@ -168,9 +193,9 @@ export function _renderCctvState(state) {
         activeCamera.sourceLabel ||
         activeCamera.provider ||
         'Configured Source';
-      const statusMsg = activeCamera.sourceMessage
-        ? ` · ${activeCamera.sourceMessage}`
-        : '';
+      // A camera with no public still says why (Road511 lookup state).
+      const statusText = activeCamera.lookupNote || activeCamera.sourceMessage;
+      const statusMsg = statusText ? ` · ${statusText}` : '';
       const calBadge = activeCamera.calBadge
         ? this._calBadgeLabel(activeCamera.calBadge)
         : '';

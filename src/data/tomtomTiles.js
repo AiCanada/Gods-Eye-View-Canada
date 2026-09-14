@@ -21,17 +21,26 @@ export const MAX_TILE_ZOOM = 16;
 const MERCATOR_LAT_LIMIT = 85.05112878;
 
 /**
- * Validate a z/x/y tile coordinate for the TomTom flow proxy.
+ * Validate a z/x/y tile coordinate for the TomTom flow proxy (or, with a zoom
+ * range, for another slippy-tile proxy such as the road-geometry tiles).
  *
- * @param {number} z - Zoom level; integer within [MIN_TILE_ZOOM, MAX_TILE_ZOOM].
+ * @param {number} z - Zoom level; integer within [minZoom, maxZoom].
  * @param {number} x - Tile column; integer within [0, 2^z - 1].
  * @param {number} y - Tile row; integer within [0, 2^z - 1].
+ * @param {Object} [range]
+ * @param {number} [range.minZoom=MIN_TILE_ZOOM] - Lowest accepted zoom.
+ * @param {number} [range.maxZoom=MAX_TILE_ZOOM] - Highest accepted zoom.
  * @returns {boolean} True when the coordinate is a fetchable tile.
  */
-export function isValidTileCoord(z, x, y) {
+export function isValidTileCoord(
+  z,
+  x,
+  y,
+  { minZoom = MIN_TILE_ZOOM, maxZoom = MAX_TILE_ZOOM } = {},
+) {
   if (!Number.isInteger(z) || !Number.isInteger(x) || !Number.isInteger(y))
     return false;
-  if (z < MIN_TILE_ZOOM || z > MAX_TILE_ZOOM) return false;
+  if (z < minZoom || z > maxZoom) return false;
   const n = 2 ** z;
   return x >= 0 && x < n && y >= 0 && y < n;
 }

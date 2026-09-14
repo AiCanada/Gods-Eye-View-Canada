@@ -36,6 +36,7 @@ function request(
     url = '/',
     body = '',
     origin = 'http://localhost:4173',
+    signal,
   } = {},
 ) {
   return new Promise((resolve, reject) => {
@@ -53,6 +54,7 @@ function request(
     const headers = {};
     const res = {
       statusCode: 200,
+      writableEnded: false,
       setHeader(name, value) {
         headers[name.toLowerCase()] = value;
       },
@@ -61,6 +63,7 @@ function request(
         for (const [k, v] of Object.entries(values)) this.setHeader(k, v);
       },
       end(body = '') {
+        this.writableEnded = true;
         resolve({
           status: this.statusCode,
           headers,
@@ -69,9 +72,25 @@ function request(
         });
       },
     };
+    // A client that gives up closes its connection, as a browser abort does.
+    signal?.addEventListener('abort', () => req.emit('close'), { once: true });
     Promise.resolve(handler(req, res)).catch(reject);
   });
 }
+const ONTARIO = {
+  city: 'Toronto',
+  state: 'Ontario',
+  'ISO3166-2-lvl4': 'CA-ON',
+  country: 'Canada',
+  country_code: 'ca',
+};
+const QUEBEC = {
+  city: 'Montreal',
+  state: 'Quebec',
+  'ISO3166-2-lvl4': 'CA-QC',
+  country: 'Canada',
+  country_code: 'ca',
+};
 function env(t, name, value) {
   const old = process.env[name];
   if (value === undefined) delete process.env[name];
@@ -96,6 +115,7 @@ test('standalone service guards run in development and preview without upstream 
       [overpassProxy, '/api/overpass'],
       [militaryInstallationsProxy, '/api/military-installations'],
       [regionalBriefProxy, '/api/regional-brief'],
+      [regionalBriefProxy, '/api/location-region'],
       [weatherEffectsProxy, '/api/weather-effects'],
     ]) {
       const routes = install(factory(), preview);
@@ -113,6 +133,139 @@ test('standalone service guards run in development and preview without upstream 
       );
     }
   }
+});
+
+test('location-region answers the province, state or country of a point and remembers it', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    calls++;
+    assert.equal(new URL(url).hostname, 'nominatim.openstreetmap.org');
+    return Response.json({
+      address: {
+        city: 'Toronto',
+        state: 'Ontario',
+        'ISO3166-2-lvl4': 'CA-ON',
+        country: 'Canada',
+        country_code: 'ca',
+      },
+    });
+  });
+  const handler = install(regionalBriefProxy()).get('/api/location-region');
+  const first = await request(handler, {
+    url: '/?latitude=43.6511&longitude=-79.3832',
+  });
+  assert.equal(first.status, 200);
+  assert.deepEqual(first.json(), {
+    key: 'CA-ON',
+    regionCode: 'CA-ON',
+    region: 'Ontario',
+    countryCode: 'CA',
+    country: 'Canada',
+  });
+  const nearby = await request(handler, {
+    url: '/?latitude=43.6549&longitude=-79.3801',
+  });
+  assert.equal(nearby.headers['x-location-region'], 'HIT');
+  assert.equal(calls, 1, 'a point in the same cell is answered from memory');
+});
+
+test('location-region cache hits and joined lookups never spend the request quota', async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    return Response.json({ address: QUEBEC });
+  });
+  const handler = install(regionalBriefProxy()).get('/api/location-region');
+  const query = { url: '/?latitude=45.5017&longitude=-73.5673' };
+  // More than the 30 a minute one client may start, in one ~1 km cell.
+  const joined = await Promise.all(
+    Array.from({ length: 20 }, () => request(handler, query)),
+  );
+  const hits = [];
+  for (let i = 0; i < 20; i++) hits.push(await request(handler, query));
+  assert.deepEqual(
+    [...joined, ...hits].map((res) => res.status),
+    Array(40).fill(200),
+  );
+  assert.equal(calls, 1);
+  assert.deepEqual(
+    joined.map((res) => res.headers['x-location-region']).sort(),
+    ['INFLIGHT', ...Array(18).fill('INFLIGHT'), 'MISS'],
+  );
+  assert.ok(hits.every((res) => res.headers['x-location-region'] === 'HIT'));
+  assert.equal(hits.at(-1).json().key, 'CA-QC');
+});
+
+test('location-region remembers a point Nominatim cannot place, but not an upstream failure', async (t) => {
+  let calls = 0;
+  let answer = () => Response.json({ error: 'Unable to geocode' });
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    return answer();
+  });
+  const handler = install(regionalBriefProxy()).get('/api/location-region');
+  const ocean = { url: '/?latitude=-60.1234&longitude=-30.5678' };
+  for (let i = 0; i < 2; i++) {
+    const res = await request(handler, ocean);
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.json(), {
+      key: '',
+      regionCode: null,
+      region: null,
+      countryCode: null,
+      country: null,
+    });
+  }
+  assert.equal(calls, 1, 'open water is answered from memory the second time');
+
+  answer = () => new Response('busy', { status: 503 });
+  const failing = { url: '/?latitude=-61.1234&longitude=-30.5678' };
+  assert.equal((await request(handler, failing)).status, 503);
+  assert.equal((await request(handler, failing)).status, 503);
+  assert.equal(calls, 3, 'a real upstream error is asked again');
+});
+
+test('location-region lookups every requester abandoned never reach Nominatim, and joined ones still answer', async (t) => {
+  const asked = [];
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const params = new URL(url).searchParams;
+    const lat = Number(params.get('lat'));
+    const lon = Number(params.get('lon'));
+    asked.push(`${lat.toFixed(2)},${lon.toFixed(2)}`);
+    return Response.json({ address: lon > -75 ? QUEBEC : ONTARIO });
+  });
+  const handler = install(regionalBriefProxy()).get('/api/location-region');
+  const lookup = (latitude, longitude, signal) =>
+    request(handler, {
+      url: `/?latitude=${latitude}&longitude=${longitude}`,
+      signal,
+    });
+  const abandoned = [];
+  const abandon = (latitude, longitude) => {
+    const client = new AbortController();
+    abandoned.push(lookup(latitude, longitude, client.signal));
+    return client;
+  };
+
+  // Map clicks the client has since superseded, queued behind one another.
+  const clicks = [44.01, 44.03, 44.05].map((lat) => abandon(lat, -79.4));
+  // Two tabs ask for one cell; one gives up, the other still wants it.
+  const leaving = abandon(44.21, -79.4);
+  const joined = lookup(44.21, -79.4);
+  for (const client of [...clicks, leaving]) client.abort();
+  // Asking again for an abandoned cell starts a lookup of its own.
+  const again = lookup(44.05, -79.4);
+  const pill = await lookup(46.8139, -71.208);
+  await Promise.all(abandoned);
+
+  const kept = await joined;
+  assert.equal(kept.status, 200);
+  assert.equal(kept.headers['x-location-region'], 'INFLIGHT');
+  assert.equal(kept.json().key, 'CA-ON');
+  assert.equal((await again).json().key, 'CA-ON');
+  assert.equal(pill.status, 200);
+  assert.equal(pill.json().key, 'CA-QC');
+  assert.deepEqual(asked, ['44.21,-79.40', '44.05,-79.40', '46.81,-71.21']);
 });
 
 test('weather-only requests share upstream work and retain fresh and stale responses', async (t) => {

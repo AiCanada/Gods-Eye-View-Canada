@@ -6,6 +6,10 @@ import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
 import flightsLayer, {
   _addFlightTrackingCandidateForTest,
+  _drainFlightLocationReleaseForTest,
+  _flightEnrichmentStateForTest,
+  _flightLocationSwitchStateForTest,
+  _requestFlightTypeEnrichmentForTest,
   _applyPendingFlightTrackingRestoreForTest,
   _armFlightTrackingRestoreForTest,
   _militaryLayerSuppressesForTest,
@@ -1462,4 +1466,258 @@ test('display floor: two contacts on the same cell get their own outputs', () =>
   );
   assert.notEqual(a, b, 'a shared scratch would hand both contacts the same object');
   assert.ok(Math.abs(_floorCarto(a).height - _floorCarto(b).height) < 0.05);
+});
+
+const SWITCH_FROM = { key: 'CA-ON', region: 'CA-ON', country: 'CA', lat: 43.65, lon: -79.38 };
+const SWITCH_TO = { key: 'US-TX', region: 'US-TX', country: 'US', lat: 30.27, lon: -97.74 };
+
+function switchViewer() {
+  return {
+    camera: { positionCartographic: null },
+    scene: {},
+    entities: { remove() {} },
+    isDestroyed: () => false,
+  };
+}
+
+function switchContact(lat, lon) {
+  return {
+    meta: {
+      callsign: 'TEST1', altitude: 9_000, renderAltitudeM: 9_050, velocity: 200, true_track: 90,
+      klass: 'airliner', onGround: false, wasAirborne: true, turnRateDps: 0, rawLat: lat, rawLon: lon,
+    },
+    billboard: {
+      position: Cesium.Cartesian3.fromDegrees(lon, lat, 9_000),
+      color: Cesium.Color.WHITE,
+      show: false,
+    },
+  };
+}
+
+function hangingFetch(onSignal) {
+  return (_url, options = {}) => new Promise((_resolve, reject) => {
+    onSignal(options.signal);
+    options.signal?.addEventListener('abort', () => {
+      reject(new DOMException('aborted', 'AbortError'));
+    }, { once: true });
+  });
+}
+
+test('location leave frees old-view fleet models in bounded slices and keeps destination models', () => {
+  const removed = [];
+  const modelCollection = { remove(model) { removed.push(model.id); }, isDestroyed: () => false };
+  const fleetModel = (id) => ({ id, ready: true, show: true });
+  const destination = switchContact(30.3, -97.7);
+  const destinationModel = fleetModel('d00001');
+  const oldIds = Array.from({ length: 30 }, (_, i) => `b01${String(i).padStart(3, '0')}`);
+  _setTrackedFlightRefreshStateForTest({
+    icao24: 'd00001',
+    tracked: false,
+    entity: null,
+    meta: destination.meta,
+    billboard: destination.billboard,
+    billboardCollection: { show: true, remove() {} },
+    viewer: switchViewer(),
+    models: [['d00001', destinationModel], ...oldIds.map((id) => [id, fleetModel(id)])],
+    modelCollection,
+  });
+  const oldBillboards = [];
+  for (const id of oldIds) {
+    const contact = switchContact(43.7, -79.4);
+    oldBillboards.push(contact.billboard);
+    _addFlightTrackingCandidateForTest({ icao24: id, meta: contact.meta, billboard: contact.billboard });
+  }
+  try {
+    flightsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    flightsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    let state = _flightLocationSwitchStateForTest();
+    assert.equal(state.active, true);
+    assert.equal(state.queuedModels, oldIds.length, 'the destination model is not queued');
+    assert.equal(state.liveModels, oldIds.length + 1, 'leave frees no GPU model synchronously');
+    assert.equal(state.contacts, oldIds.length + 1, 'worldwide contacts are kept');
+    assert.equal(state.trail, false);
+    assert.deepEqual(removed, []);
+    assert.ok(oldBillboards.every((bb) => bb.show === true), 'old-view icons return before their models go');
+    assert.equal(destinationModel.show, true);
+
+    _drainFlightLocationReleaseForTest();
+    assert.ok(
+      removed.length > 0 && removed.length < oldIds.length,
+      `one fleet tick frees a bounded slice (freed ${removed.length})`,
+    );
+    for (let tick = 0; tick < 10 && _flightLocationSwitchStateForTest().queuedModels; tick += 1) {
+      _drainFlightLocationReleaseForTest();
+    }
+    state = _flightLocationSwitchStateForTest();
+    assert.equal(state.queuedModels, 0);
+    assert.deepEqual([...removed].sort(), [...oldIds].sort());
+    assert.equal(state.liveModels, 1);
+  } finally {
+    flightsLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO });
+  }
+  assert.equal(_flightLocationSwitchStateForTest().active, false);
+});
+
+test('regional fallback switch: old-anchor fetch aborts quietly, mid-flight polls wait, arrival evicts outside 250 nm', async () => {
+  const viewer = switchViewer();
+  const near = switchContact(30.3, -97.7);
+  const far = switchContact(43.7, -79.4);
+  const removedBillboards = [];
+  const billboardCollection = { show: false, remove(bb) { removedBillboards.push(bb); } };
+  _setTrackedFlightRefreshStateForTest({
+    icao24: 'aa0001',
+    tracked: false,
+    entity: null,
+    meta: near.meta,
+    billboard: near.billboard,
+    billboardCollection,
+    viewer,
+  });
+  _addFlightTrackingCandidateForTest({ icao24: 'ff0001', meta: far.meta, billboard: far.billboard });
+
+  const realFetch = globalThis.fetch;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const nearRow = [
+    'aa0001', 'TEST1 ', 'United States', nowSec, nowSec,
+    -97.7, 30.3, 9_000, false, 200, 90, 0, null, 9_050,
+    null, null, null, 5,
+  ];
+  let headers = { 'x-flight-source': 'adsb.lol', 'x-flight-coverage': '250nm regional fallback' };
+  let pendingSignal = null;
+  let hang = false;
+  let openskyCalls = 0;
+  const hanging = hangingFetch((signal) => { pendingSignal = signal; });
+  globalThis.fetch = (url, options = {}) => {
+    if (!String(url).startsWith('/api/opensky')) {
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ ac: [] }) });
+    }
+    openskyCalls += 1;
+    if (hang) return hanging(url, options);
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      headers: { get: (name) => headers[String(name).toLowerCase()] ?? null },
+      json: async () => ({ time: nowSec, states: [nearRow] }),
+    });
+  };
+  try {
+    await flightsLayer.update(viewer);
+    assert.equal(flightsLayer.refreshOnLocationArrive, true, 'the fallback is anchored to the camera');
+
+    hang = true;
+    const oldAnchorPoll = flightsLayer.update(viewer);
+    assert.ok(pendingSignal, 'a poll for the old anchor is in flight');
+    flightsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    assert.equal(pendingSignal.aborted, true);
+    await oldAnchorPoll; // settles instead of rejecting into the manager refresh-failed path
+    assert.equal(flightsLayer.getStats().error, null);
+    assert.equal(flightsLayer.getStats().retryInSec, 0, 'a switch abort arms no error backoff');
+
+    hang = false;
+    const callsBeforeFlight = openskyCalls;
+    await flightsLayer.update(viewer);
+    assert.equal(openskyCalls, callsBeforeFlight, 'no poll for an anchor the camera is only passing over');
+
+    flightsLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO });
+    assert.equal(_flightLocationSwitchStateForTest().active, false);
+    assert.deepEqual(removedBillboards, [far.billboard], 'the old-region contact goes now, not after 3 polls');
+    billboardCollection.show = true;
+    assert.equal(flightsLayer.hasContact('ff0001'), false);
+    assert.equal(flightsLayer.hasContact('aa0001'), true);
+    billboardCollection.show = false;
+    assert.equal(flightsLayer.refreshOnLocationArrive, true, 'the manager refetches the destination anchor');
+
+    headers = {};
+    await flightsLayer.update(viewer);
+    assert.equal(flightsLayer.refreshOnLocationArrive, false, 'back on the worldwide snapshot');
+  } finally {
+    globalThis.fetch = realFetch;
+    flightsLayer.onLocationArrive({ to: SWITCH_TO });
+  }
+});
+
+test('worldwide OpenSky switch keeps the in-flight poll and every contact, with no arrival refetch', async () => {
+  const viewer = switchViewer();
+  const contact = switchContact(43.7, -79.4);
+  _setTrackedFlightRefreshStateForTest({
+    icao24: 'cc0001',
+    tracked: false,
+    entity: null,
+    meta: contact.meta,
+    billboard: contact.billboard,
+    billboardCollection: { show: false, remove() {} },
+    viewer,
+  });
+  const realFetch = globalThis.fetch;
+  let observedSignal = null;
+  globalThis.fetch = hangingFetch((signal) => { observedSignal = signal; });
+  const caller = new AbortController();
+  try {
+    assert.equal(flightsLayer.refreshOnLocationArrive, false);
+    const poll = flightsLayer.update(viewer, { signal: caller.signal });
+    flightsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    assert.equal(observedSignal.aborted, false, 'the worldwide snapshot serves the destination too');
+    flightsLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO });
+    assert.equal(_flightLocationSwitchStateForTest().contacts, 1, 'worldwide contacts are kept');
+    assert.equal(flightsLayer.refreshOnLocationArrive, false);
+    caller.abort();
+    await assert.rejects(poll, { name: 'AbortError' }, 'a caller abort still rejects');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('location leave drops queued ambient type lookups and keeps priority ones', async () => {
+  const realFetch = globalThis.fetch;
+  const requested = [];
+  globalThis.fetch = async (url) => {
+    requested.push(String(url));
+    return { ok: false, status: 404, json: async () => null };
+  };
+  try {
+    _requestFlightTypeEnrichmentForTest('e10001');
+    _requestFlightTypeEnrichmentForTest('e10002');
+    _requestFlightTypeEnrichmentForTest('e10003', true);
+    flightsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    const enrichment = _flightEnrichmentStateForTest();
+    assert.ok(enrichment.queued.every((job) => job.priority), 'no ambient lookup outlives the switch');
+    assert.ok(enrichment.queued.some((job) => job.key === 't:e10003'));
+    assert.equal(enrichment.seen.has('t:e10002'), false, 'a dropped lookup may be asked again later');
+    assert.equal(enrichment.seen.has('t:e10003'), true);
+
+    _requestFlightTypeEnrichmentForTest('e10002');
+    assert.ok(
+      _flightEnrichmentStateForTest().queued.some((job) => job.key === 't:e10002'),
+      'and it queues again when asked',
+    );
+    flightsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.ok(requested.some((url) => url.endsWith('/type/e10003')), 'priority lookups still reach adsbdb');
+    assert.equal(requested.some((url) => url.endsWith('/type/e10002')), false);
+  } finally {
+    flightsLayer.onLocationArrive({ to: SWITCH_TO });
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('a leave without its arrival pauses at most the hold window; a disabled layer never pauses', () => {
+  const realNow = Date.now;
+  let now = realNow();
+  Date.now = () => now;
+  try {
+    flightsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: false });
+    assert.equal(_flightLocationSwitchStateForTest().active, false);
+    flightsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    assert.equal(_flightLocationSwitchStateForTest().active, true);
+    now += 60_000;
+    assert.equal(
+      _flightLocationSwitchStateForTest().active,
+      false,
+      'a lost arrival cannot pause floor warming forever',
+    );
+  } finally {
+    Date.now = realNow;
+    flightsLayer.onLocationArrive({ to: SWITCH_TO });
+  }
 });

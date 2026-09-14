@@ -6,7 +6,9 @@ import path from 'node:path';
 import { cctvProxy } from '../../server/providers/cctv.js';
 import { radioBrowserProxy } from '../../server/providers/radio.js';
 import { localProviderPlugins } from '../../server/providers/local.js';
-import { DEFAULT_CCTV_SOURCE_FILE } from '../../server/providers/cctv/constants.js';
+
+/** The first pack the catalogue reads when CCTV_SOURCES_FILE is unset. */
+const DEFAULT_PACK = 'config/cctv_sources.canada.json';
 
 function install(plugin, hook = 'configureServer') {
   let handler;
@@ -37,7 +39,7 @@ function fixture(t, id) {
   mkdirSync(path.join(root, 'config'));
   // The fixture stands in for whatever pack the app loads by default.
   writeFileSync(
-    path.join(root, DEFAULT_CCTV_SOURCE_FILE),
+    path.join(root, DEFAULT_PACK),
     JSON.stringify([
       {
         id,
@@ -55,7 +57,9 @@ function isolate(t) {
   for (const name of [
     'CCTV_SOURCES_FILE',
     'CCTV_SOURCES_JSON',
-    'CCTV_FORCE_AUSTIN',
+    'CCTV_COUNTRIES',
+    'CCTV_STREETVIEW_FALLBACK',
+    'ROAD511_API_KEY',
     'GOOGLE_MAPS_SERVER_API_KEY',
     'GOOGLE_MAPS_API_KEY',
   ]) {
@@ -66,6 +70,9 @@ function isolate(t) {
       else process.env[name] = previous;
     });
   }
+  // The fixtures sit in Austin; with the US off, no area triggers the Austin
+  // open-data pack. Fixture cameras declare no country, so they still load.
+  process.env.CCTV_COUNTRIES = 'CA';
   t.mock.method(globalThis, 'fetch', () => {
     throw Error('fixture must not fetch');
   });
@@ -75,7 +82,8 @@ test('CCTV instances resolve their own application source root and isolate catal
   isolate(t);
   const first = install(cctvProxy({ sourceRoot: fixture(t, 'first') }));
   const second = install(cctvProxy({ sourceRoot: fixture(t, 'second') }));
-  const [a, b] = await Promise.all([first('/sources'), second('/sources')]);
+  const area = '/sources?lat=30.27&lon=-97.74';
+  const [a, b] = await Promise.all([first(area), second(area)]);
   assert.equal(a.status, 200);
   assert.equal(b.status, 200);
   assert.deepEqual(
@@ -123,7 +131,7 @@ for (const hook of ['configureServer', 'configurePreviewServer']) {
       hook,
     );
     // Resolve the catalog before substituting transport behavior.
-    await request('/sources');
+    await request('/sources?lat=30&lon=-97');
     t.mock.method(globalThis, 'fetch', async () => {
       throw new DOMException('timeout', 'AbortError');
     });

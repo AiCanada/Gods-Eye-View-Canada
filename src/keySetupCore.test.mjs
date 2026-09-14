@@ -24,6 +24,27 @@ test('provider requirements name the registry env vars and next step', () => {
   assert.equal(keySetupRequirement('unknown'), '');
 });
 
+test('Road511 is a server-side POWER UP key for on-demand US camera lookups', () => {
+  const entry = KEY_SETUP_KEYS.find((candidate) => candidate.id === 'road511');
+  assert.ok(entry, 'the ROAD511 entry is registered');
+  assert.equal(entry.title, 'ROAD511');
+  assert.deepEqual([...entry.envVars], ['ROAD511_API_KEY']);
+  assert.equal(entry.tier, 'metered');
+  assert.equal(entry.getUrl, 'https://road511.com');
+  assert.equal(Boolean(entry.clientExposed), false, 'the key never reaches the browser bundle');
+  assert.equal(Boolean(entry.hidden), false, 'the key has its own row in the panel');
+  assert.equal(
+    keySetupRequirement('road511'),
+    'Needs ROAD511_API_KEY — add it in Provider Settings',
+  );
+  assert.ok(knownKeySetupEnvVars().has('ROAD511_API_KEY'));
+  const status = keySetupStatus({ ROAD511_API_KEY: 'road511-fixture-key' });
+  const road511 = status.keys.find((key) => key.id === 'road511');
+  assert.equal(road511.set, true);
+  assert.equal(road511.clientExposed, false);
+  assert.ok(!JSON.stringify(status).includes('road511-fixture-key'), 'a value leaked into status');
+});
+
 test('the boot provenance snapshot survives in-process Vite config re-evaluation', () => {
   // server.restart() re-evaluates vite.config.js in the SAME process after a
   // panel save has already set its values live on process.env. A recomputed

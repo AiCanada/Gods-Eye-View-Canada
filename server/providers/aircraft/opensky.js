@@ -4,6 +4,7 @@ import {
   readResponseJsonCapped,
 } from '../common/http.js';
 import { requiredFiniteQueryNumber } from '../common/query.js';
+import { haversineKm } from '../common/geo.js';
 // ---------------------------------------------------------------------------
 // OpenSky OAuth2 token + response cache state
 // ---------------------------------------------------------------------------
@@ -76,6 +77,45 @@ const ADSBLOL_POINT_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 // the viewport-scoped adsb.lol source is more honest and keeps local motion
 // current instead of coasting a stale worldwide frame indefinitely.
 const OPENSKY_SOURCE_STALE_MS = 120_000;
+
+/**
+ * Release regional fallback snapshots whose 0.25° anchor lies farther than
+ * `radiusKm` from a point, after the user switches location. The worldwide
+ * OpenSky snapshot is not area data and is never touched. Memory only; there
+ * is no disk tier for these 12 s snapshots.
+ * @param {{latitude: number, longitude: number}} point
+ * @param {number} radiusKm
+ * @param {Map<string, object>} [cache]
+ * @returns {number} How many snapshots were removed.
+ */
+export function pruneAdsbLolPointCacheOutside(
+  point,
+  radiusKm,
+  cache = _adsbLolPointCache,
+) {
+  const latitude = point?.latitude;
+  const longitude = point?.longitude;
+  if (![latitude, longitude, radiusKm].every(Number.isFinite) || radiusKm < 0)
+    return 0;
+  let removed = 0;
+  for (const key of cache.keys()) {
+    const [anchorLatitude, anchorLongitude] = String(key)
+      .split(',')
+      .map(Number);
+    if (!Number.isFinite(anchorLatitude) || !Number.isFinite(anchorLongitude))
+      continue;
+    const distanceKm = haversineKm(
+      latitude,
+      longitude,
+      anchorLatitude,
+      anchorLongitude,
+    );
+    if (distanceKm <= radiusKm) continue;
+    cache.delete(key);
+    removed += 1;
+  }
+  return removed;
+}
 
 /**
  * Obtain a valid OpenSky OAuth2 bearer token, refreshing if needed.

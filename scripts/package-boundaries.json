@@ -33,6 +33,7 @@
     "exports": ["./server/providers/live"],
     "modules": [
       "server/providers/live.js",
+      "server/providers/common/geo.js",
       "server/providers/common/http.js",
       "server/providers/common/query.js",
       "server/providers/aircraft/opensky.js",
@@ -94,6 +95,7 @@
     "runtime": "node",
     "exports": ["./server/providers/terrain"],
     "modules": [
+      "server/providers/common/geo.js",
       "server/providers/terrain.js",
       "src/data/terrainHeightsProxy.js"
     ],
@@ -107,7 +109,11 @@
   "traffic-provider": {
     "runtime": "node",
     "exports": ["./server/providers/traffic"],
-    "modules": ["server/providers/traffic.js", "src/data/tomtomTiles.js"],
+    "modules": [
+      "server/providers/common/geo.js",
+      "server/providers/traffic.js",
+      "src/data/tomtomTiles.js"
+    ],
     "external": []
   },
   "traffic-source": {
@@ -148,9 +154,19 @@
       "server/providers/cctv/media.js",
       "server/providers/cctv/normalize.js",
       "server/providers/cctv/sources.js",
+      "server/providers/cctv/area.js",
+      "server/providers/cctv/live-packs.js",
+      "server/providers/cctv/frame-cache.js",
+      "server/providers/cctv/upstream-gate.js",
+      "server/providers/cctv/host-budget.js",
+      "server/providers/cctv/road511-lookup.js",
+      "server/providers/cctv/json-file.js",
+      "server/providers/cctv/school-filter.js",
       "src/data/directionText.js",
+      "server/providers/common/allowed-hosts.js",
       "server/providers/common/geo.js",
       "server/providers/common/http.js",
+      "server/providers/common/rate-limit.js",
       "server/providers/places/google-key.js",
       "scripts/google-server-key.mjs"
     ],
@@ -193,6 +209,7 @@
     "runtime": "node",
     "exports": ["./server/providers/military-installations"],
     "modules": [
+      "server/providers/common/geo.js",
       "server/providers/common/http.js",
       "server/providers/common/query.js",
       "server/providers/common/rate-limit.js",
@@ -210,6 +227,7 @@
     "runtime": "node",
     "exports": ["./server/providers/regional"],
     "modules": [
+      "server/providers/common/geo.js",
       "server/providers/common/http.js",
       "server/providers/common/query.js",
       "server/providers/common/rate-limit.js",

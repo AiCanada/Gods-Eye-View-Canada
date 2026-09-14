@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CCTV_MAX_SOURCES_HARD_CAP,
+  CCTV_LOAD_CAP_HARD_LIMIT,
   enabledCctvCountries,
   frameFailureBackoffMs,
   frameHostAllowed,
@@ -31,8 +31,8 @@ test('normalised catalogue entries carry the resolver fields and an honest headi
   assert.equal(normalizeSourceItem({ id: 'z', headingDeg: '270' }).headingDeg, 270);
 });
 
-test('the catalogue hard cap and the frame backoff schedule', () => {
-  assert.equal(CCTV_MAX_SOURCES_HARD_CAP, 5000);
+test('the per-area load cap and the frame backoff schedule', () => {
+  assert.equal(CCTV_LOAD_CAP_HARD_LIMIT, 2500, 'one selected area loads at most 2,500 cameras');
   assert.equal(frameFailureBackoffMs(1), 15000);
   assert.equal(frameFailureBackoffMs(3), 60000);
   assert.equal(frameFailureBackoffMs(12), 300000, 'capped at five minutes');

@@ -32,7 +32,16 @@ export function normalizeRegionalPlace(payload) {
     region: region || null,
     country: country || null,
     countryCode: cleanText(address.country_code, 4).toUpperCase() || null,
+    regionCode: regionCodeOf(address),
   };
+}
+
+const REGION_CODE = /^[A-Z]{2}-[A-Z0-9]{1,3}$/;
+
+/** ISO 3166-2 code of the first-level subdivision ("CA-ON", "US-TX") when Nominatim reports one. */
+function regionCodeOf(address) {
+  const code = cleanText(address?.['ISO3166-2-lvl4'], 12).toUpperCase();
+  return REGION_CODE.test(code) ? code : null;
 }
 
 /** Normalize and deduplicate GDELT ArticleList output without trusting article HTML. */
@@ -127,5 +136,28 @@ export async function fetchRegionalBrief(latitude, longitude, { signal } = {}) {
   const params = new URLSearchParams({ latitude: latitude.toFixed(5), longitude: longitude.toFixed(5) });
   const response = await fetch(`/api/regional-brief?${params}`, { signal });
   if (!response.ok) throw new Error(`Regional brief unavailable (${response.status})`);
+  return response.json();
+}
+
+/**
+ * The area a location switch is measured in: the province, state or territory
+ * ("CA-ON", "US-TX", "AU-NSW") when the place has one, else the country ("GB"),
+ * else "" when the point could not be placed.
+ * @param {{regionCode?: ?string, countryCode?: ?string}|null} place
+ * @returns {string}
+ */
+export function locationRegionKey(place) {
+  const region = String(place?.regionCode || '').trim().toUpperCase();
+  if (REGION_CODE.test(region)) return region;
+  const country = String(place?.countryCode || '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(country) ? country : '';
+}
+
+/** Ask the same-origin proxy which province, state, territory or country a point is in. */
+export async function fetchLocationRegion(latitude, longitude, { signal } = {}) {
+  if (![latitude, longitude].every(Number.isFinite)) throw new Error('Valid coordinates are required');
+  const params = new URLSearchParams({ latitude: latitude.toFixed(5), longitude: longitude.toFixed(5) });
+  const response = await fetch(`/api/location-region?${params}`, { signal });
+  if (!response.ok) throw new Error(`Location region unavailable (${response.status})`);
   return response.json();
 }

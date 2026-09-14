@@ -15,7 +15,7 @@
  * roughly 700 characters; every other provider key is far shorter. */
 export const KEY_SETUP_VALUE_LIMIT = 4096;
 
-/** Most env var NAMES accepted in one save. The registry defines seventeen. */
+/** Most env var NAMES accepted in one save. The registry defines nineteen. */
 export const KEY_SETUP_UPDATE_LIMIT = 20;
 
 /** Header line written above keys the panel appends to a .env file. */
@@ -111,6 +111,16 @@ export const KEY_SETUP_KEYS = Object.freeze([
     getUrl: 'https://urs.earthdata.nasa.gov/profile',
     envVars: Object.freeze(['EARTHDATA_TOKEN']),
     tier: 'free',
+  }),
+  // Server-side only: the CCTV lookup route reads it from process.env on every
+  // call, and only when someone opens a US camera that has no public image.
+  Object.freeze({
+    id: 'road511',
+    title: 'ROAD511',
+    unlocks: 'US traffic cams with no public image: looks one up only when you open that camera',
+    getUrl: 'https://road511.com',
+    envVars: Object.freeze(['ROAD511_API_KEY']),
+    tier: 'metered',
   }),
   // Ask-panel language models. Each one that carries a key gets its own input
   // box and buttons under the LLM heading, so several can be compared side by

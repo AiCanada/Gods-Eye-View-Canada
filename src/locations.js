@@ -707,6 +707,8 @@ export async function searchAndFlyTo(viewer, query, options = {}) {
     if (presetFlight === CANCELLED_SEARCH) return CANCELLED_SEARCH;
     return {
       label: CITY_POIS[presetId].name,
+      lat: CITY_POIS[presetId].pois[0].lat,
+      lon: CITY_POIS[presetId].pois[0].lon,
       navigationMode: overview ? 'city-overview' : (requestedRange ? 'explicit-range' : 'precise-place'),
       rangeM: Number.isFinite(presetFlight?.range) ? Math.round(presetFlight.range) : null,
     };
@@ -733,6 +735,8 @@ export async function searchAndFlyTo(viewer, query, options = {}) {
     });
     return {
       label: localCity.label,
+      lat: localCity.lat,
+      lon: localCity.lon,
       navigationMode: requestedRange ? 'explicit-range' : (close ? 'precise-place' : 'city-overview'),
       rangeM: Math.round(localFlight.range),
     };
@@ -790,6 +794,8 @@ export async function searchAndFlyTo(viewer, query, options = {}) {
       return {
         label,
         navigationMode: 'natural-region-swath',
+        lat: swath.centerLat,
+        lon: swath.centerLng,
         rangeM: swath.rangeM,
       };
     }
@@ -824,6 +830,8 @@ export async function searchAndFlyTo(viewer, query, options = {}) {
         label,
         navigationMode,
         rangeM: null,
+        lat,
+        lon: lng,
       };
     }
   }
@@ -851,6 +859,8 @@ export async function searchAndFlyTo(viewer, query, options = {}) {
       ? 'explicit-range'
       : (options.forceClose ? navigationMode.replace('-overview', '-close') : navigationMode),
     rangeM: Math.round(flight.range),
+    lat: buildingBounds?.lat ?? lat,
+    lon: buildingBounds?.lon ?? lng,
   };
 }
 

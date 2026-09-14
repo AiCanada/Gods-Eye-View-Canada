@@ -179,7 +179,8 @@
   background: rgba(0, 212, 255, 0.14);
 }
 
-#cctv-quality-chip {
+#cctv-quality-chip,
+#cctv-region-cap-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -193,6 +194,13 @@
   color: #8fe7ff;
   background: rgba(0, 212, 255, 0.08);
   text-transform: uppercase;
+}
+
+/* The camera area hit the hard 2,500-camera cap (more cameras lie nearby). */
+#cctv-region-cap-chip[data-over='true'] {
+  color: #ffe6a2;
+  border-color: rgba(255, 217, 122, 0.35);
+  background: rgba(255, 217, 122, 0.1);
 }
 
 /* CAL badge states (cctv-v2 §3b, amended by LOCKED §9.2 — panel-only, no

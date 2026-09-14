@@ -35,6 +35,16 @@ const COLOR_BY_CLASS = {
 };
 const EARTH_MEAN_RADIUS_M = 6371008.8;
 const DISTANCE_PREFILTER_MARGIN_M = 5000;
+/**
+ * Upper bound on a location-switch suspension. The manager lifts it on arrival;
+ * this only heals a switch whose arrival never comes (a cancelled flight), so
+ * moveEnd cannot stay muted for good.
+ */
+const LOCATION_SWITCH_SUSPEND_MAX_MS = 15000;
+/** Below this a camera with an unbounded view is looking along the ground (Cockpit), not zoomed out. */
+const UNBOUNDED_VIEW_KEEP_MAX_HEIGHT_M = 100000;
+/** How far outside the last loaded viewport such a camera may be and still keep its sites (~110 km). */
+const UNBOUNDED_VIEW_KEEP_MARGIN_DEGREES = 1;
 const distanceEndpointScratch = new Cesium.Cartographic();
 const distanceGeodesicScratch = new Cesium.EllipsoidGeodesic();
 
@@ -82,6 +92,15 @@ const state = {
   clickHandler: null,
   timer: null,
   googleSearchRequested: false,
+  /** Viewport the committed records were loaded for; null once released. */
+  loadedBox: null,
+  /** Viewport key of the in-flight load, so a settle on the same view does not restart it. */
+  loadingKey: null,
+  /**
+   * Epoch ms until which camera-driven loads (moveEnd, unavailable retry) stay
+   * muted for a location switch in flight; 0 when not suspended.
+   */
+  suspendedUntil: 0,
 };
 
 function colorFor(record) {
@@ -218,9 +237,74 @@ function viewportBox(viewer) {
   return { south, west, north, east };
 }
 
+/** @param {?{south:number, west:number, north:number, east:number}} box @returns {?string} */
+function viewportKey(box) {
+  return box
+    ? [box.south, box.west, box.north, box.east].map((value) => value.toFixed(5)).join(',')
+    : null;
+}
+
+/** @param {object} viewer @returns {?{latitude:number, longitude:number, height:number}} Degrees and metres. */
+function cameraGroundPosition(viewer) {
+  const cartographic = viewer?.camera?.positionCartographic;
+  if (!cartographic) return null;
+  return {
+    latitude: Cesium.Math.toDegrees(cartographic.latitude),
+    longitude: Cesium.Math.toDegrees(cartographic.longitude),
+    height: cartographic.height,
+  };
+}
+
+/**
+ * Whether sites loaded for `box` still describe where a camera with an
+ * unbounded view is.
+ *
+ * An unbounded view is either a zoom-out (a globe reset, a high approach) or a
+ * low camera looking along the ground at the horizon, as Cockpit does. The
+ * first must drop the previous place's sites: they otherwise stayed on the globe
+ * and in the awareness cohort under a "zoom in" prompt. The second is still
+ * flying over them, and dropping them would empty Contacts mid-flight.
+ * @param {?{south:number, west:number, north:number, east:number}} box Last loaded viewport.
+ * @param {?{latitude:number, longitude:number, height:number}} camera Camera position, degrees and metres.
+ * @returns {boolean} True when the records should be kept.
+ */
+export function installationRecordsOutliveUnboundedView(box, camera) {
+  if (!box || !camera) return false;
+  const { latitude, longitude, height } = camera;
+  if (![latitude, longitude, height].every(Number.isFinite)) return false;
+  if (height > UNBOUNDED_VIEW_KEEP_MAX_HEIGHT_M) return false;
+  const margin = UNBOUNDED_VIEW_KEEP_MARGIN_DEGREES;
+  return latitude >= box.south - margin && latitude <= box.north + margin
+    && longitude >= box.west - margin && longitude <= box.east + margin;
+}
+
+function locationSwitchSuspended() {
+  return state.suspendedUntil > Date.now();
+}
+
 function clearRendered() {
   if (state.dataSource?.entities) state.dataSource.entities.removeAll();
   removeEntityContextsForLayer(LAYER_ID);
+}
+
+/**
+ * Drop every record, entity and context built for the last loaded viewport.
+ * @param {{reason?: ?string}} [options] `reason` clears this layer's selection
+ *   first, tagged with that origin. A location switch passes 'location-switch',
+ *   so a Contacts subject on the selected site survives the release. Without
+ *   one, the entity removal reports a feed eviction, the same as a viewport
+ *   refresh that no longer returns the selected site.
+ */
+function releaseRecords({ reason = null } = {}) {
+  if (reason) clearSelectedEntityContextForLayer(LAYER_ID, { reason });
+  if (state.records.length) governorRequestRender('installations-render');
+  state.selectedId = null;
+  clearRendered();
+  state.records = [];
+  state.recordById = new Map();
+  state.loadedBox = null;
+  state.stale = false;
+  state.saturated = false;
 }
 
 /**
@@ -339,7 +423,7 @@ function warmInstallationFloors(records) {
     .map((record) => ({ lat: record.latitude, lon: record.longitude }));
   if (!cold.length) return;
   warmFireAnchorFloors(cold).then(() => {
-    if (!state.enabled || !state.dataSource) return;
+    if (!state.enabled || !state.dataSource || locationSwitchSuspended()) return;
     if (!cold.some((point) => cachedGroundFloor(point.lat, point.lon) != null)) return;
     renderRecords();
   });
@@ -402,6 +486,8 @@ function scheduleUnavailableRetry() {
   state.retryTimer = setTimeout(() => {
     state.retryTimer = null;
     state.retryAt = 0;
+    // A location switch in flight owns the next query; arrival reloads.
+    if (locationSwitchSuspended()) return;
     if (state.enabled && !state.loading) loadInstallations();
   }, state.retryDelayMs);
 }
@@ -414,12 +500,19 @@ function clearUnavailableRetry({ resetBackoff = true } = {}) {
 }
 
 function scheduleLoad() {
-  if (!state.enabled) return;
+  // During a location switch the camera is crossing places nobody asked for;
+  // onLocationArrive issues the one query for where it lands.
+  if (!state.enabled || locationSwitchSuspended()) return;
   // A user-driven load supersedes any pending retry; the load reschedules on
   // failure, so the backoff step is kept rather than reset.
   clearUnavailableRetry({ resetBackoff: false });
   clearTimeout(state.timer);
-  state.timer = setTimeout(() => { loadInstallations(); }, REQUEST_DEBOUNCE_MS);
+  state.timer = setTimeout(() => {
+    // The settle that follows an arrival lands on the view the arrival load is
+    // already fetching; restarting it would only abort that request.
+    if (state.loading && state.loadingKey && state.loadingKey === viewportKey(viewportBox(state.viewer))) return;
+    loadInstallations();
+  }, REQUEST_DEBOUNCE_MS);
 }
 
 async function loadInstallations() {
@@ -435,6 +528,13 @@ async function loadInstallations() {
     state.abort?.abort();
     state.abort = null;
     state.loading = false;
+    state.loadingKey = null;
+    // The last viewport's sites no longer match a "zoom in" prompt unless the
+    // camera is still low over them (Cockpit looking at the horizon).
+    if (state.records.length
+      && !installationRecordsOutliveUnboundedView(state.loadedBox, cameraGroundPosition(state.viewer))) {
+      releaseRecords();
+    }
     clearUnavailableRetry();
     setInstallationStatus('zoom-in');
     return;
@@ -443,6 +543,7 @@ async function loadInstallations() {
   const requestAbort = new AbortController();
   state.abort = requestAbort;
   state.loading = true;
+  state.loadingKey = viewportKey(box);
   clearUnavailableRetry({ resetBackoff: false });
   // The previous attempt's failure is not the outcome of this new attempt.
   setInstallationStatus('loading');
@@ -519,6 +620,7 @@ async function loadInstallations() {
     if (requestAbort.signal.aborted || state.abort !== requestAbort || !state.enabled) return;
     state.records = records;
     state.recordById = new Map(state.records.map((record) => [record.id, record]));
+    state.loadedBox = box;
     state.lastUpdate = Date.now();
     state.stale = payload.status === 'stale';
     // Even the exact-viewport retry can saturate in a dense area. Say so rather
@@ -535,7 +637,9 @@ async function loadInstallations() {
     renderRecords();
     warmInstallationFloors(state.records);
   } catch (error) {
-    if (error?.name === 'AbortError') return;
+    // A superseded request's failure (a location switch aborted it before the
+    // error surfaced) is not the outcome of the view now on screen.
+    if (error?.name === 'AbortError' || requestAbort.signal.aborted) return;
     state.failureReason = error?.failureReason || 'unavailable';
     setInstallationStatus('unavailable', error?.message || 'Installation context unavailable');
     scheduleUnavailableRetry();
@@ -544,6 +648,7 @@ async function loadInstallations() {
     if (state.abort === requestAbort) {
       state.abort = null;
       state.loading = false;
+      state.loadingKey = null;
     }
   }
 }
@@ -564,6 +669,9 @@ const militaryInstallationsLayer = {
   },
   enable() {
     state.enabled = true;
+    // A layer switched on after it was left while disabled gets no arrival
+    // hook; its own first load and later moveEnds must not stay muted.
+    state.suspendedUntil = 0;
     registerPickOwner(LAYER_ID, (id) => state.recordById.has(id));
     state.dataSource.show = true;
     // DataLayerManager invokes update() immediately after enable(), which owns
@@ -577,6 +685,7 @@ const militaryInstallationsLayer = {
     state.abort?.abort();
     state.abort = null;
     state.loading = false;
+    state.loadingKey = null;
     if (state.dataSource) state.dataSource.show = false;
     clearSelectedEntityContextForLayer(LAYER_ID);
     state.selectedId = null;
@@ -584,6 +693,56 @@ const militaryInstallationsLayer = {
     setInstallationStatus('idle');
   },
   update() { return loadInstallations(); },
+  /**
+   * Location switch start (DataLayerManager hook, every initialized layer).
+   *
+   * Everything this layer holds was fetched for the viewport being left, so it
+   * cancels that view's debounce, retry and in-flight fetch, releases the
+   * records, entities, contexts and selection built for it, and mutes
+   * camera-driven loads until onLocationArrive, so neither a mid-flight moveEnd
+   * nor a backoff retry queries the flight path. The selection clear is tagged
+   * 'location-switch', so a Contacts subject on the selected site survives the
+   * switch with no CONTACT LOST cue; FOCUS can reselect it once a later load
+   * brings that site back into the records. Nothing is kept near the
+   * destination: a viewport is at most 10 degrees and the proxy's snapped-bbox
+   * cache makes the arrival query cheap. Enablement and persisted params are
+   * untouched; a disabled layer only hid its sites, so it releases them too.
+   * Idempotent, synchronous, no network, never throws.
+   */
+  onLocationLeave() {
+    try {
+      state.suspendedUntil = Date.now() + LOCATION_SWITCH_SUSPEND_MAX_MS;
+      clearTimeout(state.timer);
+      state.timer = null;
+      clearUnavailableRetry();
+      state.abort?.abort();
+      state.abort = null;
+      state.loading = false;
+      state.loadingKey = null;
+      state.googleSearchRequested = false;
+      state.failureReason = null;
+      releaseRecords({ reason: 'location-switch' });
+      setInstallationStatus('idle');
+    } catch (error) {
+      console.warn('[Data:military-installations] location leave cleanup failed', error);
+    }
+  },
+  /**
+   * Location switch arrival (DataLayerManager hook, enabled layers only): lift
+   * the suspension and query the arrived view now instead of waiting out the
+   * moveEnd debounce. An aborted arrival belongs to a switch a newer one
+   * replaced, whose own leave holds the suspension, so it does nothing.
+   * @param {{signal?: AbortSignal}} [context]
+   * @returns {Promise<void>|undefined} The arrival load, when one started.
+   */
+  onLocationArrive({ signal } = {}) {
+    if (signal?.aborted) return undefined;
+    state.suspendedUntil = 0;
+    if (!state.enabled) return undefined;
+    return loadInstallations().catch((error) => {
+      console.warn('[Data:military-installations] arrival load failed', error);
+    });
+  },
   /** Request a one-shot Google Maps Places search around the current map view. */
   searchNearby() {
     state.googleSearchRequested = true;

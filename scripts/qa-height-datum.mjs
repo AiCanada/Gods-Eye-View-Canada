@@ -192,7 +192,7 @@ async function readCameraGround(page, camId) {
     const carto = viewer.scene.globe.ellipsoid.cartesianToCartographic(mount);
     const mountAltM = carto.height;
     const mod = window.__godsEyeView.dataManager.layers.get('cctv').module;
-    const cam = mod.getUIState().cameras.find((c) => c.id === id);
+    const cam = mod.getCameraState(id);
     const mountHeightM = cam ? cam.mountHeightM : null;
     return {
       mountAltM,
@@ -336,8 +336,11 @@ async function main() {
     // (vite.config.js); Caltrans tags `city` with an arbitrary upstream
     // `nearbyPlace` string (NOT a stable "San Francisco" literal), so SF-area
     // Caltrans cameras are identified by proximity to the SF anchor instead
-    // (same anchor vite.config.js's CALTRANS_ANCHORS uses for prioritization).
-    const allCameras = await page.evaluate(() => window.__godsEyeView.dataManager.layers.get('cctv').module.getUIState().cameras);
+    // (downtown San Francisco).
+    const allCameras = await page.evaluate(() => {
+      const mod = window.__godsEyeView.dataManager.layers.get('cctv').module;
+      return mod.getUIState().cameras.map((c) => mod.getCameraState(c.id));
+    });
     console.log(`Camera catalog: ${allCameras.length} total.`);
 
     const SF_ANCHOR = { lat: 37.7793, lon: -122.4193 };
@@ -374,7 +377,7 @@ async function main() {
       for (const cam of cams) {
         const state = await page.evaluate((id) => {
           const mod = window.__godsEyeView.dataManager.layers.get('cctv').module;
-          return mod.getUIState().cameras.find((camera) => camera.id === id) || null;
+          return mod.getCameraState(id) || null;
         }, cam.id);
         const geom = await readCameraGround(page, cam.id);
         if (!geom || !Number.isFinite(geom.groundM)) {

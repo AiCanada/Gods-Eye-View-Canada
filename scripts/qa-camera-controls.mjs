@@ -31,6 +31,52 @@ const sources = [
   rangeM: 300,
   mountHeightM: 8,
 }));
+// Near both fixture cameras; the layer loads an area only below 400 km or for
+// a selected place, so the script views and selects this point before waiting.
+const fixturePlace = { lat: 30.271, lon: -97.7417 };
+const areaRadiusKm = 50;
+const distanceKm = (lat1, lon1, lat2, lon2) => {
+  const rad = Math.PI / 180;
+  const a =
+    Math.sin(((lat2 - lat1) * rad) / 2) ** 2 +
+    Math.cos(lat1 * rad) *
+      Math.cos(lat2 * rad) *
+      Math.sin(((lon2 - lon1) * rad) / 2) ** 2;
+  return 12742 * Math.asin(Math.min(1, Math.sqrt(a)));
+};
+/** The camera-area contract: fixture cameras within 50 km, nearest first. */
+const areaResponse = (params) => {
+  const lat = Number(params.get('lat'));
+  const lon = Number(params.get('lon'));
+  const inArea =
+    Number.isFinite(lat) && Number.isFinite(lon)
+      ? sources
+          .map((camera) => ({
+            camera,
+            km: distanceKm(lat, lon, camera.lat, camera.lon),
+          }))
+          .filter(({ km }) => km <= areaRadiusKm)
+          .sort((a, b) => a.km - b.km)
+          .map(({ camera }) => camera)
+      : [];
+  return {
+    area: {
+      lat,
+      lon,
+      radiusKm: areaRadiusKm,
+      limit: 2500,
+      inArea: inArea.length,
+      loaded: inArea.length,
+      dropped: 0,
+      reachKm: areaRadiusKm,
+      capped: false,
+      total: sources.length,
+      generation: 1,
+      pending: [],
+    },
+    sources: inArea,
+  };
+};
 const browser = await puppeteer.launch({
   headless: true,
   args: [
@@ -64,7 +110,12 @@ try {
         contentType: 'application/json',
         body: JSON.stringify(body),
       });
-    if (url.pathname === '/api/cctv/sources') return void json({ sources });
+    if (url.pathname === '/api/cctv/sources')
+      return void json(areaResponse(url.searchParams));
+    // The layer keeps this machine's private cameras; none here keeps the
+    // catalog to exactly the two fixture cameras.
+    if (url.pathname === '/api/private-cams/sources')
+      return void json({ sources: [] });
     if (url.pathname === '/api/cctv/health')
       return void json({
         cameras: sources.map((camera) => ({
@@ -112,10 +163,23 @@ try {
       document.getElementById('loading-screen')?.classList.contains('hidden'),
     { timeout: 60000 },
   );
+  await page.evaluate(({ lat, lon }) => {
+    const { viewer } = window.__godsEyeView;
+    const Cartesian3 = viewer.camera.position.constructor;
+    viewer.camera.setView({
+      destination: Cartesian3.fromDegrees(lon, lat, 6000),
+      orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+    });
+  }, fixturePlace);
   await page.$eval('[data-collapse-target="cctv-panel"]', (button) =>
     button.click(),
   );
   await page.click('#cctv-enable-btn');
+  // Select the place too, so the area loads even if a boot flight moves the view.
+  await page.evaluate(
+    (point) => window.__godsEyeView.dataManager.selectLocationArea({ point }),
+    fixturePlace,
+  );
   await page.waitForFunction(
     () =>
       window.__godsEyeView.dataManager.layers.get('cctv').module.getUIState()

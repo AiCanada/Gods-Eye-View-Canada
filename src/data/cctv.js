@@ -4,10 +4,18 @@
  * CCTV camera data layer for God's Eye View.
  *
  * Architecture:
- * - Camera catalog: built from seed definitions (CAMERA_SEEDS) merged with live
- *   sources fetched from the backend (/api/cctv/sources). Each camera record
- *   holds a base pose, a calibration offset, computed intrinsics/extrinsics,
- *   and an anchor position on the globe.
+ * - Camera area: the layer holds the cameras nearest ONE selected place — at
+ *   most 2,500 within 50 km, fetched from /api/cctv/sources?lat&lon — plus this
+ *   machine's private cameras, which load separately and never leave. A place
+ *   outside the loaded area (a pill, search result or map click, even in the
+ *   same state) swaps the area by id: kept cameras keep their records, dropped
+ *   ones release everything built for them. Nothing is fabricated for an empty
+ *   area. Each camera record holds a base pose, a calibration offset, computed
+ *   intrinsics/extrinsics, and an anchor position on the globe.
+ *
+ * - Road511 lookup cameras (`feedType:'none'`, `lookup:'road511'`) have no
+ *   public still. They cost no request until the user explicitly opens one,
+ *   which sends a single POST /api/cctv/lookup/:id.
  *
  * - Coverage geometry (v2): a true pitched frustum pyramid per camera — 4
  *   corner rays from the mount to the far-plane corners plus the closed
@@ -40,6 +48,12 @@
  *
  * - Auto-hop: timed camera cycling with view-context awareness (snaps to
  *   nearest camera when the viewer pans to a new region).
+ *
+ * - Location switch: onLocationSelect re-centres the camera area on every
+ *   selection outside it; onLocationLeave releases what was built for the view
+ *   being left (map cards, monitor planes, the active camera, wireframes and
+ *   volumes away from the destination); onLocationArrive waits for a matching
+ *   area load, then reloads for the destination.
  *
  * All mutable state is module-scoped. The exported `cctvLayer` object
  * implements the standard layer interface (init/enable/disable/update/destroy)
@@ -79,6 +93,7 @@ import {
   staticFrameRefreshMs,
 } from './cctvLod.js';
 import {
+  CCTV_CARD_FADE_END_M,
   CCTV_CARD_FETCH_BURST_LIMIT,
   CCTV_CARD_FETCH_BURST_SPACING_MS,
   CCTV_FRAME_CANVAS_W,
@@ -103,12 +118,15 @@ import {
 import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
 import { bindCctvCardResize, loadCardScale } from './cctvCardResize.js';
 import { bindPrivateCameraMove } from './cctvPrivateMove.js';
+import { keySetupRequirement } from '../keySetupCore.mjs';
 
 // ---------------------------------------------------------------------------
 // API endpoints
 // ---------------------------------------------------------------------------
 const FRAME_ENDPOINT = '/api/cctv/frame';
 const SOURCE_ENDPOINT = '/api/cctv/sources';
+/** Road511 image lookup for one camera; POST, sent only on explicit activation. */
+const LOOKUP_ENDPOINT = '/api/cctv/lookup';
 const HEALTH_ENDPOINT = '/api/cctv/health';
 const MEDIA_ENDPOINT = '/api/cctv/media';
 /** Home and business security cameras: a separate, loopback-only service
@@ -186,6 +204,25 @@ const PROBE_MIN_RANGE_M = 12;
 // so past this budget init proceeds on catalog fallbacks and the batch applies
 // post-hoc (applyLateGroundPriors) when it lands.
 const GROUND_PRIOR_INIT_WAIT_MS = 8000;
+// Camera area (contract: GET /api/cctv/sources?lat&lon&radiusKm). The server
+// answers the cameras nearest the point, nearest first; 2,500 is a hard cap.
+export const CCTV_AREA_RADIUS_KM = 50;
+export const CCTV_AREA_LOAD_CAP = 2_500;
+/** The first settled view below this height seeds the area (never at globe view). */
+const AREA_SEED_MAX_ALTITUDE_M = 400_000;
+/** A response still downloading live packs (area.pending) is fetched once more after this. */
+const AREA_PENDING_REFETCH_MS = 5_000;
+/** Longest a selection's area load waits for its camera flight to land. */
+const AREA_ARRIVAL_WAIT_MS = 10_000;
+/** Longest a location-switch arrival waits for the destination's area load. */
+const AREA_ARRIVE_WAIT_MS = 12_000;
+/** An area request this close to the arrival point is the destination's. */
+const AREA_ARRIVE_MATCH_KM = 5;
+// Road511 lookup answers that may be tried again on a later explicit open,
+// no sooner than the server's retryAfterMs (bounded here).
+const LOOKUP_RETRYABLE_STATES = new Set(['no-key', 'key-rejected', 'backoff', 'busy']);
+const LOOKUP_RETRY_MIN_MS = 30_000;
+const LOOKUP_RETRY_MAX_MS = 10 * 60_000;
 /** Default calibration offsets — all zeroed, range scale 1x. */
 const DEFAULT_CAMERA_CALIBRATION = Object.freeze({
   offsetNorthM: 0,
@@ -231,39 +268,6 @@ const CAMERA_ICON = (() => {
   return 'data:image/svg+xml;base64,' + btoa(svg);
 })();
 
-/**
- * Seed camera definitions used when no live sources are available.
- * Each seed references a city from CITY_POIS and a POI index within that city,
- * plus offsets to place the camera near the POI.
- */
-const CAMERA_SEEDS = [
-  { id: 'nyc-midtown-w', cityId: 'nyc', poiIndex: 1, label: 'Midtown West @ 34th', offsetNorthM: 120, offsetEastM: -70, headingDeg: 206, fovDeg: 74, rangeM: 880, elevationM: 26 },
-  { id: 'nyc-wtc-n', cityId: 'nyc', poiIndex: 2, label: 'WTC North Plaza', offsetNorthM: 95, offsetEastM: 34, headingDeg: 164, fovDeg: 68, rangeM: 760, elevationM: 32 },
-  { id: 'nyc-times-square-ne', cityId: 'nyc', poiIndex: 1, label: 'Times Sq Northeast', offsetNorthM: 230, offsetEastM: 120, headingDeg: 218, fovDeg: 66, rangeM: 640, elevationM: 24 },
-
-  { id: 'sf-market-5th', cityId: 'sf', poiIndex: 2, label: 'Market & 5th', offsetNorthM: -160, offsetEastM: 80, headingDeg: 320, fovDeg: 70, rangeM: 780, elevationM: 20 },
-  { id: 'sf-financial-district', cityId: 'sf', poiIndex: 1, label: 'SF Financial Core', offsetNorthM: 110, offsetEastM: 52, headingDeg: 205, fovDeg: 72, rangeM: 760, elevationM: 24 },
-
-  { id: 'tokyo-shibuya-scramble', cityId: 'tokyo', poiIndex: 4, label: 'Shibuya Crossing', offsetNorthM: 180, offsetEastM: 46, headingDeg: 18, fovDeg: 82, rangeM: 640, elevationM: 30 },
-  { id: 'tokyo-ginza-core', cityId: 'tokyo', poiIndex: 0, label: 'Ginza Core', offsetNorthM: -180, offsetEastM: 150, headingDeg: 245, fovDeg: 70, rangeM: 690, elevationM: 28 },
-  { id: 'tokyo-asakusa-n', cityId: 'tokyo', poiIndex: 3, label: 'Asakusa North Gate', offsetNorthM: 110, offsetEastM: -65, headingDeg: 192, fovDeg: 68, rangeM: 620, elevationM: 24 },
-
-  { id: 'london-city-a1', cityId: 'london', poiIndex: 4, label: 'City Cluster A1', offsetNorthM: 80, offsetEastM: 65, headingDeg: 220, fovDeg: 71, rangeM: 720, elevationM: 27 },
-  { id: 'london-soho-core', cityId: 'london', poiIndex: 2, label: 'Soho Core', offsetNorthM: 210, offsetEastM: 120, headingDeg: 206, fovDeg: 70, rangeM: 700, elevationM: 22 },
-
-  { id: 'paris-rivoli', cityId: 'paris', poiIndex: 4, label: 'Rue de Rivoli', offsetNorthM: 55, offsetEastM: 85, headingDeg: 248, fovDeg: 66, rangeM: 640, elevationM: 22 },
-  { id: 'paris-champs-n', cityId: 'paris', poiIndex: 1, label: 'Champs-Élysées North', offsetNorthM: 130, offsetEastM: -38, headingDeg: 175, fovDeg: 68, rangeM: 700, elevationM: 26 },
-
-  { id: 'dc-mall-center', cityId: 'dc', poiIndex: 1, label: 'National Mall Center', offsetNorthM: 120, offsetEastM: 20, headingDeg: 258, fovDeg: 78, rangeM: 940, elevationM: 24 },
-  { id: 'dc-pentagon-s', cityId: 'dc', poiIndex: 3, label: 'Pentagon South', offsetNorthM: -100, offsetEastM: 92, headingDeg: 14, fovDeg: 66, rangeM: 620, elevationM: 21 },
-
-  { id: 'dubai-difc-loop', cityId: 'dubai', poiIndex: 4, label: 'DIFC Loop', offsetNorthM: 92, offsetEastM: -45, headingDeg: 196, fovDeg: 70, rangeM: 720, elevationM: 26 },
-  { id: 'dubai-downtown-east', cityId: 'dubai', poiIndex: 0, label: 'Downtown East', offsetNorthM: -130, offsetEastM: 190, headingDeg: 322, fovDeg: 72, rangeM: 760, elevationM: 28 },
-
-  { id: 'austin-congress-s', cityId: 'austin', poiIndex: 0, label: 'Congress Southbound', offsetNorthM: -165, offsetEastM: 40, headingDeg: 12, fovDeg: 74, rangeM: 760, elevationM: 24 },
-  { id: 'austin-downtown-west', cityId: 'austin', poiIndex: 1, label: 'Downtown West', offsetNorthM: -120, offsetEastM: -160, headingDeg: 120, fovDeg: 69, rangeM: 700, elevationM: 20 },
-];
-
 // ---------------------------------------------------------------------------
 // Visual style constants
 // ---------------------------------------------------------------------------
@@ -299,13 +303,33 @@ let _autoHop = false;
 // AUTO HOP toggle-on releases the hold.
 let _autoHopSuspended = false;
 let _autoHopSec = 18;
-/** Region cap: at most 2,500 cameras per Canadian province or territory, per US
- * state, and per country elsewhere (the server applies it). A per-viewer
- * preference, so it is kept in localStorage rather than in the share link. */
-const REGION_CAP_STORAGE_KEY = 'gev.cctv.regionCap';
-let _regionCapEnabled = loadRegionCapPreference();
-let _regionCapInfo = { limit: 0, dropped: {} };
-/** In-flight catalogue rebuild after a region-cap toggle, or null. */
+/** The loaded camera area as the server reported it
+ * (`{lat, lon, radiusKm, limit, inArea, loaded, dropped, reachKm, capped,
+ * total, pending, generation}`), or null before the first area lands. */
+let _area = null;
+/** The area load in flight: `{point, controller, generation, promise, nearest}`. */
+let _areaRequest = null;
+/** Bumped by every area request; a response for an older one is dropped. */
+let _areaGeneration = 0;
+/** A place selected while the layer was off (or whose load disable aborted);
+ * the next enable loads it. */
+let _pendingAreaPoint = null;
+/** One refetch while the server is still downloading a live pack for the area. */
+let _areaRefetchTimer = 0;
+/** Enable found no camera with a still near the view; the first area picks one. */
+let _areaDefaultPending = false;
+/** An arrival wanted a destination camera before its area landed: `{lat, lon}`. */
+let _areaCameraOwed = null;
+/** Counts explicit deselects, so an older NEAREST intent cannot undo a newer one. */
+let _deselectSerial = 0;
+/** Bumped whenever the record set or a camera's feed changes (memoizes uiState().cameras). */
+let _catalogVersion = 0;
+let _camerasCache = { version: -1, cameras: [] };
+/** In-flight Road511 lookups by camera id (at most one each). */
+const _lookupRequests = new Map();
+/** Ground-prior batch resolver (test seam; production is the Re:Earth proxy). */
+let _groundPriorResolver = resolveEllipsoidalGround;
+/** In-flight catalogue rebuild (a private camera moved or saved), or null. */
 let _catalogReload = null;
 /** Reloads the catalogue when POWER UP saves private camera settings. */
 let _privateCamerasListener = null;
@@ -329,18 +353,23 @@ let _lastFocusStyleAt = 0;
 /** Icons whose animated emphasis remains outside the 1.0 deadband. */
 let _activeFocusStyleCount = 0;
 const _scratchFocusScreen = new Cesium.Cartesian2();
-// Staggered geometry-load queue state (see startGeometryLoadQueue).
+// Staggered geometry-load queue state (see queueUnresolvedGeometry).
 let _geoQueue = [];
+/** Membership of `_geoQueue`, so enqueueing stays O(1) at 2,500 cameras. */
+let _geoQueueSet = new Set();
 let _geoQueueTimer = 0;
 let _geoLoading = false;
 let _geoLoadTotal = 0;
 let _geoLoadDone = 0;
 let _geoProgressNotifier = null;
+/** Set by a location-switch arrival drain: its completion re-anchors the map
+ * cards, whose entries hold the record.position objects refinement replaces. */
+let _geoReanchorCardsOnDrain = false;
 // One-shot completion latch for shared floor resolution: the enable-time queue
 // can drain while DEM cells or 3D tiles are still loading. The first update()
 // tick that sees projectionTilesReady() re-enqueues unresolved records ONCE;
 // shared mesh cells remain one-shot and idle ticks stay sample-free. Reset by
-// startGeometryLoadQueue so each enable-time drain gets its own completion pass.
+// enable() so each enable-time drain gets its own completion pass.
 let _tilesReadyReenqueued = false;
 // Calibration ADJUST mode (viewshed/gizmo design §3c): while true, the active
 // camera renders the direct-manipulation gizmo. Reset on layer disable.
@@ -390,6 +419,22 @@ let _cardFetchMode = 'steady';
  * 20/28/40 tiers resume when loading completes (see refreshAmbientCards).
  */
 const CCTV_AMBIENT_CARD_DRAIN_CAP = 16;
+// Location switch (onLocationLeave → onLocationArrive). Thumbnails, frustum
+// wireframes and viewshed volumes of cameras within LOCATION_KEEP_RADIUS_KM of
+// the destination survive a switch, and the arrival geometry pass covers the
+// same radius. Arrival activates the nearest camera only inside
+// LOCATION_SELECT_RADIUS_KM, and only in place of a camera the switch released
+// or when the destination asks for one (a private-site pill lands on the
+// site's camera).
+// An active camera within LOCATION_KEEP_ACTIVE_RADIUS_KM of the destination
+// stays active: the user picked it there, or the map click that started the
+// switch landed on it.
+const LOCATION_KEEP_RADIUS_KM = 100;
+const LOCATION_SELECT_RADIUS_KM = 50;
+const LOCATION_KEEP_ACTIVE_RADIUS_KM = 2;
+// A switch whose arrival never comes (a gesture cancelled the flight) stops
+// holding card reselection after this long.
+const LOCATION_SWITCH_STALE_MS = 12_000;
 // Global static-frame pacing (owner finding 3): the pacer ticks at the burst
 // spacing (250 ms) but cardFetchPolicy gates launches — cold fill (selected
 // cards still missing their FIRST frame) allows up to 4 in-flight fetches at
@@ -498,6 +543,20 @@ export function setCctvCardPresentationOptions({ activeCameraCardEnabled = false
 // camera is in motion (picks during a flight would fight the reselection).
 let _cameraMoving = false;
 let _moveStartListener = null;
+// Location switch state. While `_locationSwitching` is set the camera is
+// flying to a place in another region: card reselection, hover cards, AUTO
+// HOP and the tiles-ready geometry pass hold until onLocationArrive, so
+// nothing loads for the ground the flight passes over.
+let _locationSwitching = false;
+let _locationSwitchStartedAt = 0;
+/** The pending switch released an active camera (a superseding leave keeps
+ * it), so arrival may select one at the destination in its place. */
+let _locationSwitchHadActive = false;
+
+/** World click, card click and private select: an explicit user activation. */
+function activateCameraExplicitly(cameraId) {
+  return setActiveCamera(cameraId, { explicit: true });
+}
 
 /**
  * Converts degrees to radians.
@@ -574,13 +633,16 @@ export function surfaceRegimeKey(globeShow) {
 }
 
 /**
- * Normalizes a raw feed-type string to a canonical type (image, mjpeg, mp4, hls, webm).
+ * Normalizes a raw feed-type string to a canonical type (image, mjpeg, mp4,
+ * hls, webm, none). `none` is a camera with no public still (a Road511 lookup
+ * camera); it is kept as is, never widened to `image`.
  * @param {string|*} value - Raw feed type from source config.
  * @returns {string} Canonical feed type.
  */
 function normalizeFeedType(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw) return 'image';
+  if (raw === 'none') return 'none';
   if (raw === 'mjpg') return 'mjpeg';
   if (raw === 'jpeg') return 'image';
   if (raw === 'jpg') return 'image';
@@ -598,6 +660,26 @@ function normalizeFeedType(value) {
  */
 function isVideoFeedType(feedType) {
   return feedType === 'mp4' || feedType === 'hls' || feedType === 'webm';
+}
+
+/**
+ * Whether a camera has a picture to show (a still or a stream). `none`
+ * cameras never create an Image or request a frame from cards, hover or the
+ * monitor plane.
+ * @param {Object} camera
+ * @returns {boolean}
+ */
+function cameraHasStill(camera) {
+  return !!camera && normalizeFeedType(camera.feedType) !== 'none';
+}
+
+/**
+ * Whether a camera's still comes from a Road511 lookup the user has to open.
+ * @param {Object} camera
+ * @returns {boolean}
+ */
+function isLookupCamera(camera) {
+  return camera?.lookup === 'road511';
 }
 
 /**
@@ -624,6 +706,21 @@ function headingFromId(id) {
     acc = (acc * 33 + text.charCodeAt(i)) >>> 0;
   }
   return normalizeHeading((acc % 16) * 22.5);
+}
+
+/**
+ * Viewshed hue index from a camera id (FNV-1a). Stable per id, so a camera
+ * keeps its colour across area swaps no matter which neighbours load with it.
+ * @param {string} id
+ * @returns {number} Non-negative integer for cameraHue().
+ */
+export function cctvHueIndexFromId(id) {
+  const text = String(id || '');
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+  }
+  return hash >>> 0;
 }
 
 /**
@@ -795,7 +892,7 @@ function saveCalibrationStore() {
  *  - 'calibrated' — a human explicitly saved a v2 calibration (`source:'manual'`).
  *  - 'curated'    — no manual save, but the catalog entry was hand-authored
  *                   (`poseSource:'curated'`, file/env sources only).
- *  - 'raw-prior'  — everything else (all Austin Open Data today).
+ *  - 'raw-prior'  — everything else (live packs and generated packs).
  *
  * Pure — no scoring math, no raycasts. `confidenceFromScore` and score-based
  * quality seeding are retired; this replaces them.
@@ -1052,68 +1149,28 @@ function currentViewContext() {
 }
 
 /**
- * Builds the initial camera catalog from CAMERA_SEEDS definitions.
- * Each seed is resolved against its city's POI coordinates, offset, and
- * passed through ensureCameraPose to populate derived fields.
- * @returns {Object[]} Array of fully-initialized camera objects.
+ * Fetches the public cameras nearest a point (contract 2): at most 2,500
+ * within 50 km, nearest first, plus the server's area report. Never asks for
+ * the whole catalogue. Private cameras are not part of it.
+ * @param {{lat:number, lon:number}} point
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{sources: Object[], area: Object}>} Rejects on HTTP/network failure or abort.
  */
-function seedCatalog() {
-  const catalog = [];
-  for (const seed of CAMERA_SEEDS) {
-    const city = CITY_POIS[seed.cityId];
-    const poi = city?.pois?.[seed.poiIndex];
-    if (!city || !poi) continue;
-    const { latOffset, lonOffset } = offsetDegrees(
-      poi.lat,
-      seed.offsetNorthM || 0,
-      seed.offsetEastM || 0
-    );
-    const camera = {
-      id: seed.id,
-      name: seed.label,
-      cityId: seed.cityId,
-      city: city.name,
-      provider: 'OSM Camera Grid',
-      sourceKind: 'seed',
-      feedType: 'image',
-      feedConfigured: false,
-      headingConfidence: 'medium',
-      lat: poi.lat + latOffset,
-      lon: poi.lon + lonOffset,
-      headingDeg: normalizeHeading(seed.headingDeg ?? poi.heading ?? 0),
-      fovDeg: clamp(seed.fovDeg ?? 70, 20, 120),
-      rangeM: clamp(seed.rangeM ?? 700, 260, 1800),
-      mountHeightM: clamp(seed.elevationM ?? 22, 8, 80),
-      groundElevationM: Number(city.groundElevation) || 0,
-      absoluteHeightM: (Number(city.groundElevation) || 0) + clamp(seed.elevationM ?? 22, 8, 80),
-      pitchDeg: clamp(seed.pitchDeg ?? -17, -40, -4),
-    };
-    ensureCameraPose(camera);
-    catalog.push(camera);
-  }
-  return catalog;
-}
-
-/**
- * Fetches configured camera sources from the backend.
- * @returns {Promise<Object[]>} Array of raw source objects, or empty on failure.
- */
-async function loadCameraSources() {
-  try {
-    const resp = await fetch(`${SOURCE_ENDPOINT}?regionCap=${_regionCapEnabled ? '1' : '0'}`, { cache: 'no-store' });
-    if (!resp.ok) return loadPrivateCameraSources();
-    const data = await resp.json();
-    if (!Array.isArray(data?.sources)) return loadPrivateCameraSources();
-    if (data.regionCap && typeof data.regionCap === 'object') {
-      _regionCapInfo = {
-        limit: Number(data.regionCap.limit) || 0,
-        dropped: data.regionCap.dropped && typeof data.regionCap.dropped === 'object' ? { ...data.regionCap.dropped } : {},
-      };
-    }
-    return [...data.sources, ...(await loadPrivateCameraSources())];
-  } catch {
-    return loadPrivateCameraSources();
-  }
+async function loadAreaSources(point, signal) {
+  const params = new URLSearchParams({
+    lat: point.lat.toFixed(5),
+    lon: point.lon.toFixed(5),
+    radiusKm: String(CCTV_AREA_RADIUS_KM),
+  });
+  const resp = await fetch(`${SOURCE_ENDPOINT}?${params.toString()}`, { cache: 'no-store', signal });
+  if (!resp.ok) throw new Error(`camera area answered HTTP ${resp.status}`);
+  const data = await resp.json();
+  return {
+    sources: Array.isArray(data?.sources)
+      ? data.sources.filter((source) => String(source?.sourceKind || '').toLowerCase() !== 'private')
+      : [],
+    area: data?.area && typeof data.area === 'object' ? data.area : {},
+  };
 }
 
 /**
@@ -1135,52 +1192,29 @@ async function loadPrivateCameraSources() {
   }
 }
 
-/** Reads the saved region-cap choice; on unless the viewer turned it off. */
-function loadRegionCapPreference() {
-  try {
-    return globalThis.localStorage?.getItem(REGION_CAP_STORAGE_KEY) !== 'off';
-  } catch {
-    return true;
-  }
-}
-
-/** Saves the region-cap choice for this viewer. */
-function saveRegionCapPreference(enabled) {
-  try {
-    globalThis.localStorage?.setItem(REGION_CAP_STORAGE_KEY, enabled ? 'on' : 'off');
-  } catch {
-    // Storage blocked (private window): the choice lasts for this session only.
-  }
-}
-
 /**
- * Rebuilds the camera catalogue in place after the region cap is toggled: the
- * layer tears its records down and re-initializes against the newly capped
- * source list, keeping its panel subscribers, its enabled state and, when it
- * survives the cap, the selected camera. Toggles made while a rebuild runs
- * queue behind it.
+ * Reloads the private cameras after they change (saved, removed, or a move
+ * that failed to save). Only private records are diffed: a camera whose
+ * source changed (or whose icon sits somewhere the saved spot does not) is
+ * rebuilt, a removed one is released, and the public camera area is left
+ * alone with no refetch. The selected camera stays selected when it is still
+ * listed. Requests made while a reload runs queue behind it.
  */
 function scheduleCatalogReload() {
   const run = async () => {
-    const viewer = _viewer;
-    if (!viewer) return;
-    const wasEnabled = _enabled;
-    const activeId = _activeCameraId;
-    // destroy() clears subscribers; carry the panel's over to the new catalogue.
-    const listeners = [..._listeners];
-    if (wasEnabled) cctvLayer.disable();
-    cctvLayer.destroy(viewer);
-    for (const listener of listeners) _listeners.add(listener);
-    await cctvLayer.init(viewer);
-    if (activeId && _recordById.has(activeId)) _activeCameraId = activeId;
-    if (wasEnabled) cctvLayer.enable();
+    if (!_viewer) return;
+    const sources = await loadPrivateCameraSources();
+    if (!_viewer) return;
+    // Awaited: the queue, the error catch and the notification below all
+    // follow the record swap, not just the list fetch.
+    await applyPrivateSources(sources);
   };
   const current = (_catalogReload || Promise.resolve())
     .catch(() => {})
     .then(run)
     .catch((error) => {
       _lastError = `Camera list reload failed: ${error?.message || error}`;
-      console.warn('[Data:CCTV] region-cap reload failed:', error);
+      console.warn('[Data:CCTV] camera list reload failed:', error);
     })
     .finally(() => {
       if (_catalogReload === current) _catalogReload = null;
@@ -1190,9 +1224,19 @@ function scheduleCatalogReload() {
 }
 
 /**
- * Merges raw backend sources with seed data to produce the final camera catalog.
- * Seeds provide fallback values for heading, FOV, range, etc. when not specified
- * by the source. Each camera is passed through ensureCameraPose.
+ * Normalizes a server lookup state for a Road511 lookup camera.
+ * @param {*} value
+ * @returns {'resolved'|'no-image'|'unresolved'}
+ */
+function normalizeLookupState(value) {
+  const state = String(value || '').trim().toLowerCase();
+  return state === 'resolved' || state === 'no-image' ? state : 'unresolved';
+}
+
+/**
+ * Turns raw backend sources into camera objects. Missing heading, FOV, range
+ * and mount values get conservative defaults; nothing is invented for a
+ * source without coordinates. Each camera is passed through ensureCameraPose.
  * @param {Object[]} rawSources - Raw source objects from the backend.
  * @returns {Object[]} Array of fully-initialized camera objects.
  */
@@ -1200,52 +1244,54 @@ function buildCatalogFromSources(rawSources) {
   const sources = Array.isArray(rawSources) ? rawSources : [];
   if (!sources.length) return [];
 
-  const seeded = seedCatalog();
-  const seedById = new Map(seeded.map((camera) => [camera.id, camera]));
-
   const catalog = [];
   for (const source of sources) {
     if (!source || typeof source !== 'object') continue;
     const id = String(source.id || '').trim();
     if (!id) continue;
-    const seed = seedById.get(id);
-    const lat = safeNumber(source.lat, seed?.lat ?? NaN);
-    const lon = safeNumber(source.lon, seed?.lon ?? NaN);
+    const lat = safeNumber(source.lat, NaN);
+    const lon = safeNumber(source.lon, NaN);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
     // A named city only counts when the camera actually sits near it.
-    const cityId = String(source.cityId || '').trim() || cityIdByName(source.city, lat, lon) || seed?.cityId || '';
+    const cityId = String(source.cityId || '').trim() || cityIdByName(source.city, lat, lon) || '';
     const city = cityId && CITY_POIS[cityId] ? CITY_POIS[cityId] : null;
 
     const sourceHeading = safeNumber(source.headingDeg, NaN);
-    const headingDeg = normalizeHeading(
-      Number.isFinite(sourceHeading)
-        ? sourceHeading
-        : (seed?.headingDeg ?? headingFromId(id))
-    );
+    const headingDeg = normalizeHeading(Number.isFinite(sourceHeading) ? sourceHeading : headingFromId(id));
     // Home and business cameras watch a yard or a doorway, not a highway: they
     // keep the short reach and low mount a real security camera has.
     const privateCamera = String(source.sourceKind || '').toLowerCase() === 'private';
-    const fovDeg = clamp(safeNumber(source.fovDeg, seed?.fovDeg ?? 74), 20, privateCamera ? 150 : 125);
-    const rangeM = clamp(safeNumber(source.rangeM, seed?.rangeM ?? 700), privateCamera ? 5 : 220, privateCamera ? 400 : 2200);
-    const mountHeightM = clamp(safeNumber(source.mountHeightM, seed?.mountHeightM ?? 24), privateCamera ? 1 : 6, privateCamera ? 60 : 120);
-    const pitchDeg = clamp(safeNumber(source.pitchDeg, seed?.pitchDeg ?? -17), -55, -2);
-    const groundElevationM = safeNumber(source.groundElevationM, city?.groundElevation ?? seed?.groundElevationM ?? 0);
+    const fovDeg = clamp(safeNumber(source.fovDeg, 74), 20, privateCamera ? 150 : 125);
+    const rangeM = clamp(safeNumber(source.rangeM, 700), privateCamera ? 5 : 220, privateCamera ? 400 : 2200);
+    const mountHeightM = clamp(safeNumber(source.mountHeightM, 24), privateCamera ? 1 : 6, privateCamera ? 60 : 120);
+    const pitchDeg = clamp(safeNumber(source.pitchDeg, -17), -55, -2);
+    const groundElevationM = safeNumber(source.groundElevationM, city?.groundElevation ?? 0);
+    const lookup = !privateCamera && source.lookup === 'road511' ? 'road511' : '';
+    const lookupState = lookup ? normalizeLookupState(source.lookupState) : '';
     const feedType = normalizeFeedType(source.feedType || source.type || 'image');
-    const headingConfidence = String(source.headingConfidence || (seed ? 'high' : 'low')).toLowerCase();
+    const headingConfidence = String(source.headingConfidence || 'low').toLowerCase();
     // CAL badge input (design §3b passthrough): hand-authored file/env source
-    // entries may carry poseSource:'curated'. Austin Open Data rows never set
-    // this — they stay RAW PRIOR until a human manually calibrates them.
-    const poseSource = source.poseSource === 'curated' ? 'curated' : (seed?.poseSource || null);
+    // entries may carry poseSource:'curated'. Live and generated pack rows
+    // never set this — they stay RAW PRIOR until a human calibrates them.
+    const poseSource = source.poseSource === 'curated' ? 'curated' : null;
+    // Budgeted hosts (IBI 511) publish their cadences (contract 5): cards use
+    // frameRefreshMs, the active plane and panel use activeFrameRefreshMs.
+    const frameRefreshMs = safeNumber(source.frameRefreshMs, NaN);
+    const activeFrameRefreshMs = safeNumber(source.activeFrameRefreshMs, NaN);
 
     const camera = {
       id,
-      name: String(source.name || seed?.name || id),
+      name: String(source.name || id),
       cityId,
-      city: String(source.city || city?.name || seed?.city || 'Global'),
-      provider: String(source.provider || seed?.provider || 'Configured CCTV Source'),
-      sourceKind: String(source.sourceKind || source.kind || (source.url ? 'configured' : 'seed')).toLowerCase(),
+      city: String(source.city || city?.name || 'Global'),
+      provider: String(source.provider || 'Configured CCTV Source'),
+      sourceKind: String(source.sourceKind || source.kind || 'configured').toLowerCase(),
       feedType,
+      lookup,
+      lookupState,
       feedConfigured: typeof source.url === 'string' && !!source.url.trim(),
+      ...(frameRefreshMs > 0 ? { frameRefreshMs } : {}),
+      ...(activeFrameRefreshMs > 0 ? { activeFrameRefreshMs } : {}),
       lat,
       lon,
       headingDeg,
@@ -1566,27 +1612,43 @@ function refreshProjectionTextures(record) {
 }
 
 /**
- * Builds the URL for fetching a camera frame image from the backend.
- * Includes a tick parameter to control cache invalidation cadence.
+ * Builds the URL for fetching a camera frame image from the backend
+ * (contract 4: `/api/cctv/frame/:id?ts=<tick>[&active=1]`). The server reads
+ * the camera's label and position from its own catalogue, so none ride along.
  * @param {Object} camera - Camera object.
  * @param {number} [refreshMs=ACTIVE_FRAME_REFRESH_MS] - Refresh interval used for tick bucketing.
+ * @param {Object} [options]
+ * @param {boolean} [options.active=false] - Only the active camera's monitor
+ *   plane and panel preview set this; map cards never do.
  * @returns {string} Frame URL.
  */
-function frameUrlFor(camera, refreshMs = ACTIVE_FRAME_REFRESH_MS) {
+function frameUrlFor(camera, refreshMs = ACTIVE_FRAME_REFRESH_MS, { active = false } = {}) {
   const cadenceMs = Math.max(1000, safeNumber(refreshMs, ACTIVE_FRAME_REFRESH_MS));
   const tick = Math.floor(Date.now() / cadenceMs);
   if (camera.privateFrameUrl) return `${camera.privateFrameUrl}?ts=${tick}`;
-  const params = new URLSearchParams({
-    label: camera.name,
-    city: camera.city,
-    lat: camera.lat.toFixed(6),
-    lon: camera.lon.toFixed(6),
-    heading: String(Math.round(camera.headingDeg)),
-    fov: String(Math.round(camera.fovDeg)),
-    pitch: String(Math.round(camera.pitchDeg || -10)),
-    ts: String(tick),
-  });
+  const params = new URLSearchParams({ ts: String(tick) });
+  if (active) params.set('active', '1');
   return `${FRAME_ENDPOINT}/${encodeURIComponent(camera.id)}?${params.toString()}`;
+}
+
+/**
+ * Active-camera frame cadence: the layer's 10 s, or the slower cadence a
+ * budgeted host publishes (`activeFrameRefreshMs`).
+ * @param {Object} camera
+ * @returns {number}
+ */
+function activeFrameRefreshMsFor(camera) {
+  return Math.max(ACTIVE_FRAME_REFRESH_MS, safeNumber(camera?.activeFrameRefreshMs, 0));
+}
+
+/**
+ * Idle-camera frame cadence: the layer's 60 s, or the slower card cadence a
+ * budgeted host publishes (`frameRefreshMs`).
+ * @param {Object} camera
+ * @returns {number}
+ */
+function idleFrameRefreshMsFor(camera) {
+  return Math.max(IDLE_FRAME_REFRESH_MS, safeNumber(camera?.frameRefreshMs, 0));
 }
 
 /**
@@ -1619,7 +1681,11 @@ function paintProjectionPlaceholder(ctx, camera, health = null) {
 
   const label = String(camera?.name || 'CCTV');
   const city = String(camera?.city || 'GLOBAL');
-  const status = String(health?.message || health?.status || camera?.feedType || 'NO FEED').toUpperCase();
+  // A camera with no public still says why (its lookup state), not "NONE".
+  const status = String(
+    (camera && !cameraHasStill(camera) ? cameraLookupNote(camera) : '')
+      || health?.message || health?.status || camera?.feedType || 'NO FEED'
+  ).toUpperCase();
 
   ctx.strokeStyle = 'rgba(0, 220, 255, 0.24)';
   ctx.lineWidth = 2;
@@ -1775,9 +1841,12 @@ function createProjectionRuntime(record) {
   const ctx = canvas.getContext('2d', { alpha: true });
 
   const feedType = normalizeFeedType(record.camera.feedType);
-  const mode = isVideoFeedType(feedType) ? 'video' : 'image';
+  // 'none': no public still. The plane paints the lookup note locally and
+  // never creates an Image or requests a frame.
+  const mode = feedType === 'none' ? 'none' : isVideoFeedType(feedType) ? 'video' : 'image';
   const runtime = {
     mode,
+    drawnNote: null,
     canvas,
     ctx,
     image: null,
@@ -1823,7 +1892,7 @@ function createProjectionRuntime(record) {
       video.play().catch(() => {});
     });
     runtime.video = video;
-  } else {
+  } else if (mode === 'image') {
     const img = new Image();
     img.decoding = 'async';
     img.crossOrigin = 'anonymous';
@@ -1895,6 +1964,40 @@ function destroyProjectionRuntime(runtime) {
 }
 
 /**
+ * Destroys a projection runtime for good (location switch): beyond
+ * destroyProjectionRuntime it cancels an in-flight frame request, zero-sizes
+ * the 1920x1080 canvas, its texture buffers and signature scratch (which frees
+ * their pixels at once instead of at the next GC), and detaches the runtime
+ * from its record so the next activation builds a fresh one.
+ * @param {Object} runtime - Projection runtime to release.
+ */
+function releaseProjectionRuntime(runtime) {
+  if (!runtime) return;
+  destroyProjectionRuntime(runtime);
+  if (runtime.image) {
+    runtime.image.onload = null;
+    runtime.image.onerror = null;
+    runtime.image.removeAttribute('src');
+    runtime.image = null;
+  }
+  runtime.video = null;
+  for (const canvas of [runtime.canvas, runtime.signatureCanvas, ...(runtime.buffers || [])]) {
+    if (!canvas) continue;
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+  runtime.canvas = null;
+  runtime.ctx = null;
+  runtime.buffers = null;
+  runtime.signatureCanvas = null;
+  runtime.signatureCtx = null;
+  runtime.imageLoading = false;
+  runtime.imageReady = false;
+  const record = _recordById.get(runtime.cameraId);
+  if (record?.projection === runtime) record.projection = null;
+}
+
+/**
  * Triggers a new frame fetch for an image-mode projection if the refresh
  * interval has elapsed. Active cameras refresh more frequently than idle ones.
  * @param {Object} record - Camera record.
@@ -1915,13 +2018,15 @@ function refreshProjectionImage(record, force = false) {
   // clears this latch so the next normal tick can refresh.
   if (runtime.imageLoading) return;
   const now = Date.now();
-  const refreshMs = record.camera.id === _activeCameraId
-    ? PROJECTION_ACTIVE_REFRESH_MS
+  const active = record.camera.id === _activeCameraId;
+  // A budgeted host's published active cadence (contract 5) slows the plane.
+  const refreshMs = active
+    ? Math.max(PROJECTION_ACTIVE_REFRESH_MS, activeFrameRefreshMsFor(record.camera))
     : PROJECTION_IDLE_REFRESH_MS;
   if (!force && now - runtime.lastImageRefreshAt < refreshMs) return;
   runtime.lastImageRefreshAt = now;
 
-  const frameUrl = frameUrlFor(record.camera, refreshMs);
+  const frameUrl = frameUrlFor(record.camera, refreshMs, { active });
   const sep = frameUrl.includes('?') ? '&' : '?';
   runtime.imageLoading = true;
   runtime.imageReady = false;
@@ -1962,6 +2067,18 @@ function drawProjectionFrame(record) {
   if (!runtime || !runtime.ctx) return;
 
   const health = _healthById.get(record.camera.id) || null;
+
+  if (runtime.mode === 'none') {
+    // No public still: repaint only when the lookup note changes (pending →
+    // answered), so the texture is not re-uploaded every second.
+    const note = cameraLookupNote(record.camera);
+    if (runtime.drawnNote !== note) {
+      runtime.drawnNote = note;
+      runtime.canvasStamp = (runtime.canvasStamp || 0) + 1;
+      paintProjectionPlaceholder(runtime.ctx, record.camera, health);
+    }
+    return;
+  }
 
   if (runtime.mode === 'video' && runtime.video) {
     const video = runtime.video;
@@ -2335,7 +2452,7 @@ async function resolveGroundPriors(catalog) {
         ...(Number.isFinite(ortho) ? { sourceOrthometricM: ortho } : {}),
       };
     });
-    return await resolveEllipsoidalGround(coords);
+    return await _groundPriorResolver(coords);
   } catch (error) {
     console.warn('[Data:CCTV] ground-prior batch failed (keeping catalog fallbacks):', error?.message || error);
     return null;
@@ -2445,7 +2562,9 @@ function stopGeometryLoadQueue(clearProgress = true) {
     _geoQueueTimer = 0;
   }
   _geoQueue = [];
+  _geoQueueSet = new Set();
   _geoProgressNotifier = null;
+  _geoReanchorCardsOnDrain = false;
   if (clearProgress) {
     _geoLoading = false;
     _geoLoadTotal = 0;
@@ -2613,6 +2732,7 @@ export function processGeometryBatch() {
         && document.body?.classList.contains('cockpit-mode'),
     }),
     visit: (record) => {
+      _geoQueueSet.delete(record);
       try {
         updateRecordGeometry(record);
       } catch (err) {
@@ -2625,7 +2745,9 @@ export function processGeometryBatch() {
     progress: () => _geoProgressNotifier?.progress(),
     complete: () => {
       const wasInitialLoad = _geoLoading;
+      const reanchorCards = _geoReanchorCardsOnDrain;
       _geoLoading = false;
+      _geoReanchorCardsOnDrain = false;
       if (wasInitialLoad) {
         _geoLoadDone = _geoLoadTotal;
         if (_enabled) {
@@ -2635,6 +2757,9 @@ export function processGeometryBatch() {
           // not a per-frame or timer pass).
           refreshAmbientCards();
         }
+      } else if (reanchorCards && _enabled) {
+        // Same re-anchor for a location-switch arrival drain.
+        refreshAmbientCards();
       }
       // Completion is never coalesced: subscribers must observe the final
       // loading state even if the last progress tick just happened.
@@ -2658,7 +2783,8 @@ export function processGeometryBatch() {
  */
 function enqueueGeometryRefresh(records) {
   for (const record of records) {
-    if (!_geoQueue.includes(record)) {
+    if (!_geoQueueSet.has(record)) {
+      _geoQueueSet.add(record);
       _geoQueue.push(record);
     }
   }
@@ -2669,54 +2795,59 @@ function enqueueGeometryRefresh(records) {
 }
 
 /**
- * Starts the initial staggered load: orders all records active-camera-first,
- * then by distance from the current viewer position (nearest first, so
- * cameras likely in view refine before off-screen ones), and exposes
- * loaded/total progress through uiState()/getStats() while running.
+ * Queues the given records that are still unresolved for the current surface
+ * regime: active camera first, then nearest `center` first, with loaded/total
+ * progress through uiState()/getStats(). Records already resolved or already
+ * queued are skipped, so an enable after a disable, or an area swap that keeps
+ * most cameras, never re-walks what is done.
+ * @param {Object[]} records - Candidate records (only live ones are queued).
+ * @param {{lat:number, lon:number}|null} [center] - Distance reference.
+ * @param {Object} [options]
+ * @param {boolean} [options.restartProgress=false] - Count progress from this
+ *   queue alone (an area swap), so the total never exceeds one area's cameras.
+ * @returns {number} Records added to the queue.
  */
-function startGeometryLoadQueue() {
-  stopGeometryLoadQueue();
-  // Fresh drain → fresh one-shot completion pass: re-arm the tiles-ready
-  // latch so update() can complete any records this drain leaves unresolved.
-  _tilesReadyReenqueued = false;
-  if (!_records.length) return;
+function queueUnresolvedGeometry(records, center = null, { restartProgress = false } = {}) {
+  const regime = currentSurfaceRegime();
+  const pending = [];
+  for (const record of Array.isArray(records) ? records : []) {
+    if (!record?.camera || _geoQueueSet.has(record) || isGroundResolved(record, regime)) continue;
+    if (_recordById.get(record.camera.id) !== record) continue;
+    pending.push(record);
+  }
+  if (!pending.length) return 0;
   const active = getActiveRecord();
-  const carto = _viewer?.camera?.positionCartographic;
-  const refLat = carto ? Cesium.Math.toDegrees(carto.latitude) : (active?.camera.lat ?? 0);
-  const refLon = carto ? Cesium.Math.toDegrees(carto.longitude) : (active?.camera.lon ?? 0);
-  const pending = _records
-    .filter((record) => record !== active)
+  const refLat = Number.isFinite(center?.lat) ? center.lat : (active?.camera.lat ?? 0);
+  const refLon = Number.isFinite(center?.lon) ? center.lon : (active?.camera.lon ?? 0);
+  const ordered = pending
     .map((record) => ({
       record,
       distKm: haversineKm(refLat, refLon, record.camera.lat, record.camera.lon),
     }))
     .sort((a, b) => a.distKm - b.distKm)
     .map((entry) => entry.record);
-  _geoQueue = active ? [active, ...pending] : pending;
-  _geoLoadTotal = _geoQueue.length;
-  _geoLoadDone = 0;
+  if (!_geoLoading || restartProgress) _geoLoadDone = 0;
+  for (const record of ordered) {
+    _geoQueueSet.add(record);
+    _geoQueue.push(record);
+  }
+  prioritizeActiveCctvGeometryRecord(_geoQueue, active);
   _geoLoading = true;
-  _geoProgressNotifier = createGeometryProgressNotifier(notifyListeners);
-  _geoQueueTimer = setTimeout(processGeometryBatch, 0);
+  _geoLoadTotal = Math.min(CCTV_AREA_LOAD_CAP, _geoLoadDone + _geoQueue.length);
+  _geoProgressNotifier ||= createGeometryProgressNotifier(notifyListeners);
+  if (!_geoQueueTimer) _geoQueueTimer = setTimeout(processGeometryBatch, 0);
+  return ordered.length;
 }
 
 /**
- * Returns the camera record for the currently active camera. A stale ID falls
- * back to the first record, but an intentional null remains an honest
- * deselected state.
+ * Returns the camera record for the currently active camera, or null. A
+ * stale id (its camera left with an area swap) is honestly no camera: the
+ * layer never falls back to whichever record happens to come first.
  * @returns {Object|null} Active camera record, or null when none is active.
  */
 function getActiveRecord() {
   if (!_activeCameraId) return null;
-  if (_recordById.has(_activeCameraId)) {
-    return _recordById.get(_activeCameraId);
-  }
-  // Sync _activeCameraId when falling back to first record to prevent ID mismatch
-  const fallback = _records[0] || null;
-  if (fallback && fallback.camera?.id) {
-    _activeCameraId = fallback.camera.id;
-  }
-  return fallback;
+  return _recordById.get(_activeCameraId) || null;
 }
 
 /**
@@ -2862,6 +2993,13 @@ function ensureCardFrameSlot(cameraId) {
 function refreshAmbientCards() {
   if (!_enabled || !_viewer || _viewer.isDestroyed() || !_records.length) {
     _cctvOverlayHost.setEntries(CCTV_OVERLAY_SOURCE_ID, [], CCTV_OVERLAY_SOURCE_OPTIONS);
+    return;
+  }
+  // Mid location switch the view is in flight (this also covers moveEnd):
+  // republish what is held, an empty ring, and let the arrival hook reselect
+  // for the destination.
+  if (locationSwitchHoldsCards()) {
+    pushAmbientCardEntries();
     return;
   }
   const scene = _viewer.scene;
@@ -3071,12 +3209,13 @@ function pushAmbientCardEntries() {
  * EVENT-DRIVEN picking on a user gesture, not steady-state work — the
  * ≥120 ms throttle caps it at ~8 scene.pick calls/s while the pointer is
  * actually moving (a still pointer costs nothing), so it can never approach
- * per-frame cost. Skipped while the camera is in motion, while ADJUST mode
- * owns the pointer (gizmo drags), and while the layer is disabled.
+ * per-frame cost. Skipped while the camera is in motion, during a location
+ * switch, while ADJUST mode owns the pointer (gizmo drags), and while the
+ * layer is disabled.
  * @param {Cesium.Cartesian2} position - Pointer position (CSS px).
  */
 function handleHoverMove(position) {
-  if (!_enabled || _cameraMoving || _calibrationMode || !position) return;
+  if (!_enabled || _cameraMoving || _locationSwitching || _calibrationMode || !position) return;
   if (!_viewer || _viewer.isDestroyed()) return;
   const now = Date.now();
   if (now - _hoverLastPickAt < HOVER_PICK_THROTTLE_MS) return;
@@ -3154,6 +3293,13 @@ function clearHoverCard() {
  */
 function hoverFetchCardFrame(record) {
   const cameraId = record.camera.id;
+  if (!cameraHasStill(record.camera)) {
+    // No public still: the pinned card keeps its placeholder and no Image or
+    // frame request is made (fetchCardFrame's placeholder branch).
+    const slot = ensureCardFrameSlot(cameraId);
+    if (!(slot.lastAttemptAt > 0)) fetchCardFrame(record, slot, staticFrameRefreshMs(record.camera), { userGesture: true });
+    return;
+  }
   if (_cardFetchPendingIds.has(cameraId)) return;
   if (_cardFetchInFlightCount >= CCTV_CARD_FETCH_BURST_LIMIT) return;
   const slot = ensureCardFrameSlot(cameraId);
@@ -3177,13 +3323,18 @@ function hoverFetchCardFrame(record) {
  */
 function cardFrameTick() {
   if (!_enabled || (!_cardIds.size && !(_activeCameraCardEnabled && _activeCameraId))) return;
+  // At and above the card fade-out altitude no card paints, so no frame is
+  // worth fetching; the pacer resumes on its own once the view comes down.
+  const viewerHeightM = _viewer?.camera?.positionCartographic?.height;
+  if (Number.isFinite(viewerHeightM) && viewerHeightM >= CCTV_CARD_FADE_END_M) return;
   const now = Date.now();
   let frameless = null;
   let stalest = null;
   let coldFill = false;
   const consider = (id) => {
     const record = _recordById.get(id);
-    if (!record) return;
+    // A camera with no public still never takes a pacer launch.
+    if (!record || !cameraHasStill(record.camera)) return;
     const slot = ensureCardFrameSlot(id);
     if (_cardFetchPendingIds.has(id)) {
       // An in-flight first-frame fetch keeps cold-fill mode active without
@@ -3238,8 +3389,9 @@ function cardFrameTick() {
 function fetchCardFrame(record, slot, refreshMs, { userGesture = false } = {}) {
   if (typeof document !== 'undefined' && document.hidden && !userGesture) return;
   // Drawing a browser-direct still (no CORS header) would taint the card canvas
-  // and break its texture upload, so these cards keep their placeholder.
-  if (isBrowserDirect(record.camera)) {
+  // and break its texture upload, so these cards keep their placeholder. A
+  // camera with no public still has nothing to fetch at all.
+  if (isBrowserDirect(record.camera) || !cameraHasStill(record.camera)) {
     Object.assign(slot, applyFrameResult(slot, { ok: false, frame: null }, Date.now()));
     return;
   }
@@ -3457,23 +3609,1042 @@ export function refreshCoverageStyles() {
 }
 
 /**
- * Finds the camera closest to the Cesium viewer's current position.
- * @returns {string|null} Camera ID of the nearest camera, or null.
+ * Finds the camera with a still nearest a point, within `radiusKm`. Defaults
+ * (enable, area, arrival) and AUTO HOP only ever pick these.
+ * @param {{lat:number, lon:number}|null} point
+ * @param {number} [radiusKm=LOCATION_SELECT_RADIUS_KM]
+ * @returns {string|null} Camera ID, or null.
  */
-function nearestCameraIdToViewer() {
-  const carto = _viewer?.camera?.positionCartographic;
-  if (!carto || !_records.length) return null;
-  const lat = Cesium.Math.toDegrees(carto.latitude);
-  const lon = Cesium.Math.toDegrees(carto.longitude);
+function nearestStillCameraId(point, radiusKm = LOCATION_SELECT_RADIUS_KM) {
+  return nearestCameraIdWithinKm(point, radiusKm, { requireStill: true });
+}
 
-  let best = null;
+/**
+ * The next camera with a still after `currentId` in catalogue order (AUTO
+ * HOP's cycle), skipping cameras that have no public still.
+ * @param {string|null} currentId
+ * @param {number} [step=1]
+ * @returns {string|null}
+ */
+function nextStillCameraId(currentId, step = 1) {
+  const count = _records.length;
+  let index = _records.findIndex((record) => record.camera.id === currentId);
+  for (let i = 0; i < count; i++) {
+    index = cctvCycleIndex(index, step, count);
+    const camera = _records[index]?.camera;
+    if (camera && camera.id !== currentId && cameraHasStill(camera)) return camera.id;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Camera records and the camera area
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a record is one of this machine's private cameras (loaded apart
+ * from the public area and never removed by an area swap).
+ * @param {Object} record
+ * @returns {boolean}
+ */
+function isPrivateRecord(record) {
+  return record?.camera?.sourceKind === 'private';
+}
+
+/**
+ * Applies each camera's saved calibration (kept across area swaps) and
+ * derives its pose. Mutates and returns the cameras.
+ * @param {Object[]} cameras
+ * @returns {Object[]}
+ */
+function prepareCameras(cameras) {
+  for (const camera of cameras) {
+    const savedEntry = _calibrationById.get(camera.id);
+    if (savedEntry) {
+      camera.calibration = normalizeCalibration(savedEntry.values);
+      camera.calSource = savedEntry.source;
+    }
+    ensureCameraPose(camera);
+  }
+  return cameras;
+}
+
+/**
+ * Resolves ground priors for cameras about to get records, waiting at most
+ * GROUND_PRIOR_INIT_WAIT_MS. A warm proxy cache answers in milliseconds, so
+ * records are normally built with their prior; a slow upstream loses the race
+ * and `late` settles with the batch for applyLateGroundPriors.
+ * @param {Object[]} cameras
+ * @returns {Promise<{priors: Array|null, late: Promise<Array|null>|null}>}
+ */
+async function boundedGroundPriors(cameras) {
+  if (!cameras.length) return { priors: [], late: null };
+  const priorsPromise = resolveGroundPriors(cameras);
+  let timer = 0;
+  const priors = await Promise.race([
+    priorsPromise,
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve(null), GROUND_PRIOR_INIT_WAIT_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  return { priors, late: priors ? null : priorsPromise };
+}
+
+/**
+ * Builds one camera's record: its billboard, ground state and viewshed
+ * colours, registered in `_recordById`. The caller places it in `_records`.
+ * Coverage entities and the projection runtime stay lazy.
+ * @param {Object} camera - Calibrated camera (prepareCameras).
+ * @param {{ellipsoid:number, source:string}|null} [groundPrior]
+ * @returns {Object} The record.
+ */
+function createCameraRecord(camera, groundPrior = null) {
+  // Cheap first-pass altitude from the ellipsoidal prior (catalog value only
+  // as the pre-prior fallback) — the staggered geometry queue refines with
+  // sampled heights after enable, so building records never raycasts the
+  // scene once per camera.
+  const priorGround = Number.isFinite(groundPrior?.ellipsoid)
+    ? groundPrior.ellipsoid
+    : (Number(camera.groundElevationM) || 0);
+  camera.absoluteHeightM = priorGround + camera.mountHeightM;
+  const position = Cesium.Cartesian3.fromDegrees(camera.lon, camera.lat, camera.absoluteHeightM);
+  const billboard = _billboards
+    ? _billboards.add({
+      id: camera.id,
+      image: CAMERA_ICON,
+      position,
+      color: IDLE_CAMERA_COLOR,
+      width: 24,
+      height: 24,
+      // Field-test fix (2026-07-06): always-on-top. The old finite value
+      // (1800 m) re-engaged the depth test at far zoom, where the COARSE
+      // far-LOD Google-3D mesh sits above the true ground and swallowed
+      // ground-anchored icons ("submerged" pills over SF). Far-side-of-globe
+      // icons are handled by refreshHorizonCulling() (the flights-layer
+      // EllipsoidalOccluder pattern), not by the depth test.
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      scaleByDistance: new Cesium.NearFarScalar(350, 1.25, 4_000_000, 0.42),
+    })
+    : null;
+
+  const record = {
+    camera,
+    position,
+    billboard,
+    coverageEntities: [],
+    projection: null,
+    // Task 5 (height-datum fix): regime-aware ground resolution state.
+    //   groundPrior     — { ellipsoid, source } from the Re:Earth batch
+    //     (null until a late batch lands). The prior applies in EVERY
+    //     regime and is the terrain-globe resolution outright.
+    //   groundResolved  — PER-REGIME one-shot latch (regime key →
+    //     boolean): true once this record's resolution completed for that
+    //     regime; such records are excluded from the completion pass so
+    //     their geometry freezes. Re-armed only on a genuine pose change,
+    //     explicit user select/move, or a surface-regime change — never
+    //     on the 10s timer.
+    //   groundSamples   — PER-REGIME resolved ground (regime key →
+    //     metres): the accepted one-shot scene sample in google-3d, the
+    //     mirrored prior in terrain-globe. Kept across re-arms as the
+    //     "has ever resolved" memory for the B9c mid-stream guard.
+    //   frustumPositions — cached Cartesians for pure recomputes (so
+    //     plane placement never re-derives geometry it already has).
+    groundPrior,
+    groundResolved: {},
+    groundSamples: {},
+    frustumGeometry: null,
+    frustumPositions: null,
+    // §9.1 activation obstruction probe result: effective-range clamp so
+    // the far-cap plane never clips into the tiles. Null = unclamped.
+    // Reset + re-probed on every activation; cleared when the user takes
+    // the range slider (slider overrides the clamp).
+    probeClampRangeM: null,
+    // Viewshed (design §3a/§3b): per-camera color identity from an id hash,
+    // stable whichever neighbours load with it, plus the volume primitive
+    // handle (exists only in viewshed mode for the visible set).
+    viewshedColors: viewshedColors(cameraHue(cctvHueIndexFromId(camera.id))),
+    viewshedPrimitive: null,
+    viewshedActiveTint: false,
+    // Private cameras only: what their source said, to tell a changed camera.
+    sourceKey: camera.sourceKind === 'private' ? privateSourceKey(camera) : '',
+  };
+  _recordById.set(camera.id, record);
+  return record;
+}
+
+/**
+ * Releases cameras for good (an area swap or a removed private camera): the
+ * billboard, wireframes, viewshed volume, monitor-plane runtime, map card
+ * slot and grace state, hover card, health entry, geometry-queue entry and
+ * record. An active camera among them leaves no camera active. Saved
+ * calibration stays, so the camera keeps it if it loads again.
+ * @param {Object[]} records
+ */
+function destroyCameraRecords(records) {
+  const doomed = (Array.isArray(records) ? records : [])
+    .filter((record) => record?.camera && _recordById.get(record.camera.id) === record);
+  if (!doomed.length) return;
+  const doomedSet = new Set(doomed);
+  const doomedIds = new Set(doomed.map((record) => record.camera.id));
+  releaseCoverageEntities(doomed.filter((record) => record.coverageEntities?.length));
+  let activeLeft = false;
+  for (const record of doomed) {
+    const id = record.camera.id;
+    destroyViewshedVolume(record);
+    // Before the record leaves the map: the release detaches it from its record.
+    if (record.projection) releaseProjectionRuntime(record.projection);
+    if (record.billboard) {
+      _billboards?.remove(record.billboard);
+      record.billboard = null;
+    }
+    _cardIds.delete(id);
+    _cardGraceState.delete(id);
+    _cardFrameSlots.delete(id);
+    if (_hoverCardId === id) clearHoverCard();
+    _healthById.delete(id);
+    _geoQueueSet.delete(record);
+    if (_activeCameraId === id) {
+      _activeCameraId = null;
+      activeLeft = true;
+    }
+    _recordById.delete(id);
+    record.destroyed = true;
+  }
+  _projectionEntities = _projectionEntities.filter((runtime) => !doomedIds.has(runtime?.cameraId));
+  _geoQueue = _geoQueue.filter((record) => !doomedSet.has(record));
+  _records = _records.filter((record) => !doomedSet.has(record));
+  _count = _records.length;
+  _catalogVersion += 1;
+  if (activeLeft) _gizmo?.refresh();
+}
+
+/**
+ * Fingerprint of a private camera's saved source (base pose and feed), so a
+ * reload rebuilds only cameras that actually changed.
+ * @param {Object} camera
+ * @returns {string}
+ */
+function privateSourceKey(camera) {
+  const base = camera.basePose || camera;
+  return [
+    base.lat, base.lon, base.headingDeg, base.pitchDeg, base.fovDeg, base.rangeM, base.mountHeightM,
+    camera.name, camera.city, camera.privateFrameUrl, camera.feedType,
+  ].join('|');
+}
+
+/**
+ * Applies a fresh private camera list: private records whose source changed
+ * (or whose icon was left somewhere the saved spot is not) are rebuilt,
+ * removed ones are released, new ones are added. Public area records are
+ * untouched. The selected camera stays selected when it is still listed.
+ * @param {Object[]} rawSources
+ * @returns {Promise<void>}
+ */
+async function applyPrivateSources(rawSources) {
+  const catalog = buildCatalogFromSources(
+    (Array.isArray(rawSources) ? rawSources : [])
+      .filter((source) => String(source?.sourceKind || '').toLowerCase() === 'private'),
+  );
+  const byId = new Map(catalog.map((camera) => [camera.id, camera]));
+  const stale = _records.filter((record) => {
+    if (!isPrivateRecord(record)) return false;
+    const next = byId.get(record.camera.id);
+    if (!next || privateSourceKey(next) !== record.sourceKey) return true;
+    const base = record.camera.basePose;
+    return !base || base.lat !== next.lat || base.lon !== next.lon;
+  });
+  const staleIds = new Set(stale.map((record) => record.camera.id));
+  const incoming = prepareCameras(
+    catalog.filter((camera) => staleIds.has(camera.id) || !_recordById.has(camera.id)),
+  );
+  if (!stale.length && !incoming.length) return;
+  const { priors, late } = await boundedGroundPriors(incoming);
+  if (!_viewer) return;
+
+  const activeId = _activeCameraId;
+  destroyCameraRecords(stale);
+  const created = [];
+  for (const [index, camera] of incoming.entries()) {
+    if (_recordById.has(camera.id)) continue;
+    created.push(createCameraRecord(camera, priors?.[index] || null));
+  }
+  _records = [..._records, ...created];
+  _count = _records.length;
+  _catalogVersion += 1;
+  if (late) {
+    late.then((resolved) => {
+      if (!resolved) return;
+      const priorByCamera = new Map(incoming.map((camera, index) => [camera, resolved[index] || null]));
+      applyLateGroundPriors(created, created.map((record) => priorByCamera.get(record.camera) || null));
+    }).catch(() => {});
+  }
+  if (activeId && !_activeCameraId && _recordById.has(activeId)) _activeCameraId = activeId;
+  if (!_enabled) return;
+  queueUnresolvedGeometry(created, viewerPoint());
+  const active = getActiveRecord();
+  if (active) {
+    ensureProjectionRuntime(active);
+    refreshProjectionImage(active, true);
+  }
+  refreshHorizonCulling();
+  refreshCoverageStyles();
+  refreshAmbientCards();
+  startProjectionLoop();
+}
+
+/**
+ * Normalizes a server area report (contract 2) for the loaded area.
+ * @param {Object} area - `area` from /api/cctv/sources.
+ * @param {{lat:number, lon:number}} point - The requested point (fallback centre).
+ * @param {number} loadedCount - Area records the layer actually built.
+ * @param {number} generation
+ * @returns {Object}
+ */
+function normalizeArea(area, point, loadedCount, generation) {
+  const raw = area && typeof area === 'object' ? area : {};
+  const radiusKm = clamp(safeNumber(raw.radiusKm, CCTV_AREA_RADIUS_KM), 0.5, CCTV_AREA_RADIUS_KM);
+  const loaded = Math.max(0, Math.round(safeNumber(loadedCount, safeNumber(raw.loaded, 0))));
+  const dropped = Math.max(0, Math.round(safeNumber(raw.dropped, 0)));
+  const reachKm = safeNumber(raw.reachKm, NaN);
+  return {
+    lat: safeNumber(raw.lat, safeNumber(point?.lat, NaN)),
+    lon: safeNumber(raw.lon, safeNumber(point?.lon, NaN)),
+    radiusKm,
+    limit: clamp(Math.round(safeNumber(raw.limit, CCTV_AREA_LOAD_CAP)), 1, CCTV_AREA_LOAD_CAP),
+    inArea: Math.max(loaded + dropped, Math.round(safeNumber(raw.inArea, 0))),
+    loaded,
+    dropped,
+    reachKm: Number.isFinite(reachKm) && reachKm >= 0 ? Math.min(reachKm, radiusKm) : radiusKm,
+    capped: raw.capped === true || dropped > 0,
+    total: Math.max(0, Math.round(safeNumber(raw.total, 0))),
+    pending: Array.isArray(raw.pending) ? raw.pending.map(String) : [],
+    generation,
+  };
+}
+
+/**
+ * Whether a point is already covered by a loaded area: within
+ * `max(cover·0.5, cover − 10 km)` of its centre, where `cover` is the area's
+ * reach when the 2,500 cap cut it short and its radius otherwise. A covered
+ * selection keeps the area; anything farther re-centres it.
+ * @param {Object|null} area - `{lat, lon, radiusKm, reachKm, capped}`.
+ * @param {{lat:number, lon:number}|null} point
+ * @returns {boolean}
+ */
+export function cctvAreaCovers(area, point) {
+  const lat = Number(area?.lat);
+  const lon = Number(area?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lon)) return false;
+  const radiusKm = Number(area.radiusKm) > 0 ? Number(area.radiusKm) : CCTV_AREA_RADIUS_KM;
+  const reachKm = Number(area.reachKm);
+  const cover = area.capped === true && Number.isFinite(reachKm) && reachKm >= 0 ? reachKm : radiusKm;
+  return haversineKm(lat, lon, point.lat, point.lon) <= Math.max(cover * 0.5, cover - 10);
+}
+
+/**
+ * Resolves once `promise` settles, `ms` passes or `signal` aborts, whichever
+ * comes first. Never rejects.
+ * @param {Promise<unknown>|unknown} promise
+ * @param {number} ms
+ * @param {AbortSignal|null} [signal]
+ * @returns {Promise<void>}
+ */
+function waitBounded(promise, ms, signal = null) {
+  return new Promise((resolve) => {
+    let timer = 0;
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener?.('abort', finish);
+      resolve();
+    };
+    if (signal?.aborted) {
+      finish();
+      return;
+    }
+    timer = setTimeout(finish, ms);
+    signal?.addEventListener?.('abort', finish, { once: true });
+    Promise.resolve(promise).then(finish, finish);
+  });
+}
+
+/** Cancels the area load in flight; its response can no longer land. */
+function abortAreaRequest() {
+  if (!_areaRequest) return;
+  _areaRequest.controller.abort();
+  _areaRequest = null;
+  _areaGeneration += 1;
+}
+
+/** Cancels a scheduled live-pack refetch. */
+function clearAreaRefetchTimer() {
+  if (!_areaRefetchTimer) return;
+  clearTimeout(_areaRefetchTimer);
+  _areaRefetchTimer = 0;
+}
+
+/**
+ * Builds an area response's cameras and starts the ground-prior batch for
+ * the ones the layer does not hold yet, so priors resolve while a camera
+ * flight lands. Kept cameras cost no prior request.
+ * @param {Object[]} rawSources
+ * @returns {{catalog: Object[], priorById: Promise<Map<string, Object|null>>}}
+ */
+function prepareAreaCatalog(rawSources) {
+  const catalog = prepareCameras(buildCatalogFromSources(
+    (Array.isArray(rawSources) ? rawSources : [])
+      .filter((source) => String(source?.sourceKind || '').toLowerCase() !== 'private')
+      .slice(0, CCTV_AREA_LOAD_CAP),
+  ));
+  const added = catalog.filter((camera) => !_recordById.has(camera.id));
+  const priorById = (added.length ? resolveGroundPriors(added) : Promise.resolve([]))
+    .then((priors) => new Map(added.map((camera, index) => [camera.id, priors?.[index] || null])));
+  return { catalog, priorById };
+}
+
+/**
+ * Swaps the public camera area to a server response, by id. Kept cameras keep
+ * their record objects (cards, geometry and calibration intact); cameras that
+ * left are released completely (destroyCameraRecords); new cameras get
+ * records with ground priors fetched for them alone and are queued for
+ * geometry nearest the area centre. Private cameras stay. `_records` is the
+ * area nearest first, then private cameras. A response for an older request
+ * (generation) is dropped, checked again after every await.
+ * @param {Object[]} rawSources - `sources` from /api/cctv/sources, nearest first.
+ * @param {Object} area - `area` from the same response.
+ * @param {number} generation - The request generation it answers.
+ * @param {Object} [prepared] - prepareAreaCatalog() output started earlier.
+ * @param {Object} [request] - The request it answers; its `seeded` flag tags the area.
+ * @returns {Promise<boolean>} Whether the response was applied.
+ */
+async function applyAreaSources(rawSources, area, generation, prepared = null, request = null) {
+  if (generation !== _areaGeneration || !_viewer) return false;
+  const { catalog, priorById } = prepared || prepareAreaCatalog(rawSources);
+  let timer = 0;
+  const priors = await Promise.race([
+    priorById,
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve(null), GROUND_PRIOR_INIT_WAIT_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  if (generation !== _areaGeneration || !_viewer) return false;
+
+  const nextIds = new Set(catalog.map((camera) => camera.id));
+  destroyCameraRecords(_records.filter((record) => !isPrivateRecord(record) && !nextIds.has(record.camera.id)));
+  const areaRecords = [];
+  const added = [];
+  const awaitingPrior = [];
+  for (const camera of catalog) {
+    const existing = _recordById.get(camera.id);
+    if (existing) {
+      // An id a private camera already owns stays private.
+      if (isPrivateRecord(existing)) continue;
+      // The server may have resolved a lookup camera's still since it loaded.
+      if (camera.lookupState === 'resolved' && existing.camera.lookupState !== 'resolved') {
+        applyLookupResult(camera.id, { lookupState: 'resolved' }, { notify: false });
+      }
+      areaRecords.push(existing);
+      continue;
+    }
+    const prior = priors?.get(camera.id) || null;
+    const record = createCameraRecord(camera, prior);
+    areaRecords.push(record);
+    added.push(record);
+    if (!prior) awaitingPrior.push(record);
+  }
+  _records = [...areaRecords, ..._records.filter(isPrivateRecord)];
+  _count = _records.length;
+  _catalogVersion += 1;
+  _area = { ...normalizeArea(area, area, areaRecords.length, generation), seeded: request?.seeded === true };
+  if (!priors && awaitingPrior.length) {
+    priorById.then((map) => {
+      applyLateGroundPriors(awaitingPrior, awaitingPrior.map((record) => map.get(record.camera.id) || null));
+    }).catch(() => {});
+  }
+
+  const center = Number.isFinite(_area.lat) && Number.isFinite(_area.lon) ? { lat: _area.lat, lon: _area.lon } : null;
+  if (_enabled) queueUnresolvedGeometry(added, center, { restartProgress: true });
+  refreshHorizonCulling();
+  refreshCoverageStyles();
+  refreshAmbientCards();
+  startProjectionLoop();
+  if (_areaRequest?.generation === generation) _areaRequest = null;
+  notifyListeners();
+  return true;
+}
+
+/**
+ * After an area lands, picks its camera when one is owed: the NEAREST intent
+ * that started a re-centre (explicit when the user pressed it), an arrival
+ * whose destination cameras were still loading, or enable's default. Only
+ * cameras with a still within 50 km; defaults never send a lookup.
+ * @param {Object} request - The applied area request.
+ */
+function settleAreaCamera(request) {
+  if (!_enabled || _activeCameraId || _locationSwitching) return;
+  const nearest = request.nearest;
+  if (nearest && nearest.deselectSerial === _deselectSerial) {
+    const id = nearestStillCameraId(request.point)
+      || nearestCameraIdWithinKm(request.point, LOCATION_SELECT_RADIUS_KM);
+    if (id && setActiveCamera(id, { explicit: nearest.explicit === true }) === CCTV_ACTIVATION_RESULT.ACTIVATED) return;
+  }
+  if (_areaCameraOwed) {
+    const owed = _areaCameraOwed;
+    _areaCameraOwed = null;
+    const id = nearestStillCameraId(owed);
+    if (id && setActiveCamera(id) === CCTV_ACTIVATION_RESULT.ACTIVATED) return;
+  }
+  if (_areaDefaultPending && !_autoHopSuspended) {
+    // Like enable()'s default: selected, its plane shown, but not activated.
+    const id = nearestStillCameraId(viewerPoint()) || nearestStillCameraId(request.point);
+    if (!id) return;
+    _areaDefaultPending = false;
+    _activeCameraId = id;
+    const record = getActiveRecord();
+    ensureProjectionRuntime(record);
+    refreshProjectionImage(record, true);
+    refreshCoverageStyles();
+    refreshAmbientCards();
+    startProjectionLoop();
+    notifyListeners();
+  }
+}
+
+/**
+ * A response still downloading a live pack for this area (`area.pending`)
+ * is fetched once more after ~5 s. The refetch itself never schedules another.
+ * @param {Object} request
+ * @param {Object} area
+ */
+function scheduleAreaRefetch(request, area) {
+  if (request.refetch || !Array.isArray(area?.pending) || !area.pending.length) return;
+  clearAreaRefetchTimer();
+  _areaRefetchTimer = setTimeout(() => {
+    _areaRefetchTimer = 0;
+    if (!_enabled || _areaRequest || !_area || _area.generation !== request.generation) return;
+    requestArea(request.point, { refetch: true, seeded: _area.seeded === true });
+    notifyListeners();
+  }, AREA_PENDING_REFETCH_MS);
+}
+
+/**
+ * Starts loading the camera area around a point, replacing any load in
+ * flight. With `arrival` (a camera flight to the point) the response is
+ * applied once the flight lands, waiting at most 10 s.
+ * @param {{lat:number, lon:number}} point
+ * @param {Object} [options]
+ * @param {Promise<unknown>|null} [options.arrival]
+ * @param {{explicit:boolean, deselectSerial:number}|null} [options.nearest] - NEAREST intent.
+ * @param {boolean} [options.refetch=false] - The one live-pack refetch.
+ * @param {boolean} [options.seeded=false] - Loaded for the view, not a chosen
+ *   place (a low settle or the enable default): a later low settle outside
+ *   the area may replace it.
+ * @returns {Object} The request (`promise` resolves true when applied).
+ */
+function requestArea(point, { arrival = null, nearest = null, refetch = false, seeded = false } = {}) {
+  abortAreaRequest();
+  clearAreaRefetchTimer();
+  const generation = ++_areaGeneration;
+  const controller = new AbortController();
+  const request = {
+    point: { lat: point.lat, lon: point.lon },
+    controller,
+    generation,
+    nearest,
+    refetch,
+    seeded: seeded === true,
+    promise: null,
+  };
+  _areaRequest = request;
+  const current = () => generation === _areaGeneration && !controller.signal.aborted;
+  request.promise = (async () => {
+    try {
+      const payload = await loadAreaSources(request.point, controller.signal);
+      if (!current()) return false;
+      const prepared = prepareAreaCatalog(payload.sources);
+      if (arrival) await waitBounded(arrival, AREA_ARRIVAL_WAIT_MS, controller.signal);
+      if (!current()) return false;
+      if (!(await applyAreaSources(payload.sources, payload.area, generation, prepared, request))) return false;
+      settleAreaCamera(request);
+      scheduleAreaRefetch(request, payload.area);
+      return true;
+    } catch (error) {
+      if (current()) {
+        _lastError = `Camera area load failed: ${error?.message || error}`;
+        console.warn('[Data:CCTV] camera area load failed:', error?.message || error);
+      }
+      return false;
+    } finally {
+      if (_areaRequest === request) {
+        _areaRequest = null;
+        notifyListeners();
+      }
+    }
+  })();
+  return request;
+}
+
+/**
+ * A place was selected with the layer on. A point the loaded area covers
+ * changes nothing (a load elsewhere still in flight is cancelled); a point a
+ * load in flight already covers joins it; anything else starts a new load.
+ * A chosen (not seeded) point marks the area it keeps or joins as chosen, and
+ * a seeded point never replaces a chosen load in flight.
+ * @param {{lat:number, lon:number}} point
+ * @param {Object} [options] - requestArea options.
+ * @returns {Promise<boolean>} Resolves when the area for the point is settled.
+ */
+function selectArea(point, options = {}) {
+  const seeded = options.seeded === true;
+  const inFlight = _areaRequest;
+  if (inFlight && cctvAreaCovers({ ...inFlight.point, radiusKm: CCTV_AREA_RADIUS_KM }, point)) {
+    if (options.nearest && !inFlight.nearest) inFlight.nearest = options.nearest;
+    if (!seeded) inFlight.seeded = false;
+    return inFlight.promise;
+  }
+  if (seeded && inFlight && !inFlight.seeded) return inFlight.promise;
+  if (cctvAreaCovers(_area, point)) {
+    if (!seeded) _area.seeded = false;
+    if (inFlight) {
+      abortAreaRequest();
+      notifyListeners();
+    }
+    return Promise.resolve(false);
+  }
+  const request = requestArea(point, options);
+  notifyListeners();
+  return request.promise;
+}
+
+/**
+ * Whether the view is below the 400 km seed altitude, low enough for the
+ * point under it to be a place (never the globe view the app starts in).
+ * @returns {boolean}
+ */
+function viewLowEnoughForArea() {
+  return _viewer?.camera?.positionCartographic?.height < AREA_SEED_MAX_ALTITUDE_M;
+}
+
+/**
+ * Loads an area for the view once the layer is on: the place selected while
+ * it was off, else the settled view below 400 km. A seeded area (loaded for
+ * the view, not a chosen place) moves when a later low settle falls outside
+ * it; a chosen area (a selection or an explicit NEAREST) stays until the
+ * next selection.
+ */
+function maybeSeedArea() {
+  if (!_enabled || !_viewer) return;
+  if (_areaRequest && !_areaRequest.seeded) return;
+  if (_pendingAreaPoint) {
+    const point = _pendingAreaPoint;
+    _pendingAreaPoint = null;
+    selectArea(point);
+    return;
+  }
+  if (_area && !_area.seeded) return;
+  if (!viewLowEnoughForArea()) return;
+  const point = viewerPoint();
+  if (point) selectArea(point, { seeded: true });
+}
+
+// ---------------------------------------------------------------------------
+// Road511 lookup (explicit activation only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sends a lookup camera's one Road511 lookup (contract 3) when its state asks
+ * for one: `unresolved`, or a retryable answer (no key yet, key rejected,
+ * busy, backoff) whose retry time has passed. At most one request per camera
+ * is in flight. Called only from explicit activation.
+ * @param {Object} record
+ * @returns {boolean} Whether a request started.
+ */
+function maybeLookupCamera(record) {
+  const camera = record?.camera;
+  if (!isLookupCamera(camera) || _lookupRequests.has(camera.id)) return false;
+  const state = camera.lookupState;
+  const due = state === 'unresolved'
+    || (LOOKUP_RETRYABLE_STATES.has(state) && Date.now() >= safeNumber(camera.lookupRetryAt, 0));
+  if (!due) return false;
+  const id = camera.id;
+  const run = async () => {
+    let result = null;
+    try {
+      const response = await fetch(`${LOOKUP_ENDPOINT}/${encodeURIComponent(id)}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      result = await response.json().catch(() => null);
+      if (!response.ok && !result?.lookupState) {
+        result = { lookupState: response.status === 429 || response.status >= 500 ? 'busy' : 'no-image' };
+      }
+    } catch {
+      result = { lookupState: 'busy' };
+    } finally {
+      _lookupRequests.delete(id);
+    }
+    applyLookupResult(id, result);
+  };
+  _lookupRequests.set(id, null);
+  const promise = run();
+  if (_lookupRequests.has(id)) _lookupRequests.set(id, promise);
+  return true;
+}
+
+/**
+ * Applies a lookup answer to the camera, if it is still loaded. `resolved`
+ * turns it into an image camera and rebuilds its monitor plane and card;
+ * retryable answers wait `retryAfterMs` (bounded) before a later explicit
+ * open may ask again; anything else means no public image.
+ * @param {string} cameraId
+ * @param {Object|null} result - `{lookupState, feedType, retryAfterMs}`.
+ * @param {Object} [options]
+ * @param {boolean} [options.notify=true]
+ */
+function applyLookupResult(cameraId, result, { notify = true } = {}) {
+  const record = _recordById.get(cameraId);
+  const camera = record?.camera;
+  if (!camera || !isLookupCamera(camera)) return;
+  const state = String(result?.lookupState || '').toLowerCase();
+  if (state === 'resolved') {
+    camera.lookupState = 'resolved';
+    camera.feedType = 'image';
+    camera.lookupRetryAt = 0;
+    // The plane was painting the lookup note: rebuild it as an image plane.
+    const runtime = record.projection;
+    if (runtime) {
+      releaseProjectionRuntime(runtime);
+      _projectionEntities = _projectionEntities.filter((entry) => entry !== runtime);
+    }
+    // A card that settled on the placeholder fetches its first real frame.
+    _cardFrameSlots.delete(cameraId);
+    if (_enabled && cameraId === _activeCameraId) {
+      ensureProjectionRuntime(record);
+      refreshProjectionImage(record, true);
+      refreshCoverageStyles();
+      startProjectionLoop();
+    }
+    if (_enabled) pushAmbientCardEntries();
+  } else if (LOOKUP_RETRYABLE_STATES.has(state)) {
+    camera.lookupState = state;
+    camera.lookupRetryAt = Date.now()
+      + clamp(safeNumber(result?.retryAfterMs, 0), LOOKUP_RETRY_MIN_MS, LOOKUP_RETRY_MAX_MS);
+  } else {
+    camera.lookupState = state === 'not-lookup' ? 'not-lookup' : 'no-image';
+  }
+  _catalogVersion += 1;
+  if (notify) notifyListeners();
+}
+
+/**
+ * Panel and plane note for a camera with no public still.
+ * @param {Object} camera
+ * @returns {string} Empty for a camera with a still.
+ */
+function cameraLookupNote(camera) {
+  if (!camera || cameraHasStill(camera)) return '';
+  if (!isLookupCamera(camera)) return 'No public image for this camera';
+  if (_lookupRequests.has(camera.id)) return 'Looking up a Road511 image';
+  switch (camera.lookupState) {
+    case 'no-key':
+      return keySetupRequirement('road511') || 'Road511 key not set';
+    case 'key-rejected':
+      return 'Road511 key rejected · check it in Provider Settings';
+    case 'busy':
+    case 'backoff':
+      return 'Road511 lookup busy · open the camera again shortly';
+    case 'no-image':
+    case 'not-lookup':
+      return 'No public image for this camera';
+    default:
+      return 'No public image · select the camera to look one up';
+  }
+}
+
+/**
+ * Short source-badge label for a camera with no public still.
+ * @param {Object} camera
+ * @returns {string} Empty for a camera with a still.
+ */
+function cameraLookupBadge(camera) {
+  if (!camera || cameraHasStill(camera)) return '';
+  if (!isLookupCamera(camera)) return 'NO PUBLIC IMAGE';
+  if (_lookupRequests.has(camera.id)) return 'LOOKING UP';
+  switch (camera.lookupState) {
+    case 'no-key':
+      return 'KEY NOT SET';
+    case 'key-rejected':
+      return 'KEY REJECTED';
+    case 'busy':
+    case 'backoff':
+      return 'TRY AGAIN SOON';
+    case 'no-image':
+    case 'not-lookup':
+      return 'NO PUBLIC IMAGE';
+    default:
+      return 'SELECT TO LOOK UP';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Location switch (DataLayerManager onLocationLeave / onLocationArrive)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lists the records within `radiusKm` of a point, nearest first. Pure (reads
+ * only `record.camera.lat/lon`), so the location-switch release, the arrival
+ * camera pick and the arrival geometry pass share one distance rule.
+ * @param {Object[]} records - Camera records.
+ * @param {number} lat - Point latitude (degrees).
+ * @param {number} lon - Point longitude (degrees).
+ * @param {number} radiusKm - Inclusive radius in kilometres.
+ * @returns {{ record: Object, distKm: number }[]} Matches, nearest first.
+ */
+export function cctvRecordsWithinKm(records, lat, lon, radiusKm) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !(radiusKm >= 0)) return [];
+  const matches = [];
+  for (const record of Array.isArray(records) ? records : []) {
+    const camera = record?.camera;
+    if (!Number.isFinite(camera?.lat) || !Number.isFinite(camera?.lon)) continue;
+    const distKm = haversineKm(lat, lon, camera.lat, camera.lon);
+    if (distKm <= radiusKm) matches.push({ record, distKm });
+  }
+  return matches.sort((a, b) => a.distKm - b.distKm);
+}
+
+/**
+ * Returns the id of the camera nearest a point within `radiusKm`, or null.
+ * @param {{lat: number, lon: number}|null} point
+ * @param {number} radiusKm
+ * @param {Object} [options]
+ * @param {boolean} [options.requireStill=false] - Skip cameras with no public still.
+ * @returns {string|null}
+ */
+function nearestCameraIdWithinKm(point, radiusKm, { requireStill = false } = {}) {
+  if (!point) return null;
+  const matches = cctvRecordsWithinKm(_records, point.lat, point.lon, radiusKm);
+  const match = requireStill
+    ? matches.find(({ record }) => cameraHasStill(record.camera))
+    : matches[0];
+  return match?.record.camera.id || null;
+}
+
+/**
+ * Returns the viewer's ground point, or null without a camera.
+ * @returns {{lat: number, lon: number}|null}
+ */
+function viewerPoint() {
+  const carto = _viewer?.camera?.positionCartographic;
+  if (!carto) return null;
+  return {
+    lat: Cesium.Math.toDegrees(carto.latitude),
+    lon: Cesium.Math.toDegrees(carto.longitude),
+  };
+}
+
+/**
+ * Reads the coordinates of a location-switch endpoint
+ * (`{ key, region, country, lat, lon }`).
+ * @param {Object|null} place
+ * @returns {{lat: number, lon: number}|null} Null when it carries none.
+ */
+function locationSwitchPoint(place) {
+  const lat = typeof place?.lat === 'number' ? place.lat : NaN;
+  const lon = typeof place?.lon === 'number' ? place.lon : NaN;
+  return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+}
+
+/**
+ * Whether a location switch still holds camera-driven card work. A switch
+ * whose arrival never came (a gesture cancelled the flight) lets go after
+ * LOCATION_SWITCH_STALE_MS and restarts the card pacer, so the ring cannot
+ * stay empty for the rest of the session.
+ * @returns {boolean}
+ */
+function locationSwitchHoldsCards() {
+  if (!_locationSwitching) return false;
+  if (Date.now() - _locationSwitchStartedAt < LOCATION_SWITCH_STALE_MS) return true;
+  _locationSwitching = false;
+  _locationSwitchStartedAt = 0;
+  if (_enabled) startCardFrameLoop();
+  return false;
+}
+
+/**
+ * Removes the materialized frustum wireframes of the given records. They are
+ * rebuilt lazily the next time one of those cameras is active or in the
+ * coverage-visible set.
+ * @param {Object[]} records - Camera records whose wireframes go.
+ */
+function releaseCoverageEntities(records) {
+  if (!records.length) return;
+  const removed = new Set();
+  const entities = _viewer?.entities;
+  entities?.suspendEvents?.();
+  try {
+    for (const record of records) {
+      for (const entity of record.coverageEntities || []) {
+        entities?.remove(entity);
+        removed.add(entity);
+      }
+      record.coverageEntities = [];
+    }
+  } finally {
+    entities?.resumeEvents?.();
+  }
+  _coverageEntities = _coverageEntities.filter((entity) => !removed.has(entity));
+}
+
+/**
+ * Location-switch leave: releases what the layer built for the view being
+ * left. The loaded camera records, their billboards and ground priors stay
+ * until the destination's area swap replaces them (onLocationSelect).
+ * Synchronous and network-free; a second call finds nothing left to do.
+ * @param {Object|null} to - Destination `{ key, region, country, lat, lon }`.
+ */
+function beginLocationSwitch(to) {
+  _locationSwitching = true;
+  _locationSwitchStartedAt = Date.now();
+  // A camera an earlier arrival still owed belongs to the place being left.
+  _areaCameraOwed = null;
+  const point = locationSwitchPoint(to);
+  const nearIds = new Set(
+    cctvRecordsWithinKm(_records, point?.lat, point?.lon, LOCATION_KEEP_RADIUS_KM)
+      .map(({ record }) => record.camera.id)
+  );
+  const active = _activeCameraId ? _recordById.get(_activeCameraId) : null;
+  const keepActive = !!active && !!point && haversineKm(
+    point.lat,
+    point.lon,
+    active.camera.lat,
+    active.camera.lon
+  ) <= LOCATION_KEEP_ACTIVE_RADIUS_KM;
+
+  // Map cards: the pacer stops and detaches its in-flight frame requests; the
+  // ring, grace state and hover card go. Thumbnails near the destination stay
+  // so its first cards paint without a placeholder flash.
+  stopCardFrameLoop();
+  clearHoverCard();
+  _cardIds = new Set();
+  _cardGraceState = new Map();
+  for (const id of [..._cardFrameSlots.keys()]) {
+    if (!nearIds.has(id)) _cardFrameSlots.delete(id);
+  }
+  // The drain is ordered for the view being left; arrival queues the
+  // destination's unresolved cameras nearest first.
+  stopGeometryLoadQueue();
+
+  // ADJUST does not survive a switch, just as it does not survive a toggle.
+  if (_calibrationMode) {
+    _calibrationMode = false;
+    releaseContinuousRender('cctv-adjust');
+  }
+  _gizmo?.setEnabled(false);
+
+  // The active camera goes unless it sits at the destination. Unlike
+  // deactivateActiveCamera this leaves AUTO HOP's suspend state alone: a
+  // switch is not the user's empty-space deselect. Arrival selects a
+  // destination camera in its place; a leave that supersedes this one finds
+  // nothing active and keeps that owed.
+  const released = active && !keepActive ? active : null;
+  _locationSwitchHadActive ||= !!released;
+  if (released) {
+    _activeCameraId = null;
+    released.activationDone = false;
+  }
+
+  // Monitor planes: only the active camera shows one, so every other runtime
+  // is dead weight (a 1920x1080 canvas and its buffers, a frame request or
+  // video, the plane entity). The self-stopping projection loop idles out.
+  const keptRuntime = keepActive ? active.projection : null;
+  for (const runtime of _projectionEntities) {
+    if (runtime !== keptRuntime) releaseProjectionRuntime(runtime);
+  }
   for (const record of _records) {
-    const distKm = haversineKm(lat, lon, record.camera.lat, record.camera.lon);
-    if (!best || distKm < best.distKm) {
-      best = { id: record.camera.id, distKm };
+    if (record.projection && record.projection !== keptRuntime) {
+      releaseProjectionRuntime(record.projection);
     }
   }
-  return best?.id || null;
+  _projectionEntities = _projectionEntities.filter((runtime) => runtime === keptRuntime);
+
+  // Viewshed volumes and wireframes rebuild lazily for whatever is active or
+  // in coverage view next; only those near the destination stay.
+  const farWithWireframes = [];
+  for (const record of _records) {
+    const near = nearIds.has(record.camera.id);
+    if (record.viewshedPrimitive && !(keepActive && near)) destroyViewshedVolume(record);
+    if (record.coverageEntities?.length && !near) farWithWireframes.push(record);
+  }
+  releaseCoverageEntities(farWithWireframes);
+
+  if (released) {
+    // Nominal geometry for the camera left behind, then the null-active
+    // styles (idle icon colour, hidden wireframes, paused feeds).
+    clearProbeClampOnDeactivation(released, (previous) => {
+      applyFrustumGeometry(previous, groundAltFor(previous));
+    });
+    refreshCoverageStyles();
+    _gizmo?.refresh();
+  }
+
+  if (_enabled) pushAmbientCardEntries();
+  // With no active camera the panel drops its preview frame request (and any
+  // browser-direct still).
+  notifyListeners();
+}
+
+/**
+ * Location-switch arrival: resumes camera-driven work for the destination at
+ * once instead of waiting for the next moveEnd or poll.
+ * @param {Object|null} to - Destination `{ key, region, country, lat, lon }`.
+ */
+function endLocationSwitch(to) {
+  _locationSwitching = false;
+  _locationSwitchStartedAt = 0;
+  // The arrival consumes what this switch released, whichever way it ends.
+  const hadActive = _locationSwitchHadActive;
+  _locationSwitchHadActive = false;
+  // A layer that is off resumes in enable(), which reads the view it finds.
+  if (!_enabled || !_viewer) return;
+  const point = locationSwitchPoint(to) || viewerPoint();
+
+  startCardFrameLoop();
+  // Select the destination's camera with a still, without flying;
+  // setActiveCamera also reselects the card ring and notifies the panel. Only
+  // in place of the camera this switch released, when the destination asks
+  // for one (a private security-site pill), or when enable found none to
+  // default to. A camera the user deliberately deselected (an empty-map click,
+  // which is also the click that started this switch) stays deselected, and
+  // AUTO HOP stays held. Arrival is never an explicit activation.
+  const wantsCamera = to?.selectCamera === true
+    || (!_autoHopSuspended && (hadActive || _areaDefaultPending));
+  let activated = false;
+  if (!_activeCameraId && wantsCamera) {
+    const nearestId = nearestStillCameraId(point);
+    activated = !!nearestId && setActiveCamera(nearestId) === CCTV_ACTIVATION_RESULT.ACTIVATED;
+    if (activated) _areaDefaultPending = false;
+    // The destination's cameras are still loading (the load outlived the
+    // arrival wait): the camera is picked when they land.
+    if (!nearestId && _areaRequest) _areaCameraOwed = point;
+  }
+  if (!activated) refreshAmbientCards();
+
+  // Ground-resolve the destination's unresolved cameras, nearest first.
+  const regime = currentSurfaceRegime();
+  const unresolved = cctvRecordsWithinKm(_records, point?.lat, point?.lon, LOCATION_KEEP_RADIUS_KM)
+    .filter(({ record }) => !isGroundResolved(record, regime))
+    .map(({ record }) => record);
+  if (unresolved.length) {
+    _geoReanchorCardsOnDrain = true;
+    enqueueGeometryRefresh(unresolved);
+  }
+  startProjectionLoop();
+  if (!activated) notifyListeners();
 }
 
 /**
@@ -3548,7 +4719,8 @@ function getPublicCameraState(record, activeId = null) {
   const camera = record.camera;
   const health = _healthById.get(camera.id) || null;
   const isActive = camera.id === resolvedActiveId;
-  const refreshMs = isActive ? ACTIVE_FRAME_REFRESH_MS : IDLE_FRAME_REFRESH_MS;
+  const refreshMs = isActive ? activeFrameRefreshMsFor(camera) : idleFrameRefreshMsFor(camera);
+  const hasStill = cameraHasStill(camera);
   return {
     id: camera.id,
     name: camera.name,
@@ -3594,10 +4766,72 @@ function getPublicCameraState(record, activeId = null) {
     poseSource: camera.poseSource || null,
     basePose: camera.basePose ? { ...camera.basePose } : null,
     // A browser-direct camera's still comes straight from its operator into the
-    // panel's <img>; every other camera goes through the proxy.
-    frameUrl: isBrowserDirect(camera) ? browserDirectFrameUrl(camera, refreshMs) : frameUrlFor(camera, refreshMs),
-    mediaUrl: mediaUrlFor(camera),
+    // panel's <img>; every other camera goes through the proxy, and only the
+    // active camera's preview asks as active. A camera with no public still
+    // has no frame to request: the panel shows its lookup note instead.
+    frameUrl: !hasStill
+      ? null
+      : isBrowserDirect(camera)
+        ? browserDirectFrameUrl(camera, refreshMs)
+        : frameUrlFor(camera, refreshMs, { active: isActive }),
+    mediaUrl: hasStill ? mediaUrlFor(camera) : null,
+    lookup: camera.lookup || '',
+    lookupState: camera.lookupState || '',
+    lookupPending: _lookupRequests.has(camera.id),
+    lookupNote: cameraLookupNote(camera),
+    lookupBadge: cameraLookupBadge(camera),
   };
+}
+
+/**
+ * The area as the panel chip reads it: the server's report for the loaded
+ * area plus whether a load is in flight.
+ * @returns {Object}
+ */
+function areaUiState() {
+  const area = _area || {};
+  return {
+    loading: Boolean(_areaRequest),
+    ready: Boolean(_area),
+    lat: Number.isFinite(area.lat) ? area.lat : null,
+    lon: Number.isFinite(area.lon) ? area.lon : null,
+    radiusKm: safeNumber(area.radiusKm, CCTV_AREA_RADIUS_KM),
+    limit: safeNumber(area.limit, CCTV_AREA_LOAD_CAP),
+    inArea: safeNumber(area.inArea, 0),
+    loaded: safeNumber(area.loaded, 0),
+    dropped: safeNumber(area.dropped, 0),
+    reachKm: safeNumber(area.reachKm, 0),
+    capped: area.capped === true,
+    total: safeNumber(area.total, 0),
+    pending: Array.isArray(area.pending) ? [...area.pending] : [],
+  };
+}
+
+/**
+ * Light per-camera entries for the dropdown and voice matching, rebuilt only
+ * when the catalogue version changes (not on every notify). Full per-camera
+ * state stays available through cctvLayer.getCameraState(id).
+ * @returns {ReadonlyArray<Object>}
+ */
+function lightCameraEntries() {
+  if (_camerasCache.version !== _catalogVersion) {
+    _camerasCache = {
+      version: _catalogVersion,
+      cameras: Object.freeze(_records.map(({ camera }) => Object.freeze({
+        id: camera.id,
+        name: camera.name,
+        city: camera.city,
+        provider: camera.provider,
+        lat: camera.basePose?.lat ?? camera.lat,
+        lon: camera.basePose?.lon ?? camera.lon,
+        feedType: camera.feedType,
+        sourceKind: camera.sourceKind,
+        lookup: camera.lookup || '',
+        lookupState: camera.lookupState || '',
+      }))),
+    };
+  }
+  return _camerasCache.cameras;
 }
 
 /**
@@ -3618,12 +4852,8 @@ function uiState() {
     autoHop: _autoHop,
     autoHopSuspended: _autoHopSuspended,
     autoHopSec: _autoHopSec,
-    regionCap: {
-      enabled: _regionCapEnabled,
-      limit: _regionCapInfo.limit,
-      dropped: { ..._regionCapInfo.dropped },
-      reloading: Boolean(_catalogReload),
-    },
+    // The loaded camera area (at most 2,500 within 50 km of one place).
+    area: areaUiState(),
     count: _count,
     lastUpdate: _lastUpdate,
     error: _lastError,
@@ -3647,7 +4877,7 @@ function uiState() {
     },
     activeCameraId: activeId,
     activeCamera: active ? getPublicCameraState(active, activeId) : null,
-    cameras: _records.map((record) => getPublicCameraState(record, activeId)),
+    cameras: lightCameraEntries(),
     summary: buildSummaryText(),
   };
   return payload;
@@ -3846,12 +5076,18 @@ export function bindCctvWorldClickGesture(handler, onClick, options = {}) {
  * Sets the active camera by ID, initializes its projection runtime, refreshes
  * its frame, and updates styles.
  * @param {string} cameraId - ID of the camera to activate.
+ * @param {Object} [options]
+ * @param {boolean} [options.explicit=false] - The user picked this camera (a
+ *   world or card click, a private select, selectCamera, PREV/NEXT, NEAREST).
+ *   Only an explicit activation sends a lookup camera's one Road511 lookup;
+ *   AUTO HOP, arrival, enable/area defaults and restored params never do.
  * @returns {'activated'|'unchanged'|'not-found'} Discriminated activation result.
  */
-export function setActiveCamera(cameraId) {
+export function setActiveCamera(cameraId, { explicit = false } = {}) {
   if (!cameraId || !_recordById.has(cameraId)) return CCTV_ACTIVATION_RESULT.NOT_FOUND;
   const record = _recordById.get(cameraId);
   const previousActiveRecord = getActiveRecord();
+  const lookupStarted = explicit && maybeLookupCamera(record);
   // Re-selecting the already-active camera is a no-op: re-running the
   // activation path re-probes and rewrites the plane entity's geometry, and
   // that async primitive rebuild visibly flashes the monitor plane (owner
@@ -3859,10 +5095,12 @@ export function setActiveCamera(cameraId) {
   // `activationDone` distinguishes a real activation from the enable()-time
   // default `_activeCameraId` assignment, which never ran this path.
   if (!cctvRecordNeedsActivation(cameraId, _activeCameraId, record)) {
+    if (lookupStarted) notifyListeners();
     return CCTV_ACTIVATION_RESULT.UNCHANGED;
   }
   _activeCameraId = cameraId;
   _autoHopSuspended = false;
+  _areaDefaultPending = false;
   // A real activation creates projection work — wake the self-stopping loop.
   startProjectionLoop();
   if (previousActiveRecord && previousActiveRecord !== record) {
@@ -3931,6 +5169,10 @@ export function deactivateActiveCamera() {
   if (!record) return false;
   _activeCameraId = null;
   _autoHopSuspended = true;
+  // A deliberate deselect also drops any camera an area load would pick.
+  _deselectSerial += 1;
+  _areaDefaultPending = false;
+  _areaCameraOwed = null;
   record.activationDone = false;
   clearProbeClampOnDeactivation(record, (previous) => {
     applyFrustumGeometry(previous, groundAltFor(previous));
@@ -4142,8 +5384,16 @@ function clearRuntimeState() {
   // Idempotent — also covers a re-init without a prior destroy().
   teardownAmbientCards();
   clearProjectionOverlay();
+  abortAreaRequest();
+  clearAreaRefetchTimer();
+  _area = null;
+  _pendingAreaPoint = null;
+  _areaDefaultPending = false;
+  _areaCameraOwed = null;
+  _lookupRequests.clear();
   _records = [];
   _recordById = new Map();
+  _catalogVersion += 1;
   _healthById = new Map();
   _count = 0;
   _lastUpdate = null;
@@ -4169,6 +5419,8 @@ function clearRuntimeState() {
  * @param {boolean} [options.enabled=true] Layer enabled state.
  * @param {'off'|'on'|'viewshed'} [options.coverageMode='on'] Coverage mode.
  * @param {boolean} [options.showProjection=false] Projection visibility.
+ * @param {Object|null} [options.billboards] Billboard-collection seam (`add`/`remove`).
+ * @param {Object|null} [options.area] Loaded area report, as the server sends it.
  * @returns {void}
  */
 export function _setCctvCoverageStateForTest({
@@ -4178,7 +5430,12 @@ export function _setCctvCoverageStateForTest({
   enabled = true,
   coverageMode = 'on',
   showProjection = false,
+  billboards = null,
+  area = null,
 } = {}) {
+  stopGeometryLoadQueue();
+  abortAreaRequest();
+  clearAreaRefetchTimer();
   _viewer = viewer;
   _records = Array.isArray(records) ? records : [];
   _recordById = new Map(
@@ -4186,14 +5443,39 @@ export function _setCctvCoverageStateForTest({
       .filter((record) => record?.camera?.id)
       .map((record) => [record.camera.id, record]),
   );
+  _catalogVersion += 1;
   _coverageEntities = [];
   _projectionEntities = [];
-  _billboards = null;
+  _billboards = billboards;
   _activeCameraId = activeCameraId;
   _autoHopSuspended = false;
   _enabled = !!enabled;
   _coverageMode = normalizeCoverageMode(coverageMode, 'on');
   _showProjection = !!showProjection;
+  _locationSwitching = false;
+  _locationSwitchStartedAt = 0;
+  _locationSwitchHadActive = false;
+  _area = area ? normalizeArea(area, area, _records.length, _areaGeneration) : null;
+  _pendingAreaPoint = null;
+  _areaDefaultPending = false;
+  _areaCameraOwed = null;
+  _lookupRequests.clear();
+}
+
+/** Test seam: the live record for a camera id, or null. */
+export function _cctvRecordForTest(cameraId) {
+  return _recordById.get(cameraId) || null;
+}
+
+/** Test seam: starts a private camera reload; resolves once that reload has settled. */
+export function _reloadCctvPrivateCamerasForTest() {
+  scheduleCatalogReload();
+  return _catalogReload;
+}
+
+/** Test seam: replaces the ground-prior batch resolver (null restores the proxy). */
+export function _setCctvGroundPriorResolverForTest(resolver = null) {
+  _groundPriorResolver = typeof resolver === 'function' ? resolver : resolveEllipsoidalGround;
 }
 
 /**
@@ -4239,19 +5521,22 @@ function focusCamera(cameraId, duration = 2.2) {
 /**
  * Advances to the next camera if auto-hop is enabled and the hop interval
  * has elapsed. If the viewer has panned to a new region since the last hop,
- * snaps to the nearest camera instead of cycling sequentially.
+ * snaps to the nearest camera instead of cycling sequentially. Holds during a
+ * location switch; its arrival picks the destination's camera.
  * @param {number} nowMs - Current timestamp in milliseconds.
  */
 export function maybeAutoHop(nowMs) {
-  if (!_autoHop || _autoHopSuspended || !_enabled || _records.length < 2) return;
+  if (!_autoHop || _autoHopSuspended || !_enabled || _locationSwitching || _records.length < 2) return;
   if (nowMs - _lastHopAt < _autoHopSec * 1000) return;
 
   const viewKey = currentViewContext();
   const viewChanged = viewKey !== _lastViewContext;
   _lastViewContext = viewKey;
 
+  // AUTO HOP only lands on cameras with a still, and it is never an explicit
+  // activation, so it sends no Road511 lookup.
   if (viewChanged) {
-    const nearest = nearestCameraIdToViewer();
+    const nearest = nearestStillCameraId(viewerPoint());
     if (nearest && nearest !== _activeCameraId) {
       // Use setActiveCamera so the full activation path runs (obstruction
       // probe, projection runtime, geometry rewrite) — previously bypassed
@@ -4262,12 +5547,8 @@ export function maybeAutoHop(nowMs) {
     }
   }
 
-  const nextIdx = cctvCycleIndex(
-    _records.findIndex((record) => record.camera.id === _activeCameraId),
-    1,
-    _records.length,
-  );
-  setActiveCamera(_records[nextIdx].camera.id);
+  const nextId = nextStillCameraId(_activeCameraId, 1);
+  if (nextId) setActiveCamera(nextId);
   _lastHopAt = nowMs;
 }
 
@@ -4339,9 +5620,12 @@ const cctvLayer = {
   updateInterval: DEFAULT_UPDATE_INTERVAL_MS,
 
   /**
-   * Initializes the CCTV layer: loads camera sources, builds the catalog,
-   * restores calibration from localStorage, creates billboards, sets up click
-   * handling, and performs initial health sync. Coverage entities stay lazy.
+   * Initializes the CCTV layer: restores calibration from localStorage, loads
+   * this machine's private cameras, creates their billboards, sets up click
+   * handling, and performs initial health sync. The viewer is still at globe
+   * view here (the startup flight is deferred), so no public camera area loads
+   * yet: the first settled view below 400 km, or a selected place, loads it
+   * once the layer is on. No camera is active. Coverage entities stay lazy.
    * @param {Cesium.Viewer} viewer - The Cesium viewer instance.
    */
   async init(viewer) {
@@ -4358,127 +5642,24 @@ const cctvLayer = {
     _viewer.scene.primitives.add(_billboards);
     registerSpriteCollection('cctv', _billboards);
 
-    const sources = await loadCameraSources();
-    const catalogFromSources = buildCatalogFromSources(sources);
-    const catalog = catalogFromSources.length ? catalogFromSources : seedCatalog();
+    const catalog = prepareCameras(buildCatalogFromSources(await loadPrivateCameraSources()));
 
-    // Viewshed color identity (design §3a): golden-angle hue over the
-    // id-SORTED catalog index — deterministic across sessions for a stable
-    // catalog, maximally separated for neighboring cameras.
-    const hueIndexById = new Map(
-      catalog.map((camera) => camera.id).sort().map((id, index) => [id, index])
-    );
-
-    for (const camera of catalog) {
-      const savedEntry = _calibrationById.get(camera.id);
-      if (savedEntry) {
-        camera.calibration = normalizeCalibration(savedEntry.values);
-        camera.calSource = savedEntry.source;
-      }
-      ensureCameraPose(camera);
-    }
-
-    // Task 5 (height-datum fix): batch ALL camera coords through the Re:Earth
+    // Task 5 (height-datum fix): the cameras' coords go through the Re:Earth
     // ellipsoidal ground-prior resolver (network-cached — NOT a scene query;
     // the catalog's orthometric groundElevationM feeds the geoid fallback
-    // chain). Bounded wait: a warm proxy cache resolves in milliseconds, so
-    // records are normally built WITH their prior (correct first paint in
-    // every regime); a cold/slow upstream loses the race and the batch
-    // applies post-hoc via applyLateGroundPriors instead of hanging init.
-    const priorsPromise = resolveGroundPriors(catalog);
-    const priors = await Promise.race([
-      priorsPromise,
-      new Promise((resolve) => setTimeout(() => resolve(null), GROUND_PRIOR_INIT_WAIT_MS)),
-    ]);
-
-    for (let i = 0; i < catalog.length; i++) {
-      const camera = catalog[i];
-      // Ellipsoidal ground prior (or null while the batch is still in
-      // flight). Geometry falls back to the catalog value only until the
-      // batch lands.
-      const groundPrior = priors?.[i] || null;
-      // Cheap first-pass altitude from the ellipsoidal prior (catalog value
-      // only as the pre-prior fallback) — the staggered geometry queue
-      // refines with sampled tile heights after enable so the init path
-      // never raycasts the scene once per camera.
-      const priorGround = Number.isFinite(groundPrior?.ellipsoid)
-        ? groundPrior.ellipsoid
-        : (Number(camera.groundElevationM) || 0);
-      camera.absoluteHeightM = priorGround + camera.mountHeightM;
-      const position = Cesium.Cartesian3.fromDegrees(camera.lon, camera.lat, camera.absoluteHeightM);
-      const billboard = _billboards.add({
-        id: camera.id,
-        image: CAMERA_ICON,
-        position,
-        color: IDLE_CAMERA_COLOR,
-        width: 24,
-        height: 24,
-        // Field-test fix (2026-07-06): always-on-top. The old finite value
-        // (1800 m) re-engaged the depth test at far zoom, where the COARSE
-        // far-LOD Google-3D mesh sits above the true ground and swallowed
-        // ground-anchored icons ("submerged" pills over SF). Far-side-of-globe
-        // icons are handled by refreshHorizonCulling() (the flights-layer
-        // EllipsoidalOccluder pattern), not by the depth test.
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        scaleByDistance: new Cesium.NearFarScalar(350, 1.25, 4_000_000, 0.42),
-      });
-
-      const record = {
-        camera,
-        position,
-        billboard,
-        coverageEntities: [],
-        projection: null,
-        // Task 5 (height-datum fix): regime-aware ground resolution state.
-        //   groundPrior     — { ellipsoid, source } from the Re:Earth batch
-        //     (null until a late batch lands). The prior applies in EVERY
-        //     regime and is the terrain-globe resolution outright.
-        //   groundResolved  — PER-REGIME one-shot latch (regime key →
-        //     boolean): true once this record's resolution completed for that
-        //     regime; such records are excluded from the completion pass so
-        //     their geometry freezes. Re-armed only on a genuine pose change,
-        //     explicit user select/move, or a surface-regime change — never
-        //     on the 10s timer.
-        //   groundSamples   — PER-REGIME resolved ground (regime key →
-        //     metres): the accepted one-shot scene sample in google-3d, the
-        //     mirrored prior in terrain-globe. Kept across re-arms as the
-        //     "has ever resolved" memory for the B9c mid-stream guard.
-        //   frustumPositions — cached Cartesians for pure recomputes (so
-        //     plane placement never re-derives geometry it already has).
-        groundPrior,
-        groundResolved: {},
-        groundSamples: {},
-        frustumGeometry: null,
-        frustumPositions: null,
-        // §9.1 activation obstruction probe result: effective-range clamp so
-        // the far-cap plane never clips into the tiles. Null = unclamped.
-        // Reset + re-probed on every activation; cleared when the user takes
-        // the range slider (slider overrides the clamp).
-        probeClampRangeM: null,
-        // Viewshed (design §3a/§3b): per-camera color identity + the volume
-        // primitive handle (exists only in viewshed mode for the visible set).
-        viewshedColors: viewshedColors(cameraHue(hueIndexById.get(camera.id) ?? 0)),
-        viewshedPrimitive: null,
-        viewshedActiveTint: false,
-      };
-      _records.push(record);
-      _recordById.set(camera.id, record);
-    }
-
+    // chain), with a bounded wait so a cold upstream never hangs init.
+    const { priors, late } = await boundedGroundPriors(catalog);
+    _records = catalog.map((camera, index) => createCameraRecord(camera, priors?.[index] || null));
     _count = _records.length;
-    if (_records.length > 0) {
-      // Projection runtime + first frame fetch are deferred to enable() so
-      // initializing the catalog stays render-cheap.
-      _activeCameraId = _records[0].camera.id;
-    }
+    _catalogVersion += 1;
 
     // Task 5: if the prior batch lost init's bounded race, apply it post-hoc
     // when it lands (pure recomputes — applyLateGroundPriors guards against
     // a torn-down/re-inited catalog).
-    if (!priors) {
+    if (late) {
       const initRecords = _records.slice();
-      priorsPromise.then((late) => {
-        if (late) applyLateGroundPriors(initRecords, late);
+      late.then((resolved) => {
+        if (resolved) applyLateGroundPriors(initRecords, resolved);
       }).catch(() => {});
     }
 
@@ -4508,6 +5689,8 @@ const cctvLayer = {
         _cameraMoving = false;
         refreshHorizonCulling();
         refreshAmbientCards();
+        // The first low settle with the layer on loads the first area.
+        maybeSeedArea();
       };
       _viewer.camera.moveEnd.addEventListener(_horizonCullListener);
     }
@@ -4550,7 +5733,7 @@ const cctvLayer = {
       globePoint: (x, y) => privateGlobePoint(x, y),
       onPreview: (id, point) => previewPrivateCameraMove(id, point),
       onCommit: (id, point) => void commitPrivateCameraMove(id, point),
-      onSelect: (id) => activateCctvCameraFromWorldClick(id, setActiveCamera),
+      onSelect: (id) => activateCctvCameraFromWorldClick(id, activateCameraExplicitly),
       onPressStart: () => {
         if (_viewer?.scene) _viewer.scene.screenSpaceCameraController.enableInputs = false;
         holdContinuousRender('cctv-private-move');
@@ -4565,7 +5748,7 @@ const cctvLayer = {
       const picked = _viewer.scene.pick(click.position);
       const cameraId = extractPickedCameraId(picked);
       if (cameraId) {
-        activateCctvCameraFromWorldClick(cameraId, setActiveCamera);
+        activateCctvCameraFromWorldClick(cameraId, activateCameraExplicitly);
         return;
       }
       // Any identified scene object owns this click even if its layer does not
@@ -4585,7 +5768,7 @@ const cctvLayer = {
         { sourceId: CCTV_OVERLAY_SOURCE_ID },
       )?.entryId;
       if (cardId && _recordById.has(cardId)) {
-        activateCctvCameraFromWorldClick(cardId, setActiveCamera);
+        activateCctvCameraFromWorldClick(cardId, activateCameraExplicitly);
         return;
       }
       if (cctvEmptyClickDeselects(picked, {
@@ -4609,10 +5792,11 @@ const cctvLayer = {
   },
 
   /**
-   * Enables the layer: shows entities, starts the projection loop, and kicks
-   * the staggered geometry-load queue. Heavy work (per-camera ground
-   * sampling) is deferred/batched so the frame budget never collapses at
-   * enable time.
+   * Enables the layer: shows entities, starts the projection loop, queues the
+   * records still unresolved for geometry, and loads the camera area when
+   * none is loaded (or a place was selected while the layer was off). Heavy
+   * work (per-camera ground sampling) is deferred/batched so the frame budget
+   * never collapses at enable time.
    */
   enable() {
     _enabled = true;
@@ -4625,8 +5809,18 @@ const cctvLayer = {
       const coverage = /^cctv-(.+)-(?:ray-tl|ray-tr|ray-br|ray-bl|cap|plane|plane-label)$/.exec(pickedId);
       return Boolean(coverage && _recordById.has(coverage[1]));
     });
-    if (!_activeCameraId && _records.length) {
-      _activeCameraId = _records[0].camera.id;
+    // enable() rebuilds for the view it finds, so no location switch holds
+    // past this point (one the layer saw while off gets no arrival).
+    _locationSwitching = false;
+    _locationSwitchStartedAt = 0;
+    _locationSwitchHadActive = false;
+    if (!_activeCameraId) {
+      // The default is the nearest camera with a still within 50 km of the
+      // view, or none — never the first catalogue camera, which may be far
+      // away. With none, the first area to land (or arrival) picks it. The
+      // default is not an explicit activation, so it sends no lookup.
+      _activeCameraId = nearestStillCameraId(viewerPoint());
+      _areaDefaultPending = !_activeCameraId;
       _autoHopSuspended = false;
     }
     const activeRecord = getActiveRecord();
@@ -4634,7 +5828,10 @@ const cctvLayer = {
       ensureProjectionRuntime(activeRecord);
       refreshProjectionImage(activeRecord, true);
     }
-    startGeometryLoadQueue();
+    // Fresh drain → fresh one-shot completion pass. Only unresolved records
+    // queue, so re-enabling never re-walks cameras that already resolved.
+    _tilesReadyReenqueued = false;
+    queueUnresolvedGeometry(_records, viewerPoint());
     refreshCoverageStyles();
     startProjectionLoop();
     // The projection loop self-stops when idle; a focus target appearing
@@ -4647,13 +5844,23 @@ const cctvLayer = {
     _cctvOverlayHost.setVisible(CCTV_OVERLAY_SOURCE_ID, true);
     startCardFrameLoop();
     refreshAmbientCards();
+    maybeSeedArea();
     notifyListeners();
     restoreSpriteOrder(_viewer);
   },
 
-  /** Disables the layer: hides entities, stops the projection loop and load queue. */
+  /**
+   * Disables the layer: hides entities, stops the projection loop and load
+   * queue, and cancels an area load in flight (a chosen place loads on the
+   * next enable; a seeded load re-seeds from the view then).
+   */
   disable() {
     _enabled = false;
+    if (_areaRequest) {
+      if (!_areaRequest.seeded) _pendingAreaPoint = _areaRequest.point;
+      abortAreaRequest();
+    }
+    clearAreaRefetchTimer();
     unregisterPickOwner('cctv');
     // ADJUST mode does not survive a layer toggle — predictable re-entry.
     _calibrationMode = false;
@@ -4673,7 +5880,7 @@ const cctvLayer = {
   /**
    * Periodic update tick: syncs health state and runs auto-hop logic. Ground
    * geometry is NOT resampled here — v2 grounds each camera once via the
-   * staggered load queue (see startGeometryLoadQueue/updateRecordGeometry)
+   * staggered load queue (see queueUnresolvedGeometry/updateRecordGeometry)
    * and never resamples on a timer. The ONE exception is a one-shot
    * completion pass: the enable-time drain can run while 3D tiles are still
    * streaming (each such pass keeps the fabricated catalog height and leaves
@@ -4687,7 +5894,9 @@ const cctvLayer = {
     if (!_enabled) return;
     const now = Date.now();
     _lastUpdate = now;
-    if (!_tilesReadyReenqueued && projectionTilesReady()) {
+    // Mid location switch the tiles are loading for the flight path, not the
+    // destination; the arrival hook queues the destination's records instead.
+    if (!_tilesReadyReenqueued && !_locationSwitching && projectionTilesReady()) {
       _tilesReadyReenqueued = true;
       // Per-regime resolution (Task 5): only records unresolved for the
       // CURRENT surface regime need the completion pass. On globe stacks
@@ -4700,6 +5909,101 @@ const cctvLayer = {
     await syncHealthState();
     maybeAutoHop(now);
     notifyListeners();
+  },
+
+  /**
+   * DataLayerManager selection hook (every selected place, in this region or
+   * another): re-centres the camera area. With the layer off it only
+   * remembers the point, for the next enable. A point the loaded area covers
+   * (within max(cover·0.5, cover − 10 km)) changes nothing; otherwise the
+   * area request starts now, and its response applies once `arrival` settles
+   * (at most 10 s) if it is still the newest. Never throws.
+   * @param {Object} [event]
+   * @param {{lat:number, lon:number}} [event.point] - The selected place.
+   * @param {Promise<unknown>|null} [event.arrival] - Settles when a camera
+   *   flight to it lands; null when the camera is already there.
+   * @param {boolean} [event.enabled] - Whether the manager has the layer on.
+   * @returns {Promise<boolean>|undefined} Settles when the area is settled.
+   */
+  onLocationSelect(event = {}) {
+    try {
+      const point = locationSwitchPoint(event?.point);
+      if (!point) return undefined;
+      if (!_enabled || !_viewer) {
+        _pendingAreaPoint = point;
+        return undefined;
+      }
+      _pendingAreaPoint = null;
+      return selectArea(point, { arrival: event?.arrival ?? null });
+    } catch (error) {
+      console.warn('[Data:CCTV] location select failed:', error?.message || error);
+      return undefined;
+    }
+  },
+
+  /**
+   * DataLayerManager location-switch hook: the user selected a place in
+   * another region and the camera is about to fly there. Runs for the
+   * initialized layer whether it is on or off.
+   *
+   * Released: the map-card ring, its frame pacer and in-flight frame requests,
+   * the hover card, thumbnails, wireframes and viewshed volumes away from the
+   * destination, every monitor-plane runtime, the active camera (unless it
+   * sits at the destination; AUTO HOP's deselect hold is left alone), ADJUST
+   * mode and the geometry queue. Kept: the loaded camera records, their
+   * billboards and ground priors (an area swap replaces those, see
+   * onLocationSelect). Card reselection, hover cards, AUTO HOP and
+   * the tiles-ready geometry pass hold until onLocationArrive. Synchronous,
+   * network-free and idempotent; never throws.
+   * @param {Object} [event]
+   * @param {Object|null} [event.from] - Place left: `{ key, region, country, lat, lon }`.
+   * @param {Object|null} [event.to] - Destination, same shape.
+   * @param {AbortSignal} [event.signal] - Aborted when a newer switch supersedes this one.
+   * @param {boolean} [event.enabled] - Whether the layer is on.
+   */
+  onLocationLeave(event = {}) {
+    try {
+      beginLocationSwitch(event?.to ?? null);
+    } catch (error) {
+      console.warn('[Data:CCTV] location leave failed:', error?.message || error);
+    }
+  },
+
+  /**
+   * DataLayerManager location-switch hook: the camera has arrived (enabled
+   * layer only). When an area load for the destination (within 5 km) is still
+   * in flight it waits for it first (at most 12 s), so the destination camera
+   * comes from the destination's cameras. Then it restarts the card pacer and
+   * reselects cards for the destination, and queues the destination's
+   * unresolved geometry nearest first. When no camera is active it activates
+   * the camera with a still nearest the destination without flying, if one
+   * lies within 50 km, but only in place of the camera this switch released,
+   * when enable found none, or when `to.selectCamera` is true (a private-site
+   * pill lands on the site's camera). A deliberate deselect (AUTO HOP held) is
+   * kept unless `to.selectCamera` asks. An aborted signal means a newer switch
+   * owns the resume. Runs synchronously when no load is pending. Never throws.
+   * @param {Object} [event]
+   * @param {Object|null} [event.from] - Place left.
+   * @param {Object|null} [event.to] - Destination: `{ key, region, country, lat, lon }`,
+   *   plus `selectCamera: true` to activate the destination's nearest camera.
+   * @param {AbortSignal} [event.signal] - Aborted when a newer switch supersedes this one.
+   * @returns {Promise<void>}
+   */
+  async onLocationArrive(event = {}) {
+    try {
+      if (event?.signal?.aborted) return;
+      const to = event?.to ?? null;
+      const point = locationSwitchPoint(to);
+      const request = _areaRequest;
+      if (request && point
+        && haversineKm(point.lat, point.lon, request.point.lat, request.point.lon) <= AREA_ARRIVE_MATCH_KM) {
+        await waitBounded(request.promise, AREA_ARRIVE_WAIT_MS, event?.signal ?? null);
+        if (event?.signal?.aborted) return;
+      }
+      endLocationSwitch(to);
+    } catch (error) {
+      console.warn('[Data:CCTV] location arrive failed:', error?.message || error);
+    }
   },
 
   /**
@@ -4756,6 +6060,9 @@ const cctvLayer = {
     _enabled = false;
     _activeCameraId = null;
     _autoHopSuspended = false;
+    _locationSwitching = false;
+    _locationSwitchStartedAt = 0;
+    _locationSwitchHadActive = false;
     // Clear existing subscribers rather than replacing the Set —
     // replacing would silently orphan any unsubscribe() closures
     _listeners.clear();
@@ -4800,13 +6107,8 @@ const cctvLayer = {
     if (typeof params.autoHopSec === 'number' && Number.isFinite(params.autoHopSec)) {
       _autoHopSec = clamp(Math.round(params.autoHopSec), MIN_AUTO_HOP_SEC, MAX_AUTO_HOP_SEC);
     }
-    if (typeof params.regionCap === 'boolean' && params.regionCap !== _regionCapEnabled) {
-      _regionCapEnabled = params.regionCap;
-      saveRegionCapPreference(_regionCapEnabled);
-      // Before init the choice simply applies to the first load.
-      if (_viewer) scheduleCatalogReload();
-    }
     if (typeof params.selectedCameraId === 'string' && _recordById.has(params.selectedCameraId)) {
+      // A restored or mirrored selection, not a user pick: no Road511 lookup.
       setActiveCamera(params.selectedCameraId);
     }
     if (params.calibration && typeof params.calibration === 'object') {
@@ -4890,7 +6192,6 @@ const cctvLayer = {
       calibrationMode: _calibrationMode,
       autoHop: _autoHop,
       autoHopSec: _autoHopSec,
-      regionCap: _regionCapEnabled,
       selectedCameraId: active?.camera.id || null,
       calibration: active?.camera ? {
         cameraId: active.camera.id,
@@ -4969,6 +6270,17 @@ const cctvLayer = {
   },
 
   /**
+   * Full public state for one loaded camera (uiState().cameras holds light
+   * entries only).
+   * @param {string} cameraId
+   * @returns {Object|null}
+   */
+  getCameraState(cameraId) {
+    const record = _recordById.get(cameraId);
+    return record ? getPublicCameraState(record, getActiveRecord()?.camera.id || null) : null;
+  },
+
+  /**
    * Opts the active camera into or out of protected thumbnail publication.
    * The default is false: the monitor plane remains the sole active-camera
    * representation while ambient and hover-pinned cards continue unchanged.
@@ -4989,7 +6301,7 @@ const cctvLayer = {
    * @returns {boolean} True if the camera was found and selected.
    */
   selectCamera(cameraId, options = {}) {
-    const result = setActiveCamera(cameraId);
+    const result = setActiveCamera(cameraId, { explicit: true });
     if (result === CCTV_ACTIVATION_RESULT.NOT_FOUND) return false;
     if (options.focus) {
       focusCamera(cameraId, options.durationSec || 1.8);
@@ -5024,7 +6336,7 @@ const cctvLayer = {
       _records.length,
     );
     const nextId = _records[nextIdx].camera.id;
-    setActiveCamera(nextId);
+    setActiveCamera(nextId, { explicit: true });
     if (options.focus) {
       focusCamera(nextId, options.durationSec || 1.8);
     }
@@ -5032,16 +6344,33 @@ const cctvLayer = {
   },
 
   /**
-   * Selects and flies to the camera nearest the current viewer position.
+   * Selects and flies to the camera nearest the current viewer position: the
+   * nearest with a still within 50 km, else any camera within 50 km. When the
+   * view is below 400 km and outside the loaded area, the area re-centres on
+   * the view instead of flying to a camera far away; with no camera near yet,
+   * the nearest one activates (without a flight) when the area lands. From
+   * higher up nothing re-centres: the point under a globe view is not a
+   * place, and the first low settle seeds the area instead.
    * @param {Object} [options={}]
    * @param {boolean} [options.focus=true] Whether to fly after selection.
    * @param {number} [options.durationSec] - Fly-to duration in seconds.
-   * @returns {string|null} The nearest camera ID, or null if none found.
+   * @param {boolean} [options.explicit=true] - The NEAREST button or voice.
+   *   The enable transition passes false: its pick sends no Road511 lookup,
+   *   and the area it re-centres counts as seeded (a later low settle
+   *   outside it may move it).
+   * @returns {string|null} The nearest camera ID, or null if none is near yet.
    */
   focusNearest(options = {}) {
-    const nearest = nearestCameraIdToViewer();
+    const explicit = options.explicit !== false;
+    const point = viewerPoint();
+    const nearest = nearestStillCameraId(point) || nearestCameraIdWithinKm(point, LOCATION_SELECT_RADIUS_KM);
+    if (point && viewLowEnoughForArea() && !cctvAreaCovers(_area, point)) {
+      const intent = nearest ? null : { explicit, deselectSerial: _deselectSerial };
+      if (_enabled) selectArea(point, { nearest: intent, seeded: !explicit });
+      else if (explicit) _pendingAreaPoint = point;
+    }
     if (!nearest) return null;
-    setActiveCamera(nearest);
+    setActiveCamera(nearest, { explicit });
     if (options.focus !== false) {
       focusCamera(nearest, options.durationSec || 1.8);
     }

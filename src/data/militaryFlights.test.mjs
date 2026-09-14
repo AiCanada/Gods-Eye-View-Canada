@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
 import militaryFlightsLayer, {
   _addMilitaryTrackingCandidateForTest,
+  _drainMilitaryLocationReleaseForTest,
+  _militaryLocationSwitchStateForTest,
   _applyPendingMilitaryTrackingRestoreForTest,
   _pendingMilitaryTrackingRestoreForTest,
   _setMilitaryTrackingRefreshOutcomeForTest,
@@ -602,4 +604,122 @@ test('two contacts matching at the same strength resolve deterministically', () 
   const second = militaryFlightsLayer.findByQuery('qq7')?.icao24;
   assert.equal(first, 'aef001', 'the stable key (lowest hex) wins, not the feed order');
   assert.equal(second, first, 'and the same query resolves the same way every time');
+});
+
+const SWITCH_FROM = { key: 'CA-ON', region: 'CA-ON', country: 'CA', lat: 43.65, lon: -79.38 };
+const SWITCH_TO = { key: 'US-TX', region: 'US-TX', country: 'US', lat: 30.27, lon: -97.74 };
+
+function switchContact(lat, lon) {
+  return {
+    meta: {
+      callsign: 'RCH451', altitudeFt: 28000, speedMps: 230, track: 90,
+      klass: 'widebody', onGround: false, rawLat: lat, rawLon: lon,
+    },
+    billboard: {
+      position: Cesium.Cartesian3.fromDegrees(lon, lat, 8_500),
+      color: Cesium.Color.WHITE,
+      show: false,
+    },
+  };
+}
+
+test('military location leave frees old-view models in bounded slices and keeps destination models', () => {
+  const removed = [];
+  const modelCollection = { remove(model) { removed.push(model.id); }, isDestroyed: () => false };
+  const fleetModel = (id) => ({ id, ready: true, show: true });
+  const destination = switchContact(30.3, -97.7);
+  const destinationModel = fleetModel('ae0001');
+  const oldIds = Array.from({ length: 30 }, (_, i) => `ae1${String(i).padStart(3, '0')}`);
+  _setTrackedMilitaryRefreshStateForTest({
+    icao24: 'ae0001',
+    tracked: false,
+    entity: null,
+    meta: destination.meta,
+    billboard: destination.billboard,
+    billboardCollection: { show: true, remove() {} },
+    viewer: {
+      camera: { positionCartographic: null },
+      scene: {},
+      entities: { remove() {} },
+      isDestroyed: () => false,
+    },
+    models: [['ae0001', destinationModel], ...oldIds.map((id) => [id, fleetModel(id)])],
+    modelCollection,
+  });
+  const oldBillboards = [];
+  for (const id of oldIds) {
+    const contact = switchContact(43.7, -79.4);
+    oldBillboards.push(contact.billboard);
+    _addMilitaryTrackingCandidateForTest({ icao24: id, meta: contact.meta, billboard: contact.billboard });
+  }
+  try {
+    militaryFlightsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    militaryFlightsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    let state = _militaryLocationSwitchStateForTest();
+    assert.equal(state.active, true);
+    assert.equal(state.queuedModels, oldIds.length, 'the destination model is not queued');
+    assert.equal(state.liveModels, oldIds.length + 1, 'leave frees no GPU model synchronously');
+    assert.equal(state.contacts, oldIds.length + 1, 'worldwide contacts are kept');
+    assert.deepEqual(removed, []);
+    assert.ok(oldBillboards.every((bb) => bb.show === true), 'old-view icons return before their models go');
+    assert.equal(destinationModel.show, true);
+
+    _drainMilitaryLocationReleaseForTest();
+    assert.ok(
+      removed.length > 0 && removed.length < oldIds.length,
+      `one fleet tick frees a bounded slice (freed ${removed.length})`,
+    );
+    for (let tick = 0; tick < 10 && _militaryLocationSwitchStateForTest().queuedModels; tick += 1) {
+      _drainMilitaryLocationReleaseForTest();
+    }
+    state = _militaryLocationSwitchStateForTest();
+    assert.equal(state.queuedModels, 0);
+    assert.deepEqual([...removed].sort(), [...oldIds].sort());
+    assert.equal(state.liveModels, 1);
+    assert.equal(
+      militaryFlightsLayer.refreshOnLocationArrive,
+      undefined,
+      'the worldwide feed asks the manager for no arrival refetch',
+    );
+  } finally {
+    militaryFlightsLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO });
+  }
+  assert.equal(_militaryLocationSwitchStateForTest().active, false);
+});
+
+test('military location leave keeps the worldwide poll in flight; only a current arrival resumes', async () => {
+  const realFetch = globalThis.fetch;
+  let observedSignal = null;
+  globalThis.fetch = (_url, options = {}) => new Promise((_resolve, reject) => {
+    observedSignal = options.signal;
+    options.signal?.addEventListener('abort', () => {
+      reject(new DOMException('aborted', 'AbortError'));
+    }, { once: true });
+  });
+  const caller = new AbortController();
+  try {
+    const poll = militaryFlightsLayer.update(
+      { camera: { positionCartographic: null }, scene: {} },
+      { signal: caller.signal },
+    );
+    militaryFlightsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    assert.ok(observedSignal);
+    assert.equal(observedSignal.aborted, false, 'adsb.lol /v2/mil is the same at every location');
+
+    militaryFlightsLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO, signal: AbortSignal.abort() });
+    assert.equal(_militaryLocationSwitchStateForTest().active, true, 'a superseded arrival leaves the newer pause alone');
+    militaryFlightsLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO });
+    assert.equal(_militaryLocationSwitchStateForTest().active, false);
+
+    caller.abort();
+    await assert.rejects(poll, { name: 'AbortError' });
+  } finally {
+    globalThis.fetch = realFetch;
+    militaryFlightsLayer.onLocationArrive({ to: SWITCH_TO });
+  }
+});
+
+test('military location leave on a disabled layer does not pause it', () => {
+  militaryFlightsLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: false });
+  assert.equal(_militaryLocationSwitchStateForTest().active, false);
 });

@@ -20,6 +20,7 @@
 # OPENSKY_CLIENT_ID=
 # OPENSKY_CLIENT_SECRET=
 # LL2_API_TOKEN=
+# ROAD511_API_KEY=
 
 # Ask panel language models (any one powers the panel; custom needs all three)
 # NVIDIA_API_KEY=

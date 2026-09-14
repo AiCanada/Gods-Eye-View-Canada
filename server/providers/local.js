@@ -5,6 +5,7 @@ import { firmsProxy } from './firms.js';
 import { terrainHeightsProxy } from './terrain.js';
 import { adsbdbProxy } from './aircraft/enrichment.js';
 import { overpassProxy } from './overpass.js';
+import { roadsTilesProxy } from './roads-tiles.js';
 import { militaryInstallationsProxy } from './military-installations.js';
 import { regionalBriefProxy } from './regional/briefing.js';
 import { weatherEffectsProxy } from './regional/weather-effects.js';
@@ -21,6 +22,7 @@ import { seaSurfaceTemperatureProxy } from './sst.js';
 import { googlePlacesContextProxy } from './places.js';
 import { keySetupEndpoint } from '../standalone/key-setup.js';
 import { privateCamerasProxy } from './private-cameras.js';
+import { locationSwitchReleaseEndpoint } from './location-switch.js';
 
 /** Construct the local provider plugins in their established order. */
 function localProviderPlugins() {
@@ -33,6 +35,8 @@ function localProviderPlugins() {
     terrainHeightsProxy(),
     adsbdbProxy(),
     overpassProxy(),
+    // Street traffic road geometry (OpenFreeMap vector tiles, disk-cached).
+    roadsTilesProxy(),
     militaryInstallationsProxy(),
     regionalBriefProxy(),
     weatherEffectsProxy(),
@@ -48,6 +52,8 @@ function localProviderPlugins() {
     llmAskProxy(),
     seaSurfaceTemperatureProxy(),
     googlePlacesContextProxy(),
+    // Releases the area-keyed memory caches above when the user changes place.
+    locationSwitchReleaseEndpoint(),
     keySetupEndpoint(),
   ];
 }
@@ -58,7 +64,7 @@ export {
   CCTV_FRAME_FETCH_TIMEOUT_MS,
   fetchCctvImageFromUpstream,
 } from './cctv.js';
-export { CCTV_MAX_SOURCES_HARD_CAP } from './cctv/constants.js';
+export { CCTV_LOAD_CAP_HARD_LIMIT } from './cctv/constants.js';
 export { enabledCctvCountries } from './cctv/catalog.js';
 export { normalizeSourceItem } from './cctv/normalize.js';
 export {

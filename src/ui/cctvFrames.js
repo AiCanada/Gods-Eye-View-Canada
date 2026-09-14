@@ -18,6 +18,13 @@ export function _clearCctvFrame() {
 
 export function _queueCctvFrame(src, cameraId, cameraChanged) {
   if (this.destroyed || !this._cctvFrame || !src) return;
+  // No preview request while the tab is hidden. A same-camera refresh simply
+  // waits (the next state after the tab returns queues it); a camera change
+  // still clears the old pixels so they never sit under the new camera.
+  if (typeof document !== 'undefined' && document.hidden) {
+    if (cameraChanged) this._clearCctvFrame();
+    return;
+  }
 
   if (cameraChanged) {
     // A different camera gets an honest acquisition state. Never retain
@@ -88,6 +95,12 @@ export function _syncCctvSourceBadge(activeCamera, enabled) {
   if (!enabled || !activeCamera) {
     this._cctvSourceBadge.textContent = 'SOURCE · UNKNOWN';
     this._cctvSourceBadge.dataset.frameState = 'idle';
+    return;
+  }
+  if (activeCamera.feedType === 'none') {
+    // No public still (a Road511 lookup camera): no frame is requested.
+    this._cctvSourceBadge.textContent = `NO IMAGE · ${activeCamera.lookupBadge || 'NO PUBLIC IMAGE'}`;
+    this._cctvSourceBadge.dataset.frameState = 'none';
     return;
   }
   const hasDisplayedFrame =

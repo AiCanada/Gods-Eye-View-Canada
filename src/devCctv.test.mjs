@@ -10,6 +10,29 @@ import { promisify } from 'node:util';
 const run = promisify(execFile);
 const bashTest = process.platform === 'win32' ? test.skip : test;
 
+// Retired pack defaults and caps. Area loading (2,500 nearest within 50 km of
+// the selected place) replaced them, so no launcher may set one.
+const REMOVED_PACK_SETTINGS = [
+  'CCTV_PREFER_AUSTIN',
+  'CCTV_FORCE_AUSTIN',
+  'CCTV_AUSTIN_MAX_SOURCES',
+  'CCTV_CALTRANS_MAX_SOURCES',
+  'CCTV_TFL_MAX_SOURCES',
+  'CCTV_MAX_SOURCES',
+  'CCTV_REGION_CAP',
+];
+
+test('no launcher script carries a CCTV pack default or cap', async () => {
+  for (const name of ['dev-cctv.sh', 'dev-fresh.sh', 'dev-secure.sh']) {
+    const source = await fs.readFile(new URL(`../scripts/${name}`, import.meta.url), 'utf8');
+    for (const setting of REMOVED_PACK_SETTINGS) {
+      assert.doesNotMatch(source, new RegExp(`\\b${setting}\\b`), `${name} still sets ${setting}`);
+    }
+    assert.doesNotMatch(source, /CCTV_CALTRANS_DISTRICTS[:]?-/, `${name} defaults the Caltrans districts`);
+    assert.doesNotMatch(source, /put_env CCTV_CALTRANS_DISTRICTS/, `${name} forces the Caltrans districts`);
+  }
+});
+
 async function launch(overrides = {}, dotenv = '') {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gev-cctv-launch-'));
   try {
@@ -50,9 +73,10 @@ bashTest('CCTV preset starts keyless on localhost through the normal launcher', 
   assert.deepEqual(result.args, ['run', 'dev', '--', '--host', 'localhost', '--port', '4173', '--force']);
   assert.equal(result.cwd, result.root);
   assert.equal(result.env.CCTV_SOURCES_FILE, 'config/cctv_sources.austin.json');
-  assert.equal(result.env.CCTV_PREFER_AUSTIN, '1');
-  assert.equal(result.env.CCTV_AUSTIN_MAX_SOURCES, '36');
-  assert.equal(result.env.CCTV_MAX_SOURCES, '48');
+  // No launcher-side pack defaults or caps: the server's area cap applies.
+  for (const name of REMOVED_PACK_SETTINGS) {
+    assert.equal(result.env[name], undefined, `${name} must not be defaulted by a launcher`);
+  }
   assert.equal(result.env.GEV_LAUNCHER, 'dev-fresh');
   assert.equal(result.env.GEV_KEY_SETUP_EXTERNAL_KEYS, '');
   assert.equal(result.env.GOOGLE_MAPS_API_KEY, undefined);
@@ -61,13 +85,11 @@ bashTest('CCTV preset starts keyless on localhost through the normal launcher', 
 });
 
 bashTest('CCTV preset preserves explicit LAN and source overrides with a warning', async () => {
-  const result = await launch({ HOST: '0.0.0.0', PORT: '4999', CCTV_SOURCES_FILE: 'config/custom.json', CCTV_PREFER_AUSTIN: '0', CCTV_AUSTIN_MAX_SOURCES: '5', CCTV_MAX_SOURCES: '9', CCTV_CALTRANS_DISTRICTS: '', CCTV_TFL_ENABLED: '0' });
+  const result = await launch({ HOST: '0.0.0.0', PORT: '4999', CCTV_SOURCES_FILE: 'config/custom.json', CCTV_COUNTRIES: 'CA,US', CCTV_CALTRANS_DISTRICTS: '4,7', CCTV_TFL_ENABLED: '0' });
   assert.deepEqual(result.args.slice(-5), ['--host', '0.0.0.0', '--port', '4999', '--force']);
   assert.equal(result.env.CCTV_SOURCES_FILE, 'config/custom.json');
-  assert.equal(result.env.CCTV_PREFER_AUSTIN, '0');
-  assert.equal(result.env.CCTV_AUSTIN_MAX_SOURCES, '5');
-  assert.equal(result.env.CCTV_MAX_SOURCES, '9');
-  assert.equal(result.env.CCTV_CALTRANS_DISTRICTS, '');
+  assert.equal(result.env.CCTV_COUNTRIES, 'CA,US');
+  assert.equal(result.env.CCTV_CALTRANS_DISTRICTS, '4,7');
   assert.equal(result.env.CCTV_TFL_ENABLED, '0');
   assert.match(result.output, /!! WARNING: HOST=0\.0\.0\.0/);
 });

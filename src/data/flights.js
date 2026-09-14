@@ -59,7 +59,7 @@ import {
   liftRepeatedGroundFix, synthesizeForwardKinematicsFix, corridorPathLatLon,
   COURSE_HOLD_SPEED_MPS,
 } from './motionModel.js';
-import { routePlausible } from './routePlausible.js';
+import { greatCircleKm, routePlausible } from './routePlausible.js';
 import { isMilitaryIcao, isMilitaryLayerActive, refreshMilitaryRegistryIfStale, onMilitaryLayerActiveChange } from './militaryRegistry.js';
 import { formatFlightLevel } from './detectionDraw.js';
 import { createGroundSnap } from './groundSnap.js';
@@ -315,12 +315,31 @@ function _abortActiveUpdates() {
   for (const controller of _activeUpdateControllers) controller.abort();
   _activeUpdateControllers.clear();
 }
+/** Update controllers a location switch aborted. Their AbortError settles the
+ *  update quietly: a cancelled old-anchor fetch is not a feed failure. */
+const _locationSwitchAbortedUpdates = new WeakSet();
+
+/** Abort in-flight updates on behalf of a location switch (see update()'s catch). */
+function _abortActiveUpdatesForLocationSwitch() {
+  for (const controller of _activeUpdateControllers) _locationSwitchAbortedUpdates.add(controller);
+  _abortActiveUpdates();
+}
 /** @type {number|null} HTTP status of the most recent API response */
 let _lastStatus = null;
 /** @type {string} Source used by the latest successful snapshot. */
 let _lastSource = 'OpenSky Network';
 /** @type {string} Completeness boundary for the latest successful snapshot. */
 let _lastCoverage = 'worldwide upstream snapshot';
+
+/**
+ * True when the latest snapshot came from the server's camera-anchored adsb.lol
+ * fallback (X-Flight-Source / X-Flight-Coverage, server/providers/aircraft/opensky.js)
+ * instead of the worldwide OpenSky snapshot. Only that feed is scoped to a place.
+ * @returns {boolean}
+ */
+function _onRegionalFallback() {
+  return _lastSource === 'adsb.lol' || /regional fallback/i.test(_lastCoverage || '');
+}
 
 function _flightApiUrl(viewer) {
   const cartographic = viewer?.camera?.positionCartographic;
@@ -562,6 +581,23 @@ function _applyCockpitState(detail = {}) {
   _setCockpitContactMode(active);
 }
 
+/**
+ * Forget the Cockpit near band on a location switch: it was measured around
+ * the view being left. Contacts that were near get their far presentation back
+ * now; while cockpit stays active the next fleet tick re-measures the band at
+ * the new camera.
+ */
+function _resetCockpitNearContacts() {
+  if (!_cockpitNearContacts.size) return;
+  const previous = _cockpitNearContacts;
+  _cockpitNearContacts = new Set();
+  for (const icao24 of previous) {
+    const bb = _billboards.get(icao24);
+    if (bb) _applyFleetBillboardPresentation(icao24, bb);
+  }
+  _lastCamPoseSig = '';
+}
+
 // ---------------------------------------------------------------------------
 // Track-history trail state (PRD WS-F F1/F4): a fading polyline behind the
 // tracked aircraft. The accumulation array is intentionally SEPARATE from
@@ -788,7 +824,7 @@ const _enrichSeen = new Set();
 function _enqueueEnrich(key, url, onData, priority = false) {
   if (_enrichSeen.has(key)) return;
   _enrichSeen.add(key);
-  const job = { url, onData };
+  const job = { key, url, onData, priority };
   // Priority (tracked / model-eligible) goes to the FRONT so a deep ambient
   // backlog can never delay the plane the user just clicked or zoomed into.
   if (priority) _enrichQueue.unshift(job); else _enrichQueue.push(job);
@@ -946,6 +982,37 @@ function _sweepAmbientEnrichment() {
       _requestTypeEnrichment(cand[i][0]); // non-priority: fills the back of the queue
     }
   } catch { /* ambient enrichment is best-effort — never disturb the poll loop */ }
+}
+
+/**
+ * Drop queued AMBIENT type lookups on a location switch: the sweep picked them
+ * for planes on screen at the place being left. Priority jobs (tracked and
+ * model-eligible planes, routes) stay queued, and jobs already dispatched are
+ * left to finish. A dropped key leaves _enrichSeen and refunds its ambient
+ * token, so the plane can be looked up again if it comes back into view;
+ * answered keys stay seen because their answers already sit in _flightData.
+ * @returns {number} Number of dropped jobs.
+ */
+function _dropAmbientEnrichQueue() {
+  let kept = 0;
+  let dropped = 0;
+  for (const job of _enrichQueue) {
+    if (job.priority) {
+      _enrichQueue[kept++] = job;
+      continue;
+    }
+    _enrichSeen.delete(job.key);
+    dropped += 1;
+  }
+  _enrichQueue.length = kept;
+  if (dropped) {
+    _enrichAmbientBudget = Math.min(_ambientBudgetKnobs().ceil, _enrichAmbientBudget + dropped);
+  }
+  if (!kept && _enrichDripTimer) {
+    clearTimeout(_enrichDripTimer);
+    _enrichDripTimer = null;
+  }
+  return dropped;
 }
 
 // Round 5: the old `_warmGroundedAircraftSurfaceCache` (global exact-5-decimal
@@ -2387,6 +2454,144 @@ function _drainIrReloadQueue() {
   if (_irReloadQueue.length === 0) _irReloadQueue = null;
 }
 
+// ---------------------------------------------------------------------------
+// Location switch (the user picked a place in a different first-level region).
+// The feed is worldwide, so the contact maps and polling stay: clearing them
+// would blank the destination's sky for a poll plus RENDER_DELAY_SEC. What goes
+// is what was built for the view being left. Fleet models are hidden at once
+// and freed through the fleet tick in bounded slices (a synchronous sweep of
+// 350 GPU-backed models stalls the render thread, see the IR reload above).
+// While the camera flies, the tick admits no new models and update() skips its
+// view-anchored work (ambient enrichment, floor warm, mesh sampling, and the
+// fetch itself on the camera-anchored fallback). Arrival resumes all of it at
+// the destination. The hooks are flightsLayer.onLocationLeave/onLocationArrive.
+// ---------------------------------------------------------------------------
+/** Fleet models freed per fleet tick while a location switch drains. */
+const LOCATION_MODEL_RELEASE_BATCH = 24;
+/** Longest a leave pauses camera-driven work without its arrival (cancelled
+ *  flight, disabled mid-flight): resume rather than stay paused forever. */
+const LOCATION_SWITCH_MAX_HOLD_MS = 15_000;
+/** adsb.lol regional fallback radius (nm): ADSBLOL_POINT_RADIUS_NM in server/providers/aircraft/opensky.js. */
+const REGIONAL_FALLBACK_RADIUS_NM = 250;
+/** Keep margin (km) for the server rounding its fallback anchor to 0.25 deg (at most ~20 km). */
+const REGIONAL_FALLBACK_ANCHOR_SLACK_KM = 20;
+/** @type {number} Epoch ms the current location switch began; 0 when none is in progress. */
+let _locationSwitchStartedMs = 0;
+/** @type {Set<string>|null} Fleet models a location switch hid and is freeing in slices. */
+let _locationReleaseQueue = null;
+
+/** True while a location switch is between leave and arrival (bounded by LOCATION_SWITCH_MAX_HOLD_MS). */
+function _locationSwitchActive() {
+  if (!_locationSwitchStartedMs) return false;
+  if (Date.now() - _locationSwitchStartedMs <= LOCATION_SWITCH_MAX_HOLD_MS) return true;
+  _locationSwitchStartedMs = 0;
+  return false;
+}
+
+/**
+ * Finite `{lat, lon}` of a location-switch endpoint, or null.
+ * @param {{lat?: number, lon?: number}|null|undefined} place
+ * @returns {{lat: number, lon: number}|null}
+ */
+function _locationPoint(place) {
+  return Number.isFinite(place?.lat) && Number.isFinite(place?.lon)
+    ? { lat: place.lat, lon: place.lon }
+    : null;
+}
+
+/**
+ * Hide every fleet model built for the view being left and queue it for the
+ * batched release. Models whose contact already sits within the keep radius of
+ * the destination stay; the tick keeps or drops them on arrival as usual.
+ * In-flight loads are invalidated now (cheap generation bumps).
+ * @param {{lat?: number, lon?: number}|null} to - Destination of the switch.
+ */
+function _queueLocationModelRelease(to) {
+  const point = _locationPoint(to);
+  const keepKm = _modelKeepDistM() / 1000;
+  const queue = _locationReleaseQueue || new Set();
+  for (const [icao24, model] of _models) {
+    const info = point ? _flightData.get(icao24) : null;
+    if (info && Number.isFinite(info.rawLat) && Number.isFinite(info.rawLon)
+        && greatCircleKm(point.lat, point.lon, info.rawLat, info.rawLon) <= keepKm) continue;
+    queue.add(icao24);
+    if (model) model.show = false;
+    const bb = _billboards.get(icao24);
+    if (bb && icao24 !== _trackedIcao) bb.show = true; // gap-proof: the icon is back before the model goes
+  }
+  for (const icao24 of _modelPending) {
+    if (!_models.has(icao24)) _modelGen.set(icao24, (_modelGen.get(icao24) || 0) + 1);
+  }
+  _locationReleaseQueue = queue.size ? queue : null;
+}
+
+/** Free one bounded slice of the location-switch model queue (called from the fleet tick). */
+function _drainLocationReleaseQueue() {
+  if (!_locationReleaseQueue) return;
+  let released = 0;
+  for (const icao24 of _locationReleaseQueue) {
+    if (released >= LOCATION_MODEL_RELEASE_BATCH) break;
+    _locationReleaseQueue.delete(icao24);
+    if (!_models.has(icao24)) continue; // already gone (aged out, suppressed, regime exit)
+    _releaseModel(icao24);
+    released += 1;
+  }
+  if (_locationReleaseQueue.size === 0) _locationReleaseQueue = null;
+}
+
+/**
+ * Remove one contact and everything this layer holds for it (billboard, model,
+ * metadata, history, display caches). Callers clear tracking first when the
+ * contact is the tracked one.
+ * @param {string} icao24 - ICAO 24-bit transponder address.
+ * @param {Cesium.Billboard} bb - The contact's fleet billboard.
+ */
+function _forgetContact(icao24, bb) {
+  _billboardCollection?.remove(bb);
+  _billboards.delete(icao24);
+  _releaseModel(icao24); // no orphaned model, no cap leak
+  _flightData.delete(icao24);
+  _positionHistory.delete(icao24);
+  _displayCourse.delete(icao24);
+  _groundSnap.forget(icao24);
+  _geoidNCache.delete(icao24);
+  _displayFloorState.delete(icao24);
+  _missingPolls.delete(icao24);
+}
+
+/**
+ * Evict untracked contacts outside the destination's adsb.lol fallback
+ * coverage. That feed only returns aircraft within 250 nm of the camera anchor,
+ * so old-region contacts would otherwise linger as stale icons for
+ * MISSING_POLL_LIMIT polls (~90 s).
+ * @param {{lat?: number, lon?: number}|null} to - Destination of the switch.
+ * @returns {number} Number of evicted contacts.
+ */
+function _evictOutsideRegionalFallback(to) {
+  const point = _locationPoint(to);
+  if (!point) return 0;
+  const radiusKm = REGIONAL_FALLBACK_RADIUS_NM * 1.852 + REGIONAL_FALLBACK_ANCHOR_SLACK_KM;
+  const evict = [];
+  for (const [icao24, bb] of _billboards) {
+    if (icao24 === _trackedIcao) continue; // a follow that survived navigation is not ours to drop
+    const info = _flightData.get(icao24);
+    if (!Number.isFinite(info?.rawLat) || !Number.isFinite(info?.rawLon)) continue;
+    if (greatCircleKm(point.lat, point.lon, info.rawLat, info.rawLon) > radiusKm) evict.push([icao24, bb]);
+  }
+  for (const [icao24, bb] of evict) _forgetContact(icao24, bb);
+  _count = _billboards.size;
+  return evict.length;
+}
+
+/** Run one location-switch step; a failure is logged and never skips the steps after it. */
+function _locationSwitchStep(label, step) {
+  try {
+    step();
+  } catch (error) {
+    console.warn(`[Data:Flights] location switch: ${label} failed`, error);
+  }
+}
+
 /** Lazily create the glTF model for an aircraft (fire-and-forget; billboard shows until ready). */
 async function _ensureModel(icao24) {
   // Never model the TRACKED aircraft — it owns a separate entity billboard, and the fleet
@@ -2627,6 +2832,7 @@ function _fleetTick() {
   _lastFleetTickMs = nowMs;
 
   _drainIrReloadQueue(); // bounded per-tick slice of any pending boost-flip reload
+  _drainLocationReleaseQueue(); // bounded per-tick slice of a location switch's model release
   if (_cockpitContactMode) _refreshCockpitNearContacts();
   const poseSig = cameraPoseSignature(camera);
   // Only the nearby Cockpit silhouettes need projected course; far dots are
@@ -2645,7 +2851,20 @@ function _fleetTick() {
   const useModels = _modelRegimeActive();
   // Drop live models AND invalidate in-flight loads on leaving the regime (else a load that
   // resolves after zoom-out could briefly add a model outside the 3D-model regime).
-  if (!useModels && (_models.size || _modelPending.size)) _releaseModels();
+  // A location-switch flight usually climbs out of the regime while its queue is still
+  // freeing models in slices: hand the rest to that queue instead of one synchronous sweep.
+  // Its pending loads were invalidated when the switch began, and post-load admission
+  // rejects anything outside the regime anyway.
+  if (!useModels && (_models.size || _modelPending.size)) {
+    if (_locationReleaseQueue) {
+      for (const [icao24, model] of _models) {
+        _locationReleaseQueue.add(icao24);
+        if (model) model.show = false;
+      }
+    } else {
+      _releaseModels();
+    }
+  }
 
   // 3D-model eligibility: by DISTANCE (the mode's add/keep band), with ON-SCREEN PRIORITY under the
   // cap. FOUR passes, visible-first, so the slots are spent on what you can see: (1) KEEP on-screen
@@ -2689,20 +2908,24 @@ function _fleetTick() {
       console.warn(`[Data:Flights] ${cand.length} planes in 3D range; capped at ${cap} (${_models3dMode}). On-screen planes are prioritized.`);
       _lastModelCapWarnMs = nowMs;
     }
+    // Location switch: models the switch queued are its to free (never kept or re-shown here),
+    // and no NEW model is admitted mid-flight, because the camera is only passing over those planes.
+    const releasing = _locationReleaseQueue;
+    const admitNew = !_locationSwitchActive();
     modelEligible = new Set();
     // 1. KEEP on-screen already-modeled (visible retained — no flicker for what you can see).
-    for (const [icao, , inF] of cand) { if (modelEligible.size >= cap) break; if (inF && _models.has(icao)) modelEligible.add(icao); }
+    for (const [icao, , inF] of cand) { if (modelEligible.size >= cap) break; if (inF && _models.has(icao) && !releasing?.has(icao)) modelEligible.add(icao); }
     // 2. ADD on-screen NEW inside the add radius, nearest first (visible additions win the cap).
-    for (const [icao, d2, inF] of cand) { if (modelEligible.size >= cap) break; if (inF && d2 <= addDistSq && !modelEligible.has(icao)) modelEligible.add(icao); }
+    if (admitNew) for (const [icao, d2, inF] of cand) { if (modelEligible.size >= cap) break; if (inF && d2 <= addDistSq && !modelEligible.has(icao) && !releasing?.has(icao)) modelEligible.add(icao); }
     // 3. KEEP off-screen already-modeled (hysteresis, but LOWER priority than anything visible — so a
     //    retained off-screen model can never starve an on-screen plane that wants one; dropping it is
     //    invisible and it re-adds the moment it's back in view).
-    for (const [icao, , inF] of cand) { if (modelEligible.size >= cap) break; if (!inF && _models.has(icao)) modelEligible.add(icao); }
+    for (const [icao, , inF] of cand) { if (modelEligible.size >= cap) break; if (!inF && _models.has(icao) && !releasing?.has(icao)) modelEligible.add(icao); }
     // 4. ADD off-screen NEW inside the add radius with any leftover slots.
-    for (const [icao, d2, inF] of cand) { if (modelEligible.size >= cap) break; if (!inF && d2 <= addDistSq && !modelEligible.has(icao)) modelEligible.add(icao); }
+    if (admitNew) for (const [icao, d2, inF] of cand) { if (modelEligible.size >= cap) break; if (!inF && d2 <= addDistSq && !modelEligible.has(icao) && !releasing?.has(icao)) modelEligible.add(icao); }
     const toRelease = [];
     for (const icao of _models.keys()) {
-      if (icao !== _trackedIcao && !modelEligible.has(icao)) toRelease.push(icao);
+      if (icao !== _trackedIcao && !modelEligible.has(icao) && !releasing?.has(icao)) toRelease.push(icao);
     }
     for (const icao of toRelease) _releaseModel(icao);
   }
@@ -3493,6 +3716,36 @@ export async function _ensureFleetModelForTest(icao24) {
   return _models.get(icao24) || null;
 }
 
+/** Read the location-switch state: pause flag, model release queue and what the switch releases. */
+export function _flightLocationSwitchStateForTest() {
+  return {
+    active: _locationSwitchActive(),
+    queuedModels: _locationReleaseQueue?.size ?? 0,
+    liveModels: _models.size,
+    contacts: _billboards.size,
+    trail: _trail !== null,
+    cockpitNearContacts: _cockpitNearContacts.size,
+  };
+}
+
+/** Run one fleet-tick slice of the location-switch model release. */
+export function _drainFlightLocationReleaseForTest() {
+  _drainLocationReleaseQueue();
+}
+
+/** Enqueue one adsbdb type lookup as the ambient sweep (priority false) or a model/track (true) does. */
+export function _requestFlightTypeEnrichmentForTest(icao24, priority = false) {
+  _requestTypeEnrichment(icao24, priority);
+}
+
+/** Read the queued adsbdb jobs and the session-seen lookup keys. */
+export function _flightEnrichmentStateForTest() {
+  return {
+    queued: _enrichQueue.map(({ key, priority }) => ({ key, priority })),
+    seen: new Set(_enrichSeen),
+  };
+}
+
 /** Plausibility check anchored to the plane's billboard position (coarse is
  *  fine here — this gates a LABEL, and it must not touch the tracked frame
  *  cache). Missing data → true (never hide what we can't judge). */
@@ -3943,6 +4196,8 @@ const flightsLayer = {
     // Fresh session — full bucket, anchor re-seeded on the first sweep.
     _enrichAmbientBudget = _ambientBudgetKnobs().ceil;
     _enrichAmbientRefillAnchorMs = 0;
+    _locationSwitchStartedMs = 0;
+    _locationReleaseQueue = null;
 
     _installClickHandler(viewer);
 
@@ -4013,6 +4268,9 @@ const flightsLayer = {
     if (_billboardCollection) _billboardCollection.show = false;
     releaseContinuousRender('flights');
     _releaseModels();
+    // A switch that began while enabled gets no arrival once disabled.
+    _locationSwitchStartedMs = 0;
+    _locationReleaseQueue = null;
     if (_modelCollection) _modelCollection.show = false;
     _clearTracking();
     _destroyTrail();
@@ -4068,6 +4326,10 @@ const flightsLayer = {
       _backoff = true;
       return;
     }
+    // Mid-flight on the camera-anchored fallback, a poll would fetch an anchor
+    // the camera is only passing over; arrival refetches for the destination
+    // (refreshOnLocationArrive). The worldwide OpenSky snapshot keeps polling.
+    if (_locationSwitchActive() && _onRegionalFallback()) return;
 
     const resourceController = new AbortController();
     _activeUpdateControllers.add(resourceController);
@@ -4552,43 +4814,42 @@ const flightsLayer = {
           _clearTracking(false, { evicted: true });
         }
 
-        _billboardCollection.remove(bb);
-        _billboards.delete(icao24);
-        _releaseModel(icao24); // aged-out aircraft: drop its 3D model (no orphan / cap leak)
-        _flightData.delete(icao24);
-        _positionHistory.delete(icao24);
-        _displayCourse.delete(icao24);
-        _groundSnap.forget(icao24);
-        _geoidNCache.delete(icao24);
-        _displayFloorState.delete(icao24);
+        _forgetContact(icao24, bb); // aged out: drops its 3D model too (no orphan / cap leak)
       }
 
       // Fresh courses arrived — force a rotation pass on the next fleet tick
       _lastCamPoseSig = '';
 
+      // A location switch is flying the camera: its subpoint is a place the user
+      // is only passing over, so the view-anchored work below (enrichment sweep,
+      // floor warm, mesh sampling) waits for arrival.
+      const viewAnchoredWork = !_locationSwitchActive();
+
       // Ambient type enrichment: give ON-SCREEN planes real types (bounded
       // sweep — see _sweepAmbientEnrichment; internally fail-silent).
-      _sweepAmbientEnrichment();
+      if (viewAnchoredWork) _sweepAmbientEnrichment();
 
-      // 2026-08-19: the loop above only ever collects FIX cells, but a grounded
-      // contact renders across every cell its dead-reckoned position drifts
-      // through. Add those too, so the display clamp has data where the contact
-      // actually is instead of silently passing.
-      _collectDisplayCorridorCells(floorWarmPoints, viewerLatDeg, viewerLonDeg);
+      if (viewAnchoredWork) {
+        // 2026-08-19: the loop above only ever collects FIX cells, but a grounded
+        // contact renders across every cell its dead-reckoned position drifts
+        // through. Add those too, so the display clamp has data where the contact
+        // actually is instead of silently passing.
+        _collectDisplayCorridorCells(floorWarmPoints, viewerLatDeg, viewerLonDeg);
 
-      // Field-test round 3: one batch warm of the viewer-proximate low-contact
-      // floor cells collected in the loop (fire-and-forget, single-flight;
-      // read synchronously by NEXT poll's clamp — the military-layer pattern).
-      warmGroundFloor(floorWarmPoints);
-      // Round 4: sample the RENDERED mesh for those same cells (one-shot per
-      // cell, budget-capped, viewer-proximate, google-3d regime only). Own
-      // billboards/models are excluded so a vertical probe can't land on an
-      // aircraft instead of the pavement.
-      sampleMeshFloorCells(_viewer?.scene, floorWarmPoints, {
-        excludeObjects: [..._billboards.values(), ..._models.values(), _trackedModel].filter(Boolean),
-        viewerLat: viewerLatDeg,
-        viewerLon: viewerLonDeg,
-      });
+        // Field-test round 3: one batch warm of the viewer-proximate low-contact
+        // floor cells collected in the loop (fire-and-forget, single-flight;
+        // read synchronously by NEXT poll's clamp — the military-layer pattern).
+        warmGroundFloor(floorWarmPoints);
+        // Round 4: sample the RENDERED mesh for those same cells (one-shot per
+        // cell, budget-capped, viewer-proximate, google-3d regime only). Own
+        // billboards/models are excluded so a vertical probe can't land on an
+        // aircraft instead of the pavement.
+        sampleMeshFloorCells(_viewer?.scene, floorWarmPoints, {
+          excludeObjects: [..._billboards.values(), ..._models.values(), _trackedModel].filter(Boolean),
+          viewerLat: viewerLatDeg,
+          viewerLon: viewerLonDeg,
+        });
+      }
 
       // Round 5: the grounded exact-key warm that used to live here is gone —
       // see the note where _warmGroundedAircraftSurfaceCache was removed. The
@@ -4617,6 +4878,11 @@ const flightsLayer = {
       _applyPendingTrackingRestore();
 
     } catch (e) {
+      // A location switch cancelled this fetch for the fallback anchor it is
+      // leaving. That is not a feed failure: settle without backoff or an error
+      // chip, and let arrival fetch the destination. A caller's own abort still
+      // rejects below.
+      if (!signal?.aborted && _locationSwitchAbortedUpdates.has(resourceController)) return;
       if (updateSignal.aborted || e?.name === 'AbortError') {
         throw new DOMException('Flights update aborted', 'AbortError');
       }
@@ -4627,6 +4893,71 @@ const flightsLayer = {
     } finally {
       _activeUpdateControllers.delete(resourceController);
     }
+  },
+
+  /**
+   * Location switch started (DataLayerManager hook; see the location-switch
+   * section). The worldwide contact maps and polling stay. Releases what was
+   * built for the view being left: fleet models (hidden now, freed in slices by
+   * the fleet tick), the trail primitive, the Cockpit near band and queued
+   * ambient enrichment. On the camera-anchored adsb.lol fallback it also aborts
+   * the in-flight fetch for the old anchor. Camera-driven work pauses until
+   * onLocationArrive. Tracking is left to the navigation, which already
+   * releases it. Idempotent, no network, never throws.
+   * @param {object} [change] Location switch detail.
+   * @param {{key: string, region: string, country: string, lat: number, lon: number}|null} [change.from]
+   * @param {{key: string, region: string, country: string, lat: number, lon: number}} [change.to]
+   * @param {AbortSignal} [change.signal]
+   * @param {boolean} [change.enabled=true] Whether the layer is on.
+   */
+  onLocationLeave({ to = null, enabled = true } = {}) {
+    // Only an enabled layer polls and ticks, so only it pauses: a disabled
+    // layer would never receive the arrival that resumes it.
+    if (enabled) _locationSwitchStartedMs = Date.now();
+    _locationSwitchStep('fallback fetch', () => {
+      if (_onRegionalFallback()) _abortActiveUpdatesForLocationSwitch();
+    });
+    _locationSwitchStep('model release', () => _queueLocationModelRelease(to));
+    _locationSwitchStep('trail', _destroyTrail);
+    _locationSwitchStep('cockpit near band', _resetCockpitNearContacts);
+    _locationSwitchStep('ambient enrichment', _dropAmbientEnrichQueue);
+  },
+
+  /**
+   * Camera arrived (DataLayerManager hook, enabled layers only). Resumes
+   * camera-driven work and resets the fleet tick throttle and pose signature so
+   * models are admitted and noses re-projected at the destination on the next
+   * frame. On the adsb.lol fallback it evicts untracked contacts outside the
+   * destination's 250 nm coverage now instead of after MISSING_POLL_LIMIT
+   * polls, and the manager then refetches the new anchor (see
+   * refreshOnLocationArrive). Never throws.
+   * @param {object} [change] Location switch detail.
+   * @param {{lat: number, lon: number}} [change.to]
+   * @param {AbortSignal|null} [change.signal] Aborted when a newer switch superseded this one.
+   */
+  onLocationArrive({ to = null, signal = null } = {}) {
+    if (signal?.aborted) return; // a newer leave owns the pause now
+    _locationSwitchStartedMs = 0;
+    _lastCamPoseSig = '';
+    _lastFleetTickMs = 0;
+    _locationSwitchStep('fallback eviction', () => {
+      if (_onRegionalFallback()) _evictOutsideRegionalFallback(to);
+    });
+    _locationSwitchStep('trail', () => {
+      // Tracking normally ends with the navigation; a follow that survived gets its trail back.
+      if (_trackedIcao && !_trail && _flightData.has(_trackedIcao)) _startTrail(_trackedIcao);
+    });
+  },
+
+  /**
+   * Whether the manager should run one update() after onLocationArrive. Only
+   * the adsb.lol fallback is anchored to the camera. The worldwide OpenSky
+   * snapshot already holds the destination's aircraft, and an extra refresh
+   * there would only spend OpenSky credits. A getter, so read it at arrival.
+   * @type {boolean}
+   */
+  get refreshOnLocationArrive() {
+    return _onRegionalFallback();
   },
 
   /**
@@ -4671,6 +5002,8 @@ const flightsLayer = {
       _moveEndRemove = null;
     }
     _releaseModels();
+    _locationSwitchStartedMs = 0;
+    _locationReleaseQueue = null;
     if (_billboardCollection) {
       viewer.scene.primitives.remove(_billboardCollection);
       _billboardCollection = null;

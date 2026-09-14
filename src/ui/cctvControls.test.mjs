@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CctvControls } from './cctvControls.js';
+import { cctvAreaChip } from './cctvPresentation.js';
 
 function element() {
   const classes = new Set();
@@ -57,6 +58,111 @@ test('a late image completion cannot replace a newer camera preview', (t) => {
   stale();
   assert.equal(controls._cctvFrame.src, 'second.jpg');
   assert.equal(controls._cctvFrame.dataset.cameraId, 'b');
+});
+
+test('the panel preview requests nothing while the tab is hidden', (t) => {
+  const { controls, requests } = fixture(t);
+  const prior = globalThis.document;
+  globalThis.document = { hidden: true };
+  t.after(() => {
+    globalThis.document = prior;
+  });
+  controls._queueCctvFrame('first.jpg', 'a', true);
+  assert.equal(requests.length, 0);
+  assert.equal(controls._cctvFrame.dataset.cameraId, '');
+  globalThis.document.hidden = false;
+  controls._queueCctvFrame('first.jpg', 'a', true);
+  assert.equal(requests.length, 1);
+});
+
+test('the area chip names the loaded area, its cap and the cameras held back', (t) => {
+  assert.equal(cctvAreaChip(null).text, 'AREA --');
+  assert.equal(cctvAreaChip({ ready: false }).text, 'AREA --');
+  assert.equal(
+    cctvAreaChip({ loading: true, ready: true, capped: true }).text,
+    'AREA LOADING',
+  );
+  assert.equal(
+    cctvAreaChip({ ready: true, radiusKm: 50, limit: 2500, loaded: 1234 }).text,
+    'AREA 50 KM · 1,234 CAMERAS',
+  );
+  const capped = {
+    ready: true,
+    radiusKm: 50,
+    limit: 2500,
+    loaded: 2500,
+    dropped: 317,
+    capped: true,
+  };
+  assert.equal(
+    cctvAreaChip(capped).text,
+    'AREA 50 KM · 2,500 CAP · 317 MORE NEARBY',
+  );
+
+  const { controls } = fixture(t);
+  const chip = {
+    dataset: {},
+    textContent: '',
+    title: '',
+    attributes: {},
+    setAttribute(name, value) {
+      this.attributes[name] = value;
+    },
+  };
+  controls._cctvRegionCapChip = chip;
+  controls._renderCctvState({ enabled: true, area: capped, cameras: [] });
+  assert.equal(chip.textContent, 'AREA 50 KM · 2,500 CAP · 317 MORE NEARBY');
+  assert.equal(chip.dataset.over, 'true');
+  assert.match(chip.attributes['aria-label'], /317 more within 50 km/);
+  controls._renderCctvState({
+    enabled: true,
+    area: { ...capped, capped: false, dropped: 0, loaded: 12 },
+    cameras: [],
+  });
+  assert.equal(chip.textContent, 'AREA 50 KM · 12 CAMERAS');
+  assert.equal(chip.dataset.over, 'false');
+});
+
+test('NEAREST stays usable with the layer on and no cameras loaded; PREV, NEXT, FOCUS and the list need cameras', (t) => {
+  const { controls } = fixture(t);
+  controls.actions.setPanelCollapsed = () => {};
+  const nearest = { disabled: true };
+  const prev = { disabled: false };
+  const next = { disabled: false };
+  const focus = { disabled: false };
+  const select = { options: [], disabled: false, selectedIndex: 0 };
+  Object.assign(controls, {
+    _cctvNearestBtn: nearest,
+    _cctvPrevBtn: prev,
+    _cctvNextBtn: next,
+    _cctvFocusBtn: focus,
+    _cctvSelect: select,
+  });
+
+  // An empty area: NEAREST is how the panel re-centres it on the view.
+  controls._renderCctvState({ enabled: true, cameras: [] });
+  assert.equal(nearest.disabled, false);
+  assert.deepEqual(
+    [prev.disabled, next.disabled, focus.disabled, select.disabled],
+    [true, true, true, true],
+  );
+
+  controls._cctvSelect = null;
+  controls._renderCctvState({
+    enabled: true,
+    cameras: [{ id: 'a', city: 'Test', name: 'A' }],
+    activeCameraId: 'a',
+  });
+  assert.deepEqual(
+    [nearest.disabled, prev.disabled, next.disabled, focus.disabled],
+    [false, false, false, false],
+  );
+
+  controls._renderCctvState({ enabled: false, cameras: [] });
+  assert.deepEqual(
+    [nearest.disabled, prev.disabled, next.disabled, focus.disabled],
+    [true, true, true, true],
+  );
 });
 
 test('failed refresh preserves settled pixels, but changing cameras clears them', (t) => {

@@ -481,6 +481,8 @@ let _cameraChangedAttached = false;
 let _altitudeGateEnabled = false;
 /** Monotonic generation counter; incremented on each proximity check to cancel stale work. */
 let _proximityGeneration = 0;
+/** True between a location switch's leave and arrival; pauses camera checks and status polls mid-flight. */
+let _locationSwitching = false;
 
 /** @type {Set<string>} City ids currently considered in-range. */
 let _activeCityIds = new Set();
@@ -1347,6 +1349,76 @@ function deactivateAllCities() {
 }
 
 /**
+ * Read a location-switch endpoint as a camera-center shaped point.
+ * @param {{ lat?: number, lon?: number }|null|undefined} place - Switch endpoint.
+ * @returns {{ lat: number, lon: number }|null} Point in degrees, or null when unplaced.
+ */
+function toLocationPoint(place) {
+  if (!Number.isFinite(place?.lat) || !Number.isFinite(place?.lon)) return null;
+  return { lat: place.lat, lon: place.lon };
+}
+
+/**
+ * Release every city that does not serve a location-switch destination.
+ * Cities within load range of the destination keep their points and caches,
+ * so a nearby destination re-renders without re-downloading. All other cities
+ * are deactivated (points removed, selection cleared if it was theirs), and
+ * the parsed station information and status of every far city is dropped from
+ * memory, including cities visited earlier in the session.
+ * @param {{ lat: number, lon: number }|null} destination - Destination point, or null to release all.
+ * @returns {string[]} City ids that were deactivated.
+ */
+function releaseCitiesAwayFrom(destination) {
+  const keep = computeInRangeCities(destination);
+  const released = [];
+  // A city can be mid-activation (active, no points yet) or rendered; release both
+  const known = new Set([..._activeCityIds, ..._cityRuntime.keys()]);
+  for (const cityId of known) {
+    if (keep.has(cityId)) continue;
+    deactivateCity(cityId);
+    _activeCityIds.delete(cityId);
+    released.push(cityId);
+  }
+
+  // Nothing else prunes these caches; they otherwise grow with every city visited
+  for (const cityId of Array.from(_stationInfoCache.keys())) {
+    if (!keep.has(cityId)) _stationInfoCache.delete(cityId);
+  }
+  for (const cityId of Array.from(_statusCache.keys())) {
+    if (!keep.has(cityId)) _statusCache.delete(cityId);
+  }
+
+  _count = _stationRenderMap.size;
+  return released;
+}
+
+/**
+ * Re-fetch station status for the given cities and refresh their point
+ * colors and sizes. Results are dropped if the proximity generation moved on.
+ * @param {string[]} cityIds - Active city ids to refresh.
+ * @param {number} generation - Proximity generation the refresh belongs to.
+ * @returns {Promise<void>}
+ */
+async function refreshCityStatus(cityIds, generation) {
+  if (cityIds.length === 0) return;
+
+  await Promise.all(cityIds.map(async (cityId) => {
+    try {
+      const statusMap = await loadCityStationStatus(cityId, generation);
+      if (!_enabled || !_activeCityIds.has(cityId) || generation !== _proximityGeneration) return;
+      applyStatusToPoints(cityId, statusMap);
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      console.warn(`[Data:Bikeshare] ${cityId} status update error:`, error);
+      _error = 'GBFS status update failed';
+    }
+  }));
+
+  _count = _stationRenderMap.size;
+  if (_count > 0) _lastUpdate = Date.now();
+}
+
+/**
  * Activate a city: fetch station info, create point primitives, fetch status,
  * and apply availability colors. Checks generation at each async boundary
  * to bail out if the proximity context has changed.
@@ -1437,9 +1509,12 @@ function scheduleProximityCheck() {
   }, CAMERA_DEBOUNCE_MS);
 }
 
-/** Camera change event handler — triggers a debounced proximity check. */
+/**
+ * Camera change event handler — triggers a debounced proximity check.
+ * Ignored during a location switch flight; arrival runs the check itself.
+ */
 function onCameraChanged() {
-  if (!_enabled) return;
+  if (!_enabled || _locationSwitching) return;
   scheduleProximityCheck();
 }
 
@@ -1476,6 +1551,7 @@ const bikeshareLayer = {
     _cameraChangedAttached = false;
     _altitudeGateEnabled = false;
     _proximityGeneration = 0;
+    _locationSwitching = false;
 
     _activeCityIds = new Set();
     _cityRuntime = new Map();
@@ -1510,6 +1586,8 @@ const bikeshareLayer = {
    */
   enable(viewer) {
     _enabled = true;
+    // A switch that left while this layer was off gets no arrival call; do not stay paused
+    _locationSwitching = false;
     _error = null;
     _pointCollection.show = true;
     _overlayHost.setVisible(BIKESHARE_SELECTED_OVERLAY_SOURCE_ID, true);
@@ -1536,6 +1614,7 @@ const bikeshareLayer = {
     _enabled = false;
     _proximityGeneration++;
     _altitudeGateEnabled = false;
+    _locationSwitching = false;
     clearTimeout(_cameraDebounceTimer);
     _cameraDebounceTimer = null;
     _clearSelection();
@@ -1565,28 +1644,63 @@ const bikeshareLayer = {
   /**
    * Periodic update tick — re-fetches station status for all active cities
    * and refreshes point colors/sizes. Called by the layer manager at
-   * STATUS_POLL_MS intervals.
+   * STATUS_POLL_MS intervals. Skipped during a location switch flight so the
+   * old city is not polled again.
    * @returns {Promise<void>}
    */
   async update() {
-    if (!_enabled || _activeCityIds.size === 0) return;
+    if (!_enabled || _locationSwitching || _activeCityIds.size === 0) return;
+    await refreshCityStatus(Array.from(_activeCityIds), _proximityGeneration);
+  },
 
-    const generation = _proximityGeneration;
-    const cityIds = Array.from(_activeCityIds);
-    await Promise.all(cityIds.map(async (cityId) => {
-      try {
-        const statusMap = await loadCityStationStatus(cityId, generation);
-        if (!_enabled || !_activeCityIds.has(cityId) || generation !== _proximityGeneration) return;
-        applyStatusToPoints(cityId, statusMap);
-      } catch (error) {
-        if (error?.name === 'AbortError') return;
-        console.warn(`[Data:Bikeshare] ${cityId} status update error:`, error);
-        _error = 'GBFS status update failed';
-      }
-    }));
+  /**
+   * Location switch, leave phase. Stops feeding the old place: cancels the
+   * pending camera check and every in-flight GBFS request, deactivates cities
+   * out of load range of the destination, and drops the cached feeds of every
+   * far city. Camera checks and status polls pause until onLocationArrive.
+   * The layer stays enabled; the camera listener, click handler and pick owner
+   * are kept. No network. Idempotent and never throws.
+   * @param {{ from: ?Object, to: ?{ lat: number, lon: number }, signal?: AbortSignal, enabled?: boolean }} change
+   */
+  onLocationLeave(change) {
+    try {
+      _locationSwitching = true;
+      _proximityGeneration++;
+      clearTimeout(_cameraDebounceTimer);
+      _cameraDebounceTimer = null;
+      abortAllInFlight();
+      releaseCitiesAwayFrom(toLocationPoint(change?.to));
+    } catch (error) {
+      console.warn('[Data:Bikeshare] location leave error:', error);
+    }
+  },
 
-    _count = _stationRenderMap.size;
-    if (_count > 0) _lastUpdate = Date.now();
+  /**
+   * Location switch, arrival phase. Resumes camera checks and status polls and
+   * loads the cities around the arrived view at once, without the debounce.
+   * Cities kept through the switch get a fresh status fetch, since leave
+   * cancelled theirs. The altitude gate is re-seeded for the new view: an
+   * arrival anywhere below the exit threshold counts as inside, so landing in
+   * the hysteresis band still loads instead of waiting for a zoom-in.
+   * A superseded switch (aborted signal) is ignored; the newer one arrives.
+   * @param {{ from: ?Object, to: ?Object, signal?: AbortSignal }} [change]
+   * @returns {Promise<void>}
+   */
+  async onLocationArrive(change) {
+    if (change?.signal?.aborted) return;
+    _locationSwitching = false;
+    if (!_enabled || !_viewer) return;
+
+    try {
+      _altitudeGateEnabled = getCameraAltitude(_viewer) < ACTIVATION_EXIT_ALTITUDE_M;
+      const renderedBefore = Array.from(_cityRuntime.keys());
+      // The check bumps the generation and settles the active set synchronously
+      const check = runProximityCheck();
+      const kept = renderedBefore.filter((cityId) => _activeCityIds.has(cityId));
+      await Promise.all([check, refreshCityStatus(kept, _proximityGeneration)]);
+    } catch (error) {
+      console.warn('[Data:Bikeshare] location arrive error:', error);
+    }
   },
 
   /**
@@ -1671,6 +1785,86 @@ export function _selectBikeshareStationForTest(key) {
 export function _clearBikeshareSelectionForTest() {
   _clearSelection();
   _overlayHost = DEFAULT_OVERLAY_HOST;
+}
+
+/**
+ * Reset layer runtime for location-switch tests without init()/enable(), which
+ * need a DOM canvas for the click handler. Call with no arguments to tear down.
+ * @param {Object} [options]
+ * @param {Object} [options.viewer] - Fake viewer (entities, scene, camera).
+ * @param {boolean} [options.enabled=true] - Whether the layer counts as enabled.
+ * @param {Object} [options.overlayHost] - Selected-card host seam.
+ * @param {boolean} [options.altitudeGateEnabled=false] - Starting hysteresis state.
+ */
+export function _setBikeshareLocationStateForTest({
+  viewer = null,
+  enabled = true,
+  overlayHost,
+  altitudeGateEnabled = false,
+} = {}) {
+  clearTimeout(_cameraDebounceTimer);
+  abortAllInFlight();
+  _viewer = viewer;
+  _pointCollection = viewer ? new Cesium.PointPrimitiveCollection() : null;
+  _enabled = Boolean(viewer) && enabled;
+  _cameraDebounceTimer = null;
+  _altitudeGateEnabled = altitudeGateEnabled;
+  _proximityGeneration = 0;
+  _locationSwitching = false;
+  _activeCityIds = new Set();
+  _cityRuntime = new Map();
+  _stationInfoCache = new Map();
+  _statusCache = new Map();
+  _inFlightInfo = new Map();
+  _inFlightStatus = new Map();
+  _stationRenderMap = new Map();
+  _selectedKey = null;
+  _selectedEntity = null;
+  _count = 0;
+  _loading = false;
+  _loadingOps = 0;
+  _error = null;
+  _overlayHost = overlayHost || DEFAULT_OVERLAY_HOST;
+}
+
+/**
+ * Seed one city's parsed feeds, rendering it through the production point and
+ * status paths unless `render` is false (a city cached by an earlier visit).
+ * @param {string} cityId - Registry city id.
+ * @param {{ stations: Map<string, Object>, status?: Map<string, Object>, render?: boolean }} feeds
+ */
+export function _seedBikeshareCityForTest(cityId, { stations, status = null, render = true }) {
+  _stationInfoCache.set(cityId, stations);
+  if (status) _statusCache.set(cityId, { statusMap: status, timestamp: Date.now() });
+  if (!render) return;
+  _activeCityIds.add(cityId);
+  ensureCityPoints(cityId, stations);
+  if (status) applyStatusToPoints(cityId, status);
+}
+
+/** Snapshot the runtime state a location switch acts on. */
+export function _getBikeshareLocationStateForTest() {
+  const sorted = (keys) => Array.from(keys).sort();
+  return {
+    enabled: _enabled,
+    switching: _locationSwitching,
+    generation: _proximityGeneration,
+    altitudeGateEnabled: _altitudeGateEnabled,
+    debouncePending: _cameraDebounceTimer !== null,
+    activeCityIds: sorted(_activeCityIds),
+    renderedCityIds: sorted(_cityRuntime.keys()),
+    stationInfoCacheCityIds: sorted(_stationInfoCache.keys()),
+    statusCacheCityIds: sorted(_statusCache.keys()),
+    inFlightCityIds: sorted([..._inFlightInfo.keys(), ..._inFlightStatus.keys()]),
+    pointCount: _pointCollection ? _pointCollection.length : 0,
+    count: _count,
+    selectedKey: _selectedKey,
+  };
+}
+
+/** Deliver one camera.changed event through the production handler. */
+export function _notifyBikeshareCameraChangedForTest() {
+  onCameraChanged();
 }
 
 export default bikeshareLayer;

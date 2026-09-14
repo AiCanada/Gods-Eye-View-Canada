@@ -28,6 +28,7 @@ const PROVIDER_FIELDS = [
   'OPENSKY_CLIENT_ID',
   'OPENSKY_CLIENT_SECRET',
   'LL2_API_TOKEN',
+  'ROAD511_API_KEY',
 ];
 
 test('the fresh template keeps provider credentials out of native Configure', () => {
@@ -207,6 +208,25 @@ for (const fixture of [
     }
   });
 }
+
+test('Road511 key follows app values, blanks and absence instead of inherited credentials', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'gev-pinokio-road511-'));
+  try {
+    const filepath = path.join(root, 'ENVIRONMENT');
+    for (const [source, expected] of [
+      ['ROAD511_API_KEY=app-road511\n', 'app-road511'],
+      ['ROAD511_API_KEY=\n', ''],
+      ['', ''],
+    ]) {
+      writeFileSync(filepath, source);
+      const environment = { ROAD511_API_KEY: 'global-road511' };
+      applyPinokioEnvironment({ environment, filepath });
+      assert.equal(environment.ROAD511_API_KEY, expected);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('server Google key follows app values, blanks and absence instead of inherited credentials', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'gev-pinokio-server-key-'));

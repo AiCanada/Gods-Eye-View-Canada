@@ -1,9 +1,15 @@
+import dns from 'node:dns';
+import http from 'node:http';
+import https from 'node:https';
+import net from 'node:net';
 import { Readable } from 'node:stream';
 import { CCTV_PROXY_USER_AGENT } from './upstream-headers.js';
+import { isPublicAddress } from './frame-resolver.js';
 import { hashSeed, escapeXml } from './normalize.js';
 import {
   CCTV_FRAME_FETCH_TIMEOUT_MS,
   CCTV_FRAME_MAX_BODY_BYTES,
+  CCTV_FRAME_MAX_REDIRECTS,
   CCTV_MEDIA_FETCH_TIMEOUT_MS,
   CCTV_MEDIA_MAX_BODY_BYTES,
 } from './constants.js';
@@ -239,6 +245,163 @@ export async function fetchCctvMediaUpstream(
   }
 }
 
+/** Error code for a connection refused because its address is not public. */
+const NON_PUBLIC_ADDRESS = 'ERR_CCTV_NON_PUBLIC_ADDRESS';
+
+const nonPublicAddressError = (message) =>
+  Object.assign(new Error(message), { code: NON_PUBLIC_ADDRESS });
+
+/**
+ * A connect-time DNS lookup that answers only allowed (public) addresses: the
+ * name is resolved once with every address, all of them must pass
+ * `addressAllowed`, and the socket then connects to one of exactly those. A
+ * name therefore cannot be re-pointed at a private address between the check
+ * and the connection.
+ */
+function publicOnlyLookup(lookup, addressAllowed) {
+  return (hostname, options, callback) => {
+    const done = typeof options === 'function' ? options : callback;
+    const settings =
+      typeof options === 'number'
+        ? { family: options }
+        : options && typeof options === 'object'
+          ? options
+          : {};
+    lookup(hostname, { ...settings, all: true }, (error, addresses) => {
+      if (error) {
+        done(error);
+        return;
+      }
+      const list = Array.isArray(addresses) ? addresses : [];
+      if (
+        !list.length ||
+        !list.every((entry) => addressAllowed(entry?.address))
+      ) {
+        done(
+          nonPublicAddressError(
+            `Refused ${hostname}: it resolves to a non-public address`,
+          ),
+        );
+        return;
+      }
+      if (settings.all) done(null, list);
+      else done(null, list[0].address, list[0].family);
+    });
+  };
+}
+
+/** Statuses a WHATWG Response must carry without a body. */
+const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304]);
+
+/**
+ * A fetch() for stills on a host no catalogue vouches for (a Road511 lookup,
+ * a page's og:image). It is node:http(s) whose connection goes only to a
+ * checked public address (see publicOnlyLookup; an address literal is checked
+ * directly), over its own socket rather than a pooled one another request
+ * opened, and it never follows a redirect: a 3xx comes back as it is, for the
+ * caller to check. Answers a WHATWG Response.
+ *
+ * @param {object} [options] - Test seams.
+ * @param {typeof dns.lookup} [options.lookup=dns.lookup]
+ * @param {(address: string) => boolean} [options.addressAllowed=isPublicAddress]
+ * @returns {(url: string, init?: {headers?: object, signal?: AbortSignal}) => Promise<Response>}
+ */
+export function createPublicOnlyFetch({
+  lookup = dns.lookup,
+  addressAllowed = isPublicAddress,
+} = {}) {
+  const connectLookup = publicOnlyLookup(lookup, addressAllowed);
+  return (input, { headers = {}, signal } = {}) =>
+    new Promise((resolve, reject) => {
+      let target;
+      try {
+        target = new URL(String(input));
+      } catch (error) {
+        reject(error);
+        return;
+      }
+      const transport =
+        target.protocol === 'https:'
+          ? https
+          : target.protocol === 'http:'
+            ? http
+            : null;
+      if (!transport) {
+        reject(new TypeError(`Refused ${target.protocol} URL`));
+        return;
+      }
+      const literal = target.hostname.replace(/^\[(.*)\]$/, '$1');
+      if (net.isIP(literal) && !addressAllowed(literal)) {
+        reject(nonPublicAddressError(`Refused non-public address ${literal}`));
+        return;
+      }
+      let request;
+      try {
+        request = transport.request(
+          target,
+          {
+            method: 'GET',
+            headers,
+            signal,
+            agent: false,
+            lookup: connectLookup,
+          },
+          (response) => {
+            try {
+              const status = response.statusCode || 0;
+              if (status < 200 || status > 599)
+                throw new Error(`Upstream answered HTTP ${status}`);
+              const responseHeaders = new Headers();
+              const raw = response.rawHeaders || [];
+              for (let i = 0; i + 1 < raw.length; i += 2) {
+                try {
+                  responseHeaders.append(raw[i], raw[i + 1]);
+                } catch {
+                  /* a header fetch would refuse is dropped */
+                }
+              }
+              const nullBody = NULL_BODY_STATUSES.has(status);
+              if (nullBody) response.resume();
+              resolve(
+                new Response(nullBody ? null : Readable.toWeb(response), {
+                  status,
+                  headers: responseHeaders,
+                }),
+              );
+            } catch (error) {
+              response.destroy();
+              reject(error);
+            }
+          },
+        );
+      } catch (error) {
+        reject(error);
+        return;
+      }
+      request.on('error', reject);
+      request.end();
+    });
+}
+
+let sharedPublicOnlyFetch = null;
+const publicOnlyFetch = () =>
+  (sharedPublicOnlyFetch ||= createPublicOnlyFetch());
+
+/** A redirect a caller must check before following: any 3xx, or fetch's
+ * opaque form of one. */
+const isRedirectResponse = (response) =>
+  response?.type === 'opaqueredirect' ||
+  response?.status === 0 ||
+  (response?.status >= 300 && response?.status < 400);
+
+const cancelQuietly = (response) => {
+  try {
+    void response?.body?.cancel?.()?.catch?.(() => {});
+  } catch {
+    /* already closed */
+  }
+};
+
 /**
  * Fetch one upstream CCTV image within the frame-refresh budget.
  *
@@ -248,20 +411,32 @@ export async function fetchCctvMediaUpstream(
  *
  * @param {string} url - Server-registered upstream image URL.
  * @param {object} [options]
- * @param {typeof fetch} [options.fetchImpl=fetch] - Fetch implementation.
+ * @param {typeof fetch} [options.fetchImpl] - Fetch implementation: fetch, or
+ *   the public-only fetch when `allowUrl` is set.
  * @param {number} [options.timeoutMs=CCTV_FRAME_FETCH_TIMEOUT_MS] - Abort timeout.
  * @param {number} [options.maxBytes=CCTV_FRAME_MAX_BODY_BYTES] - Snapshot byte cap.
+ * @param {(response: {status: number, headers: Headers}) => void} [options.onResponse] -
+ *   Sees each upstream status and headers (for 429 / Retry-After handling)
+ *   before the body is read. It never changes what this function returns.
+ * @param {(href: string) => boolean} [options.allowUrl] - Set for a still on a
+ *   host no catalogue vouches for. Each URL is then checked before it is
+ *   requested, and redirects are followed by hand: at most
+ *   CCTV_FRAME_MAX_REDIRECTS hops, every Location checked again.
  * @returns {Promise<{ok:true,body:Buffer,contentType:string}|null>}
  */
 export async function fetchCctvImageFromUpstream(
   url,
   {
-    fetchImpl = fetch,
+    fetchImpl,
     timeoutMs = CCTV_FRAME_FETCH_TIMEOUT_MS,
     maxBytes = CCTV_FRAME_MAX_BODY_BYTES,
+    onResponse,
+    allowUrl,
   } = {},
 ) {
   if (!url || !/^https?:\/\//i.test(url)) return null;
+  const guarded = typeof allowUrl === 'function';
+  const doFetch = fetchImpl || (guarded ? publicOnlyFetch() : fetch);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
     controller.abort(
@@ -269,10 +444,28 @@ export async function fetchCctvImageFromUpstream(
     );
   }, timeoutMs);
   try {
-    const upstream = await fetchImpl(url, {
-      headers: { 'User-Agent': CCTV_PROXY_USER_AGENT },
-      signal: controller.signal,
-    });
+    let target = url;
+    let upstream;
+    for (let hop = 0; ; hop += 1) {
+      if (guarded && !allowUrl(target)) return null;
+      upstream = await doFetch(target, {
+        headers: { 'User-Agent': CCTV_PROXY_USER_AGENT },
+        signal: controller.signal,
+        ...(guarded ? { redirect: 'manual' } : {}),
+      });
+      if (typeof onResponse === 'function') {
+        try {
+          onResponse({ status: upstream.status, headers: upstream.headers });
+        } catch {
+          /* an observer never breaks the fetch */
+        }
+      }
+      if (!guarded || !isRedirectResponse(upstream)) break;
+      const location = upstream.headers?.get?.('location') || '';
+      cancelQuietly(upstream);
+      if (!location || hop >= CCTV_FRAME_MAX_REDIRECTS) return null;
+      target = new URL(location, target).href;
+    }
     const contentType = upstream.headers.get('content-type') || '';
     if (!upstream.ok || !contentType.startsWith('image/')) {
       controller.abort();

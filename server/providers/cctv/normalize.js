@@ -1,5 +1,5 @@
 import { directionToHeading } from '../../../src/data/directionText.js';
-import { haversineKm } from '../common/geo.js';
+import { US_COORDINATE_BOX } from './constants.js';
 import { FRAME_RESOLVERS, normalizeFrameHosts } from './frame-resolver.js';
 /**
  * FNV-1a 32-bit hash of a string, used to derive deterministic pseudo-random
@@ -34,7 +34,10 @@ export function escapeXml(text) {
 
 /**
  * Canonicalize a CCTV feed type string to one of:
- * 'image', 'mjpeg', 'mp4', 'webm', 'hls', or pass-through.
+ * 'image', 'mjpeg', 'mp4', 'webm', 'hls', 'none', or pass-through.
+ *
+ * 'none' is a camera with no public still or stream the proxy may fetch; it
+ * shows a placeholder until a lookup (Road511) finds its still.
  *
  * @param {string} value - Raw feed type (e.g. 'jpeg', 'mjpg', 'video', 'stream').
  * @returns {string} Normalized feed type.
@@ -44,6 +47,7 @@ export function normalizeFeedType(value) {
     .trim()
     .toLowerCase();
   if (!raw) return 'image';
+  if (raw === 'none') return 'none';
   if (raw === 'jpeg' || raw === 'jpg' || raw === 'png') return 'image';
   if (raw === 'mjpg') return 'mjpeg';
   if (raw === 'video') return 'mp4';
@@ -296,15 +300,21 @@ export function extractAustinHeading(record) {
 }
 
 /**
- * Bounding-box sanity check: is this coordinate plausibly in the Austin metro area?
+ * Plain coordinate sanity check for a US camera: finite, not the 0,0 null
+ * island a missing value parses to, and inside the US box. Suburban and
+ * out-of-town cameras pass; only broken coordinates fail.
  *
  * @param {number} lat
  * @param {number} lon
  * @returns {boolean}
  */
-export function isLikelyAustinCoordinate(lat, lon) {
+export function isPlausibleUsCoordinate(lat, lon) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
-  return lat >= 30.02 && lat <= 30.58 && lon >= -98.12 && lon <= -97.4;
+  if (lat === 0 && lon === 0) return false;
+  const box = US_COORDINATE_BOX;
+  return (
+    lat >= box.south && lat <= box.north && lon >= box.west && lon <= box.east
+  );
 }
 
 /**
@@ -335,52 +345,6 @@ export function rowArrayToObject(row, columns) {
     record[key] = row[idx];
   }
   return record;
-}
-
-/**
- * Distance-prioritizes cameras to a cap: keeps the maxCount cameras closest
- * to ANY of the given anchor points (min distance over anchors), tie-broken
- * by original array order. Used by every live source pack (Austin: one
- * downtown anchor; Caltrans: one anchor per major CA metro; TfL: central
- * London) so a cap always keeps the densest, most interesting cores.
- *
- * @param {Array<object>} cameras - Normalized camera source objects.
- * @param {number} maxCount - Cap (<=0 or >= length disables).
- * @param {Array<{lat:number,lon:number}>} anchors - At least one anchor.
- * @returns {Array<object>} Capped, priority-ordered camera list.
- */
-export function prioritizeSources(cameras, maxCount, anchors) {
-  const list = Array.isArray(cameras) ? cameras : [];
-  const anchorList = (Array.isArray(anchors) ? anchors : []).filter(
-    (a) => Number.isFinite(a?.lat) && Number.isFinite(a?.lon),
-  );
-  if (
-    !Number.isFinite(maxCount) ||
-    maxCount <= 0 ||
-    list.length <= maxCount ||
-    !anchorList.length
-  ) {
-    return list;
-  }
-
-  const scored = list.map((camera, idx) => {
-    const lat = Number(camera?.lat);
-    const lon = Number(camera?.lon);
-    const distKm =
-      Number.isFinite(lat) && Number.isFinite(lon)
-        ? Math.min(
-            ...anchorList.map((a) => haversineKm(lat, lon, a.lat, a.lon)),
-          )
-        : Number.POSITIVE_INFINITY;
-    return { camera, idx, distKm };
-  });
-
-  scored.sort((a, b) => {
-    if (a.distKm !== b.distKm) return a.distKm - b.distKm;
-    return a.idx - b.idx;
-  });
-
-  return scored.slice(0, maxCount).map((entry) => entry.camera);
 }
 
 /**
@@ -417,6 +381,12 @@ export function normalizeSourceItem(item) {
     feedType: normalizeFeedType(item.feedType || item.type || ''),
     url: typeof item.url === 'string' ? item.url : '',
     snapshotUrl: typeof item.snapshotUrl === 'string' ? item.snapshotUrl : '',
+    // A camera with no public still names the service that can look one up
+    // when the user opens it. Only Road511 is known; anything else is dropped.
+    lookup: item.lookup === 'road511' ? 'road511' : '',
+    // An HLS-only camera keeps its stream address for reference. It is never
+    // proxied or served: the app ships no HLS player.
+    videoUrl: typeof item.videoUrl === 'string' ? item.videoUrl : '',
     // Some operators publish only a frame whose URL carries the capture
     // timestamp, so no single URL stays valid. Such a camera declares the page
     // that advertises its current frame plus the strategy for reading it, and
@@ -433,11 +403,9 @@ export function normalizeSourceItem(item) {
     license: String(item.license || item.licenseNote || ''),
     // ISO country code used by the CCTV_COUNTRIES gate. An entry that declares
     // no country cannot be classified, so it is never filtered out.
-    country: String(item.country || '')
-      .trim()
-      .toUpperCase(),
-    // Optional province/state code ("ON", "CA-ON", "TX") for the region cap;
-    // without one the cap reads the province or state from cityId.
+    country: canonicalCountryCode(item.country),
+    // Optional province/state code ("ON", "CA-ON", "TX") for cctvRegionKey;
+    // without one the province or state is read from cityId.
     region: String(item.region || '')
       .trim()
       .toUpperCase(),
@@ -449,4 +417,34 @@ export function normalizeSourceItem(item) {
     // Data, which never sets this field). Passed through as-is to the client.
     poseSource: item.poseSource === 'curated' ? 'curated' : undefined,
   };
+}
+
+/** Common spellings of the country codes camera packs use, mapped to ISO 3166 alpha-2. */
+const COUNTRY_ALIASES = {
+  CAN: 'CA',
+  CANADA: 'CA',
+  USA: 'US',
+  'U.S.': 'US',
+  'U.S.A.': 'US',
+  'UNITED STATES': 'US',
+  'UNITED STATES OF AMERICA': 'US',
+  UK: 'GB',
+  GBR: 'GB',
+  'GREAT BRITAIN': 'GB',
+  'UNITED KINGDOM': 'GB',
+};
+
+/**
+ * Upper-cased country code, with common aliases ("Canada", "USA", "UK") mapped
+ * to the ISO code so every spelling counts as the same country.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function canonicalCountryCode(value) {
+  const code = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, ' ');
+  return COUNTRY_ALIASES[code] || code;
 }

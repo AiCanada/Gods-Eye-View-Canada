@@ -22,6 +22,7 @@ config/.private-cameras.json.*.tmp
 # cams-*.json packs are committed; the raw pages and feeds are rebuilt on demand.
 tools/camera-pack/sources/*.html
 tools/camera-pack/sources/*.csv
+tools/camera-pack/sources/*.tsv
 tools/camera-pack/sources/*.geojson
 tools/camera-pack/sources/511on.json
 tools/camera-pack/sources/511on-cameras.json

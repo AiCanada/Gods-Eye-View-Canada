@@ -727,8 +727,9 @@ test('CCTV repeated in-world clicks dispatch focus only for the one real activat
   assert.match(cctvLayer.init.toString(), /bindCctvWorldClickGesture\(_clickHandler/);
   assert.match(cctvLayer.init.toString(), /_cctvOverlayHost\.hitTest/);
   assert.match(cctvLayer.init.toString(), /sourceId: CCTV_OVERLAY_SOURCE_ID/);
-  assert.match(cctvLayer.init.toString(), /activateCctvCameraFromWorldClick\(cameraId, setActiveCamera\)/);
-  assert.match(cctvLayer.init.toString(), /activateCctvCameraFromWorldClick\(cardId, setActiveCamera\)/);
+  // World and card clicks are explicit activations (they may send a lookup).
+  assert.match(cctvLayer.init.toString(), /activateCctvCameraFromWorldClick\(cameraId, activateCameraExplicitly\)/);
+  assert.match(cctvLayer.init.toString(), /activateCctvCameraFromWorldClick\(cardId, activateCameraExplicitly\)/);
 });
 
 // ─── Empty-space deselection and stable null-active state ──────────────────

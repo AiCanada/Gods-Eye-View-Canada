@@ -631,7 +631,7 @@ async function main() {
     // pose, then reset back to the base pose before the byte-stability check.
     const activeCameraForPatch = await page.evaluate((camId) => {
       const mod = window.__godsEyeView.dataManager.layers.get('cctv').module;
-      return mod.getUIState().cameras.find((c) => c.id === camId);
+      return mod.getCameraState(camId);
     }, activeId);
     const basePose = activeCameraForPatch.basePose;
     const groundAltMForPatch = activeCameraForPatch.elevationM - activeCameraForPatch.mountHeightM;
@@ -754,7 +754,7 @@ async function main() {
     const baseBadge = await page.evaluate((camId) => {
       const mod = window.__godsEyeView.dataManager.layers.get('cctv').module;
       const ui = mod.getUIState();
-      return ui.cameras.find((c) => c.id === camId)?.calBadge;
+      return mod.getCameraState(camId)?.calBadge;
     }, activeId);
     const baseStoreEmpty = await page.evaluate((camId) => {
       const raw = localStorage.getItem('godsEyeView.cctv.calibration.v2');
@@ -779,7 +779,7 @@ async function main() {
       const raw = localStorage.getItem('godsEyeView.cctv.calibration.v2');
       const map = raw ? JSON.parse(raw) : {};
       const mod = window.__godsEyeView.dataManager.layers.get('cctv').module;
-      const cam = mod.getUIState().cameras.find((c) => c.id === camId);
+      const cam = mod.getCameraState(camId);
       return { stored: camId in map, calDirty: cam?.calDirty, calBadge: cam?.calBadge };
     }, activeId);
     record('patch does NOT write the v2 store (save-gated)', afterPatch.stored === false,
@@ -805,7 +805,7 @@ async function main() {
 
     const afterSave = await page.evaluate((camId) => {
       const mod = window.__godsEyeView.dataManager.layers.get('cctv').module;
-      const cam = mod.getUIState().cameras.find((c) => c.id === camId);
+      const cam = mod.getCameraState(camId);
       return { calBadge: cam?.calBadge, calDirty: cam?.calDirty };
     }, activeId);
     record('calBadge flips to calibrated after SAVE (and dirty clears)', afterSave.calBadge === 'calibrated' && afterSave.calDirty === false,
@@ -840,7 +840,7 @@ async function main() {
 
     const badgeAfterReset = await page.evaluate((camId) => {
       const mod = window.__godsEyeView.dataManager.layers.get('cctv').module;
-      return mod.getUIState().cameras.find((c) => c.id === camId)?.calBadge;
+      return mod.getCameraState(camId)?.calBadge;
     }, activeId);
     record('calBadge returns to raw-prior (or curated) after reset', badgeAfterReset !== 'calibrated',
       `calBadge=${badgeAfterReset}`);
@@ -887,7 +887,7 @@ async function main() {
     // loop is healthy" — a hard 5xx/network failure would not).
     const frameFetch = await page.evaluate(async (camId) => {
       const mod = window.__godsEyeView.dataManager.layers.get('cctv').module;
-      const cam = mod.getUIState().cameras.find((c) => c.id === camId);
+      const cam = mod.getCameraState(camId);
       const res = await fetch(cam.frameUrl);
       return { ok: res.ok, status: res.status, contentType: res.headers.get('content-type'), url: cam.frameUrl, mediaUrl: cam.mediaUrl };
     }, activeId);

@@ -43,6 +43,17 @@ const OVERPASS_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'overpass');
 /** Per-upstream fetch timeout (ms). */
 const OVERPASS_TIMEOUT_MS = 22000;
 
+/**
+ * First skip window (ms) for a mirror that timed out, refused the proxy or
+ * rate-limited it. Measured 2026-09-14: overpass-api.de and lz4 answer 406 and
+ * kumi.systems and private.coffee time out, so without a breaker every query
+ * spent ~45 s re-learning that before failing.
+ */
+const OVERPASS_MIRROR_BACKOFF_BASE_MS = 120_000;
+
+/** Longest skip window (ms); the window doubles per consecutive failure. */
+const OVERPASS_MIRROR_BACKOFF_MAX_MS = 30 * 60_000;
+
 /** Max entries in the Overpass response cache (LRU-like, oldest evicted first). */
 const OVERPASS_CACHE_MAX_ENTRIES = 120;
 
@@ -129,6 +140,8 @@ export {
   OVERPASS_SIMPLIFY_MIN_POINTS,
   OVERPASS_SIMPLIFY_TOLERANCE_DEG,
   OVERPASS_MAX_RESPONSE_BYTES,
+  OVERPASS_MIRROR_BACKOFF_BASE_MS,
+  OVERPASS_MIRROR_BACKOFF_MAX_MS,
   OVERPASS_UPSTREAMS,
   OVERPASS_TIMEOUT_MS,
 };

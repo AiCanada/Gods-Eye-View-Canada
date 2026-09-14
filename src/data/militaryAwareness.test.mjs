@@ -1524,6 +1524,58 @@ test('a deliberate source clear still fully clears the subject', () => {
   }
 });
 
+test('a location-switch source clear keeps the subject without a CONTACT LOST cue', () => {
+  // What the AIS and installations leave hooks emit: the source releases its
+  // own selection for the place being left. That is neither the operator
+  // deselecting nor the contact leaving its feed, and it can reach Contacts
+  // before or after its own leave hook, so the subject survives either way.
+  const position = Cesium.Cartesian3.fromDegrees(-97.74, 30.27, 0);
+  for (const { layerId, id } of [
+    { layerId: 'ais-live-vessels', id: '353136000' },
+    { layerId: 'military-installations', id: 'fort-cavazos' },
+  ]) {
+    const runtime = installAwarenessRuntime();
+    const restores = [];
+    try {
+      replaceMethod(aisLiveVesselsLayer, 'hasContact', () => true, restores);
+      replaceMethod(aisLiveVesselsLayer, 'getAllPositions', () => [{ id: '353136000', position }], restores);
+      replaceMethod(aisLiveVesselsLayer, 'getNearby', () => [], restores);
+      replaceMethod(flightsLayer, 'getNearby', () => [], restores);
+      replaceMethod(militaryFlightsLayer, 'getNearby', () => [], restores);
+      replaceMethod(militaryInstallationsLayer, 'getNearby', () => [], restores);
+
+      militaryAwarenessLayer.setParams({ passive: false });
+      runtime.dispatch('gev:awareness-subject-selected', { layerId, id, label: id, position });
+      runtime.dispatch('gev:entity-selection-cleared', { layerId, reason: 'location-switch' });
+
+      const snapshot = militaryAwarenessLayer.getContextSnapshot();
+      assert.equal(snapshot?.subject.id, id, `${layerId}: the subject survives so FOCUS can return to it`);
+      assert.equal(snapshot.subjectPresent, true, `${layerId}: a switch is not an eviction`);
+    } finally {
+      restores.reverse().forEach((restore) => restore());
+      runtime.restore();
+    }
+  }
+});
+
+test('a location-switch subject clear keeps the subject too', () => {
+  const runtime = installAwarenessRuntime();
+  const restores = [];
+  try {
+    stubPresence(flightsLayer, true, restores);
+    selectFlightSubject(runtime, restores);
+    runtime.dispatch('gev:awareness-subject-cleared', {
+      layerId: 'flights', id: 'ab4991', reason: 'location-switch',
+    });
+    const snapshot = militaryAwarenessLayer.getContextSnapshot();
+    assert.equal(snapshot?.subject.id, 'ab4991', 'a switch-tagged clear never tears the subject down');
+    assert.equal(snapshot.subjectPresent, true, 'and never marks it CONTACT LOST');
+  } finally {
+    restores.reverse().forEach((restore) => restore());
+    runtime.restore();
+  }
+});
+
 test('production eviction sites actually tag their clears', () => {
   // The event contract above is worthless if the real cull paths never set the
   // origin, so pin the three production call sites.
@@ -3054,6 +3106,144 @@ test('a moving camera refreshes Contacts more than once inside one parked interv
     assert.equal(refreshes, 1, 'a parked camera keeps the single-refresh-per-750 ms cadence');
   } finally {
     Date.now = realNow;
+    restores.reverse().forEach((restore) => restore());
+    runtime.restore();
+    restoreCollections();
+  }
+});
+
+// --- location switch hooks ---------------------------------------------------
+// Selecting a place in another region releases what Contacts holds for the old
+// area (cohorts, paging, PREVIOUS/NEXT history) while keeping the subject, and
+// holds rescans through the camera flight.
+
+const SWITCH_FROM = { key: 'US-TX', region: 'US-TX', country: 'US', lat: 30.27, lon: -97.74 };
+const SWITCH_TO = { key: 'CA-ON', region: 'CA-ON', country: 'CA', lat: 43.65, lon: -79.38 };
+
+test('a location switch drops old-area Contacts state, keeps the subject, and rescans on arrival', () => {
+  const positions = {
+    a: Cesium.Cartesian3.fromDegrees(-97.74, 30.27, 1000),
+    b: Cesium.Cartesian3.fromDegrees(-97.73, 30.28, 1000),
+  };
+  const flights = Object.entries(positions).map(([id, position], index) => ({
+    icao24: id,
+    callsign: id.toUpperCase(),
+    position,
+    distanceM: (index + 1) * 1000,
+  }));
+  const restoreCollections = stubAwarenessCollections({ flights });
+  const runtime = installAwarenessRuntime();
+  const restores = [];
+  const released = [];
+
+  try {
+    replaceMethod(flightsLayer, 'trackById', (id) => {
+      runtime.dispatch('gev:entity-selection-cleared', { layerId: 'flights' });
+      runtime.dispatch('gev:awareness-subject-selected', awarenessSubject('flights', id, positions[id]));
+      return true;
+    }, restores);
+    runtime.dispatch('gev:awareness-subject-selected', awarenessSubject('flights', 'a', positions.a));
+    assert.equal(militaryAwarenessLayer.navigateNext(), true);
+    assert.deepEqual(_getAwarenessNavigationStateForTest().historyKeys, ['flights:a', 'flights:b']);
+    assert.equal(militaryAwarenessLayer.getStats().count, 1, 'precondition: cohorts are evaluated');
+
+    replaceMethod(flightsLayer, 'stopTracking', (options) => released.push(['flights', options]) > 0, restores);
+    replaceMethod(militaryFlightsLayer, 'stopTracking', (options) => released.push(['military', options]) > 0, restores);
+    replaceMethod(aisLiveVesselsLayer, 'clearSelection', () => released.push(['ais']) > 0, restores);
+
+    militaryAwarenessLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    militaryAwarenessLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+
+    assert.deepEqual(released, [
+      ['flights', { origin: 'tool' }],
+      ['military', { origin: 'tool' }],
+      ['flights', { origin: 'tool' }],
+      ['military', { origin: 'tool' }],
+    ], 'camera ownership is released (safely twice); the vessel selection stays with its layer');
+    assert.deepEqual(_getAwarenessNavigationStateForTest(), {
+      historyKeys: [],
+      navigationVisitedKeys: [],
+      historyLength: 0,
+      navigationIndex: -1,
+      suppressedHistoryKey: null,
+      pendingSelectionKey: null,
+    }, 'NEXT/PREVIOUS cannot jump back to the old area');
+    assert.equal(militaryAwarenessLayer.getStats().count, 0, 'old-area cohort results are released');
+    const leaving = militaryAwarenessLayer.getContextSnapshot();
+    assert.equal(leaving?.subject.id, 'b', 'the subject survives so FOCUS can return to it');
+    assert.deepEqual(leaving?.cohorts, []);
+
+    // Mid-flight: neither a manager refresh nor a frame tick rescans.
+    militaryAwarenessLayer.update();
+    runtime.tick();
+    assert.equal(militaryAwarenessLayer.getStats().count, 0, 'no rescan runs for the place being left');
+
+    militaryAwarenessLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO });
+    assert.equal(militaryAwarenessLayer.getStats().count, 1, 'arrival rescans at once');
+    assert.equal(militaryAwarenessLayer.getContextSnapshot()?.subject.id, 'b');
+    assert.deepEqual(
+      _getAwarenessNavigationStateForTest().historyKeys,
+      [],
+      'a rescan does not resurrect the released history',
+    );
+  } finally {
+    restores.reverse().forEach((restore) => restore());
+    runtime.restore();
+    restoreCollections();
+  }
+});
+
+test('an aborted Contacts arrival keeps the rescan hold for the newer switch', () => {
+  const position = Cesium.Cartesian3.fromDegrees(-97.74, 30.27, 1000);
+  const restoreCollections = stubAwarenessCollections({
+    flights: [{ icao24: 'a', callsign: 'A', position, distanceM: 1000 }],
+  });
+  const runtime = installAwarenessRuntime();
+  const restores = [];
+
+  try {
+    replaceMethod(flightsLayer, 'stopTracking', () => true, restores);
+    replaceMethod(militaryFlightsLayer, 'stopTracking', () => true, restores);
+    runtime.dispatch('gev:awareness-subject-selected', awarenessSubject('flights', 'a', position));
+    militaryAwarenessLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: true });
+    const controller = new AbortController();
+    controller.abort();
+
+    militaryAwarenessLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO, signal: controller.signal });
+    militaryAwarenessLayer.update();
+    assert.equal(militaryAwarenessLayer.getStats().count, 0, 'the superseded arrival lifts nothing');
+
+    militaryAwarenessLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO });
+    assert.equal(militaryAwarenessLayer.getStats().count, 1);
+  } finally {
+    restores.reverse().forEach((restore) => restore());
+    runtime.restore();
+    restoreCollections();
+  }
+});
+
+test('a location switch while Contacts is off releases no camera and leaves no rescan hold', async () => {
+  const position = Cesium.Cartesian3.fromDegrees(-97.74, 30.27, 1000);
+  const restoreCollections = stubAwarenessCollections({
+    flights: [{ icao24: 'a', callsign: 'A', position, distanceM: 1000 }],
+  });
+  const runtime = installAwarenessRuntime();
+  const restores = [];
+  const released = [];
+
+  try {
+    await militaryAwarenessLayer.disable();
+    replaceMethod(flightsLayer, 'stopTracking', () => released.push('flights') > 0, restores);
+    replaceMethod(militaryFlightsLayer, 'stopTracking', () => released.push('military') > 0, restores);
+
+    militaryAwarenessLayer.onLocationLeave({ from: SWITCH_FROM, to: SWITCH_TO, enabled: false });
+    assert.deepEqual(released, [], 'Contacts owns no camera while it is off');
+
+    // Arrival only reaches enabled layers, so enable must lift the hold itself.
+    militaryAwarenessLayer.enable();
+    runtime.dispatch('gev:awareness-subject-selected', awarenessSubject('flights', 'b', position));
+    assert.equal(militaryAwarenessLayer.getStats().count, 1, 're-enabling is not left holding rescans');
+  } finally {
     restores.reverse().forEach((restore) => restore());
     runtime.restore();
     restoreCollections();

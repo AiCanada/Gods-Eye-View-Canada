@@ -1,15 +1,8 @@
 import {
   DEFAULT_AUSTIN_ROWS_URL,
-  DEFAULT_AUSTIN_MAX_SOURCES,
-  AUSTIN_DOWNTOWN,
   CALTRANS_CCTV_URL,
-  DEFAULT_CALTRANS_DISTRICTS,
-  DEFAULT_CALTRANS_MAX_SOURCES,
-  CALTRANS_ANCHORS,
   TFL_JAMCAM_URL,
   TFL_IMAGE_ORIGIN,
-  DEFAULT_TFL_MAX_SOURCES,
-  LONDON_CENTER,
   CCTV_SOURCE_FETCH_TIMEOUT_MS,
 } from './constants.js';
 import {
@@ -18,26 +11,48 @@ import {
   extractAustinCameraId,
   extractAustinName,
   extractAustinHeading,
-  isLikelyAustinCoordinate,
+  isPlausibleUsCoordinate,
   fallbackHeadingFromId,
   rowArrayToObject,
-  prioritizeSources,
 } from './normalize.js';
 import { directionToHeading } from '../../../src/data/directionText.js';
+
+/** Austin rows that were never built or are gone for good. A switched-off
+ * camera (TURNED_OFF) is still a real camera and stays in the pack. */
+const AUSTIN_DROPPED_STATUSES = new Set(['DESIRED', 'REMOVED', 'VOID']);
+
+/**
+ * Caltrans districts named by CCTV_CALTRANS_DISTRICTS (comma-separated 1..12).
+ * There is no default: unset or empty means the Caltrans pack is off.
+ *
+ * @returns {number[]}
+ */
+export function caltransDistricts(env = process.env) {
+  return String(env.CCTV_CALTRANS_DISTRICTS ?? '')
+    .split(',')
+    .map((token) => Number(token.trim()))
+    .filter((n) => Number.isInteger(n) && n >= 1 && n <= 12);
+}
+
 /**
  * Fetch and parse Austin traffic camera records from the city Open Data portal.
  *
  * Downloads the Socrata rows.json payload, converts each row to a keyed
- * record, extracts camera ID / coords / heading / name, validates against
- * the Austin bounding box, deduplicates by ID, then distance-prioritizes
- * to stay within CCTV_AUSTIN_MAX_SOURCES.
+ * record, extracts camera ID / coords / heading / name, and returns every
+ * camera: suburban ones and switched-off ones included. Only rows that were
+ * never built or were removed are dropped, and only coordinates that cannot
+ * be a US camera are refused.
  *
+ * @param {{fetchImpl?: typeof fetch, env?: object}} [options]
  * @returns {Promise<Array<object>>} Normalized camera source objects.
  */
-export async function loadAustinSourcesFromOpenData() {
-  const endpoint = process.env.CCTV_AUSTIN_ROWS_URL || DEFAULT_AUSTIN_ROWS_URL;
+export async function loadAustinSourcesFromOpenData({
+  fetchImpl = fetch,
+  env = process.env,
+} = {}) {
+  const endpoint = env.CCTV_AUSTIN_ROWS_URL || DEFAULT_AUSTIN_ROWS_URL;
   try {
-    const resp = await fetch(endpoint, {
+    const resp = await fetchImpl(endpoint, {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(CCTV_SOURCE_FETCH_TIMEOUT_MS),
     });
@@ -59,18 +74,15 @@ export async function loadAustinSourcesFromOpenData() {
       const cameraId = extractAustinCameraId(record);
       if (!cameraId) continue;
 
-      // Only live cameras: the dataset carries DESIRED (planned, not built),
-      // REMOVED and VOID rows whose frame URLs never resolve — those cameras
-      // would render as permanent Street View / synthetic fallbacks. Tolerate
-      // a missing column (keep the row) so a schema change fails open.
+      // DESIRED (planned, not built), REMOVED and VOID rows are not cameras.
+      // Tolerate a missing column (keep the row) so a schema change fails open.
       const status = String(record.camera_status || '')
         .trim()
         .toUpperCase();
-      if (status && status !== 'TURNED_ON') continue;
+      if (AUSTIN_DROPPED_STATUSES.has(status)) continue;
 
       const { lat, lon } = extractAustinCoords(record);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-      if (!isLikelyAustinCoordinate(lat, lon)) continue;
+      if (!isPlausibleUsCoordinate(lat, lon)) continue;
 
       const extractedHeading = extractAustinHeading(record);
       const hasHeading = Number.isFinite(extractedHeading);
@@ -104,21 +116,8 @@ export async function loadAustinSourcesFromOpenData() {
     const unique = Array.from(
       new Map(cameras.map((camera) => [camera.id, camera])).values(),
     );
-    const maxRaw = Number(
-      process.env.CCTV_AUSTIN_MAX_SOURCES || DEFAULT_AUSTIN_MAX_SOURCES,
-    );
-    const maxCount = Number.isFinite(maxRaw)
-      ? Math.max(8, Math.min(300, Math.floor(maxRaw)))
-      : DEFAULT_AUSTIN_MAX_SOURCES;
-    const prioritized = prioritizeSources(unique, maxCount, [AUSTIN_DOWNTOWN]);
-    if (prioritized.length < unique.length) {
-      console.log(
-        `[CCTV] Loaded Austin camera sources: ${unique.length} (using nearest ${prioritized.length})`,
-      );
-    } else {
-      console.log('[CCTV] Loaded Austin camera sources:', prioritized.length);
-    }
-    return prioritized;
+    console.log('[CCTV] Loaded Austin camera sources:', unique.length);
+    return unique;
   } catch (error) {
     console.warn(
       '[CCTV] Austin source download error:',
@@ -130,27 +129,30 @@ export async function loadAustinSourcesFromOpenData() {
 
 /**
  * Fetch Caltrans CCTV cameras for the configured districts (CCTV_CALTRANS_DISTRICTS,
- * comma-separated 1..12; empty string disables the pack). One official JSON feed per
+ * comma-separated 1..12; unset or empty disables the pack). One official JSON feed per
  * district, identical schema statewide; keyless. Only inService cameras with finite
  * coords and a cwwp2.dot.ca.gov https image URL are kept (the image-URL origin check
  * is defense-in-depth: the proxy only ever fetches catalog URLs, and this pins the
  * catalog to the official host). Districts fetch in parallel and fail independently
- * (Promise.allSettled) — one district outage never darkens the others.
+ * (Promise.allSettled) — one district outage never darkens the others. When any
+ * district failed, the returned list carries `partial: true` and
+ * `failedDistricts`, so the live pack retries soon instead of keeping an
+ * incomplete list for a day.
  *
- * @returns {Promise<Array<object>>} Normalized camera source objects.
+ * @param {{fetchImpl?: typeof fetch, env?: object}} [options]
+ * @returns {Promise<Array<object> & {partial?: true, failedDistricts?: number[]}>}
+ *   Normalized camera source objects.
  */
-export async function loadCaltransSourcesFromOpenData() {
-  const districtsRaw =
-    process.env.CCTV_CALTRANS_DISTRICTS ?? DEFAULT_CALTRANS_DISTRICTS;
-  const districts = String(districtsRaw)
-    .split(',')
-    .map((token) => Number(token.trim()))
-    .filter((n) => Number.isInteger(n) && n >= 1 && n <= 12);
+export async function loadCaltransSourcesFromOpenData({
+  fetchImpl = fetch,
+  env = process.env,
+} = {}) {
+  const districts = caltransDistricts(env);
   if (!districts.length) return [];
 
   const settled = await Promise.allSettled(
     districts.map(async (district) => {
-      const resp = await fetch(CALTRANS_CCTV_URL(district), {
+      const resp = await fetchImpl(CALTRANS_CCTV_URL(district), {
         headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(CCTV_SOURCE_FETCH_TIMEOUT_MS),
       });
@@ -162,8 +164,10 @@ export async function loadCaltransSourcesFromOpenData() {
   );
 
   const cameras = [];
-  for (const result of settled) {
+  const failedDistricts = [];
+  for (const [index, result] of settled.entries()) {
     if (result.status !== 'fulfilled') {
+      failedDistricts.push(districts[index]);
       console.warn(
         '[CCTV] Caltrans district fetch failed:',
         result.reason?.message || result.reason,
@@ -237,36 +241,37 @@ export async function loadCaltransSourcesFromOpenData() {
     }
   }
 
-  const maxRaw = Number(
-    process.env.CCTV_CALTRANS_MAX_SOURCES || DEFAULT_CALTRANS_MAX_SOURCES,
-  );
-  const maxCount = Number.isFinite(maxRaw)
-    ? Math.max(8, Math.min(600, Math.floor(maxRaw)))
-    : DEFAULT_CALTRANS_MAX_SOURCES;
-  const prioritized = prioritizeSources(cameras, maxCount, CALTRANS_ANCHORS);
+  if (failedDistricts.length) {
+    cameras.partial = true;
+    cameras.failedDistricts = failedDistricts;
+  }
   console.log(
-    `[CCTV] Loaded Caltrans camera sources: ${cameras.length} inService (using nearest ${prioritized.length})`,
+    `[CCTV] Loaded Caltrans camera sources: ${cameras.length} inService`,
   );
-  return prioritized;
+  return cameras;
 }
 
 /**
  * Fetch TfL JamCams (London). Keyless: the optional TFL_APP_KEY only raises the
  * list-endpoint rate limit (frames come from TfL's public S3 bucket, which is not
- * rate-limited); the 15-min source cache keeps list hits far below anonymous
+ * rate-limited); the day-long live pack cache keeps list hits far below anonymous
  * limits anyway. Only `available === "true"` cameras with finite coords and an
  * image URL on the official bucket are kept. Attribution: "Powered by TfL Open
  * Data" (registered in src/data/dataCredits.js).
  *
+ * @param {{fetchImpl?: typeof fetch, env?: object}} [options]
  * @returns {Promise<Array<object>>} Normalized camera source objects.
  */
-export async function loadTflSourcesFromOpenData() {
+export async function loadTflSourcesFromOpenData({
+  fetchImpl = fetch,
+  env = process.env,
+} = {}) {
   try {
-    const appKey = String(process.env.TFL_APP_KEY || '').trim();
+    const appKey = String(env.TFL_APP_KEY || '').trim();
     const url = appKey
       ? `${TFL_JAMCAM_URL}?app_key=${encodeURIComponent(appKey)}`
       : TFL_JAMCAM_URL;
-    const resp = await fetch(url, {
+    const resp = await fetchImpl(url, {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(CCTV_SOURCE_FETCH_TIMEOUT_MS),
     });
@@ -321,17 +326,10 @@ export async function loadTflSourcesFromOpenData() {
       });
     }
 
-    const maxRaw = Number(
-      process.env.CCTV_TFL_MAX_SOURCES || DEFAULT_TFL_MAX_SOURCES,
-    );
-    const maxCount = Number.isFinite(maxRaw)
-      ? Math.max(8, Math.min(600, Math.floor(maxRaw)))
-      : DEFAULT_TFL_MAX_SOURCES;
-    const prioritized = prioritizeSources(cameras, maxCount, [LONDON_CENTER]);
     console.log(
-      `[CCTV] Loaded TfL JamCam sources: ${cameras.length} available (using nearest ${prioritized.length})`,
+      `[CCTV] Loaded TfL JamCam sources: ${cameras.length} available`,
     );
-    return prioritized;
+    return cameras;
   } catch (error) {
     console.warn('[CCTV] TfL JamCam download error:', error?.message || error);
     return [];
