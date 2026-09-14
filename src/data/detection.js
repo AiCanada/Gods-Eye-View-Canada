@@ -515,6 +515,25 @@ export function markDetectionSourcesChanged(reason = 'sources-changed') {
   if (_lastDiagnostics) _lastDiagnostics.lastSourceChangeReason = reason;
 }
 
+/**
+ * Forget every label the arbiter has placed and owe the next paint a fresh solve.
+ *
+ * Called when a location switch starts. The arbiter's per-candidate hysteresis,
+ * selected keys and quota buckets all describe contacts at the place being left;
+ * keeping them would let those identities hold (or fade out of) label slots at
+ * the destination, and would keep their state maps alive through the flight.
+ * The callout replay buffer goes with them for the same reason. Mode, style and
+ * tuning are untouched, and no render is requested: the caller owns the frame.
+ * @returns {void}
+ */
+export function resetDetectionSolveState() {
+  _labelArbiter.clear();
+  _lastLabelSolveAt = 0;
+  _labelSolveDirty = true;
+  _lastSolveSnapshot = { demandByLayer: {}, cohortByLayer: {}, cohortCount: 0 };
+  _calloutCount = 0;
+}
+
 /** Read-only diagnostics for unit/browser QA. */
 export function getDetectionDiagnostics() {
   return _lastDiagnostics ? JSON.parse(JSON.stringify(_lastDiagnostics)) : null;

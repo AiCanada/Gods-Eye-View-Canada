@@ -12,7 +12,7 @@ import {
   meshFloorSampleWithinPrior,
   reportMeshFloorCell, cachedMeshFloor, cachedGroundFloor,
   setMeshFloorPreferred, meshFloorPreferred, _clearMeshFloorCellsForTest,
-  neighborFloorM,
+  neighborFloorM, pruneGroundFloorOutside, warmGroundFloor,
 } from './groundFloor.js';
 import {
   corridorPathLatLon, projectGroundArcLatLon,
@@ -625,4 +625,69 @@ test('neighborFloorM never counts the cell itself — it exists because that one
   setMeshFloorPreferred(true);
   reportMeshFloorCell(30.2, -97.66, 500);
   assert.equal(neighborFloorM({ lat: 30.2, lon: -97.66 }), null);
+});
+
+// ---------------------------------------------------------------------------
+// Location switch: selecting a place in another region releases the floor
+// memory held for the place being left, and keeps the destination's.
+// ---------------------------------------------------------------------------
+
+const TORONTO = { lat: 43.6532, lon: -79.3832 };
+
+test('pruneGroundFloorOutside deletes far mesh cells and keeps the destination area', () => {
+  _clearMeshFloorCellsForTest();
+  setMeshFloorPreferred(true);
+  reportMeshFloorCell(43.653, -79.383, 90); // Toronto, the destination
+  reportMeshFloorCell(43.256, -79.871, 110); // Hamilton, ~58 km
+  reportMeshFloorCell(30.197, -97.666, 138.4); // Austin, ~2,000 km
+  assert.deepEqual(pruneGroundFloorOutside(TORONTO, 300), { meshCells: 1, pendingCells: 0 });
+  assert.equal(cachedMeshFloor(30.197, -97.666), null);
+  assert.equal(cachedMeshFloor(43.653, -79.383), 90);
+  assert.equal(cachedMeshFloor(43.256, -79.871), 110);
+  assert.deepEqual(pruneGroundFloorOutside(TORONTO, 300), { meshCells: 0, pendingCells: 0 }, 'idempotent');
+});
+
+test('pruneGroundFloorOutside releases nothing for an invalid centre or radius', () => {
+  _clearMeshFloorCellsForTest();
+  setMeshFloorPreferred(true);
+  reportMeshFloorCell(30.197, -97.666, 138.4);
+  const nothing = { meshCells: 0, pendingCells: 0 };
+  assert.deepEqual(pruneGroundFloorOutside(null, 300), nothing);
+  assert.deepEqual(pruneGroundFloorOutside({ lat: Number.NaN, lon: -79.38 }, 300), nothing);
+  assert.deepEqual(pruneGroundFloorOutside(TORONTO, undefined), nothing);
+  assert.deepEqual(pruneGroundFloorOutside(TORONTO, -1), nothing);
+  assert.equal(cachedMeshFloor(30.197, -97.666), 138.4);
+});
+
+test('pruneGroundFloorOutside drops queued old-area warms so the next batch serves the destination', async () => {
+  _clearMeshFloorCellsForTest();
+  const log = [];
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const points = new URL(String(url), 'http://internal').searchParams.get('points')
+      .split(';').map((pair) => pair.split(',').map(Number));
+    log.push(points);
+    if (log.length === 1) await gate;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ results: points.map(([lon, lat]) => ({ lon, lat, ellipsoid: lon + lat })) }),
+    };
+  };
+  try {
+    warmGroundFloor([{ lat: 30.301, lon: -97.701 }]); // Austin batch, now in flight
+    warmGroundFloor([
+      { lat: 30.402, lon: -97.802 }, // Austin, queued behind it
+      { lat: 43.701, lon: -79.401 }, // Toronto, queued behind it
+    ]);
+    assert.deepEqual(pruneGroundFloorOutside(TORONTO, 300), { meshCells: 0, pendingCells: 1 });
+    release();
+    for (let i = 0; i < 50 && log.length < 2; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(log.length, 2, 'the queued batch still runs');
+    assert.deepEqual(log[1], [[-79.401, 43.701]], 'and carries only the destination cell');
+  } finally {
+    globalThis.fetch = original;
+  }
 });

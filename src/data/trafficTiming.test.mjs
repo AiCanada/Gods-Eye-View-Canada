@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -135,6 +138,7 @@ test('traffic timing pairs real ordering to the scheduling change and guards re-
   const originalWarn = console.warn;
   const timeouts = new Map();
   let timerId = 0;
+  let cacheDir;
   let server;
   let trafficLayer;
   let viewer;
@@ -157,8 +161,12 @@ test('traffic timing pairs real ordering to the scheduling change and guards re-
       location: { search: '?trafficDebug=1' },
       addEventListener() {},
     };
+    // An isolated optimizer cache: the default (node_modules/.vite) is shared
+    // with a running dev server, whose pre-bundled deps this must not replace.
+    cacheDir = await mkdtemp(path.join(tmpdir(), 'gev-traffic-vite-'));
     server = await createServer({
       root: fileURLToPath(new URL('../..', import.meta.url)),
+      cacheDir,
       configFile: false,
       appType: 'custom',
       logLevel: 'silent',
@@ -329,6 +337,7 @@ test('traffic timing pairs real ordering to the scheduling change and guards re-
     console.warn = originalWarn;
     performance.clearMarks();
     performance.clearMeasures();
+    if (cacheDir) await rm(cacheDir, { recursive: true, force: true });
   }
 });
 

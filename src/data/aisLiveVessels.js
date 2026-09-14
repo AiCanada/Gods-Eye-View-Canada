@@ -575,6 +575,44 @@ const aisLiveVesselsLayer = {
   },
 
   /**
+   * Location switch started (DataLayerManager hook). Vessels are one worldwide
+   * AISStream set, so the records and the poll stay; only the selection belongs
+   * to the place being left, so its card, HUD readout and trail primitive go
+   * now. The clear is tagged 'location-switch' rather than deliberate, so a
+   * Contacts subject on this vessel survives whichever leave hook runs first
+   * and FOCUS can reselect it. Idempotent, no network, never throws.
+   * @returns {void}
+   */
+  onLocationLeave() {
+    try {
+      destroySelectedVesselTrail();
+      if (state.selectedRecord) clearVesselInspection({ reason: 'location-switch' });
+    } catch (error) {
+      console.warn('[Data:ais-live-vessels] location leave failed', error);
+    }
+  },
+
+  /**
+   * Camera arrived (DataLayerManager hook, enabled layers only). The feed is
+   * one worldwide snapshot, so the destination's vessels are already in memory.
+   * Arrival only tops up a stale snapshot: it polls when no poll is in flight
+   * and the last successful poll is older than REFRESH_MS, or none has landed
+   * yet. A poll already in flight is never aborted; its rows cover the
+   * destination too.
+   * @param {object} [change] Location switch detail.
+   * @param {AbortSignal|null} [change.signal] Aborted when a newer switch superseded this one.
+   * @returns {Promise<void>} Settles with the arrival poll when one ran; never rejects.
+   */
+  onLocationArrive({ signal = null } = {}) {
+    if (!state.enabled || signal?.aborted || state.loading) return Promise.resolve();
+    const lastUpdate = state.lastUpdate;
+    if (Number.isFinite(lastUpdate) && _aisRuntime.now() - lastUpdate <= REFRESH_MS) {
+      return Promise.resolve();
+    }
+    return loadLivePositions(state.viewer);
+  },
+
+  /**
    * Get info about the currently selected vessel.
    * @returns {{ mmsi: string, name: string, latitude: number, longitude: number, speedKt: number|null, course: number|null, type: string }|null}
    */
@@ -1753,7 +1791,7 @@ function registerSelectedContext(record) {
   }
 }
 
-function clearSelection({ preserveTrail = false, evicted = false } = {}) {
+function clearSelection({ preserveTrail = false, evicted = false, reason = null } = {}) {
   const record = state.selectedRecord;
   if (record?.billboard) {
     record.billboard.image = shipIcon(record, false);
@@ -1765,7 +1803,7 @@ function clearSelection({ preserveTrail = false, evicted = false } = {}) {
   if (record && state.enabled) updateVisibility(true);
   if (!preserveTrail) clearSelectedVesselTrail();
   try {
-    clearSelectedEntityContextForLayer('ais-live-vessels', { evicted });
+    clearSelectedEntityContextForLayer('ais-live-vessels', { evicted, reason });
   } catch (error) {
     console.warn('[Data:ais-live-vessels] context clear failed', error);
   }
@@ -1775,9 +1813,11 @@ function clearSelection({ preserveTrail = false, evicted = false } = {}) {
  * @param {object} [options] Clear origin.
  * @param {boolean} [options.evicted=false] The vessel aged out of the feed
  *   rather than being deselected.
+ * @param {?string} [options.reason=null] Explicit origin, overriding `evicted`;
+ *   a location switch passes 'location-switch' so Contacts keeps its subject.
  */
-function clearVesselInspection({ evicted = false } = {}) {
-  clearSelection({ evicted });
+function clearVesselInspection({ evicted = false, reason = null } = {}) {
+  clearSelection({ evicted, reason });
   resetSelectedVesselHud();
 }
 

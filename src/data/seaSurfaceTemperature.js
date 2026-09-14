@@ -88,6 +88,7 @@ export function sstFrontsLabel(meta, frontsEnabled) {
 export function initSeaSurfaceTemperaturePanel({
   viewer,
   documentRef = globalThis.document,
+  windowRef = globalThis.window,
   fetchImpl = (...args) => globalThis.fetch(...args),
   now = Date.now,
   apiBase = '',
@@ -119,6 +120,10 @@ export function initSeaSurfaceTemperaturePanel({
   let level3Loading = false;
   let level3Error = null;
   let level3Controller = null;
+  /** Key of the Level-3 request in flight, so the same view is not asked twice. */
+  let level3PendingKey = null;
+  /** Set from a location switch's leave until arrival: camera refreshes wait. */
+  let locationSwitching = false;
   let refreshTimer = null;
   let globeShown = viewer.scene?.globe?.show !== false;
   const lifetime = new AbortController();
@@ -254,9 +259,13 @@ export function initSeaSurfaceTemperaturePanel({
     ].join('&');
     const key = `${query}&overlay=${frontsEnabled}`;
     if (!force && key === level3Key) return;
+    // The same view is already on its way (the camera settled just after an
+    // arrival forced it): restarting would abort and repeat that request.
+    if (!force && level3Loading && key === level3PendingKey) return;
     level3Controller?.abort();
     const controller = new AbortController();
     level3Controller = controller;
+    level3PendingKey = key;
     level3Loading = true;
     level3Error = null;
     render();
@@ -275,7 +284,9 @@ export function initSeaSurfaceTemperaturePanel({
       if (controller.signal.aborted) return;
       errorText = 'Level-3 data unavailable: the server did not answer';
     }
-    if (destroyed || controller !== level3Controller || !enabled || !isLevel3()) return;
+    // An aborted request is stale even when its answer already arrived: the
+    // view it describes was left.
+    if (destroyed || controller !== level3Controller || controller.signal.aborted || !enabled || !isLevel3()) return;
     level3Loading = false;
     if (!meta) {
       level3Error = errorText;
@@ -363,9 +374,32 @@ export function initSeaSurfaceTemperaturePanel({
     if (layers[0]) layers[0].alpha = alpha();
   };
   const onCameraSettled = () => {
-    if (!enabled || !isLevel3()) return;
+    if (!enabled || !isLevel3() || locationSwitching) return;
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => void showLevel3(), LEVEL3_REFRESH_DELAY_MS);
+  };
+  // The panel is not a manager layer, so it hears location switches on window.
+  // Leave drops the Level-3 work and images for the view being left while the
+  // layer stays on; GIBS tiles are global and stay. Arrival draws the new view.
+  const onLocationSwitch = (event) => {
+    if (destroyed) return;
+    const phase = event?.detail?.phase;
+    if (phase === 'leave') {
+      locationSwitching = true;
+      clearTimeout(refreshTimer);
+      refreshTimer = null;
+      level3Controller?.abort();
+      level3Loading = false;
+      level3Error = null;
+      level3Key = null;
+      if (isLevel3()) removeLayers();
+      render();
+    } else if (phase === 'arrive') {
+      locationSwitching = false;
+      clearTimeout(refreshTimer);
+      refreshTimer = null;
+      void showLevel3({ force: true });
+    }
   };
   button.addEventListener('click', onToggle);
   frontsButton?.addEventListener('click', onFronts);
@@ -373,6 +407,7 @@ export function initSeaSurfaceTemperaturePanel({
   select.addEventListener('change', onProduct);
   opacity?.addEventListener('input', onOpacity);
   const removeMoveEnd = viewer.camera?.moveEnd?.addEventListener?.(onCameraSettled);
+  windowRef?.addEventListener?.('gev:location-switch', onLocationSwitch);
 
   // The photorealistic stack hides the globe the images drape on; say so.
   const removePostRender = viewer.scene?.postRender?.addEventListener?.(() => {
@@ -405,6 +440,7 @@ export function initSeaSurfaceTemperaturePanel({
     select.removeEventListener('change', onProduct);
     opacity?.removeEventListener('input', onOpacity);
     if (typeof removeMoveEnd === 'function') removeMoveEnd();
+    windowRef?.removeEventListener?.('gev:location-switch', onLocationSwitch);
     if (typeof removePostRender === 'function') removePostRender();
     observer?.disconnect();
   };

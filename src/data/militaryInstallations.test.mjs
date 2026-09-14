@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   approximateSurfaceDistanceM,
   classifyGoogleMilitaryPlace,
+  installationRecordsOutliveUnboundedView,
   installationSourceLabel,
   installationResponseSaturated,
   installationSurfaceHeightM,
@@ -259,20 +260,29 @@ async function runInstallationLoad({
   const originalFetch = globalThis.fetch;
   const requests = [];
   const contextEvents = [];
+  const clearedEvents = [];
   _resetRenderGovernorForTest();
   globalThis.document = { addEventListener() {}, removeEventListener() {} };
   globalThis.window = {
     dispatchEvent(event) {
+      if (event?.type === 'gev:entity-selection-cleared') clearedEvents.push(event.detail);
       if (event?.detail?.label) contextEvents.push(event.detail.label);
     },
     CustomEvent: class { constructor(type, init) { this.type = type; Object.assign(this, init); } },
   };
-  globalThis.fetch = async (url) => {
+  // Swappable installations answer, so a test can hold, fail or change the
+  // response between loads without rebooting the layer.
+  let installationsFetch = null;
+  let view = VIEWPORT;
+  let cameraPosition = null;
+  const moveEndListeners = new Set();
+  globalThis.fetch = async (url, options = {}) => {
     const href = String(url);
     if (href.includes('/api/terrain/heights')) {
       return { ok: true, status: 200, json: async () => ({ results: [] }) };
     }
     requests.push(href);
+    if (installationsFetch) return installationsFetch(href, options);
     if (failWith) {
       return { ok: false, status: 503, json: async () => ({ error: failWith }) };
     }
@@ -293,15 +303,27 @@ async function runInstallationLoad({
   let clickAction;
   const viewer = {
     camera: {
-      moveEnd: { addEventListener() { return () => {}; } },
+      moveEnd: {
+        addEventListener(listener) {
+          moveEndListeners.add(listener);
+          return () => moveEndListeners.delete(listener);
+        },
+      },
       flyToBoundingSphere(sphere, options) { cameraFlights.push({ sphere, options }); },
       computeViewRectangle() {
+        // An unbounded (global or horizon) view has no rectangle.
+        if (!view) return undefined;
         return {
-          south: Cesium.Math.toRadians(VIEWPORT.south),
-          west: Cesium.Math.toRadians(VIEWPORT.west),
-          north: Cesium.Math.toRadians(VIEWPORT.north),
-          east: Cesium.Math.toRadians(VIEWPORT.east),
+          south: Cesium.Math.toRadians(view.south),
+          west: Cesium.Math.toRadians(view.west),
+          north: Cesium.Math.toRadians(view.north),
+          east: Cesium.Math.toRadians(view.east),
         };
+      },
+      get positionCartographic() {
+        return cameraPosition
+          ? Cesium.Cartographic.fromDegrees(cameraPosition.longitude, cameraPosition.latitude, cameraPosition.height)
+          : undefined;
       },
     },
     scene: {
@@ -340,6 +362,8 @@ async function runInstallationLoad({
     cameraFlights,
     entities: () => dataSources[0]?.entities?.values || [],
     contextLabels: () => contextEvents,
+    /** Details of every gev:entity-selection-cleared dispatched so far. */
+    clearedEvents: () => clearedEvents,
     stats: () => militaryInstallationsLayer.getStats(),
     click(target) {
       const entity = typeof target === 'string' ? dataSources[0].entities.getById(target) : target;
@@ -347,6 +371,14 @@ async function runInstallationLoad({
       clickAction({ position: { x: 0, y: 0 } });
     },
     renderRequests: () => getRenderGovernorDiagnostics().recentRequests.map((item) => item.reason),
+    dataSource: () => dataSources[0],
+    /** @param {?function(string, object): Promise<object>} next Installations answer; null restores the default. */
+    setInstallationsFetch(next) { installationsFetch = next; },
+    /** @param {?{south:number, west:number, north:number, east:number}} next Viewport; null is unbounded. */
+    setView(next) { view = next; },
+    /** @param {?{latitude:number, longitude:number, height:number}} next Camera position. */
+    setCamera(next) { cameraPosition = next; },
+    moveEnd() { for (const listener of [...moveEndListeners]) listener(); },
     restore() {
       militaryInstallationsLayer.destroy(viewer);
       _resetRenderGovernorForTest();
@@ -813,4 +845,258 @@ test('the retry is wired to every lifecycle edge, not just declared', () => {
   assert.match(installationsSource,
     /state\.enabled && !state\.loading\) loadInstallations\(\)/,
     'the fired retry re-checks enablement and never races an in-flight load');
+});
+
+// Location switch hooks. A switch to a different first-level region releases
+// everything fetched for the viewport being left and mutes camera-driven loads
+// until the camera arrives, while the layer itself stays enabled.
+const SWITCH_FROM = { key: 'US-TX', region: 'US-TX', country: 'US', lat: 30.5, lon: -97.5 };
+const SWITCH_TO = { key: 'CA-ON', region: 'CA-ON', country: 'CA', lat: 43.65, lon: -79.38 };
+const ARRIVAL_VIEWPORT = { south: 43, west: -80, north: 44, east: -79 };
+// REQUEST_DEBOUNCE_MS (500) + slack.
+const DEBOUNCE_TICK_MS = 600;
+const OLD_SITE = { type: 'node', id: 42, lat: 30.5, lon: -97.5, tags: { military: 'base', name: 'Old Site' } };
+
+function switchContext(signal = new AbortController().signal) {
+  return { from: SWITCH_FROM, to: SWITCH_TO, signal, enabled: true };
+}
+
+/** An installations answer that never lands, only rejects when aborted. */
+function heldInstallationsFetch(signals) {
+  return (_href, options = {}) => new Promise((_resolve, reject) => {
+    signals.push(options.signal);
+    options.signal?.addEventListener('abort', () => {
+      reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+    }, { once: true });
+  });
+}
+
+function installationsAnswer(elements) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      status: 'fresh',
+      retrievedAt: '2026-09-14T00:00:00.000Z',
+      elements,
+      elementCap: 700,
+      saturated: false,
+    }),
+  };
+}
+
+/** Fire the camera's moveEnd and run its debounce under mocked timers. */
+function settleCamera(t, run) {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    run.moveEnd();
+    t.mock.timers.tick(DEBOUNCE_TICK_MS);
+  } finally {
+    t.mock.timers.reset();
+  }
+}
+
+async function settleInstallationLoad() {
+  for (let attempt = 0; attempt < 200 && militaryInstallationsLayer.getStats().loading; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+test('a location switch releases the old viewport and mutes camera loads until arrival', async (t) => {
+  const run = await runInstallationLoad({ elements: [OLD_SITE] });
+  try {
+    run.click('osm:node:42');
+    assert.equal(getSelectedEntityContext()?.id, 'osm:node:42');
+    const signals = [];
+    run.setInstallationsFetch(heldInstallationsFetch(signals));
+    const pending = militaryInstallationsLayer.update();
+    assert.equal(run.stats().loading, true);
+
+    const leave = switchContext();
+    const clearedBefore = run.clearedEvents().length;
+    militaryInstallationsLayer.onLocationLeave(leave);
+    militaryInstallationsLayer.onLocationLeave(leave);
+    await pending;
+
+    // Tagged as a switch, neither deliberate nor an eviction, so a Contacts
+    // subject on this site survives without a CONTACT LOST cue.
+    assert.deepEqual(
+      run.clearedEvents().slice(clearedBefore),
+      [{ layerId: 'military-installations', reason: 'location-switch' }],
+      'the selection clear says a location switch caused it',
+    );
+    assert.equal(signals[0].aborted, true, 'the old viewport fetch is cancelled');
+    const released = run.stats();
+    assert.equal(released.loading, false);
+    assert.equal(released.count, 0, 'records for the old viewport are released');
+    assert.equal(released.status, 'idle');
+    assert.equal(released.error, null);
+    assert.equal(released.stale, false);
+    assert.equal(released.saturated, false);
+    assert.equal(run.entities().length, 0, 'entities for the old viewport are released');
+    assert.equal(getSelectedEntityContext(), null, 'the old selection is cleared');
+    assert.deepEqual(
+      militaryInstallationsLayer.getNearby(Cesium.Cartesian3.fromDegrees(-97.5, 30.5, 0), Number.POSITIVE_INFINITY),
+      [],
+      'awareness no longer sees old sites',
+    );
+
+    const beforeFlight = run.requests.length;
+    settleCamera(t, run);
+    assert.equal(run.requests.length, beforeFlight, 'a mid-flight moveEnd issues no query');
+
+    run.setView(ARRIVAL_VIEWPORT);
+    run.setInstallationsFetch(async () => installationsAnswer([
+      { type: 'node', id: 7, lat: 43.6, lon: -79.4, tags: { military: 'base', name: 'New Site' } },
+    ]));
+    await militaryInstallationsLayer.onLocationArrive(switchContext());
+    assert.equal(run.requests.length, beforeFlight + 1, 'arrival queries at once, without the debounce');
+    assert.match(run.requests.at(-1), /south=43\.00000/);
+    assert.deepEqual(run.entities().map((entity) => entity.gevLabelModel?.title), ['New Site']);
+    assert.equal(run.stats().status, 'ready');
+
+    settleCamera(t, run);
+    assert.equal(run.requests.length, beforeFlight + 2, 'moveEnd drives loads again after arrival');
+    await settleInstallationLoad();
+  } finally { run.restore(); }
+});
+
+test('a location switch leaves no retry or fault behind for the old viewport', async () => {
+  const run = await runInstallationLoad({ failWith: 'Installation feed HTTP 503' });
+  try {
+    assert.equal(run.stats().status, 'unavailable');
+    assert.ok(run.stats().retryAt > 0, 'precondition: a retry is pending');
+    militaryInstallationsLayer.onLocationLeave(switchContext());
+    assert.equal(run.stats().retryAt, 0, 'the pending retry is cancelled');
+    assert.equal(run.stats().failureReason, null);
+    assert.equal(run.stats().status, 'idle');
+
+    // A failure that surfaces after the switch, from a fetch that ignored its
+    // abort signal, is not the outcome of the place being flown to.
+    militaryInstallationsLayer.enable();
+    let failLate;
+    run.setInstallationsFetch(() => new Promise((resolve) => {
+      failLate = () => resolve({ ok: false, status: 503, json: async () => ({ error: 'late failure' }) });
+    }));
+    const pending = militaryInstallationsLayer.update();
+    militaryInstallationsLayer.onLocationLeave(switchContext());
+    failLate();
+    await pending;
+    assert.equal(run.stats().status, 'idle');
+    assert.equal(run.stats().error, null);
+    assert.equal(run.stats().retryAt, 0, 'no retry is scheduled for the old viewport');
+    assert.equal(run.stats().failureReason, null);
+  } finally { run.restore(); }
+});
+
+test('a layer left while disabled releases its hidden sites and loads normally once enabled', async (t) => {
+  const run = await runInstallationLoad({ elements: [OLD_SITE] });
+  try {
+    militaryInstallationsLayer.disable();
+    militaryInstallationsLayer.onLocationLeave({ ...switchContext(), enabled: false });
+    assert.equal(run.stats().count, 0);
+    assert.equal(run.entities().length, 0);
+
+    militaryInstallationsLayer.enable();
+    await militaryInstallationsLayer.update();
+    assert.equal(run.stats().count, 1);
+    const before = run.requests.length;
+    settleCamera(t, run);
+    assert.equal(run.requests.length, before + 1, 'enabling lifts a suspension no arrival will clear');
+    await settleInstallationLoad();
+  } finally { run.restore(); }
+});
+
+test('an aborted arrival neither queries nor lifts the newer switch suspension', async (t) => {
+  const run = await runInstallationLoad({ elements: [OLD_SITE] });
+  try {
+    militaryInstallationsLayer.onLocationLeave(switchContext());
+    const before = run.requests.length;
+    const replaced = new AbortController();
+    replaced.abort();
+    assert.equal(militaryInstallationsLayer.onLocationArrive(switchContext(replaced.signal)), undefined);
+    assert.equal(run.requests.length, before);
+    settleCamera(t, run);
+    assert.equal(run.requests.length, before, 'camera loads stay muted for the live switch');
+
+    await militaryInstallationsLayer.onLocationArrive(switchContext());
+    assert.equal(run.requests.length, before + 1);
+  } finally { run.restore(); }
+});
+
+test('the settle after arrival does not restart the arrival query for the same view', async (t) => {
+  const run = await runInstallationLoad({ elements: [OLD_SITE] });
+  try {
+    militaryInstallationsLayer.onLocationLeave(switchContext());
+    const signals = [];
+    run.setInstallationsFetch(heldInstallationsFetch(signals));
+    const before = run.requests.length;
+    const arrival = militaryInstallationsLayer.onLocationArrive(switchContext());
+    assert.equal(run.requests.length, before + 1);
+
+    settleCamera(t, run);
+    assert.equal(run.requests.length, before + 1, 'the same view is not asked for twice');
+    assert.equal(signals[0].aborted, false, 'the arrival request keeps running');
+
+    run.setView(ARRIVAL_VIEWPORT);
+    settleCamera(t, run);
+    assert.equal(run.requests.length, before + 2, 'a different view still supersedes it');
+    assert.equal(signals[0].aborted, true);
+    await arrival;
+  } finally { run.restore(); }
+});
+
+test('a location leave swallows a cleanup fault and still mutes camera loads', async (t) => {
+  const run = await runInstallationLoad({ elements: [OLD_SITE] });
+  const entities = run.dataSource().entities;
+  const warn = t.mock.method(console, 'warn', () => {});
+  try {
+    entities.removeAll = () => { throw new Error('render teardown failed'); };
+    assert.doesNotThrow(() => militaryInstallationsLayer.onLocationLeave(switchContext()));
+    assert.equal(warn.mock.callCount(), 1, 'the fault is reported, not thrown');
+    const before = run.requests.length;
+    settleCamera(t, run);
+    assert.equal(run.requests.length, before);
+  } finally {
+    delete entities.removeAll;
+    run.restore();
+  }
+});
+
+test('zooming out to an unbounded view releases sites unless a low camera still sits over them', async () => {
+  const run = await runInstallationLoad({ elements: [OLD_SITE] });
+  try {
+    run.click('osm:node:42');
+    // Cockpit looking at the horizon: unbounded view, camera low over the sites.
+    run.setView(null);
+    run.setCamera({ latitude: 30.5, longitude: -97.5, height: 9000 });
+    await militaryInstallationsLayer.update();
+    assert.equal(run.stats().status, 'zoom-in');
+    assert.equal(run.stats().count, 1, 'sites under a low camera stay for awareness');
+    assert.equal(run.entities().length, 1);
+
+    // A zoom-out or globe reset: the previous viewport's sites must not linger
+    // on the globe or in the cohort under a "zoom in" prompt.
+    run.setCamera({ latitude: 30.5, longitude: -97.5, height: 6_000_000 });
+    await militaryInstallationsLayer.update();
+    assert.equal(run.stats().status, 'zoom-in');
+    assert.equal(run.stats().count, 0);
+    assert.equal(run.entities().length, 0);
+    assert.equal(getSelectedEntityContext(), null);
+    assert.deepEqual(
+      militaryInstallationsLayer.getNearby(Cesium.Cartesian3.fromDegrees(-97.5, 30.5, 0), Number.POSITIVE_INFINITY),
+      [],
+    );
+  } finally { run.restore(); }
+});
+
+test('an unbounded view keeps sites only for a low camera still over their viewport', () => {
+  const keep = installationRecordsOutliveUnboundedView;
+  assert.equal(keep(VIEWPORT, { latitude: 30.5, longitude: -97.5, height: 9000 }), true);
+  assert.equal(keep(VIEWPORT, { latitude: 31.8, longitude: -97.5, height: 9000 }), true, 'within ~110 km of the box');
+  assert.equal(keep(VIEWPORT, { latitude: 33, longitude: -97.5, height: 9000 }), false, 'flown away');
+  assert.equal(keep(VIEWPORT, { latitude: 30.5, longitude: -97.5, height: 2_000_000 }), false, 'zoomed out');
+  assert.equal(keep(null, { latitude: 30.5, longitude: -97.5, height: 9000 }), false, 'nothing loaded');
+  assert.equal(keep(VIEWPORT, null), false, 'unknown camera');
+  assert.equal(keep(VIEWPORT, { latitude: Number.NaN, longitude: -97.5, height: 9000 }), false);
 });

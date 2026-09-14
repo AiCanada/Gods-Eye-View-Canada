@@ -1,10 +1,22 @@
 # Changelog
 
+## September 14, 2026
+
+CCTV loads by area. The server stores every camera in its packs, and `/api/cctv/sources` now takes the selected place and returns at most the 2,500 nearest cameras within 50 km, nearest first and gzipped. Picking a place outside the loaded area swaps the cameras, even within one state. A request without a point returns no cameras instead of the whole catalogue. The per-state, per-province and per-country caps are gone, along with `CCTV_MAX_SOURCES` and `CCTV_REGION_CAP`.
+
+US state DOT traffic cameras join the Canadian pack. `config/cctv_sources.us.json` is built offline from a Road511 listing by `tools/camera-pack/build-road511-us.mjs`, and `CCTV_SOURCES_FILE` now takes a comma list that defaults to both packs. A US camera with no public image is looked up through Road511 only when you open it, using the new server-side POWER UP key `ROAD511_API_KEY`; answers are cached for 24 h and calls are spaced at least 1 s apart.
+
+The Austin, Caltrans and TfL live packs keep every camera, with no special defaults or caps. Each list downloads only when a selected area overlaps its city and is cached for 24 h; Caltrans runs only when `CCTV_CALTRANS_DISTRICTS` names districts. `CCTV_AUSTIN_MAX_SOURCES`, `CCTV_PREFER_AUSTIN`, `CCTV_FORCE_AUSTIN`, `CCTV_CALTRANS_MAX_SOURCES`, `CCTV_TFL_MAX_SOURCES` and the launcher scripts' pack defaults are removed, and an empty area no longer shows placeholder Austin cameras.
+
+IBI 511 camera hosts are held to 20 requests a minute and 1,000 a day per host: the open camera refreshes about once a minute, map cards about every 15 minutes, and a spent budget shows the last good still or a `511 LIMIT REACHED` placeholder. Unknown cameras and cameras without a still make no upstream request, and the Street View fallback is off unless `CCTV_STREETVIEW_FALLBACK=1`, and then only for the open camera.
+
+Street traffic roads now come from OpenFreeMap vector tiles through the disk-cached `/api/roads/tiles/{z}/{x}/{y}.pbf` proxy. Public Overpass mirrors were refusing or timing out, which left uncached areas such as Austin with no roads; Overpass remains a fallback that skips failing mirrors.
+
 ## September 12, 2026
 
 An LLM panel in the bottom-left corner answers typed questions and one-click overviews about the current view. One row appears per configured model (NVIDIA NIM, xAI Grok, Anthropic Claude, OpenRouter, or any OpenAI-compatible endpoint); nothing is called until Ask or Overview is pressed, and the route shares the opt-in `GEV_RATELIMIT_OPENAI_PER_MIN` throttle with the other paid LLM routes.
 
-CCTV sources can be gated by country with `CCTV_COUNTRIES`; the catalogue ceiling is 2000 cameras, configured packs are never the part that gets truncated, and a camera may declare a page plus a frame resolver instead of a fixed URL. A Canadian camera pack ships in `config/cctv_sources.canada.json`, built by `tools/camera-pack/`. Failed frames back off before touching the paid Street View fallback.
+CCTV sources can be gated by country with `CCTV_COUNTRIES`, and a camera may declare a page plus a frame resolver instead of a fixed URL. (The catalogue ceiling this release introduced was replaced on September 14, 2026 by area loading: at most 2,500 cameras within 50 km of the selected place.) A Canadian camera pack ships in `config/cctv_sources.canada.json`, built by `tools/camera-pack/`. Failed frames back off before touching the paid Street View fallback.
 
 Saint John, New Brunswick is a preset city, and a built-in Canadian gazetteer answers the search box without a Google key. A trackpad pinch now zooms the globe. Provider Settings repairs a hand-tightened `.env` DACL instead of failing the save with a generic error.
 

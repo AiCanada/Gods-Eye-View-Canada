@@ -147,9 +147,6 @@ resolve_opensky_credentials() {
 
 resolve_opensky_credentials
 
-CCTV_AUSTIN_MAX_SOURCES="${CCTV_AUSTIN_MAX_SOURCES:-36}"
-CCTV_MAX_SOURCES="${CCTV_MAX_SOURCES:-5000}"
-
 echo "Starting God's Eye View dev server..."
 echo "URL: http://localhost:${PORT}/"
 echo "Google Maps key source: ${GOOGLE_MAPS_API_KEY_SOURCE}"
@@ -191,8 +188,6 @@ case "${OPENSKY_AUTH_MODE}" in
 esac
 
 GOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY}" \
-CCTV_AUSTIN_MAX_SOURCES="${CCTV_AUSTIN_MAX_SOURCES}" \
-CCTV_MAX_SOURCES="${CCTV_MAX_SOURCES}" \
 OPENSKY_AUTH_MODE="${OPENSKY_AUTH_MODE}" \
 OPENSKY_CREDENTIALS_FILE="${OPENSKY_CREDENTIALS_FILE}" \
 OPENSKY_CLIENT_ID="${OPENSKY_CLIENT_ID}" \

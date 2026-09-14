@@ -11,6 +11,7 @@ import {
   getMode,
   initDetection,
   isDetectionSuspended,
+  resetDetectionSolveState,
   resumeDetection,
   setDetectionStyle,
   setDetectionTuning,
@@ -523,6 +524,44 @@ test('callouts stop painting the moment the last detectable object goes away', (
       !env.ctx.calls.some(([name, text]) => name === 'fillText' && text === 'LASTONE'),
       'an empty field must drop the replay buffer, not strand the last callsign',
     );
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('a location switch reset forgets placed labels and re-solves on the very next paint', () => {
+  // The arbiter's hysteresis, selected keys and quotas describe contacts at the
+  // place being left. The reset drops them, and because the label solve runs on
+  // a private 125 ms cadence it must also owe the next paint a solve, or the
+  // destination could wait a full interval for its first labels.
+  const env = installEnvironment();
+  try {
+    initWorldOverlay(env.viewer);
+    initDetection(env.viewer, [detectableLayer()], () => {});
+    setMode('DENSE');
+    settleFrame(env);
+    settleFrame(env);
+    const settled = getDetectionDiagnostics();
+    assert.ok(settled.solveRevision >= 2, 'precondition: the arbiter has solved more than once');
+    assert.ok(settled.labeledKeys.length > 0, 'precondition: contacts are labelled');
+
+    env.advance(10);
+    env.postRender.raise();
+    assert.equal(
+      getDetectionDiagnostics().solveRevision,
+      settled.solveRevision,
+      'precondition: inside the cadence an unchanged field does not re-solve',
+    );
+
+    resetDetectionSolveState();
+    env.advance(10);
+    env.postRender.raise();
+    const after = getDetectionDiagnostics();
+    assert.equal(after.didSolve, true, 'the reset owes the next paint a solve, cadence or not');
+    assert.equal(after.solveRevision, 1, 'the arbiter restarted from a clean slate');
+    assert.ok(after.labeledKeys.length > 0, 'the fresh solve labels what is in view again');
+    assert.equal(getMode(), 'DENSE', 'the mode is untouched');
+    assert.equal(isDetectionSuspended(), false, 'suspension stays the caller\'s decision');
   } finally {
     env.cleanup();
   }

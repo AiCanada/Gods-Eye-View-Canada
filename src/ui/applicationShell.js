@@ -562,6 +562,7 @@ export class StyleManager {
       },
       { emitCurrent: false },
     );
+    this._initLocationSwitch();
     // Parse before panel chrome initializes so every valid share URL starts
     // from deterministic markup defaults instead of recipient-local panel
     // preferences. Encoded panel fields are applied after all panels exist.
@@ -2611,7 +2612,7 @@ export class StyleManager {
       elements: {
         _cctvAdjustBtn: this._cctvAdjustBtn,
         _cctvAutoHopBtn: this._cctvAutoHopBtn,
-        _cctvRegionCapBtn: this._cctvRegionCapBtn,
+        _cctvRegionCapChip: this._cctvRegionCapChip,
         _cctvCalReadout: this._cctvCalReadout,
         _cctvCalibResetBtn: this._cctvCalibResetBtn,
         _cctvCalibSaveBtn: this._cctvCalibSaveBtn,
@@ -2677,7 +2678,8 @@ export class StyleManager {
         !this._disposed &&
         this._dataManager.isEnabled('cctv') &&
         !this._cctvControls?.getState()?.activeCameraId,
-      activate: () => cctvLayer.focusNearest({ focus: false }),
+      // The enable default is not a user pick: it never sends a Road511 lookup.
+      activate: () => cctvLayer.focusNearest({ focus: false, explicit: false }),
       fly: (cameraId) =>
         this._runExplicitCctvFocus(
           () => cameraId,
@@ -4541,6 +4543,7 @@ export class StyleManager {
       this._currentPoi = null;
       this._collapsePOIRow();
       this._updateLocationMiniStatus();
+      this._selectLocation(state.destination, { flying: true });
     } else if (change.type === 'missing') this._showToast('Location not found');
     else if (change.type === 'failed') this._showToast('Search failed');
     else if (change.type === 'settled')
@@ -4655,6 +4658,10 @@ export class StyleManager {
     this._currentPoi = null;
     this._locationControls.highlightCity(id);
     if (result) this._currentTarget = result.targetPosition;
+    this._selectLocation(site, {
+      flying: true,
+      details: { selectCamera: true },
+    });
   }
 
   /**
@@ -4754,6 +4761,7 @@ export class StyleManager {
       this._currentPoi = CITY_POIS[cityId].pois[0];
     }
     this._updateLocationMiniStatus();
+    this._selectLocation(CITY_POIS[cityId].pois[0], { flying: true });
   }
 
   /**
@@ -4781,6 +4789,7 @@ export class StyleManager {
       this._currentPoi = CITY_POIS[cityId].pois[poiIndex];
     }
     this._updateLocationMiniStatus();
+    this._selectLocation(CITY_POIS[cityId].pois[poiIndex], { flying: true });
   }
 
   /**
@@ -4868,6 +4877,165 @@ export class StyleManager {
       currentPoi: this._currentPoi,
       searchedLabel: this._searchedLocationLabel,
     });
+  }
+
+  // ── Location switch ──────────────────────────
+
+  /**
+   * Wire the location switch (src/locationSwitch.js): a selection in another
+   * province, state, territory or country stops the old place's feeds and
+   * releases its memory, then loads the new place with the same layers on.
+   * Selections are LOCATION and site pills, search results and map clicks;
+   * the first settled view is where the layers start.
+   * @returns {void}
+   */
+  _initLocationSwitch() {
+    const {
+      createLocationSwitch,
+      bindMapLocationClicks,
+      viewCenterPoint,
+      hitTestWorldOverlay,
+    } = this.services || {};
+    if (typeof createLocationSwitch !== 'function' || !this.viewer?.scene)
+      return;
+    this._locationSwitch = createLocationSwitch({
+      leave: (change) => this._leaveLocationForSwitch(change),
+      arrive: (change) => this._arriveAtLocationSwitch(change),
+    });
+    // Seed from settled views until the starting region is known; a failed
+    // lookup is retried on a later settle, at most every 5 s.
+    const moveEnd = this.viewer.camera?.moveEnd;
+    if (moveEnd?.addEventListener && typeof viewCenterPoint === 'function') {
+      let lastSeedAt = -Infinity;
+      this._removeLocationSeedListener = moveEnd.addEventListener(() => {
+        const control = this._locationSwitch;
+        if (!control || control.getCurrent() || control.getPending()) {
+          this._removeLocationSeedListener?.();
+          this._removeLocationSeedListener = null;
+          return;
+        }
+        const now = Date.now();
+        if (now - lastSeedAt < 5000) return;
+        lastSeedAt = now;
+        void control.seed(viewCenterPoint(this.viewer));
+      });
+    }
+    if (typeof bindMapLocationClicks === 'function') {
+      this._unbindMapLocationClicks = bindMapLocationClicks(
+        this.viewer,
+        (point) => this._scheduleMapLocationSelection(point),
+        {
+          isEnabled: () => !this._disposed && !this.cockpitView?.active,
+          isOverlayHit: (x, y) => !!hitTestWorldOverlay?.(x, y),
+        },
+      );
+    }
+  }
+
+  /**
+   * Map clicks settle briefly before they count, so a burst of clicks costs
+   * one region lookup rather than one each.
+   * @param {{lat:number, lon:number}} point
+   * @returns {void}
+   */
+  _scheduleMapLocationSelection(point) {
+    clearTimeout(this._mapLocationSelectionTimer);
+    this._mapLocationSelectionTimer = setTimeout(() => {
+      this._mapLocationSelectionTimer = null;
+      this._selectLocation(point);
+    }, 700);
+  }
+
+  /**
+   * A place was selected. Area-scoped layers (CCTV) hear every selection and
+   * re-centre when it lies outside what they hold, even in the same region;
+   * the layers switch over only when it lies in another region. `flying`
+   * means a camera flight to it has started, so the new place loads when the
+   * camera settles there. A pill or search result supersedes a map click
+   * still settling.
+   * @param {{lat:number, lon:number}} point
+   * @param {{flying?: boolean, details?: ?object}} [options]
+   * @returns {void}
+   */
+  _selectLocation(point, { flying = false, details = null } = {}) {
+    clearTimeout(this._mapLocationSelectionTimer);
+    this._mapLocationSelectionTimer = null;
+    if (this._disposed) return;
+    // One arrival for both consumers: each _nextCameraSettle() call adds its
+    // own moveEnd listener.
+    const arrival = flying ? this._nextCameraSettle() : null;
+    void this._dataManager?.selectLocationArea?.({ point, arrival, details });
+    if (!this._locationSwitch) return;
+    void this._locationSwitch.select(point, { arrival, details });
+  }
+
+  /** Settles on the camera's next moveEnd: the end of the flight just started. */
+  _nextCameraSettle() {
+    const moveEnd = this.viewer?.camera?.moveEnd;
+    if (!moveEnd?.addEventListener) return null;
+    return new Promise((resolve) => {
+      const remove = moveEnd.addEventListener(() => {
+        remove();
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * Leave the old place: every layer stops its feeds and releases what it holds
+   * there, shared caches and the server's memory drop far-away entries, and
+   * non-layer panels hear a 'gev:location-switch' leave event.
+   * @param {{from: ?object, to: object, signal: AbortSignal}} change
+   * @returns {Promise<void>}
+   */
+  async _leaveLocationForSwitch(change) {
+    const {
+      resetDetectionSolveState,
+      releaseSharedLocationCaches,
+      releaseServerLocationMemory,
+    } = this.services;
+    this._cancelTileRelease?.();
+    this._cancelTileRelease = null;
+    window.dispatchEvent(
+      new CustomEvent('gev:location-switch', {
+        detail: { phase: 'leave', from: change.from, to: change.to },
+      }),
+    );
+    try {
+      resetDetectionSolveState?.();
+      releaseSharedLocationCaches?.({ to: change.to });
+    } catch (error) {
+      console.warn('[LocationSwitch] shared cache release failed:', error);
+    }
+    void releaseServerLocationMemory?.(change.to);
+    await this._dataManager?.beginLocationSwitch?.(change);
+  }
+
+  /**
+   * Arrive at the new place: enabled layers load it, panels hear the arrive
+   * event, and the old place's map tiles are released once the new view has
+   * finished loading.
+   * @param {{from: ?object, to: object, signal: AbortSignal}} change
+   * @returns {Promise<void>}
+   */
+  async _arriveAtLocationSwitch(change) {
+    const { releaseTilesAfterLoad, governorRequestRender } = this.services;
+    // Every layer's arrive hook starts inside this call; the reloads they
+    // start settle later and must not hold up the panels or the tile trim.
+    const layersArrived = this._dataManager?.completeLocationSwitch?.(change);
+    if (!change.signal?.aborted && !this._disposed) {
+      window.dispatchEvent(
+        new CustomEvent('gev:location-switch', {
+          detail: { phase: 'arrive', from: change.from, to: change.to },
+        }),
+      );
+      this._cancelTileRelease?.();
+      this._cancelTileRelease =
+        releaseTilesAfterLoad?.(this.mapStackController?.googleTileset, {
+          requestRender: governorRequestRender,
+        }) || null;
+    }
+    await layersArrived;
   }
 
   /**
@@ -5386,6 +5554,16 @@ export class StyleManager {
     this._hoverPanelControls?.forEach((control) => control.destroy());
     this._hoverPanelControls?.clear();
     this._locationLookup?.destroy();
+    clearTimeout(this._mapLocationSelectionTimer);
+    this._mapLocationSelectionTimer = null;
+    this._locationSwitch?.destroy();
+    this._locationSwitch = null;
+    this._unbindMapLocationClicks?.();
+    this._unbindMapLocationClicks = null;
+    this._removeLocationSeedListener?.();
+    this._removeLocationSeedListener = null;
+    this._cancelTileRelease?.();
+    this._cancelTileRelease = null;
     this._cancelMapSourceFocus?.();
     // Revoke persistence/hash authority before teardown can emit manager changes.
     this._layerStateCoordinator?.destroy();

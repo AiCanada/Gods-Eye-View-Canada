@@ -28,6 +28,7 @@ import {
 } from '../data/trackedReadout.js';
 import {
   destroyWorldOverlay,
+  hitTestWorldOverlay,
   initWorldOverlay,
 } from '../overlays/worldOverlay.js';
 import {
@@ -40,6 +41,7 @@ import {
   setMode as setDetectionModeByLabel,
   suspendDetection,
   resumeDetection,
+  resetDetectionSolveState,
   setDetectionStyle,
   setDetectionTuning,
 } from '../data/detection.js';
@@ -82,6 +84,13 @@ import {
   regionalDistanceM,
   weatherCodeLabel,
 } from '../data/regionalBrief.js';
+import {
+  createLocationSwitch,
+  releaseServerLocationMemory,
+} from '../locationSwitch.js';
+import { bindMapLocationClicks, viewCenterPoint } from '../locationClick.js';
+import { releaseTilesAfterLoad } from '../mapTileRelease.js';
+import { releaseSharedLocationCaches } from '../locationCacheRelease.js';
 
 export class StyleManager extends ApplicationShell {
   constructor(viewer, options = {}) {
@@ -153,6 +162,14 @@ export class StyleManager extends ApplicationShell {
         regionalDistanceM,
         weatherCodeLabel,
         LocationSearch,
+        createLocationSwitch,
+        releaseServerLocationMemory,
+        bindMapLocationClicks,
+        viewCenterPoint,
+        releaseTilesAfterLoad,
+        releaseSharedLocationCaches,
+        resetDetectionSolveState,
+        hitTestWorldOverlay,
       },
     });
   }

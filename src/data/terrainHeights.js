@@ -43,10 +43,84 @@ const GEOID_FALLBACK_COOLDOWN_MS = 60_000;
  * In-memory cache: `"lat.toFixed(5),lon.toFixed(5)"` -> `{ellipsoid, source}`.
  * Module-scoped (not exported) — the only reads are through
  * `cachedEllipsoidalGround` and the internal lookup in
- * `resolveEllipsoidalGround`.
+ * `resolveEllipsoidalGround`. Grows with the places visited; a location
+ * switch prunes it by distance (`pruneTerrainHeightsOutside`).
  * @type {Map<string, {ellipsoid: number, source: 'reearth'|'geoid-fallback', retryAt?: number}>}
  */
 const cache = new Map();
+
+const EARTH_RADIUS_KM = 6371;
+
+/**
+ * Location-switch generation. Bumped by `pruneTerrainHeightsOutside` each time
+ * the user selects a place in another region, so work queued for the OLD area
+ * (the remaining chunks of a resolve already running, fireAnchors' sequential
+ * chain) is skipped instead of running ahead of the destination's cells. Each
+ * upstream chunk can take 5-12 s, so without this a switch waited out the old
+ * city's whole queue before the new city's floors began to land.
+ */
+let _switchGeneration = 0;
+/** @type {{lat: number, lon: number, radiusKm: number}|null} Area the latest switch kept. */
+let _switchKeep = null;
+
+/** Great-circle distance in km. */
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const d2r = Math.PI / 180;
+  const dLat = (lat2 - lat1) * d2r;
+  const dLon = (lon2 - lon1) * d2r;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * d2r) * Math.cos(lat2 * d2r) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/** @returns {number} The current location-switch generation. */
+export function terrainHeightsSwitchGeneration() {
+  return _switchGeneration;
+}
+
+/**
+ * Whether a point queued at switch `generation` is still worth resolving.
+ * True when no switch has landed since it was queued, or when it lies inside
+ * the area the latest switch kept (a hop across a nearby border still wants
+ * the cells it shares with the old view).
+ * @param {number} lat
+ * @param {number} lon
+ * @param {number} generation - `terrainHeightsSwitchGeneration()` at queue time.
+ * @returns {boolean}
+ */
+export function terrainPointSurvivesSwitch(lat, lon, generation) {
+  if (generation === _switchGeneration) return true;
+  if (!_switchKeep || !Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  return haversineKm(_switchKeep.lat, _switchKeep.lon, lat, lon) <= _switchKeep.radiusKm;
+}
+
+/**
+ * Location switch: releases resolved heights for places far from the
+ * destination and starts a new switch generation (see `_switchGeneration`).
+ * Entries within `radiusKm` of `center` stay warm. Memory only — the server's
+ * disk cache is untouched, so a return trip is a proxy cache hit, not an
+ * upstream refetch. Idempotent; an invalid centre or radius changes nothing.
+ * @param {{lat: number, lon: number}} center - The place being switched to.
+ * @param {number} radiusKm - Keep radius.
+ * @returns {number} Cache entries removed.
+ */
+export function pruneTerrainHeightsOutside(center, radiusKm) {
+  const lat = center?.lat;
+  const lon = center?.lon;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(radiusKm) || radiusKm < 0) return 0;
+  _switchGeneration += 1;
+  _switchKeep = { lat, lon, radiusKm };
+  let removed = 0;
+  for (const key of cache.keys()) {
+    const comma = key.indexOf(',');
+    const keyLat = Number(key.slice(0, comma));
+    const keyLon = Number(key.slice(comma + 1));
+    if (haversineKm(lat, lon, keyLat, keyLon) <= radiusKm) continue;
+    cache.delete(key);
+    removed += 1;
+  }
+  return removed;
+}
 
 /**
  * Builds the rounded cache key shared between the in-memory cache and the
@@ -200,11 +274,31 @@ export async function resolveEllipsoidalGround(coords) {
   // Resolve the network path in sequential <=CHUNK_SIZE chunks. Each chunk's
   // failure is isolated to that chunk's points (geoid fallback), so a single
   // bad chunk doesn't lose results for the rest of a large batch.
-  for (let i = 0; i < uncached.length; i += CHUNK_SIZE) {
-    const chunk = uncached.slice(i, i + CHUNK_SIZE);
+  //
+  // A location switch landing between chunks drops the queued points outside
+  // the destination's keep area; they stay uncached and report 'unresolved',
+  // so a consumer that still holds them re-queues them on its next poll. The
+  // chunk already on the wire finishes, but writes back only its points that
+  // survive the switch — the rest were released while it was in flight.
+  let queue = uncached;
+  let next = 0;
+  let generation = _switchGeneration;
+  while (next < queue.length) {
+    if (generation !== _switchGeneration) {
+      const stale = generation;
+      generation = _switchGeneration;
+      queue = queue.slice(next).filter((item) => terrainPointSurvivesSwitch(item.lat, item.lon, stale));
+      next = 0;
+      if (!queue.length) break;
+    }
+    const chunk = queue.slice(next, next + CHUNK_SIZE);
+    next += CHUNK_SIZE;
     try {
       const resolved = await fetchChunk(chunk);
       for (const item of chunk) {
+        // A switch that landed while this chunk was on the wire already
+        // released the old area; do not write it back.
+        if (!terrainPointSurvivesSwitch(item.lat, item.lon, generation)) continue;
         const ellipsoid = resolved.get(item.key);
         // Round 6: only a FINITE value may be cached as 'reearth'. A point
         // the upstream response omitted used to cache {ellipsoid: undefined,
@@ -223,6 +317,7 @@ export async function resolveEllipsoidalGround(coords) {
       // healthy) case never pays for the geoid grid's dynamic import.
       await ensureGeoidReady();
       for (const item of chunk) {
+        if (!terrainPointSurvivesSwitch(item.lat, item.lon, generation)) continue;
         const ellipsoid = geoidFallback(item.lat, item.lon, item.sourceOrthometricM);
         cache.set(item.key, {
           ellipsoid,

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  clearSelectedEntityContextForLayer,
   clearTrackedSubjectContext,
   getContextStore,
   getSelectedEntityContext,
@@ -197,5 +198,32 @@ test('deselecting a satellite releases the slot without touching aircraft', () =
     clearTrackedSubjectContext('satellites');
     assert.equal(getSelectedEntityContext(), null, 'the satellite gave the slot back');
     assert.ok(getContextStore().entities.has('aaa001'), 'and the aircraft record is untouched');
+  });
+});
+
+test('a layer selection clear carries its origin on the cleared event', () => {
+  // Contacts reads the origin: a deliberate clear takes its panel down, an
+  // eviction shows CONTACT LOST, and a location switch keeps the subject.
+  withWindow((host) => {
+    const cleared = [];
+    host.addEventListener('gev:entity-selection-cleared', (event) => cleared.push(event.detail));
+    const select = (id) => {
+      const record = registerEntityContext({}, { id, layerId: 'ais-live-vessels', label: id });
+      selectEntityContext(record.entity);
+    };
+
+    select('ais-1');
+    clearSelectedEntityContextForLayer('ais-live-vessels');
+    select('ais-2');
+    clearSelectedEntityContextForLayer('ais-live-vessels', { evicted: true });
+    select('ais-3');
+    clearSelectedEntityContextForLayer('ais-live-vessels', { reason: 'location-switch' });
+
+    assert.deepEqual(cleared, [
+      { layerId: 'ais-live-vessels', reason: 'deliberate' },
+      { layerId: 'ais-live-vessels', reason: 'evicted' },
+      { layerId: 'ais-live-vessels', reason: 'location-switch' },
+    ]);
+    assert.equal(getSelectedEntityContext(), null, 'every origin still releases the slot');
   });
 });

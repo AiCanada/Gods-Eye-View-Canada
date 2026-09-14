@@ -6,7 +6,56 @@ import {
   utcDayKey as tomtomUtcDayKey,
   normalizeBudget as normalizeTomTomBudget,
   isOverBudget as isTomTomOverBudget,
+  tileToBBox as tomtomTileBBox,
 } from '../../src/data/tomtomTiles.js';
+import { haversineKm } from './common/geo.js';
+
+/**
+ * Memory tiers of every installed TomTom proxy, registered on install so a
+ * location switch can release far tiles without reaching into the closure.
+ * @type {Set<Map<string, {at:number, buf:Buffer}>>}
+ */
+const _tomtomMemoryTiers = new Set();
+
+/**
+ * Release memory-cached flow tiles whose centre lies farther than `radiusKm`
+ * from a point, after the user switches location. Memory only: every tile
+ * stays in .gev-cache/tomtom and is read back from disk the next time it is
+ * asked for, so a release never costs budget by itself.
+ * @param {{latitude: number, longitude: number}} point
+ * @param {number} radiusKm
+ * @param {Iterable<Map<string, object>>} [tiers] Memory maps keyed `z/x/y`;
+ *   defaults to every installed proxy.
+ * @returns {number} How many tiles were removed.
+ */
+export function pruneTomTomMemoryOutside(
+  point,
+  radiusKm,
+  tiers = _tomtomMemoryTiers,
+) {
+  const latitude = point?.latitude;
+  const longitude = point?.longitude;
+  if (![latitude, longitude, radiusKm].every(Number.isFinite) || radiusKm < 0)
+    return 0;
+  let removed = 0;
+  for (const mem of tiers) {
+    for (const key of mem.keys()) {
+      const [z, x, y] = String(key).split('/').map(Number);
+      if (!isValidTomTomTile(z, x, y)) continue;
+      const box = tomtomTileBBox(z, x, y);
+      const distanceKm = haversineKm(
+        latitude,
+        longitude,
+        (box.south + box.north) / 2,
+        (box.west + box.east) / 2,
+      );
+      if (distanceKm <= radiusKm) continue;
+      mem.delete(key);
+      removed += 1;
+    }
+  }
+  return removed;
+}
 
 /**
  * TomTom traffic-flow vector-tile proxy with a daily budget governor.
@@ -145,6 +194,7 @@ export function tomtomProxy() {
   }
 
   const installMiddleware = (server) => {
+    _tomtomMemoryTiers.add(mem);
     server.middlewares.use('/api/tomtom', async (req, res) => {
       // Sanitized responses only (proxy/security baseline): no upstream
       // error details, and never echo the key or the upstream URL.

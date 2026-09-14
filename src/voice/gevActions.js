@@ -318,6 +318,7 @@ export function readLayerLifecycleSummary(dataManager, layerId, { fallbackEnable
 
 export function createGevActionRunner({ viewer, styleManager, dataManager, sceneDirector = null, annotations = null, placeSearch = unavailablePlaceSearch }) {
   installViewTargetPrewarm(viewer);
+  installAnalystLocationReset();
   initCameraVerbs(viewer, getViewTargetCartesian);
   return async function runGevAction(name, rawArgs = {}, runOptions = {}) {
     const args = rawArgs && typeof rawArgs === 'object' ? rawArgs : {};
@@ -3307,6 +3308,23 @@ function clampNumber(value, min, max, fallback) {
 /** layerId → epoch ms of last voice-driven enable (analyst warm-up honesty). */
 const _layerEnabledAt = new Map();
 let _analystEngine = null;
+let _analystLocationResetInstalled = false;
+
+/**
+ * Location switch: forget the analyst's follow-up memory as soon as the
+ * camera LEAVES for another region, so "which of those is closest?" cannot
+ * answer from the previous place's records. Installed once, and only where
+ * `window` is an event target (the browser; node tests supply one).
+ */
+function installAnalystLocationReset() {
+  if (_analystLocationResetInstalled) return;
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+  _analystLocationResetInstalled = true;
+  window.addEventListener('gev:location-switch', (event) => {
+    if (event?.detail?.phase === 'leave') _analystEngine?.reset();
+  });
+}
+
 /** Layers whose loaded set follows the camera, so a loaded count is not a world count. */
 const VIEWPORT_LOADED_LAYERS = new Set(['flights']);
 

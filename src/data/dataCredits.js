@@ -67,9 +67,11 @@ export const DATA_CREDITS = [
     html: 'Earthquakes: Data courtesy of the U.S. Geological Survey',
   },
   {
+    // The primary road credit (OpenFreeMap, key 'openfreemap-roads') is
+    // registered by src/data/traffic.js the first time road tiles render.
     key: 'overpass',
     html:
-      'Road geometry (traffic): ' +
+      'Fallback road geometry (traffic): Overpass API over ' +
       '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
       '(ODbL 1.0)',
   },
@@ -133,6 +135,13 @@ export const DATA_CREDITS = [
       'target="_blank" rel="noopener">Données Québec</a> (CC-BY 4.0). Additional city, news and tourism webcams ' +
       '(CBC, Castanet, BC Ferries, Nova Scotia TIR and others) as listed by ' +
       '<a href="https://transcanadahighway.com/traveltips/trans-canada-webcams-and-photos/" target="_blank" rel="noopener">transcanadahighway.com</a>',
+  },
+  {
+    key: 'us-cctv',
+    html:
+      'CCTV cameras &amp; frames (United States): state DOT and 511 operators named per camera; ' +
+      'camera listing and on-demand image lookup via ' +
+      '<a href="https://road511.com" target="_blank" rel="noopener">Road511</a>',
   },
   {
     key: 'caltrans-cctv',

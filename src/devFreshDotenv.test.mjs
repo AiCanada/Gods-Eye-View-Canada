@@ -72,12 +72,15 @@ test('dev-fresh passes names-only boot provenance before resolving file fallback
   for (const name of [
     'GOOGLE_MAPS_API_KEY', 'CESIUM_ION_TOKEN', 'OPENAI_API_KEY', 'AISSTREAM_API_KEY',
     'FIRMS_MAP_KEY', 'TOMTOM_API_KEY', 'OPENSKY_CLIENT_ID',
-    'OPENSKY_CLIENT_SECRET', 'LL2_API_TOKEN',
+    'OPENSKY_CLIENT_SECRET', 'LL2_API_TOKEN', 'ROAD511_API_KEY',
     'NVIDIA_API_KEY', 'XAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY',
     'CUSTOM_LLM_API_KEY', 'CUSTOM_LLM_BASE_URL', 'CUSTOM_LLM_MODEL',
   ]) {
     assert.match(source, new RegExp(`KEY_SETUP_EXTERNAL_KEYS\\+=\\(${name}\\)`));
   }
+  // Road511 follows the same shell-then-.env ladder and is never exported empty.
+  assert.match(source, /ROAD511_API_KEY="\$\{ROAD511_API_KEY:-\$\(read_dotenv_value "ROAD511_API_KEY"\)\}"/);
+  assert.match(source, /put_env_if_set ROAD511_API_KEY "\$\{ROAD511_API_KEY\}"/);
   assert.match(source, /put_env GEV_LAUNCHER "dev-fresh"/);
   assert.match(source, /put_env GEV_KEY_SETUP_EXTERNAL_KEYS "\$\{KEY_SETUP_EXTERNAL_KEYS_CSV\}"/);
 });

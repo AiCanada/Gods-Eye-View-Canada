@@ -23,6 +23,7 @@ import {
   _resetFireAnchorsForTest,
 } from './fireAnchors.js';
 import { reportMeshFloorCell, setMeshFloorPreferred } from './groundFloor.js';
+import { pruneTerrainHeightsOutside } from './terrainHeights.js';
 
 /** Installs a fake fetch for the duration of `fn`, restoring the original after. */
 async function withFakeFetch(fakeFetch, fn) {
@@ -158,4 +159,35 @@ test('warmFireAnchorFloors: proxy failure reports false (re-render chain termina
     assert.ok(calls >= 1);
   });
   assert.equal(fireAnchorHeight(22.501, 32.501), 0, 'anchor stays at 0 until a real floor lands');
+});
+
+// Runs LAST: the prune below releases every warm height far from Montreal.
+test('warmFireAnchorFloors: a batch queued before a location switch skips the old area', async () => {
+  _resetFireAnchorsForTest();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const log = [];
+  const echo = echoFetch(log);
+  await withFakeFetch(async (url) => {
+    const response = echo(url); // logs the request's points synchronously
+    if (log.length === 1) await gate;
+    return response;
+  }, async () => {
+    const inFlight = warmFireAnchorFloors([{ lat: 36.101, lon: -112.101 }]); // Grand Canyon view
+    const queued = warmFireAnchorFloors([
+      { lat: 36.201, lon: -112.201 }, // Grand Canyon, still queued at the switch
+      { lat: 45.501, lon: -73.501 }, // near Montreal, the destination
+    ]);
+    // The user picks Montreal while the first batch is on the wire.
+    pruneTerrainHeightsOutside({ lat: 45.5017, lon: -73.5673 }, 300);
+    release();
+    const [warmedInFlight, warmedQueued] = await Promise.all([inFlight, queued]);
+    assert.equal(log.length, 2);
+    assert.deepEqual(log[1], [{ lon: -73.501, lat: 45.501 }], 'the queued batch sends only the destination cell');
+    assert.equal(warmedQueued, true);
+    assert.equal(warmedInFlight, false, 'the old view\'s in-flight result is released, not written back');
+  });
+  // The echo proxy answers lon + lat, so the floor here is negative: compare with 0, the cold anchor.
+  assert.notEqual(fireAnchorHeight(45.501, -73.501), 0, 'the destination fire anchors on its floor');
+  assert.equal(fireAnchorHeight(36.201, -112.201), 0);
 });

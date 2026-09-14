@@ -1,13 +1,14 @@
 // Merge every collected camera pack into one God's Eye View CCTV source file.
 //
-// The merge never thins: every accepted camera is written. The server caps each
-// country (CCTV_MAX_SOURCES per country, hard ceiling 5000) by keeping the FIRST
-// N entries, so the output is still ordered nearest-to-Saint-John first, pack
-// by pack, and the merge warns when the catalogue would exceed that ceiling.
+// The merge never thins: every accepted camera is written. The server stores
+// the whole catalogue and loads at most the 2,500 cameras nearest the selected
+// place (within 50 km), so no region or country cap applies here. The output
+// is still ordered nearest-to-Saint-John first, pack by pack, which keeps
+// rebuilds stable and lets the higher-priority packs win the duplicate checks.
 //
-// Writes the capped catalogue the app reads straight into config/ (the single
-// copy) and keeps the complete, uncapped merge beside this script as an
-// archive the app never loads.
+// Writes the catalogue the app reads straight into config/ (the single copy)
+// and keeps the same complete merge beside this script as an archive the app
+// never loads.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,9 +19,6 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SOURCE_DIR = path.join(HERE, 'sources');
 const CONFIG_DIR = path.resolve(HERE, '..', '..', 'config');
 const sourcePath = (f) => path.join(SOURCE_DIR, f);
-
-// Matches the server's per-country ceiling (CCTV_MAX_SOURCES clamps to 5000).
-const CAP = Number(process.env.PACK_CAP || 5000);
 
 // ISO country code per entry, so CCTV_COUNTRIES can switch whole countries on
 // and off. Everything collected here is Canadian except the two
@@ -125,8 +123,8 @@ for (const file of PACKS) {
     continue;
   }
 
-  // Within a pack, order by distance from Saint John so the nearest cameras
-  // survive the cap.
+  // Within a pack, order by distance from Saint John so the output is stable
+  // from one rebuild to the next.
   const ordered = items
     .filter((c) => c && Number.isFinite(Number(c.lat)) && Number.isFinite(Number(c.lon)))
     .sort((a, b) => haversineKm(SAINT_JOHN, a) - haversineKm(SAINT_JOHN, b));
@@ -221,15 +219,11 @@ for (const file of PACKS) {
   report.push(`${file.padEnd(26)} ${String(items.length).padStart(5)} read  ->${String(kept).padStart(5)} kept`);
 }
 
-// No thinning: every accepted camera is written, in pack priority order. When
-// the catalogue outgrows the server's per-country ceiling the merge says so,
-// and the server keeps the first CAP entries.
+// No thinning: every accepted camera is written, in pack priority order. The
+// server keeps the whole catalogue and caps only what one selected area loads.
 const all = [...byId.values()];
 const total = all.length;
 const merged = all;
-if (total > CAP) {
-  console.warn(`WARNING: ${total} cameras exceed the per-country ceiling of ${CAP}; the server will keep the first ${CAP}. Raise CCTV_MAX_SOURCES_HARD_CAP and PACK_CAP to serve them all.`);
-}
 
 // Write the catalogue the app reads into config/, plus the same complete merge
 // beside this script as the archive copy.
@@ -247,6 +241,6 @@ console.log(report.join('\n'));
 console.log('');
 console.log(`accepted ${total}, rejected ${rejected}`);
 if (rejected) console.log('reject reasons:', JSON.stringify(rejectReasons));
-console.log(`written ${merged.length} (no thinning; server ceiling ${CAP} per country)`);
+console.log(`written ${merged.length} (no thinning; the server caps only what one selected area loads)`);
 console.log(`within 50 km of Saint John: ${near}`);
 console.log('by region:', JSON.stringify(byRegion));

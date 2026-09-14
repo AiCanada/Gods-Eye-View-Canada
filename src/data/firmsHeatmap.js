@@ -187,6 +187,13 @@ export function createFirmsHeatmapLayer({
   let _camSnapValid = false;
   const _camPos = new Cesium.Cartesian3();
   const _camDir = new Cesium.Cartesian3();
+  /**
+   * True from a location switch's leave until the camera arrives. Holds every
+   * rebuild that would otherwise draw the transient mid-flight view: the
+   * throttled preRender LOD sweep, the close-band floor-warm re-render, a poll
+   * landing mid-flight and the moveEnd re-declutter. Arrival draws once.
+   */
+  let _locationSwitching = false;
 
   return {
     id,
@@ -209,6 +216,9 @@ export function createFirmsHeatmapLayer({
     async enable(viewer) {
       if (_destroyed) return;
       _enabled = true;
+      // Arrival only reaches enabled layers, so a switch that happened while
+      // this layer was off never lifted its rebuild hold.
+      _locationSwitching = false;
       _viewer = viewer;
       if (!_dataSource) this.init(viewer);
       if (_dataSource) _dataSource.show = true;
@@ -228,6 +238,10 @@ export function createFirmsHeatmapLayer({
       installMoveEndWatcher();
       installClickHandler();
       registerPickOwner(id, (pickedId) => _pickIndexById.has(pickedId));
+      // A location switch while off released the rendered view (the LOD memo
+      // reads -1 only then, once data exists): draw the current view now
+      // instead of waiting for a camera move to wake the LOD watcher.
+      if (_fires.length && !_loading && _currentLodIndex < 0) renderCurrentLod(true);
       if (!_fires.length && !_loading) await loadHeatmap();
       restoreSpriteOrderOnEnable('firms', viewer);
     },
@@ -254,10 +268,51 @@ export function createFirmsHeatmapLayer({
       await loadHeatmap();
     },
 
+    /**
+     * Location switch start, for this layer on or off. The fire dataset is
+     * worldwide (one trailing-24h payload plus its per-grid cell aggregation),
+     * so it is not old-location data and is kept: dropping it would re-download
+     * the whole feed. What goes is everything built for the old VIEW (sprites,
+     * cell rectangles, the pick and card indexes, the published cards, the
+     * context-store top-N and the fire selection), and every rebuild is held
+     * until {@link onLocationArrive}. Nothing near the destination is kept:
+     * the arrival render rebuilds it from the kept data in one clip pass.
+     * The in-flight poll is global, so it is left to land. Idempotent, no
+     * network, never throws.
+     */
+    onLocationLeave() {
+      if (_destroyed) return;
+      _locationSwitching = true;
+      try {
+        releaseRenderedView();
+      } catch (error) {
+        console.warn(`[Data:${id}] FIRMS location release failed:`, error);
+      }
+    },
+
+    /**
+     * Location switch end (camera arrived, layer enabled): lift the rebuild
+     * hold and draw the destination now instead of on the next throttled
+     * preRender tick. An aborted arrival was superseded by a newer switch,
+     * which owns the hold, so it changes nothing.
+     */
+    onLocationArrive({ signal } = {}) {
+      if (_destroyed || signal?.aborted) return;
+      _locationSwitching = false;
+      if (!_enabled) return;
+      try {
+        renderCurrentLod(true);
+        refreshHorizonCulling();
+      } catch (error) {
+        console.warn(`[Data:${id}] FIRMS location arrival render failed:`, error);
+      }
+    },
+
     destroy(viewer) {
       if (_destroyed) return;
       _destroyed = true;
       _enabled = false;
+      _locationSwitching = false;
       removeLodWatcher();
       removeMoveEndWatcher();
       removeClickHandler();
@@ -461,7 +516,8 @@ export function createFirmsHeatmapLayer({
         // last-known values for this instead of tearing down.
         clearSelectedEntityContextForLayer(id, { evicted: true });
       }
-      renderCurrentLod(true);
+      // A poll landing mid-switch keeps its data; the arrival render draws it.
+      if (!_locationSwitching) renderCurrentLod(true);
       if (reselected) selectFire(reselected);
     } catch (error) {
       console.warn(`[Data:${id}] FIRMS live load failed:`, error);
@@ -704,7 +760,7 @@ export function createFirmsHeatmapLayer({
       // reports false, so this chain terminates instead of looping against a
       // down proxy (the next camera-driven rebuild retries).
       warmFireAnchorFloors(candidates).then((warmed) => {
-        if (!warmed || !_enabled || !_viewer) return;
+        if (!warmed || !_enabled || !_viewer || _locationSwitching) return;
         const currentLod = LOD_LEVELS[_currentLodIndex];
         if (!currentLod || currentLod.mode !== 'detections') return;
         renderCurrentLod(true);
@@ -901,11 +957,41 @@ export function createFirmsHeatmapLayer({
     rebuildAmbientLabels();
   }
 
-  function clearFireSelection() {
+  /**
+   * Deselect the clicked fire (a deliberate clear, never an eviction).
+   * @param {{republish?: boolean}} [options] - `republish: false` skips the
+   *   card rebuild, for callers that are about to clear the cards anyway.
+   */
+  function clearFireSelection({ republish = true } = {}) {
     if (!_selectedFire) return;
     _selectedFire = null;
     clearSelectedEntityContextForLayer(id);
-    rebuildAmbientLabels();
+    if (republish) rebuildAmbientLabels();
+  }
+
+  /**
+   * Drop everything built for the rendered view, keeping the global dataset
+   * and its per-grid cell cache. The selection is cleared as a deliberate
+   * deselect (no eviction tag: the detection is still in the feed) and BEFORE
+   * the context sweep, for the ownership-guard reason documented in
+   * loadHeatmap. No cards are republished. The LOD/view memo and the idle
+   * camera snapshot are reset so the next render always rebuilds.
+   */
+  function releaseRenderedView() {
+    clearFireSelection({ republish: false });
+    clearContextRegistrations();
+    if (_dataSource) _dataSource.entities.removeAll();
+    if (_billboards) _billboards.removeAll();
+    _pickIndexById.clear();
+    _fireByCardId.clear();
+    _cullPositions.length = 0;
+    _labelCandidates = [];
+    _cellCount = 0;
+    overlayHost.clearSource(FIRMS_OVERLAY_SOURCE_ID);
+    _currentLodIndex = -1;
+    _currentLodId = null;
+    _lastViewRect = null;
+    _camSnapValid = false;
   }
 
   /**
@@ -921,7 +1007,7 @@ export function createFirmsHeatmapLayer({
       // stopped). Runs ahead of the `_loading` gate on purpose: the sprites on
       // screen during a refresh are the ones that need culling.
       refreshHorizonCulling();
-      if (_loading) return;
+      if (_loading || _locationSwitching) return;
       rebuildAmbientLabels();
     });
   }
@@ -1160,7 +1246,9 @@ export function createFirmsHeatmapLayer({
       // A refresh has no timeout, and sprites from the previous payload stay
       // on screen throughout it — so the horizon pass below must keep running
       // while a fetch is in flight. Only the rebuild is gated on fresh data.
-      if (!_enabled) return;
+      // A location switch is different: its leave released every sprite, so a
+      // mid-flight tick has nothing to cull and must not rebuild the view.
+      if (!_enabled || _locationSwitching) return;
       const now = performance.now();
       if (now - _lastLodCheck < LOD_CHECK_MS) return;
       _lastLodCheck = now;

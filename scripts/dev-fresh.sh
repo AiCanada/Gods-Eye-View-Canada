@@ -9,19 +9,11 @@ PORT="${PORT:-4173}"
 # should not be reachable from the network unless explicitly requested.
 # Set HOST=0.0.0.0 to opt in to LAN exposure (a warning is printed).
 HOST="${HOST:-localhost}"
-# CCTV source packs (all keyless): Austin (~815 live upstream), Caltrans
-# districts 4,7,11,3 = SF/LA/San Diego/Sacramento (~1,860 live upstream),
-# TfL London JamCams (~870 live upstream). Caps keep the densest cores per
-# pack; override per-run for lighter/heavier loads. Kill switches:
-# CCTV_CALTRANS_DISTRICTS='' and CCTV_TFL_ENABLED=0.
-CCTV_AUSTIN_MAX_SOURCES="${CCTV_AUSTIN_MAX_SOURCES:-250}"
-# Use `-` not `:-` so an explicit empty string (the documented kill switch)
-# is preserved rather than replaced by the default. Still set-u-safe when unset.
-CCTV_CALTRANS_DISTRICTS="${CCTV_CALTRANS_DISTRICTS-4,7,11,3}"
-CCTV_CALTRANS_MAX_SOURCES="${CCTV_CALTRANS_MAX_SOURCES:-300}"
-CCTV_TFL_ENABLED="${CCTV_TFL_ENABLED:-1}"
-CCTV_TFL_MAX_SOURCES="${CCTV_TFL_MAX_SOURCES:-250}"
-CCTV_MAX_SOURCES="${CCTV_MAX_SOURCES:-5000}"
+# CCTV settings get no launcher defaults. The server loads at most 2,500
+# cameras nearest the selected place (within 50 km), and the live Austin,
+# Caltrans and TfL packs download only when their area is selected. Values
+# from the shell or .env (CCTV_COUNTRIES, CCTV_CALTRANS_DISTRICTS,
+# CCTV_TFL_ENABLED, ...) reach the dev server unchanged.
 
 # Capture which provider credentials genuinely came from the parent shell
 # before this launcher resolves dotenv and Keychain fallbacks. Only names are
@@ -40,6 +32,7 @@ KEY_SETUP_EXTERNAL_KEYS=()
 [[ -n "${OPENSKY_CLIENT_SECRET:-}" ]] && KEY_SETUP_EXTERNAL_KEYS+=(OPENSKY_CLIENT_SECRET)
 [[ -n "${LL2_API_TOKEN:-}" ]] && KEY_SETUP_EXTERNAL_KEYS+=(LL2_API_TOKEN)
 [[ -n "${EARTHDATA_TOKEN:-}" ]] && KEY_SETUP_EXTERNAL_KEYS+=(EARTHDATA_TOKEN)
+[[ -n "${ROAD511_API_KEY:-}" ]] && KEY_SETUP_EXTERNAL_KEYS+=(ROAD511_API_KEY)
 [[ -n "${NVIDIA_API_KEY:-}" ]] && KEY_SETUP_EXTERNAL_KEYS+=(NVIDIA_API_KEY)
 [[ -n "${XAI_API_KEY:-}" ]] && KEY_SETUP_EXTERNAL_KEYS+=(XAI_API_KEY)
 [[ -n "${ANTHROPIC_API_KEY:-}" ]] && KEY_SETUP_EXTERNAL_KEYS+=(ANTHROPIC_API_KEY)
@@ -222,6 +215,7 @@ AISSTREAM_API_KEY="${AISSTREAM_API_KEY:-$(read_dotenv_value "AISSTREAM_API_KEY")
 CESIUM_ION_TOKEN="${CESIUM_ION_TOKEN:-$(read_dotenv_value "CESIUM_ION_TOKEN")}"
 LL2_API_TOKEN="${LL2_API_TOKEN:-$(read_dotenv_value "LL2_API_TOKEN")}"
 EARTHDATA_TOKEN="${EARTHDATA_TOKEN:-$(read_dotenv_value "EARTHDATA_TOKEN")}"
+ROAD511_API_KEY="${ROAD511_API_KEY:-$(read_dotenv_value "ROAD511_API_KEY")}"
 NVIDIA_API_KEY="${NVIDIA_API_KEY:-$(read_dotenv_value "NVIDIA_API_KEY")}"
 XAI_API_KEY="${XAI_API_KEY:-$(read_dotenv_value "XAI_API_KEY")}"
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$(read_dotenv_value "ANTHROPIC_API_KEY")}"
@@ -374,14 +368,7 @@ put_env_if_set() {
 }
 
 put_env_if_set GOOGLE_MAPS_API_KEY "${GOOGLE_MAPS_API_KEY}"
-put_env CCTV_AUSTIN_MAX_SOURCES "${CCTV_AUSTIN_MAX_SOURCES}"
-# Empty is the documented Caltrans kill switch, so this one is passed as-is.
-put_env CCTV_CALTRANS_DISTRICTS "${CCTV_CALTRANS_DISTRICTS}"
-put_env CCTV_CALTRANS_MAX_SOURCES "${CCTV_CALTRANS_MAX_SOURCES}"
-put_env CCTV_TFL_ENABLED "${CCTV_TFL_ENABLED}"
-put_env CCTV_TFL_MAX_SOURCES "${CCTV_TFL_MAX_SOURCES}"
 put_env_if_set TFL_APP_KEY "${TFL_APP_KEY:-}"
-put_env CCTV_MAX_SOURCES "${CCTV_MAX_SOURCES}"
 put_env OPENSKY_AUTH_MODE "${OPENSKY_AUTH_MODE}"
 put_env_if_set OPENSKY_CREDENTIALS_FILE "${OPENSKY_CREDENTIALS_FILE}"
 put_env_if_set OPENSKY_CLIENT_ID "${OPENSKY_CLIENT_ID}"
@@ -395,6 +382,7 @@ put_env_if_set TOMTOM_API_KEY "${TOMTOM_API_KEY}"
 put_env_if_set FIRMS_MAP_KEY "${FIRMS_MAP_KEY}"
 put_env_if_set LL2_API_TOKEN "${LL2_API_TOKEN}"
 put_env_if_set EARTHDATA_TOKEN "${EARTHDATA_TOKEN}"
+put_env_if_set ROAD511_API_KEY "${ROAD511_API_KEY}"
 put_env_if_set NVIDIA_API_KEY "${NVIDIA_API_KEY}"
 put_env_if_set XAI_API_KEY "${XAI_API_KEY}"
 put_env_if_set ANTHROPIC_API_KEY "${ANTHROPIC_API_KEY}"

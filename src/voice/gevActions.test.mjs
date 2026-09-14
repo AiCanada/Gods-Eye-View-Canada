@@ -2967,6 +2967,41 @@ test('front5: an explicit region still uses the region engine while Contacts is 
   });
 });
 
+test('location switch: leaving for another region drops the analyst follow-up memory', async () => {
+  // A follow-up ("which of those is closest?") re-filters the remembered
+  // result instead of re-reading the layers, so after a switch it would
+  // answer from the previous place's records.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const events = new EventTarget();
+  const hadListener = Object.hasOwn(window, 'addEventListener');
+  const previousListener = window.addEventListener;
+  window.addEventListener = events.addEventListener.bind(events);
+  const ask = { layers: ['flights'], scope: { kind: 'radius', km: 250 } };
+  const switchEvent = (phase) => new CustomEvent('gev:location-switch', {
+    detail: { phase, from: null, to: { key: 'CA-ON', region: 'CA-ON', country: 'CA', lat: 43.65, lon: -79.38 } },
+  });
+  try {
+    await withAwareness(awarenessSubjectHarness({ subject: null }), async () => {
+      const runner = analystRunner();
+      assert.equal((await runner('analyst_query', ask)).ok, true);
+      const heldFollowUp = await runner('analyst_query', { ...ask, followUp: true });
+      assert.equal(heldFollowUp.coverage.followUp, true, 'control: memory is held before a switch');
+
+      events.dispatchEvent(switchEvent('arrive'));
+      const afterArrive = await runner('analyst_query', { ...ask, followUp: true });
+      assert.equal(afterArrive.coverage.followUp, true, 'arrive alone leaves memory untouched');
+
+      events.dispatchEvent(switchEvent('leave'));
+      const afterLeave = await runner('analyst_query', { ...ask, followUp: true });
+      assert.equal(afterLeave.ok, true);
+      assert.equal(afterLeave.coverage.followUp, false, 'the follow-up re-reads the layers instead');
+    });
+  } finally {
+    if (hadListener) window.addEventListener = previousListener;
+    else delete window.addEventListener;
+  }
+});
+
 
 /**
  * The centre test decides whether a nearby ask is answered from the Contacts

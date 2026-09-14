@@ -4,6 +4,7 @@ import { fetchRegionalWeather } from './weather.js';
 import { fetchRegionalNews } from './news.js';
 import { validRegionalPoint } from './query.js';
 import { coalesceProxyRequest } from '../common/http.js';
+import { locationRegionKey } from '../../../src/data/regionalBrief.js';
 
 // ---------------------------------------------------------------------------
 // Regional cockpit briefing proxy
@@ -24,6 +25,40 @@ const _regionalBriefRateLimiter = makeRateLimiter({
   globalMax: 90,
 });
 
+// Which province, state or country a point is in: the key a location switch
+// compares. The answer for a spot does not change, so it is kept for a day.
+const LOCATION_REGION_CACHE_MS = 24 * 60 * 60_000;
+
+// Open water and other spots Nominatim cannot place ("Unable to geocode").
+// Kept briefly, so repeat clicks there do not call upstream again.
+const LOCATION_REGION_UNPLACED_CACHE_MS = 10 * 60_000;
+
+const LOCATION_REGION_UNPLACED = Object.freeze({
+  key: '',
+  regionCode: null,
+  region: null,
+  countryCode: null,
+  country: null,
+});
+
+const LOCATION_REGION_MAX_CACHE = 256;
+
+const _locationRegionCache = new Map();
+
+/**
+ * One upstream lookup per ~1 km cell, shared by every request waiting on it.
+ * When the last waiter disconnects the lookup is aborted, so a superseded
+ * click does not keep its place in the Nominatim queue.
+ * @type {Map<string, {promise: Promise<object>, controller: AbortController, waiters: number}>}
+ */
+const _locationRegionInFlight = new Map();
+
+const _locationRegionRateLimiter = makeRateLimiter({
+  windowMs: 60_000,
+  max: 30,
+  globalMax: 90,
+});
+
 function trimRegionalBriefCache() {
   while (_regionalBriefCache.size > REGIONAL_BRIEF_MAX_CACHE) {
     const oldest = _regionalBriefCache.keys().next().value;
@@ -35,6 +70,46 @@ function trimRegionalBriefCache() {
 /** True when at least one regional source produced usable data. */
 function regionalBriefHasAnySource({ place, weather, news } = {}) {
   return Boolean(place || weather || (news && news.status !== 'unavailable'));
+}
+
+function cacheLocationRegion(key, payload, ttlMs) {
+  _locationRegionCache.delete(key);
+  _locationRegionCache.set(key, { payload, cachedAt: Date.now(), ttlMs });
+  while (_locationRegionCache.size > LOCATION_REGION_MAX_CACHE) {
+    _locationRegionCache.delete(_locationRegionCache.keys().next().value);
+  }
+}
+
+/** Start the shared, abortable upstream lookup for one cell. */
+function startLocationRegionLookup(point, key) {
+  const controller = new AbortController();
+  const flight = { promise: null, controller, waiters: 0 };
+  flight.promise = fetchRegionalPlace(point, { signal: controller.signal })
+    .then((place) => {
+      if (!place) {
+        cacheLocationRegion(
+          key,
+          LOCATION_REGION_UNPLACED,
+          LOCATION_REGION_UNPLACED_CACHE_MS,
+        );
+        return LOCATION_REGION_UNPLACED;
+      }
+      const payload = {
+        key: locationRegionKey(place),
+        regionCode: place.regionCode,
+        region: place.region,
+        countryCode: place.countryCode,
+        country: place.country,
+      };
+      cacheLocationRegion(key, payload, LOCATION_REGION_CACHE_MS);
+      return payload;
+    })
+    .finally(() => {
+      if (_locationRegionInFlight.get(key) === flight)
+        _locationRegionInFlight.delete(key);
+    });
+  _locationRegionInFlight.set(key, flight);
+  return flight;
 }
 
 function regionalBriefProxy() {
@@ -135,6 +210,87 @@ function regionalBriefProxy() {
         res.end(
           JSON.stringify({
             error: 'Regional briefing is temporarily unavailable',
+          }),
+        );
+      }
+    });
+
+    middlewares.use('/api/location-region', async (req, res) => {
+      if (req.method !== 'GET') {
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+        return;
+      }
+      const url = new URL(req.url || '', 'http://localhost');
+      const point = validRegionalPoint(url.searchParams);
+      if (!point) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: 'Valid latitude and longitude are required',
+          }),
+        );
+        return;
+      }
+      // Cells of about 1 km, small enough that a border rarely splits one.
+      const key = `${point.latitude.toFixed(2)},${point.longitude.toFixed(2)}`;
+      const cached = _locationRegionCache.get(key);
+      if (cached && Date.now() - cached.cachedAt <= cached.ttlMs) {
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'X-Location-Region': 'HIT',
+        });
+        res.end(JSON.stringify(cached.payload));
+        return;
+      }
+      // Only a request that starts upstream work is charged: cache hits and
+      // joins of a lookup already running cost nothing, so repeat clicks never
+      // spend the quota a real switch needs.
+      let flight = _locationRegionInFlight.get(key);
+      const shared = Boolean(flight);
+      if (!flight) {
+        if (!_locationRegionRateLimiter(clientKey(req))) {
+          res.writeHead(429, {
+            'Content-Type': 'application/json',
+            'Retry-After': '10',
+          });
+          res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
+          return;
+        }
+        flight = startLocationRegionLookup(point, key);
+      }
+      flight.waiters += 1;
+      let waiting = true;
+      req.on?.('close', () => {
+        if (!waiting || res.writableEnded) return;
+        waiting = false;
+        flight.waiters -= 1;
+        if (flight.waiters > 0) return;
+        // Nobody is waiting any more: a newer request for this cell starts
+        // its own lookup instead of joining the aborted one.
+        if (_locationRegionInFlight.get(key) === flight)
+          _locationRegionInFlight.delete(key);
+        flight.controller.abort();
+      });
+      try {
+        const payload = await flight.promise;
+        waiting = false;
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'X-Location-Region': shared ? 'INFLIGHT' : 'MISS',
+        });
+        res.end(JSON.stringify(payload));
+      } catch {
+        waiting = false;
+        res.writeHead(503, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+        });
+        res.end(
+          JSON.stringify({
+            error: 'Location region is temporarily unavailable',
           }),
         );
       }

@@ -2,6 +2,7 @@ import { makeRateLimiter, clientKey } from '../common/rate-limit.js';
 import { fetchRegionalWeather } from './weather.js';
 import { validRegionalPoint } from './query.js';
 import { coalesceProxyRequest } from '../common/http.js';
+import { haversineKm } from '../common/geo.js';
 
 const WEATHER_EFFECTS_CACHE_MS = 5 * 60_000;
 
@@ -25,6 +26,42 @@ function trimWeatherEffectsCache() {
     if (oldest === undefined) break;
     _weatherEffectsCache.delete(oldest);
   }
+}
+
+/**
+ * Release weather observations cached for 0.1-degree cells farther than
+ * `radiusKm` from a point, after the user switches location. There is no disk
+ * tier: a released cell asks upstream again only if the view goes back there.
+ * @param {{latitude: number, longitude: number}} point
+ * @param {number} radiusKm
+ * @param {Map<string, object>} [cache]
+ * @returns {number} How many entries were removed.
+ */
+function pruneWeatherEffectsCacheOutside(
+  point,
+  radiusKm,
+  cache = _weatherEffectsCache,
+) {
+  const latitude = point?.latitude;
+  const longitude = point?.longitude;
+  if (![latitude, longitude, radiusKm].every(Number.isFinite) || radiusKm < 0)
+    return 0;
+  let removed = 0;
+  for (const key of cache.keys()) {
+    const [cellLatitude, cellLongitude] = String(key).split(',').map(Number);
+    if (!Number.isFinite(cellLatitude) || !Number.isFinite(cellLongitude))
+      continue;
+    const distanceKm = haversineKm(
+      latitude,
+      longitude,
+      cellLatitude,
+      cellLongitude,
+    );
+    if (distanceKm <= radiusKm) continue;
+    cache.delete(key);
+    removed += 1;
+  }
+  return removed;
 }
 
 function weatherEffectsProxy() {
@@ -125,4 +162,4 @@ function weatherEffectsProxy() {
   };
 }
 
-export { weatherEffectsProxy };
+export { pruneWeatherEffectsCacheOutside, weatherEffectsProxy };

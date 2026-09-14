@@ -8,6 +8,46 @@ import {
   terrainPointKey,
   validTerrainResult,
 } from '../../src/data/terrainHeightsProxy.js';
+import { haversineKm } from './common/geo.js';
+
+/**
+ * Release handles of every installed terrain proxy, registered on install so a
+ * location switch can release far points without reaching into the closure.
+ * @type {Set<{prune: (point: {latitude:number, longitude:number}, radiusKm:number) => number}>}
+ */
+const _terrainMemoryTiers = new Set();
+
+/** 1-degree cell of a canonical `lon,lat` point key: the unit restored from disk. */
+function terrainKeyCell(key) {
+  const [lon, lat] = String(key).split(',').map(Number);
+  return `${Math.floor(lon)},${Math.floor(lat)}`;
+}
+
+/**
+ * Release memory-cached terrain points farther than `radiusKm` from a point,
+ * after the user switches location. Memory only, and the disk file never
+ * shrinks: only points already persisted are eligible, the periodic flush
+ * folds released points back in from disk, and a later request that needs a
+ * released cell reads that cell back from disk before anything goes upstream.
+ * @param {{latitude: number, longitude: number}} point
+ * @param {number} radiusKm
+ * @param {Iterable<{prune: Function}>} [tiers] Installed proxies; defaults to all.
+ * @returns {number} How many points were removed.
+ */
+export function pruneTerrainMemoryOutside(
+  point,
+  radiusKm,
+  tiers = _terrainMemoryTiers,
+) {
+  const latitude = point?.latitude;
+  const longitude = point?.longitude;
+  if (![latitude, longitude, radiusKm].every(Number.isFinite) || radiusKm < 0)
+    return 0;
+  let removed = 0;
+  for (const tier of tiers)
+    removed += tier.prune({ latitude, longitude }, radiusKm);
+  return removed;
+}
 
 /**
  * Re:Earth terrain point-height proxy: batched lon/lat → ellipsoidal height
@@ -41,6 +81,37 @@ export function terrainHeightsProxy() {
   const inflight = new Map();
   let diskLoaded = false;
   let diskDirty = false;
+  /**
+   * Entry objects known to be on disk exactly as they are in memory. Only
+   * these may be released: anything newer would be lost before the next flush.
+   * @type {WeakSet<object>}
+   */
+  const persisted = new WeakSet();
+  /** @type {Set<string>} 1-degree cells with points released from memory but still on disk. */
+  const releasedCells = new Set();
+  /** Once anything is released, flushes merge into the disk file instead of replacing it. */
+  let releasedAny = false;
+
+  /**
+   * Read the stored point map. A missing file reads as empty; an unreadable or
+   * half-written one throws, so callers never mistake it for "nothing stored".
+   * @returns {Promise<Object<string, {at:number, result:object}>>}
+   */
+  async function readDiskPoints() {
+    let raw;
+    try {
+      raw = await fsp.readFile(CACHE_PATH, 'utf8');
+    } catch (error) {
+      if (error?.code === 'ENOENT') return {};
+      throw error;
+    }
+    const parsed = JSON.parse(raw);
+    return parsed?.version === 2 &&
+      parsed.points &&
+      typeof parsed.points === 'object'
+      ? parsed.points
+      : {};
+  }
 
   /** Load the on-disk cache into memory once, lazily (first request only). */
   async function loadDiskOnce() {
@@ -62,6 +133,7 @@ export function terrainHeightsProxy() {
             validTerrainResult(entry.result)
           ) {
             mem.set(key, entry);
+            persisted.add(entry);
           }
         }
       } else if (parsed && typeof parsed === 'object') {
@@ -95,16 +167,86 @@ export function terrainHeightsProxy() {
     setInterval(async () => {
       if (!diskDirty) return;
       diskDirty = false;
+      // Written beside the live file and renamed over it, so a restore reading
+      // during the write, or a crash mid-write, never sees a truncated file.
+      // Same directory, so the rename is atomic on POSIX.
+      const temp = `${CACHE_PATH}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
       try {
+        // After a release the file holds points memory no longer does. Merge
+        // them back so a flush never shrinks the disk cache; an unreadable file
+        // skips this write rather than replacing it with memory alone.
+        const points = releasedAny ? await readDiskPoints() : {};
         await fsp.mkdir(CACHE_DIR, { recursive: true });
-        const obj = { version: 2, points: Object.fromEntries(mem.entries()) };
-        await fsp.writeFile(CACHE_PATH, JSON.stringify(obj), 'utf8');
+        const written = [...mem.values()];
+        Object.assign(points, Object.fromEntries(mem.entries()));
+        await fsp.writeFile(
+          temp,
+          JSON.stringify({ version: 2, points }),
+          'utf8',
+        );
+        await fsp.rename(temp, CACHE_PATH);
+        for (const entry of written) persisted.add(entry);
       } catch (err) {
         diskDirty = true; // retry next tick
+        await fsp.rm(temp, { force: true }).catch(() => {});
         console.warn('[terrain-heights-proxy] cache write failed');
       }
     }, 15_000).unref?.();
   }
+
+  /**
+   * Read released points back from disk for the cells a request needs, so a
+   * return to an earlier area costs one file read instead of upstream calls.
+   * A failed read leaves the cells released and the next request retries.
+   * @param {Array<[number, number]>} points
+   */
+  async function restoreReleasedCells(points) {
+    if (releasedCells.size === 0) return;
+    const wanted = new Set();
+    for (const point of points) {
+      const key = terrainPointKey(point);
+      const cell = terrainKeyCell(key);
+      if (releasedCells.has(cell) && !mem.has(key)) wanted.add(cell);
+    }
+    if (wanted.size === 0) return;
+    let stored;
+    try {
+      stored = await readDiskPoints();
+    } catch {
+      return;
+    }
+    for (const [key, entry] of Object.entries(stored)) {
+      if (
+        mem.has(key) ||
+        !wanted.has(terrainKeyCell(key)) ||
+        !entry ||
+        !Number.isFinite(entry.at) ||
+        !validTerrainResult(entry.result)
+      )
+        continue;
+      mem.set(key, entry);
+      persisted.add(entry);
+    }
+    for (const cell of wanted) releasedCells.delete(cell);
+  }
+
+  /** This proxy's handle for pruneTerrainMemoryOutside. */
+  const memoryTier = {
+    prune({ latitude, longitude }, radiusKm) {
+      let removed = 0;
+      for (const [key, entry] of mem) {
+        if (!persisted.has(entry)) continue;
+        const [lon, lat] = key.split(',').map(Number);
+        if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+        if (haversineKm(latitude, longitude, lat, lon) <= radiusKm) continue;
+        mem.delete(key);
+        releasedCells.add(terrainKeyCell(key));
+        removed += 1;
+      }
+      if (removed > 0) releasedAny = true;
+      return removed;
+    },
+  };
 
   /**
    * Fetch all missing chunks sequentially, UPSTREAM_CHUNK points per call.
@@ -156,6 +298,7 @@ export function terrainHeightsProxy() {
   }
 
   const installMiddleware = (server) => {
+    _terrainMemoryTiers.add(memoryTier);
     server.middlewares.use('/api/terrain/heights', async (req, res) => {
       const send = (status, bodyObj) => {
         if (res.headersSent) return;
@@ -181,6 +324,7 @@ export function terrainHeightsProxy() {
           return;
         }
 
+        await restoreReleasedCells(points);
         const outcome = await resolveTerrainHeightRequest({
           points,
           cache: mem,

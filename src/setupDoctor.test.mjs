@@ -63,6 +63,14 @@ test('doctor selects a Windows-safe npm process without changing Unix behavior',
   assert.deepEqual(npmProcessSpec('linux'), { command: 'npm', shell: false });
 });
 
+test('doctor lists the Road511 key without a Keychain lookup', () => {
+  assert.deepEqual(credential('ROAD511_API_KEY'), {
+    name: 'ROAD511_API_KEY',
+    label: 'Road511 (US camera image lookup)',
+    keychain: [],
+  });
+});
+
 test('doctor recognizes every OpenSky OAuth keychain alias used by dev-fresh', () => {
   assert.deepEqual(
     credential('OPENSKY_CLIENT_ID').keychain,
@@ -157,6 +165,7 @@ test('doctor describes the credential ladder without exposing values', () => {
     OPENSKY_CLIENT_ID: { configured: false },
     OPENSKY_CLIENT_SECRET: { configured: false },
     LL2_API_TOKEN: { configured: true, source: 'environment' },
+    ROAD511_API_KEY: { configured: true, source: 'dotenv files' },
   };
   const capabilities = buildCapabilitySummary(credentials);
   assert.match(capabilities.map, /Google Photorealistic 3D Tiles through Cesium ion/);
@@ -176,6 +185,7 @@ test('doctor describes the credential ladder without exposing values', () => {
   assert.doesNotMatch(report, /configured-value/);
   assert.match(report, /Cesium ion \(environment\)/);
   assert.match(report, /Launch Library 2 \(environment\)/);
+  assert.match(report, /Road511 \(US camera image lookup\) \(dotenv files\)/);
 
   const pinokioReport = formatSetupReport({
     ready: true,
@@ -201,6 +211,7 @@ test('doctor sends Keychain-backed reports to dev-fresh and describes OpenSky as
     'OPENSKY_CLIENT_ID',
     'OPENSKY_CLIENT_SECRET',
     'LL2_API_TOKEN',
+    'ROAD511_API_KEY',
   ].map((name) => [name, { configured: false }]));
   credentials.GOOGLE_MAPS_API_KEY = { configured: true, source: 'macOS Keychain' };
   credentials.OPENSKY_CLIENT_ID = { configured: true, source: 'environment' };
@@ -233,6 +244,7 @@ test('doctor never calls a dependency-missing setup ready', () => {
     'OPENSKY_CLIENT_ID',
     'OPENSKY_CLIENT_SECRET',
     'LL2_API_TOKEN',
+    'ROAD511_API_KEY',
   ].map((name) => [name, { configured: false }]));
   const output = formatSetupReport({
     ready: false,

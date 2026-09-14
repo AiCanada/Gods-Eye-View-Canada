@@ -1,6 +1,14 @@
 import * as Cesium from 'cesium';
-import { deriveFetchCenter, clampBoundsAroundCenter } from './trafficBounds.js';
+import { deriveFetchCenter, clampBoundsAroundCenter, greatCircleKm } from './trafficBounds.js';
 import { fetchFlowForBounds, getFlowSessionStats, resetFlowTileCache } from './flowTiles.js';
+import {
+  ROAD_TILES_ATTRIBUTION,
+  ROAD_TILES_CREDIT,
+  fetchRoadsForBounds,
+  getRoadTileSessionStats,
+  releaseRoadTilesAwayFrom,
+  resetRoadTileCache,
+} from './roadTiles.js';
 import { matchFlowToRoads } from './flowMatch.js';
 import { flowBucket, flowSpeedScale, flowDensityMult } from './trafficFlowStyle.js';
 import {
@@ -18,15 +26,18 @@ import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor
  * @file Street Traffic — animated dots along OSM road polylines, colored by
  * live TomTom congestion when a key is configured.
  *
- * Road geometry: OSM Overpass API (free, no auth). Fetches road polylines for
- * the camera viewport, spawns PointPrimitives that lerp along pre-computed
- * Cartesian3 waypoints. Camera-gated: only active below ~8 km altitude.
+ * Road geometry: OpenFreeMap vector tiles (OpenMapTiles over OpenStreetMap;
+ * free, keyless, disk-cached by the local `/api/roads/tiles` proxy and decoded
+ * by `roadTiles.js`), with the Overpass API only as a fallback when the tiles
+ * fail. Fetches road polylines for the camera viewport, spawns PointPrimitives
+ * that lerp along pre-computed Cartesian3 waypoints. Camera-gated: only active
+ * below ~8 km altitude.
  *
  * Two modes (decided once per session via `/api/tomtom/status`):
  *  - `sim` (keyless default): white dots at hardcoded per-road-class speeds —
  *    the original simulation, byte-identical behavior.
  *  - `live`: TomTom flow tiles (`flowTiles.js`) are matched onto the same
- *    Overpass roads (`flowMatch.js`); matched roads color/slow/densify their
+ *    roads (`flowMatch.js`); matched roads color/slow/densify their
  *    dots by real congestion (`trafficFlowStyle.js`), closed roads spawn no
  *    dots, and unmatched roads keep the simulated white.
  *
@@ -49,6 +60,10 @@ const ACTIVATION_ALTITUDE = 8000;
 const FAST_FETCH_ALTITUDE = 4500;
 /** @const {number} Milliseconds — debounce delay before fetching after camera settles */
 const FETCH_DEBOUNCE = 320;
+/** @const {number} Milliseconds — first wait before a view whose roads failed is asked again */
+const ROADS_RETRY_BASE_MS = 5000;
+/** @const {number} Milliseconds — longest wait between retries of a failing view (doubles from the base) */
+const ROADS_RETRY_MAX_MS = 60000;
 /** @const {number} Meters — vertical offset to keep dots above clamped terrain surface */
 const DOT_HEIGHT_OFFSET = 3.0;
 /** @const {number} Fraction (0-1) — skip re-fetch when viewport overlap exceeds this */
@@ -164,7 +179,7 @@ let _cameraRemover = null;
 let _fetchTimeout = null;
 /** @type {{south:number,west:number,north:number,east:number}|null} Last fetched clamped bounds */
 let _lastBounds = null;
-/** @type {boolean} True while an Overpass fetch is in flight */
+/** @type {boolean} True while a road fetch (tiles, or the Overpass fallback) is in flight */
 let _fetching = false;
 /** @type {number} Current count of rendered dots */
 let _count = 0;
@@ -197,6 +212,25 @@ let _flowError = null;
  * @type {boolean}
  */
 let _flowStatusUnavailable = false;
+/**
+ * Road geometry health for the view on screen, null while complete.
+ * - 'unavailable': the last load got no road geometry from the road tiles or
+ *   the Overpass fallback, so no dots can render.
+ * - 'partial': roads rendered but some are missing (a road pass answered
+ *   partial, or the full pass failed after the major roads rendered).
+ * Either one retries the view after a backoff, even with the camera parked.
+ * Cleared by a complete load, a location switch or disable.
+ * @type {'unavailable'|'partial'|null}
+ */
+let _roadsError = null;
+/** @type {'tiles'|'overpass'|'cache'|null} Where the roads last rendered came from. */
+let _roadSource = null;
+/** @type {number} Consecutive road loads that rendered nothing (drives the retry backoff). */
+let _roadsFailures = 0;
+/** @type {number} Epoch ms before which the failed view is not loaded again. */
+let _roadsRetryAt = 0;
+/** @type {{south:number,west:number,north:number,east:number}|null} Bounds of the last failed road load. */
+let _roadsFailedBounds = null;
 /**
  * Flow requests this layer still owns. The 250 ms paint race lets a flow
  * fetch outlive the road load that started it (cached roads settle
@@ -380,8 +414,20 @@ let _fadeScaleFar = 8000;
 let _fadeTransFar = 10000;
 /** @type {Promise<void>|null} Session-cached status check (one fetch per session) */
 let _flowStatusPromise = null;
-/** @type {ReturnType<typeof setInterval>|null} Enable-time retry until the first load commits. */
+/** @type {ReturnType<typeof setInterval>|null} Retry kick after enable or a location arrival until a newer load commits. */
 let _enableKickTimer = null;
+/** @type {AbortController|null} Controller for the live-flow warm-up fetch started beside each road load */
+let _flowWarmAbort = null;
+/**
+ * Owners currently pausing camera-driven loading: a location switch
+ * (`onLocationLeave` → `onLocationArrive`) or an inter-city world jump
+ * (`beginWorldJump` → `endWorldJump`). Both can cover one flight and finish
+ * in either order, so loading resumes only once every owner is done.
+ * @type {Set<string>}
+ */
+const _fetchPauses = new Set();
+/** @type {ReturnType<typeof setTimeout>|null} Resumes loading if a paused flight never reports its end. */
+let _fetchPauseWatchdog = null;
 /** @type {number} 0–100 int — matched roads / roads with any flow candidates */
 let _flowCoveragePct = 0;
 /** @type {Function|null} Development-only camera moveEnd timing disposer. */
@@ -525,6 +571,81 @@ async function fetchRoads(
     });
   }
   return data;
+}
+
+/**
+ * Fetch road geometry for the clamped bounds: OpenFreeMap road tiles first
+ * (`roadTiles.js`, z12 for the major pass and z14 for the full graph), and the
+ * Overpass proxy only when every tile failed. Both answer the Overpass shape
+ * `parseRoads` reads. Records the answering source in `_roadSource` and
+ * registers the OpenFreeMap credit the first time tiles are drawn.
+ *
+ * @param {{south:number, west:number, north:number, east:number}} clamped - Fetch bounds.
+ * @param {Object} opts
+ * @param {boolean} opts.majorOnly - Major pass or full road graph.
+ * @param {number} opts.timeoutSec - Overpass server-side timeout for the fallback.
+ * @param {AbortSignal} opts.signal - Cancels this pass (tiles and fallback).
+ * @param {Object|null} [trace=null] - Development-only correlated load trace.
+ * @returns {Promise<Object>} Overpass-shaped payload; `partial: true` when some tiles failed.
+ * @throws {Error} When the tiles and the Overpass fallback both fail, or on abort.
+ */
+async function fetchRoadGeometry(clamped, { majorOnly, timeoutSec, signal }, trace = null) {
+  const state = TRAFFIC_TIMING_ENABLED && trace
+    ? trafficTimingPass(trace, majorOnly ? 'major' : 'full', 'road-tiles')
+    : null;
+  if (state) {
+    trace.currentPass = state.pass;
+    const fetchStart = trafficTimingMark(state, 'fetch-start');
+    trafficTimingMeasure(
+      'last-camera-change-to-fetch-start', state, trace.cameraChangeMark, fetchStart,
+    );
+  }
+  try {
+    const data = await fetchRoadsForBounds(clamped, { signal, majorOnly });
+    _roadSource = 'tiles';
+    registerDynamicCredit(_viewer, ROAD_TILES_CREDIT);
+    return data;
+  } catch (e) {
+    if (e?.name === 'AbortError' || signal?.aborted) throw e;
+    console.warn('[Data:Traffic] Road tiles unavailable — trying Overpass:', e?.message || e);
+  }
+  const data = await fetchRoads(
+    clamped.south, clamped.west, clamped.north, clamped.east,
+    { majorOnly, timeoutSec, signal },
+    trace,
+  );
+  _roadSource = 'overpass';
+  return data;
+}
+
+/**
+ * Record a road load that left the view without all its roads: surface
+ * `roadsError` and hold the same view back for a doubling backoff
+ * (ROADS_RETRY_BASE_MS up to ROADS_RETRY_MAX_MS), so the load kick and small
+ * camera nudges do not re-ask the road sources every 1.5 s while they fail.
+ * A parked camera fires no camera.changed, so this also arms a load kick that
+ * lasts until the retry is due and has had a chance to run.
+ * @param {{south:number,west:number,north:number,east:number}} clamped - Failed fetch bounds.
+ * @param {'unavailable'|'partial'} [kind='unavailable'] - Nothing rendered, or some roads are missing.
+ */
+function noteRoadsFailure(clamped, kind = 'unavailable') {
+  _roadsError = kind;
+  _roadsFailures += 1;
+  _roadsRetryAt = Date.now()
+    + Math.min(ROADS_RETRY_MAX_MS, ROADS_RETRY_BASE_MS * 2 ** (_roadsFailures - 1));
+  _roadsFailedBounds = clamped;
+  armLoadKick(
+    _lastUpdate,
+    Math.ceil((_roadsRetryAt - Date.now()) / LOAD_KICK_MS) + ROADS_RETRY_KICK_SPARE_TRIES,
+  );
+}
+
+/** Forget road failures: roads rendered, the place changed, or the layer turned off. */
+function clearRoadsFailure() {
+  _roadsError = null;
+  _roadsFailures = 0;
+  _roadsRetryAt = 0;
+  _roadsFailedBounds = null;
 }
 
 /**
@@ -1135,6 +1256,7 @@ function clampBounds(bounds) {
  * Camera-change handler — the main entry point for viewport-driven road loading.
  *
  * Gating logic:
+ *  0. While a location switch or world jump pauses loading, do nothing.
  *  1. If the camera is above ACTIVATION_ALTITUDE, clear all dots and bail.
  *  2. Clamp the view bounds and compute the viewport center.
  *  3. Skip the fetch if the new viewport significantly overlaps the last-fetched
@@ -1143,7 +1265,9 @@ function clampBounds(bounds) {
  *  4. Otherwise, debounce and schedule `loadRoadsForBounds`.
  */
 function onCameraChanged() {
-  if (!_enabled) return;
+  // Paused mid-flight: intermediate views are not worth a fetch, and the
+  // arrival/jump-end hook reloads the destination as soon as the camera lands.
+  if (!_enabled || _fetchPauses.size > 0) return;
 
   const alt = getCameraAltitude();
 
@@ -1179,6 +1303,17 @@ function onCameraChanged() {
     return;
   }
 
+  // A view whose roads just failed waits out its backoff (noteRoadsFailure).
+  // A real move elsewhere, or a location switch, loads at once.
+  if (
+    _roadsFailedBounds
+    && Date.now() < _roadsRetryAt
+    && boundsOverlap(clamped, _roadsFailedBounds, OVERLAP_THRESHOLD)
+    && distanceKm(center, getBoundsCenter(_roadsFailedBounds)) < MIN_CENTER_SHIFT_KM
+  ) {
+    return;
+  }
+
   // Debounce: wait for camera to settle before triggering a fetch. In debug
   // captures the final changed event that arms this exact timeout is its
   // causal anchor; Cesium's later moveEnd notification is diagnostic only.
@@ -1190,11 +1325,15 @@ function onCameraChanged() {
   );
 }
 
-/** Abort any in-flight Overpass fetch and clear the controller reference. */
+/** Abort any in-flight road/flow fetch and the flow warm-up, and clear their controller references. */
 function cancelActiveFetch() {
   if (_activeFetchAbort) {
     _activeFetchAbort.abort();
     _activeFetchAbort = null;
+  }
+  if (_flowWarmAbort) {
+    _flowWarmAbort.abort();
+    _flowWarmAbort = null;
   }
 }
 
@@ -1231,6 +1370,11 @@ export function deriveTrafficFlowError(error) {
  *  - live and healthy → LIVE with real coverage;
  *  - live but flow-down → an `error` string, so the chip degrades and says
  *    the colors on screen are simulated. Never a stale "LIVE · N% cov".
+ *  - no road geometry at all (tiles and the Overpass fallback both failed) →
+ *    ROADS UNAVAILABLE in either mode: there are no dots, simulated or live.
+ *  - some roads missing (`roadsError: 'partial'`) → a ROADS PARTIAL error, so
+ *    the chip degrades while the view retries; beside a flow outage it is a
+ *    suffix on the SIMULATED copy.
  *
  * @param {Object} [input]
  * @param {boolean} [input.liveMode] - `/api/tomtom/status` reported a key.
@@ -1238,6 +1382,7 @@ export function deriveTrafficFlowError(error) {
  * @param {string|null} [input.flowError] - `deriveTrafficFlowError` result, if any.
  * @param {number} [input.coveragePct] - Matched-road coverage, 0–100.
  * @param {boolean} [input.statusUnavailable] - The status probe itself failed.
+ * @param {'unavailable'|'partial'|null} [input.roadsError] - No road geometry, or some missing, for the view.
  * @returns {{mode:'live'|'sim', error:string|null, loadingLabel:string}}
  */
 export function trafficFeedPresentation({
@@ -1246,18 +1391,31 @@ export function trafficFeedPresentation({
   flowError = null,
   coveragePct = 0,
   statusUnavailable = false,
+  roadsError = null,
 } = {}) {
   // `mode` is the CONFIGURED source (live key present vs keyless), not this
   // instant's health — health rides on `error`. The qa-traffic harness pins
   // that meaning.
   const mode = liveMode ? 'live' : 'sim';
+  const roadsPartial = roadsError === 'partial';
+  if (roadsError && !roadsPartial) {
+    // Without roads nothing renders at all, so this outranks the flow state.
+    // One string for both fields, for the same reason as the flow outage below.
+    const missing = 'ROADS UNAVAILABLE — road tiles and Overpass unreachable';
+    return { mode, error: missing, loadingLabel: missing };
+  }
   if (liveMode && flowError) {
     // One string for both fields. The manager's meta line renders `error` and
     // drops `loadingLabel` in its error branch, so the owner's SIMULATED copy
     // has to BE the error text or the steady state reverts to a bare
     // "TomTom daily budget reached" that never says what is on screen.
-    const degraded = `SIMULATED — ${flowError}`;
+    const degraded = `SIMULATED — ${flowError}${roadsPartial ? ' · ROADS PARTIAL' : ''}`;
     return { mode, error: degraded, loadingLabel: degraded };
+  }
+  if (roadsPartial) {
+    // Dots are on screen but some roads are missing; the view is retrying.
+    const partial = 'ROADS PARTIAL — some road tiles failed, retrying';
+    return { mode, error: partial, loadingLabel: partial };
   }
   if (liveMode) {
     return {
@@ -2019,9 +2177,17 @@ const _loadRoadsForBounds = TRAFFIC_TIMING_ENABLED
  *  1. Check the tile cache (keyed by clamped bounding-box coordinates).
  *     - If a full road set is cached, render immediately and return.
  *     - If only major roads are cached, render those first.
- *  2. Fetch major roads from Overpass (fast, small payload). Render.
+ *  2. Fetch major roads (z12 road tiles; Overpass only if they fail). Render.
  *  3. If altitude is low enough (< FAST_FETCH_ALTITUDE), fetch the full
- *     road graph (includes tertiary/residential). Render again to upgrade.
+ *     road graph (z14 tiles: adds tertiary and residential, never service
+ *     roads or ramps, like the Overpass full query). Render again to upgrade.
+ *
+ * A partial tile answer renders but is not cached. A load that leaves the view
+ * without all its roads sets `roadsError` ('unavailable' when nothing
+ * rendered, 'partial' when some roads did: a pass answered partial, or the
+ * full pass failed after the major render), rolls the last-fetch gate back and
+ * retries the same view after a backoff, even with the camera parked
+ * (noteRoadsFailure). Only a complete load clears it.
  *
  * Each fetch is guarded by a monotonic `_loadGeneration` counter so that
  * stale responses from superseded requests are silently discarded.
@@ -2041,25 +2207,37 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
   // Cache key: fixed-precision bounding-box string for deterministic lookups
   const cacheKey = `${clamped.south.toFixed(4)},${clamped.west.toFixed(4)},${clamped.north.toFixed(4)},${clamped.east.toFixed(4)}`;
 
-  // Live mode: warm the flow-tile cache CONCURRENTLY with the Overpass road
+  // Live mode: warm the flow-tile cache CONCURRENTLY with the road
   // fetch — sequential fetches doubled first-paint latency (field-test
   // round 1). Failures are irrelevant; applyFlowToRoads settles the truth.
+  // The warm-up owns its controller so cancelActiveFetch (next load, disable,
+  // location switch) still stops it after the road pass that started it has
+  // finished and dropped its own.
+  const warmAbort = new AbortController();
+  _flowWarmAbort = warmAbort;
   ensureFlowStatus().then(() => {
-    if (_liveMode && _enabled && generation === _loadGeneration) {
-      fetchFlowForBounds(clamped, {}).catch(() => { /* warm-up only */ });
+    if (_liveMode && _enabled && generation === _loadGeneration && !warmAbort.signal.aborted) {
+      return fetchFlowForBounds(clamped, { signal: warmAbort.signal });
     }
+    return null;
+  }).catch(() => { /* warm-up only */ }).finally(() => {
+    if (_flowWarmAbort === warmAbort) _flowWarmAbort = null;
   });
 
   _fetching = true;
-  // Only COMMIT these on success. Committing up-front means a failed Overpass
-  // fetch (rate-limited / feed down) still trips the overlap gate in
-  // onCameraChanged, so a stationary user never retries (H3/H5). Stage the
-  // prospective values and roll back if nothing rendered.
+  // Only COMMIT these once the view is complete. Committing up-front means a
+  // failed road fetch (rate-limited / feed down) still trips the overlap gate
+  // in onCameraChanged, so a stationary user never retries (H3/H5). Stage the
+  // prospective values and roll back unless every road loaded.
   const prevBounds = _lastBounds;
   const prevViewCenter = _lastViewCenter;
   _lastBounds = clamped;
   _lastViewCenter = getBoundsCenter(clamped);
   let renderedSomething = false;
+  // Roads are missing from what rendered: a pass answered partial.
+  let incomplete = false;
+  // A pass threw (both road sources failed, or render/parse failed).
+  let failed = false;
 
   try {
     let cache = _tileCache.get(cacheKey);
@@ -2078,6 +2256,7 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
     // but congestion data has a 120s shelf life. The race renders within
     // FLOW_RENDER_RACE_MS either way; late flow recolors in place.
     if (cache.full) {
+      _roadSource = 'cache';
       renderedSomething = await applyFlowThenRender(
         cache.full, clamped, generation, altitude, 'Cache full', trace
       );
@@ -2086,6 +2265,7 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
 
     // Intermediate path: render cached major roads while fetching the rest
     if (cache.major) {
+      _roadSource = 'cache';
       if (!await applyFlowThenRender(
         cache.major, clamped, generation, altitude, 'Cache major', trace
       )) return;
@@ -2094,16 +2274,21 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
       // Fetch major roads first (smaller payload, faster response)
       _activeFetchAbort = new AbortController();
       console.log(`[Data:Traffic] Fast fetch major roads [${cacheKey}]`);
-      const majorData = await fetchRoads(
-        clamped.south, clamped.west, clamped.north, clamped.east,
+      const majorData = await fetchRoadGeometry(
+        clamped,
         { majorOnly: true, timeoutSec: 12, signal: _activeFetchAbort.signal },
         trace,
       );
       // Discard stale response if a newer load was triggered while waiting
       if (generation !== _loadGeneration) return;
-      cache.major = _parseRoads(majorData, trace);
+      const majorRoads = _parseRoads(majorData, trace);
+      // A partial answer (some road tiles failed) renders but is not kept, and
+      // marks the load incomplete, so the view is retried after a backoff and
+      // the retry asks only for the missing tiles (decoded tiles are cached).
+      if (majorData?.partial) incomplete = true;
+      else cache.major = majorRoads;
       if (!await applyFlowThenRender(
-        cache.major, clamped, generation, altitude, 'Loaded major', trace
+        majorRoads, clamped, generation, altitude, 'Loaded major', trace
       )) return;
       renderedSomething = true;
     }
@@ -2114,30 +2299,42 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
     // Detailed pass: fetch the full road graph (tertiary, residential, etc.)
     _activeFetchAbort = new AbortController();
     console.log(`[Data:Traffic] Full fetch local roads [${cacheKey}]`);
-    const fullData = await fetchRoads(
-      clamped.south, clamped.west, clamped.north, clamped.east,
+    const fullData = await fetchRoadGeometry(
+      clamped,
       { majorOnly: false, timeoutSec: 20, signal: _activeFetchAbort.signal },
       trace,
     );
     if (generation !== _loadGeneration) return;
 
-    cache.full = _parseRoads(fullData, trace);
+    const fullRoads = _parseRoads(fullData, trace);
+    if (fullData?.partial) incomplete = true;
+    else cache.full = fullRoads;
     if (!await applyFlowThenRender(
-      cache.full, clamped, generation, altitude, 'Loaded full', trace
+      fullRoads, clamped, generation, altitude, 'Loaded full', trace
     )) return;
     renderedSomething = true;
 
   } catch (e) {
     if (e?.name === 'AbortError') return;
     console.warn('[Data:Traffic] Fetch error:', e);
+    failed = true;
   } finally {
     if (generation === _loadGeneration) {
       _fetching = false;
-      // Roll back the bounds commit if this load rendered nothing (e.g. the
-      // Overpass fetch failed). Leaving them committed would make the overlap
-      // gate skip the retry while the user sits still. Guarded on generation so
-      // a superseding load's commit is not clobbered.
-      if (!renderedSomething) {
+      const complete = renderedSomething && !failed && !incomplete;
+      if (complete) {
+        clearRoadsFailure();
+      } else if (failed || incomplete) {
+        // Say so, and retry the same view after a backoff instead of every
+        // load-kick tick: 'partial' keeps what rendered (e.g. the major roads
+        // when the full pass failed), 'unavailable' means nothing did.
+        noteRoadsFailure(clamped, renderedSomething ? 'partial' : 'unavailable');
+      }
+      // Roll back the bounds commit unless every road loaded. Leaving them
+      // committed would make the overlap gate skip the retry while the user
+      // sits still. Guarded on generation so a superseding load's commit is
+      // not clobbered.
+      if (!complete) {
         _lastBounds = prevBounds;
         _lastViewCenter = prevViewCenter;
       }
@@ -2159,6 +2356,164 @@ function clearDots() {
   _closedRoads = 0;
 }
 
+// ─── Location Switch ───────────────────────────────────────
+
+/** @const {number} Km — parsed road sets whose fetch box centre lies within this of a switch destination are kept */
+const TILE_CACHE_KEEP_KM = 25;
+/**
+ * @const {number} Ms — longest a location switch or world jump may pause
+ * loading before the layer resumes on its own. Location flights land within
+ * a few seconds (the shell's world-jump safety finalize is 5.2 s), but a
+ * cancelled flight never reports arrival and must not leave traffic dead.
+ */
+const FETCH_PAUSE_MAX_MS = 15000;
+/** @const {number} Ms between load-kick viewport re-checks */
+const LOAD_KICK_MS = 1500;
+/** @const {number} Load-kick re-checks after an arrival before giving up (the view may simply stay above 8 km) */
+const ARRIVAL_KICK_MAX_TRIES = 8;
+/** @const {number} Load-kick re-checks past a road retry's due time, in case the due tick found a load in flight */
+const ROADS_RETRY_KICK_SPARE_TRIES = 3;
+/** @const {string} Pause owner for a location switch (onLocationLeave → onLocationArrive) */
+const PAUSE_LOCATION = 'location';
+/** @const {string} Pause owner for an inter-city world jump (beginWorldJump → endWorldJump) */
+const PAUSE_WORLD_JUMP = 'world-jump';
+
+/**
+ * Pick the tile-cache keys a location switch should release.
+ *
+ * Keys are the "s,w,n,e" strings `loadRoadsForBounds` writes. A key whose box
+ * centre lies more than `radiusKm` from `point` is away from the destination.
+ * A missing point, or a key that does not parse, also selects the entry:
+ * releasing is the safe direction, since the road tile proxy's disk cache
+ * still answers a revisit.
+ *
+ * @param {Iterable<string>} keys - Tile-cache keys.
+ * @param {{lat:number, lon:number}|null} point - Switch destination in degrees.
+ * @param {number} radiusKm - Keep radius in kilometres.
+ * @returns {string[]} Keys to evict.
+ */
+export function tileCacheKeysAwayFrom(keys, point, radiusKm) {
+  const away = [];
+  for (const key of keys) {
+    const [south, west, north, east] = String(key).split(',').map(Number);
+    const lat = (south + north) / 2;
+    const lon = (west + east) / 2;
+    const near = Boolean(point)
+      && Number.isFinite(lat)
+      && Number.isFinite(lon)
+      && greatCircleKm(lat, lon, point.lat, point.lon) <= radiusKm;
+    if (!near) away.push(key);
+  }
+  return away;
+}
+
+/**
+ * Re-check the viewport every LOAD_KICK_MS until a load newer than `baseline`
+ * renders, the layer is disabled, or `maxTries` checks have run. Covers a
+ * camera that parks without firing camera.changed, and a fetch that failed
+ * while parked (the rolled-back last-fetch gate lets the retry through).
+ *
+ * @param {number|null} baseline - `_lastUpdate` when armed; null waits for any render.
+ * @param {number} [maxTries=Infinity] - Checks before the kick gives up.
+ */
+function armLoadKick(baseline, maxTries = Infinity) {
+  clearInterval(_enableKickTimer);
+  let tries = 0;
+  _enableKickTimer = setInterval(() => {
+    if (!_enabled || (_lastUpdate && _lastUpdate !== baseline) || tries >= maxTries) {
+      clearInterval(_enableKickTimer);
+      _enableKickTimer = null;
+      return;
+    }
+    tries += 1;
+    if (!_fetching) onCameraChanged();
+  }, LOAD_KICK_MS);
+}
+
+/**
+ * Pause camera-driven loading for `reason` and drop the old view.
+ *
+ * Cancels the pending debounce, the load kick and every in-flight road, flow
+ * and warm-up request, then bumps the load generation so continuations already
+ * past their await (road parse, flow match, late recolor) discard their
+ * results. The last-fetch gate is forgotten so the destination always loads
+ * fresh, the old view's dots and heat-lines are removed, and the
+ * continuous-render hold is dropped while nothing animates. The layer stays
+ * enabled: the camera listener, percentageChanged, persisted params and the
+ * session's live/sim decision are untouched. Idempotent.
+ *
+ * @param {string} reason - Pause owner (PAUSE_LOCATION or PAUSE_WORLD_JUMP).
+ */
+function pauseCameraFetching(reason) {
+  _fetchPauses.add(reason);
+  clearTimeout(_fetchTimeout);
+  _fetchTimeout = null;
+  clearInterval(_enableKickTimer);
+  _enableKickTimer = null;
+  cancelActiveFetch();
+  _loadGeneration++;
+  // The superseded load's finally only settles its own generation, so it would
+  // leave this set: stats would read loading for the whole flight and the
+  // kick's `!_fetching` retry would never fire after arrival.
+  _fetching = false;
+  _lastBounds = null;
+  _lastViewCenter = null;
+  _flowError = null;
+  _flowCoveragePct = 0;
+  // A new place (or a jump) starts without the old view's road failure.
+  clearRoadsFailure();
+  _roadSource = null;
+  clearDots();
+  releaseContinuousRender('traffic');
+  clearTimeout(_fetchPauseWatchdog);
+  _fetchPauseWatchdog = setTimeout(() => {
+    _fetchPauseWatchdog = null;
+    resumeCameraFetching(null);
+  }, FETCH_PAUSE_MAX_MS);
+}
+
+/**
+ * Release a pause owner (null releases every owner, for the watchdog). Once
+ * none remain on an enabled layer, restore the render hold and check the
+ * current view right away instead of waiting for the next camera change, with
+ * a bounded kick for a camera still settling or a first fetch that fails.
+ *
+ * @param {string|null} reason - Pause owner to release, or null for all.
+ */
+function resumeCameraFetching(reason) {
+  if (reason) _fetchPauses.delete(reason);
+  else _fetchPauses.clear();
+  if (_fetchPauses.size > 0) return;
+  clearTimeout(_fetchPauseWatchdog);
+  _fetchPauseWatchdog = null;
+  if (!_enabled) return;
+  holdContinuousRender('traffic');
+  _lastAnimTime = 0;
+  armLoadKick(_lastUpdate, ARRIVAL_KICK_MAX_TRIES);
+  onCameraChanged();
+}
+
+/**
+ * Release client memory held for places away from a switch destination:
+ * parsed road sets whose fetch box centre lies more than TILE_CACHE_KEEP_KM
+ * from `to` (all of them when `to` carries no coordinates), decoded road tiles
+ * on the same rule, and every decoded flow tile (a 120 s cache the proxy
+ * refills cheaply). Memory only: nothing on disk is touched, and the road tile
+ * proxy's disk cache still answers a revisit.
+ *
+ * @param {{lat?:number, lon?:number}|null|undefined} to - Switch destination.
+ */
+function releaseAreaCachesAwayFrom(to) {
+  const keep = Number.isFinite(to?.lat) && Number.isFinite(to?.lon)
+    ? { lat: to.lat, lon: to.lon }
+    : null;
+  for (const key of tileCacheKeysAwayFrom(_tileCache.keys(), keep, TILE_CACHE_KEEP_KM)) {
+    _tileCache.delete(key);
+  }
+  releaseRoadTilesAwayFrom(keep, TILE_CACHE_KEEP_KM);
+  resetFlowTileCache();
+}
+
 // ─── Data Layer Interface ──────────────────────────────────
 
 /**
@@ -2173,7 +2528,8 @@ const trafficLayer = {
   id: 'traffic',
   name: 'Street Traffic',
   icon: '🚗',
-  source: 'OpenStreetMap',
+  // OpenFreeMap requires this attribution wherever its road geometry is shown.
+  source: ROAD_TILES_ATTRIBUTION,
   /** @type {number} Zero — layer is self-managed via camera listener + preRender */
   updateInterval: 0,
 
@@ -2204,6 +2560,8 @@ const trafficLayer = {
     _lastViewCenter = null;
     _flowCoveragePct = 0;
     _flowError = null;
+    clearRoadsFailure();
+    _roadSource = null;
     if (TRAFFIC_TIMING_ENABLED) {
       _trafficTimingCurrentAnchor = null;
       _trafficTimingSequence = 0;
@@ -2268,15 +2626,7 @@ const trafficLayer = {
     // that then parks never re-fires camera.changed. Retry cheaply until the
     // first load commits, then self-clear. Also acts as a safety kick if a
     // failed first fetch left the viewport unloaded while parked.
-    clearInterval(_enableKickTimer);
-    _enableKickTimer = setInterval(() => {
-      if (!_enabled || _lastUpdate) {
-        clearInterval(_enableKickTimer);
-        _enableKickTimer = null;
-        return;
-      }
-      if (!_fetching) onCameraChanged();
-    }, 1500);
+    armLoadKick(null);
   },
 
   /**
@@ -2291,6 +2641,11 @@ const trafficLayer = {
     clearTimeout(_fetchTimeout);
     clearInterval(_enableKickTimer);
     _enableKickTimer = null;
+    // No arrival or jump-end reaches a disabled layer, so a pause would
+    // outlive it; the next enable starts unpaused.
+    _fetchPauses.clear();
+    clearTimeout(_fetchPauseWatchdog);
+    _fetchPauseWatchdog = null;
     cancelActiveFetch();
     _loadGeneration++;
     clearDots();
@@ -2298,6 +2653,8 @@ const trafficLayer = {
     // A stale outage from the last session would misreport a fresh enable —
     // the next load re-derives feed health from real evidence.
     _flowError = null;
+    clearRoadsFailure();
+    _roadSource = null;
 
     if (_preRenderRemover) {
       _preRenderRemover();
@@ -2327,6 +2684,70 @@ const trafficLayer = {
    */
   async update() {
     // No-op — updates are camera-driven
+  },
+
+  // No `refreshOnLocationArrive`: update() is a no-op, so the manager's extra
+  // refresh after arrival would do nothing. onLocationArrive reloads instead.
+
+  /**
+   * Location-switch leave hook (DataLayerManager contract), called for every
+   * initialized layer as the flight to a different region begins. When
+   * enabled, camera-driven loading pauses until `onLocationArrive`: the pending
+   * debounce and in-flight road/flow requests are cancelled, stale
+   * continuations are invalidated, and the old view's dots and heat-lines are
+   * removed. Enabled or not, parsed roads away from `to` and the decoded flow
+   * tiles are released. Synchronous, network-free, idempotent; never throws.
+   *
+   * @param {Object} [context]
+   * @param {{lat:number, lon:number}|null} [context.to] - Switch destination.
+   */
+  onLocationLeave(context) {
+    try {
+      if (_enabled) pauseCameraFetching(PAUSE_LOCATION);
+      releaseAreaCachesAwayFrom(context?.to);
+    } catch (e) {
+      console.warn('[Data:Traffic] Location leave cleanup failed:', e?.message || e);
+    }
+  },
+
+  /**
+   * Location-switch arrive hook, called once the camera has arrived (enabled
+   * layers only). Lifts the leave pause and loads the current view right away.
+   * An aborted signal means a newer switch now owns the pause, so it stays.
+   *
+   * @param {Object} [context]
+   * @param {AbortSignal} [context.signal] - Switch signal.
+   */
+  onLocationArrive(context) {
+    try {
+      if (context?.signal?.aborted) return;
+      resumeCameraFetching(PAUSE_LOCATION);
+    } catch (e) {
+      console.warn('[Data:Traffic] Location arrive reload failed:', e?.message || e);
+    }
+  },
+
+  /**
+   * Inter-city jump start (`_beginWorldJumpTransition` in the application
+   * shell). Pauses camera-driven loading and drops the old view's dots for the
+   * flight, like `onLocationLeave`, but keeps every cache: a same-region jump
+   * can come straight back.
+   */
+  beginWorldJump() {
+    try {
+      if (_enabled) pauseCameraFetching(PAUSE_WORLD_JUMP);
+    } catch (e) {
+      console.warn('[Data:Traffic] World jump pause failed:', e?.message || e);
+    }
+  },
+
+  /** Inter-city jump end: lift the jump pause and load the current view. */
+  endWorldJump() {
+    try {
+      resumeCameraFetching(PAUSE_WORLD_JUMP);
+    } catch (e) {
+      console.warn('[Data:Traffic] World jump resume failed:', e?.message || e);
+    }
   },
 
   /**
@@ -2443,6 +2864,7 @@ const trafficLayer = {
     removeHeatLines();
     _tileCache.clear();
     resetFlowTileCache();
+    resetRoadTileCache();
     _count = 0;
     _lastUpdate = null;
   },
@@ -2456,9 +2878,14 @@ const trafficLayer = {
    * LIVE coverage number. `flowCoveragePct` is matched roads / roads with any
    * flow candidates (0–100 int); `tilesFetched` counts flow-tile requests
    * issued to the proxy this session (decode-cache hits excluded).
+   * `roadsError` is 'unavailable' while the view on screen got no road
+   * geometry from the road tiles or the Overpass fallback, and 'partial'
+   * while some of its roads are missing and the view is retrying (either one
+   * also drives `error`); `roadSource` names where the rendered roads came from.
    * @returns {{count:number, lastUpdate:number|null, loading:boolean,
    *   mode:'live'|'sim', error:string|null, flowCoveragePct:number,
-   *   tilesFetched:number}}
+   *   tilesFetched:number, roadsError:'unavailable'|'partial'|null,
+   *   roadSource:'tiles'|'overpass'|'cache'|null, roadTilesFetched:number}}
    */
   getStats() {
     // Outstanding flow work counts as loading: the paint race can leave a
@@ -2471,6 +2898,7 @@ const trafficLayer = {
       flowError: _flowError,
       coveragePct: _flowCoveragePct,
       statusUnavailable: _flowStatusUnavailable,
+      roadsError: _roadsError,
     });
     return {
       count: _count,
@@ -2480,6 +2908,10 @@ const trafficLayer = {
       error: feed.error,
       flowCoveragePct: _flowCoveragePct,
       tilesFetched: getFlowSessionStats().tilesFetched,
+      // Road geometry health (additive): see the JSDoc above.
+      roadsError: _roadsError,
+      roadSource: _roadSource,
+      roadTilesFetched: getRoadTileSessionStats().tilesFetched,
       ...(TRAFFIC_TIMING_ENABLED ? { trafficTiming: getTrafficTimingDiagnostics() } : {}),
       // Per-bucket rendered-dot counts (sim = white ambient). Drives the
       // qa-traffic color assertions and the sync-chip mode label below.

@@ -207,6 +207,45 @@ responses are cancelled. Buffered snapshots have a 16 MiB streaming cap; an
 oversized image remains an upstream miss and uses the normal fallback chain.
 The existing declared media size ceiling remains 64 MiB.
 
+CCTV sources load by area. `GET /api/cctv/sources` needs `lat` and `lon`;
+`radiusKm` is clamped to 0.5–50 km and defaults to 50. It returns at most 2,500
+cameras, nearest first with `distKm`, plus an `area` summary (`inArea`,
+`loaded`, `dropped`, `capped`, `total`, `generation`, `pending`); the cap
+cannot be raised. A request without a valid point returns no sources and
+`area.pointRequired: true`, never the whole catalogue. Responses are gzipped
+when the client accepts it. Live pack lists (Austin, Caltrans, TfL) download
+only when a selected area overlaps their coverage and are cached in memory and
+on disk for 24 h; `area.pending` names packs still downloading, and the browser
+refetches once about 5 s later.
+
+`POST /api/cctv/lookup/:id` is the only route that calls Road511, and only an
+explicit camera selection in the browser sends it. It accepts a same-origin JSON
+POST, allows 30 requests a minute per client and 120 overall, and resolves only
+catalogue cameras marked for lookup with a valid feature id. Upstream calls are
+spaced at least 1 s apart (a caller waits at most 5 s, otherwise `busy`), time
+out after 8 s and read at most 256 KB. Resolved and no-image answers are cached
+for 24 h in memory and in `.gev-cache/road511-lookups.json` (20,000 entries);
+5xx answers and timeouts back off, and 401/403 pauses lookups as `key-rejected`.
+`ROAD511_API_KEY` is read from `process.env` on every call.
+
+`GET /api/cctv/frame/:id` ignores query position, label and heading and uses
+catalogue values. An unknown id or a camera without a still gets a generated
+placeholder and no upstream call. Stills are cached for 8 s (256 entries,
+24 MiB), and one upstream fetch per camera is shared. Each upstream host gets at
+most 2 concurrent requests 250 ms apart, with a queue of 32 that waits up to
+4 s; a 429 or 503 blocks the host for 60 s, up to 10 minutes. The failure map
+holds at most 5,000 entries. IBI 511 hosts (still URLs containing `/map/Cctv/`)
+are limited to 20 requests a minute and 1,000 a day per host, with daily
+counters in `.gev-cache/cctv-host-budget.json`. The open camera goes first:
+sources carry `activeFrameRefreshMs` (60 s) for it and `frameRefreshMs` (15 min)
+for cards, and a spent budget serves the last good still up to 60 minutes old or
+a `511 LIMIT REACHED` placeholder. The Street View fallback runs only with
+`CCTV_STREETVIEW_FALLBACK=1` and only for the open camera (`active=1`).
+
+Traffic road geometry comes from OpenFreeMap vector tiles through
+`GET /api/roads/tiles/{z}/{x}/{y}.pbf` (z 0–14, disk-cached; versioned tiles are
+immutable). Overpass remains a fallback with a per-mirror circuit breaker.
+
 
 ## GBFS upstream bounds
 
@@ -432,9 +471,9 @@ they do not reduce the materialized entity count or establish an FPS gain.
 
 ## CCTV launcher and proxy failure responses
 
-`scripts/dev-cctv.sh` delegates startup to `scripts/dev-fresh.sh`. It retains
-its Austin source file, Austin preference, 36-camera Austin limit, and 48-camera
-total limit, with environment overrides. Keys are optional; credential loading
+`scripts/dev-cctv.sh` delegates startup to `scripts/dev-fresh.sh`. It sets only
+its small Austin source file, with an environment override; no launcher sets a
+CCTV pack default or cap, so the server's area cap applies. Keys are optional; credential loading
 and names-only provider provenance follow the normal launcher. The default
 binding is localhost. An explicit `HOST=0.0.0.0` uses the same LAN warning as
 normal startup.
@@ -2117,8 +2156,8 @@ its criteria cannot be silently ignored.
 | Earthquakes | USGS | `src/data/earthquakes.js` | — | 60s |
 | Satellites | CelesTrak | `src/data/satellites.js` | `/api/celestrak` | 120s |
 | Space Missions (30d) | Launch Library 2 + CelesTrak | `src/data/rocketLaunches.js` | `/api/launches` + `/api/celestrak/active` | 5 min |
-| Traffic | OSM Overpass (+ optional TomTom live flow) | `src/data/traffic.js` | `/api/overpass` + `/api/tomtom` | viewport-driven |
-| CCTV | Austin + Caltrans (CA) + TfL London Open Data + Street View fallback | `src/data/cctv.js` | `/api/cctv` | 10s (active) |
+| Traffic | OpenFreeMap vector tiles (OSM data; Overpass fallback) (+ optional TomTom live flow) | `src/data/traffic.js` | `/api/roads/tiles` + `/api/overpass` + `/api/tomtom` | viewport-driven |
+| CCTV | Canadian + US state DOT packs, Austin + Caltrans (CA) + TfL London live packs by area, Road511 lookup on open, opt-in Street View fallback | `src/data/cctv.js` | `/api/cctv` | 10s (active) |
 | Radio | Radio Browser (public-domain station directory) | `src/data/radio.js` | `/api/radio/stations`, `/api/radio/click/:uuid` | 45 min directory refresh |
 | Bikeshare 🚲 | GBFS (Lyft + BCycle) | `src/data/bikeshare.js` | `/api/gbfs` | 60s |
 | Datacenters ▣ | OSM extract (bundled) | `src/data/localLayers.js` | — | static |
@@ -2469,7 +2508,8 @@ silently demoting every later lookup for the session.
   default 36 → 250, hard bound 300), filtered to `camera_status === TURNED_ON` (~815 live of
   1,003 rows). City packs (2026-07-04): Caltrans (districts 4/7/11/3 — SF, LA, San Diego,
   Sacramento; cap 300) and TfL London JamCams (cap 250) join Austin (cap 250) as keyless default
-  sources — ~800 cameras total, all RAW PRIOR poses, stills-first.
+  sources — ~800 cameras total, all RAW PRIOR poses, stills-first. (These pack caps and default
+  districts were retired 2026-09-14 in favor of area loading; see "Places and CCTV request bounds".)
 - **CCTV v3 UX — viewshed + calibration gizmo** (built 2026-07-05 and field
   validated 2026-07-21): the COVERAGE toggle is a
   tri-state cycle `OFF → ON → VIEWSHED`; viewshed mode renders each visible camera's frustum
@@ -2812,8 +2852,8 @@ are omitted rather than framing the wrong part of the globe.
 - OpenSky default mode: OAuth (`OPENSKY_AUTH_MODE=oauth`; `anon` works without credentials)
 - Google key expected in Keychain service `google-maps-api` (or `GOOGLE_MAPS_API_KEY`, or `.env`)
 - OpenSky credentials expected in Keychain service `opensky-network` (or env, or `.env`); `OPENSKY_AUTH_MODE` and `OPENSKY_CREDENTIALS_FILE` read from `.env` too
-- Optional-key precedence in `dev-fresh.sh` is uniform — explicit shell env, then `.env`, then Keychain: `OPENAI_API_KEY` (Keychain `openai-api`/`api-key` — voice + HUD summary), `AISSTREAM_API_KEY` (`aisstream-api`/`api-key` — live vessels), `CESIUM_ION_TOKEN` (`cesium-ion`/`token` — Bing stacks), `TOMTOM_API_KEY` (`tomtom-api`/`api-key` — live traffic flow), `FIRMS_MAP_KEY` (`firms-map`/`map-key` — live fires), `LL2_API_TOKEN` (`.env` only)
-- An empty string is not "unset" on either side of the launcher, and both sides are handled. `scripts/read-dotenv-value.mjs` hides the requested key from `process.env` for the duration of the read (Vite's `loadEnv` otherwise lets an inherited empty export win over the parsed files) and restores it after. A key the launcher resolves to nothing is then removed from the dev server's environment outright (`env -u`), not merely omitted — the child inherits this shell's environment, and Vite backfills `.env` only over undefined variables, so an empty export in either place would shadow a configured key. `CCTV_CALTRANS_DISTRICTS` is the deliberate exception: empty is its documented Caltrans kill switch and is passed through as-is
+- Optional-key precedence in `dev-fresh.sh` is uniform — explicit shell env, then `.env`, then Keychain: `OPENAI_API_KEY` (Keychain `openai-api`/`api-key` — voice + HUD summary), `AISSTREAM_API_KEY` (`aisstream-api`/`api-key` — live vessels), `CESIUM_ION_TOKEN` (`cesium-ion`/`token` — Bing stacks), `TOMTOM_API_KEY` (`tomtom-api`/`api-key` — live traffic flow), `FIRMS_MAP_KEY` (`firms-map`/`map-key` — live fires), `LL2_API_TOKEN` (`.env` only), `ROAD511_API_KEY` (`.env` only — US camera image lookup)
+- An empty string is not "unset" on either side of the launcher, and both sides are handled. `scripts/read-dotenv-value.mjs` hides the requested key from `process.env` for the duration of the read (Vite's `loadEnv` otherwise lets an inherited empty export win over the parsed files) and restores it after. A key the launcher resolves to nothing is then removed from the dev server's environment outright (`env -u`), not merely omitted — the child inherits this shell's environment, and Vite backfills `.env` only over undefined variables, so an empty export in either place would shadow a configured key. The launcher sets no CCTV pack settings, so `CCTV_COUNTRIES`, `CCTV_CALTRANS_DISTRICTS` and `CCTV_TFL_ENABLED` reach the dev server exactly as the shell or `.env` gives them
 - `.env` supported via `.env.example` template
 
 ### Proxy/Security Baseline

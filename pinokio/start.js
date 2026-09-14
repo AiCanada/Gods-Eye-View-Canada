@@ -19,6 +19,7 @@ module.exports = {
           OPENSKY_CLIENT_SECRET: '{{env.OPENSKY_CLIENT_SECRET || ""}}',
           LL2_API_TOKEN: '{{env.LL2_API_TOKEN || ""}}',
           EARTHDATA_TOKEN: '{{env.EARTHDATA_TOKEN || ""}}',
+          ROAD511_API_KEY: '{{env.ROAD511_API_KEY || ""}}',
           NVIDIA_API_KEY: '{{env.NVIDIA_API_KEY || ""}}',
           XAI_API_KEY: '{{env.XAI_API_KEY || ""}}',
           ANTHROPIC_API_KEY: '{{env.ANTHROPIC_API_KEY || ""}}',

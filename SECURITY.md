@@ -21,6 +21,7 @@ The golden rule: **secret-bearing API keys stay on the server side.** The dev/pr
 | `AISSTREAM_API_KEY` | Server only | Server holds the AISStream websocket; browser polls the same-origin `/api/ais-live` cache |
 | OpenSky OAuth (`OPENSKY_CLIENT_ID/SECRET`) | Server only | Server mints + refreshes the token behind `/api/opensky` |
 | `GOOGLE_MAPS_SERVER_API_KEY` (optional, #33) | Server only | Server calls Places (`/api/google/nearby-places`, `/api/google/text-search`) and the Street View fallback with this key; falls back to `GOOGLE_MAPS_API_KEY` when unset |
+| `ROAD511_API_KEY` (optional) | Server only | Read from the server environment on every lookup. Road511 is called only after you open a US camera that has no public image (`POST /api/cctv/lookup/:id`); the browser gets back only the lookup state. The 24 h lookup cache on disk stores image URLs and states, never the key, and a rejected key is logged once without its value |
 
 ### Two deliberately client-side keys — restrict them
 
@@ -62,6 +63,7 @@ browser-key fallback for existing single-key setups.
 The data proxies under `server/providers/` are written so the browser cannot turn the server into an open relay:
 
 - **No arbitrary-URL fetching.** The CCTV frame proxy fetches only server-registered camera/frame URLs — clients cannot pass an upstream URL to fetch (SSRF mitigation). Other proxies target fixed upstream hosts.
+- **Camera lookups and frames are decided by the server.** `POST /api/cctv/lookup/:id` answers only a same-origin POST whose `Host` is one the server serves (Fetch Metadata, and `Origin` must match that `Host`), is rate-limited to 30 requests a minute per client and 120 overall, and resolves only catalogue cameras marked for Road511 lookup with a well-formed feature id; anything else answers without an upstream call. An image URL Road511 returns is used only when it is http(s) on a public host. `/api/cctv/frame/:id` ignores client-supplied position, label and heading parameters, makes no upstream call for an unknown id, and uses the Street View fallback only when `CCTV_STREETVIEW_FALLBACK=1` and only for the open camera. `/api/cctv/sources` needs a point and returns at most the 2,500 cameras nearest to it, never the whole catalogue.
 - **Radio is not an audio relay.** `/api/radio/stations` contacts only allowlisted Radio Browser HTTPS hosts and paths, rejects redirects, rejects any hostname with a loopback/private/link-local/metadata/non-public A or AAAA result, and pins each TLS connection to a validated address. It returns normalized public HTTPS stream URLs; `/api/radio/click/:uuid` applies the same destination policy and accepts only station IDs from the current bounded catalog. The browser then connects directly to the broadcaster after an explicit playback action, so the broadcaster sees the listener's IP address. GEV never proxies, caches, records, or redistributes audio.
 - **Response-size caps and timeouts** on proxied responses.
 - **Sanitized errors** — internal error details are not echoed back to clients.
@@ -78,7 +80,7 @@ cameras. They are deliberately separate from the public CCTV proxy and catalogue
   `config/private-cameras.json` — git-ignored and written through the same
   owner-only credential-store writer as `.env`. They are never logged, never
   sent to the browser (the panel sees only "saved" flags and masked addresses),
-  and never enter share links, the region cap or `/api/cctv/sources`.
+  and never enter share links, the area cap or `/api/cctv/sources`.
 - **Browser ↔ server.** Every `/api/private-cams/*` route answers only the
   machine running the server: the Provider Settings gate refuses LAN peers,
   tunnels, proxied requests, foreign `Host` headers (DNS rebinding) and any
@@ -194,8 +196,8 @@ from **GEV Arlo Feed Relay**, a personal unpacked Chrome extension in
 
 The dev server is a **key broker**: every server-side key above is spendable by anyone who can send HTTP requests to it. That shapes the defaults:
 
-- **Local-only by default.** `./scripts/dev-fresh.sh` (and the Vite config itself) bind to `localhost`, so only your machine can reach the server — and only local names are accepted (`allowedHosts` stays restricted, which also blunts DNS-rebinding tricks).
-- **LAN exposure is an explicit opt-in**: `HOST=0.0.0.0 ./scripts/dev-fresh.sh`. The launcher prints a prominent warning plus your LAN URL. Understand what opting in means: **every device on that network can drive the proxies and spend your OpenAI / Google / OpenSky / AISStream / TomTom / FIRMS quota** for as long as the server runs. Do this only on networks you trust.
+- **Local-only by default.** `./scripts/dev-fresh.sh` (and the Vite config itself) bind to `localhost`, so only your machine can reach the server — and only local names are accepted (`allowedHosts` stays restricted, which also blunts DNS-rebinding tricks). Vite applies `allowedHosts` only after plugin middleware, so it does not cover the `/api/*` proxy routes by itself. `POST /api/cctv/lookup/:id` and `POST /api/location-switch/release` check the `Host` against the served hosts themselves (`server/providers/common/allowed-hosts.js`); the other key-spending routes do not yet, so a foreign-`Host` request that reaches the port can still spend their quota.
+- **LAN exposure is an explicit opt-in**: `HOST=0.0.0.0 ./scripts/dev-fresh.sh`. The launcher prints a prominent warning plus your LAN URL. Understand what opting in means: **every device on that network can drive the proxies and spend your OpenAI / Google / OpenSky / AISStream / TomTom / FIRMS / Road511 quota** for as long as the server runs. Do this only on networks you trust.
 - **App-level throttles (opt-in):** `GEV_RATELIMIT_OPENAI_PER_MIN` and `GEV_RATELIMIT_GOOGLE_PER_MIN` cap the cost-bearing endpoints per client IP per minute (over-limit requests receive a sanitized `429`). They are **per-IP, process-local, in-memory guards** — they reset on restart and are **not billing caps**.
 - **Provider-side budgets are the real backstop.** For hard spend protection, configure limits where the money is: OpenAI platform usage limits, Google Cloud budget alerts + per-API quotas, and equivalent controls for any other keyed provider.
 - **Pinokio LAN and Cloudflare sharing are refused.** The current supported

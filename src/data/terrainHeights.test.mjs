@@ -19,6 +19,9 @@ import assert from 'node:assert/strict';
 import {
   resolveEllipsoidalGround,
   cachedEllipsoidalGround,
+  pruneTerrainHeightsOutside,
+  terrainHeightsSwitchGeneration,
+  terrainPointSurvivesSwitch,
 } from './terrainHeights.js';
 
 const AUSTIN = { lat: 30.2672, lon: -97.7431 };
@@ -361,4 +364,84 @@ test('resolveEllipsoidalGround: null and string heights cannot become real zeroe
       }
     );
   }
+});
+
+// --- Location switch: release the old place's heights ----------------------
+// These run LAST in this file: a prune deletes every entry outside its keep
+// radius, including the coordinates the tests above rely on.
+
+const TORONTO = { lat: 43.6532, lon: -79.3832 };
+const HAMILTON = { lat: 43.2557, lon: -79.8711 }; // ~58 km from Toronto
+const VANCOUVER = { lat: 49.2827, lon: -123.1207 }; // ~3,360 km from Toronto
+
+/** Fake proxy (ellipsoid = lon + lat) that logs each request's points. */
+function echoProxy(log) {
+  return async (url) => {
+    const u = new URL(String(url), 'http://internal');
+    const pts = u.searchParams.get('points').split(';').map((p) => p.split(',').map(Number));
+    log.push(pts);
+    return proxyResponse(pts);
+  };
+}
+
+test('pruneTerrainHeightsOutside: releases far heights, keeps the destination area warm', async () => {
+  pruneTerrainHeightsOutside(TORONTO, 300); // start from a cache holding nothing near anywhere below
+  await withFakeFetch(echoProxy([]), () => resolveEllipsoidalGround([TORONTO, HAMILTON, VANCOUVER]));
+  const generation = terrainHeightsSwitchGeneration();
+
+  assert.equal(pruneTerrainHeightsOutside(TORONTO, 300), 1);
+  assert.equal(cachedEllipsoidalGround(VANCOUVER.lat, VANCOUVER.lon), null, 'far height released');
+  assert.notEqual(cachedEllipsoidalGround(TORONTO.lat, TORONTO.lon), null, 'destination kept');
+  assert.notEqual(cachedEllipsoidalGround(HAMILTON.lat, HAMILTON.lon), null, 'nearby height kept');
+  assert.equal(terrainHeightsSwitchGeneration(), generation + 1, 'a prune starts a new switch generation');
+  assert.equal(pruneTerrainHeightsOutside(TORONTO, 300), 0, 'idempotent');
+});
+
+test('pruneTerrainHeightsOutside: an invalid centre or radius releases nothing', async () => {
+  await withFakeFetch(echoProxy([]), () => resolveEllipsoidalGround([VANCOUVER]));
+  const generation = terrainHeightsSwitchGeneration();
+  assert.equal(pruneTerrainHeightsOutside(null, 300), 0);
+  assert.equal(pruneTerrainHeightsOutside({ lat: Number.NaN, lon: 0 }, 300), 0);
+  assert.equal(pruneTerrainHeightsOutside(TORONTO, undefined), 0);
+  assert.notEqual(cachedEllipsoidalGround(VANCOUVER.lat, VANCOUVER.lon), null);
+  assert.equal(terrainHeightsSwitchGeneration(), generation, 'no queued lookup was made stale');
+});
+
+test('terrainPointSurvivesSwitch: the current generation always survives; a stale one keeps only the destination area', () => {
+  const generation = terrainHeightsSwitchGeneration();
+  assert.equal(terrainPointSurvivesSwitch(VANCOUVER.lat, VANCOUVER.lon, generation), true);
+  pruneTerrainHeightsOutside(TORONTO, 300);
+  assert.equal(terrainPointSurvivesSwitch(HAMILTON.lat, HAMILTON.lon, generation), true);
+  assert.equal(terrainPointSurvivesSwitch(VANCOUVER.lat, VANCOUVER.lon, generation), false);
+  assert.equal(terrainPointSurvivesSwitch(VANCOUVER.lat, VANCOUVER.lon, terrainHeightsSwitchGeneration()), true);
+});
+
+test('resolveEllipsoidalGround: a switch mid-resolve skips the chunks still queued for the old area', async () => {
+  // Two full chunks around Vancouver queued ahead of three Toronto points.
+  const old = Array.from({ length: 128 }, (_, i) => ({ lat: 49 + i * 0.001, lon: -123 }));
+  const destination = [
+    { lat: 43.701, lon: -79.401 },
+    { lat: 43.702, lon: -79.402 },
+    { lat: 43.703, lon: -79.403 },
+  ];
+  const log = [];
+  const echo = echoProxy(log);
+  let switched = false;
+  const out = await withFakeFetch(
+    async (url) => {
+      // The user picks Toronto while the first Vancouver chunk is on the wire.
+      if (!switched) {
+        switched = true;
+        pruneTerrainHeightsOutside(TORONTO, 300);
+      }
+      return echo(url);
+    },
+    () => resolveEllipsoidalGround([...old, ...destination]),
+  );
+  assert.equal(log.length, 2, 'the in-flight chunk plus one destination chunk; old chunk two never went out');
+  assert.equal(log[1].length, 3);
+  assert.equal(out[0].source, 'unresolved', 'the in-flight old-area result is not written back after the switch');
+  assert.equal(cachedEllipsoidalGround(old[0].lat, old[0].lon), null);
+  assert.equal(out[100].source, 'unresolved', 'a skipped point reports unresolved so its consumer re-queues it');
+  assert.deepEqual(out.slice(128).map((r) => r.source), ['reearth', 'reearth', 'reearth']);
 });

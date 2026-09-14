@@ -242,3 +242,170 @@ test('GIBS tiles: choosing a tile product draws one tile layer for its newest da
   assert.ok(!server.requests.some((url) => url.includes('/api/sst/l3/')));
   destroy();
 });
+
+// --- location switch ---------------------------------------------------------
+// The panel is not a DataLayerManager layer, so it hears switches on window as
+// `gev:location-switch` with detail.phase 'leave' | 'arrive'.
+
+/** Event target that counts location-switch listeners, plus a dispatcher. */
+function locationSwitchWindow() {
+  const target = new EventTarget();
+  const add = target.addEventListener.bind(target);
+  const remove = target.removeEventListener.bind(target);
+  let listeners = 0;
+  target.addEventListener = (type, fn, options) => {
+    if (type === 'gev:location-switch') listeners += 1;
+    add(type, fn, options);
+  };
+  target.removeEventListener = (type, fn, options) => {
+    if (type === 'gev:location-switch') listeners -= 1;
+    remove(type, fn, options);
+  };
+  return {
+    windowRef: target,
+    listeners: () => listeners,
+    switchPhase: (phase) => target.dispatchEvent(new CustomEvent('gev:location-switch', {
+      detail: { phase, from: null, to: null },
+    })),
+  };
+}
+
+/**
+ * Level-3 server whose meta answers wait for release() while `hold` is on.
+ * It ignores aborts on purpose, the way an answer already on the wire does.
+ */
+function heldServer() {
+  const requests = [];
+  const held = [];
+  const server = {
+    hold: false,
+    metaRequests: () => requests.filter((url) => url.includes('/api/sst/l3/meta')),
+    release() { for (const resolve of held.splice(0)) resolve(); },
+    fetchImpl: async (url) => {
+      requests.push(url);
+      if (url.includes('/api/sst/status')) return { ok: true, json: async () => STATUS };
+      if (server.hold) await new Promise((resolve) => { held.push(resolve); });
+      return { ok: true, status: 200, json: async () => META };
+    },
+  };
+  return server;
+}
+
+/** Microtask flush that does not depend on (possibly mocked) setTimeout. */
+const settle = async () => {
+  for (let i = 0; i < 6; i += 1) await new Promise((resolve) => setImmediate(resolve));
+};
+
+test('location switch: leave drops the old Level-3 view and holds camera refreshes while SST stays on', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { elements, documentRef } = fakeDom();
+  const viewer = fakeViewer();
+  const server = heldServer();
+  const events = locationSwitchWindow();
+  const destroy = initSeaSurfaceTemperaturePanel({
+    viewer, documentRef, windowRef: events.windowRef, fetchImpl: server.fetchImpl,
+  });
+  assert.equal(events.listeners(), 1);
+  elements['sst-enable-btn'].dispatch('click');
+  await settle();
+  assert.equal(viewer.added.length, 2, 'precondition: SST and fronts drawn for the first view');
+  assert.equal(server.metaRequests().length, 1);
+
+  // A camera-settle refresh already counting down for the old view.
+  viewer.moveEnd[0]();
+  events.switchPhase('leave');
+  assert.equal(viewer.added.length, 0, 'the old view\'s Level-3 images are removed');
+  assert.equal(elements['sst-enable-btn'].textContent, 'SST ON', 'the layer stays on');
+  t.mock.timers.tick(750);
+  await settle();
+  assert.equal(server.metaRequests().length, 1, 'the pending old-view refresh was cancelled');
+
+  // Camera settles during the flight wait for arrival.
+  viewer.moveEnd[0]();
+  t.mock.timers.tick(750);
+  await settle();
+  assert.equal(server.metaRequests().length, 1, 'nothing is requested for a mid-flight view');
+
+  destroy();
+  assert.equal(events.listeners(), 0, 'the disposer removes the window listener');
+});
+
+test('location switch: arrival asks once for the destination, even when the camera settles while it loads', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { elements, documentRef } = fakeDom();
+  const viewer = fakeViewer();
+  const server = heldServer();
+  const events = locationSwitchWindow();
+  const destroy = initSeaSurfaceTemperaturePanel({
+    viewer, documentRef, windowRef: events.windowRef, fetchImpl: server.fetchImpl,
+  });
+  elements['sst-enable-btn'].dispatch('click');
+  await settle();
+  events.switchPhase('leave');
+
+  const radians = (degrees) => (degrees * Math.PI) / 180;
+  viewer.camera.computeViewRectangle = () => ({
+    west: radians(150), south: radians(-40), east: radians(152), north: radians(-38),
+  });
+  server.hold = true;
+  events.switchPhase('arrive');
+  await settle();
+  assert.equal(server.metaRequests().length, 2);
+  assert.ok(
+    server.metaRequests()[1].includes(`bbox=${encodeURIComponent('149,-41,153,-37')}`),
+    'arrival asks for the destination view straight away',
+  );
+
+  // The flight's own moveEnd lands after arrival and would restart the request.
+  viewer.moveEnd[0]();
+  t.mock.timers.tick(750);
+  await settle();
+  assert.equal(server.metaRequests().length, 2, 'the same view already on its way is not asked again');
+
+  server.release();
+  await settle();
+  assert.equal(viewer.added.length, 2, 'the destination is drawn');
+  destroy();
+});
+
+test('location switch: an old-view answer that lands after leave is never drawn', async () => {
+  const { elements, documentRef } = fakeDom();
+  const viewer = fakeViewer();
+  const server = heldServer();
+  const events = locationSwitchWindow();
+  const destroy = initSeaSurfaceTemperaturePanel({
+    viewer, documentRef, windowRef: events.windowRef, fetchImpl: server.fetchImpl,
+  });
+  server.hold = true;
+  elements['sst-enable-btn'].dispatch('click');
+  await settle();
+  assert.equal(server.metaRequests().length, 1, 'precondition: the old view is loading');
+
+  events.switchPhase('leave');
+  server.release();
+  await settle();
+  assert.equal(viewer.added.length, 0, 'the aborted request\'s answer is dropped');
+  destroy();
+});
+
+test('location switch: GIBS tiles are global and stay through a switch', async () => {
+  const { elements, documentRef } = fakeDom();
+  const viewer = fakeViewer();
+  const server = fakeServer();
+  const events = locationSwitchWindow();
+  const destroy = initSeaSurfaceTemperaturePanel({
+    viewer, documentRef, windowRef: events.windowRef, fetchImpl: server.fetchImpl,
+  });
+  elements['sst-product-select'].value = 'modis-aqua-night';
+  elements['sst-product-select'].dispatch('change');
+  elements['sst-enable-btn'].dispatch('click');
+  await flush();
+  assert.equal(viewer.added.length, 1, 'precondition: one tile layer');
+
+  events.switchPhase('leave');
+  events.switchPhase('arrive');
+  await flush();
+  assert.equal(viewer.added.length, 1, 'the tile layer is kept');
+  assert.ok(!server.requests.some((url) => url.includes('/api/sst/l3/')), 'no Level-3 request');
+  destroy();
+});

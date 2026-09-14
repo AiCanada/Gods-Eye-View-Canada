@@ -10,9 +10,86 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { overpassPayloadIsData } from './transport.js';
+import { haversineKm } from '../common/geo.js';
 
 /** @type {Map<string,{status:number,body:string,contentType:string,endpoint:string,cachedAt:number}>} */
 const _overpassCache = new Map();
+
+/** One signed decimal coordinate, captured. */
+const OVERPASS_COORDINATE = '(-?\\d+(?:\\.\\d+)?)';
+
+/** `around:radius,lat,lon` — captures the centre. */
+const OVERPASS_AROUND_POINT_RE = new RegExp(
+  `around:\\s*[\\d.eE+]+\\s*,\\s*${OVERPASS_COORDINATE}\\s*,\\s*${OVERPASS_COORDINATE}`,
+  'g',
+);
+
+/** `is_in(lat,lon)` — captures the point. */
+const OVERPASS_IS_IN_POINT_RE = new RegExp(
+  `is_in\\s*\\(\\s*${OVERPASS_COORDINATE}\\s*,\\s*${OVERPASS_COORDINATE}\\s*\\)`,
+  'g',
+);
+
+/** `(s,w,n,e)` — captures all four bounds. */
+const OVERPASS_BBOX_BOUNDS_RE = new RegExp(
+  `\\(\\s*${[1, 2, 3, 4].map(() => OVERPASS_COORDINATE).join('\\s*,\\s*')}\\s*\\)`,
+  'g',
+);
+
+/**
+ * Every place a cached Overpass query is anchored to: `around:` centres,
+ * `is_in(lat,lon)` points and `(s,w,n,e)` bbox centres. A boundary pivot by
+ * area id carries no coordinates and yields none.
+ * @param {string} cacheKey - Normalized `data=` form body.
+ * @returns {Array<{latitude: number, longitude: number}>}
+ */
+function overpassCacheAnchors(cacheKey) {
+  const ql = new URLSearchParams(String(cacheKey || '')).get('data') || '';
+  const anchors = [];
+  const add = (latitude, longitude) => {
+    if (Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180)
+      anchors.push({ latitude, longitude });
+  };
+  for (const m of ql.matchAll(OVERPASS_AROUND_POINT_RE))
+    add(Number(m[1]), Number(m[2]));
+  for (const m of ql.matchAll(OVERPASS_IS_IN_POINT_RE))
+    add(Number(m[1]), Number(m[2]));
+  for (const m of ql.matchAll(OVERPASS_BBOX_BOUNDS_RE))
+    add((Number(m[1]) + Number(m[3])) / 2, (Number(m[2]) + Number(m[4])) / 2);
+  return anchors;
+}
+
+/**
+ * Release memory-cached Overpass payloads anchored only to places farther than
+ * `radiusKm` from a point, after the user switches location. A query with any
+ * anchor inside the radius stays, and so does one with no coordinates at all
+ * (boundary pivots). Memory only: the disk tier keeps every payload, so a
+ * return to the old area reads it back instead of asking the mirrors.
+ * @param {{latitude: number, longitude: number}} point
+ * @param {number} radiusKm
+ * @param {Map<string, object>} [cache]
+ * @returns {number} How many entries were removed.
+ */
+function pruneOverpassMemoryOutside(point, radiusKm, cache = _overpassCache) {
+  const latitude = point?.latitude;
+  const longitude = point?.longitude;
+  if (![latitude, longitude, radiusKm].every(Number.isFinite) || radiusKm < 0)
+    return 0;
+  let removed = 0;
+  for (const key of cache.keys()) {
+    const anchors = overpassCacheAnchors(key);
+    if (!anchors.length) continue;
+    const near = anchors.some(
+      (anchor) =>
+        haversineKm(latitude, longitude, anchor.latitude, anchor.longitude) <=
+        radiusKm,
+    );
+    if (near) continue;
+    cache.delete(key);
+    removed += 1;
+  }
+  return removed;
+}
 
 /** Disk TTL for a query: boundary geometry keeps for a month, the rest 7 days. */
 function overpassDiskTtlMs(cacheKey) {
@@ -130,6 +207,8 @@ export {
   readOverpassDisk,
   resolveOverpassPreflight,
   _overpassCache,
+  overpassCacheAnchors,
+  pruneOverpassMemoryOutside,
   overpassDiskTtlMs,
   readStaleOverpass,
   trimOverpassCache,
