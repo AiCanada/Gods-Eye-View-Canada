@@ -4,6 +4,7 @@ import { CITY_POIS } from '../locations.js';
 import { STARTUP_LOCATION_ID } from '../startupDefaults.js';
 import { initCockpitCloudEffects } from '../cockpitCloudEffects.js';
 import { initSeaSurfaceTemperaturePanel } from '../data/seaSurfaceTemperature.js';
+import { initPrivateSiteLocations } from '../privateSiteLocations.js';
 
 /** Construct the existing controls and camera presentation. */
 export function createStandaloneControls({
@@ -28,6 +29,12 @@ export function createStandaloneControls({
   defer(() => cockpitCloudEffects?.destroy());
   // Sea Surface Temperature box: always off at launch, never persisted.
   defer(initSeaSurfaceTemperaturePanel({ viewer }));
+  // Saved home and business security sites join the LOCATION pills.
+  defer(
+    initPrivateSiteLocations({
+      onChange: (entries) => styleManager.setPrivateSiteLocations(entries),
+    }),
+  );
 
   // If no share link state, fly to the launch location
   if (!styleManager.hasShareState) {

@@ -78,8 +78,13 @@
   text-overflow: ellipsis;
 }
 
+/* Two rows of pills, filled top-then-bottom column by column; scrolls sideways. */
 .location-pills {
-  display: flex;
+  display: grid;
+  grid-template-rows: repeat(2, auto);
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  align-content: center;
   gap: 6px;
   overflow-x: auto;
   scroll-behavior: smooth;
@@ -118,6 +123,11 @@
 #location-search:focus-visible {
   outline: 2px solid var(--text-primary);
   outline-offset: -3px;
+}
+
+.location-pill-private {
+  border-color: rgba(255, 196, 92, 0.38);
+  color: #ffd98f;
 }
 
 .location-pill:hover {

@@ -101,6 +101,8 @@ import {
   onFocusTargetAppear,
 } from './focusDeemphasis.js';
 import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
+import { bindCctvCardResize, loadCardScale } from './cctvCardResize.js';
+import { bindPrivateCameraMove } from './cctvPrivateMove.js';
 
 // ---------------------------------------------------------------------------
 // API endpoints
@@ -109,6 +111,12 @@ const FRAME_ENDPOINT = '/api/cctv/frame';
 const SOURCE_ENDPOINT = '/api/cctv/sources';
 const HEALTH_ENDPOINT = '/api/cctv/health';
 const MEDIA_ENDPOINT = '/api/cctv/media';
+/** Home and business security cameras: a separate, loopback-only service
+ * (server/providers/private-cameras.js), never the public CCTV proxy. */
+const PRIVATE_SOURCE_ENDPOINT = '/api/private-cams/sources';
+/** Saves the spot a private camera icon was dragged to. */
+const PRIVATE_POSITION_ENDPOINT = '/api/private-cams/position';
+const PRIVATE_FRAME_PATH = /^\/api\/private-cams\/frame\/[^/?#]+$/;
 
 // ---------------------------------------------------------------------------
 // Timing and geometry constants
@@ -299,6 +307,12 @@ let _regionCapEnabled = loadRegionCapPreference();
 let _regionCapInfo = { limit: 0, dropped: {} };
 /** In-flight catalogue rebuild after a region-cap toggle, or null. */
 let _catalogReload = null;
+/** Reloads the catalogue when POWER UP saves private camera settings. */
+let _privateCamerasListener = null;
+/** Map card size chosen by dragging a card corner (cctvCardResize.js), per browser. */
+let _cardScale = loadCardScale();
+let _unbindCardResize = null;
+let _unbindPrivateMove = null;
 let _lastHopAt = 0;
 let _lastViewContext = '';
 let _clickHandler = null;
@@ -818,8 +832,8 @@ function ensureCameraPose(camera) {
       headingDeg: normalizeHeading(safeNumber(camera.headingDeg, 0)),
       pitchDeg: clamp(safeNumber(camera.pitchDeg, -17), -70, 10),
       fovDeg: clamp(safeNumber(camera.fovDeg, 74), 20, 130),
-      rangeM: clamp(safeNumber(camera.rangeM, 700), 120, 5000),
-      mountHeightM: clamp(safeNumber(camera.mountHeightM, 24), 2, 240),
+      rangeM: clamp(safeNumber(camera.rangeM, 700), camera.sourceKind === 'private' ? 5 : 120, 5000),
+      mountHeightM: clamp(safeNumber(camera.mountHeightM, 24), camera.sourceKind === 'private' ? 1 : 2, 240),
     };
   }
 
@@ -833,8 +847,8 @@ function ensureCameraPose(camera) {
   camera.headingDeg = normalizeHeading(base.headingDeg + nextCalibration.headingDeg);
   camera.pitchDeg = clamp(base.pitchDeg + nextCalibration.pitchDeg, -70, 10);
   camera.fovDeg = clamp(base.fovDeg + nextCalibration.fovDeg, 20, 130);
-  camera.rangeM = clamp(base.rangeM * nextCalibration.rangeScale, 120, 5000);
-  camera.mountHeightM = clamp(base.mountHeightM + nextCalibration.heightM, 2, 240);
+  camera.rangeM = clamp(base.rangeM * nextCalibration.rangeScale, camera.sourceKind === 'private' ? 5 : 120, 5000);
+  camera.mountHeightM = clamp(base.mountHeightM + nextCalibration.heightM, camera.sourceKind === 'private' ? 1 : 2, 240);
 
   camera.intrinsics = {
     fovDeg: camera.fovDeg,
@@ -1087,16 +1101,35 @@ function seedCatalog() {
 async function loadCameraSources() {
   try {
     const resp = await fetch(`${SOURCE_ENDPOINT}?regionCap=${_regionCapEnabled ? '1' : '0'}`, { cache: 'no-store' });
-    if (!resp.ok) return [];
+    if (!resp.ok) return loadPrivateCameraSources();
     const data = await resp.json();
-    if (!Array.isArray(data?.sources)) return [];
+    if (!Array.isArray(data?.sources)) return loadPrivateCameraSources();
     if (data.regionCap && typeof data.regionCap === 'object') {
       _regionCapInfo = {
         limit: Number(data.regionCap.limit) || 0,
         dropped: data.regionCap.dropped && typeof data.regionCap.dropped === 'object' ? { ...data.regionCap.dropped } : {},
       };
     }
-    return data.sources;
+    return [...data.sources, ...(await loadPrivateCameraSources())];
+  } catch {
+    return loadPrivateCameraSources();
+  }
+}
+
+/**
+ * Fetches this machine's home and business security cameras. The route answers
+ * only the machine running the server, so a LAN or shared viewer simply gets
+ * none. Records carry a position and a private frame route, never a login.
+ * @returns {Promise<Object[]>}
+ */
+async function loadPrivateCameraSources() {
+  try {
+    const resp = await fetch(PRIVATE_SOURCE_ENDPOINT, { cache: 'no-store' });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return Array.isArray(data?.sources)
+      ? data.sources.filter((source) => source?.sourceKind === 'private' && PRIVATE_FRAME_PATH.test(String(source.frameUrl || '')))
+      : [];
   } catch {
     return [];
   }
@@ -1189,9 +1222,12 @@ function buildCatalogFromSources(rawSources) {
         ? sourceHeading
         : (seed?.headingDeg ?? headingFromId(id))
     );
-    const fovDeg = clamp(safeNumber(source.fovDeg, seed?.fovDeg ?? 74), 20, 125);
-    const rangeM = clamp(safeNumber(source.rangeM, seed?.rangeM ?? 700), 220, 2200);
-    const mountHeightM = clamp(safeNumber(source.mountHeightM, seed?.mountHeightM ?? 24), 6, 120);
+    // Home and business cameras watch a yard or a doorway, not a highway: they
+    // keep the short reach and low mount a real security camera has.
+    const privateCamera = String(source.sourceKind || '').toLowerCase() === 'private';
+    const fovDeg = clamp(safeNumber(source.fovDeg, seed?.fovDeg ?? 74), 20, privateCamera ? 150 : 125);
+    const rangeM = clamp(safeNumber(source.rangeM, seed?.rangeM ?? 700), privateCamera ? 5 : 220, privateCamera ? 400 : 2200);
+    const mountHeightM = clamp(safeNumber(source.mountHeightM, seed?.mountHeightM ?? 24), privateCamera ? 1 : 6, privateCamera ? 60 : 120);
     const pitchDeg = clamp(safeNumber(source.pitchDeg, seed?.pitchDeg ?? -17), -55, -2);
     const groundElevationM = safeNumber(source.groundElevationM, city?.groundElevation ?? seed?.groundElevationM ?? 0);
     const feedType = normalizeFeedType(source.feedType || source.type || 'image');
@@ -1226,6 +1262,10 @@ function buildCatalogFromSources(rawSources) {
       // viewer's browser loads this still itself (panel only, see cctvBrowserDirect.js).
       browserImageUrl: typeof source.browserImageUrl === 'string' && /^https:\/\//i.test(source.browserImageUrl)
         ? source.browserImageUrl
+        : '',
+      // Home and business cameras load stills from their own loopback-only route.
+      privateFrameUrl: source.sourceKind === 'private' && PRIVATE_FRAME_PATH.test(String(source.frameUrl || ''))
+        ? source.frameUrl
         : '',
     };
     ensureCameraPose(camera);
@@ -1535,6 +1575,7 @@ function refreshProjectionTextures(record) {
 function frameUrlFor(camera, refreshMs = ACTIVE_FRAME_REFRESH_MS) {
   const cadenceMs = Math.max(1000, safeNumber(refreshMs, ACTIVE_FRAME_REFRESH_MS));
   const tick = Math.floor(Date.now() / cadenceMs);
+  if (camera.privateFrameUrl) return `${camera.privateFrameUrl}?ts=${tick}`;
   const params = new URLSearchParams({
     label: camera.name,
     city: camera.city,
@@ -2932,6 +2973,58 @@ function refreshAmbientCards() {
   pushAmbientCardEntries();
 }
 
+/** The ambient card under a canvas point, for its size badge (not part of the click-selection path). */
+function hitTestAmbientCard(x, y) {
+  return _cctvOverlayHost.hitTest(x, y, { sourceId: CCTV_OVERLAY_SOURCE_ID });
+}
+
+/** Globe position under a canvas point: the rendered surface when depth picking works, the ellipsoid otherwise. */
+function privateGlobePoint(x, y) {
+  if (!_viewer || _viewer.isDestroyed()) return null;
+  const windowPosition = new Cesium.Cartesian2(x, y);
+  const scene = _viewer.scene;
+  let cartesian = scene.pickPositionSupported ? scene.pickPosition(windowPosition) : undefined;
+  if (!Cesium.defined(cartesian)) cartesian = _viewer.camera.pickEllipsoid(windowPosition, scene.globe.ellipsoid);
+  if (!Cesium.defined(cartesian)) return null;
+  const carto = Cesium.Cartographic.fromCartesian(cartesian);
+  if (!carto) return null;
+  return { lat: Cesium.Math.toDegrees(carto.latitude), lon: Cesium.Math.toDegrees(carto.longitude) };
+}
+
+/** While a private camera is dragged, only its icon follows the pointer; the cone waits for the drop. */
+function previewPrivateCameraMove(id, point) {
+  const record = _recordById.get(id);
+  if (!record?.billboard || !point) return;
+  record.billboard.position = Cesium.Cartesian3.fromDegrees(point.lon, point.lat, record.camera.absoluteHeightM);
+}
+
+/** On drop: move the camera in place (icon, cone and ground) and save its new spot. */
+async function commitPrivateCameraMove(id, point) {
+  const record = _recordById.get(id);
+  if (!record) return;
+  if (!point) {
+    updateRecordGeometry(record);
+    return;
+  }
+  record.camera.basePose = { ...(record.camera.basePose || {}), lat: point.lat, lon: point.lon };
+  ensureCameraPose(record.camera);
+  resolveCommittedGroundAnchor(record);
+  refreshCoverageStyles();
+  notifyListeners();
+  try {
+    const response = await fetch(PRIVATE_POSITION_ENDPOINT, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, lat: point.lat, lon: point.lon }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  } catch (error) {
+    console.warn('[Data:CCTV] could not save the moved camera; restoring its saved spot:', error?.message || error);
+    scheduleCatalogReload();
+  }
+}
+
 /**
  * Builds and publishes the card entry list from the current kept set and the
  * hover-summoned pin. The hover entry is budget-exempt and high-priority. The
@@ -2950,6 +3043,7 @@ function pushAmbientCardEntries() {
       id,
       position: record.position,
       gapPx: CARD_GAP_PX,
+      scale: _cardScale,
       title: record.camera.name,
       frameSlot: ensureCardFrameSlot(id),
       rank: rank++,
@@ -4122,7 +4216,7 @@ export function focusCctvRecord(viewer, record, duration = 2.2) {
     return CCTV_FOCUS_RESULT.TRACKING_HOLDS_VIEW;
   }
   const { camera } = record;
-  const range = Math.max(280, camera.rangeM * 1.18);
+  const range = Math.max(camera.sourceKind === 'private' ? 60 : 280, camera.rangeM * 1.18);
   viewer.camera.flyToBoundingSphere(
     new Cesium.BoundingSphere(record.position, Math.max(40, camera.rangeM * 0.36)),
     {
@@ -4398,6 +4492,10 @@ const cctvLayer = {
       _mapStackListener = () => handleMapStackChanged();
       window.addEventListener('gev:map-stack-changed', _mapStackListener);
     }
+    if (!_privateCamerasListener && typeof window !== 'undefined') {
+      _privateCamerasListener = () => scheduleCatalogReload();
+      window.addEventListener('gev:private-cameras-changed', _privateCamerasListener);
+    }
 
     // Field-test fix (2026-07-06): horizon-cull on camera settle (pairs with
     // the billboards' always-on-top depth setting) + one initial pass so the
@@ -4423,6 +4521,45 @@ const cctvLayer = {
     refreshHorizonCulling();
 
     _clickHandler = new Cesium.ScreenSpaceEventHandler(_viewer.scene.canvas);
+    // Drag a map card's corner to resize every card; the globe does not pan meanwhile.
+    _unbindCardResize?.();
+    _unbindCardResize = bindCctvCardResize({
+      canvas: _viewer.scene.canvas,
+      hitTest: (x, y) => hitTestAmbientCard(x, y),
+      isEnabled: () => _enabled && !_calibrationMode,
+      getScale: () => _cardScale,
+      setScale: (scale) => {
+        _cardScale = scale;
+        pushAmbientCardEntries();
+      },
+      onDragStart: () => {
+        if (_viewer?.scene) _viewer.scene.screenSpaceCameraController.enableInputs = false;
+        holdContinuousRender('cctv-card-resize');
+      },
+      onDragEnd: () => {
+        if (_viewer?.scene) _viewer.scene.screenSpaceCameraController.enableInputs = true;
+        releaseContinuousRender('cctv-card-resize');
+      },
+    });
+    // Drag a private (home or business) camera icon to a new spot; a click still selects it.
+    _unbindPrivateMove?.();
+    _unbindPrivateMove = bindPrivateCameraMove({
+      canvas: _viewer.scene.canvas,
+      isEnabled: () => _enabled && !_calibrationMode,
+      pickCameraId: (x, y) => extractPickedCameraId(_viewer.scene.pick(new Cesium.Cartesian2(x, y))),
+      globePoint: (x, y) => privateGlobePoint(x, y),
+      onPreview: (id, point) => previewPrivateCameraMove(id, point),
+      onCommit: (id, point) => void commitPrivateCameraMove(id, point),
+      onSelect: (id) => activateCctvCameraFromWorldClick(id, setActiveCamera),
+      onPressStart: () => {
+        if (_viewer?.scene) _viewer.scene.screenSpaceCameraController.enableInputs = false;
+        holdContinuousRender('cctv-private-move');
+      },
+      onPressEnd: () => {
+        if (_viewer?.scene) _viewer.scene.screenSpaceCameraController.enableInputs = true;
+        releaseContinuousRender('cctv-private-move');
+      },
+    });
     bindCctvWorldClickGesture(_clickHandler, (click) => {
       if (!_enabled) return;
       const picked = _viewer.scene.pick(click.position);
@@ -4576,6 +4713,10 @@ const cctvLayer = {
       window.removeEventListener('gev:map-stack-changed', _mapStackListener);
       _mapStackListener = null;
     }
+    if (_privateCamerasListener && typeof window !== 'undefined') {
+      window.removeEventListener('gev:private-cameras-changed', _privateCamerasListener);
+      _privateCamerasListener = null;
+    }
     const teardownViewer = viewer || _viewer;
     if (_horizonCullListener && teardownViewer?.camera?.moveEnd) {
       teardownViewer.camera.moveEnd.removeEventListener(_horizonCullListener);
@@ -4591,6 +4732,10 @@ const cctvLayer = {
     }
     _calibrationMode = false;
     releaseContinuousRender('cctv-adjust');
+    _unbindCardResize?.();
+    _unbindCardResize = null;
+    _unbindPrivateMove?.();
+    _unbindPrivateMove = null;
     if (_clickHandler) {
       _clickHandler.destroy();
       _clickHandler = null;

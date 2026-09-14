@@ -11,6 +11,7 @@ export class LocationControls {
     onPoi,
     onSearch,
     onReset,
+    onExtra = null,
     doc = document,
     requestFrame = (callback) => requestAnimationFrame(callback),
     cancelFrame = (id) => cancelAnimationFrame(id),
@@ -23,12 +24,16 @@ export class LocationControls {
       onPoi,
       onSearch,
       onReset,
+      onExtra,
       doc,
       requestFrame,
       cancelFrame,
     });
     this.removers = [];
     this.poiRemovers = [];
+    this.extraRemovers = [];
+    this.extraPills = [];
+    this.firstCityPill = null;
     this.frame = null;
     this.destroyed = false;
     this.rowGeneration = 0;
@@ -41,6 +46,7 @@ export class LocationControls {
       pill.textContent = city.name;
       this.bind(pill, 'click', () => onCity(id));
       elements.pills.appendChild(pill);
+      this.firstCityPill ??= pill;
     }
     // The city row has no visible scrollbar and holds more cities than fit, so
     // a plain mouse wheel scrolls it sideways. Trackpads already scroll it.
@@ -130,6 +136,35 @@ export class LocationControls {
     this.elements.poiRow.classList.remove('expanded');
     this.elements.divider.classList.remove('visible');
   }
+  /**
+   * Extra location pills ahead of the preset cities (saved home and business
+   * security sites). Replaces any shown before; a click calls onExtra(id).
+   * @param {Array<{id: string, name: string, kind?: string, title?: string}>} entries
+   */
+  setExtraLocations(entries = []) {
+    if (this.destroyed) return;
+    for (const remove of this.extraRemovers.splice(0)) remove();
+    for (const pill of this.extraPills.splice(0)) pill.remove();
+    for (const entry of entries) {
+      const pill = this.doc.createElement('button');
+      pill.type = 'button';
+      pill.className = 'location-pill location-pill-private';
+      pill.dataset.locationId = entry.id;
+      if (entry.kind) pill.dataset.siteKind = entry.kind;
+      pill.textContent = entry.name;
+      pill.title = entry.title || entry.name;
+      this.bind(
+        pill,
+        'click',
+        () => this.onExtra?.(entry.id),
+        this.extraRemovers,
+      );
+      if (this.firstCityPill)
+        this.elements.pills.insertBefore(pill, this.firstCityPill);
+      else this.elements.pills.appendChild(pill);
+      this.extraPills.push(pill);
+    }
+  }
   highlightPoi(index) {
     if (this.destroyed) return;
     for (const pill of this.elements.poiRow.querySelectorAll('.poi-pill'))
@@ -166,6 +201,7 @@ export class LocationControls {
     this.cancelExpansion();
     for (const remove of [
       ...this.poiRemovers.splice(0),
+      ...this.extraRemovers.splice(0),
       ...this.removers.splice(0),
     ])
       remove();

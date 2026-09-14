@@ -1,4 +1,5 @@
 import { createSurfaceKeyboard } from './ui/surfaceKeyboard.js';
+import { initPrivateCameraSetup } from './privateCamerasSetup.js';
 
 /**
  * The POWER UP surface — paste a key, get a power.
@@ -180,6 +181,11 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
   }
 
   const rowsHost = root.querySelector('[data-key-setup-rows]');
+  // SECURITY CAMERAS: private home/business sites, rendered after the key rows
+  // and kept across re-renders (src/privateCamerasSetup.js).
+  const privateHost = rowsHost && documentRef.createElement ? documentRef.createElement('div') : null;
+  if (privateHost) privateHost.className = 'private-cams';
+  let privateSetup = null;
   const applyButton = root.querySelector('[data-key-setup-apply]');
   const closeButton = root.querySelector('[data-key-setup-close]');
   const chipLabel = chip.querySelector('[data-key-setup-chip-label]') || chip;
@@ -198,6 +204,7 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
     if (!rowsHost) return;
     rowsHost.textContent = '';
     for (const key of status.keys || []) rowsHost.append(buildRow(documentRef, key));
+    if (privateHost) rowsHost.append(privateHost);
   };
 
   const visible = () => root.isConnected
@@ -216,6 +223,8 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
     open = true;
     keyboard.activate();
     root.hidden = false;
+    // A relay pairing request made while the dialog was closed shows straight away.
+    privateSetup?.refresh?.();
     globalThis.requestAnimationFrame?.(() => {
       if (!open) return;
       root.classList.add('visible');
@@ -324,6 +333,7 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
   });
 
   render(status);
+  if (privateHost) privateSetup = initPrivateCameraSetup({ host: privateHost, documentRef, fetchImpl: doFetch, signal: lifetime.signal });
 
   // Re-entry for a fully-keyed setup, demos, and support: ?setup=1 opens the
   // dialog even though the chip has retired.
@@ -339,6 +349,7 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
     chip.removeEventListener('click', openDialog);
     closeButton?.removeEventListener('click', close);
     applyButton?.removeEventListener('click', onApply);
+    privateSetup?.destroy();
   };
   return { open: openDialog, close, render, destroy };
 }

@@ -34,7 +34,7 @@ Photorealistic 3D globe. Live aircraft, ships, satellites, earthquakes, traffic,
 
 <div align="center">
 
-**[Quick Start](#-quick-start) · [First Five Minutes](#-the-first-five-minutes) · [Talk to It](#-talk-to-it) · [What's Live](#-whats-on-the-globe) · [Under the Hood](#-under-the-hood) · [Keys & Costs](#-api-keys)**
+**[Quick Start](#-quick-start) · [First Five Minutes](#-the-first-five-minutes) · [Talk to It](#-talk-to-it) · [What's Live](#-whats-on-the-globe) · [Your Security Cams](#-your-own-security-cameras) · [Under the Hood](#-under-the-hood) · [Keys & Costs](#-api-keys)**
 
 </div>
 
@@ -155,6 +155,11 @@ reopens the same panel.
   photorealistic 3D and world terrain; a Google Maps key only for the
   billing-enabled, metered route + place search; OpenAI when you want to talk
   to the world. Full map, costs included, in [Keys & Costs](#-api-keys).
+- **Your own security cameras:** below the keys, **HOME SECURITY · ARLO** and
+  **BUSINESS SECURITY** add any number of private sites and cameras — through
+  Home Assistant, a username + password snapshot address, or the Arlo browser
+  feed relay. Setup, Arlo notes and limits:
+  [Your Own Security Cameras](#-your-own-security-cameras).
 
 <details>
 <summary>Older Pinokio versions and credential storage</summary>
@@ -333,6 +338,112 @@ Once the basics click, run these:
 ![Descending from regional context into dense rows of retired aircraft at the boneyard](docs/media/08-boneyard.gif)
 
 *Walk the boneyard: rows of retired airframes, fully resolved in 3D.*
+
+---
+
+## 🏠 Your Own Security Cameras
+
+Put your own home and business cameras on the globe next to the public ones.
+They switch on with the **CCTV** button and appear in the CCTV panel and as map
+cards, but they stay out of the public camera pipeline: their camera list,
+logins and pictures go through a separate private camera server
+(`/api/private-cams`) on your machine, kept apart so it can be hardened further
+on its own.
+
+**Add a site:** **POWER UP** → below the keys → **HOME SECURITY · ARLO** or
+**BUSINESS SECURITY** → **+ ADD HOME SITE** / **+ ADD BUSINESS SITE**. Any number
+of sites, any number of cameras per site.
+
+| Step | How |
+|---|---|
+| **Place the site** | Type a street address or a postal / ZIP code and press **LOCATE** (OpenStreetMap). A house-number match is placed exactly; otherwise the result is marked *Street only* or *Approximate*. |
+| **Aim each camera** | Pick a compass facing (N, NNE … NNW). Cameras spread about 12 m around the site, each on the side it faces. |
+| **Fine-tune** | Drag a private camera icon on the map to its exact spot; a click still opens the camera. |
+| **Size the view** | Click the **S / M / L / XL** badge on a map card (or drag it) to resize the cards; click or drag the CCTV panel's edge to widen the panel. |
+| **Jump there** | Located sites appear as 🏠 / 🏢 pills at the front of the **LOCATION** bar (two rows). |
+
+**Three ways to connect a home site** — the site's sign-in choice:
+
+| Sign-in | Use it for | What the app fetches |
+|---|---|---|
+| **Home Assistant long-lived access token** | Any camera Home Assistant can show — for example Arlo cameras on a SmartHub or base station through Home Assistant's HomeKit Device integration | **Bridge URL** (e.g. `http://homeassistant.local:8123`) + camera entities such as `camera.front`, read from `/api/camera_proxy/<entity>` with the token |
+| **Username + password** | Cameras, NVRs or bridges with a still-image (JPEG) snapshot address | each camera's snapshot URL, with Digest login (Basic only when the camera asks for it) |
+| **Browser feed relay (Chrome extension)** | Arlo accounts that only have a username and password at my.arlo.com | the newest motion-clip thumbnail per camera, passed on from your own signed-in my.arlo.com feed tab |
+
+**Business sites** use a snapshot URL and one login per site — Hikvision,
+Dahua, Axis, Reolink, Amcrest and most others (e.g.
+`https://192.168.1.64/ISAPI/Streaming/channels/101/picture`). A login is never
+sent over plain http beyond your local network, and an HTTPS camera's
+certificate fingerprint can be pinned.
+
+### Arlo and similar cloud-only cameras
+
+Arlo offers no public API, no per-camera picture address, no RTSP for other
+apps and no email snapshots, and my.arlo.com sits behind bot protection with
+two-step verification. GEV never signs in to Arlo and never works around that
+protection. Two routes work:
+
+**1. Browser feed relay** — no extra software, uses the Arlo tab you already
+have open.
+
+```bash
+npm run arlo-relay:install
+```
+
+This copies the extension from `tools/arlo-feed-relay/` to
+`%LOCALAPPDATA%\GEV\arlo-feed-relay` on Windows (or
+`~/.local/share/gev/arlo-feed-relay`). Run it again after updating GEV, then
+press the reload button on the extension card.
+
+1. Open `chrome://extensions`, turn on **Developer mode**, choose **Load
+   unpacked** (not *Pack extension*) and paste the printed folder path into the
+   folder box. On Windows that folder is under the hidden AppData folder. Don't
+   change the folder's Properties: Windows then adds a `desktop.ini`, which
+   Chrome refuses (running the install again removes it).
+2. Reload your `https://my.arlo.com/#/feed` tab.
+3. In **POWER UP → HOME SECURITY**, set your Arlo site's sign-in to **Browser
+   feed relay (Chrome extension)** and **SAVE SITE**. A saved username and
+   password stay saved.
+4. On the extension's **Details → Extension options**, press **PAIR WITH GODS
+   EYE VIEW**. In POWER UP, **APPROVE** only the request whose code *and*
+   extension ID both match the options page.
+5. Keep the feed tab open and signed in, and add `my.arlo.com` to
+   `chrome://settings/performance` → *Always keep these sites active*.
+
+Limits: pictures are the latest clip thumbnails, not live video. A camera with
+no recent clip shows *waiting for a clip*, and when Arlo signs the web page out
+the cards say *Arlo signed out* until you sign back in. **Arlo's terms of
+service prohibit data-extraction tools and allow Arlo to close accounts — use
+the relay at your own risk.** More in
+[tools/arlo-feed-relay/README.md](tools/arlo-feed-relay/README.md).
+
+**2. Home Assistant, fully local** — for Arlo cameras on a SmartHub or base
+station that supports Apple HomeKit. Pair the hub with Home Assistant's
+[HomeKit Device](https://www.home-assistant.io/integrations/homekit_controller/)
+integration (not *HomeKit Bridge*), create a long-lived access token in your
+Home Assistant profile, and use the token sign-in above. Snapshots are taken on
+request (640×480 by default) and nothing touches Arlo's website.
+
+Community bridges such as hass-aarlo or the Scrypted Arlo plugin sign in to
+Arlo's cloud themselves with browser-impersonation libraries; GEV does not set
+those up. For other cloud-only brands the same rule applies: if Home Assistant
+can show the camera, use the token sign-in; if a local device offers a JPEG
+snapshot address, use username + password.
+
+### Security at a glance
+
+- Private camera settings live in the git-ignored, owner-only
+  `config/private-cameras.json`, which the server never hands out as a file.
+  POWER UP shows only whether a password or token is saved, never its value.
+- The private camera routes answer only this machine, and sites can be saved
+  or paired only under the dev server.
+- The relay extension sends GEV only image bytes, a camera name and a clip
+  label — never Arlo cookies, tokens or signed links. Pairing codes are issued
+  by GEV and approved by you, and relay pictures are kept in memory only.
+- Camera pictures (`/api/private-cams/frame/…`) can be read by any program on
+  this computer, so avoid shared machines once private cameras are set up.
+
+Full model: [SECURITY.md](SECURITY.md#private-home-and-business-security-cameras).
 
 ---
 

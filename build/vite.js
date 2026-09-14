@@ -28,6 +28,10 @@ export function createBrowserViteConfig({
           '**/.git/**',
           '**/ENVIRONMENT',
           '**/RuView/**',
+          // Private camera logins (also refused by that plugin's own guard,
+          // which catches the spellings a pattern cannot).
+          '**/private-cameras.json',
+          '**/.private-cameras.json.*',
         ],
       },
       // These headers protect the document containing Provider Settings.

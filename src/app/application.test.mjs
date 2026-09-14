@@ -244,3 +244,92 @@ test('the viewer zooms on the ctrl-modified wheel a trackpad pinch produces', as
     /screenSpaceCameraController\.zoomEventTypes =\s*globeZoomEventTypes\(\)/,
   );
 });
+
+test('trackpad scroll and pinch are boosted; a mouse wheel is left alone', async () => {
+  const { trackpadWheelGain, TRACKPAD_PINCH_GAIN, TRACKPAD_SCROLL_GAIN } =
+    await import('gods-eye-view/application/viewer');
+  assert.equal(trackpadWheelGain({ deltaMode: 0, deltaY: 100 }), 1);
+  assert.equal(trackpadWheelGain({ deltaMode: 0, deltaY: -125 }), 1);
+  assert.equal(trackpadWheelGain({ deltaMode: 1, deltaY: 3 }), 1);
+  assert.equal(
+    trackpadWheelGain({ deltaMode: 0, deltaY: 4 }),
+    TRACKPAD_SCROLL_GAIN,
+  );
+  assert.equal(
+    trackpadWheelGain({ deltaMode: 0, deltaY: 52.5 }),
+    TRACKPAD_SCROLL_GAIN,
+  );
+  assert.equal(
+    trackpadWheelGain({ deltaMode: 0, deltaY: 100, ctrlKey: true }),
+    TRACKPAD_PINCH_GAIN,
+  );
+});
+
+test('trackpad wheel events in one frame reach Cesium as one combined step', async () => {
+  const { bindTrackpadZoom, TRACKPAD_SCROLL_GAIN } =
+    await import('gods-eye-view/application/viewer');
+  const listeners = [];
+  const container = {
+    addEventListener: (type, fn, options) =>
+      listeners.push({ type, fn, options }),
+    removeEventListener: (type, fn) => {
+      const index = listeners.findIndex((entry) => entry.fn === fn);
+      if (index !== -1) listeners.splice(index, 1);
+    },
+  };
+  const dispatched = [];
+  const canvas = { dispatchEvent: (event) => dispatched.push(event) };
+  const frames = [];
+  let destroyed = false;
+  class FakeWheel {
+    constructor(type, init) {
+      Object.assign(this, { type }, init);
+    }
+  }
+  bindTrackpadZoom({
+    container,
+    canvas,
+    isDestroyed: () => destroyed,
+    requestFrame: (fn) => frames.push(fn),
+    WheelEventCtor: FakeWheel,
+  });
+  assert.equal(listeners[0].options.capture, true);
+  const wheel = (deltaY, extra = {}) => {
+    const event = {
+      isTrusted: true,
+      target: canvas,
+      deltaMode: 0,
+      deltaY,
+      clientX: 10,
+      clientY: 20,
+      stopped: false,
+      prevented: false,
+      stopPropagation() {
+        this.stopped = true;
+      },
+      preventDefault() {
+        this.prevented = true;
+      },
+      ...extra,
+    };
+    listeners[0].fn(event);
+    return event;
+  };
+  const first = wheel(4);
+  wheel(6);
+  const mouse = wheel(100);
+  assert.equal(first.stopped && first.prevented, true);
+  assert.equal(mouse.stopped, false, 'a mouse wheel passes straight through');
+  assert.equal(frames.length, 1, 'one combined step per frame');
+  frames[0]();
+  assert.equal(dispatched.length, 1);
+  assert.equal(dispatched[0].deltaY, 10 * TRACKPAD_SCROLL_GAIN);
+  assert.equal(
+    wheel(4, { isTrusted: false }).stopped,
+    false,
+    'the combined event is not caught again',
+  );
+  destroyed = true;
+  wheel(4);
+  assert.equal(listeners.length, 0, 'a destroyed viewer drops the listener');
+});

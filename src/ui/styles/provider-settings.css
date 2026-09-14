@@ -393,3 +393,395 @@ body.scene-playback-mode #key-setup {
   border-color: rgba(255, 170, 150, 0.65);
   outline: none;
 }
+
+/* ── SECURITY CAMERAS (src/privateCamerasSetup.js) ────────────────────────
+   Private home and business sites under the key rows. Same glass voice. */
+.private-cams {
+  display: grid;
+  gap: 0.42rem;
+  margin-top: 0.3rem;
+}
+
+.private-cams[hidden],
+.private-cams input[hidden] {
+  display: none;
+}
+
+.private-cams-heading {
+  margin-top: 0.5rem;
+  color: rgba(54, 220, 255, 0.86);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.1rem;
+}
+
+.private-cams-count {
+  color: rgba(148, 178, 188, 0.7);
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.06rem;
+}
+
+.private-cams-sites {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.private-cams-site {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.5rem 0.55rem;
+  background: rgba(4, 14, 20, 0.38);
+  border: 1px solid rgba(100, 200, 220, 0.16);
+  border-radius: 0.36rem;
+}
+
+.private-cams-site-head,
+.private-cams-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.private-cams-site-head input {
+  flex: 1 1 10rem;
+}
+
+.private-cams-login {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.private-cams-site input,
+.private-cams-site select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.36rem 0.45rem;
+  color: rgba(225, 244, 248, 0.92);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  background: rgba(4, 14, 20, 0.72);
+  border: 1px solid rgba(100, 200, 220, 0.22);
+  border-radius: 0.3rem;
+}
+
+.private-cams-site input:focus,
+.private-cams-site select:focus {
+  border-color: rgba(54, 220, 255, 0.65);
+  outline: none;
+}
+
+.private-cams-transport {
+  padding: 0.05rem 0.3rem;
+  color: rgba(84, 227, 156, 0.88);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.06rem;
+  border: 1px solid rgba(84, 227, 156, 0.36);
+  border-radius: 0.3rem;
+  white-space: nowrap;
+}
+
+.private-cams-transport[data-transport='lan-http'] {
+  color: rgba(255, 214, 140, 0.85);
+  border-color: rgba(255, 214, 140, 0.34);
+}
+
+.private-cams-transport[data-transport='insecure'] {
+  color: rgba(255, 170, 150, 0.9);
+  border-color: rgba(255, 170, 150, 0.4);
+}
+
+.private-cams-cameras {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.private-cams-camera {
+  display: grid;
+  grid-template-columns:
+    minmax(4.5rem, 1fr) minmax(7rem, 2fr)
+    5rem 5rem 3.6rem 1.6rem;
+  gap: 0.28rem;
+  align-items: center;
+}
+
+.private-cams-camera-head span {
+  color: rgba(148, 178, 188, 0.6);
+  font-family: var(--font-mono);
+  font-size: 0.48rem;
+  letter-spacing: 0.06rem;
+}
+
+.private-cams-add,
+.private-cams-remove-camera,
+.private-cams-remove-site {
+  justify-self: start;
+  padding: 0.28rem 0.55rem;
+  color: rgba(54, 220, 255, 0.85);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.08rem;
+  background: none;
+  border: 1px solid rgba(54, 220, 255, 0.3);
+  border-radius: 0.32rem;
+  cursor: pointer;
+}
+
+.private-cams-remove-camera,
+.private-cams-remove-site {
+  color: rgba(255, 170, 150, 0.8);
+  border-color: rgba(255, 170, 150, 0.3);
+}
+
+.private-cams-remove-camera {
+  padding: 0.28rem 0;
+}
+
+.private-cams-add:disabled,
+.private-cams-remove-camera:disabled,
+.private-cams-remove-site:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.private-cams-save {
+  padding: 0.36rem 0.7rem;
+  font-size: 0.58rem;
+}
+
+.private-cams-note {
+  color: rgba(199, 225, 231, 0.62);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+}
+
+@media (max-width: 620px) {
+  .private-cams-camera {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .private-cams-camera-head {
+    display: none;
+  }
+}
+
+/* Camera rows: compass facing, and an address line that locates the camera. */
+.private-cams-cameras > .private-cams-camera {
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(100, 200, 220, 0.08);
+}
+
+.private-cams-camera .private-cams-address {
+  grid-column: 1 / 5;
+}
+
+.private-cams-camera .private-cams-locate {
+  grid-column: 5 / 7;
+  justify-self: stretch;
+  padding-inline: 0.2rem;
+}
+
+.private-cams-located {
+  grid-column: 1 / -1;
+  min-height: 0;
+  color: rgba(199, 225, 231, 0.62);
+  font-family: var(--font-mono);
+  font-size: 0.54rem;
+}
+
+.private-cams-warning {
+  margin: 0.2rem 0 0.35rem;
+  padding: 0.3rem 0.45rem;
+  border-left: 2px solid rgba(255, 196, 92, 0.7);
+  background: rgba(255, 196, 92, 0.07);
+  color: #ffd98f;
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  line-height: 1.45;
+}
+
+.private-cams-located:empty {
+  display: none;
+}
+
+@media (max-width: 620px) {
+  .private-cams-camera .private-cams-address,
+  .private-cams-camera .private-cams-locate {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Postal-code location row per site; camera rows carry only name, source and facing. */
+.private-cams-location {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) auto;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.private-cams-location .private-cams-located {
+  grid-column: 1 / -1;
+}
+
+.private-cams-site .private-cams-camera {
+  grid-template-columns: minmax(5rem, 1fr) minmax(8rem, 2fr) 5.4rem 1.6rem;
+}
+
+@media (max-width: 620px) {
+  .private-cams-site .private-cams-camera {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Arlo browser feed relay: status, pairing request and setup steps of a home
+   site set to "Browser feed relay". */
+.private-cams-transport[data-transport='relay'] {
+  color: rgba(54, 220, 255, 0.88);
+  border-color: rgba(54, 220, 255, 0.36);
+}
+
+.private-cams-relay,
+.private-cams-relay-live {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.private-cams-relay[hidden],
+.private-cams-site p[hidden] {
+  display: none;
+}
+
+.private-cams-relay .private-cams-warning {
+  margin: 0;
+}
+
+.private-cams-relay-live {
+  padding: 0.4rem 0.5rem;
+  background: rgba(4, 14, 20, 0.5);
+  border: 1px solid rgba(100, 200, 220, 0.16);
+  border-radius: 0.32rem;
+}
+
+.private-cams-relay-limits,
+.private-cams-relay-status,
+.private-cams-relay-paired,
+.private-cams-relay-cameras,
+.private-cams-relay-message,
+.private-cams-relay-steps {
+  margin: 0;
+  color: rgba(199, 225, 231, 0.62);
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.private-cams-relay-status {
+  color: rgba(225, 244, 248, 0.9);
+  font-size: 0.6rem;
+}
+
+.private-cams-relay-status::before {
+  content: '';
+  display: inline-block;
+  width: 0.42rem;
+  height: 0.42rem;
+  margin-right: 0.35rem;
+  background: rgba(148, 178, 188, 0.45);
+  border-radius: 50%;
+}
+
+.private-cams-relay-status[data-tone='ok']::before {
+  background: #54e39c;
+  box-shadow: 0 0 0.45rem rgba(84, 227, 156, 0.6);
+}
+
+.private-cams-relay-status[data-tone='warn']::before {
+  background: rgba(255, 196, 92, 0.9);
+}
+
+.private-cams-relay-cameras {
+  display: grid;
+  gap: 0.1rem;
+  padding-left: 1rem;
+  list-style: square;
+}
+
+.private-cams-relay-message:empty,
+.private-cams-relay-live [hidden] {
+  display: none;
+}
+
+.private-cams-relay-requests {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.private-cams-relay-pending {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem 0.5rem;
+  align-items: center;
+  padding: 0.4rem 0.5rem;
+  color: rgba(225, 244, 248, 0.92);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  background: rgba(54, 220, 255, 0.07);
+  border: 1px solid rgba(54, 220, 255, 0.45);
+  border-radius: 0.32rem;
+}
+
+.private-cams-relay-pending strong {
+  font-weight: 600;
+  letter-spacing: 0.04rem;
+  overflow-wrap: anywhere;
+}
+
+.private-cams-relay-pending .private-cams-relay-limits {
+  grid-column: 1;
+}
+
+.private-cams-relay-pending .private-cams-relay-approve {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.private-cams-relay button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.private-cams-relay-steps summary {
+  color: rgba(54, 220, 255, 0.85);
+  letter-spacing: 0.08rem;
+  cursor: pointer;
+}
+
+.private-cams-relay-steps ol {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.private-cams-relay code {
+  padding: 0.02rem 0.22rem;
+  color: rgba(225, 244, 248, 0.9);
+  font-size: 0.95em;
+  background: rgba(54, 220, 255, 0.08);
+  border-radius: 0.2rem;
+}
+
+@media (max-width: 620px) {
+  .private-cams-relay-pending {
+    grid-template-columns: 1fr;
+  }
+
+  .private-cams-relay-pending .private-cams-relay-approve {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+  }
+}

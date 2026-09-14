@@ -58,6 +58,23 @@ export const CCTV_CARD_SAFE_TOP_RATIO = 0.18;
 export const CCTV_CARD_SAFE_TOP_MAX_PX = 150;
 /** Bounded thumbnail cache (frame slots kept beyond the live card set). */
 export const CCTV_FRAME_CACHE_MAX = 96;
+/** One-click card sizes, stepped by the size badge on each card (cctvCardResize.js). */
+export const CCTV_CARD_SIZE_STEPS = Object.freeze([
+  Object.freeze({ label: 'S', scale: 0.75 }),
+  Object.freeze({ label: 'M', scale: 1 }),
+  Object.freeze({ label: 'L', scale: 1.5 }),
+  Object.freeze({ label: 'XL', scale: 2.2 }),
+]);
+
+/** The size-badge label nearest a card scale. */
+export function cctvCardSizeLabel(scale) {
+  const value = Number(scale) || 1;
+  let best = CCTV_CARD_SIZE_STEPS[1];
+  for (const step of CCTV_CARD_SIZE_STEPS) {
+    if (Math.abs(step.scale - value) < Math.abs(best.scale - value)) best = step;
+  }
+  return best.label;
+}
 
 // ─── Altitude scaling (owner field-test finding 5, 2026-07-29) ──────────────
 // Owner-decided curve: cards are full size at street level, "start to get
@@ -312,8 +329,12 @@ export function createCctvThumbnailOverlayEntry({
   pinned = false,
   active = false,
   gapPx = 16,
+  scale = 1,
 } = {}) {
   const hostGap = Math.max(14, (Number(gapPx) || 14) + 6);
+  // Drag-to-resize (cctvCardResize.js): the picture and the declutter spacing
+  // grow together, so bigger cards never stack on top of each other.
+  const cardScale = Number.isFinite(Number(scale)) && Number(scale) > 0 ? Number(scale) : 1;
   return {
     id,
     position,
@@ -354,14 +375,16 @@ export function createCctvThumbnailOverlayEntry({
     // The shipped per-frame pass rejected cards whose ANCHORS were closer than
     // this (scaled with the card). Rectangle overlap alone let them stack about
     // twice as densely, because the leader gap does not shrink with the card.
-    minAnchorSeparationPx: CCTV_CARD_MIN_SEP_PX,
+    minAnchorSeparationPx: Math.round(CCTV_CARD_MIN_SEP_PX * cardScale),
     viewportMargin: 4,
     viewportPadding: 60,
     safeTopRatio: CCTV_CARD_SAFE_TOP_RATIO,
     safeTopMaxPx: CCTV_CARD_SAFE_TOP_MAX_PX,
     pinnedBypassesSafeTop: true,
-    thumbnailWidth: CCTV_CARD_THUMB_W,
-    thumbnailHeight: CCTV_CARD_THUMB_H,
+    thumbnailWidth: Math.round(CCTV_CARD_THUMB_W * cardScale),
+    thumbnailHeight: Math.round(CCTV_CARD_THUMB_H * cardScale),
+    // One click on this corner badge steps every card to the next size.
+    resizeBadgeLabel: cctvCardSizeLabel(cardScale),
     thumbnailPadX: CCTV_THUMBNAIL_STYLE.padding,
     thumbnailPadTop: CCTV_THUMBNAIL_STYLE.padding,
     thumbnailPadBottom: CCTV_THUMBNAIL_STYLE.padding,

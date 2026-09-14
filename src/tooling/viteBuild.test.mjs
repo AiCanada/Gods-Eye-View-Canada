@@ -26,6 +26,9 @@ test('explicit build inputs preserve browser-only defines, plugin order and loop
   // or scanned for dependencies by this app's dev server.
   assert.ok(config.server.watch.ignored.includes('**/RuView/**'));
   assert.ok(config.server.fs.deny.includes('**/RuView/**'));
+  // Private camera logins are never static files.
+  assert.ok(config.server.fs.deny.includes('**/private-cameras.json'));
+  assert.ok(config.server.fs.deny.includes('**/.private-cameras.json.*'));
   assert.deepEqual(config.optimizeDeps.entries, ['index.html', 'tools/*.html']);
   assert.equal(config.server.headers['X-Frame-Options'], 'DENY');
   assert.equal(

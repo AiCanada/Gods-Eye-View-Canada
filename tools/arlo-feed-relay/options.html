@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GEV Arlo Feed Relay</title>
+    <link rel="stylesheet" href="options.css" />
+    <script src="options.js" defer></script>
+  </head>
+  <body>
+    <main class="relay">
+      <header>
+        <h1>GEV Arlo Feed Relay</h1>
+        <p class="lead">Sends the newest motion-clip picture of each camera from your open my.arlo.com feed to Gods Eye View on this computer.</p>
+      </header>
+
+      <p class="notice">
+        Keep <strong>https://my.arlo.com/#/feed</strong> open and signed in. Arlo's terms of service prohibit data-extraction tools and allow Arlo to close accounts
+        — use this relay at your own risk.
+      </p>
+
+      <section class="card" aria-labelledby="pairing-title">
+        <h2 id="pairing-title">Pairing</h2>
+        <dl class="facts">
+          <dt>Extension ID</dt>
+          <dd><code id="extension-id">…</code></dd>
+          <dt>State</dt>
+          <dd id="pair-state">Checking…</dd>
+        </dl>
+        <div class="actions">
+          <button type="button" id="pair-button">PAIR WITH GODS EYE VIEW</button>
+          <button type="button" id="forget-button" class="secondary" disabled>FORGET PAIRING</button>
+        </div>
+        <div id="pair-request" class="pair-request" hidden>
+          <p class="code-line">Code from Gods Eye View <strong id="pair-code" class="code"></strong></p>
+          <p>Extension ID <code id="pair-extension-id"></code></p>
+          <ol>
+            <li>Open Gods Eye View at http://localhost:4173 (in another tab, so this page keeps checking).</li>
+            <li>Open <strong>POWER UP</strong> → <strong>HOME SECURITY</strong>.</li>
+            <li>Go to your Arlo site set to <strong>Browser feed relay</strong>.</li>
+            <li>
+              Find the request whose code <strong>and</strong> extension ID both match the ones above, then press its <strong>APPROVE</strong>. If either one differs, do
+              not approve that request.
+            </li>
+          </ol>
+          <p id="pair-progress" class="progress" role="status"></p>
+        </div>
+        <p id="pair-error" class="error" role="alert" hidden></p>
+      </section>
+
+      <section class="card" aria-labelledby="recent-title">
+        <h2 id="recent-title">Recent pictures</h2>
+        <p id="feed-line" class="muted"></p>
+        <ul id="recent-list" class="recent"></ul>
+        <p id="recent-empty" class="muted">
+          No outcomes since the relay last woke up. Chrome pauses it when idle, so outcomes show again with the next feed report, within 2 minutes. After installing or
+          updating the extension, reload your my.arlo.com feed tab once.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
