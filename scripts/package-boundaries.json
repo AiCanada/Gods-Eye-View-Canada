@@ -399,7 +399,8 @@
       "src/ui/cctvCalibration.js",
       "src/ui/cctvControls.js",
       "src/ui/cctvFrames.js",
-      "src/ui/cctvPresentation.js"
+      "src/ui/cctvPresentation.js",
+      "src/ui/cctvPanelResize.js"
     ],
     "external": []
   },
@@ -552,7 +553,8 @@
       "src/ui/visualPresets.js",
       "src/worldFocus.js",
       "src/ui/uiLifetime.js",
-      "src/app/stateChannel.js"
+      "src/app/stateChannel.js",
+      "src/ui/cctvPanelResize.js"
     ],
     "external": ["cesium"]
   },

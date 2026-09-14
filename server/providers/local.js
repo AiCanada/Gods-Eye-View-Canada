@@ -20,6 +20,7 @@ import { llmAskProxy } from './llm.js';
 import { seaSurfaceTemperatureProxy } from './sst.js';
 import { googlePlacesContextProxy } from './places.js';
 import { keySetupEndpoint } from '../standalone/key-setup.js';
+import { privateCamerasProxy } from './private-cameras.js';
 
 /** Construct the local provider plugins in their established order. */
 function localProviderPlugins() {
@@ -36,6 +37,8 @@ function localProviderPlugins() {
     regionalBriefProxy(),
     weatherEffectsProxy(),
     cctvProxy({ sourceRoot: defaultSourceRoot }),
+    // Home and business security cameras: separate from the public CCTV proxy.
+    privateCamerasProxy({ sourceRoot: defaultSourceRoot }),
     radioBrowserProxy(),
     gbfsProxy(),
     adsbLolProxy(),

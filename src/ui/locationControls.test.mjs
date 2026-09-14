@@ -33,6 +33,12 @@ function node() {
       this.children.push(child);
       child.parent = this;
     },
+    insertBefore(child, before) {
+      const index = this.children.indexOf(before);
+      if (index === -1) return this.appendChild(child);
+      this.children.splice(index, 0, child);
+      child.parent = this;
+    },
     append(...children) {
       for (const child of children)
         if (typeof child !== 'string') this.appendChild(child);
@@ -87,6 +93,7 @@ function fixture() {
     onPoi: (id, index) => calls.push(['poi', id, index]),
     onSearch: (query) => calls.push(['search', query]),
     onReset: () => calls.push(['reset']),
+    onExtra: (id) => calls.push(['extra', id]),
     doc,
     requestFrame: (fn) => {
       const id = next++;
@@ -146,4 +153,30 @@ test('location and POI keys route once while form controls retain typing', () =>
   f.doc.fire('keydown', { key: 'Q', target: { matches: () => true } });
   f.elements.resetButtons[1].fire('click');
   assert.deepEqual(f.calls, [['poi', 'a', 1], ['reset']]);
+});
+test('saved security sites lead the city pills, replace cleanly and stop on destroy', () => {
+  const f = fixture();
+  const names = () => f.elements.pills.children.map((pill) => pill.textContent);
+  f.controls.setExtraLocations([
+    { id: 'private-site-home', name: '🏠 Home', kind: 'home' },
+  ]);
+  assert.deepEqual(names(), ['🏠 Home', 'City A', 'City B']);
+  const first = f.elements.pills.children[0];
+  f.controls.setExtraLocations([
+    { id: 'private-site-home', name: '🏠 Home', kind: 'home' },
+    { id: 'private-site-shop', name: '🏢 Shop', kind: 'business' },
+  ]);
+  assert.deepEqual(names(), ['🏠 Home', '🏢 Shop', 'City A', 'City B']);
+  first.fire('click');
+  assert.deepEqual(f.calls, [], 'a replaced pill no longer acts');
+  f.elements.pills.children[1].fire('click');
+  assert.deepEqual(f.calls, [['extra', 'private-site-shop']]);
+  assert.equal(f.elements.pills.children[1].dataset.siteKind, 'business');
+  f.controls.setExtraLocations([]);
+  assert.deepEqual(names(), ['City A', 'City B']);
+  f.controls.setExtraLocations([{ id: 'private-site-home', name: '🏠 Home' }]);
+  const pill = f.elements.pills.children[0];
+  f.controls.destroy();
+  pill.fire('click');
+  assert.deepEqual(f.calls, [['extra', 'private-site-shop']]);
 });

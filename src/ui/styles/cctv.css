@@ -350,3 +350,56 @@
   color: #a8f7ff;
   text-shadow: 0 0 10px rgba(0, 212, 255, 0.18);
 }
+
+/* ── Drag-to-resize camera view (src/ui/cctvPanelResize.js) ──────────── */
+#cctv-panel:not(.collapsed)[data-user-width],
+#right-context-rail #cctv-panel:not(.collapsed)[data-user-width],
+#left-panel-stack > #cctv-panel:not(.collapsed)[data-user-width] {
+  width: var(--cctv-user-width) !important;
+  max-width: calc(100vw - 32px);
+}
+
+#right-context-rail #cctv-panel:not(.collapsed)[data-user-width] {
+  align-self: flex-end;
+}
+
+.cctv-frame-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0.7;
+  background: linear-gradient(
+    135deg,
+    transparent 0 50%,
+    rgba(0, 212, 255, 0.6) 50% 58%,
+    transparent 58% 70%,
+    rgba(0, 212, 255, 0.6) 70% 78%,
+    transparent 78%
+  );
+}
+
+#right-context-rail .cctv-frame-resize {
+  right: auto;
+  left: 0;
+  cursor: nesw-resize;
+  transform: scaleX(-1);
+}
+
+.cctv-frame-resize:hover,
+.cctv-frame-resize:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+
+#cctv-panel.collapsed .cctv-frame-resize {
+  display: none;
+}
+
+#cctv-panel.cctv-resizing {
+  user-select: none;
+}

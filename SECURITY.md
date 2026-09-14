@@ -68,6 +68,128 @@ The data proxies under `server/providers/` are written so the browser cannot tur
 - **Coalesced OAuth refresh** and cached successful responses only (OpenSky).
 - **Redacted debug logging.** The voice debug log (`.gev-logs/`, gitignored) strips API keys, bearer tokens, client secrets, and image data URLs before writing.
 
+## Private home and business security cameras
+
+POWER UP → **HOME SECURITY · ARLO** and **BUSINESS SECURITY** add your own
+cameras. They are deliberately separate from the public CCTV proxy and catalogue
+(`server/providers/private-cameras.js`, `src/privateCamerasCore.mjs`):
+
+- **At rest.** Logins, tokens and camera addresses live only in
+  `config/private-cameras.json` — git-ignored and written through the same
+  owner-only credential-store writer as `.env`. They are never logged, never
+  sent to the browser (the panel sees only "saved" flags and masked addresses),
+  and never enter share links, the region cap or `/api/cctv/sources`.
+- **Browser ↔ server.** Every `/api/private-cams/*` route answers only the
+  machine running the server: the Provider Settings gate refuses LAN peers,
+  tunnels, proxied requests, foreign `Host` headers (DNS rebinding) and any
+  sharing mode. Requests another website triggers are refused by Fetch Metadata
+  (`Sec-Fetch-Site`), and every response is `Cross-Origin-Resource-Policy:
+  same-origin`, `no-store` and `nosniff`, so a page elsewhere can neither embed
+  a camera frame nor read the camera list. Saving requires the exact local
+  `Origin` and a JSON body; editing exists only under the dev server.
+- **Server ↔ bridge or camera.** A password or token is never sent over plain
+  `http://` beyond the local network (loopback, RFC 1918, link-local, Tailscale
+  / CGNAT, `.local` / `.lan` / `.home.arpa` names); anything else must be
+  `https://`, both when you save and again on every fetch. Passwords go out only
+  in answer to the camera's challenge — Digest when offered, Basic only over
+  https or the local network. Redirects are refused, so a login is never replayed
+  to another host. A pinned SHA-256 certificate fingerprint (for self-signed
+  Home Assistant, Scrypted or NVR certificates) is checked on the TLS handshake
+  before any request byte is written. Only JPEG, PNG, WebP and GIF stills are
+  relayed; an SVG or HTML answer is dropped.
+- **Arlo.** The app never signs in to Arlo. Arlo cameras come through a bridge you
+  run (Home Assistant with hass-aarlo, or Scrypted), which holds the Arlo login
+  and two-factor codes, or through the optional browser feed relay described
+  below. Give the bridge a dedicated, non-admin user for the long-lived access
+  token you paste here, and prefer its https address.
+- **The store is never a static file.** Vite serves the whole checkout, so a
+  guard that runs before any static file handling answers `404` to every URL
+  naming `private-cameras.json` — however it is cased, percent-encoded or
+  shortened to a Windows 8.3 name.
+- **Status and frames are readable by local software.**
+  `GET /api/private-cams/frame/:id` and `GET /api/private-cams/status` (site and
+  camera names, pairing state and any waiting relay pairing code) answer any
+  program on this machine, including another local process or a browser
+  extension allowed to reach `localhost`: Fetch Metadata and
+  `Cross-Origin-Resource-Policy` stop other *websites*, not software you run. A
+  local program can also forge the headers the POWER UP routes check, so none of
+  these gates protects against software already running as you.
+
+### Arlo browser feed relay
+
+A personal Arlo account offers no API key, camera address or RTSP stream, and
+GEV will not script Arlo's sign-in, which would mean defeating its bot
+protection. A home site set to **Browser feed relay** instead receives pictures
+from **GEV Arlo Feed Relay**, a personal unpacked Chrome extension in
+`tools/arlo-feed-relay` (`npm run arlo-relay:install`):
+
+- **What leaves the extension.** While your own signed-in
+  `https://my.arlo.com/#/feed` tab is open, the extension reads the newest clip
+  thumbnail per camera from that page, fetches the image without credentials
+  from Arlo's image host and sends GEV only the image bytes, the camera name and
+  a short clip label (such as "Motion · 2:14 PM"). It never reads or forwards
+  cookies, `localStorage` / `sessionStorage`, `Authorization` headers or any Arlo
+  login; it never clicks, scrolls, reloads or keeps the Arlo session alive; it
+  has no `cookies`, `tabs`, `scripting`, `webRequest` or `debugger` permission
+  and runs nothing in the page's own JavaScript world. The signed thumbnail
+  addresses stay in the extension's memory: they are never logged, stored or
+  sent, and its diagnostics show hostnames only.
+- **No login travels.** A relay site sends its saved bridge address, token,
+  username and password nowhere. Values saved earlier stay in
+  `config/private-cameras.json`, unused, until the site is switched back.
+- **Who can reach the relay routes.** `/api/private-cams/relay/pair-request`,
+  `pair-status`, `frame` and `heartbeat` apply the same locality checks as the
+  other private camera routes (loopback peer, local `Host`, no proxy headers, no
+  sharing mode). They also require `Sec-Fetch-Site: none`, which a browser never
+  attaches to a request made by a web page, and on every write
+  `Origin: chrome-extension://<id>`. No route sends CORS headers and preflight
+  `OPTIONS` requests are refused. A local program can forge headers, so headers
+  alone authenticate nothing: the paired secret does.
+- **Pairing is approved in POWER UP.** The extension creates a 32-byte random
+  secret and sends GEV only its SHA-256 hash. GEV issues the request a random
+  6-character code of its own — never one the request sends, and never one
+  another waiting request shows — and the extension's options page shows that
+  code. The request waits in server memory for two minutes and grants nothing
+  until you press **APPROVE** in POWER UP — through the normal same-origin, JSON,
+  dev-server-only gate — after checking that both the code and the extension ID
+  match the extension's options page. Each extension may have one request
+  waiting (at most four extensions at once, each rate-limited on its own), and a
+  request only ever replaces its own extension's earlier one. So another
+  extension that reads a waiting code from `GET /status` can neither put that
+  code on a request of its own, swap in its own secret nor push the real request
+  out: its request shows separately, with a different code and its own extension
+  ID. **APPROVE** sends both the code and the extension ID it showed, the server
+  pairs exactly the request that has both, then discards every other waiting
+  request. The store then keeps the extension ID and the secret's hash, never
+  the secret. **UNPAIR**, or switching the site away from the relay, forgets
+  both.
+- **What a frame must pass.** A frame needs the bearer secret of a paired site,
+  sent from that site's extension ID, with a camera-name header and a declared
+  `image/jpeg`, `image/png` or `image/webp` body of at most 8 MiB — all checked
+  before any byte of the body is read. Then its magic bytes must match the
+  declared type, and each camera accepts at most one frame every 2 seconds.
+  Frames, heartbeats and unmatched camera names live in memory only: nothing the
+  relay sends is written to disk, and a restart forgets it. A heartbeat answer
+  tells the extension only which of the camera names it reported still need a
+  picture and which match no camera, so it downloads a thumbnail from Arlo only
+  when GEV will take it.
+- **No stale picture passes for a current one.** A relay picture is shown only
+  while the relay keeps reporting and its feed tab shows Arlo signed in. When
+  that tab reports that Arlo signed the page out, the pictures give way within
+  seconds. Each heartbeat carries an opaque tag for its tab (a hash, not the tab
+  or any Arlo value), so a sign-in page left open in another tab does not
+  override a tab that reported reading the feed in the last 2.5 minutes. Without
+  a current picture the camera shows a placeholder saying why, with the time the
+  last picture arrived. A camera whose Arlo name changes on save (a new Name or
+  Arlo name, or two Arlo names swapped) drops its picture, so it never shows
+  another camera's.
+- **Arlo's terms.** Arlo's Terms of Service prohibit data-gathering or
+  extraction tools and unapproved applications, and allow Arlo to terminate
+  accounts that use them. The relay is a personal tool you install and run at
+  your own risk; Arlo neither makes nor approves it. Its pictures are the latest
+  motion-clip thumbnails, not live video, and they stop when Arlo signs the web
+  page out after inactivity.
+
 ## Network exposure — the operator threat model
 
 The dev server is a **key broker**: every server-side key above is spendable by anyone who can send HTTP requests to it. That shapes the defaults:

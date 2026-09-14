@@ -4599,7 +4599,62 @@ export class StyleManager {
       onPoi: (id, index) => this._onPoiClick(id, index),
       onSearch: (query) => this._locationLookup.run(query),
       onReset: () => this.resetToGlobeView(),
+      onExtra: (id) => this._onPrivateSitePillClick(id),
     });
+    this._locationControls.setExtraLocations([
+      ...(this._privateSiteLocations?.values() || []),
+    ]);
+  }
+
+  /**
+   * Show saved home and business security sites as LOCATION pills ahead of
+   * the preset cities. Each entry is `{id, name, title, kind, label, lat, lon}`.
+   * @param {Array<object>} entries
+   * @returns {void}
+   */
+  setPrivateSiteLocations(entries = []) {
+    this._privateSiteLocations = new Map(
+      entries.map((entry) => [entry.id, entry]),
+    );
+    this._locationControls?.setExtraLocations(entries);
+    if (
+      this._activePrivateSiteId &&
+      !this._privateSiteLocations.has(this._activePrivateSiteId)
+    )
+      this._activePrivateSiteId = null;
+    else if (this._activePrivateSiteId)
+      this._locationControls?.highlightCity(this._activePrivateSiteId);
+  }
+
+  /**
+   * Fly to a saved security site: a close oblique view of the site so its
+   * camera icons are in frame. The readout reports it like a searched place.
+   * @param {string} id - Private site pill id.
+   * @returns {void}
+   */
+  _onPrivateSitePillClick(id) {
+    const site = this._privateSiteLocations?.get(id);
+    const { flyToLandmark } = this.services;
+    if (!site || typeof flyToLandmark !== 'function') return;
+    const result = this._flyWithTransition(
+      this._activePrivateSiteId !== id,
+      (hooks) =>
+        flyToLandmark(this.viewer, site.lat, site.lon, {
+          range: 180,
+          pitch: -45,
+          heading: 0,
+          buildingHeight: 6,
+          ...hooks,
+        }),
+    );
+    if (result === false) return;
+    this._collapsePOIRow();
+    this._searchedLocationLabel = site.label || site.title || site.name;
+    this._setActiveLocation(null);
+    this._activePrivateSiteId = id;
+    this._currentPoi = null;
+    this._locationControls.highlightCity(id);
+    if (result) this._currentTarget = result.targetPosition;
   }
 
   /**
@@ -4792,6 +4847,7 @@ export class StyleManager {
    */
   _setActiveLocation(locationId) {
     this._activeLocationId = locationId;
+    this._activePrivateSiteId = null;
     // A preset city is now what the camera is framed on, so any earlier
     // free-text destination has been superseded. Clearing only on a real id
     // leaves the search path's own _setActiveLocation(null) untouched.

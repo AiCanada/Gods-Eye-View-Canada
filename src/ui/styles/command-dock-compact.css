@@ -145,7 +145,10 @@
 }
 
 #command-dock .location-pills {
-  display: flex;
+  display: grid;
+  grid-template-rows: repeat(2, auto);
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
   gap: 0.3rem;
   overflow-x: auto;
   scrollbar-width: none;

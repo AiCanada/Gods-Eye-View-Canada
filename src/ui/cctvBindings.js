@@ -1,5 +1,14 @@
+import { bindCctvPanelResize } from './cctvPanelResize.js';
+
 export function _initCctvPanel() {
   if (!this._cctvPanel) return;
+
+  // Drag the live picture's corner to resize the panel (remembered per browser).
+  bindCctvPanelResize({
+    panel: this._cctvPanel,
+    wrap: this._cctvFrameWrap,
+    listen: (element, type, handler) => this.listen(element, type, handler),
+  });
 
   this.listen(this._cctvEnableBtn, 'click', async () => {
     this._actionGeneration++;

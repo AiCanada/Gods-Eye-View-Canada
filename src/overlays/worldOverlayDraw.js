@@ -665,6 +665,30 @@ export function paintThumbnail(ctx, entry, placement, alpha = 1) {
     imageX,
     imageY + thumbH + titleH - 3,
   );
+
+  // Size badge (CCTV cards): a click on it steps the card size.
+  if (entry.resizeBadgeLabel) {
+    const label = String(entry.resizeBadgeLabel);
+    const badgeW = 12 + label.length * 6;
+    const badgeH = 12;
+    const badgeX = x + w - badgeW - 3;
+    const badgeY = y + h - badgeH - 3;
+    const badgeAccent = entry.accent || WORLD_OVERLAY_STYLE.accent;
+    ctx.beginPath();
+    roundedRectPath(ctx, badgeX, badgeY, badgeW, badgeH, 3);
+    ctx.fillStyle = 'rgba(2, 16, 24, 0.86)';
+    ctx.fill();
+    if (typeof ctx.stroke === 'function') {
+      ctx.strokeStyle = badgeAccent;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    ctx.fillStyle = badgeAccent;
+    ctx.font = '700 8px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, badgeX + badgeW / 2, badgeY + badgeH / 2 + 0.5);
+  }
   ctx.restore();
   return placement.rect;
 }

@@ -13,6 +13,11 @@ output/
 pinokio/ENVIRONMENT
 pinokio/.installed
 
+# Private home/business security cameras: logins and camera addresses
+# (POWER UP → SECURITY CAMERAS). Never committed.
+config/private-cameras.json
+config/.private-cameras.json.*.tmp
+
 # Raw camera-pack downloads (tools/camera-pack/CAMERA_PACK.md): only the parsed
 # cams-*.json packs are committed; the raw pages and feeds are rebuilt on demand.
 tools/camera-pack/sources/*.html
