@@ -155,21 +155,12 @@ reopens the same panel.
   photorealistic 3D and world terrain; a Google Maps key only for the
   billing-enabled, metered route + place search; OpenAI when you want to talk
   to the world. Full map, costs included, in [Keys & Costs](#-api-keys).
-- **Your own security cameras:** below the keys, **HOME SECURITY · ARLO** and
+- **Your own security cameras:** below the keys, **HOME SECURITY · and
   **BUSINESS SECURITY** add any number of private sites and cameras — through
-  Home Assistant, a username + password snapshot address, or the Arlo browser
-  feed relay. Setup, Arlo notes and limits:
+  Home Assistant, a username + password snapshot address, or the browser
+  feed relay. Setup, notes and limits:
   [Your Own Security Cameras](#-your-own-security-cameras).
 
-<details>
-<summary>Older Pinokio versions and credential storage</summary>
-
-Do not enter credentials in Pinokio 8.0.40's native **Configure** panel: that
-release does not save this nested app file correctly, and it logs submitted
-values. Use **POWER UP → Provider Settings** inside GEV instead. The Pinokio
-8.2 announcement fixes installation; it does not establish that this separate
-Configure issue is resolved. On macOS, the Keychain via
-`./scripts/dev-fresh.sh` remains the stronger storage option.
 
 </details>
 
@@ -352,7 +343,7 @@ logins and pictures go through a separate private camera server
 (`/api/private-cams`) on your machine, kept apart so it can be hardened further
 on its own.
 
-**Add a site:** **POWER UP** → below the keys → **HOME SECURITY · ARLO** or
+**Add a site:** **POWER UP** → below the keys → **HOME SECURITY · or
 **BUSINESS SECURITY** → **+ ADD HOME SITE** / **+ ADD BUSINESS SITE**. Any number
 of sites, any number of cameras per site.
 
@@ -368,9 +359,9 @@ of sites, any number of cameras per site.
 
 | Sign-in | Use it for | What the app fetches |
 |---|---|---|
-| **Home Assistant long-lived access token** | Any camera Home Assistant can show — for example Arlo cameras on a SmartHub or base station through Home Assistant's HomeKit Device integration | **Bridge URL** (e.g. `http://homeassistant.local:8123`) + camera entities such as `camera.front`, read from `/api/camera_proxy/<entity>` with the token |
+| **Home Assistant long-lived access token** | Any camera Home Assistant can show — for example cameras on a SmartHub or base station through Home Assistant's HomeKit Device integration | **Bridge URL** (e.g. `http://homeassistant.local:8123`) + camera entities such as `camera.front`, read from `/api/camera_proxy/<entity>` with the token |
 | **Username + password** | Cameras, NVRs or bridges with a still-image (JPEG) snapshot address | each camera's snapshot URL, with Digest login (Basic only when the camera asks for it) |
-| **Browser feed relay (Chrome extension)** | Arlo accounts that only have a username and password at my.arlo.com | the newest motion-clip thumbnail per camera, passed on from your own signed-in my.arlo.com feed tab |
+| **Browser feed relay (Chrome extension)**
 
 **Business sites** use a snapshot URL and one login per site — Hikvision,
 Dahua, Axis, Reolink, Amcrest and most others (e.g.
@@ -382,52 +373,22 @@ certificate fingerprint can be pinned.
 
 No public API, no per-camera picture address, no RTSP for other
 apps and no email snapshots, and my.XXXX.com sits behind bot protection with
-two-step verification. GEV never signs in to Arlo and never works around that
+two-step verification. GEV never signs in and never works around that
 protection. Two routes work:
 
 **1. Browser feed relay** — no extra software, uses the tab you already
 have open.
 
-```bash
-npm run arlo-relay:install
-```
 
-This copies the extension from `tools/arlo-feed-relay/` to
-`%LOCALAPPDATA%\GEV\arlo-feed-relay` on Windows (or
-`~/.local/share/gev/arlo-feed-relay`). Run it again after updating GEV, then
-press the reload button on the extension card.
-
-1. Open `chrome://extensions`, turn on **Developer mode**, choose **Load
-   unpacked** (not *Pack extension*) and paste the printed folder path into the
-   folder box. On Windows that folder is under the hidden AppData folder. Don't
-   change the folder's Properties: Windows then adds a `desktop.ini`, which
-   Chrome refuses (running the install again removes it).
-2. Reload your `https://my.arlo.com/#/feed` tab.
-3. In **POWER UP → HOME SECURITY**, set your site's sign-in to **Browser
-   feed relay (Chrome extension)** and **SAVE SITE**. A saved username and
-   password stay saved.
-4. On the extension's **Details → Extension options**, press **PAIR WITH GODS
-   EYE VIEW**. In POWER UP, **APPROVE** only the request whose code *and*
-   extension ID both match the options page.
-5. Keep the feed tab open and signed in, and add `my.arlo.com` to
-   `chrome://settings/performance` → *Always keep these sites active*.
-
-Limits: pictures are the latest clip thumbnails, not live video. A camera with
-no recent clip shows *waiting for a clip*, and when Arlo signs the web page out
-the cards say *signed out* until you sign back in. **Some terms of
-service prohibit data-extraction tools and allowed close accounts — use
-the relay at your own risk.** More in
-(tools/arlo-feed-relay/README.md).
-
-**2. Home Assistant, fully local** — for Arlo cameras on a SmartHub or base
+**2. Home Assistant, fully local** — for cameras on a SmartHub or base
 station that supports Apple HomeKit. Pair the hub with Home Assistant's
 [HomeKit Device](https://www.home-assistant.io/integrations/homekit_controller/)
 integration (not *HomeKit Bridge*), create a long-lived access token in your
 Home Assistant profile, and use the token sign-in above. Snapshots are taken on
-request (640×480 by default) and nothing touches Arlo's website.
+request (640×480 by default).
 
-Community bridges such as hass-aarlo or the Scrypted Arlo plugin sign in to
-Arlo's cloud themselves with browser-impersonation libraries; GEV does not set
+Community bridges or the Scrypted plugin sign in to the 
+cloud themselves with browser-impersonation libraries; GEV does not set
 those up. For other cloud-only brands the same rule applies: if Home Assistant
 can show the camera, use the token sign-in; if a local device offers a JPEG
 snapshot address, use username + password.
@@ -440,7 +401,7 @@ snapshot address, use username + password.
 - The private camera routes answer only this machine, and sites can be saved
   or paired only under the dev server.
 - The relay extension sends GEV only image bytes, a camera name and a clip
-  label — never Arlo cookies, tokens or signed links. Pairing codes are issued
+  label. Pairing codes are issued
   by GEV and approved by you, and relay pictures are kept in memory only.
 - Camera pictures (`/api/private-cams/frame/…`) can be read by any program on
   this computer, so avoid shared machines once private cameras are set up.
