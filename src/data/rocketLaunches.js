@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { isPointerFree } from './inputOwnership.js';
 import {
   findSatelliteOrbitTrackInTle,
   getSatelliteOrbitTrack,
@@ -3552,6 +3553,7 @@ const rocketLaunchesLayer = {
     _clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     _clickHandler.setInputAction((movement) => {
       if (!_enabled || !_dataSource?.show) return;
+      if (!isPointerFree()) return;
       const entity = viewer.scene.drillPick(movement.position, 12)
         .map((picked) => picked?.id)
         .find((candidate) => entityLaunchId(candidate));

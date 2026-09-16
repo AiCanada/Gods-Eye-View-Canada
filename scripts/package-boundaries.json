@@ -65,7 +65,8 @@
       "server/providers/common/geo.js",
       "server/providers/common/http.js",
       "scripts/google-server-key.mjs",
-      "src/data/placeProviderPayloads.js"
+      "src/data/placeProviderPayloads.js",
+      "src/data/routeSteps.js"
     ],
     "external": []
   },
@@ -152,6 +153,7 @@
       "server/providers/cctv/frame-resolver.js",
       "server/providers/cctv/upstream-headers.js",
       "server/providers/cctv/media.js",
+      "server/providers/cctv/range.js",
       "server/providers/cctv/normalize.js",
       "server/providers/cctv/sources.js",
       "server/providers/cctv/area.js",
@@ -239,7 +241,8 @@
       "server/providers/regional/query.js",
       "server/providers/regional/weather-effects.js",
       "server/providers/regional/weather.js",
-      "src/data/regionalBrief.js"
+      "src/data/regionalBrief.js",
+      "src/nominatimGeocode.js"
     ],
     "external": []
   },
@@ -310,6 +313,9 @@
       "src/search/index.js",
       "src/search/placeSearch.js",
       "src/search/google.js",
+      "src/search/coordinateParser.js",
+      "src/search/coordinateGeocoder.js",
+      "src/search/presetGeocoder.js",
       "src/keylessGeocoder.js"
     ],
     "external": []
@@ -508,6 +514,8 @@
       "src/styles/thermal.js",
       "src/ui/applicationShell.js",
       "src/ui/applicationShortcuts.js",
+      "src/ui/frameRateMonitor.js",
+      "src/ui/cameraOrientationControls.js",
       "src/ui/cctv.js",
       "src/ui/cctvBindings.js",
       "src/ui/cctvCalibration.js",

@@ -21,6 +21,12 @@ import {
 import { queuePlatoons, locateAlongRoad } from './trafficQueue.js';
 import { registerDynamicCredit, TOMTOM_CREDIT } from './dataCredits.js';
 import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
+import {
+  registerSpriteCollection,
+  restoreSpriteOrder,
+  restoreSpriteOrderOnEnable,
+  unregisterSpriteCollection,
+} from './spriteOrder.js';
 
 /**
  * @file Street Traffic — animated dots along OSM road polylines, colored by
@@ -1015,6 +1021,9 @@ let _animFrame = 0;
  * Delta time is capped at 100 ms to prevent large jumps after background tabs.
  */
 function animate() {
+  // Entity monitor planes update in the scene pass just before this
+  // preRender. Re-raise the sprite stack so traffic stays above that picture.
+  restoreSpriteOrder(_viewer);
   const now = Date.now();
   // Delta time in seconds, capped to avoid jumps when returning from background tab
   const dt = _lastAnimTime ? Math.min((now - _lastAnimTime) / 1000, 0.1) : 0.016;
@@ -1276,6 +1285,12 @@ function onCameraChanged() {
   // viewport hits the overlap/center-shift skip in step 3 and the dots
   // (cleared here) never reload (H5). Clearing the gate forces a fresh fetch.
   if (alt > ACTIVATION_ALTITUDE) {
+    clearTimeout(_fetchTimeout);
+    _fetchTimeout = null;
+    cancelActiveFetch();
+    _loadGeneration++;
+    _fetching = false;
+    _flowPending = 0;
     clearDots();
     _lastBounds = null;
     _lastViewCenter = null;
@@ -2338,8 +2353,10 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
         _lastBounds = prevBounds;
         _lastViewCenter = prevViewCenter;
       }
+      // Keep this generation's controller until superseded or disabled: flow
+      // can still be running after its paint deadline. An older finally must
+      // never clear the controller belonging to a newer destination.
     }
-    _activeFetchAbort = null;
   }
 }
 
@@ -2547,6 +2564,8 @@ const trafficLayer = {
     });
     // Add permanently — toggle with .show to avoid destroy-on-remove errors
     viewer.scene.primitives.add(_pointCollection);
+    registerSpriteCollection('traffic', _pointCollection);
+    restoreSpriteOrder(viewer);
     _pointCollection.show = false;
     _dots = [];
     _roads = [];
@@ -2627,6 +2646,7 @@ const trafficLayer = {
     // first load commits, then self-clear. Also acts as a safety kick if a
     // failed first fetch left the viewport unloaded while parked.
     armLoadKick(null);
+    restoreSpriteOrderOnEnable('traffic', viewer);
   },
 
   /**
@@ -2858,6 +2878,7 @@ const trafficLayer = {
   destroy(viewer) {
     this.disable(viewer);
     if (_pointCollection) {
+      unregisterSpriteCollection('traffic', _pointCollection);
       viewer.scene.primitives.remove(_pointCollection);
       _pointCollection = null;
     }

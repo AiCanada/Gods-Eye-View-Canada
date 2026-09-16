@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { cctvSourceFiles, createCctvCatalog, expandCctvPack } from '../../server/providers/cctv/catalog.js';
+import { cctvSourceFiles, createCctvCatalog, expandCctvPack, mergeCctvSources } from '../../server/providers/cctv/catalog.js';
 import { CCTV_SOURCE_STAT_INTERVAL_MS, DEFAULT_CCTV_SOURCE_FILES } from '../../server/providers/cctv/constants.js';
-import { normalizeFeedType, normalizeSourceItem } from '../../server/providers/cctv/normalize.js';
+import { cctvStillKey, normalizeFeedType, normalizeSourceItem } from '../../server/providers/cctv/normalize.js';
 
 function tempRoot(t) {
   const dir = mkdtempSync(path.join(tmpdir(), 'gev-cctv-index-'));
@@ -45,8 +45,8 @@ test('the catalogue is rebuilt only after a pack file changes, checked at most e
 
 test('CCTV_SOURCES_FILE is a comma list of plain arrays and gev-cctv-pack/1 envelopes', async (t) => {
   const warn = t.mock.method(console, 'warn', () => {});
-  assert.equal(DEFAULT_CCTV_SOURCE_FILES, 'config/cctv_sources.canada.json,config/cctv_sources.us.json');
-  assert.deepEqual(cctvSourceFiles({}), ['config/cctv_sources.canada.json', 'config/cctv_sources.us.json']);
+  assert.equal(DEFAULT_CCTV_SOURCE_FILES, 'config/cctv_sources.canada.json,config/cctv_sources.us.json,config/cctv_sources.intl.json');
+  assert.deepEqual(cctvSourceFiles({}), ['config/cctv_sources.canada.json', 'config/cctv_sources.us.json', 'config/cctv_sources.intl.json']);
   assert.deepEqual(cctvSourceFiles({ CCTV_SOURCES_FILE: ' a.json , ,b.json' }), ['a.json', 'b.json']);
 
   const dir = tempRoot(t);
@@ -166,4 +166,75 @@ test('none is a canonical feed type, and lookup and videoUrl pass through', () =
   assert.equal(entry.videoUrl, 'https://a.example.org/x.m3u8');
   assert.equal(normalizeSourceItem({ id: 'y', lookup: 'someone-else' }).lookup, '');
   assert.equal(normalizeSourceItem({ id: 'y', videoUrl: 42 }).videoUrl, '');
+});
+
+test('a live TfL still replaces a file copy of the same JamCam', () => {
+  const still = 'https://s3-eu-west-1.amazonaws.com/jamcams.tfl.gov.uk/00001.01251.jpg';
+  const file = normalizeSourceItem({
+    id: 'intl-GB-cam-00001.01251',
+    name: 'Old Street',
+    url: still,
+    feedType: 'image',
+    country: 'GB',
+    headingConfidence: 'unknown',
+  });
+  const live = normalizeSourceItem({
+    id: 'tfl-00001.01251',
+    name: 'Old Street',
+    url: still,
+    snapshotUrl: still,
+    feedType: 'image',
+    country: 'GB',
+    headingDeg: 22.5,
+    headingConfidence: 'low',
+    sourceKind: 'tfl-open-data',
+  });
+  const merged = mergeCctvSources([{ sources: [file] }, { sources: [live], live: true }]);
+  assert.equal(merged.sources.length, 1);
+  assert.equal(merged.sources[0].id, 'tfl-00001.01251');
+  assert.equal(merged.duplicateStills, 1);
+  assert.equal(merged.liveStillReplacements, 1);
+});
+
+test('cctvStillKey ignores cache busters, default ports, and Windy preview vs full', () => {
+  assert.equal(
+    cctvStillKey('https://imgproxy.windy.com/_/preview/plain/current/1755128434/original.jpg?v=2'),
+    'windy:1755128434',
+  );
+  assert.equal(
+    cctvStillKey('https://imgproxy.windy.com/_/full/plain/current/1755128434/original.jpg'),
+    'windy:1755128434',
+  );
+  assert.equal(
+    cctvStillKey('https://cams.example.org:443/a.jpg?v=2&t=9'),
+    'https://cams.example.org/a.jpg',
+  );
+  assert.notEqual(
+    cctvStillKey('https://cams.example.org/a.jpg?v=abc'),
+    cctvStillKey('https://cams.example.org/a.jpg'),
+    'a non-numeric v= is a video id, not a cache buster',
+  );
+});
+
+test('still dedupe keys the fetched still, not a shared page URL', () => {
+  const merged = mergeCctvSources([
+    {
+      sources: [
+        normalizeSourceItem({
+          id: 'a',
+          snapshotUrl: 'https://cams.example.org/a.jpg',
+          url: 'https://cams.example.org/player',
+          feedType: 'image',
+        }),
+        normalizeSourceItem({
+          id: 'b',
+          snapshotUrl: 'https://cams.example.org/b.jpg',
+          url: 'https://cams.example.org/player',
+          feedType: 'image',
+        }),
+      ],
+    },
+  ]);
+  assert.deepEqual(merged.sources.map((source) => source.id).sort(), ['a', 'b']);
+  assert.equal(merged.duplicateStills, 0);
 });

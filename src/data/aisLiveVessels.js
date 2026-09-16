@@ -13,6 +13,7 @@ import {
   unregisterPickOwner,
   resolvePickId,
 } from './pickRegistry.js';
+import { isPointerFree } from './inputOwnership.js';
 import {
   applyVesselOverlayPolicy,
   accentForVesselType,
@@ -1501,6 +1502,7 @@ function bindVesselInteraction(viewer, handler, keyTarget) {
   state.clickHandler = handler;
   handler.setInputAction((click) => {
     if (!state.enabled) return;
+    if (!isPointerFree()) return;
     const picked = viewer.scene.pick(click.position);
     const pickedId = resolvePickId(picked);
     let record = pickedId ? state.vesselMap.get(pickedId) : null;

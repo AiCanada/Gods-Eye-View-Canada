@@ -1,11 +1,13 @@
 # Camera packs for God's Eye View
 
-Two CCTV source packs ship with the app:
+Three CCTV source packs ship with the app:
 
 - **Canada** (`config/cctv_sources.canada.json`), built from public Canadian
   web-camera directories and the provinces' own camera lists.
 - **United States** (`config/cctv_sources.us.json`), built from Road511's
   listing of the state DOT and city traffic cameras.
+- **International** (`config/cctv_sources.intl.json`), built from a listing of
+  public webcams and road-agency cameras in other countries and territories.
 
 The built-in live packs (Austin open data, Caltrans, Transport for London) sit
 beside them and load only for an area that needs them.
@@ -18,13 +20,16 @@ the pack files named in `CCTV_SOURCES_FILE` (a comma-separated list), an inline
 array of cameras or the compact envelope described under
 [US pack](#us-pack-road511-listing).
 
-The file list defaults to both packs. A typical `.env`:
+The file list defaults to all three packs. A typical `.env`:
 
 ```
-CCTV_SOURCES_FILE=config/cctv_sources.canada.json,config/cctv_sources.us.json
-CCTV_COUNTRIES=CA,US
+CCTV_SOURCES_FILE=config/cctv_sources.canada.json,config/cctv_sources.us.json,config/cctv_sources.intl.json
+CCTV_COUNTRIES=*
 CCTV_BROWSER_DIRECT_HOSTS=quebec511.info
 ```
+
+`CCTV_COUNTRIES=CA,US` leaves every classified international camera out. Leave
+the country list unset (or `*`) to keep them.
 
 The server reads the files once into an in-memory index and rebuilds it only
 when a file changes (size or modification time) or the country list does. It
@@ -41,11 +46,11 @@ requested.
 | Value | Effect |
 |---|---|
 | `CA` | Canada only. |
-| `CA,US` | Adds the US pack. The Austin open-data pack loads when an Austin area is selected; Caltrans only when `CCTV_CALTRANS_DISTRICTS` is set. |
+| `CA,US` | Canada and the US. The Austin open-data pack loads when an Austin area is selected; Caltrans only when `CCTV_CALTRANS_DISTRICTS` is set. International cameras stay out. |
 | `CA,GB` | Adds the Transport for London pack when a London area is selected (unless `CCTV_TFL_ENABLED=0`). |
 | `PM` | Saint-Pierre-et-Miquelon, French territory. Its two streams are HLS-only, so nothing loads until an HLS player ships. |
-| `*` or `ALL` | Every country. |
-| empty | No cameras at all. |
+| `*` or `ALL` | Every country, the whole international pack included. |
+| empty | Only cameras that declare no country (the listing's `XX`). |
 
 Every entry carries a `country` field, and the field is also exposed on
 `/api/cctv/sources` so a client can group or filter by it. An entry that
@@ -53,7 +58,7 @@ declares no country cannot be classified and is therefore never filtered out.
 
 ### Area cap
 
-No request loads more than **2,500 cameras**: the nearest to the selected place
+No request loads more than **1,000 cameras**: the nearest to the selected place
 within **50 km**. The catalogue itself keeps every camera, so a busy state is
 never cut short; it is the loaded area that is capped. The cap has no off
 switch and no environment variable, and no request can lift it.
@@ -67,10 +72,10 @@ response is gzipped when the client accepts it.
 
 Picking a place outside the loaded area, whether in another state or far across
 the same one, replaces the loaded cameras with the new area's. The CCTV
-panel's chip reads `AREA 50 KM · 2,500 CAP · N MORE NEARBY` when an area is
+panel's chip reads `AREA 50 KM · 1,000 CAP · N MORE NEARBY` when an area is
 over the cap, `AREA 50 KM · N CAMERAS` otherwise, `AREA LOADING` while a load
 is in flight, and `AREA --` before any place is selected. Metro Atlanta is the
-busiest area in the packs: 2,982 cameras within 50 km, so 2,500 load and 482
+busiest area in the packs: 2,982 cameras within 50 km, so 1,000 load and 1,982
 wait until a place nearer them is picked.
 
 ### Live packs
@@ -171,6 +176,63 @@ The September 2026 listing (48,508 rows) built to **48,697 cameras**:
   `VT-cam-HARTFORD RWIS CCTV` and `VT-cam-HARTFORD  RWIS CCTV` (two spaces)
   are two cameras.
 
+## International pack
+
+Public webcams and road-agency cameras outside Canada and the US. The export,
+`international_webcams.tsv`, is a raw download and is never committed
+(`tools/camera-pack/sources/*.tsv` is ignored). The pack is built from it with
+no network access at all:
+
+```bash
+node tools/camera-pack/build-intl.mjs --input <path>/international_webcams.tsv
+```
+
+`build-intl.mjs` writes `config/cctv_sources.intl.json` and
+`tools/camera-pack/cctv_sources.intl.report.txt`. The pure helpers live in
+`intl-tsv.mjs` and the listing-to-operator table in `intl-providers.mjs`.
+
+- **Columns are read by header name**, so a re-ordered export still builds.
+- **Duplicates.** Byte-identical rows drop silently. A camera id reused by a
+  different row keeps the first row and reports the rest.
+- **Windy.** Windy's own list and its public, weather, ski and harbour lists
+  carry many of the same webcams under different image addresses (with or
+  without `?v=2`). One camera is kept per Windy webcam id, preferring a row
+  that already has a country over `XX`.
+- **Coordinates.** A missing point, a point outside ±90/±180, or 0,0 is
+  rejected. Longitudes are not flipped: east of Greenwich is real here.
+  Subdivisions in `state_id` (`AU-NSW`, `GB-ENG`) become country `AU`/`GB` plus
+  a region, so `CCTV_COUNTRIES=AU` still matches. `XX`, `??` and `INT` are
+  unclassified and are never gated out.
+- **Feed type.** A row with a still `primary_url` is `feedType: 'image'`. A
+  timestamped still (a capture date in the path) is not stored. A row with only
+  a stream is `feedType: 'none'` with `videoUrl` kept and never served. There
+  is no on-demand lookup. YouTube and Vimeo embeds are dropped.
+- **Heading.** A compass `direction` (`N`, `SW`) or a numeric degree is an
+  estimated heading; anything else is unknown.
+- **Operator.** The provider and license come from the listing `source`. OSM
+  rows also credit OpenStreetMap contributors; TfL rows use TfL's required
+  attribution. School, university, college and library cameras are removed by
+  name in many languages, and ski, kite, flight and driving schools named as
+  the place are removed too.
+
+Every camera id is `intl-` plus the listing's own camera id, unchanged.
+
+The file is the same compact envelope as the US pack, with no default country
+(each camera carries its own ISO code).
+
+The September 2026 listing (142,690 rows from 172 sources) built to
+**103,573 cameras**:
+
+- 98,655 with a public still.
+- 4,918 with no still (2,696 with no stream either, 2,222 stream-only; the
+  stream address is kept as `videoUrl` and never served).
+- 10,281 with an estimated heading, credited to 63 operators in 166 countries,
+  plus 7,115 unclassified (`XX`).
+- Dropped along the way: 284 conflicting duplicate ids, 31,827 extra Windy
+  copies of the same webcam, 6,310 rejected coordinates, 317 school cameras
+  and 496 YouTube/Vimeo embeds. 2,276 cameras marked inactive in the listing
+  are kept. The exact tables are in `tools/camera-pack/cctv_sources.intl.report.txt`.
+
 ## On-demand Road511 lookup
 
 A camera with no public still (`feedType: 'none'`, `lookup: 'road511'`) costs
@@ -230,6 +292,12 @@ would refuse; the September 2026 build has none.
 | Source | Origin | Coordinates |
 |---|---|---|
 | `us_public_webcams.tsv` (not committed) | Road511's listing of state DOT and city traffic cameras, 47 states | exact, repaired or rejected as above |
+
+### International
+
+| Source | Origin | Coordinates |
+|---|---|---|
+| `international_webcams.tsv` (not committed) | Public webcams and road-agency cameras outside Canada, the US and Ukraine (Windy, WebcamGalore, WorldCam, Panomax, feratel, OpenStreetMap, SkylineWebcams, DGT, Trafikverket, Digitraffic, Statens vegvesen, TfL, Hong Kong Transport Department, MLIT and others) | mixed; missing, out-of-range and 0,0 points are rejected |
 
 ### Notes on individual sources
 
@@ -330,7 +398,8 @@ playlists are excluded until the app ships an HLS player: a plain `<video>`
 element cannot decode them, so such a camera rendered a blank plane while
 reporting itself live. In the US pack a stream-only camera is kept as a lookup
 camera instead, its stream in `videoUrl`, which the server never serves.
-Cameras that exist only as a YouTube live embed are excluded too: a
+In the international pack a stream-only camera is `feedType: 'none'` with
+`videoUrl`, also never served. Cameras that exist only as a YouTube live embed are excluded too: a
 YouTube live manifest is a short-lived signed URL and would rot in a stored
 catalogue. The Confederation Bridge camera falls in this category.
 
@@ -347,12 +416,13 @@ node build-alberta511.mjs  # Alberta 511          (sources/alberta511-cameras.js
 node build-transcanada-links.mjs  # listed webcams (sources/transcanada-webcams.html -> sources/cams-transcanada-links.json)
 node merge-pack.mjs        # validate, dedupe, order -> ../../config/cctv_sources.canada.json
 node build-road511-us.mjs --input <path>/us_public_webcams.tsv  # -> ../../config/cctv_sources.us.json + cctv_sources.us.report.txt
+node build-intl.mjs --input <path>/international_webcams.tsv  # -> ../../config/cctv_sources.intl.json + cctv_sources.intl.report.txt
 ```
 
 Every script reads and writes inside `sources/` beside itself, so the rebuild
 works from any directory. The raw inputs (`nbcams.html`, `meteoblue.html`,
 `511on-cameras.json`, `alberta511-cameras.json`, `drivebc-webcams.json`, `quebec511-cameras.geojson`, `quebec511-cameras.csv`,
-`transcanada-webcams.html`, `us_public_webcams.tsv`) are not committed; only the parsed `cams-*.json` are.
+`transcanada-webcams.html`, `us_public_webcams.tsv`, `international_webcams.tsv`) are not committed; only the parsed `cams-*.json` are.
 The Québec GeoJSON is the dataset's WFS export
 (`ms:infos_cameras`, `srsname=EPSG:4326`, `outputformat=geojson`). The
 Trans-Canada crawl writes `cams-transcanada-links.report.txt` with the reason
@@ -464,13 +534,14 @@ territory, so once carried they would be tagged `PM` and load only when
 ## Known costs
 
 The browser builds geometry, ground-height priors and map cards only for the
-loaded area, never more than 2,500 cameras, and it requests frames only for the
+loaded area, never more than 1,000 cameras, and it requests frames only for the
 cards in view and the active camera. A camera with no still costs nothing until
 someone opens it. The server keeps a frame for eight seconds so viewers share
 it, and a camera that fails puts one request on its host per backoff window
 (15 seconds doubling to five minutes) before the synthetic card is served for
-free. The US pack is about 11 MB on disk and 1.4 MB gzipped; the server reads
-it once and rereads it only when the file changes.
+free. The US pack is about 11 MB on disk and 1.4 MB gzipped; the international pack
+is about 25 MB (3.6 MB gzipped). The server reads each once and rereads it only
+when the file changes.
 
 ## Attribution
 

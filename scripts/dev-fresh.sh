@@ -9,7 +9,7 @@ PORT="${PORT:-4173}"
 # should not be reachable from the network unless explicitly requested.
 # Set HOST=0.0.0.0 to opt in to LAN exposure (a warning is printed).
 HOST="${HOST:-localhost}"
-# CCTV settings get no launcher defaults. The server loads at most 2,500
+# CCTV settings get no launcher defaults. The server loads at most 1,000
 # cameras nearest the selected place (within 50 km), and the live Austin,
 # Caltrans and TfL packs download only when their area is selected. Values
 # from the shell or .env (CCTV_COUNTRIES, CCTV_CALTRANS_DISTRICTS,

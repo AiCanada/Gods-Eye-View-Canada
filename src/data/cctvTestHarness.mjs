@@ -117,7 +117,7 @@ export function areaReport(point, items, extra = {}) {
     lat: point.lat,
     lon: point.lon,
     radiusKm: 50,
-    limit: 2500,
+    limit: 1000,
     inArea: items.length,
     loaded: items.length,
     dropped: 0,

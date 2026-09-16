@@ -461,7 +461,7 @@ export function expandPack(pack) {
 /**
  * The busiest `radiusKm` circles centred on a camera, at least two radii
  * apart so each names a different area. For the report: an area over the
- * server's 2,500-camera load cap shows here. Grid cells do not wrap the
+ * server's 1,000-camera load cap shows here. Grid cells do not wrap the
  * antimeridian; no US camera cluster sits on it.
  * @param {{lat:number, lon:number}[]} points
  * @returns {{ point: object, count: number }[]}

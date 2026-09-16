@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { isPointerFree } from './inputOwnership.js';
 import {
   selectInfraLod,
   applyInfraEvictionGrace,
@@ -731,6 +732,7 @@ export function createLocalGeoJsonLayer(
               );
               _clickHandler.setInputAction((click) => {
                 if (!_enabled) return;
+                if (!isPointerFree()) return;
                 const picked = viewer.scene.pick(click.position);
 
                 if (picked && picked.id && picked.id.__localLayerId === id) {

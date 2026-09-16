@@ -5,7 +5,7 @@
  *
  * Architecture:
  * - Camera area: the layer holds the cameras nearest ONE selected place — at
- *   most 2,500 within 50 km, fetched from /api/cctv/sources?lat&lon — plus this
+ *   most 1,000 within 50 km, fetched from /api/cctv/sources?lat&lon — plus this
  *   machine's private cameras, which load separately and never leave. A place
  *   outside the loaded area (a pill, search result or map click, even in the
  *   same state) swaps the area by id: kept cameras keep their records, dropped
@@ -60,7 +60,7 @@
  * plus CCTV-specific methods (selectCamera, cycleCamera, focusNearest, etc.).
  */
 import * as Cesium from 'cesium';
-import { registerSpriteCollection, restoreSpriteOrder } from './spriteOrder.js';
+import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import {
   CCTV_ACTIVATION_RESULT,
   activateCctvCameraFromWorldClick,
@@ -205,9 +205,9 @@ const PROBE_MIN_RANGE_M = 12;
 // post-hoc (applyLateGroundPriors) when it lands.
 const GROUND_PRIOR_INIT_WAIT_MS = 8000;
 // Camera area (contract: GET /api/cctv/sources?lat&lon&radiusKm). The server
-// answers the cameras nearest the point, nearest first; 2,500 is a hard cap.
+// answers the cameras nearest the point, nearest first; 1,000 is a hard cap.
 export const CCTV_AREA_RADIUS_KM = 50;
-export const CCTV_AREA_LOAD_CAP = 2_500;
+export const CCTV_AREA_LOAD_CAP = 1_000;
 /** The first settled view below this height seeds the area (never at globe view). */
 const AREA_SEED_MAX_ALTITUDE_M = 400_000;
 /** A response still downloading live packs (area.pending) is fetched once more after this. */
@@ -283,6 +283,8 @@ const ACTIVE_COVERAGE_CENTER = Cesium.Color.fromCssColorString('#d7ff8d').withAl
 const ACTIVE_COVERAGE_EDGE_DEPTHFAIL = Cesium.Color.fromCssColorString('#8dff87').withAlpha(0.18);
 const ACTIVE_COVERAGE_CENTER_DEPTHFAIL = Cesium.Color.fromCssColorString('#d7ff8d').withAlpha(0.26);
 const PLANE_OUTLINE_COLOR = Cesium.Color.fromCssColorString('#6be8ff').withAlpha(0.55);
+/** Monitor-plane fill: slightly see-through so street traffic reads on top. */
+const PROJECTION_PLANE_COLOR = Cesium.Color.WHITE.withAlpha(0.82);
 
 // ---------------------------------------------------------------------------
 // Module-scoped mutable state
@@ -293,6 +295,10 @@ let _records = [];
 let _recordById = new Map();
 let _coverageEntities = [];
 let _projectionEntities = [];
+/** Dedicated primitive collection for monitor-plane pictures (not entity batches). */
+let _projectionPrimitiveCollection = null;
+const _scratchPlaneScale = new Cesium.Cartesian3();
+const _scratchPlaneRotation = new Cesium.Matrix3();
 let _enabled = false;
 let _activeCameraId = null;
 let _coverageMode = 'on'; // 'off' | 'on' (wireframes) | 'viewshed' (color-coded volumes)
@@ -355,7 +361,7 @@ let _activeFocusStyleCount = 0;
 const _scratchFocusScreen = new Cesium.Cartesian2();
 // Staggered geometry-load queue state (see queueUnresolvedGeometry).
 let _geoQueue = [];
-/** Membership of `_geoQueue`, so enqueueing stays O(1) at 2,500 cameras. */
+/** Membership of `_geoQueue`, so enqueueing stays O(1) at 1,000 cameras. */
 let _geoQueueSet = new Set();
 let _geoQueueTimer = 0;
 let _geoLoading = false;
@@ -1149,7 +1155,7 @@ function currentViewContext() {
 }
 
 /**
- * Fetches the public cameras nearest a point (contract 2): at most 2,500
+ * Fetches the public cameras nearest a point (contract 2): at most 1,000
  * within 50 km, nearest first, plus the server's area report. Never asks for
  * the whole catalogue. Private cameras are not part of it.
  * @param {{lat:number, lon:number}} point
@@ -1594,7 +1600,10 @@ function refreshProjectionTextures(record) {
   const now = Date.now();
   if (now - safeNumber(runtime.lastTextureSwapAt, 0) < PROJECTION_TEXTURE_SWAP_MS) return;
 
-  const planeShowing = !!(runtime.planeEntity?.show && runtime.planeMaterial);
+  const planeShowing = !!(
+    runtime.planeMaterial
+    && (runtime.planePrimitive?.show || runtime.planeEntity?.show)
+  );
   if (!planeShowing) return;
 
   // Only swap when the canvas content actually changed since the last swap.
@@ -1609,6 +1618,7 @@ function refreshProjectionTextures(record) {
   runtime.lastTextureSwapAt = now;
   runtime.lastSwappedCanvasStamp = runtime.canvasStamp;
   runtime.planeMaterial.image = buffer;
+  syncProjectionPrimitiveImage(runtime);
 }
 
 /**
@@ -1703,6 +1713,101 @@ function paintProjectionPlaceholder(ctx, camera, health = null) {
 }
 
 /**
+ * Image currently bound to the monitor plane (video element or canvas buffer).
+ * @param {Object} runtime - Projection runtime.
+ * @returns {HTMLCanvasElement|HTMLVideoElement|*} 
+ */
+function projectionImageSource(runtime) {
+  if (runtime?.video) return runtime.video;
+  if (runtime?.canvas) return runtime.canvas;
+  const image = runtime?.planeMaterial?.image;
+  if (!image) return null;
+  return typeof image.getValue === 'function' ? image.getValue() : image;
+}
+
+function syncProjectionPrimitiveImage(runtime) {
+  const material = runtime?.planePrimitiveMaterial;
+  const image = projectionImageSource(runtime);
+  if (!material?.uniforms || !image) return;
+  material.uniforms.image = image;
+}
+
+/**
+ * Entity plane pictures join Cesium's translucent sort and paint over street
+ * traffic. This appearance stays classified opaque (so it is not distance-
+ * sorted against the dots), blends a slight see-through fill, and does not
+ * write depth, so vehicles draw on top of the feed.
+ * @param {Cesium.Material} material
+ * @returns {Cesium.MaterialAppearance}
+ */
+function createProjectionPrimitiveAppearance(material) {
+  if (material) material.translucent = false;
+  const appearance = new Cesium.MaterialAppearance({
+    material,
+    translucent: false,
+    closed: false,
+    faceForward: true,
+    renderState: {
+      cull: { enabled: false },
+      depthTest: { enabled: true },
+    },
+  });
+  const getRenderState = appearance.getRenderState.bind(appearance);
+  appearance.getRenderState = function projectionPlaneRenderState() {
+    const rs = getRenderState();
+    rs.depthMask = false;
+    rs.blending = Cesium.BlendingState.ALPHA_BLEND;
+    return rs;
+  };
+  return appearance;
+}
+
+function projectionPlaneModelMatrix(position, orientation, dimensions, result) {
+  const rotation = Cesium.Matrix3.fromQuaternion(orientation, _scratchPlaneRotation);
+  const scale = Cesium.Cartesian3.fromElements(
+    dimensions.x,
+    dimensions.y,
+    1,
+    _scratchPlaneScale,
+  );
+  Cesium.Matrix3.multiplyByScale(rotation, scale, rotation);
+  return Cesium.Matrix4.fromRotationTranslation(rotation, position, result);
+}
+
+function ensureProjectionPrimitiveCollection() {
+  if (_projectionPrimitiveCollection && !_projectionPrimitiveCollection.isDestroyed?.()) {
+    return _projectionPrimitiveCollection;
+  }
+  const primitives = _viewer?.scene?.primitives;
+  if (!primitives?.add) return null;
+  _projectionPrimitiveCollection = new Cesium.PrimitiveCollection({ destroyPrimitives: true });
+  primitives.add(_projectionPrimitiveCollection);
+  registerSpriteCollection('cctv-projection', _projectionPrimitiveCollection);
+  restoreSpriteOrder(_viewer);
+  return _projectionPrimitiveCollection;
+}
+
+function destroyProjectionPrimitive(runtime) {
+  if (!runtime) return;
+  const primitive = runtime.planePrimitive;
+  runtime.planePrimitive = null;
+  runtime.planePrimitiveMaterial = null;
+  if (!primitive) return;
+  const collection = _projectionPrimitiveCollection;
+  if (collection && !collection.isDestroyed?.() && collection.contains?.(primitive)) {
+    collection.remove(primitive);
+  }
+}
+
+function destroyProjectionPrimitiveCollection(viewer) {
+  const collection = _projectionPrimitiveCollection;
+  _projectionPrimitiveCollection = null;
+  if (!collection) return;
+  unregisterSpriteCollection('cctv-projection', collection);
+  viewer?.scene?.primitives?.remove?.(collection);
+}
+
+/**
  * Re-derives the monitor plane entity's placement (position, orientation,
  * dimensions) + label from the record's current frustum geometry, so the plane
  * always caps the wireframe exactly (corner rays terminate on its corners).
@@ -1711,16 +1816,23 @@ function paintProjectionPlaceholder(ctx, camera, health = null) {
  */
 function updatePlanePlacement(record) {
   const runtime = record?.projection;
-  if (!runtime?.planeEntity) return;
+  if (!runtime?.planeEntity && !runtime?.planePrimitive) return;
   const geometry = record.frustumGeometry
     || computeFrustumGeometry(record.camera, groundAltFor(record), record.probeClampRangeM);
   const positions = record.frustumPositions || frustumCartesians(geometry);
-  runtime.planeEntity.position = positions.capCenter;
-  runtime.planeEntity.orientation = planeOrientationFor(record.camera, positions.capCenter);
-  if (runtime.planeEntity.plane) {
-    runtime.planeEntity.plane.dimensions = new Cesium.Cartesian2(
-      geometry.halfW * 2,
-      geometry.halfH * 2
+  const orientation = planeOrientationFor(record.camera, positions.capCenter);
+  const dimensions = new Cesium.Cartesian2(geometry.halfW * 2, geometry.halfH * 2);
+  if (runtime.planeEntity) {
+    runtime.planeEntity.position = positions.capCenter;
+    runtime.planeEntity.orientation = orientation;
+    if (runtime.planeEntity.plane) runtime.planeEntity.plane.dimensions = dimensions;
+  }
+  if (runtime.planePrimitive?.modelMatrix) {
+    projectionPlaneModelMatrix(
+      positions.capCenter,
+      orientation,
+      dimensions,
+      runtime.planePrimitive.modelMatrix,
     );
   }
   if (runtime.labelPosition) {
@@ -1744,7 +1856,10 @@ function clearProjectionOverlay() {
  */
 function setPlaneVisible(runtime, visible) {
   if (!runtime) return;
-  if (runtime.planeEntity) runtime.planeEntity.show = !!visible;
+  const show = !!visible;
+  if (runtime.planeEntity) runtime.planeEntity.show = show;
+  if (runtime.planePrimitive) runtime.planePrimitive.show = show;
+  if (show) restoreSpriteOrder(_viewer);
   if (visible && runtime.overlayEntry && runtime.cameraId) {
     if (_projectionOverlayOwnerId !== runtime.cameraId) {
       _cctvOverlayHost.setEntries(
@@ -1770,21 +1885,63 @@ function createProjectionPlane(record, runtime, geometry, positions) {
     name: record.camera.name,
     position: () => runtime.labelPosition,
   });
+  const orientation = planeOrientationFor(record.camera, positions.capCenter);
+  const dimensions = new Cesium.Cartesian2(geometry.halfW * 2, geometry.halfH * 2);
   runtime.planeEntity = _viewer.entities.add({
     id: `cctv-${record.camera.id}-plane`,
     properties: { cctvCameraId: record.camera.id },
     show: false,
     position: positions.capCenter,
-    orientation: planeOrientationFor(record.camera, positions.capCenter),
+    orientation,
     plane: {
       plane: new Cesium.Plane(Cesium.Cartesian3.UNIT_Z, 0.0),
-      dimensions: new Cesium.Cartesian2(geometry.halfW * 2, geometry.halfH * 2),
+      dimensions,
       material: runtime.planeMaterial,
       outline: true,
       outlineColor: PLANE_OUTLINE_COLOR,
     },
   });
+  const image = projectionImageSource(runtime);
+  const collection = image && typeof HTMLCanvasElement !== 'undefined'
+    ? ensureProjectionPrimitiveCollection()
+    : null;
+  if (collection && Cesium.PlaneGeometry && Cesium.MaterialAppearance) {
+    try {
+      const material = Cesium.Material.fromType('Image', {
+        image,
+        color: PROJECTION_PLANE_COLOR,
+      });
+      const primitive = collection.add(new Cesium.Primitive({
+        geometryInstances: new Cesium.GeometryInstance({
+          geometry: new Cesium.PlaneGeometry({
+            vertexFormat: Cesium.MaterialAppearance.MaterialSupport.TEXTURED.vertexFormat,
+          }),
+          id: runtime.planeEntity,
+        }),
+        appearance: createProjectionPrimitiveAppearance(material),
+        asynchronous: false,
+        allowPicking: true,
+        modelMatrix: projectionPlaneModelMatrix(positions.capCenter, orientation, dimensions, new Cesium.Matrix4()),
+        show: false,
+      }));
+      runtime.planePrimitive = primitive;
+      runtime.planePrimitiveMaterial = material;
+      if (runtime.planeEntity.plane) {
+        runtime.planeEntity.plane.fill = false;
+        runtime.planeEntity.plane.outline = false;
+      }
+    } catch (error) {
+      console.warn('[Data:CCTV] monitor plane primitive failed; using entity fill', error?.message || error);
+      destroyProjectionPrimitive(runtime);
+    }
+  }
+  restoreSpriteOrder(_viewer);
   return runtime.planeEntity;
+}
+
+/** Test seam: monitor-plane appearance must not write depth over traffic. */
+export function _createCctvProjectionAppearanceForTest(material) {
+  return createProjectionPrimitiveAppearance(material);
 }
 
 /**
@@ -1803,6 +1960,8 @@ export function _createCctvProjectionPlaneForTest(viewer, record) {
   const runtime = {
     cameraId: String(record.camera.id),
     planeEntity: null,
+    planePrimitive: null,
+    planePrimitiveMaterial: null,
     labelPosition: new Cesium.Cartesian3(),
     overlayEntry: null,
     planeMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.WHITE),
@@ -1852,6 +2011,8 @@ function createProjectionRuntime(record) {
     image: null,
     video: null,
     planeEntity: null,
+    planePrimitive: null,
+    planePrimitiveMaterial: null,
     cameraId: String(record.camera.id),
     labelPosition: new Cesium.Cartesian3(),
     overlayEntry: null,
@@ -1915,10 +2076,13 @@ function createProjectionRuntime(record) {
   const geometry = record.frustumGeometry
     || computeFrustumGeometry(record.camera, groundAltFor(record), record.probeClampRangeM);
   const positions = record.frustumPositions || frustumCartesians(geometry);
+  // Keep `transparent: false` so Cesium does not force the entity fill into
+  // the distance-sorted translucent pass. The live picture is the primitive
+  // below: slightly see-through, no depth write, traffic draws on top.
   runtime.planeMaterial = new Cesium.ImageMaterialProperty({
     image: (mode === 'video' && runtime.video) ? runtime.video : canvas,
-    transparent: true,
-    color: Cesium.Color.WHITE.withAlpha(0.95),
+    transparent: false,
+    color: PROJECTION_PLANE_COLOR,
   });
   createProjectionPlane(record, runtime, geometry, positions);
 
@@ -1953,6 +2117,7 @@ function destroyProjectionRuntime(runtime) {
     runtime.video.removeAttribute('src');
     runtime.video.load();
   }
+  destroyProjectionPrimitive(runtime);
   if (runtime.planeEntity && _viewer) {
     _viewer.entities.remove(runtime.planeEntity);
     runtime.planeEntity = null;
@@ -2101,7 +2266,7 @@ function drawProjectionFrame(record) {
       // camera republished once in 5 minutes, an Austin one not at all.
       // Redrawing regardless bumped canvasStamp, which forced a buffer swap
       // and a fresh 1920x1080 texture upload; the plane renders its white
-      // base color (planeMaterial color = WHITE, alpha .95) for the frame or
+      // base color (planeMaterial color = WHITE at 82% opacity) for the frame or
       // two Cesium needs to rebind, which IS the periodic white flash from the
       // owner field tests (2026-07-04 and 2026-07-30).
       const signature = projectionFrameSignature(runtime);
@@ -2361,6 +2526,7 @@ function updateRecordGeometry(record, options = {}) {
     const excludeObjects = [...(record.coverageEntities || [])];
     if (record.billboard) excludeObjects.push(record.billboard);
     if (record.projection?.planeEntity) excludeObjects.push(record.projection.planeEntity);
+    if (record.projection?.planePrimitive) excludeObjects.push(record.projection.planePrimitive);
     sampleMeshFloorCells(_viewer?.scene, [point], {
       excludeObjects: excludeObjects.filter(Boolean),
       viewerLat: viewerCarto ? Cesium.Math.toDegrees(viewerCarto.latitude) : undefined,
@@ -3519,6 +3685,7 @@ export function hideCctvRecordVisuals(records, destroyVolume, activeCameraId = n
     for (const entity of record?.coverageEntities || []) entity.show = false;
     if (record?.viewshedPrimitive) destroyVolume?.(record);
     if (record?.projection?.planeEntity) record.projection.planeEntity.show = false;
+    if (record?.projection?.planePrimitive) record.projection.planePrimitive.show = false;
   }
 }
 
@@ -3717,12 +3884,13 @@ function createCameraRecord(camera, groundPrior = null) {
       color: IDLE_CAMERA_COLOR,
       width: 24,
       height: 24,
-      // Field-test fix (2026-07-06): always-on-top. The old finite value
-      // (1800 m) re-engaged the depth test at far zoom, where the COARSE
-      // far-LOD Google-3D mesh sits above the true ground and swallowed
+      // Field-test fix (2026-07-06): always-on-top vs the globe mesh. The old
+      // finite value (1800 m) re-engaged the depth test at far zoom, where the
+      // COARSE far-LOD Google-3D mesh sits above the true ground and swallowed
       // ground-anchored icons ("submerged" pills over SF). Far-side-of-globe
       // icons are handled by refreshHorizonCulling() (the flights-layer
-      // EllipsoidalOccluder pattern), not by the depth test.
+      // EllipsoidalOccluder pattern), not by the depth test. Street traffic
+      // still draws above these icons via SPRITE_LAYER_ORDER.
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
       scaleByDistance: new Cesium.NearFarScalar(350, 1.25, 4_000_000, 0.42),
     })
@@ -3926,7 +4094,7 @@ function normalizeArea(area, point, loadedCount, generation) {
 /**
  * Whether a point is already covered by a loaded area: within
  * `max(cover·0.5, cover − 10 km)` of its centre, where `cover` is the area's
- * reach when the 2,500 cap cut it short and its radius otherwise. A covered
+ * reach when the 1,000 cap cut it short and its radius otherwise. A covered
  * selection keeps the area; anything farther re-centres it.
  * @param {Object|null} area - `{lat, lon, radiusKm, reachKm, capped}`.
  * @param {{lat:number, lon:number}|null} point
@@ -4852,7 +5020,7 @@ function uiState() {
     autoHop: _autoHop,
     autoHopSuspended: _autoHopSuspended,
     autoHopSec: _autoHopSec,
-    // The loaded camera area (at most 2,500 within 50 km of one place).
+    // The loaded camera area (at most 1,000 within 50 km of one place).
     area: areaUiState(),
     count: _count,
     lastUpdate: _lastUpdate,
@@ -5019,6 +5187,7 @@ function runActivationObstructionProbe(record) {
     const exclude = [_billboards, ..._coverageEntities];
     for (const runtime of _projectionEntities) {
       if (runtime?.planeEntity) exclude.push(runtime.planeEntity);
+      if (runtime?.planePrimitive) exclude.push(runtime.planePrimitive);
     }
     const hit = scene.pickFromRay(new Cesium.Ray(mountPos, dir), exclude);
     if (!hit?.position) return;
@@ -5332,9 +5501,15 @@ function extractPickedCameraId(picked) {
       : maybeProp;
     const record = typeof value === 'string' ? _recordById.get(value) : null;
     const ownsCoverageEntity = Boolean(record?.coverageEntities?.includes(entity));
+    const pickedPrimitive = picked.primitive;
     const ownsProjectionEntity = record?.projection?.planeEntity === entity
+      || (pickedPrimitive && record?.projection?.planePrimitive === pickedPrimitive)
       || _projectionEntities.some((runtime) => (
-        runtime?.cameraId === value && runtime.planeEntity === entity
+        runtime?.cameraId === value
+        && (
+          runtime.planeEntity === entity
+          || (pickedPrimitive && runtime.planePrimitive === pickedPrimitive)
+        )
       ));
     if (record && (ownsCoverageEntity || ownsProjectionEntity)) return value;
   }
@@ -6051,7 +6226,9 @@ const cctvLayer = {
     stopGeometryLoadQueue();
     teardownAmbientCards();
     destroyCoverageEntities();
+    destroyProjectionPrimitiveCollection(teardownViewer);
     if (_billboards && teardownViewer) {
+      unregisterSpriteCollection('cctv', _billboards);
       teardownViewer.scene.primitives.remove(_billboards);
       _billboards = null;
     }

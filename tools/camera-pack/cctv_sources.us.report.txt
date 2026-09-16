@@ -4,7 +4,7 @@ Input:   us_public_webcams.tsv (listing updated up to 2026-09-14T17:44:14Z)
 Output:  config/cctv_sources.us.json (10.8 MB, 1.4 MB gzipped)
 Built by tools/camera-pack/build-road511-us.mjs with no network requests.
 Offline cameras are kept. School cameras are removed. The server loads at most
-2,500 cameras, the nearest within 50 km of the selected place.
+1,000 cameras, the nearest within 50 km of the selected place.
 
 Headline
 --------
@@ -600,14 +600,14 @@ Lookup cameras the Road511 lookup route refuses (0)
 Checked with road511FeatureId from server/providers/cctv/road511-lookup.js, the function the lookup route uses,
 and its feature id pattern /^[A-Z]{2}-cam-[A-Za-z0-9 _.,()?-]{1,80}$/. Ids are written exactly as Road511 lists them.
 
-Densest 50 km circles (load cap 2,500 per selected area)
+Densest 50 km circles (load cap 1,000 per selected area)
 --------------------------------------------------------
  #  Cameras  Centre           Nearest camera                                                 At the cap
- 1    2,971  33.851,-84.246   GDOT-0240: I-285 CCW past SR236 MM 36.1 (DeKalb) (DeKalb, GA)  loads 2,500, 471 more nearby
- 2    2,023  40.816,-73.810   Queens-Bound (New York, NY)
- 3    1,186  40.657,-111.807  I-215 E NB @ 5200 S / MP 4.65, HDY (Utah, UT)
- 4    1,040  45.035,-93.287   I-94: I-94 EB N of 42nd Ave (Minnesota, MN)
- 5    1,038  33.904,-117.842  SR-90 : (520) Rose Dr SE Corner (California, CA)
+ 1    2,971  33.851,-84.246   GDOT-0240: I-285 CCW past SR236 MM 36.1 (DeKalb) (DeKalb, GA)  loads 1,000, 1,971 more nearby
+ 2    2,023  40.816,-73.810   Queens-Bound (New York, NY)                                   loads 1,000, 1,023 more nearby
+ 3    1,186  40.657,-111.807  I-215 E NB @ 5200 S / MP 4.65, HDY (Utah, UT)                  loads 1,000, 186 more nearby
+ 4    1,040  45.035,-93.287   I-94: I-94 EB N of 42nd Ave (Minnesota, MN)                    loads 1,000, 40 more nearby
+ 5    1,038  33.904,-117.842  SR-90 : (520) Rose Dr SE Corner (California, CA)               loads 1,000, 38 more nearby
  6      933  32.837,-96.966   SH183 @ Story Rd East (Texas, TX)
  7      932  26.076,-80.361   IPV-75SB014.1-GP (Florida, FL)
  8      890  42.038,-88.031   Higgins SB Exit HD (Illinois, IL)

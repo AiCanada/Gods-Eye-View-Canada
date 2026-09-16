@@ -896,7 +896,7 @@ check({
   },
 });
 
-// /api/cctv/sources lists one selected area (at most 2,500 cameras within
+// /api/cctv/sources lists one selected area (at most 1,000 cameras within
 // 50 km of lat/lon); without a point it lists nothing. A live pack still
 // downloading for the area (Austin open data) is named in area.pending, and the
 // client asks once more — so does this check.
@@ -911,7 +911,7 @@ async function cctvAreaSources(lat, lon) {
 }
 
 check({
-  id: 'B12', group: 'B', desc: 'CCTV area sources load per selected place (Austin, Toronto), capped at 2,500, none without a point',
+  id: 'B12', group: 'B', desc: 'CCTV area sources load per selected place (Austin, Toronto), capped at 1,000, none without a point',
   run: async () => {
     const [austin, toronto, noPoint] = [
       await cctvAreaSources(30.2672, -97.7431),
@@ -923,7 +923,7 @@ check({
     const t = toronto.json?.sources || [];
     const cities = [...new Set([...a, ...t].map((s) => s.cityId || s.city))];
     const austinPack = a.some((s) => /austin/i.test(s.cityId || s.city || ''));
-    const withinCap = a.length <= 2500 && t.length <= 2500;
+    const withinCap = a.length <= 1000 && t.length <= 1000;
     const emptyWithoutPoint = (noPoint.json?.sources || []).length === 0 && noPoint.json?.area?.pointRequired === true;
     return a.length + t.length > 0 && withinCap && emptyWithoutPoint && cities.length >= 2
       ? pass(`austin=${a.length} (open data: ${austinPack}) toronto=${t.length} across ${cities.length} packs: ${cities.slice(0, 6).join(', ')}`)

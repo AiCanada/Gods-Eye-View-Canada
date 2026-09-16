@@ -1,4 +1,5 @@
 import { createStandalonePlaceSearch } from './placeSearch.js';
+import { CITY_POIS } from '../locations.js';
 import { createApplication } from '../app/application.js';
 import { createStandaloneScene } from './scene.js';
 import { createStandaloneControls } from './controls.js';
@@ -23,6 +24,7 @@ export function createStandaloneApplication({
   return createApplication({
     createScene: (context) => {
       placeSearch = createStandalonePlaceSearch({
+        presets: CITY_POIS,
         resolveApiKey: () => googleApiKey,
         signal: context.signal,
       });

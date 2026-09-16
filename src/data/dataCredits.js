@@ -84,6 +84,21 @@ export const DATA_CREDITS = [
       '(ODbL 1.0)',
   },
   {
+    key: 'nominatim-geocoder',
+    html:
+      'Last-resort place search and cockpit locality: ' +
+      '<a href="https://nominatim.openstreetmap.org" target="_blank" rel="noopener">Nominatim</a> over ' +
+      '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
+      '(ODbL 1.0)',
+  },
+  {
+    key: 'osrm-directions',
+    html:
+      'Directions: FOSSGIS OSRM over ' +
+      '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
+      '(ODbL 1.0)',
+  },
+  {
     key: 'military-installations-osm',
     html:
       'Mapped installation context: ' +
@@ -142,6 +157,17 @@ export const DATA_CREDITS = [
       'CCTV cameras &amp; frames (United States): state DOT and 511 operators named per camera; ' +
       'camera listing and on-demand image lookup via ' +
       '<a href="https://road511.com" target="_blank" rel="noopener">Road511</a>',
+  },
+  {
+    key: 'intl-cctv',
+    html:
+      'CCTV cameras &amp; frames (international): operators named per camera; ' +
+      'listings include Windy, WebcamGalore, WorldCam, Panomax, feratel, SkylineWebcams, ' +
+      '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ' +
+      'and national road agencies (DGT, Trafikverket, Digitraffic, Statens vegvesen, TfL, ' +
+      'Hong Kong Transport Department, MLIT and others). ' +
+      'OpenStreetMap-listed cameras: © OpenStreetMap contributors. ' +
+      'London JamCams: <a href="https://tfl.gov.uk/info-for/open-data-users/" target="_blank" rel="noopener">Powered by TfL Open Data</a>',
   },
   {
     key: 'caltrans-cctv',

@@ -1,3 +1,4 @@
+import { createFrameRateMonitor } from './frameRateMonitor.js';
 import { createStateChannel } from '../app/stateChannel.js';
 import { setSplitFlapText } from '../splitFlap.js';
 import { UiLifetime } from './uiLifetime.js';
@@ -9,6 +10,7 @@ import { CctvControls } from './cctv.js';
 import { RadioControls } from './radio.js';
 import { LocationControls } from './location.js';
 import { bindClearLayersControl } from './layers.js';
+import { bindCameraOrientationControls } from './cameraOrientationControls.js';
 import { createMapSourceControls } from './mapSource.js';
 import {
   VisualEffects,
@@ -234,6 +236,7 @@ export class StyleManager {
     this._shareTrackingNoticeGeneration = 0;
     this._globeResetPromise = null;
     this._dataManager = null;
+    this._directionsShellModule = null;
 
     this._windowResizeHandler = null;
     this._cctvRequestFocusHandler = null;
@@ -619,6 +622,7 @@ export class StyleManager {
     this._initGlobalContextPanel();
     this._initLocationBar();
     this._initShareButton();
+    this._initCameraOrientationControls();
     this._initClearSelectedLayersButton();
     this._initHUDToggle();
     this._initModels3dToggle();
@@ -1017,6 +1021,32 @@ export class StyleManager {
     return this._runExplicitNavigation(noun, navigate, releaseOptions);
   }
 
+  /**
+   * Hand the Directions layer the camera seams its FLY chip needs: the same
+   * immediate-navigation facade voice route flights go through, so there is
+   * one camera owner rather than a second one inside a data layer, the shared
+   * ground-floor read/warm the route dolly flies over, and the app's own toast
+   * so the layer can speak where the rest of the UI speaks.
+   * @returns {void}
+   */
+  _connectDirectionsCamera() {
+    if (!this._dataManager) {
+      this._directionsShellModule?.attachShellServices?.(null);
+      this._directionsShellModule = null;
+      return;
+    }
+    const directions = this._dataManager.layers?.get('directions')?.module;
+    if (typeof directions?.attachShellServices !== 'function') return;
+    this._directionsShellModule = directions;
+    directions.attachShellServices({
+      runNavigation: (navigate) =>
+        this.runImmediateNavigation('route', navigate),
+      floorFn: (lat, lon) => this.services.cachedGroundFloor(lat, lon),
+      warmFn: (cells) => this.services.warmGroundFloor(cells),
+      showToast: (message) => this._showToast(message),
+    });
+  }
+
   /** Supersede deferred work when an owner-specific route handles release. */
   supersedeDeferredNavigation() {
     return this._stampNavigation();
@@ -1394,6 +1424,11 @@ export class StyleManager {
       setScopeMaskFeather,
     } = this.services;
     this._applicationShortcuts?.destroy();
+    this._frameRateMonitor?.destroy();
+    this._frameRateMonitor = createFrameRateMonitor({
+      viewer: this.viewer,
+      documentRef: document,
+    });
     this._applicationShortcuts = bindApplicationShortcuts({
       documentRef: document,
       searchInput: this._locationSearch,
@@ -2305,6 +2340,7 @@ export class StyleManager {
     this._syncContextModeButtons();
     this._cctvControls.connect();
     this._radioControls.connect();
+    this._connectDirectionsCamera();
     if (!this._awarenessSelectedHandler) {
       this._awarenessSelectedHandler = (event) =>
         this._persistAwarenessSelection(event, false);
@@ -5090,6 +5126,21 @@ export class StyleManager {
     }
   }
 
+  /** Wire Google Maps-style tilt and north-up camera actions. */
+  _initCameraOrientationControls() {
+    this._cameraOrientationControls?.destroy();
+    this._cameraOrientationControls = bindCameraOrientationControls({
+      viewer: this.viewer,
+      elements: {
+        tiltButton: this._tiltMapBtn,
+        northButton: this._northUpBtn,
+      },
+      runNavigation: (noun, navigate) =>
+        this._runExplicitNavigation(noun, navigate),
+      showToast: (message) => this._showToast(message),
+    });
+  }
+
   /** Wire the top-center action that clears only manager-owned data layers. */
   _initClearSelectedLayersButton() {
     if (!this._clearSelectedLayersBtn) return;
@@ -5539,7 +5590,9 @@ export class StyleManager {
     this._panelLayout.destroy();
     this._applicationShortcuts?.destroy();
     this._displayControls?.destroy();
+    this._frameRateMonitor?.destroy();
     this._mapSourceControls?.destroy();
+    this._cameraOrientationControls?.destroy();
     this._clearLayersControl?.destroy();
     this._locationControls?.destroy();
     this._cctvControls?.destroy();
@@ -5641,6 +5694,8 @@ export class StyleManager {
     this._contextControls.disconnect();
     this._dataManagerUnsubscribe?.();
     this._dataManagerUnsubscribe = null;
+    this._directionsShellModule?.attachShellServices?.(null);
+    this._directionsShellModule = null;
 
     if (this._windowResizeHandler) {
       window.removeEventListener('resize', this._windowResizeHandler);

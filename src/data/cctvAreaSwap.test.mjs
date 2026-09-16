@@ -1,6 +1,6 @@
 // src/data/cctvAreaSwap.test.mjs — area-scoped CCTV loading.
 //
-// The layer holds the cameras nearest one selected place (at most 2,500 within
+// The layer holds the cameras nearest one selected place (at most 1,000 within
 // 50 km) plus this machine's private cameras. A place outside the loaded area
 // swaps it by id: kept cameras keep their record objects, cameras that left
 // release everything built for them, and only added cameras cost ground
@@ -118,10 +118,10 @@ test('an area swap keeps shared cameras as the same records, releases the rest, 
   assert.ok(cardIds(host).every((id) => id !== 'a0' && id !== 'a1'), 'their map cards are gone');
 });
 
-test('a capped area holds at most 2,500 cameras and the loading total stays within it', async (t) => {
-  const sources = Array.from({ length: 2_600 }, (_, index) => makeSource(`atl-${index}`, ATLANTA, index * 0.00005));
+test('a capped area holds at most 1,000 cameras and the loading total stays within it', async (t) => {
+  const sources = Array.from({ length: 1_100 }, (_, index) => makeSource(`atl-${index}`, ATLANTA, index * 0.00005));
   const server = makeCameraServer({
-    areas: () => areaAnswer(ATLANTA, sources, { inArea: 2_817, loaded: 2_500, dropped: 317, capped: true, reachKm: 44 }),
+    areas: () => areaAnswer(ATLANTA, sources, { inArea: 1_317, loaded: 1_000, dropped: 317, capped: true, reachKm: 44 }),
   });
   installDomFakes(t, { fetch: server.handler });
   installPriorResolver(t);
@@ -129,12 +129,12 @@ test('a capped area holds at most 2,500 cameras and the loading total stays with
 
   assert.equal(await cctvLayer.onLocationSelect({ point: ATLANTA }), true);
   const state = cctvLayer.getUIState();
-  assert.equal(state.cameras.length, 2_500, 'the client never holds more than the cap');
+  assert.equal(state.cameras.length, 1_000, 'the client never holds more than the cap');
   assert.equal(state.area.capped, true);
-  assert.equal(state.area.loaded, 2_500);
+  assert.equal(state.area.loaded, 1_000);
   assert.equal(state.area.dropped, 317);
   const stats = cctvLayer.getStats();
-  assert.ok(stats.loadingTotal > 0 && stats.loadingTotal <= 2_500, `loadingTotal ${stats.loadingTotal}`);
+  assert.ok(stats.loadingTotal > 0 && stats.loadingTotal <= 1_000, `loadingTotal ${stats.loadingTotal}`);
 
   // The cap cut the area at 44 km, so it covers max(22, 34) = 34 km: 20 km away loads nothing.
   assert.equal(await cctvLayer.onLocationSelect({ point: { lat: ATLANTA.lat + 0.18, lon: ATLANTA.lon } }), false);

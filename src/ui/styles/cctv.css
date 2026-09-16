@@ -196,7 +196,7 @@
   text-transform: uppercase;
 }
 
-/* The camera area hit the hard 2,500-camera cap (more cameras lie nearby). */
+/* The camera area hit the hard 1,000-camera cap (more cameras lie nearby). */
 #cctv-region-cap-chip[data-over='true'] {
   color: #ffe6a2;
   border-color: rgba(255, 217, 122, 0.35);

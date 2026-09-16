@@ -8,6 +8,8 @@ test('school, university, college and library links are never requested', () => 
   assert.equal(isSchoolLink({ text: 'Yorkton Public Library', url: 'http://users.accesscomm.ca/saskweather/Webcam_Yorkton.htm' }), true);
   assert.equal(isSchoolLink({ text: 'Campus view', url: 'https://cams.example.edu/live.jpg' }), true, 'a school host');
   assert.equal(isSchoolLink({ text: 'École Sainte-Anne', url: 'https://example.ca/' }), true);
+  assert.equal(isSchoolLink({ text: 'Oxford quad', url: 'https://cams.ox.ac.uk/live.jpg' }), true);
+  assert.equal(isSchoolLink({ text: 'UNSW mall', url: 'https://webcams.unsw.edu.au/quad.jpg' }), true);
 });
 
 test('a road named after a school is a traffic camera and stays', () => {
@@ -46,6 +48,9 @@ test('US roads built on school words stay: street types, named roads and cross s
     'Stearns School at North Creek',
     'Maple Ave / Yackley-College',
     'SR-91 : (572) State College',
+    'London: A205 Dulwich Common/College Rd',
+    'London: University St/Gower St',
+    'A205 Academy Rd/Shooters Hill',
   ]) {
     assert.equal(isSchoolText(text), false, text);
   }
@@ -61,6 +66,21 @@ test('a school named as the place is a school camera, road or not', () => {
     'Charlottetown at Holland College',
     'Library at night',
     'Yorkton Public Library',
+    'Scuola elementare Roma',
+    'Escuela primaria',
+    'Universidad de Buenos Aires',
+    'Hochschule München',
+    'Gymnasium Wien',
+    'Bibliothek Berlin',
+    'Aspen Ski School',
+    'Fahrschule Mitte',
+    '東京大学',
+    'Diesterweg - Schule',
+    'Livigno: I - Scuola Sci Centrale',
+    'Ezcaray › South: Escuela de Deportes de Invierno de Valdezcaray',
+    'Fossano Centro Storico - Biblioteca Civica di Fossano',
+    'In front of Benjamarachutit School',
+    'In front of Wat Yai School, No. 1',
   ]) {
     assert.equal(isSchoolText(text), true, text);
   }

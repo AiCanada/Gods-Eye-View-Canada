@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { isPointerFree } from './inputOwnership.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import {
   clearSelectedEntityContextForLayer,
@@ -443,6 +444,7 @@ function installInteraction(viewer) {
   state.clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
   state.clickHandler.setInputAction((click) => {
     if (!state.enabled) return;
+    if (!isPointerFree()) return;
     const picked = viewer.scene.pick(click.position);
     const id = typeof picked?.id?.id === 'string' ? picked.id.id : null;
     if (id && state.recordById.has(id) && id !== state.selectedId) {

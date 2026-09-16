@@ -1,8 +1,37 @@
-/** Camera packs read when CCTV_SOURCES_FILE is unset (a comma list): the
- * Canadian pack and the US pack. A listed file that does not exist yet is
- * skipped quietly, so a fresh download shows whatever packs it ships with. */
-export const DEFAULT_CCTV_SOURCE_FILES =
-  'config/cctv_sources.canada.json,config/cctv_sources.us.json';
+/** Camera packs read when CCTV_SOURCES_FILE is unset, in priority order: the
+ * Canadian pack, the US pack, then the international pack. The order decides
+ * which entry stays when two packs list the same still (see catalog.js). A
+ * listed file that does not exist yet is skipped quietly, so a fresh download
+ * shows whatever packs it ships with. Add a pack by appending its path. */
+export const CCTV_DEFAULT_PACK_FILES = Object.freeze([
+  'config/cctv_sources.canada.json',
+  'config/cctv_sources.us.json',
+  'config/cctv_sources.intl.json',
+]);
+/** The same list as the comma string CCTV_SOURCES_FILE takes. */
+export const DEFAULT_CCTV_SOURCE_FILES = CCTV_DEFAULT_PACK_FILES.join(',');
+/** Query parameters that only defeat caches (Windy's `v=2`, `t=<epoch>`,
+ * `rand=<n>`). Two still URLs that differ only by these, each empty or
+ * numeric, are the same still. Every other parameter, and the fragment, keeps
+ * two URLs apart: `?v=<video id>` and `#camera-2` name different cameras. */
+export const CCTV_CACHE_BUSTER_PARAMS = Object.freeze([
+  '_',
+  'cache',
+  'cachebust',
+  'cachebuster',
+  'cb',
+  'dummy',
+  'nocache',
+  'r',
+  'rand',
+  'random',
+  'rnd',
+  't',
+  'time',
+  'timestamp',
+  'ts',
+  'v',
+]);
 /** Envelope format written by the pack builders: shared defaults and provider
  * blocks, then one compact entry per camera. A plain array is still accepted. */
 export const CCTV_PACK_FORMAT = 'gev-cctv-pack/1';
@@ -19,7 +48,7 @@ export const DEFAULT_CCTV_BROWSER_DIRECT_HOSTS = 'quebec511.info';
 /** Most cameras one /sources area may load: the nearest ones win. A hard
  * ceiling with no setting, query parameter or off switch. The catalogue itself
  * keeps every camera; only what one selected area loads is capped. */
-export const CCTV_LOAD_CAP_HARD_LIMIT = 2500;
+export const CCTV_LOAD_CAP_HARD_LIMIT = 1000;
 /** Radius of a selected area, and the largest a request may ask for. */
 export const CCTV_AREA_RADIUS_KM = 50;
 /** Smallest area radius a request may ask for. */
@@ -28,7 +57,10 @@ export const CCTV_AREA_MIN_RADIUS_KM = 0.5;
 export const CCTV_AREA_GRID_DEG = 0.5;
 /** Countries whose cameras load when CCTV_COUNTRIES is unset. */
 // Every country, so an install that sets nothing keeps the stock behaviour.
-// Set CCTV_COUNTRIES in .env to narrow it (see .env.example).
+// Set CCTV_COUNTRIES in .env to narrow it (see .env.example). The international
+// pack's cameras carry their own ISO codes (FR, JP, TW, ...): a list such as
+// "CA,US" leaves every one of them out, so name those countries too or use "*".
+// A camera with no country (blank, or the listing's "XX") is always served.
 export const DEFAULT_CCTV_COUNTRIES = '*';
 /** Health entries kept (least recently updated evicted first). */
 export const CCTV_HEALTH_MAX_ENTRIES = 5000;

@@ -2,17 +2,26 @@ import {
   createPlaceSearch,
   createGoogleGeocoder,
   createPhotonGeocoder,
+  createCoordinateGeocoder,
+  createPresetGeocoder,
 } from '../search/index.js';
 
-/** Google first when configured, then keyless Photon; transport stays local to setup. */
+/**
+ * Coordinates and bundled names first, then Google when configured, then
+ * keyless Photon, then the local Nominatim route as a last resort.
+ */
 export function createStandalonePlaceSearch({
   resolveApiKey,
   fetchImpl = (...args) => fetch(...args),
   signal,
+  presets = null,
+  nominatimEndpoint = '/api/geocode',
 } = {}) {
   return createPlaceSearch({
     signal,
     providers: [
+      createCoordinateGeocoder(),
+      ...(presets ? [createPresetGeocoder({ presets })] : []),
       createGoogleGeocoder({
         request(query, { bias, signal }) {
           const key = resolveApiKey?.();
@@ -27,6 +36,13 @@ export function createStandalonePlaceSearch({
         },
       }),
       createPhotonGeocoder({ fetchImpl }),
+      createGoogleGeocoder({
+        request(query, { bias, signal }) {
+          const params = new URLSearchParams({ q: query });
+          if (bias) params.set('bounds', bias);
+          return fetchImpl(`${nominatimEndpoint}?${params}`, { signal });
+        },
+      }),
     ],
   });
 }

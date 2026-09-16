@@ -39,7 +39,7 @@ import { providerRecord } from './us-providers.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
 /** The server's per-area load cap and radius, for the density section of the report. */
-const AREA_CAP = 2500;
+const AREA_CAP = 1000;
 const AREA_RADIUS_KM = 50;
 
 function arg(name) {

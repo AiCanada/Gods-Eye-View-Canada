@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
+  SPRITE_LAYER_ORDER,
   registerSpriteCollection,
   restoreSpriteOrder,
   restoreSpriteOrderOnEnable,
@@ -9,8 +12,9 @@ import {
 import flightsLayer from './flights.js';
 import aisLiveVesselsLayer from './aisLiveVessels.js';
 import { createFirmsHeatmapLayer } from './firmsHeatmap.js';
+import trafficLayer from './traffic.js';
 
-const ORDER = ['cctv', 'firms', 'bikeshare', 'ais', 'military', 'flights'];
+const ORDER = ['cctv', 'cctv-projection', 'traffic', 'firms', 'bikeshare', 'directions', 'ais', 'military', 'flights'];
 
 function makePrimitives(initial = []) {
   return {
@@ -40,15 +44,16 @@ test('restoreSpriteOrder raises live collections bottom-to-top and skips destroy
     collections.flights,
     collections.ais,
     collections.cctv,
+    collections.traffic,
     collections.bikeshare,
     collections.military,
   ]);
 
   restoreSpriteOrder({ scene: { primitives } });
 
-  assert.deepEqual(primitives.calls, ['cctv', 'bikeshare', 'ais', 'military', 'flights']);
+  assert.deepEqual(primitives.calls, ['cctv', 'traffic', 'bikeshare', 'ais', 'military', 'flights']);
   assert.deepEqual(primitives.items.map((item) => item.id), [
-    'cctv', 'bikeshare', 'ais', 'military', 'flights',
+    'cctv', 'traffic', 'bikeshare', 'ais', 'military', 'flights',
   ]);
 
   for (const id of ORDER) unregisterSpriteCollection(id);
@@ -99,19 +104,33 @@ test('restoreSpriteOrder never raises a registered collection absent from scene 
   unregisterSpriteCollection('flights', flights);
 });
 
-test('flights, AIS, and FIRMS enable paths are wired through the shared sprite restorer', () => {
+test('traffic sits above CCTV so vehicles draw through camera sprites', () => {
+  assert.deepEqual([...SPRITE_LAYER_ORDER], ORDER);
+  assert.ok(SPRITE_LAYER_ORDER.indexOf('cctv-projection') > SPRITE_LAYER_ORDER.indexOf('cctv'));
+  assert.ok(SPRITE_LAYER_ORDER.indexOf('traffic') > SPRITE_LAYER_ORDER.indexOf('cctv-projection'));
+  assert.equal(SPRITE_LAYER_ORDER[SPRITE_LAYER_ORDER.length - 1], 'flights');
+  const trafficSrc = readFileSync(fileURLToPath(new URL('./traffic.js', import.meta.url)), 'utf8');
+  assert.match(trafficSrc, /function animate\(\) \{[\s\S]*?restoreSpriteOrder\(_viewer\)/);
+  const cctvSrc = readFileSync(fileURLToPath(new URL('./cctv.js', import.meta.url)), 'utf8');
+  assert.match(cctvSrc, /transparent:\s*false/);
+  assert.match(cctvSrc, /registerSpriteCollection\('cctv-projection'/);
+  assert.match(cctvSrc, /rs\.depthMask = false/);
+});
+
+test('flights, AIS, FIRMS, and traffic enable paths are wired through the shared sprite restorer', () => {
   const viewer = { id: 'viewer' };
   const calls = [];
   const restoreSpy = (value) => calls.push(value);
-  for (const layerId of ['flights', 'ais', 'firms']) {
+  for (const layerId of ['flights', 'ais', 'firms', 'traffic']) {
     restoreSpriteOrderOnEnable(layerId, viewer, restoreSpy);
   }
-  assert.deepEqual(calls, [viewer, viewer, viewer]);
+  assert.deepEqual(calls, [viewer, viewer, viewer, viewer]);
 
   const firmsLayer = createFirmsHeatmapLayer({ id: 'firms', name: 'FIRMS' });
   assert.match(flightsLayer.enable.toString(), /restoreSpriteOrderOnEnable\('flights', viewer\)/);
   assert.match(aisLiveVesselsLayer.enable.toString(), /restoreSpriteOrderOnEnable\('ais', activeViewer\)/);
   assert.match(firmsLayer.enable.toString(), /restoreSpriteOrderOnEnable\('firms', viewer\)/);
+  assert.match(trafficLayer.enable.toString(), /restoreSpriteOrderOnEnable\('traffic', viewer\)/);
   assert.match(
     createFirmsHeatmapLayer.toString(),
     /registerSpriteCollection\('firms', _billboards\);\s*restoreSpriteOrder\(_viewer\);/,

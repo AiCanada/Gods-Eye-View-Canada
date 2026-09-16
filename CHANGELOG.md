@@ -1,10 +1,30 @@
 # Changelog
 
+## September 16, 2026
+
+Windows credential hardening isolates the ACL verifier from a side-by-side PowerShell 7 `PSModulePath`, so Get-Acl loads from Windows PowerShell 5.1's own module tree. CI pins `actions/checkout` and `actions/setup-node` to commit SHAs. Community PR review is documented in `docs/MAINTAINER_WORKFLOW.md` for this fork (`AiCanada/Gods-Eye-View-Canada`).
+
+Overpass requests identify the application (`gods-eye-view/0.1` plus this repository URL) instead of a generic proxy label. Pinokio Update prints the remote and incoming commits, then fast-forwards that exact revision before reinstalling; if the revision cannot be shown, it stops. The Material Symbols font is subset to the glyphs the app renders, and the unused Material Icons Round family is no longer loaded. A closed or replaced voice session discards late tool and viewport completions so they cannot speak into the next conversation.
+
+Launcher and preview tests resolve macOS temp directories through their physical path so a `/var` → `/private/var` symlink does not fail cwd comparisons.
+
+The CCTV media route parses and bounds a client `Range` before forwarding it, and cancels the upstream camera request when the viewer leaves. Street traffic no longer drops a newer destination's abort controller when an older road fetch finishes, and a zoom above the traffic altitude cancels in-flight loads.
+
+Backtick toggles a rendered-frame-rate readout. Tilt and north-up compass buttons sit in the top-center globe actions. The search box answers decimal-degree coordinates and bundled city/landmark names with no key, then Google, then Photon, then Nominatim as a last resort.
+
+A Directions layer plots keyless A→B drive/walk/bike routes with turn-by-turn steps and FLY, using the existing OSRM proxy. Traffic sprites stay above CCTV.
+
+CCTV area loading now returns at most 1,000 cameras within 50 km of the selected place (was 2,500). The radius is unchanged.
+
+Street-traffic vehicles draw on top of the open camera picture. The monitor plane is a slightly see-through primitive that does not write depth, so it no longer covers the dots.
+
 ## September 14, 2026
 
 CCTV loads by area. The server stores every camera in its packs, and `/api/cctv/sources` now takes the selected place and returns at most the 2,500 nearest cameras within 50 km, nearest first and gzipped. Picking a place outside the loaded area swaps the cameras, even within one state. A request without a point returns no cameras instead of the whole catalogue. The per-state, per-province and per-country caps are gone, along with `CCTV_MAX_SOURCES` and `CCTV_REGION_CAP`.
 
-US state DOT traffic cameras join the Canadian pack. `config/cctv_sources.us.json` is built offline from a Road511 listing by `tools/camera-pack/build-road511-us.mjs`, and `CCTV_SOURCES_FILE` now takes a comma list that defaults to both packs. A US camera with no public image is looked up through Road511 only when you open it, using the new server-side POWER UP key `ROAD511_API_KEY`; answers are cached for 24 h and calls are spaced at least 1 s apart.
+US state DOT traffic cameras join the Canadian pack. `config/cctv_sources.us.json` is built offline from a Road511 listing by `tools/camera-pack/build-road511-us.mjs`, and `CCTV_SOURCES_FILE` takes a comma list of pack files. A US camera with no public image is looked up through Road511 only when you open it, using the new server-side POWER UP key `ROAD511_API_KEY`; answers are cached for 24 h and calls are spaced at least 1 s apart.
+
+Public webcams from 166 other countries and territories join them. `config/cctv_sources.intl.json` is built offline, with no network requests, from an international webcam listing (Windy, WebcamGalore, WorldCam, Panomax, feratel, OpenStreetMap, SkylineWebcams and national road agencies such as DGT, Trafikverket, Digitraffic, Statens vegvesen, TfL, the Hong Kong Transport Department and MLIT), and `CCTV_SOURCES_FILE` now defaults to all three packs. Windy lists many of the same webcams twice under different image addresses, so one camera is kept per Windy webcam id. 103,573 cameras remain; the exact count is in `tools/camera-pack/cctv_sources.intl.report.txt`. Cameras marked offline stay. School, university, college and library cameras are removed by name in many languages (school, Schule, scuola, école, escuela, universidad, Hochschule, Gymnasium, škola, skola, skole, campus, academy, library, Bibliothek, biblioteca, 学校), and ski, kite, flight and driving schools named as the place are removed too; the report lists every exclusion for review. The pack has no defaults or caps of its own: it loads by area like the others, at most 2,500 cameras within 50 km of the selected place, and `CCTV_COUNTRIES=*` (the default) serves every country.
 
 The Austin, Caltrans and TfL live packs keep every camera, with no special defaults or caps. Each list downloads only when a selected area overlaps its city and is cached for 24 h; Caltrans runs only when `CCTV_CALTRANS_DISTRICTS` names districts. `CCTV_AUSTIN_MAX_SOURCES`, `CCTV_PREFER_AUSTIN`, `CCTV_FORCE_AUSTIN`, `CCTV_CALTRANS_MAX_SOURCES`, `CCTV_TFL_MAX_SOURCES` and the launcher scripts' pack defaults are removed, and an empty area no longer shows placeholder Austin cameras.
 
