@@ -274,9 +274,10 @@ export function replaceCredentialStore(
   }
   // Random suffix, not the pid: a stale temp from a failed rename would
   // otherwise make every later save in this process fail EEXIST forever.
-  const tmp = path.join(
-    path.dirname(filepath),
-    `.${path.basename(filepath)}.${tempSuffix()}.tmp`,
+  const pathFor = platform === 'win32' ? path.win32 : path.posix;
+  const tmp = pathFor.join(
+    pathFor.dirname(filepath),
+    `.${pathFor.basename(filepath)}.${tempSuffix()}.tmp`,
   );
   const fd = fileSystem.openSync(tmp, 'wx', 0o600);
   let staged = false;

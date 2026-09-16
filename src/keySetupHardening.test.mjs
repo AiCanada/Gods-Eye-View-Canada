@@ -537,6 +537,13 @@ test(
 // ---------------------------------------------------------------------------
 
 const STORE = 'A:\\repo\\.env';
+function stagingPath(filepath, suffix = 'abcdef12', platform = 'win32') {
+  const pathFor = platform === 'win32' ? path.win32 : path.posix;
+  return pathFor.join(
+    pathFor.dirname(filepath),
+    `.${pathFor.basename(filepath)}.${suffix}.tmp`,
+  );
+}
 
 /**
  * In-memory stand-in for the fs surface the swap touches. `renameErrors` is
@@ -588,7 +595,7 @@ function swapFileSystem({
   };
 }
 
-const TMP = 'A:\\repo\\..env.abcdef12.tmp';
+const TMP = stagingPath(STORE);
 const swapOptions = (fileSystem, overrides = {}) => ({
   fileSystem,
   platform: 'win32',
@@ -802,7 +809,8 @@ test('a POSIX rename failure is rethrown untouched and never triggers the Window
       ),
     (error) => error.code === 'EPERM',
   );
-  assert.deepEqual(hardened, [TMP]);
+  const posixTmp = stagingPath(STORE, 'abcdef12', 'linux');
+  assert.deepEqual(hardened, [posixTmp]);
   assert.equal(renames(fileSystem).length, 1);
-  assert.deepEqual(removals(fileSystem), [['rm', TMP, { force: true }]]);
+  assert.deepEqual(removals(fileSystem), [['rm', posixTmp, { force: true }]]);
 });
