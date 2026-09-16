@@ -24,6 +24,7 @@
  * invariant is untouched.
  */
 import * as Cesium from 'cesium';
+import { isPointerFree } from './inputOwnership.js';
 
 // Grazing guard (spec §5): reject plane intersections when the view ray is
 // nearly parallel to the constraint plane — the hit point races to infinity
@@ -318,6 +319,7 @@ export function createCalibrationGizmo({ viewer, getActiveRecord, applyPatch, en
   }
 
   function pickGizmoPart(windowPosition) {
+    if (!isPointerFree()) return null;
     // Gizmo primitives render depth-test-free and should be the topmost pick.
     // Take the cheap single-result path first: a full drillPick can stall for
     // tens of seconds under software GL even when its first result is already

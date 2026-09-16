@@ -9,8 +9,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" rel="stylesheet" />
-  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet" />
+  <!-- Icon font subset to the glyphs this app renders. Keep `icon_names` in sync
+       with the sources: src/materialSymbolsSubset.test.mjs fails when a source
+       names a glyph this list is missing, because a missing glyph does not draw
+       a box — the ligature never forms and the element renders the literal word. -->
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0&icon_names=adjust,arrow_drop_down,arrow_forward,arrow_left,arrow_right,bolt,chevron_left,chevron_right,close,close_fullscreen,dark_mode,draw,east,flare,flight,layers_clear,light_mode,local_fire_department,my_location,navigation,normal,on,open_in_full,public,radar,radio,right_panel_close,right_panel_open,rocket_launch,skip_next,skip_previous,view_in_ar" rel="stylesheet" />
 </head>
 <body>
   <div id="cesiumContainer"></div>
@@ -42,6 +45,13 @@
     </button>
     <button id="share-btn" type="button" aria-label="Copy share link" title="Copy share link">
       <span class="share-icon" aria-hidden="true">&#x1F517;</span>
+    </button>
+    <button id="tilt-map-view" type="button" aria-label="Tilt map to oblique view" aria-pressed="false" title="Toggle straight-down and tilted map views">
+      <span class="material-symbols-outlined" aria-hidden="true">view_in_ar</span>
+    </button>
+    <button id="north-up-view" type="button" aria-label="Reset map to north up" title="Reset map bearing to north">
+      <span class="camera-compass-n" aria-hidden="true">N</span>
+      <span class="camera-compass-needle material-symbols-outlined" aria-hidden="true">navigation</span>
     </button>
     <button id="reset-globe-view" type="button" aria-label="Reset to full globe view" title="Reset camera and return to full globe view">
       <span class="material-symbols-outlined" aria-hidden="true">public</span>
@@ -618,7 +628,7 @@
         <button id="cctv-auto-hop-btn" class="scene-btn">AUTO HOP OFF</button>
       </div>
       <div class="cctv-controls">
-        <span id="cctv-region-cap-chip" tabindex="0" role="note" title="No camera area loaded yet. Cameras load for the selected place: at most 2,500 within 50 km." aria-label="No camera area loaded yet. Cameras load for the selected place: at most 2,500 within 50 km.">AREA --</span>
+        <span id="cctv-region-cap-chip" tabindex="0" role="note" title="No camera area loaded yet. Cameras load for the selected place: at most 1,000 within 50 km." aria-label="No camera area loaded yet. Cameras load for the selected place: at most 1,000 within 50 km.">AREA --</span>
       </div>
       <div class="cctv-controls">
         <button id="cctv-projection-btn" class="scene-btn">PROJECTION ON</button>

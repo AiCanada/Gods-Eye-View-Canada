@@ -1,0 +1,780 @@
+International camera pack: build report
+=======================================
+Input:   international_webcams.tsv (listing updated up to 2026-09-14T23:45:02Z)
+Output:  config/cctv_sources.intl.json (24.8 MB, 3.6 MB gzipped)
+Built by tools/camera-pack/build-intl.mjs with no network requests.
+Offline cameras are kept. School cameras and YouTube/Vimeo embeds are removed.
+Windy lists many of the same webcams twice: one camera is kept per Windy webcam id.
+The server loads at most 1,000 cameras, the nearest within 50 km of the selected place.
+
+Headline
+--------
+TSV rows                                      142,690
+  identical duplicate rows                          0  dropped
+  conflicting duplicate ids                       284  first row kept
+  rows with no camera id                            0  dropped
+  Windy webcam-id copies                       31,827  one kept per webcam id
+  coordinates rejected                          6,310
+  school cameras removed                          317
+  YouTube/Vimeo embeds removed                    496
+  switched off in the listing                   2,276  kept
+Cameras written                               103,573  97 multi-view rows split into views
+  image (public still)                         98,655
+  none (no still; stream kept, never served)    4,918
+    no still or stream                          2,696
+    stream only (HLS or video)                  2,222  videoUrl kept, never served
+  with an estimated heading                    10,281
+  countries                                       166  7,115 unclassified (XX)
+Providers                                          63
+Duplicate pack ids after view split                 0  dropped
+
+Cameras per country
+-------------------
+Country  Cameras   Image  None  Heading
+IT        13,077  12,232   845      648
+DE         9,562   9,270   292      814
+AT         8,201   8,182    19    1,688
+XX         7,115   6,279   836    3,200
+ES         6,374   6,095   279       52
+FR         5,684   5,605    79       20
+TW         4,145   4,142     3        0
+GB         3,627   3,602    25       47
+CH         3,475   3,457    18       54
+NO         3,123   3,092    31      100
+SE         2,747   2,747     0      846
+FI         2,744   2,743     1       55
+AU         2,483   2,470    13      450
+CZ         2,001   1,974    27       33
+JP         1,809   1,804     5       29
+HR         1,728   1,705    23       12
+GR         1,674   1,512   162       19
+ZA         1,468   1,455    13      848
+SI         1,436   1,429     7       40
+ID         1,269     674   595       13
+TH         1,190     556   634       21
+PL         1,164   1,016   148       19
+NZ         1,042   1,040     2      324
+IS         1,035   1,027     8      288
+HU         1,032   1,028     4        4
+HK           980     980     0        9
+RU           946     883    63       18
+BR           933     893    40       16
+NL           729     724     5        8
+PT           723     687    36      191
+MY           663     663     0        4
+VN           663     662     1       11
+DK           631     631     0        2
+TR           522     376   146       36
+SK           507     507     0        0
+KR           506     287   219        0
+CN           455     451     4        2
+RO           403     379    24       16
+MX           373     360    13        3
+IE           372     368     4        4
+LT           345     336     9        1
+BE           319     319     0        3
+MT           289     230    59        0
+AR           248     233    15        7
+CL           243     232    11       20
+CO           221     221     0        1
+BG           220     213     7        2
+BA           175     173     2        0
+PE           146     146     0       73
+RS           137     129     8        0
+AD           135     135     0        0
+MA           112     110     2        1
+LU           106     105     1       25
+KE           102      99     3        1
+LV           101      81    20        0
+IL            95      91     4        7
+DO            79      73     6       23
+CY            73      71     2       19
+FO            66      64     2        0
+EE            65      55    10        3
+EG            64      63     1       10
+KG            61      40    21        0
+MV            61      48    13        0
+IN            58      55     3        9
+GE            54      54     0        7
+GL            53      53     0        7
+MD            53      53     0        0
+XK            49      48     1        0
+AE            45      45     0       15
+ME            43      43     0        2
+SG            43      23    20        0
+PH            42      41     1        0
+AL            40      38     2        0
+MU            38      38     0        1
+AQ            37      37     0        0
+KZ            35      28     7        7
+PG            33      33     0        0
+SM            33      31     2        0
+EC            32      32     0        0
+LI            32      32     0        3
+TZ            31      24     7        2
+CR            29      26     3        0
+AZ            28      28     0       14
+NA            28      28     0        3
+GT            25      25     0        0
+VI            24      24     0        0
+BY            22      22     0        0
+RE            22      22     0        1
+JO            20      18     2        7
+VE            20      18     2        4
+NP            19      19     0        2
+ZW            19      19     0        0
+MK            18      18     0        0
+SC            18      14     4        0
+TT            17       3    14        0
+BS            16      16     0        1
+GG            16      16     0        0
+IM            16      16     0        0
+PA            15      15     0        0
+BB            14      10     4        0
+PF            14      14     0        1
+BM            13      10     3        0
+CV            13      12     1        0
+HN            13      13     0        0
+BJ            12      12     0       12
+UY            12      10     2        3
+ZM            11      10     1        0
+GI            10      10     0        1
+JM            10      10     0        0
+MQ            10       9     1        0
+NI            10      10     0        0
+PR            10       5     5        0
+VG            10       8     2        0
+FK             9       9     0        4
+KY             9       9     0        0
+LB             9       9     0        0
+MN             9       9     0        9
+SA             9       9     0        2
+TN             9       8     1        0
+AW             7       7     0        0
+FJ             7       7     0        2
+GP             7       5     2        1
+LK             7       5     2        0
+SJ             7       7     0        7
+BO             6       5     1        1
+PY             6       6     0        0
+QA             6       6     0        0
+UZ             6       6     0        5
+BW             5       5     0        0
+BZ             5       5     0        0
+MZ             5       5     0        0
+BQ             4       2     2        0
+CK             4       4     0        0
+JE             4       4     0        0
+MC             4       4     0        0
+MG             4       4     0        0
+OM             4       4     0        0
+AM             3       3     0        0
+BH             3       3     0        0
+DZ             3       3     0        0
+GD             3       2     1        0
+GS             3       3     0        0
+IR             3       2     1        0
+NC             3       3     0        0
+PK             3       3     0        1
+PS             3       3     0        3
+SN             3       3     0        1
+SV             3       3     0        0
+VA             3       3     0        0
+GH             2       2     0        1
+KW             2       2     0        0
+LS             2       2     0        0
+NG             2       2     0        0
+SO             2       2     0        0
+SX             2       1     1        0
+TC             2       2     0        0
+VU             2       2     0        0
+AG             1       1     0        0
+AI             1       1     0        0
+CU             1       1     0        0
+ET             1       1     0        0
+KH             1       1     0        0
+LA             1       1     0        0
+MF             1       1     0        1
+NF             1       1     0        1
+UG             1       1     0        0
+VC             1       1     0        0
+
+Cameras per provider
+--------------------
+Key                                               Provider                                                          Cameras   Image   None  Countries
+windy                                             Windy                                                              32,832  32,832      0        124
+webcamgalore                                      WebcamGalore                                                       19,480  19,480      0        138
+worldcam                                          WorldCam                                                           13,970  13,970      0         63
+osm                                               OpenStreetMap                                                       5,766   4,913    853         18
+thb                                               THB                                                                 4,002   4,002      0          1
+panomax                                           Panomax                                                             3,633   3,633      0         81
+skylinewebcams                                    SkylineWebcams                                                      3,310   1,739  1,571         71
+dgt                                               DGT                                                                 1,913   1,913      0          1
+les                                               Live Environment Streams                                            1,698      20  1,678         36
+trafikverket                                      Trafikverket                                                        1,583   1,583      0          1
+feratel                                           feratel                                                             1,578   1,578      0         13
+opendatahub                                       Open Data Hub                                                       1,433   1,428      5          3
+sanral                                            SANRAL i-traffic                                                    1,243   1,243      0          1
+hktd                                              Hong Kong Transport Department                                        971     971      0          1
+amos                                              AMOS                                                                  915     912      3         18
+tfl                                               TfL JamCams                                                           890     890      0          1
+digitraffic                                       Digitraffic                                                           814     814      0          1
+vegvesen                                          Statens vegvesen                                                      748     748      0          1
+whatsupcams                                       Whatsupcams                                                           685     685      0         20
+skaping                                           Skaping                                                               525     463     62          5
+llm                                               LLM highway CCTV                                                      482     482      0          1
+vegagerdin                                        Vegagerðin                                                            477     477      0          1
+roundshot                                         Roundshot                                                             443     443      0         13
+fotowebcam                                        foto-webcam.eu                                                        373     373      0          7
+madridinformo                                     Madrid Informo                                                        357     357      0          1
+nzta                                              NZTA TrafficNZ                                                        313     313      0          1
+viewsurf                                          ViewSurf                                                              307     307      0          3
+eismoinfo-vkr                                     Eismoinfo VKR                                                         296     296      0          1
+openeagleeye                                      OpenEagleEye                                                          283     283      0          9
+tii-traffic                                       TII Traffic                                                           244     244      0          1
+livetrafficnsw                                    LiveTrafficNSW                                                        217     217      0          1
+thailand-doh-highway-traffic-highwaytraffic-go-t  Thailand DOH Highway Traffic (highwaytraffic.go.th GetSiteInfo)       198       0    198          1
+catalonia-sct-cameres-kml                         Catalonia SCT cameres.kml                                             159     159      0          1
+qldtraffic                                        QLDTraffic                                                            157     157      0          1
+catalonia-sct-cameres-xml                         Catalonia SCT cameres.xml                                             124     123      1          1
+bandung-pelindung-bandung-go-id-api               Bandung pelindung.bandung.go.id API                                   115       1    114          1
+siata-medell-n-aburr-siata-gov-co-ultimasfotosca  SIATA Medellín/Aburrá (siata.gov.co/ultimasFotosCamaras)              104     104      0          1
+webcamsdemexico-webcammx-cpt                      WebcamsDeMexico (webcammx CPT)                                         96      96      0          1
+bali-satu-data-balisatudata-baliprov-go-id-repor  Bali Satu Data balisatudata.baliprov.go.id report-cctv                 91       0     91          1
+yogyakarta-cctv-jogjakota-go-id-getdata           Yogyakarta cctv.jogjakota.go.id getdata                                86       0     86          1
+balticlivecam                                     BalticLiveCam                                                          80      16     64         17
+medell-n-simm-cctv-medellin-gov-co-simm-camaras-  Medellín SIMM CCTV (medellin.gov.co/SIMM/camaras-cctv)                 78      78      0          1
+adm                                               ADM Trafic                                                             71      71      0          1
+datos-vigo-org-camaras-trafico-json               datos.vigo.org camaras-trafico.json                                    61       0     61          1
+semarang-pantausemar-semarangkota-go-id           Semarang pantausemar.semarangkota.go.id                                58       0     58          1
+verkeerscentrum-snapshots                         Verkeerscentrum snapshots                                              41      41      0          1
+jp-putevi-srbije-toll-cams-kamere-toll4all-com-b  JP Putevi Srbije toll cams (kamere.toll4all.com / bitinfo.co.rs)       38      38      0          1
+andsa-moldova-national-road-cams-andsa-md-camimg  ANDSA Moldova national road cams (andsa.md/camimg)                     36      36      0          1
+dir-centre-est-webcams                            DIR Centre-Est webcams                                                 33      33      0          1
+palembang-cctv-palembang-go-id-api-cctv           Palembang cctv.palembang.go.id/api/cctv                                30       0     30          1
+fgc-opendatasoft                                  FGC/OpenDataSoft                                                       26      26      0          1
+emiliaromagnaturismo                              EmiliaRomagnaTurismo                                                   24       8     16          1
+trafficwatchni                                    TrafficWatchNI                                                         16      16      0          1
+belarus-customs-border-webcams-customs-gov-by-we  Belarus Customs border webcams (customs.gov.by/webcam)                 14      14      0          1
+cmal                                              CMAL                                                                   12      12      0          1
+dwd-opendata                                      DWD/opendata                                                            9       9      0          1
+amss-border-cameras-kamere-amss-org-rs            AMSS border cameras (kamere.amss.org.rs)                                8       0      8          1
+data-gov-sg                                       data.gov.sg                                                             8       0      8          1
+singapore-data-gov-sg-transport-traffic-images    Singapore data.gov.sg transport/traffic-images                          8       0      8          1
+ingv-eolie                                        INGV/Eolie                                                              6       6      0          1
+freeportofriga                                    FreeportOfRiga                                                          2       0      2          1
+teso                                              TESO                                                                    2       2      0          1
+tasikmalaya-atcs-tasikmalayakota-go-id            Tasikmalaya atcs.tasikmalayakota.go.id                                  1       0      1          1
+
+Windy webcam ids collapsed (31827)
+----------------------------------
+Windy, Windy-public-list, weather, ski and harbour lists often carry the same webcam
+under different camera ids and image addresses (preview vs full, with or without ?v=2).
+Dropped listing    Copies
+Windy-public-list  17,915
+Windy/weather       7,990
+Windy/ski           3,641
+Windy/harbor        2,281
+
+Coordinate rejects (6310)
+-------------------------
+Reason           Rows
+no coordinates  4,536
+null island     1,671
+out of range      103
+JP-cam-811C200101  JP  null,null  no coordinates  "811C200101"
+JP-cam-811B600220  JP  null,null  no coordinates  "811B600220"
+JP-cam-811B400115  JP  null,null  no coordinates  "811B400115"
+JP-cam-811B400101  JP  null,null  no coordinates  "811B400101"
+JP-cam-8118200102  JP  null,null  no coordinates  "8118200102"
+JP-cam-8118200110  JP  null,null  no coordinates  "8118200110"
+JP-cam-8118300101  JP  null,null  no coordinates  "8118300101"
+JP-cam-811830011B  JP  null,null  no coordinates  "811830011B"
+JP-cam-8118300103  JP  null,null  no coordinates  "8118300103"
+JP-cam-8118400101  JP  null,null  no coordinates  "8118400101"
+JP-cam-8118400108  JP  null,null  no coordinates  "8118400108"
+JP-cam-8118700102  JP  null,null  no coordinates  "8118700102"
+JP-cam-8110201004  JP  null,null  no coordinates  "8110201004"
+JP-cam-8118900103  JP  null,null  no coordinates  "8118900103"
+JP-cam-811D30FE5F  JP  null,null  no coordinates  "811D30FE5F"
+JP-cam-811D30FE5B  JP  null,null  no coordinates  "811D30FE5B"
+JP-cam-811C200102  JP  null,null  no coordinates  "811C200102"
+JP-cam-811D50FE08  JP  null,null  no coordinates  "811D50FE08"
+JP-cam-811D50FE04  JP  null,null  no coordinates  "811D50FE04"
+JP-cam-811DA0FE21  JP  null,null  no coordinates  "811DA0FE21"
+JP-cam-811DA0FE1F  JP  null,null  no coordinates  "811DA0FE1F"
+JP-cam-811DA0FE1A  JP  null,null  no coordinates  "811DA0FE1A"
+JP-cam-8118400126  JP  null,null  no coordinates  "8118400126"
+JP-cam-8110700105  JP  null,null  no coordinates  "8110700105"
+JP-cam-8110700106  JP  null,null  no coordinates  "8110700106"
+JP-cam-8113E00137  JP  null,null  no coordinates  "8113E00137"
+JP-cam-8115200101  JP  null,null  no coordinates  "8115200101"
+JP-cam-8115200102  JP  null,null  no coordinates  "8115200102"
+JP-cam-8115200103  JP  null,null  no coordinates  "8115200103"
+JP-cam-8115200104  JP  null,null  no coordinates  "8115200104"
+JP-cam-8110C0010E  JP  null,null  no coordinates  "8110C0010E"
+JP-cam-8110C002BC  JP  null,null  no coordinates  "8110C002BC"
+JP-cam-811020E122  JP  null,null  no coordinates  "811020E122"
+JP-cam-8110600001  JP  null,null  no coordinates  "8110600001"
+JP-cam-8110600008  JP  null,null  no coordinates  "8110600008"
+JP-cam-8110600005  JP  null,null  no coordinates  "8110600005"
+JP-cam-8111700123  JP  null,null  no coordinates  "8111700123"
+JP-cam-8112000401  JP  null,null  no coordinates  "8112000401"
+JP-cam-8112000202  JP  null,null  no coordinates  "8112000202"
+JP-cam-8112000206  JP  null,null  no coordinates  "8112000206"
+... and 6,270 more
+
+Conflicting duplicate ids (284)
+-------------------------------
+ATSEA-povorotnaja-veb-kamera-u-zapadnogo-termi  kept "Helsinki West Terminal T1", dropped "Helsinki West Terminal T2"
+MX-WDM-895  kept "Tijuana Panorámica", dropped "Rancho La Onza. Panorámica"
+MX-WDM-894  kept "Ixtapa Park Royal", dropped "Rancho La Onza. Criadero"
+MX-WDM-916  kept "Bacalar Presdencia", dropped "Bacalar Hotel Laguna"
+PANOMAX-3315  kept "Nürburgring - Nordschleife", dropped "Schladming-Dachstein, Stoderzinken"
+PANOMAX-1941  kept "Anger", dropped "Loen Skylift - Hoven"
+PANOMAX-3333  kept "Thumel centro valle", dropped "Wolfsegg am Hausruck"
+PANOMAX-3303  kept "Freiberg - Altstadt Hotel", dropped "Isabel de Torres knoll, Puerto Plata, Dominicana"
+PANOMAX-3028  kept "Pyhrn Pass", dropped "Panomax isola 180° 1300 mt"
+PANOMAX-331  kept "Nassfeld", dropped "Ischgl, Idalp 2.320 m"
+PANOMAX-2227  kept "Folgarida - Monte Vigo", dropped "Salzburg - Gaisberg 1.287m"
+PANOMAX-4683  kept "Supergau Superort Zeitraffer", dropped "Webcam Kanzel - Solda | Ferienregion Ortlergebiet"
+PANOMAX-3613  kept "Sölkpass - Blick nach Süden", dropped "Bremerhaven - Mitte"
+PANOMAX-1583  kept "Gut Brandlhof", dropped "Parque Bondinho Pão de Açúcar - Felicidade lá em cima"
+PANOMAX-1876  kept "Adelaide Oval Stands", dropped "Panomax 1876"
+PANOMAX-4632  kept "Monte Pora - Pian del Termen", dropped "Kronen Zeitung - Zentrale Wien, Muthgasse"
+PANOMAX-3007  kept "Erzberg", dropped "180° Panomax Pianazzo 1399 mslm"
+PANOMAX-4623  kept "Monte Pora - Traliccio Cima", dropped "Hotel Everest View, Namche Bazaar"
+PANOMAX-4608  kept "Campingplatz Rathenow", dropped "Piani di Bobbio - Area Bob"
+PANOMAX-4275  kept "Standort 4 OST 2", dropped "LANGA DEL SOLE - Mombarcaro (896m) - Veduta verso l'Alta Langa"
+PANOMAX-4272  kept "Sendemast Schartenstraße", dropped "LANGA DEL SOLE - Cerretto Langhe (687m) - Veduta verso l'Alta Langa e la cerchia delle Alpi."
+PANOMAX-3366  kept "Teststandort SBG Flughafen Zell am See Hangar6", dropped "Maisalm, Saalbach"
+PANOMAX-4290  kept "Altos Del Atlantico", dropped "Mustankallion vesitorni"
+PANOMAX-4173  kept "Altos de Chavón", dropped "POAS - Tieteenkatu 18"
+PANOMAX-4374  kept "Boccadasse", dropped "LANGA DEL SOLE - Benevello (671m) - Veduta verso l'Alta Langa"
+PANOMAX-4176  kept "Bahía de las Águilas", dropped "Panomax 4176"
+PANOMAX-4269  kept "Ofenauerberg", dropped "LANGA DEL SOLE - Trezzo Tinella (351m)  - Veduta sull'Alta Langa"
+PANOMAX-4212  kept "Rincón", dropped "Reinswald - Pfnatsch (2080m)"
+PANOMAX-3042  kept "Rathaus Köflach", dropped "Villacher Alpenstraße - Rosstratten"
+PANOMAX-2871  kept "Santa Caterina - Valfurva Plaghera", dropped "Panoramawebcam am Skizentrum Pfronten"
+PANOMAX-3558  kept "Hotel Viktor - Garten", dropped "Panomax 3558"
+PANOMAX-3360  kept "Teststandort SBG Weißbach bei Lofer", dropped "Bahnhof Attersee"
+PANOMAX-2354  kept "Monkey Bar", dropped "Panomax 2354"
+PANOMAX-3060  kept "Dach", dropped "FLORIANERPANORAMA © by FOTOKERSCHI"
+PANOMAX-3336  kept "Thumel strada 3", dropped "LANGA DEL SOLE - Albaretto della Torre (620m) - Veduta verso l'Alta Langa"
+PANOMAX-3019  kept "AWI - Polarstern - 360°", dropped "Waldkirchen-Oberfrauenwald"
+PANOMAX-4146  kept "testjohannes", dropped "Camping Piantelle 180° Live Streaming Interactive"
+PANOMAX-4209  kept "Punta Cana", dropped "Panomax Ladurns 180° Live Streaming Interactive"
+PANOMAX-3657  kept "Schuttberg Testbild", dropped "180° Panomax Monte Pora - Pian de l'Asen 1605 mslm"
+PANOMAX-956  kept "Chamonix - Balme", dropped "GOLFCLUB ZUGSPITZE-TIROL Ehrwald-Lermoos"
+... and 244 more
+
+School cameras removed (317)
+----------------------------
+intl-RS-514  CH  camera_name: Aiglon College
+intl-RS-568  CH  camera_name: Bäumlihof Gymnasium
+intl-RS-11  CH  camera_details: Roundshot category=Schools; status=working; customer=Beau Soleil Collège
+intl-RS-1301  CH  camera_name: Ecole Suisse de Ski Diablerets
+intl-RS-21  CH  camera_name: Grenchen Flugschule - Grenchen Flughafen
+intl-WUC-hr_buildpetrinja01  HR  camera_name: Petrinja renovation of the High School and City Administration after the earthquake
+intl-WUC-do_buenhombre03  DO  camera_name: Webcam KITE BUEN Hombre Kiteboarding School | Buen Hombre Beach
+intl-WUC-it_livigno01  IT  camera_name: Livigno LIVE webcam - view on Livigno Ski School area
+intl-WUC-si_cerkno02  SI  camera_name: SKI school Novinar - WEBCAM ski resort Cerkno - sLOVEnia
+intl-IT-cam-odh-FERATEL_A172E61D-1575-4175-9B8A-54584B580870_6392  IT  camera_name: Campo Scuola
+intl-IT-cam-odh-DSS_6561290  IT  camera_name: Campo Scuola Santa Fosca
+intl-IT-cam-odh-FERATEL_ABCF2C5F-9E53-41D2-AF27-D42D453B6DFA_3175  IT  camera_name: Diesterweg - Schule
+intl-IT-cam-odh-FERATEL_2FADD222-CD33-4D3C-8D15-4F88B8B9E2AC_6168  IT  camera_name: Scuola Sci Centrale
+intl-IT-cam-odh-FERATEL_D7BB489B-99F5-489B-A2E7-CBD0C8FCC162_3340  IT  camera_name: Vitra Campus
+intl-AT-cam-c1b24b1dc9  AT  camera_name: Universität Innsbruck / Blick nach Nordosten ins Unterinntal
+intl-AT-cam-48f19fd939  AT  camera_name: Universität Innsbruck / Blick nach Westen
+intl-DE-cam-ea266e9117  DE  camera_name: Olympiaturm München - Baustelle TUM Campus im Olympiapark
+intl-IT-cam-176859d52b  IT  camera_name: Pistoia - Abetone Campo Scuola
+intl-TH-cam-ccef726bbe  TH  camera_name: (Chachoengsao Province) in front of Thepprasit Wittaya School
+intl-TH-cam-cdf81d9d82  TH  camera_name: (Chachoengsao Province) in front of Wat Sothon Wararam Worawihan School
+intl-TH-cam-7d2a7fad26  TH  camera_name: In front of Benjamarachutit School
+intl-TH-cam-dbd99b0ea8  TH  camera_name: In front of Charatphichakarn School, No. 1
+intl-TH-cam-97b6b311b3  TH  camera_name: In front of Maheyong School, number 1
+intl-TH-cam-20d00b518b  TH  camera_name: In front of Nakhon Phanit School, No. 1
+intl-TH-cam-979c391a37  TH  camera_name: In front of Phetcharik School
+intl-TH-cam-bd4cd83ff0  TH  camera_name: In front of Sala Meechai School, No. 1
+intl-TH-cam-aad948a192  TH  camera_name: In front of Sao Thong Thong School, No. 1
+intl-TH-cam-f4fc544fc5  TH  camera_name: In front of Sema Muang School, No. 1
+intl-TH-cam-28f09f32d1  TH  camera_name: In front of Technical School No. 1
+intl-TH-cam-c1282f6b12  TH  camera_name: In front of Wat Srithawee School, No. 1
+intl-TH-cam-d76e63b28d  TH  camera_name: In front of Wat Thao Khot School, No. 1
+intl-TH-cam-c57d0ca529  TH  camera_name: In front of Wat Yai School, No. 1
+intl-TH-cam-3f026577a5  TH  camera_name: In front of the Provincial Kindergarten School No. 1
+intl-XX-cam-d132d6833c  XX  primary_url: http://hncam1.hn.psu.edu/axis-cgi/jpg/image.cgi?resolution=640x480
+intl-XX-cam-ee17a7e67f  XX  primary_url: http://webcam01.ecn.purdue.edu/axis-cgi/jpg/image.cgi?resolution=640x480&amp
+intl-XX-cam-84845076bc  XX  primary_url: http://wyant.optics.arizona.edu/webcam32.jpg
+intl-XX-cam-35b74db039  XX  camera_name: University of Maine at Presque Isle
+intl-XX-cam-da47c3d12c  XX  camera_name: German Swiss International School, Hong Kong
+intl-XX-cam-61c51a4e1a  XX  primary_url: http://phenocam.sr.unh.edu/data/latest/innsbruck.jpg
+intl-XX-cam-c244df808e  XX  primary_url: http://phenocam.sr.unh.edu/data/latest/torgnon-ld.jpg
+intl-XX-cam-79e004c48e  XX  primary_url: http://phenocam.sr.unh.edu/data/latest/torgnon-nd.jpg
+intl-XX-cam-43c9130399  XX  camera_name: Tarvisio - Campo Scuola
+intl-XX-cam-0d02f2f1da  XX  camera_name: École de Pilotage Envie d'Ailes
+intl-XX-cam-3c3b324bdb  XX  camera_name: Antwerp Martime Academy
+intl-XX-cam-30ed2c64b6  XX  camera_name: Webcam campo scuola Malanotte
+intl-XX-cam-a32aee48d9  XX  primary_url: https://legacy.bas.ac.uk/webcams/archive/cam.php?cam=4&position=1
+intl-XX-cam-09399e1f4e  XX  camera_name: Manawatū at Teachers College
+intl-XX-cam-ddc8e01cf9  XX  camera_details: a view along Highgate towards Columba College.
+intl-XX-cam-16aa3308fd  XX  camera_name: Webcam vue de Tanchet, de l'Ecole de Voile
+intl-XX-cam-28c0d74865  XX  camera_details: Olympiaturm München - Baustelle TUM Campus im Olympiapark
+intl-XX-cam-52a9ec87ee  XX  camera_details: Universität Innsbruck / Blick nach Westen
+intl-XX-cam-c5d994eb49  XX  camera_details: Universität Innsbruck / Blick nach Nordosten ins Unterinntal
+intl-XX-cam-4ade6496ee  XX  primary_url: https://fokarium.ug.edu.pl/foki/foki-z-helu/fokarium-na-zywo/fvp-2/
+intl-XX-cam-d29c2bd092  XX  camera_name: For BFH construction site: https://www.campus-bern.bvd.be.ch/de/start/bauphase.html
+intl-XX-cam-21c3db9968  XX  camera_name: For BFH construction site: https://www.campus-bern.bvd.be.ch/de/start/bauphase.html
+intl-AMOS-1100  MX  primary_url: http://www.noao.edu/kpno/kpcam/lastim2.jpg
+intl-AMOS-1101  MX  primary_url: http://www.noao.edu/kpno/kpcam/lastim.jpg
+intl-AMOS-4055  MX  primary_url: http://phenocam.sr.unh.edu/data/latest/kendall.jpg
+intl-AMOS-4080  MX  primary_url: http://phenocam.sr.unh.edu/data/latest/bigbend.jpg
+intl-AMOS-5612  MX  primary_url: http://www.vlba.nrao.edu/sites/SITECAM/FDSNAP.JPG
+intl-AMOS-5613  MX  primary_url: http://www.vlba.nrao.edu/sites/SITECAM/KPSNAP.JPG
+intl-AU-QLD-cam-48  AU-QLD  camera_name: Bundaberg North - Gin Gin Rd School Pedestrian Crossing - East
+intl-HK-cam-AID01103  HK  camera_name: Wong Chuk Hang Road near Aberdeen Technical School - Eastbound [AID01103]
+intl-HK-cam-AID01106  HK  camera_name: Wong Chuk Hang Road near Hong Kong Academy of Medicine - Eastbound [AID01106]
+intl-HK-cam-AID01111  HK  camera_name: Hong Chong Road near The Hong Kong Polytechnic University - Northbound (1) [AID01111]
+intl-HK-cam-AID01112  HK  camera_name: Hong Chong Road near The Hong Kong Polytechnic University - Northbound (2) [AID01112]
+intl-HK-cam-AID01115  HK  camera_name: Princess Margaret Road near Yu Chun Keung Memorial College - Northbound [AID01115]
+intl-HK-cam-AID01130  HK  camera_name: Sha Tin Road near Christ College - Northbound [AID01130]
+intl-HK-cam-AID01205  HK  camera_name: Waterloo Road near American Internationnal School - Southbound [AID01205]
+intl-HK-cam-AID01209  HK  camera_name: Princess Margaret Road near Yu Chun Keung Memorial College - Southbound [AID01209]
+intl-HK-cam-AID01213  HK  camera_name: Hong Chong Road near The Hong Kong Polytechnic University - Southbound [AID01213]
+intl-HK-cam-AID02119  HK  camera_name: Tate's Cairn Highway near HK School of Motoring - Northbound [AID02119]
+intl-HK-cam-AID03113  HK  camera_name: West Kowloon Highway near SKH St. Andrew's Primary School - Northbound [AID03113]
+intl-HK-cam-AID04114  HK  camera_name: Island Eastern Corridor near St. Mark's School - Eastbound [AID04114]
+intl-HK-cam-AID05101  HK  camera_name: Kai Fuk Road near Kwun Tong Government Primary School - Westbound [AID05101]
+intl-HK-cam-AID05111  HK  camera_name: Gascoigne Road near Diocesan Girls' School - Westbound [AID05111]
+intl-HK-cam-AID05123  HK  camera_name: Kwai Chung Road near Delia Memorial School (Glee Path) - Northbound [AID05123]
+intl-HK-cam-AID05125  HK  camera_name: Kwai Chung Road near Hong Chi Winifred Mary Cheung Morninghope School - Northbound [AID05125]
+intl-HK-cam-AID05211  HK  camera_name: Kwai Chung Road near Hong Chi Winifred Mary Cheung Morninghope School - Southbound [AID05211]
+intl-HK-cam-AID05213  HK  camera_name: Kwai Chung Road near Delia Memorial School (Glee Path) - Southbound [AID05213]
+intl-HK-cam-AID05224  HK  camera_name: Gascoigne Road near Methodist College - Eastbound [AID05224]
+intl-HK-cam-AID05225  HK  camera_name: Gascoigne Road near Diocesan Girls' School - Eastbound [AID05225]
+intl-HK-cam-AID07113  HK  camera_name: Kwun Tong Road near Kowloon Bay St. John the Baptist Catholic Primary School - Westbound [AID07113]
+intl-HK-cam-AID09107  HK  camera_name: Cheung Pei Shan Road near Lui Ming Choi Lutheran College - Eastbound [AID09107]
+intl-HK-cam-AID09109  HK  camera_name: Cheung Pei Shan Road near Ho Fung College - Eastbound [AID09109]
+intl-HK-cam-AID09201  HK  camera_name: Cheung Pei Shan Road near Ho Fung College - Westbound [AID09201]
+intl-HK-cam-AID09203  HK  camera_name: Cheung Pei Shan Road near Lui Ming Choi Lutheran College - Westbound [AID09203]
+intl-HK-cam-H422F1  HK  camera_name: Wong Chuk Hang Road near Aberdeen Technical School [H422F1]
+intl-HK-cam-TDS10010  HK  camera_name: Lion Rock Tunnel Road near Sha Tin Government Primary School - Southbound [TDS10010]
+intl-HK-cam-TDS20001  HK  camera_name: Tate's Cairn Highway near Hong Kong School of Motoring - Sha Tin - Southbound [TDS20001]
+intl-HK-cam-TDS90043  HK  camera_name: Tuen Mun Road near Harrow International School Hong Kong - Westbound (1) [TDS90043]
+intl-HK-cam-TDS90044  HK  camera_name: Tuen Mun Road near Harrow International School Hong Kong- Westbound (2) [TDS90044]
+intl-HK-cam-TDS91027  HK  camera_name: Tuen Mun Road near Harrow International School Hong Kong - Eastbound (1) [TDS91027]
+intl-HK-cam-TDS91028  HK  camera_name: Tuen Mun Road near Harrow International School Hong Kong - Eastbound (2) [TDS91028]
+intl-HK-cam-TDSIEC10002  HK  camera_name: Harcourt Road near The Hong Kong Academy for Performing Arts - Eastbound [TDSIEC10002]
+intl-HK-cam-TDSJCR10001  HK  camera_name: Jockey Club Road near Fanling Government Primary School - Southbound [TDSJCR10001]
+intl-HK-cam-TDSJCR20001  HK  camera_name: Jockey Club Road near Fanling Government Primary School - Northbound [TDSJCR20001]
+intl-HK-cam-TDSPERE10002  HK  camera_name: Prince Edward Road East near Lee Kau Yan Memorial School - Northbound [TDSPERE10002]
+intl-HK-cam-TDSPERE20002  HK  camera_name: Prince Edward Road East near Lee Kau Yan Memorial School - Southbound [TDSPERE20002]
+intl-HK-cam-TDSSPWR10001  HK  camera_name: Pok Fu Lam Road near St. Paul's College Primary School - Eastbound [TDSSPWR10001]
+intl-HK-cam-TDSTPR10007  HK  camera_name: Tai Po Road - Tai Po Kau near Japanese International School - Southbound [TDSTPR10007]
+intl-HK-cam-TDSTPR10008  HK  camera_name: Tai Po Road - Tai Po Kau near Po Leung Kuk Tin Ka Ping Millennium Primary School - Southbound [TDSTPR10008]
+intl-HK-cam-TDSTPR20005  HK  camera_name: Tai Po Road - Tai Po Kau near Japanese International School - Northbound [TDSTPR20005]
+intl-HK-cam-TDSTPR20006  HK  camera_name: Tai Po Road - Tai Po Kau near Po Leung Kuk Tin Ka Ping Millennium Primary School - Northbound [TDSTPR20006]
+intl-WG-498  BY  camera_name: Webcam Minsk: National Library of Belarus
+intl-WG-1180  AT  camera_name: Webcam Mittelberg (Kleinwalsertal): Skischule Mittelberg
+intl-WG-1241  SE  camera_name: Webcam Uppsala: Uppsala University
+intl-WG-2567  RU  camera_name: Webcam Pyatigorsk: Entrance University
+intl-WG-3481  DE  camera_name: Webcam Lenggries: Ski School Lenggries
+intl-WG-4095  NL  camera_details: University of Groningen: Webcam in Groningen, Netherlands. Check yourself what's up in Groningen right now!
+intl-WG-4103  DE  camera_name: Webcam Hildesheim: Hildesheim University
+intl-WG-4239  XX  camera_name: Webcam Bandar Seri Begawan: St.George's School
+intl-WG-4361  TR  camera_name: Webcam Antalya: Akdeniz University Mosque
+intl-WG-4565  IT  camera_name: Webcam Abetone: Campo Scuola and Piazzale Abetone
+intl-WG-5577  FR  camera_name: Webcam Tours: Bibliothèque Municipale
+intl-WG-5658  MA  camera_name: Webcam Ifrane: Al Akhawayn University
+intl-WG-8112  DE  camera_name: Webcam Hochries: Flugschule Hochries
+intl-WG-10824  GB  camera_name: Webcam Belfast: Queen's University
+intl-WG-12196  DE  camera_details: Campus Technicus 1 Construction Site: Webcam in Bernburg (Saale), Germany. Check yourself what's up in Bernburg (Saale) right now!
+intl-WG-12485  LV  camera_name: Webcam Riga: National Library
+intl-WG-12538  LV  camera_name: Webcam Riga: National Library
+intl-WG-20392  AU  camera_name: Webcam Bundaberg North: North School Pedestrian Crossing (looking east)
+intl-WG-26293  ES  camera_name: Webcam Arguineguin (Gran Canaria): Dive Academy Gran Canaria
+intl-WG-26569  AT  camera_name: Webcam Brunn am Gebirge: Campus 21
+intl-WG-26950  PL  camera_details: Kitesurf School: Webcam in Chałupy, Poland. Check yourself what's up in Chałupy right now!
+intl-WG-28169  IT  camera_name: Webcam Abetone: Campo Scuola Abetone
+intl-WG-28185  IT  camera_name: Webcam Livigno: Livigno Ski School - LivignoGO.com
+intl-WG-28207  DO  camera_name: Webcam San Fernando de Monte Cristi: Buen Hombre Beach - Kite School
+intl-WG-28450  GG  camera_details: Elizabeth College: Webcam in Saint Peter Port, Guernsey. Check yourself what's up in Saint Peter Port right now!
+intl-WG-29847  CH  camera_name: Webcam Zweisimmen: Ski School Zweisimmen
+intl-WG-30522  IT  camera_name: Webcam Pescasseroli: Ski School
+intl-WG-31517  CH  camera_name: Webcam Basel: 360° Panorama Bäumlihof Gymnasium
+intl-WG-31524  CH  camera_name: Webcam Villars-sur-Ollon: 360° Panorama Aiglon College
+intl-WG-34871  CN  camera_name: Webcam Hong Kong: Elegantia College in Sheung Shui (looking towards the northwest)
+intl-WG-36056  DO  camera_name: Webcam Buen Hombre: Kite Buen Hombre Kiteboarding School - Buen Hombre Beach
+intl-WG-36136  SI  camera_name: Webcam Cerkno: Ski School Novinar – Ski Resort Cerkno
+intl-WG-36318  CH  camera_name: Webcam Les Diablerets: 360° Panorama Ecole Suisse de Ski Diablerets
+intl-WG-36448  ES  camera_name: Webcam El Palmar de Vejer: South Coast Surf School
+intl-WG-36535  DE  camera_name: Webcam Paderborn: Gymnasium Theodorianum
+intl-WG-32716  DE  camera_name: Vitra Campus
+intl-WG-25231  DE  camera_name: Diesterweg - Schule
+intl-WC-36462  PE  camera_name: Andahuaylas - Campus casayohana, Peru
+intl-WC-14927  RO  camera_name: Mamaia - Windsurfing School Piccadilly - Lacul Siutghiol, Romania
+intl-WC-31941  TR  camera_name: Erzincan - Binali Yildirim University, Turkey
+intl-WC-28410  XX  camera_name: Esigodini - Falcon College, Zimbabwe
+intl-WC-21246  IT  camera_name: Baronissi - University of Salerno, Italy
+intl-WC-34962  IT  camera_name: Teramo - Campo scuola Gammarana, Italy
+intl-WC-31576  ES  camera_name: El Palmar de Vejer - 9 Pies Escuela de surf El Palmar, Spain
+intl-WC-40071  DE  camera_name: Dießen am Ammersee - Sail School, Germany
+intl-WC-9377  GB  camera_name: Coventry - Bablake School, United Kingdom
+intl-WC-6586  NL  camera_name: Delft - Delft University of Technology - Falcons, Netherlands
+intl-WC-34589  HU  camera_name: Győr - Széchenyi István University, Hungary
+intl-WC-20725  AT  camera_name: Innsbruck - University - Panoramic view, Austria
+intl-WC-11333  DE  camera_name: Berlin - Technical University of Berlin, Germany
+intl-WC-29530  XX  camera_name: Urgench - Urgench State University, Uzbekistan
+intl-WC-27030  GB  camera_name: Pitstone - College Lake nature reserve, United Kingdom
+intl-WC-9704  DE  camera_name: Hildesheim - Marktplatz, Hütte, Universität, Germany
+intl-WC-5825  DE  camera_name: Regensburg - Ostbayerische Technische Hochschule, Germany
+intl-WC-12341  GB  camera_name: Nottingham Trent University - Peregrine falcons, United Kingdom
+intl-WC-10999  IT  camera_name: Marina di Ragusa - Scuola Vela Ragusa, Italy
+intl-WC-10553  HU  camera_name: Miskolc - University, Hungary
+intl-WC-25050  GB  camera_name: Glasgow - University of Glasgow, United Kingdom
+intl-WC-674  DE  camera_name: Emden - Hochschule, Germany
+intl-WC-34190  BE  camera_name: Louvain-La-Neuve - Campus, Belgium
+intl-WC-17101  TH  camera_name: Chiang Mai - University, Thailand
+intl-WC-8920  CN  camera_name: Macau - Pui Ching Middle School, China
+intl-WC-1639  JP  camera_name: Hiroshima - University - Higashi Hiroshima Campus, Japan
+intl-WC-6782  DE  camera_name: Mainz - University of Mainz, Germany
+intl-WC-30151  BE  camera_name: Ottignies-Louvain-la-Neuve - Campus, Belgium
+intl-WC-16138  SE  camera_name: Östersund - Jämtland Gymnasium Wargentin, Sweden
+intl-WC-6976  DE  camera_name: Lenggries - Skischule Lenggries, Germany
+intl-WC-30617  ZA  camera_name: Johannesburg - Wits University, South Africa
+intl-WC-29966  JP  camera_name: Shin&#039;onsen - Hamasaka - Buntaro Kato Memorial Library, Japan
+intl-WC-6679  CZ  camera_name: Staré Město - Primary school, Czech Republic
+intl-WC-34458  XX  camera_name: Tashkent - National University of Uzbekistan, Uzbekistan
+intl-WC-33382  XX  camera_name: Bukhara - Bukhara State University - Classrooms, Uzbekistan
+intl-WC-21451  FR  camera_name: Saint-Cyr-l’École - Airport, France
+intl-WC-36422  RO  camera_name: Ștefăneștii de Jos - Mark Twain International School Cosmopolis, Romania
+intl-WC-40494  RU  camera_name: Saint Petersburg - State University of Aerospace Instrumentation, Russia
+intl-WC-1458  DE  camera_name: Unterwössen - Flying school, Germany
+intl-WC-41217  XX  camera_name: Tashkent - University of World Economy and Diplomacy, Uzbekistan
+intl-WC-16075  IT  camera_name: Livigno - Ski School area, Italy
+intl-WC-35278  JP  camera_name: Kyoto - Kyoto Sangyo University - Bus station, Japan
+intl-WC-10011  MA  camera_name: Ifrane - Al Akhawayn University, Morocco
+intl-OSM-cam-n9569407667  AT  camera_details: camera:type=fixed; surveillance=public; surveillance:type=camera; man_made=surveillance; description=Universität Innsbruck / Blick nach Westen; osm=node/9569407667; tag=contact:webcam
+intl-OSM-cam-n9569407668  AT  camera_details: camera:type=fixed; surveillance=public; surveillance:type=camera; man_made=surveillance; description=Universität Innsbruck / Blick nach Nordosten ins Unterinntal; osm=node/9569407668; tag=contact:webcam
+intl-OSM-cam-n11079008701  DE  camera_details: camera:type=fixed; surveillance=webcam; surveillance:type=camera; surveillance:zone=weather; man_made=surveillance; operator=Institut für Meteorologie der Freien Universität Berlin; osm=node/11079008701; tag=image
+intl-OSM-cam-n338178874  DE  camera_details: camera:type=fixed; surveillance=webcam; surveillance:type=camera; surveillance:zone=weather; man_made=surveillance; operator=Institut für Meteorologie der Freien Universität Berlin; osm=node/338178874; tag=image
+intl-OSM-cam-n9569387975  DE  camera_details: camera:type=fixed; surveillance=public; surveillance:type=camera; man_made=surveillance; description=Olympiaturm München - Baustelle TUM Campus im Olympiapark; osm=node/9569387975; tag=contact:webcam
+intl-OSM-cam-n13729924957  PL  primary_url: https://kamery.edu.pl/nieruchomosci-w-karpaczu.png.webp
+intl-OSM-cam-n13729978745  PL  primary_url: https://kamery.edu.pl/kolobrzeg.png.webp
+intl-PANOMAX-1404236  NO  camera_name: Nordkapp high school
+intl-PANOMAX-1529600  AU  camera_name: Henley Beach - Library
+intl-PANOMAX-4054010  FI  camera_name: university Hospital Helsinki
+intl-PANOMAX-4055068  PE  camera_name: 069 - Cosapi - Biblioteca Universidad de Lima
+intl-PANOMAX-4055979  IT  camera_name: Ski School Vialattea
+intl-SE-cam-SE_STA_CAMERA_0_50438736  SE  camera_name: Midsommarkransens Gymnasium
+intl-SE-cam-SE_STA_CAMERA_Orion_267  SE  camera_name: Danderyds gymnasium
+intl-SE-cam-SE_STA_CAMERA_Orion_347  SE  camera_details: Trafikflödeskamera | videoOrImagesAvailable | Kameran är placerad på väg 222 Värmdöleden mellan trafikplats Nacka och Södra länken, i höjd med Nacka gymnasium, och är riktad mot Stockholm. | Jpeg
+intl-PANOMAX-5703  IT  camera_name: Friuli Venezia Giulia - Sella Nevea - ski school Camp
+intl-SKYLINE-820  IT  camera_name: Pistoia - Abetone Campo Scuola
+intl-CO-SIMM-49  CO  camera_name: Medellin - Universidad Nacional - Cra 64C x Cll 58
+intl-ODH-FERATEL_A172E61D-1575-4175-9B8A-54584B580870_6392  IT  camera_name: Campo Scuola
+intl-ODH-FERATEL_ABCF2C5F-9E53-41D2-AF27-D42D453B6DFA_3175  DE  camera_name: Diesterweg - Schule
+intl-ODH-FERATEL_2FADD222-CD33-4D3C-8D15-4F88B8B9E2AC_6168  IT  camera_name: Scuola Sci Centrale
+intl-ODH-FERATEL_D7BB489B-99F5-489B-A2E7-CBD0C8FCC162_3340  DE  camera_name: Vitra Campus
+intl-WC-31284  DE  camera_name: Weil am Rhein - Vitra Campus, Germany
+intl-ES-cam-e8e68268b9  ES  camera_name: Vejer de la Frontera: Surf School and Camp 9 Feet El Palmar
+intl-FR-cam-7c248a9d39  FR  camera_name: Mimizan › North-west: Surf School Silver Coast Mimizan - Plage Remember - Plage du Camping
+intl-IT-cam-25f6c7d77f  IT  camera_name: Gizzeria › South-west: Gizzeria Kite School&store - Scuola Kite Surf - Coolbay
+intl-EG-cam-e4c35f3f18  EG  camera_name: Hurghada › North-east: Tiger Kite and Surf School Main Place
+intl-GB-cam-5f333e254f  GB  camera_name: Caernarfon › North: Anglesey School of Yachting - Shantih Marine
+intl-IT-cam-cf97dc4fe4  IT  camera_name: Riccione: Club Nautico Riccione - Scuola di Vela FIV
+intl-NZ-cam-cc3a974180  NZ  camera_name: Mackenzie District: University of Canterbury Mt John Observatory
+intl-UY-cam-f6b8975d3d  UY  camera_name: Chacras de Paysandu › South-east: Papa Charlie Flight School - Charles Chalkling
+intl-AU-cam-b874997f6e  AU  camera_name: The Oaks › South: Daves Flying School
+intl-AU-cam-df6ead102e  AU  camera_name: Clifton › East: Lone Eagle Flying School Clifton
+intl-AU-cam-eb89c5ae98  AU  camera_name: Clifton › North: Lone Eagle Flying School Clifton
+intl-AU-cam-b49aaceefa  AU  camera_name: Clifton › South: Lone Eagle Flying School Clifton
+intl-AU-cam-f2e02cd12d  AU  camera_name: Clifton › West: Lone Eagle Flying School Clifton
+intl-XX-cam-832065486f  XX  camera_name: Zimbabwe: Falcon College
+intl-WINDY-cam-1728573315  EC  camera_name: Cuenca › North: Universidad del Azuay
+intl-WINDY-cam-1793901825  DO  camera_name: La Costa De Buen Hombre: KITE BUEN HOMBRE KITEBOARDING SCHOOL - Buen Hombre Beach - Monte Cristi - Dominican Republic
+intl-TW-cam-47eb310fb2  TW  camera_name: Kaohsiung › North-west: Gaoxiongshisanminquhebin Elementary School
+intl-WINDY-cam-1721845223  TW  camera_name: Neipu › West: National Pingtung University of Science and Technology - Zhonglin Road
+intl-WINDY-cam-1721845340  TW  camera_name: Neipu › South: Xuefu Road - National Pingtung University of Science and Technology
+intl-WINDY-cam-1362240114  CN  camera_name: São Lázaro: Macao - Pui Ching - Middle School
+intl-WINDY-cam-1326541262  JP  camera_name: Nagi: 奈義小学校前
+intl-WINDY-cam-1326541366  JP  camera_name: Nagi: 奈義中学校前
+intl-WINDY-cam-1546383038  JP  camera_name: Kita Ward › South: Kyoto Sangyo University
+intl-WINDY-cam-1725139770  JP  camera_name: Ome › South: Oume Shiritsu Dairoku Junior High School - Kurosawa River
+intl-WINDY-cam-1407484939  PT  camera_name: Coimbra: Largo Sé Velha - Biblioteca Joanina - National Museum Machado de Castro
+intl-WINDY-cam-1717639918  JP  camera_name: Hanawa › West: Yoneyama bridge - Hanawa Elementary School - Kujigawa Cycling Road
+intl-WINDY-cam-1717800316  JP  camera_name: Yamatsuri › East: 関岡小学校跡 - 東舘温泉 ユーパル矢祭 - Kujigawa Cycling Road - National Route 118
+intl-IT-cam-7109d59dcd  IT  camera_name: Pescasseroli › North: Istituto Comprensivo Di Scuola Materna Elementare E Media B.Croce - Comune Di Pescasseroli
+intl-WINDY-cam-1361637039  ES  camera_name: San Mames: Rotonda de la universidad
+intl-ES-cam-25029a3a08  ES  camera_name: Calahorra › North-east: Centro De Formacion Vial Auto Escuela Calahorra
+intl-ES-cam-3cadab0cef  ES  camera_name: Ezcaray › South: Escuela de Deportes de Invierno de Valdezcaray - Valdezcaray
+intl-WINDY-cam-1558115425  IT  camera_name: Fossano › West: Fossano Centro Storico - Biblioteca Civica di Fossano
+intl-WINDY-cam-1334242688  FR  camera_name: Nevache › North-east: Ski School Névache - Névache village la boulangerie
+intl-WINDY-cam-1443690977  IT  camera_name: Sarnano › North-east: Aero club dei Sibillini - Scuola nazionale di volo libero, Parapendio e Deltaplano
+intl-IT-cam-d2ac4fd84d  IT  camera_name: Poggio Bustone › East: Flight Paragliding and Hang Gliding School - Monte Rosato
+intl-WINDY-cam-1749243931  IT  camera_name: Pretoro › North: Scuola sci Passolanciano
+intl-WINDY-cam-1738447146  IT  camera_name: Castelnuovo Don Bosco › South-west: Aviosuperficie Scuola Volo Castelnuovo Don Bosco
+intl-IT-cam-0641a57bc1  IT  camera_name: Castelnuovo Don Bosco › North-west: Aviosuperficie Scuola Volo Castelnuovo Don Bosco
+intl-CH-cam-86fd728a5e  CH  camera_name: Cologny › North: Tropical Corner - Wake Up School Of Wakeboard - Foil - Surf
+intl-FR-cam-452ab4f146  FR  camera_name: Vesancy › North: Ski School De Fond - Esi La Faucille - La Vattay - The Nordic Center Vattay - Syndic Esf Mijoux, La Faucille
+intl-FR-cam-63ba0a1150  FR  camera_name: Bruyeres-sur-Oise: Easy2fly école de pilotage
+intl-FR-cam-a72d645956  FR  camera_name: Saint-Cyr-l'Ecole › North: Aéro Club Paul Tissandier - Aerodrome of Saint-Cyr-l'École
+intl-FR-cam-04482f9de4  FR  camera_name: Saint-Cyr-l'Ecole: Aéroclub de Courbevoie
+intl-FR-cam-17622e15a4  FR  camera_name: Saint-Cyr-l'Ecole
+intl-WINDY-cam-1500891720  CH  camera_name: Basel: Martinskirche - Peterskirche - Middle Bridge, Basel - Basel Minster - Pfalz - Universität Basel - Spalentor - Rhine Promenade - Wettsteinbrücke
+intl-CH-cam-7289195665  CH  camera_name: Basel: Hirzbrunnen: Bäumlihof Gymnasium
+intl-DE-cam-85b1eec9e1  DE  camera_name: Mainz › South: Johannes Gutenberg University Mainz Botanical Garden
+intl-WINDY-cam-1548374561  DE  camera_name: Weil am Rhein: Vitra Campus, Feuerwehrhaus
+intl-WINDY-cam-1793913137  DE  camera_name: Weil am Rhein: Vitra Campus, vitra Schaudepot
+intl-WINDY-cam-1714736195  AT  camera_name: Graz › West: University of Graz - Graz Center of Physics - Schlossberg Graz
+intl-WINDY-cam-1793904130  AT  camera_name: Graz › South: University of Graz - Halbärthgasse - Herz-Jesu-Kirche
+intl-WINDY-cam-1793904131  AT  camera_name: Graz › East: University of Graz
+intl-DE-cam-b3e1d4beb1  DE  camera_name: Munster › East: Geo 1 - Institut für Pharmazeutische und Medizinische Chemie, Universität Münster
+intl-DE-cam-f659cefd19  DE  camera_name: Paderborn: 360° Panorama über - Towercam Universität
+intl-WINDY-cam-1793913216  DE  camera_name: Schmallenberg: Winterberg - Skikarussell Altastenberg, Skischule
+intl-WINDY-cam-1603724563  DE  camera_name: Lübeck › North-west: University of Lübeck
+intl-DE-cam-671738a889  DE  camera_name: Wernigerode: Diesterweg - Schule, Schloss
+intl-DE-cam-7f7ab065db  DE  camera_name: Jena › North-east: Wetterstation Beutenberg Campus
+intl-DE-cam-d204b6fc3d  DE  camera_name: Eisenach › South: Flugschule Kindel
+intl-WINDY-cam-1188396393  DE  camera_name: Hildesheim › North-west: Universität Hildesheim - Mensa
+intl-WINDY-cam-1510562161  DE  camera_name: Eltze › East: Niedersachsen, Deutschland: Schule
+intl-WINDY-cam-1350071405  DE  camera_name: Ilmenau: Technische University
+intl-WINDY-cam-1793913212  DE  camera_name: Wernigerode: Diesterweg - Schule, Schloss und Altstadt
+intl-WINDY-cam-1793914030  DE  camera_name: Wernigerode: Diesterweg - Schule, Gläserne Werkstatt der Harzer Schmalspurbahn
+intl-WINDY-cam-1793913220  DE  camera_name: Wernigerode: Diesterweg - Schule, Blick Richtung Altstadtkreisel und Harzvorland
+intl-WINDY-cam-1793913227  DE  camera_name: Wernigerode: Diesterweg - Schule, Heideviertel
+intl-WINDY-cam-1793913215  DE  camera_name: Wernigerode: Diesterweg - Schule, Blick in Richtung Brocken
+intl-GB-cam-2d37288794  GB  camera_name: Goostrey: Manchester - University of Manchester - Observatory
+intl-GB-cam-a99ad32196  GB  camera_name: Coventry › South-east: Bablake School
+intl-WINDY-cam-1215678440  CZ  camera_name: Novy Malin › West: Kostel Narození Panny Marie - Památník obětem z Českého Malína - Mateřská škola
+intl-WINDY-cam-1793899755  CZ  camera_name: Krnov › South: TKC system Ltd. - City Library Krnov, allowance organization - Riveted bridge in Krnov
+intl-WINDY-cam-1244399792  CZ  camera_name: Olsany › East: Domov Paprsek Olšany, příspěvková organizace - Česká pošta - Základní škola a mateřská škola Olšany, okres Šumperk, příspěvková organizace - Olsany u Sumperka - OP papírna Ltd.
+intl-WINDY-cam-1604229260  CZ  camera_name: Javornik › South-west: Základní škola Javorník
+intl-WINDY-cam-1451058027  CZ  camera_name: Ponikla › North-east: Kostel sv. Jakuba Většího - Most Zamilovanych - Základní škola Poniklá
+intl-DE-cam-90a11a0655  DE  camera_name: Trebbin › North-west: Flugschule Hans Grade GmbH - Nuthe-Nieplitz-Niederung
+intl-CZ-cam-8a7cbbebb6  CZ  camera_name: Steti › South-west: Vyšší odborná škola obalové techniky a Střední škola, Štětí - Pivovarská
+intl-WINDY-cam-1525893412  DE  camera_name: Burgstadt › West: Gymnasium Burgstädt
+intl-WINDY-cam-1482451508  CH  camera_name: Stoos SZ › North-west: Bounce Circus Fronalphalle Stoos - Schweizer Skischule Stoos - Stoos(Sesselbahn Fronalpstock)
+intl-WINDY-cam-1482537945  CH  camera_name: Fiesch › South-west: Schweizer Skischule Fiesch - Ferienwohnung Nowak Chalet Fiescheralp Adlerhorst Kühboden
+intl-CH-cam-1d30fcba87  CH  camera_name: Chesieres: Aiglon College
+intl-CH-cam-78daf21887  CH  camera_name: Ormont-Dessus: Ecole Suisse de Ski Diablerets
+intl-CH-cam-62f6607cb8  CH  camera_name: Buttwil: FLUGSCHULE EICHENBERGER AG - Buttwil Airport
+intl-CH-cam-59ba33214a  CH  camera_name: Brunni › South-west: Skilifte Brunni-Haggenegg AG - Sammelplatz Brunni-Alpthal Schweizer Skischule Einsiedeln - Kleiner Mythen - Grosser Mythen
+intl-WINDY-cam-1616032183  GB  camera_name: Glasgow › South: University of Glasgow Library - University of Glasgow
+intl-WINDY-cam-1289159515  CZ  camera_name: Seč › North-west: Základní škola Seč
+intl-DE-cam-0542d2c291  DE  camera_name: Karlshagen › North-east: Touristinformation - Bibliothek Ostseebad Karlshagen
+intl-WINDY-cam-1617966148  CZ  camera_name: Jihlava › North: College of Polytechnics (VŠPJ)
+intl-WINDY-cam-1500499550  DE  camera_name: Milbertshofen › North-west: Olympiaturm - ZHS - Central University Sports Munich - TUM Branch Library Sport & Health Sciences - TUM campus in the Olympic Park - Neuer Kletterturm und Boulderanlage im TUM Campus
+intl-WINDY-cam-1323682174  DE  camera_name: Oberammergau › North-west: NATO School - WellenBerg Oberammergau - Reptilienhaus/Zoo Oberammergau
+intl-WINDY-cam-1663964623  SE  camera_name: Syllen › North-west: Midsommarkransens Gymnasium
+intl-WINDY-cam-1521019899  SE  camera_name: Danderyd › South-west: Danderyds gymnasium
+intl-WINDY-cam-1498769200  SE  camera_name: Uppsala › South-west: Uppsala University - Uppsala slott
+intl-WINDY-cam-1793908565  CZ  camera_name: Misov › South: Apartmány Škola - Brdy
+intl-CZ-cam-e2d9fcb509  CZ  camera_name: Pilsen › East: 4.základní škola Plzeň, Kralovická 12, příspěvková organizace
+intl-DE-cam-3a98592a22  DE  camera_name: Unterwossen › South-east: Fliegeralm - German Alpine gliding school Unterwössen e. V. - Deutsche Alpensegelflugschule Unterwössen
+intl-IT-cam-a7df8cbd11  IT  camera_name: Dovera › North-west: Aviosuperficie JFK - Scuola di Volo aerei ultraleggeri, paramotore, autogiro, elicottero, deltaplano
+intl-AT-cam-5b078145c6  AT  camera_name: Mariahilf: Universität Innsbruck - Blick nach Westen
+intl-AT-cam-d05a537a78  AT  camera_name: Innsbruck: Universität - Blick nach Nordosten ins Unterinntal
+intl-IT-cam-b9484104af  IT  camera_name: Livigno: I - Scuola Sci Centrale
+intl-IT-cam-9d3b936257  IT  camera_name: Livigno: I - Scuola Sci Centrale
+intl-IT-cam-34a6f9d479  IT  camera_name: Livigno: I - Scuola Sci Centrale
+intl-IT-cam-42d1755cab  IT  camera_name: Livigno: I - Scuola Sci Centrale
+intl-IT-cam-ffea84db59  IT  camera_name: Livigno: I - Scuola Sci Centrale
+intl-WINDY-cam-1200421433  IT  camera_name: Montagna in Valtellina › South: Scuola primaria Camilla Cederna
+intl-WINDY-cam-1600352848  IT  camera_name: Livigno: webcam - view on - Ski School area - LivignoGO
+intl-IT-cam-025fe04e6d  IT  camera_name: Valdidentro: Bormio I - Arrivo Cabinovia Cima Piazzi, Campo scuola
+intl-NO-cam-77fb9a6c80  NO  camera_name: Tromso › West: Tromsø - panorama from the university
+intl-WINDY-cam-1313571534  NO  camera_name: Maere: Mære Skole
+intl-WINDY-cam-1730312244  NO  camera_name: Longyearbyen › North-east: The University Centre in Svalbard - Hiorthhamn - Historical Miner’s Barracks – Hiorthfjellet Gruve 2 - Adventtoppen
+intl-WINDY-cam-1214766521  FI  camera_name: Rovaniemi: Kirjasto (Library - Architect Alvar Aalto), Finland
+
+School words kept as road names (21)
+------------------------------------
+intl-AU-NSW-cam-a19f29cf-a095-47aa-a87e-b7ff60711775  AU-NSW  location: Corner of William Street and College Street near Hyde Park looking east towards Kings Cross.
+intl-PH-cam-f51b587c2b  PH  camera_name: Maria Deseo PH — Maria's Cam 11 New Salmonan Agdao infront of School, Davao City Philippines
+intl-XX-cam-9b2dc4f874  XX  camera_name: Panorama-Wetterwebcam, betrieben vom Schiller-Gymnasium Offenburg
+intl-XX-cam-c7a7ac1885  XX  camera_details: South towards the School Road Overbirdge.
+intl-GB-cam-00001.03748  GB  camera_name: A205 Academy Rd/Shooters Hill
+intl-GB-cam-00001.03905  GB  camera_name: A205 Dulwich Common/College Rd
+intl-GB-cam-00001.07389  GB  camera_name: University St/Gower St
+intl-HK-cam-AID07203  HK  camera_name: Ching Cheung Road near International School - Eastbound [AID07203]
+intl-HK-cam-TDSNCWBR10001  HK  camera_name: New Clear Water Bay Road near St. Joseph's Anglo-Chinese School - Eastbound [TDSNCWBR10001]
+intl-HK-cam-TDSTPR10013  HK  camera_name: Tai Po Road - Ma Liu Shui near University Avenue - Southbound [TDSTPR10013]
+intl-HK-cam-TDSTPR20011  HK  camera_name: Tai Po Road - Ma Liu Shui near University Avenue - Northbound [TDSTPR20011]
+intl-HK-cam-TDSTPR20013  HK  camera_name: Tai Po Road - Ma Liu Shui near University MTR Station - Northbound [TDSTPR20013]
+intl-NZ-cam-1533  NZ  location: South towards the School Road Overbirdge.
+intl-WG-26565  CH  camera_name: Webcam Horgen: Gleitschirm-Flugschule Magiclift
+intl-WG-34003  DE  camera_details: Weather Station Beutenberg-Campus: Webcam (with image archive and timelapse) in Jena, Germany. Check yourself what's up in Jena right now!
+intl-WC-22082  HR  camera_name: Petrinja - Town Hall and school, Croatia
+intl-PANOMAX-7641  GB  camera_name: Enclave Croydon - 23 College Road
+intl-WINDY-cam-1793909045  RO  camera_name: Bucharest › South-east: Bucharest-University-of-Economic-Studies - Piata Romana - Bulevardul General Gheorghe Magheru
+intl-WINDY-cam-1508414204  GB  camera_name: London: A205 Dulwich Common/College Rd
+intl-WINDY-cam-1508414199  GB  camera_name: London: University St/Gower St
+intl-WINDY-cam-1508414629  GB  camera_name: London Borough of Bexley: A205 Academy Rd/Shooters Hill
+
+YouTube/Vimeo embeds removed (496)
+----------------------------------
+intl-ATSEA-povorotnaja-veb-kamera-porta-rotterdam-z  NL  AtSea  https://i.ytimg.com/vi/M09NaBVPjAI/hqdefault.jpg
+intl-ATSEA-povorotnaja-veb-kamera-porta-rotterdam-v  NL  AtSea  https://i.ytimg.com/vi/_KVWehizoNU/hqdefault.jpg
+intl-ATSEA-povorotnaja-veb-kamera-u-zapadnogo-termi  FI  AtSea  https://i.ytimg.com/vi/JnJhFYhIjFs/hqdefault.jpg
+intl-ATSEA-veb-kamera-v-kruiznom-portu-hellesilt  NO  AtSea  https://i.ytimg.com/vi/S4aJlRY39fo/hqdefault.jpg
+intl-ATSEA-patitiri-port-lt-br-outside-dock  GR  AtSea  https://i.ytimg.com/vi/PKo3CUUHXNE/hqdefault.jpg
+intl-AR-cam-ca59c94a1d  AR  LES:youtube  https://www.youtube.com/watch?v=2u4GnVNtlsY
+intl-AT-cam-94ebb53ab8  AT  LES:camguide  https://www.youtube.com/watch?v=gs8BrBIZylM
+intl-AU-cam-50201cc17b  AU  LES:opencctv  https://www.youtube.com/watch?v=yTxngt2eVDM
+intl-AU-cam-771ac5392f  AU  LES:opencctv  https://www.youtube.com/watch?v=0OtVlfDj2w8
+intl-AU-cam-8ba7eefa79  AU  LES:opencctv  https://www.youtube.com/watch?v=gTz_7tKUfYM
+intl-AU-cam-952a01c754  AU  LES:opencctv  https://www.youtube.com/watch?v=DbLMSFvB2Og
+intl-AU-cam-438054b7c8  AU  LES:youtube  https://www.youtube.com/watch?v=dK8GOSSifVc
+intl-AW-cam-6521355e30  AW  LES:youtube  https://www.youtube.com/watch?v=_ZXMjk5K0_s
+intl-BE-cam-cf94a02d86  BE  LES:worldviewstream  https://www.youtube.com/watch?v=-3SMlcFv7II
+intl-BL-cam-60cf50bcb0  BL  LES:youtube-live-search-4  https://www.youtube.com/watch?v=15pVqwQb7A0
+intl-BQ-cam-0828dfa89a  BQ  LES:skyline-youtube  https://www.youtube.com/watch?v=EcumU_n6fTY
+intl-BR-cam-fa46d02a9e  BR  LES:worldviewstream  https://www.youtube.com/watch?v=6DCKvZedIiM
+intl-BR-cam-59aff80928  BR  LES:opencctv  https://www.youtube.com/watch?v=X52LJG2z_UQ
+intl-BR-cam-b4590729ba  BR  LES:youtube  https://www.youtube.com/watch?v=IZbCXuEa8Cc
+intl-BR-cam-26fae53b5d  BR  LES:youtube  https://www.youtube.com/watch?v=7x-BbgRekC0
+intl-BR-cam-4e5f43aae3  BR  LES:youtube  https://www.youtube.com/watch?v=mWsPnnbHKE0
+intl-BR-cam-b27229a430  BR  LES:youtube  https://www.youtube.com/watch?v=HsfII35xV4g
+intl-BR-cam-1779f9306d  BR  LES:youtube  https://www.youtube.com/watch?v=MKptOzPxVV8
+intl-BR-cam-156057cc92  BR  LES:youtube  https://www.youtube.com/watch?v=XQR__cmu6As
+intl-BR-cam-8832ceccc8  BR  LES:youtube  https://www.youtube.com/watch?v=1ffJojfUyRA
+intl-BR-cam-b7b8efe83b  BR  LES:youtube  https://www.youtube.com/watch?v=egXyN_SwY-E
+intl-BR-cam-b16fd14d26  BR  LES:youtube  https://www.youtube.com/watch?v=SOEQjXjZCF0
+intl-BR-cam-155f856327  BR  LES:youtube  https://www.youtube.com/watch?v=geAj9DGl-Pw
+intl-BR-cam-e19a1a64a7  BR  LES:worldviewstream  https://www.youtube.com/watch?v=RT4JhqVP8AY
+intl-BR-cam-c23aa9b6b7  BR  LES:youtube  https://www.youtube.com/watch?v=ADOsuLQ_6iM
+intl-BR-cam-a9f1b5b626  BR  LES:youtube  https://www.youtube.com/watch?v=GA4YMcRmHM0
+intl-BR-cam-5bcf6778cf  BR  LES:youtube  https://www.youtube.com/watch?v=owJHKExR8QM
+intl-BR-cam-d93c6e0cef  BR  LES:youtube  https://www.youtube.com/watch?v=5mV2qwFTdzA
+intl-BR-cam-d2f17e13c6  BR  LES:youtube  https://www.youtube.com/watch?v=TF-47MpIutI
+intl-BR-cam-5fe5942ba6  BR  LES:youtube  https://www.youtube.com/watch?v=tMYtrEBNVAU
+intl-BR-cam-73ca4f42b8  BR  LES:youtube  https://www.youtube.com/watch?v=v9OxAv7z-gQ
+intl-BR-cam-88fdbf4c16  BR  LES:youtube  https://www.youtube.com/watch?v=66r3gqV15EI
+intl-BR-cam-db2676decf  BR  LES:youtube  https://www.youtube.com/watch?v=p6ppa-V3-KQ
+intl-BR-cam-f12c862d30  BR  LES:youtube  https://www.youtube.com/watch?v=WzpkxorAoO4
+intl-BR-cam-bab5831a27  BR  LES:youtube  https://www.youtube.com/watch?v=khtAH8ZGS0A
+... and 456 more
+
+Densest 50 km circles (load cap 1,000 per selected area)
+--------------------------------------------------------
+ #  Cameras  Centre          Nearest camera                                                          At the cap
+ 1    2,271  47.206,10.756   Arzl im Pitztal Burgstall Mast (Austria, AT)                             loads 1,000, 1,271 more nearby
+ 2    2,138  47.428,12.713   Leogang › East: Bergrestaurant Stöcklalm (Austria, AT)                   loads 1,000, 1,138 more nearby
+ 3    2,011  46.585,11.745   Selva - Wolkenstein - Selva di Val Gardena: St. Christina, Val Gardena  loads 1,000, 1,011 more nearby
+ 4    1,915  51.435,0.063    A20 Sidcup Rd/Coyler Close (United Kingdom, GB)                          loads 1,000, 915 more nearby
+ 5    1,465  40.573,-3.926   A-6 PK 29.0 (Spain, ES)                                                  loads 1,000, 465 more nearby
+ 6    1,269  24.875,121.547  Provincial highway CCTV CCTV-12-009A-012-003 (Taiwan, TW)                loads 1,000, 269 more nearby
+ 7    1,237  22.316,113.958  Tung Chung › North-east (China, CN)                                      loads 1,000, 237 more nearby
+ 8    1,141  47.146,9.435    Buchs (Switzerland, CH)                                                  loads 1,000, 141 more nearby
+ 9    1,118  46.337,7.479    Lens: Sierre/Siders - Pas-de-Maimbré - Sion (Switzerland, CH)            loads 1,000, 118 more nearby
+10    1,112  42.041,13.018   Arsoli (Italy, IT)                                                       loads 1,000, 112 more nearby
+11    1,079  46.241,14.010   Webcam Sorica: Soriška Planina - Slatnik (Slovenia, SI)                  loads 1,000, 79 more nearby
+12      995  24.257,120.825  Provincial highway CCTV CCTV-25-0080-000-002 (Taiwan, TW)
+13      884  45.592,6.752    OSM 6410930663 (Unknown, XX)
+14      880  47.274,14.078   Solk: Sölkpass - Blick nach Norden (Austria, AT)
+15      871  48.059,16.445   Himberg - Colony Golf Club, Austria (Austria, AT)
+
+Country codes (for CCTV_COUNTRIES)
+----------------------------------
+AD, AE, AG, AI, AL, AM, AQ, AR, AT, AU, AW, AZ, BA, BB, BE, BG, BH, BJ, BM, BO, BQ, BR, BS, BW, BY, BZ, CH, CK, CL, CN, CO, CR, CU, CV, CY, CZ, DE, DK, DO, DZ, EC, EE, EG, ES, ET, FI, FJ, FK, FO, FR, GB, GD, GE, GG, GH, GI, GL, GP, GR, GS, GT, HK, HN, HR, HU, ID, IE, IL, IM, IN, IR, IS, IT, JE, JM, JO, JP, KE, KG, KH, KR, KW, KY, KZ, LA, LB, LI, LK, LS, LT, LU, LV, MA, MC, MD, ME, MF, MG, MK, MN, MQ, MT, MU, MV, MX, MY, MZ, NA, NC, NF, NG, NI, NL, NO, NP, NZ, OM, PA, PE, PF, PG, PH, PK, PL, PR, PS, PT, PY, QA, RE, RO, RS, RU, SA, SC, SE, SG, SI, SJ, SK, SM, SN, SO, SV, SX, TC, TH, TN, TR, TT, TW, TZ, UG, UY, UZ, VA, VC, VE, VG, VI, VN, VU, XK, ZA, ZM, ZW

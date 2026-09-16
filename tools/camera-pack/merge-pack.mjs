@@ -1,7 +1,7 @@
 // Merge every collected camera pack into one God's Eye View CCTV source file.
 //
 // The merge never thins: every accepted camera is written. The server stores
-// the whole catalogue and loads at most the 2,500 cameras nearest the selected
+// the whole catalogue and loads at most the 1,000 cameras nearest the selected
 // place (within 50 km), so no region or country cap applies here. The output
 // is still ordered nearest-to-Saint-John first, pack by pack, which keeps
 // rebuilds stable and lets the higher-priority packs win the duplicate checks.

@@ -110,7 +110,7 @@ function columnsFor(lon, dLon) {
 
 /**
  * The cameras one selected area loads: every camera within `radiusKm` of the
- * point, nearest first (ties by id), and at most 2,500 of them. A lower
+ * point, nearest first (ties by id), and at most 1,000 of them. A lower
  * `limit` is honoured; nothing raises it past the hard cap.
  *
  * `reachKm` is how far the loaded set reaches: the radius when every camera in

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { cctvRegionKey } from '../../server/providers/cctv/catalog.js';
 
 // The region cap is gone: the catalogue keeps every camera and each selected
-// area loads at most 2,500 (see cctvArea.test.mjs and cctvLoadCap.test.mjs).
+// area loads at most 1,000 (see cctvArea.test.mjs and cctvLoadCap.test.mjs).
 // cctvRegionKey still classifies every camera for the /sources `region` field.
 
 test('Canadian cameras belong to their province or territory', () => {

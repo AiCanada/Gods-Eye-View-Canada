@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import * as Cesium from 'cesium';
 import cctvLayer, {
   CCTV_PROJECTION_OVERLAY_SOURCE_OPTIONS,
+  _createCctvProjectionAppearanceForTest,
   _createCctvProjectionPlaneForTest,
   _extractPickedCameraIdForTest,
   _updateCctvProjectionPlaneForTest,
@@ -589,6 +590,18 @@ test('real active monitor plane owns one protected host label and no native labe
     _setCctvCoverageStateForTest({ enabled: false });
     _setCctvOverlayHostForTest();
   }
+});
+
+test('monitor plane appearance stays opaque and does not write depth over traffic', () => {
+  const appearance = _createCctvProjectionAppearanceForTest({
+    translucent: false,
+    shaderSource: '',
+    isTranslucent() { return false; },
+  });
+  assert.equal(appearance.isTranslucent(), false);
+  const rs = appearance.getRenderState();
+  assert.equal(rs.depthMask, false);
+  assert.equal(rs.blending, Cesium.BlendingState.ALPHA_BLEND);
 });
 
 test('CCTV disable→enable defers the active-camera re-probe until its next activation', () => {

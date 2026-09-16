@@ -1,6 +1,9 @@
 import { directionToHeading } from '../../../src/data/directionText.js';
-import { US_COORDINATE_BOX } from './constants.js';
+import { CCTV_CACHE_BUSTER_PARAMS, US_COORDINATE_BOX } from './constants.js';
 import { FRAME_RESOLVERS, normalizeFrameHosts } from './frame-resolver.js';
+
+/** Shared by every camera that lists no extra frame hosts (almost all). */
+const NO_FRAME_HOSTS = Object.freeze([]);
 /**
  * FNV-1a 32-bit hash of a string, used to derive deterministic pseudo-random
  * values (e.g. hue for synthetic SVG billboards, fallback heading angles).
@@ -354,6 +357,7 @@ export function rowArrayToObject(row, columns) {
  * @returns {object} Normalized source with all expected fields populated.
  */
 export function normalizeSourceItem(item) {
+  const frameHosts = normalizeFrameHosts(item.frameHosts);
   return {
     id: String(item.id || '').trim(),
     name: String(item.name || item.id || '').trim(),
@@ -396,7 +400,7 @@ export function normalizeSourceItem(item) {
       ? item.frameResolver
       : '',
     // Extra hosts the resolver may accept a frame from, beyond the page's own.
-    frameHosts: normalizeFrameHosts(item.frameHosts),
+    frameHosts: frameHosts.length ? frameHosts : NO_FRAME_HOSTS,
     // Operators that advertise a thumbnail in the page metadata also keep a
     // full-size sibling; set this when that substitution is valid.
     framePreferLarge: item.framePreferLarge === true,
@@ -416,11 +420,75 @@ export function normalizeSourceItem(item) {
     // badge can distinguish them from raw automated priors (e.g. Austin Open
     // Data, which never sets this field). Passed through as-is to the client.
     poseSource: item.poseSource === 'curated' ? 'curated' : undefined,
+    // "CA-ON", "US-TX" or the country code; the catalogue fills it in
+    // (cctvRegionKey). Declared here so every entry keeps one shape.
+    regionKey: '',
   };
+}
+
+const CACHE_BUSTERS = new Set(CCTV_CACHE_BUSTER_PARAMS);
+const EMPTY_OR_NUMERIC = /^[0-9.]*$/;
+/** Windy serves one webcam's still at several sizes ("preview", "full"). */
+const WINDY_STILL =
+  /^https?:\/\/imgproxy\.windy\.com\/_\/[^/?#]+\/plain\/current\/(\d+)\//i;
+
+/**
+ * The identity of a still address, for spotting two catalogue entries that
+ * show the same picture. Scheme and host are lower-cased (a default port is
+ * dropped) and cache-buster parameters (CCTV_CACHE_BUSTER_PARAMS, empty or
+ * numeric) are ignored; the path, every other parameter and the fragment are
+ * kept as written. A Windy still is its webcam id, whatever size it names.
+ *
+ * @param {unknown} url
+ * @returns {string} The key, or '' for no address.
+ */
+export function cctvStillKey(url) {
+  if (typeof url !== 'string') return '';
+  const text = url.trim();
+  if (!text) return '';
+  const windy = WINDY_STILL.exec(text);
+  if (windy) return `windy:${windy[1]}`;
+  const hashAt = text.indexOf('#');
+  const beforeHash = hashAt === -1 ? text : text.slice(0, hashAt);
+  const fragment = hashAt === -1 ? '' : text.slice(hashAt);
+  const queryAt = beforeHash.indexOf('?');
+  let address = queryAt === -1 ? beforeHash : beforeHash.slice(0, queryAt);
+  let query = queryAt === -1 ? '' : beforeHash.slice(queryAt + 1);
+  const schemeEnd = address.indexOf('://');
+  if (schemeEnd > 0) {
+    const pathAt = address.indexOf('/', schemeEnd + 3);
+    const authorityEnd = pathAt === -1 ? address.length : pathAt;
+    const authority = address.slice(schemeEnd + 3, authorityEnd);
+    const userEnd = authority.lastIndexOf('@') + 1;
+    const scheme = address.slice(0, schemeEnd).toLowerCase();
+    let host = authority.slice(userEnd).toLowerCase();
+    if (
+      (scheme === 'http' && host.endsWith(':80')) ||
+      (scheme === 'https' && host.endsWith(':443'))
+    )
+      host = host.slice(0, host.lastIndexOf(':'));
+    address = `${scheme}://${authority.slice(0, userEnd)}${host}${address.slice(authorityEnd)}`;
+  }
+  if (query) {
+    const kept = [];
+    for (const pair of query.split('&')) {
+      const eq = pair.indexOf('=');
+      const name = eq === -1 ? pair : pair.slice(0, eq);
+      const value = eq === -1 ? '' : pair.slice(eq + 1);
+      if (!pair) continue;
+      if (CACHE_BUSTERS.has(name.toLowerCase()) && EMPTY_OR_NUMERIC.test(value))
+        continue;
+      kept.push(pair);
+    }
+    query = kept.join('&');
+  }
+  return `${address}${query ? `?${query}` : ''}${fragment}`;
 }
 
 /** Common spellings of the country codes camera packs use, mapped to ISO 3166 alpha-2. */
 const COUNTRY_ALIASES = {
+  // The international listing's code for a camera it could not place: no country.
+  XX: '',
   CAN: 'CA',
   CANADA: 'CA',
   USA: 'US',
@@ -436,7 +504,8 @@ const COUNTRY_ALIASES = {
 
 /**
  * Upper-cased country code, with common aliases ("Canada", "USA", "UK") mapped
- * to the ISO code so every spelling counts as the same country.
+ * to the ISO code so every spelling counts as the same country. "XX" (unknown)
+ * is no country at all, so such a camera is never gated out.
  *
  * @param {unknown} value
  * @returns {string}
@@ -446,5 +515,5 @@ export function canonicalCountryCode(value) {
     .trim()
     .toUpperCase()
     .replace(/\s+/g, ' ');
-  return COUNTRY_ALIASES[code] || code;
+  return Object.hasOwn(COUNTRY_ALIASES, code) ? COUNTRY_ALIASES[code] : code;
 }

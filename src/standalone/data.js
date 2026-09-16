@@ -5,6 +5,7 @@ import earthquakesLayer from '../data/earthquakes.js';
 import satellitesLayer from '../data/satellites.js';
 import rocketLaunchesLayer from '../data/rocketLaunches.js';
 import trafficLayer from '../data/traffic.js';
+import { createApplicationDirectionsLayer } from '../data/directions.js';
 import cctvLayer from '../data/cctv.js';
 import radioLayer from '../data/radio.js';
 import bikeshareLayer from '../data/bikeshare.js';
@@ -39,6 +40,7 @@ export function createStandaloneData({
   dataManager.register(rocketLaunchesLayer);
   rocketLaunchesLayer.attachDataManager(dataManager);
   dataManager.register(trafficLayer);
+  dataManager.register(createApplicationDirectionsLayer());
   dataManager.register(cctvLayer);
   dataManager.register(radioLayer);
   dataManager.register(bikeshareLayer);

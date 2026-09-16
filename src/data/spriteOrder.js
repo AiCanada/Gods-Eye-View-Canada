@@ -1,8 +1,14 @@
-/** Bottom-to-top order for near-plane-clamped contact sprite collections. */
+/** Bottom-to-top order for near-plane-clamped contact sprite collections.
+ * Camera pictures (`cctv-projection`) sit above camera icons and below
+ * traffic so street vehicles draw on the open monitor plane; flights stay
+ * the final/top collection. */
 export const SPRITE_LAYER_ORDER = Object.freeze([
   'cctv',
+  'cctv-projection',
+  'traffic',
   'firms',
   'bikeshare',
+  'directions',
   'ais',
   'military',
   'flights',
@@ -50,7 +56,7 @@ export function restoreSpriteOrder(viewer) {
     const collection = _collections.get(layerId);
     if (!collection || collection.isDestroyed?.()) continue;
     if (primitives.contains?.(collection) === false) continue;
-    primitives.raiseToTop(collection);
+    primitives.raiseToTop?.(collection);
   }
 }
 

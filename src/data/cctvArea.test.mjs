@@ -64,12 +64,12 @@ test('cameras come back nearest first, ties by id, with distances', () => {
   assert.equal(area.total, 6, 'total counts the whole catalogue');
 });
 
-test('a 3,000-camera Atlanta area loads the nearest 2,500 and drops 500', () => {
+test('a 3,000-camera Atlanta area loads the nearest 1,000 and drops 2,000', () => {
   const sources = ring('atl', ATLANTA, 3000, 49);
   const { matches, area } = queryCctvArea(snapshotOf(sources), { ...ATLANTA, radiusKm: 50 });
-  assert.equal(matches.length, 2500);
-  assert.equal(area.loaded, 2500);
-  assert.equal(area.dropped, 500);
+  assert.equal(matches.length, 1000);
+  assert.equal(area.loaded, 1000);
+  assert.equal(area.dropped, 2000);
   assert.equal(area.capped, true);
   const farthestLoaded = matches[matches.length - 1].distKm;
   assert.equal(area.reachKm, Math.round(farthestLoaded * 1000) / 1000);
@@ -80,14 +80,14 @@ test('a 3,000-camera Atlanta area loads the nearest 2,500 and drops 500', () => 
   }
 });
 
-test('the 2,500 cap can be lowered but never raised', () => {
+test('the 1,000 cap can be lowered but never raised', () => {
   const sources = ring('atl', ATLANTA, 2600, 40);
   const snapshot = snapshotOf(sources);
-  assert.equal(CCTV_LOAD_CAP_HARD_LIMIT, 2500);
-  assert.equal(queryCctvArea(snapshot, { ...ATLANTA, limit: 999999 }).matches.length, 2500);
-  assert.equal(queryCctvArea(snapshot, { ...ATLANTA, limit: '2501' }).area.limit, 2500);
+  assert.equal(CCTV_LOAD_CAP_HARD_LIMIT, 1000);
+  assert.equal(queryCctvArea(snapshot, { ...ATLANTA, limit: 999999 }).matches.length, 1000);
+  assert.equal(queryCctvArea(snapshot, { ...ATLANTA, limit: '1001' }).area.limit, 1000);
   assert.equal(queryCctvArea(snapshot, { ...ATLANTA, limit: 10 }).matches.length, 10);
-  assert.equal(queryCctvArea(snapshot, { ...ATLANTA, limit: -5 }).area.limit, 2500);
+  assert.equal(queryCctvArea(snapshot, { ...ATLANTA, limit: -5 }).area.limit, 1000);
 });
 
 test('Savannah and Toronto get their own cameras, not Atlanta\'s', () => {

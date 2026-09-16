@@ -64,7 +64,7 @@ const areaResponse = (params) => {
       lat,
       lon,
       radiusKm: areaRadiusKm,
-      limit: 2500,
+      limit: 1000,
       inArea: inArea.length,
       loaded: inArea.length,
       dropped: 0,

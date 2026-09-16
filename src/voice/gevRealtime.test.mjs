@@ -3671,6 +3671,65 @@ test('a genuinely different refused call still gets its own output', async () =>
   assert.deepEqual(outputs, ['call_one', 'call_two'], 'each distinct call is answered');
 });
 
+test('late action or viewport completion cannot resume a stopped or replacement conversation', async () => {
+  for (const phase of ['tool', 'tool-error', 'viewport']) {
+    for (const restart of [false, true]) {
+      let finish;
+      const makeChannel = () => ({
+        readyState: 'open',
+        sent: [],
+        send(message) { this.sent.push(JSON.parse(message)); },
+        close() { this.readyState = 'closed'; },
+      });
+      const ui = {
+        root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
+        status: { textContent: '' },
+        detail: { textContent: '', title: '' },
+        errorDetail: { textContent: '' },
+      };
+      const controller = new GevRealtimeController({
+        runner: phase === 'viewport'
+          ? async () => ({
+              ok: true,
+              action: 'get_entity_context',
+              scene: { basemap: { viewScale: 'street' } },
+            })
+          : () => new Promise((resolve, reject) => {
+              finish = phase === 'tool-error'
+                ? () => reject(new Error('superseded action failed'))
+                : () => resolve({ ok: true, action: 'get_entity_context' });
+            }),
+        ui,
+      });
+      controller.debugLog = () => {};
+      controller.dc = makeChannel();
+      if (phase === 'viewport') {
+        controller.sendVisualContextIfUseful = () => new Promise((resolve) => {
+          finish = () => resolve(false);
+        });
+      }
+      const pending = controller.handleRealtimeEvent({
+        data: JSON.stringify({
+          type: 'response.function_call_arguments.done',
+          name: 'get_entity_context',
+          call_id: 'delayed',
+          arguments: '{}',
+        }),
+      });
+      while (!finish) await new Promise((resolve) => setImmediate(resolve));
+      controller.stop();
+      if (restart) controller.dc = makeChannel();
+      const status = controller.status;
+      finish();
+      await pending;
+      assert.equal(controller.status, status, `${phase}: stopped status stays owned by the new lifetime`);
+      assert.deepEqual(controller.dc?.sent || [], [], `${phase}: no old result or response reaches the replacement`);
+      assert.equal(controller.pendingResponseInstructions, null);
+      controller.stop();
+    }
+  }
+});
+
 const testPlaceSearch = () => createStandalonePlaceSearch({ resolveApiKey: () => globalThis.window?.__GOOGLE_MAPS_API_KEY__ });
 function createGevActionRunner(options) { return createActionRunner({ placeSearch: testPlaceSearch(), ...options }); }
 function controlRadio(viewer, manager, args, options) { return runControlRadio(viewer, manager, args, { placeSearch: testPlaceSearch(), ...options }); }

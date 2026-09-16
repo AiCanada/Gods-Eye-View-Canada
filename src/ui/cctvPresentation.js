@@ -12,7 +12,7 @@ export function _calBadgeLabel(badge) {
 }
 
 /**
- * Chip text for the loaded camera area: at most 2,500 cameras within 50 km
+ * Chip text for the loaded camera area: at most 1,000 cameras within 50 km
  * of the selected place, the server's hard cap with no off switch.
  * @param {?object} area - `state.area` from the CCTV layer.
  * @returns {{text: string, description: string, capped: boolean}}
@@ -21,7 +21,7 @@ export function cctvAreaChip(area) {
   const count = (value) =>
     Math.max(0, Math.round(Number(value) || 0)).toLocaleString('en-US');
   const radius = Number(area?.radiusKm) > 0 ? Math.round(area.radiusKm) : 50;
-  const limit = count(Number(area?.limit) > 0 ? area.limit : 2500);
+  const limit = count(Number(area?.limit) > 0 ? area.limit : 1000);
   if (area?.loading) {
     return {
       text: 'AREA LOADING',
@@ -152,7 +152,7 @@ export function _renderCctvState(state) {
 
   if (this._cctvRegionCapChip) {
     // The camera area: a hard server cap with no off switch, shown so the
-    // viewer knows why a dense city stops at 2,500 cameras.
+    // viewer knows why a dense city stops at 1,000 cameras.
     const chip = cctvAreaChip(state?.area);
     this._cctvRegionCapChip.textContent = chip.text;
     this._cctvRegionCapChip.dataset.over = chip.capped ? 'true' : 'false';

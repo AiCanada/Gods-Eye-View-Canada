@@ -8,6 +8,7 @@ import { overpassProxy } from './overpass.js';
 import { roadsTilesProxy } from './roads-tiles.js';
 import { militaryInstallationsProxy } from './military-installations.js';
 import { regionalBriefProxy } from './regional/briefing.js';
+import { geocodeProxy } from './regional/place.js';
 import { weatherEffectsProxy } from './regional/weather-effects.js';
 import { cctvProxy } from './cctv.js';
 import { defaultSourceRoot } from './common/source-root.js';
@@ -39,6 +40,7 @@ function localProviderPlugins() {
     roadsTilesProxy(),
     militaryInstallationsProxy(),
     regionalBriefProxy(),
+    geocodeProxy(),
     weatherEffectsProxy(),
     cctvProxy({ sourceRoot: defaultSourceRoot }),
     // Home and business security cameras: separate from the public CCTV proxy.

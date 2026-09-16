@@ -83,20 +83,20 @@ test('the area chip names the loaded area, its cap and the cameras held back', (
     'AREA LOADING',
   );
   assert.equal(
-    cctvAreaChip({ ready: true, radiusKm: 50, limit: 2500, loaded: 1234 }).text,
-    'AREA 50 KM · 1,234 CAMERAS',
+    cctvAreaChip({ ready: true, radiusKm: 50, limit: 1000, loaded: 234 }).text,
+    'AREA 50 KM · 234 CAMERAS',
   );
   const capped = {
     ready: true,
     radiusKm: 50,
-    limit: 2500,
-    loaded: 2500,
+    limit: 1000,
+    loaded: 1000,
     dropped: 317,
     capped: true,
   };
   assert.equal(
     cctvAreaChip(capped).text,
-    'AREA 50 KM · 2,500 CAP · 317 MORE NEARBY',
+    'AREA 50 KM · 1,000 CAP · 317 MORE NEARBY',
   );
 
   const { controls } = fixture(t);
@@ -111,7 +111,7 @@ test('the area chip names the loaded area, its cap and the cameras held back', (
   };
   controls._cctvRegionCapChip = chip;
   controls._renderCctvState({ enabled: true, area: capped, cameras: [] });
-  assert.equal(chip.textContent, 'AREA 50 KM · 2,500 CAP · 317 MORE NEARBY');
+  assert.equal(chip.textContent, 'AREA 50 KM · 1,000 CAP · 317 MORE NEARBY');
   assert.equal(chip.dataset.over, 'true');
   assert.match(chip.attributes['aria-label'], /317 more within 50 km/);
   controls._renderCctvState({

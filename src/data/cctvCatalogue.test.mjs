@@ -32,7 +32,7 @@ test('normalised catalogue entries carry the resolver fields and an honest headi
 });
 
 test('the per-area load cap and the frame backoff schedule', () => {
-  assert.equal(CCTV_LOAD_CAP_HARD_LIMIT, 2500, 'one selected area loads at most 2,500 cameras');
+  assert.equal(CCTV_LOAD_CAP_HARD_LIMIT, 1000, 'one selected area loads at most 1,000 cameras');
   assert.equal(frameFailureBackoffMs(1), 15000);
   assert.equal(frameFailureBackoffMs(3), 60000);
   assert.equal(frameFailureBackoffMs(12), 300000, 'capped at five minutes');

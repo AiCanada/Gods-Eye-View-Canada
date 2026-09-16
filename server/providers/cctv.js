@@ -8,7 +8,9 @@ import {
   proxyMediaResponse,
   fetchCctvImageFromUpstream,
   fetchCctvMediaUpstream,
+  watchDownstreamClose,
 } from './cctv/media.js';
+import { sanitizeCctvRangeHeader } from './cctv/range.js';
 import {
   CCTV_AREA_RADIUS_KM,
   CCTV_FRAME_CACHE_TTL_MS,
@@ -324,7 +326,7 @@ export function cctvProxy({
     }
     const radiusKm = clampCctvAreaRadiusKm(url.searchParams.get('radiusKm'));
     // The area decides which live packs download; they are never fetched for
-    // a place nobody selected. No `limit` query is read: 2,500 is fixed.
+    // a place nobody selected. No `limit` query is read: 1,000 is fixed.
     const { pending } = await cameras.ensureArea({ ...point, radiusKm });
     const [snapshot] = await Promise.all([cameras.snapshot(), road511.ready()]);
     const { matches, area } = queryCctvArea(snapshot, { ...point, radiusKm });
@@ -809,15 +811,31 @@ export function cctvProxy({
       return;
     }
 
+    // Bound before the request goes out: most of the wait is before any
+    // header arrives, and a viewer who leaves during it must take the
+    // upstream request with them.
+    const downstream = watchDownstreamClose(res);
     try {
       const upstreamHeaders = {
         'User-Agent': CCTV_PROXY_USER_AGENT,
       };
-      const requestRange = req.headers?.range;
+      // Never forward the client's own string: a Range this proxy does
+      // not accept is dropped and the request proceeds without one.
+      const requestRange = sanitizeCctvRangeHeader(req.headers?.range);
       if (requestRange) upstreamHeaders.Range = requestRange;
       const upstream = await fetchCctvMediaUpstream(mediaUrl, {
         headers: upstreamHeaders,
+        signal: downstream.signal,
       });
+      if (downstream.closed) {
+        // The headers arrived for a viewer who is no longer there.
+        try {
+          await upstream.body?.cancel();
+        } catch {
+          /* already closed */
+        }
+        return;
+      }
       gate.noteResponse(mediaUrl, {
         status: upstream.status,
         headers: upstream.headers,
@@ -885,6 +903,11 @@ export function cctvProxy({
           : 'upstream-image',
       });
     } catch (error) {
+      if (downstream.closed) {
+        // The viewer left mid-request. That is not a camera fault and
+        // there is nobody to answer.
+        return;
+      }
       const timedOut =
         error?.name === 'AbortError' || error?.name === 'TimeoutError';
       setHealth(cameraId, {

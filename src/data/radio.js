@@ -10,6 +10,7 @@ export { radioTunerSlot, radioTunerCommitSlot, radioTunerPointerPosition, buildR
  * @module radio
  */
 import * as Cesium from 'cesium';
+import { isPointerFree } from './inputOwnership.js';
 import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
 import { normalizeRadioCountryInput } from './radioCountry.js';
 import { normalizeRadioFilter } from './layerState.js';
@@ -2411,6 +2412,7 @@ function installClusterStyling() {
 function pickedRadioStationAt(position) {
   const scene = _viewer?.scene;
   if (!scene || !position) return null;
+  if (!isPointerFree()) return null;
 
   const stationFromPick = (picked) => {
     const stationId = radioStationIdFromPick(picked);

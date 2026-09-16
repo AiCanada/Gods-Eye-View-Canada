@@ -17,6 +17,7 @@ import {
   resolvePickId,
   unregisterPickOwner,
 } from './pickRegistry.js';
+import { isPointerFree } from './inputOwnership.js';
 import { adaptFirmsRecords } from './firmsAdapt.js';
 import { fireAnchorHeight, warmFireAnchorFloors } from './fireAnchors.js';
 import { horizonOccluder } from './iconOrientation.js';
@@ -879,6 +880,7 @@ export function createFirmsHeatmapLayer({
     if (_clickHandler || !_viewer) return;
     _clickHandler = screenSpaceEventHandlerFactory(_viewer);
     _clickHandler.setInputAction((click) => {
+      if (!isPointerFree()) return;
       const picked = _viewer.scene.pick(click.position);
       const fire = pickedFire(picked);
       if (fire) {

@@ -206,7 +206,20 @@ export class LayerPanel {
             this.setLayerParams(layer.id, chip.params, { origin: 'user' });
         });
         row.appendChild(controls);
-        this._syncRowControls(controls, layer);
+        const list = document.createElement('ol');
+        list.className = 'data-row-list';
+        list.hidden = true;
+        this._bind(list, 'click', (event) => {
+          const button = event.target?.closest?.('.data-row-list-item');
+          if (!button || button.disabled) return;
+          const item = this._rowControlsFor(layer.id)?.list?.items?.find(
+            (entry) => entry.id === button.dataset.listItemId,
+          );
+          if (item?.params)
+            this.setLayerParams(layer.id, item.params, { origin: 'user' });
+        });
+        row.appendChild(list);
+        this._syncRowControls(controls, layer, list);
       }
 
       this._toggleContainer.appendChild(row);
@@ -233,12 +246,14 @@ export class LayerPanel {
    * are replaced freely.
    * @param {HTMLElement|null} container The row's `.data-toggle-controls` node.
    * @param {object} layer Registered layer entry.
+   * @param {HTMLElement|null} [listContainer] The row's `.data-row-list` node.
    */
-  _syncRowControls(container, layer) {
+  _syncRowControls(container, layer, listContainer = null) {
     if (!container) return;
     const controls = layer.enabled ? this._rowControlsFor(layer.id) : null;
     const chips = controls?.chips || [];
     const legend = controls?.legend || [];
+    this._syncRowList(listContainer, controls?.list || null);
     container.hidden = chips.length === 0 && legend.length === 0;
 
     for (const node of [...container.children]) {
@@ -286,6 +301,74 @@ export class LayerPanel {
     }
   }
 
+  /**
+   * Render a row's ordered list (turn-by-turn directions).
+   * @param {HTMLElement|null} container The row's `.data-row-list` node.
+   * @param {{ariaLabel?: string, items?: Array<object>}|null} list Descriptor.
+   */
+  _syncRowList(container, list) {
+    if (!container) return;
+    const items = list?.items || [];
+    container.hidden = items.length === 0;
+    if (list?.ariaLabel) container.setAttribute('aria-label', list.ariaLabel);
+
+    const stale = new Map();
+    for (const node of [...container.children]) {
+      if (node.dataset?.listItemId) stale.set(node.dataset.listItemId, node);
+    }
+    let previous = null;
+    let activeButton = null;
+    for (const item of items) {
+      let entry = stale.get(item.id);
+      stale.delete(item.id);
+      let button;
+      if (!entry) {
+        entry = document.createElement('li');
+        entry.dataset.listItemId = item.id;
+        button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'data-row-list-item';
+        button.dataset.listItemId = item.id;
+        const lead = document.createElement('span');
+        lead.className = 'data-row-list-lead';
+        const text = document.createElement('span');
+        text.className = 'data-row-list-text';
+        button.append(lead, text);
+        entry.appendChild(button);
+      } else {
+        button = entry.querySelector('.data-row-list-item');
+      }
+      const anchor = previous ? previous.nextSibling : container.firstChild;
+      if (entry !== anchor) container.insertBefore(entry, anchor);
+      previous = entry;
+      if (!button) continue;
+      const lead = button.querySelector('.data-row-list-lead');
+      const text = button.querySelector('.data-row-list-text');
+      const leadText = String(item.lead ?? '');
+      const bodyText = String(item.text ?? '');
+      if (lead && lead.textContent !== leadText) lead.textContent = leadText;
+      if (text && text.textContent !== bodyText) text.textContent = bodyText;
+      button.disabled = Boolean(item.disabled);
+      button.classList.toggle('note', Boolean(item.disabled));
+      button.classList.toggle('active', Boolean(item.active));
+      button.classList.toggle('current', Boolean(item.current));
+      button.setAttribute('aria-current', item.current ? 'step' : 'false');
+      button.setAttribute('aria-pressed', item.active ? 'true' : 'false');
+      button.title = bodyText;
+      if (item.current) activeButton = button;
+    }
+    for (const node of stale.values()) node.remove();
+    if (
+      activeButton &&
+      container.dataset.currentId !== activeButton.dataset.listItemId
+    ) {
+      container.dataset.currentId = activeButton.dataset.listItemId;
+      activeButton.scrollIntoView?.({ block: 'nearest' });
+    } else if (!activeButton) {
+      delete container.dataset.currentId;
+    }
+  }
+
   _refreshTogglePanel() {
     if (this._destroyed || !this._toggleContainer) return;
     // Skip DOM churn while hidden; visibilitychange (main.js) triggers one
@@ -317,7 +400,11 @@ export class LayerPanel {
         meta.textContent = this._buildMetaText(layer);
       }
 
-      this._syncRowControls(row.querySelector('.data-toggle-controls'), layer);
+      this._syncRowControls(
+        row.querySelector('.data-toggle-controls'),
+        layer,
+        row.querySelector('.data-row-list'),
+      );
     }
   }
 

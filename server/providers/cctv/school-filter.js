@@ -23,12 +23,19 @@ export const SCHOOL_CAMERA_IDS = new Set([
 ]);
 
 /** Hosts that belong to a school. */
-const SCHOOL_HOSTS = [/(^|\.)usask\.ca$/i, /\.edu$/i, /(^|\.)umoncton\.ca$/i];
+const SCHOOL_HOSTS = [
+  /(^|\.)usask\.ca$/i,
+  /\.edu$/i,
+  /\.edu\.[a-z]{2}$/i,
+  /(^|\.)ac\.uk$/i,
+  /(^|\.)umoncton\.ca$/i,
+];
 
 // Unicode-aware word edges: \b treats "É" and "é" as non-letters, so it would
-// miss "École" and "Université".
+// miss "École" and "Université". Compounds (Fahrschule, Skischule) come first
+// so they match as one word rather than a trailing "schule".
 const SCHOOL_WORDS =
-  /(?<![\p{L}\p{N}_])(schools?|universit(?:y|ies|é)|colleges?|campus|librar(?:y|ies)|biblioth[eè]que|academy|polytechnic|c[ée]gep|[ée]cole|U of \p{Lu}\p{L}*|UMC[ES]|UdeM)(?![\p{L}\p{N}_])/iu;
+  /(?<![\p{L}\p{N}_])(fahrschule|skischule|flugschule|autoescuela|autoscuola|rijschool|schools?|schule|scuola|escuela|universit(?:y|ies|é|ät)|universidad(?:es)?|hochschule|gymnasium|škol[ay]|skola|skole|colleges?|campus|librar(?:y|ies)|bibliothek|biblioteca|biblioth[eè]que|academy|polytechnic|c[ée]gep|[ée]cole|学校|大学|U of \p{Lu}\p{L}*|UMC[ES]|UdeM)(?![\p{L}\p{N}_])/iu;
 
 const EDGE = '(?![\\p{L}\\p{N}_])';
 // Street types that make the words before them a road name.
@@ -49,13 +56,16 @@ const ROAD_BEFORE =
 
 /** A kind of school named as the place: "Beacon Middle School", "Community College", "Public Library". */
 const SCHOOL_KIND =
-  /(?<![\p{L}\p{N}_])(?:high|middle|elementary|elem\.?|junior|senior|primary|secondary|intermediate|grade|community|technical|public|charter|christian|catholic|preparatory|prep|montessori|nursery|metro|metropolitan)\s*$/iu;
+  /(?<![\p{L}\p{N}_])(?:high|middle|elementary|elem\.?|junior|senior|primary|secondary|intermediate|grade|community|technical|public|charter|christian|catholic|preparatory|prep|montessori|nursery|metro|metropolitan|ski|kite|flight|driving|surf)\s*$/iu;
 
 // A cross street named by the school word: it follows a junction or offset
 // ("at", "@", "&", "/", "and", "S of", "past", "SB", "I-5 : (113) Campus",
 // "Yackley-College"), with an optional compass letter ("at N University").
+// A spaced hyphen or a colon in a title ("Diesterweg - Schule",
+// "Ezcaray › South: Escuela") is not a junction: those are labels, not 511
+// crossings. A colon counts only with a 511-style "(113)" marker.
 const CROSS_CONNECTOR =
-  '(?:[@&/:_-]|(?<![\\p{L}\\p{N}])(?:at|and|of|past|near|[NSEW]B))\\s*(?:\\([A-Z]*\\d+\\)\\s*)?(?:(?:[NSEW]|north|south|east|west)\\.?\\s+)?';
+  '(?:[@&/]|:(?=\\s*\\([A-Z]*\\d+\\))|(?<!\\s)[-_](?!\\s)|(?<![\\p{L}\\p{N}])(?:at|and|of|past|near|[NSEW]B))\\s*(?:\\([A-Z]*\\d+\\)\\s*)?(?:(?:[NSEW]|north|south|east|west)\\.?\\s+)?';
 const CROSS_BEFORE = new RegExp(`${CROSS_CONNECTOR}$`, 'iu');
 // Only "School" takes a name word in front and stays a road ("at Stearns
 // School", "S of Indian School"): a college or university with a name in
@@ -114,6 +124,12 @@ function isRoadName(word, before, after) {
   if (ROAD_AFTER.test(after)) return true;
   if (SCHOOL_KIND.test(before)) return false;
   if (INSTITUTION_TAIL.test(after) || GROUNDS_TAIL.test(after)) return false;
+  // "In front of Wat Yai School" is the school as the place, not "S of Indian
+  // School" as a named stretch of road.
+  if (
+    /(?:^|[^\p{L}])in front of\s+(?:\p{L}[\p{L}\p{N}.'’]*\s+)*$/iu.test(before)
+  )
+    return false;
   if (NAMED_ROAD_AFTER.test(after)) return true;
   const school = /^schools?$/i.test(word);
   if (
@@ -134,6 +150,8 @@ function isRoadName(word, before, after) {
 
 function mentionsSchool(text, { trafficSystem = false } = {}) {
   const value = String(text || '');
+  // CJK compounds have no word edges ("東京大学", "小学校").
+  if (/学校|大学/.test(value)) return true;
   for (const match of value.matchAll(new RegExp(SCHOOL_WORDS.source, 'giu'))) {
     const before = value.slice(0, match.index);
     const after = value.slice(match.index + match[0].length);

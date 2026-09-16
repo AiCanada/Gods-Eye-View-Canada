@@ -594,6 +594,15 @@ body.cockpit-mode #cockpit-cloud-effects.active {
   text-transform: uppercase;
 }
 
+#title-bar .frame-rate-readout {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+  color: var(--accent);
+}
+
 /* ── Style Indicator ──────────────────────────── */
 #style-indicator {
   position: fixed;

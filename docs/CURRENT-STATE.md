@@ -206,9 +206,14 @@ streaming; body idle deadlines are separate from this header deadline. Error
 responses are cancelled. Buffered snapshots have a 16 MiB streaming cap; an
 oversized image remains an upstream miss and uses the normal fallback chain.
 The existing declared media size ceiling remains 64 MiB.
+A client `Range` is parsed and canonicalized before it is forwarded: one
+`bytes=` range, bounded to that 64 MiB ceiling. Multi-range, malformed and
+non-`bytes` values are dropped and the request proceeds without a Range. The
+upstream request is cancelled if the viewer leaves, both before headers arrive
+and during a live body.
 
 CCTV sources load by area. `GET /api/cctv/sources` needs `lat` and `lon`;
-`radiusKm` is clamped to 0.5–50 km and defaults to 50. It returns at most 2,500
+`radiusKm` is clamped to 0.5–50 km and defaults to 50. It returns at most 1,000
 cameras, nearest first with `distKm`, plus an `area` summary (`inArea`,
 `loaded`, `dropped`, `capped`, `total`, `generation`, `pending`); the cap
 cannot be raised. A request without a valid point returns no sources and
@@ -217,6 +222,15 @@ when the client accepts it. Live pack lists (Austin, Caltrans, TfL) download
 only when a selected area overlaps their coverage and are cached in memory and
 on disk for 24 h; `area.pending` names packs still downloading, and the browser
 refetches once about 5 s later.
+
+The default `CCTV_SOURCES_FILE` lists three packs: Canada
+(`config/cctv_sources.canada.json`, 4,767 cameras), the US
+(`config/cctv_sources.us.json`, 48,697) and international
+(`config/cctv_sources.intl.json`, 103,573 after one camera is kept per
+Windy webcam id; the exact count is in
+`tools/camera-pack/cctv_sources.intl.report.txt`). That is 157,037
+cameras. The server keeps every one of them in its catalogue, offline cameras
+included; the catalogue's size does not change what one request loads.
 
 `POST /api/cctv/lookup/:id` is the only route that calls Road511, and only an
 explicit camera selection in the browser sends it. It accepts a same-origin JSON
@@ -2157,9 +2171,10 @@ its criteria cannot be silently ignored.
 | Satellites | CelesTrak | `src/data/satellites.js` | `/api/celestrak` | 120s |
 | Space Missions (30d) | Launch Library 2 + CelesTrak | `src/data/rocketLaunches.js` | `/api/launches` + `/api/celestrak/active` | 5 min |
 | Traffic | OpenFreeMap vector tiles (OSM data; Overpass fallback) (+ optional TomTom live flow) | `src/data/traffic.js` | `/api/roads/tiles` + `/api/overpass` + `/api/tomtom` | viewport-driven |
-| CCTV | Canadian + US state DOT packs, Austin + Caltrans (CA) + TfL London live packs by area, Road511 lookup on open, opt-in Street View fallback | `src/data/cctv.js` | `/api/cctv` | 10s (active) |
+| CCTV | Canadian + US state DOT + international webcam packs, Austin + Caltrans (CA) + TfL London live packs by area, Road511 lookup on open, opt-in Street View fallback | `src/data/cctv.js` | `/api/cctv` | 10s (active) |
 | Radio | Radio Browser (public-domain station directory) | `src/data/radio.js` | `/api/radio/stations`, `/api/radio/click/:uuid` | 45 min directory refresh |
 | Bikeshare 🚲 | GBFS (Lyft + BCycle) | `src/data/bikeshare.js` | `/api/gbfs` | 60s |
+| Directions | FOSSGIS OSRM (OSM roads) | `src/data/directions.js` | `/api/route?steps=1` | on demand |
 | Datacenters ▣ | OSM extract (bundled) | `src/data/localLayers.js` | — | static |
 | Dams ▰ | OpenInfraMap/OSM extract (bundled) | `src/data/localLayers.js` | — | static |
 | Submarine Cables ◠ | TeleGeography public map (bundled) | `src/data/telegeographySubmarineCables.js` | — | static |
@@ -2572,6 +2587,7 @@ silently demoting every later lookup for the session.
 - `/api/overpass` fans out across four public mirrors. `overpassPayloadIsData()` governs cache reads, writes, and stale fallback: only a 2xx that is neither rate-limited nor a body-level runtime error qualifies. Previously stored refusals are ignored on both fresh and stale reads, so upgrading does not require manually clearing the disk cache.
 - HTTP refusals such as 406 now rotate alongside the existing network, rate-limit, and runtime-error cases. A refusal from one mirror no longer prevents reaching healthy alternatives or persists under the seven-day road/month-long boundary cache TTLs. Concurrent identical queries share one mirror sequence; if it fails, both the initiating and joined callers can use the same last-good data.
 - A refusal every mirror agrees on is still reported with the first mirror's status and body, so a genuinely malformed query says what upstream said — but only after every mirror has had the chance to answer it. `fetchOverpassPayload` takes injectable endpoints and fetch so the rotation is tested without a live mirror (`src/overpassProxy.test.mjs`).
+- Every Overpass request identifies the application with `OVERPASS_USER_AGENT` (`gods-eye-view/0.1` plus this repository URL). A generic proxy label is not sent; a mirror that refuses an unidentified client is rotated like any other 4xx.
 
 ### Share-link v2 layer state (August 2026)
 
@@ -2580,7 +2596,7 @@ silently demoting every later lookup for the session.
   with compact fields for enabled layers, allowlisted layer options, panel state,
   and the active preset's allowlisted shader controls. An absent layer field uses
   deterministic defaults; an explicit empty field means no enabled layers.
-- The registry seals only after all 16 production layers register, and every
+- The registry seals only after all 17 production layers register, and every
   layer has an explicit serialization disposition. Unknown enabled-layer tokens
   reject the layer payload; unknown option tokens are ignored. Restoration
   settles independently per layer so one failed or unavailable source cannot
@@ -2711,6 +2727,7 @@ silently demoting every later lookup for the session.
   - **Context-mode vocabulary is symmetric** (2026-08-21). `set_context_mode` accepts `contacts`; the internal id is `flights`. Every model-readable field (`mode`, `entering`, `priorMode`, nested `context`/`contextRollback`, and the transition diagnostic text) is reported in the accepted vocabulary, with the internal id preserved as `<field>Internal`; an absent secondary mode stays `null` rather than claiming to be `off`. Mapping lives in `src/contextModePolicy.js` so UI text and voice payloads cannot drift. Reporting the internal id made the model read `mode:'flights'` as "Contacts is off" and refuse to answer from the `contactsWindow` counts in the same payload.
   - **Analyst → track handoff carries a key, not just a label** (2026-08-21). `analyst_query` items include `icao24`/`mmsi` alongside the display `id`, and contact lookup uses the shared tiered ranking in `src/data/contactMatch.js`: hex exact → callsign exact → registration exact → callsign prefix → registration prefix → callsign substring → registration substring. The tiers keep an exact callsign ahead of a colliding registration regardless of feed order, and registrations compare separator-insensitively (`G-ABCD`/`GABCD`, `05-8152`/`058152`, `N123AB`/`N-123AB`).
   - **A typed command supersedes the turn it interrupts** (2026-08-21). `sendTextCommand` defers its `response.create` behind an active response instead of colliding with it, marks that response superseded so a late function call from it is refused rather than dispatched, and drops the old turn's queued follow-up. A refused call is still ANSWERED — a terminal `{ok:false, superseded:true}` `function_call_output` — because an unanswered `function_call` strands a pending call and deadlocks the model; the refusal creates no response of its own. A burst of typed commands coalesces into one response while keeping both conversation items.
+  - **A closed conversation discards late completions** (2026-09-16). Tool results, tool errors, and viewport captures that finish after `stop()` (or after a replacement session has opened) do not send `function_call_output` or `response.create` on the new data channel. Ownership is the live channel identity, not merely `readyState === 'open'`.
   - **Subject reconciliation across satellite catalog rebuilds** (2026-08-21). A dense↔core toggle or TLE refresh clears and repopulates the catalog, so the published subject is re-resolved against the new satrec; a subject that did NOT survive releases the slot. The per-frame refresh cannot do this itself — `_getTrackedFramePosition` returns early once the satellite has no catalog entry — so the reconcile runs at rebuild completion. An empty catalog is a rebuild in flight, not a disappearance.
   - **One aircraft-proximity engine** (2026-08-22). `collectAircraftProximityWindow` (`src/data/militaryAwareness.js`) is the single computation behind both the Contacts panel window and the voice analyst's entity-centred "how many nearby", so the panel readout and the spoken count for one centre are identical by construction. **Invariant: do not re-derive a proximity count anywhere else.** They diverged before because the panel read live billboard positions (20,000 cap) while the analyst used last-fix coordinates over a 2,000-record slice — 111 on screen, 15 spoken. Explicit regions and arbitrary points deliberately keep the general record engine. Entity-centred results carry `window: {engine:'contacts-window', centeredOn, radiusKm, flights, military, aircraft}`.
   - **Centre precedence for nearby asks**: explicit place in the question > Contacts subject (a selected non-contact entity never silently becomes the centre) > an entity the user names > the current view, said aloud. Contacts active with no subject uses the view rather than reading an empty panel.
@@ -2746,8 +2763,9 @@ silently demoting every later lookup for the session.
 
 Location search/fly-to, annotations and Radio location lookup receive one
 `placeSearch.geocode(query, { bias, signal })` service. `src/standalone` composes
-Google first when configured and Photon/OpenStreetMap as fallback, including
-Google transport failures or declined requests. The portable `./search` export
+decimal-degree coordinates and bundled city/landmark names first (offline,
+exact), then Google when configured, then Photon, then Nominatim as last resort
+when the earlier providers fail or decline. The portable `./search` export
 provides the service and adapters; it reads no environment or application state.
 Existing browser/server key setup is unchanged.
 
@@ -2847,6 +2865,10 @@ are omitted rather than framing the wrong part of the globe.
   marker. The nested launcher menu resolves that marker from its own directory:
   an absent marker exposes Install, a present marker exposes Start, and a
   running server with a captured ready URL exposes Open God's Eye View.
+- Pinokio Update fetches once, prints the remote URL with credentials redacted
+  and the incoming commits, then fast-forwards that exact revision before
+  reinstalling. If the upstream cannot be resolved after fetch, it stops without
+  applying or reinstalling.
 - Build gate: `npm run build`
 - Network access: local-only by default (`HOST=localhost` in dev-fresh.sh); LAN is an explicit opt-in via `HOST=0.0.0.0` (launcher prints a key-exposure warning + LAN URL; see SECURITY.md)
 - OpenSky default mode: OAuth (`OPENSKY_AUTH_MODE=oauth`; `anon` works without credentials)

@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import { twoline2satrec, propagate, gstime, eciToGeodetic, degreesLong, degreesLat } from 'satellite.js';
 import { registerPickOwner, unregisterPickOwner, isOwnedByOtherLayer, resolvePickId } from './pickRegistry.js';
+import { isPointerFree } from './inputOwnership.js';
 import { findNextIssPass } from './issPass.js';
 import {
   advanceSpriteFocus,
@@ -2216,6 +2217,7 @@ function _installClickHandler(viewer) {
   _clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
   _clickHandler.setInputAction((click) => {
     if (!_enabled) return;
+    if (!isPointerFree()) return;
     const picked = viewer.scene.pick(click.position);
 
     if (picked) {
