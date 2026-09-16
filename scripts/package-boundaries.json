@@ -8,7 +8,8 @@
     "modules": [
       "src/data/infrastructure.js",
       "src/data/localGeojsonCore.js",
-      "src/data/localGeojsonLod.js"
+      "src/data/localGeojsonLod.js",
+      "src/data/inputOwnership.js"
     ],
     "external": ["cesium"]
   },
@@ -203,7 +204,8 @@
       "server/providers/overpass/query.js",
       "server/providers/overpass/transport.js",
       "server/providers/places/routes.js",
-      "src/data/placeProviderPayloads.js"
+      "src/data/placeProviderPayloads.js",
+      "src/data/routeSteps.js"
     ],
     "external": []
   },
