@@ -52,11 +52,13 @@ function resolveWindowsNativeTools(environment, fileSystem, architecture) {
   if (configured.length === 0) return null;
 
   const roots = configured.map((value) => {
-    if (value !== value.trim() || !/^[A-Za-z]:\\Windows\\?$/i.test(value)) return null;
+    if (value !== value.trim() || !/^[A-Za-z]:\\Windows\\?$/i.test(value))
+      return null;
     return value.endsWith('\\') ? value.slice(0, -1) : value;
   });
   if (roots.some((root) => !root)) return null;
-  if (roots.some((root) => root.toLowerCase() !== roots[0].toLowerCase())) return null;
+  if (roots.some((root) => root.toLowerCase() !== roots[0].toLowerCase()))
+    return null;
 
   const systemRoot = roots[0];
   const systemDirectory = architecture === 'ia32' ? 'Sysnative' : 'System32';
@@ -81,14 +83,23 @@ function resolveWindowsNativeTools(environment, fileSystem, architecture) {
     for (const executable of Object.values(expected)) {
       const entry = fileSystem.lstatSync(executable);
       if (!entry.isFile() || entry.isSymbolicLink()) return null;
-      const canonicalExecutable = realpath.call(fileSystem.realpathSync, executable);
+      const canonicalExecutable = realpath.call(
+        fileSystem.realpathSync,
+        executable,
+      );
       const canonicalCandidates = [executable];
       if (architecture === 'ia32') {
-        canonicalCandidates.push(executable.replace('\\Sysnative\\', '\\System32\\'));
+        canonicalCandidates.push(
+          executable.replace('\\Sysnative\\', '\\System32\\'),
+        );
       }
-      if (!canonicalCandidates.some(
-        (candidate) => candidate.toLowerCase() === canonicalExecutable.toLowerCase(),
-      )) return null;
+      if (
+        !canonicalCandidates.some(
+          (candidate) =>
+            candidate.toLowerCase() === canonicalExecutable.toLowerCase(),
+        )
+      )
+        return null;
     }
   } catch {
     return null;
@@ -100,17 +111,22 @@ function resolveWindowsNativeTools(environment, fileSystem, architecture) {
  * Restrict a credential file before any secret is written to it.
  * Dependencies are injectable so every fail-closed branch is unit-testable.
  */
-export function hardenCredentialFile(filepath, {
-  platform = process.platform,
-  architecture = process.arch,
-  spawn = spawnSync,
-  fileSystem = fs,
-  environment = process.env,
-} = {}) {
+export function hardenCredentialFile(
+  filepath,
+  {
+    platform = process.platform,
+    architecture = process.arch,
+    spawn = spawnSync,
+    fileSystem = fs,
+    environment = process.env,
+  } = {},
+) {
   if (platform !== 'win32') {
     try {
       if (platform === 'darwin') {
-        const aclRemoval = spawn('chmod', ['-N', filepath], { stdio: 'ignore' });
+        const aclRemoval = spawn('chmod', ['-N', filepath], {
+          stdio: 'ignore',
+        });
         if (!commandCompletedSuccessfully(aclRemoval)) return false;
       }
       fileSystem.chmodSync(filepath, 0o600);
@@ -120,7 +136,11 @@ export function hardenCredentialFile(filepath, {
     }
   }
 
-  const tools = resolveWindowsNativeTools(environment, fileSystem, architecture);
+  const tools = resolveWindowsNativeTools(
+    environment,
+    fileSystem,
+    architecture,
+  );
   if (!tools) return false;
 
   try {
@@ -136,14 +156,18 @@ export function hardenCredentialFile(filepath, {
       : null;
     if (!sid) return false;
 
-    const applied = spawn(tools.icacls, [
-      filepath,
-      '/inheritance:r',
-      '/grant:r',
-      `*${sid}:F`,
-      '*S-1-5-18:F',
-      '*S-1-5-32-544:F',
-    ], { stdio: 'ignore', windowsHide: true });
+    const applied = spawn(
+      tools.icacls,
+      [
+        filepath,
+        '/inheritance:r',
+        '/grant:r',
+        `*${sid}:F`,
+        '*S-1-5-18:F',
+        '*S-1-5-32-544:F',
+      ],
+      { stdio: 'ignore', windowsHide: true },
+    );
     if (!commandCompletedSuccessfully(applied)) return false;
 
     // Command success is not proof of the resulting DACL. Query it back and
@@ -174,20 +198,20 @@ export function hardenCredentialFile(filepath, {
         ([name]) => name.toLowerCase() !== 'psmodulepath',
       ),
     );
-    const verified = spawn(tools.powershell, [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command', WINDOWS_ACL_VERIFY_SCRIPT,
-    ], {
-      env: {
-        ...verifyEnvironment,
-        GEV_ACL_FILE: filepath,
-        GEV_ACL_USER_SID: sid,
-        PSModulePath: powershellModuleDirectory,
+    const verified = spawn(
+      tools.powershell,
+      ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_ACL_VERIFY_SCRIPT],
+      {
+        env: {
+          ...verifyEnvironment,
+          GEV_ACL_FILE: filepath,
+          GEV_ACL_USER_SID: sid,
+          PSModulePath: powershellModuleDirectory,
+        },
+        stdio: 'ignore',
+        windowsHide: true,
       },
-      stdio: 'ignore',
-      windowsHide: true,
-    });
+    );
     return commandCompletedSuccessfully(verified);
   } catch {
     return false;
@@ -230,12 +254,16 @@ function pathExists(fileSystem, filepath) {
  * @param {string} text Full store content to write, UTF-8.
  * @returns {void}
  */
-export function replaceCredentialStore(filepath, text, {
-  fileSystem = fs,
-  platform = process.platform,
-  harden = hardenCredentialFile,
-  tempSuffix = () => randomUUID().slice(0, 8),
-} = {}) {
+export function replaceCredentialStore(
+  filepath,
+  text,
+  {
+    fileSystem = fs,
+    platform = process.platform,
+    harden = hardenCredentialFile,
+    tempSuffix = () => randomUUID().slice(0, 8),
+  } = {},
+) {
   // Never write THROUGH a symlink into a credential path.
   try {
     if (fileSystem.lstatSync(filepath).isSymbolicLink()) {
@@ -261,7 +289,9 @@ export function replaceCredentialStore(filepath, text, {
     // hardening failure aborts with the previous store fully intact and the
     // secret never on disk unprotected — no rollback path to get wrong.
     if (!harden(tmp)) {
-      const error = new Error('could not restrict the credential file to your account; nothing was saved');
+      const error = new Error(
+        'could not restrict the credential file to your account; nothing was saved',
+      );
       error.code = 'GEV_HARDEN_FAILED';
       throw error;
     }
@@ -270,7 +300,12 @@ export function replaceCredentialStore(filepath, text, {
     const buffer = Buffer.from(text, 'utf8');
     let written = 0;
     while (written < buffer.length) {
-      written += fileSystem.writeSync(fd, buffer, written, buffer.length - written);
+      written += fileSystem.writeSync(
+        fd,
+        buffer,
+        written,
+        buffer.length - written,
+      );
     }
     fileSystem.fsyncSync(fd);
     staged = true;
@@ -287,7 +322,11 @@ export function replaceCredentialStore(filepath, text, {
     failure = error;
   }
 
-  if (platform === 'win32' && REPLACE_REFUSED_CODES.has(failure?.code) && pathExists(fileSystem, filepath)) {
+  if (
+    platform === 'win32' &&
+    REPLACE_REFUSED_CODES.has(failure?.code) &&
+    pathExists(fileSystem, filepath)
+  ) {
     let repaired = false;
     try {
       repaired = harden(filepath) === true;

@@ -293,7 +293,6 @@
   "src/search/offlineGeocoders.test.mjs",
   "src/nominatimGeocode.js",
   "src/nominatimGeocode.test.mjs",
-  "src/standalone/placeSearch.js",
   "src/data/routeSteps.js",
   "src/data/routeSteps.test.mjs",
   "src/data/inputOwnership.js",
