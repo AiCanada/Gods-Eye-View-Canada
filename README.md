@@ -378,14 +378,14 @@ Dahua, Axis, Reolink, Amcrest and most others (e.g.
 sent over plain http beyond your local network, and an HTTPS camera's
 certificate fingerprint can be pinned.
 
-### Arlo and similar cloud-only cameras
+### cloud-only cameras
 
-Arlo offers no public API, no per-camera picture address, no RTSP for other
-apps and no email snapshots, and my.arlo.com sits behind bot protection with
+No public API, no per-camera picture address, no RTSP for other
+apps and no email snapshots, and my.XXXX.com sits behind bot protection with
 two-step verification. GEV never signs in to Arlo and never works around that
 protection. Two routes work:
 
-**1. Browser feed relay** — no extra software, uses the Arlo tab you already
+**1. Browser feed relay** — no extra software, uses the tab you already
 have open.
 
 ```bash
@@ -403,7 +403,7 @@ press the reload button on the extension card.
    change the folder's Properties: Windows then adds a `desktop.ini`, which
    Chrome refuses (running the install again removes it).
 2. Reload your `https://my.arlo.com/#/feed` tab.
-3. In **POWER UP → HOME SECURITY**, set your Arlo site's sign-in to **Browser
+3. In **POWER UP → HOME SECURITY**, set your site's sign-in to **Browser
    feed relay (Chrome extension)** and **SAVE SITE**. A saved username and
    password stay saved.
 4. On the extension's **Details → Extension options**, press **PAIR WITH GODS
@@ -414,10 +414,10 @@ press the reload button on the extension card.
 
 Limits: pictures are the latest clip thumbnails, not live video. A camera with
 no recent clip shows *waiting for a clip*, and when Arlo signs the web page out
-the cards say *Arlo signed out* until you sign back in. **Arlo's terms of
-service prohibit data-extraction tools and allow Arlo to close accounts — use
+the cards say *signed out* until you sign back in. **Some terms of
+service prohibit data-extraction tools and allowed close accounts — use
 the relay at your own risk.** More in
-[tools/arlo-feed-relay/README.md](tools/arlo-feed-relay/README.md).
+(tools/arlo-feed-relay/README.md).
 
 **2. Home Assistant, fully local** — for Arlo cameras on a SmartHub or base
 station that supports Apple HomeKit. Pair the hub with Home Assistant's
