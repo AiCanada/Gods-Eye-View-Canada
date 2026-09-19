@@ -25,6 +25,8 @@ import {
   CANADIAN_CITIES,
   CITY_POIS,
   CITY_OVERVIEW_RANGE_M,
+  closestCityForSearch,
+  presetCitySearchName,
 } from './locations.js';
 
 function stubViewer() {
@@ -850,6 +852,16 @@ test('every Canadian metro preset has five stops inside its bounds and near its 
       assert.ok(km < 25, `${poi.name} is ${km.toFixed(1)} km from ${centre.name}`);
     }
   }
+});
+
+test('closest city for crime search uses Saint John, not the Danger Zone label', () => {
+  assert.equal(presetCitySearchName(CITY_POIS.saintjohn), 'Saint John');
+  const saintJohn = closestCityForSearch(45.2733, -66.0633);
+  assert.equal(saintJohn?.name, 'Saint John');
+  assert.ok(saintJohn.distKm < 5);
+  const austin = closestCityForSearch(30.2672, -97.7431);
+  assert.equal(austin?.name, 'Austin');
+  assert.equal(closestCityForSearch(0, 0), null);
 });
 
 test('Canadian metro names match camera spellings and search wording', () => {

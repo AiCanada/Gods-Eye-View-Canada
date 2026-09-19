@@ -42,11 +42,33 @@ body.cockpit-mode #ask-panel {
   padding: 10px 12px 12px;
 }
 
+#ask-body {
+  max-height: 50vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#ask-rows {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.ask-row {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .ask-controls {
   display: flex;
   gap: 6px;
   align-items: center;
   margin-top: 6px;
+  flex: 0 0 auto;
 }
 
 .ask-input {
@@ -72,13 +94,34 @@ body.cockpit-mode #ask-panel {
   box-shadow: 0 0 6px rgba(127, 231, 255, 0.25);
 }
 
-.ask-overview-btn {
+.ask-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
+.ask-overview-btn,
+.ask-risk-btn {
   white-space: nowrap;
 }
 
+.ask-log-count {
+  margin-top: 6px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(127, 231, 255, 0.7);
+  flex: 0 0 auto;
+}
+
 .ask-output {
+  margin-top: 6px;
   margin-bottom: 8px;
-  max-height: 168px;
+  max-height: 240px;
+  flex: 1 1 auto;
   overflow-y: auto;
   padding: 8px;
   font-size: 11px;
@@ -104,9 +147,11 @@ body.cockpit-mode #ask-panel {
   letter-spacing: 0.06em;
   color: rgba(127, 231, 255, 0.6);
   min-height: 12px;
+  flex: 0 0 auto;
 }
 
-.ask-controls .scene-btn[disabled] {
+.ask-controls .scene-btn[disabled],
+.ask-actions .scene-btn[disabled] {
   opacity: 0.45;
   cursor: default;
 }
@@ -128,8 +173,4 @@ body.cockpit-mode #ask-panel {
   white-space: nowrap;
 }
 
-/* Several rows of answers must not push the panel off-screen. */
-#ask-body {
-  max-height: 40vh;
-  overflow-y: auto;
-}
+

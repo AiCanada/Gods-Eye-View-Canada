@@ -115,6 +115,7 @@ test('standalone service guards run in development and preview without upstream 
       [overpassProxy, '/api/overpass'],
       [militaryInstallationsProxy, '/api/military-installations'],
       [regionalBriefProxy, '/api/regional-brief'],
+      [regionalBriefProxy, '/api/regional-risk-news'],
       [regionalBriefProxy, '/api/location-region'],
       [weatherEffectsProxy, '/api/weather-effects'],
     ]) {

@@ -20,6 +20,7 @@ import {
   keyholeLabelAlphaFromGeometry,
 } from '../celestialRing.js';
 import { registerWorldOverlayPaintLane } from '../overlays/worldOverlay.js';
+import { setTrafficTagFilter } from './traffic.js';
 import {
   DETECTION_STYLE,
   DETECTION_THEME_MAP,
@@ -340,6 +341,7 @@ export function destroyDetection() {
   _suspended = false;
   _suspendReason = '';
   _labelArbiter.clear();
+  _releaseTaggedTraffic();
   _lastLabelSolveAt = 0;
   _labelSolveDirty = true;
   _lastDiagnostics = null;
@@ -528,6 +530,7 @@ export function markDetectionSourcesChanged(reason = 'sources-changed') {
  */
 export function resetDetectionSolveState() {
   _labelArbiter.clear();
+  _releaseTaggedTraffic();
   _lastLabelSolveAt = 0;
   _labelSolveDirty = true;
   _lastSolveSnapshot = { demandByLayer: {}, cohortByLayer: {}, cohortCount: 0 };
@@ -639,6 +642,7 @@ function _applyModeState() {
     _syncSurfaceVisibility();
     _setLanesActive(false);
     _labelArbiter.clear();
+    _releaseTaggedTraffic();
     _lastLabelSolveAt = 0;
     _labelSolveDirty = true;
     _lastSolveSnapshot = { demandByLayer: {}, cohortByLayer: {}, cohortCount: 0 };
@@ -840,6 +844,40 @@ function _drawSparseFocusRing(width, height) {
   _ctx.arc(cx, cy, r, 0, Math.PI * 2);
   _ctx.stroke();
   _ctx.restore();
+}
+
+const _taggedTraffic = new Set();
+let _taggedTrafficSignature = '';
+
+/**
+ * Street traffic shows only the vehicles that carry an ID tag: an untagged dot
+ * beside a tagged one reads as an unidentified contact. The tagged set is the
+ * arbiter's own selection, so nothing here decides who gets a tag.
+ */
+function _syncTaggedTraffic() {
+  _taggedTraffic.clear();
+  for (const key of _labelArbiter.selectedKeys) {
+    if (!key.startsWith('traffic:VEH-')) continue;
+    const index = Number(key.slice('traffic:VEH-'.length));
+    if (Number.isInteger(index)) _taggedTraffic.add(index);
+  }
+  // Until the first solve lands there is nothing to filter by; hiding every
+  // vehicle then would blank the layer.
+  setTrafficTagFilter(_taggedTraffic.size > 0 ? _taggedTraffic : null);
+  _taggedTrafficSignature = String(_taggedTraffic.size);
+}
+
+/** Traffic slot behind a `VEH-0000` id, or -1. */
+function _trafficSlot(obj) {
+  const id = String(obj?.sourceId ?? obj?.id ?? '');
+  return id.startsWith('VEH-') ? Number(id.slice(4)) : -1;
+}
+
+function _releaseTaggedTraffic() {
+  if (_taggedTrafficSignature === '') return;
+  _taggedTrafficSignature = '';
+  _taggedTraffic.clear();
+  setTrafficTagFilter(null);
 }
 
 function _detectionKey(layerId, sourceId) {
@@ -1248,7 +1286,15 @@ function _drawOverlay(frame) {
     const color = colorFor(resolveTier(obj));
     const keyholeAlpha = keyholeLabelAlphaFromGeometry(sx, sy, keyhole);
     const bracketAlpha = detectionBracketAlpha(obj.type, keyholeAlpha, keyholeOutsideOpacity);
-    if (bracketAlpha > 0) {
+    // An untagged vehicle is hidden from the map (see _syncTaggedTraffic), so a
+    // bracket around it would frame empty road. It still runs through the
+    // candidate pass below, which is how it can win a tag later.
+    const untaggedVehicle = _taggedTraffic.size > 0
+      && obj._layerId === 'traffic'
+      && !_taggedTraffic.has(_trafficSlot(obj));
+    if (bracketAlpha > 0 && untaggedVehicle) {
+      bracketOpacityCounts.hidden++;
+    } else if (bracketAlpha > 0) {
       appendCornerBracket(pathFor(bracketPaths, color, bracketAlpha), sx, sy, halfW, halfH);
       visibleCount++;
       if (obj.type === 'AIR') aircraftBracketSectors[detectionHorizontalSector(sx, width)]++;
@@ -1378,6 +1424,7 @@ function _drawOverlay(frame) {
   }
 
   const renderEntries = _labelArbiter.renderEntries(candidateMap, now);
+  _syncTaggedTraffic();
   const fadingCount = countFadingRenderEntries(renderEntries);
   // Demand counts fades in BOTH directions; `fadingCount` above stays the
   // fade-OUT tail because that is what the published diagnostics have always

@@ -133,6 +133,7 @@
   "server/providers/regional/briefing.js",
   "server/providers/regional/http.js",
   "server/providers/regional/news.js",
+  "server/providers/regional/statcan-crime.js",
   "server/providers/regional/place.js",
   "server/providers/regional/query.js",
   "server/providers/regional/weather-effects.js",
@@ -299,5 +300,9 @@
   "src/data/inputOwnership.test.mjs",
   "src/data/directions.js",
   "src/data/directions.test.mjs",
-  "src/layers/directions/index.js"
+  "src/layers/directions/index.js",
+  "src/askOverview.js",
+  "src/askOverview.test.mjs",
+  "src/tooling/regionalRiskNews.test.mjs",
+  "src/tooling/statcanCrime.test.mjs"
 ]

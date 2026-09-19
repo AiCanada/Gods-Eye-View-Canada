@@ -92,8 +92,8 @@ async function handleLlmAsk(req, res) {
  * Vite plugin: the Ask panel's language-model routes.
  *
  * On-demand only. Nothing in the client calls these on a timer, on camera
- * movement, or at startup: they run when the operator presses Ask or
- * Overview, and at no other time. That keeps a paid endpoint off the
+ * movement, or at startup: they run when the operator presses Ask, Overview,
+ * or Risk Assessment, and at no other time. That keeps a paid endpoint off the
  * per-frame path and makes the cost of a session equal to the number of
  * questions asked. Keys stay server-side.
  *

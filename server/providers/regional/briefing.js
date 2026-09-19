@@ -1,7 +1,12 @@
 import { makeRateLimiter, clientKey } from '../common/rate-limit.js';
 import { fetchRegionalPlace } from './place.js';
 import { fetchRegionalWeather } from './weather.js';
-import { fetchRegionalNews } from './news.js';
+import {
+  fetchAlJazeeraCoverage,
+  fetchGovCrimeNews,
+  fetchRegionalNews,
+  fetchRiskNews,
+} from './news.js';
 import { validRegionalPoint } from './query.js';
 import { coalesceProxyRequest } from '../common/http.js';
 import { locationRegionKey } from '../../../src/data/regionalBrief.js';
@@ -59,11 +64,29 @@ const _locationRegionRateLimiter = makeRateLimiter({
   globalMax: 90,
 });
 
+const RISK_NEWS_CACHE_MS = 5 * 60_000;
+const RISK_NEWS_MAX_CACHE = 120;
+const _riskNewsCache = new Map();
+const _riskNewsInFlight = new Map();
+const _riskNewsRateLimiter = makeRateLimiter({
+  windowMs: 60_000,
+  max: 20,
+  globalMax: 60,
+});
+
 function trimRegionalBriefCache() {
   while (_regionalBriefCache.size > REGIONAL_BRIEF_MAX_CACHE) {
     const oldest = _regionalBriefCache.keys().next().value;
     if (oldest === undefined) break;
     _regionalBriefCache.delete(oldest);
+  }
+}
+
+function trimRiskNewsCache() {
+  while (_riskNewsCache.size > RISK_NEWS_MAX_CACHE) {
+    const oldest = _riskNewsCache.keys().next().value;
+    if (oldest === undefined) break;
+    _riskNewsCache.delete(oldest);
   }
 }
 
@@ -210,6 +233,98 @@ function regionalBriefProxy() {
         res.end(
           JSON.stringify({
             error: 'Regional briefing is temporarily unavailable',
+          }),
+        );
+      }
+    });
+
+    middlewares.use('/api/regional-risk-news', async (req, res) => {
+      if (req.method !== 'GET') {
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+        return;
+      }
+      if (!_riskNewsRateLimiter(clientKey(req))) {
+        res.writeHead(429, {
+          'Content-Type': 'application/json',
+          'Retry-After': '10',
+        });
+        res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
+        return;
+      }
+      const url = new URL(req.url || '', 'http://localhost');
+      const point = validRegionalPoint(url.searchParams);
+      if (!point) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: 'Valid latitude and longitude are required',
+          }),
+        );
+        return;
+      }
+      const query = String(url.searchParams.get('q') || '');
+      const place = String(url.searchParams.get('place') || '');
+      const region = String(url.searchParams.get('region') || '');
+      const key = `${(Math.round(point.latitude * 10) / 10).toFixed(1)},${(Math.round(point.longitude * 10) / 10).toFixed(1)}|${query}|${region}|${place}`;
+      const now = Date.now();
+      const cached = _riskNewsCache.get(key);
+      if (cached && now - cached.cachedAt <= RISK_NEWS_CACHE_MS) {
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=60',
+          'X-Regional-Risk-News': 'HIT',
+        });
+        res.end(JSON.stringify(cached.payload));
+        return;
+      }
+      const request = coalesceProxyRequest(_riskNewsInFlight, key, async () => {
+        const [news, gov, alJazeera] = await Promise.all([
+          fetchRiskNews({
+            query,
+            latitude: point.latitude,
+            longitude: point.longitude,
+          }),
+          fetchGovCrimeNews({ place, region }),
+          fetchAlJazeeraCoverage({ place }),
+        ]);
+        const payload = {
+          ...news,
+          govArticles: gov.articles,
+          govSource: gov.source,
+          govStatus: gov.status,
+          govQuery: gov.query,
+          alJazeera,
+        };
+        _riskNewsCache.set(key, { payload, cachedAt: Date.now() });
+        trimRiskNewsCache();
+        return payload;
+      });
+      try {
+        const payload = await request.promise;
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=60',
+          'X-Regional-Risk-News': request.shared ? 'INFLIGHT' : 'MISS',
+        });
+        res.end(JSON.stringify(payload));
+      } catch {
+        if (cached && now - cached.cachedAt <= RISK_NEWS_CACHE_MS) {
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+            'X-Regional-Risk-News': 'STALE',
+          });
+          res.end(JSON.stringify(cached.payload));
+          return;
+        }
+        res.writeHead(503, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+        });
+        res.end(
+          JSON.stringify({
+            error: 'Regional risk news is temporarily unavailable',
           }),
         );
       }

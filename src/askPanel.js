@@ -1,5 +1,15 @@
 import * as Cesium from 'cesium';
+import { closestCityForSearch } from './locations.js';
 import { getBasemapLabelContext } from './voice/gevActions.js';
+import {
+  buildLayerActivity,
+  buildOverviewQuestion,
+  buildOverviewRiskBrief,
+  buildRiskAssessmentQuestion,
+  formatAskLogEntry,
+  formatRiskSearchBody,
+  prependOutputLog,
+} from './askOverview.js';
 
 /**
  * Ask panel — operator-driven questions about the scene on screen.
@@ -7,11 +17,14 @@ import { getBasemapLabelContext } from './voice/gevActions.js';
  * Two rules shape this file.
  *
  * It is silent until asked. There is no timer, no camera-move hook and no
- * startup call: a language model is contacted when the operator presses Ask
- * or Overview, and at no other time. Each press costs one model request plus
- * the basemap label lookup that describes the view (reverse geocoding through
- * Google when a Maps key is present), so a session costs as many of each as
- * questions asked.
+ * startup call: a language model is contacted when the operator presses Ask,
+ * Overview, or Risk Assessment, and at no other time. Overview rates on-screen
+ * activity (low/mid/high) and how it changes operational risk. Risk Assessment
+ * can run first. Each Risk press searches government and local sources, shows
+ * those hits, and prepends them on a running output log. Each press costs one
+ * model request plus the basemap label lookup that describes the view
+ * (reverse geocoding through Google when a Maps key is present), so a
+ * session costs as many of each as questions asked.
  *
  * It draws one row per model that holds a key. With a single key the panel
  * looks like one search box; with three it becomes three, each labelled, so the
@@ -20,29 +33,6 @@ import { getBasemapLabelContext } from './voice/gevActions.js';
 
 const PROVIDERS_URL = '/api/llm/providers';
 const ASK_URL = '/api/llm/ask';
-
-/**
- * What Overview asks on the operator's behalf: first what is on screen, then
- * what about it is worth worrying about.
- *
- * The risk half is deliberately fenced. The model only ever sees the scene
- * JSON, so it is told to reason from the hazard layers actually switched on and
- * to say when the data will not support an assessment. Without that it will
- * cheerfully invent threats from a place name alone.
- */
-const OVERVIEW_QUESTION = [
-  'Give me an overview of what I am looking at right now:',
-  'where the camera is pointed, what that place is,',
-  'and which of the enabled layers matter here.',
-  'Then give a short risk assessment of this view.',
-  'Base it only on the scene data: the hazard-bearing layers that are enabled',
-  '(earthquakes, active fires, flights, vessels, traffic, cameras),',
-  'the altitude and what it means for what is observable,',
-  'and anything the place and street labels imply about what is below.',
-  'Name what you cannot assess from this data instead of guessing,',
-  'and do not invent hazards that the enabled layers would not show.',
-  'Keep the overview and the risk assessment to one short paragraph each.',
-].join(' ');
 
 /**
  * The browser aborts this long after the server's own ceiling, which the
@@ -63,7 +53,7 @@ export class AskPanel {
     this._askTimeoutMs = DEFAULT_ASK_TIMEOUT_MS;
     /** @type {Map<string, AbortController>} One in-flight request per model. */
     this._inFlight = new Map();
-    /** @type {Map<string, {input: HTMLInputElement, ask: HTMLButtonElement, overview: HTMLButtonElement, output: HTMLElement, status: HTMLElement}>} */
+    /** @type {Map<string, {input: HTMLInputElement, ask: HTMLButtonElement, overview: HTMLButtonElement, risk: HTMLButtonElement, output: HTMLElement, logCount: HTMLElement, status: HTMLElement, entries: number}>} */
     this._rows = new Map();
 
     this._panel = document.getElementById('ask-panel');
@@ -142,11 +132,6 @@ export class AskPanel {
     row.className = 'ask-row';
     row.dataset.provider = provider.id;
 
-    const output = document.createElement('div');
-    output.className = 'ask-output';
-    output.setAttribute('role', 'status');
-    output.setAttribute('aria-live', 'polite');
-
     const status = document.createElement('div');
     status.className = 'ask-status';
     // Progress and error lines are worth announcing too; without this a
@@ -182,13 +167,33 @@ export class AskPanel {
     overview.type = 'button';
     overview.className = 'scene-btn ask-overview-btn';
     overview.textContent = 'OVERVIEW';
-    overview.title = `Have ${provider.label} describe what is on screen`;
+    overview.title = `Have ${provider.label} rate on-screen activity and how it changes risk`;
 
-    controls.append(input, ask, overview);
-    row.append(output, status, controls);
+    const risk = document.createElement('button');
+    risk.type = 'button';
+    risk.className = 'scene-btn ask-risk-btn';
+    risk.textContent = 'RISK ASSESSMENT';
+    risk.title = `Have ${provider.label} assess risk from government crime-stat outliers and correlated sources. Can run before Overview`;
+
+    const actions = document.createElement('div');
+    actions.className = 'ask-actions';
+    actions.append(overview, risk);
+
+    const logCount = document.createElement('div');
+    logCount.className = 'ask-log-count';
+    logCount.hidden = true;
+
+    const output = document.createElement('div');
+    output.className = 'ask-output';
+    output.setAttribute('role', 'status');
+    output.setAttribute('aria-live', 'polite');
+
+    controls.append(input, ask);
+    row.append(controls, actions, status, logCount, output);
 
     ask.addEventListener('click', () => this._askTyped(provider.id));
     overview.addEventListener('click', () => void this.overview(provider.id));
+    risk.addEventListener('click', () => void this.riskAssessment(provider.id));
     // The globe's single-letter hotkeys already ignore keystrokes whose target
     // is a text field, so only Enter needs handling here.
     input.addEventListener('keydown', (event) => {
@@ -197,7 +202,16 @@ export class AskPanel {
       this._askTyped(provider.id);
     });
 
-    this._rows.set(provider.id, { input, ask, overview, output, status });
+    this._rows.set(provider.id, {
+      input,
+      ask,
+      overview,
+      risk,
+      output,
+      logCount,
+      status,
+      entries: 0,
+    });
     return row;
   }
 
@@ -209,30 +223,84 @@ export class AskPanel {
       this._setStatus(providerId, 'Type a question first.');
       return;
     }
-    void this.ask(question, { provider: providerId });
+    void this.ask(question, {
+      provider: providerId,
+      kind: 'ASK',
+    });
   }
 
   /**
-   * Ask one model to describe the current view.
+   * Ask one model what is on screen, activity level, and how that changes risk.
    *
    * @param {string} providerId
    */
-  overview(providerId) {
-    return this.ask(OVERVIEW_QUESTION, { provider: providerId, label: 'Overview' });
+  async overview(providerId) {
+    const context = await this.sceneContext();
+    const brief = this._riskBrief(context);
+    return this.ask(buildOverviewQuestion(brief), {
+      provider: providerId,
+      label: 'Overview',
+      kind: 'OVERVIEW',
+      locationName: brief.locationName,
+      context,
+    });
+  }
+
+  /**
+   * Ask one model for a location-specific risk assessment.
+   * Independent of Overview — may run first and keeps its own answer.
+   *
+   * @param {string} providerId
+   */
+  async riskAssessment(providerId) {
+    const row = this._rows.get(providerId);
+    if (!row) return null;
+    if (this._inFlight.has(providerId)) {
+      this._setStatus(providerId, 'Still working on the last question.');
+      return null;
+    }
+
+    this._inFlight.set(providerId, new AbortController());
+    this._setBusy(providerId, true, 'Searching risk sources...');
+    try {
+      const context = await this.sceneContext();
+      const brief = this._riskBrief(context);
+      const headlines = await this._riskHeadlines(brief, context.view);
+      context.riskAssessment = { ...brief, ...headlines };
+      this._prependAnswer(
+        providerId,
+        formatAskLogEntry('RISK SEARCH', formatRiskSearchBody(headlines), {
+          locationName: brief.searchCity || brief.locationName,
+        }),
+      );
+      return await this.ask(buildRiskAssessmentQuestion(brief), {
+        provider: providerId,
+        label: 'Risk assessment',
+        kind: 'RISK ASSESSMENT',
+        locationName: brief.searchCity || brief.locationName,
+        context,
+        continueFlight: true,
+      });
+    } catch (error) {
+      this._inFlight.delete(providerId);
+      this._setBusy(providerId, false);
+      this._setStatus(providerId, error?.message || 'Risk search failed.');
+      return null;
+    }
   }
 
   /**
    * Send one question to one model with the current scene as context.
    *
    * @param {string} question
-   * @param {{provider: string, label?: string}} options
+   * @param {{provider: string, label?: string, kind?: string, locationName?: string, continueFlight?: boolean, context?: object}} options
    */
   async ask(question, options) {
     const providerId = options?.provider;
     const row = this._rows.get(providerId);
     if (!row) return null;
 
-    if (this._inFlight.has(providerId)) {
+    if (!options?.continueFlight && this._inFlight.has(providerId)) {
       this._setStatus(providerId, 'Still working on the last question.');
       return null;
     }
@@ -254,7 +322,7 @@ export class AskPanel {
     );
 
     try {
-      const context = await this.sceneContext();
+      const context = options.context || await this.sceneContext();
       const response = await fetch(ASK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -274,7 +342,12 @@ export class AskPanel {
         throw new Error(data?.error || `HTTP ${response.status}`);
       }
 
-      this._setAnswer(providerId, data.answer);
+      this._prependAnswer(
+        providerId,
+        formatAskLogEntry(options.kind || 'ASK', data.answer, {
+          locationName: options.locationName || context.selectedLocation,
+        }),
+      );
       this._setStatus(providerId, this._usageLine(data));
       return data.answer;
     } catch (error) {
@@ -323,7 +396,7 @@ export class AskPanel {
       }
       : null;
 
-    let labels = { placeLabels: [], streetLabels: [], nearbyPlaceLabels: [] };
+    let labels = { placeLabels: [], streetLabels: [], nearbyPlaceLabels: [], locality: null };
     try {
       labels = await getBasemapLabelContext(this.viewer);
     } catch {
@@ -332,17 +405,97 @@ export class AskPanel {
     }
 
     const layers = this._dataManager?.getAll?.() || [];
+    const enabled = layers.filter((layer) => layer.enabled);
     return {
       capturedAt: new Date().toISOString(),
       view,
       placeLabels: labels.placeLabels || [],
       streetLabels: labels.streetLabels || [],
       nearbyPlaceLabels: labels.nearbyPlaceLabels || [],
-      enabledLayers: layers.filter((l) => l.enabled).map((l) => l.name),
-      availableLayers: layers.map((l) => l.name),
+      enabledLayers: enabled.map((layer) => layer.name),
+      layerActivity: buildLayerActivity(enabled),
+      availableLayers: layers.map((layer) => layer.name),
       activeVisualStyle: document.getElementById('active-style-name')?.textContent?.trim() || null,
       selectedCamera: this._selectedCameraLabel(),
+      selectedLocation: this._selectedLocationLabel(),
+      locality: labels.locality || null,
     };
+  }
+
+  _selectedCityLabel() {
+    const city = document.getElementById('location-mini-city')?.textContent || '';
+    const cityName = city.replace(/^📍\s*/u, '').replace(/^location:\s*/i, '').trim();
+    if (!cityName || cityName === '--') return null;
+    return cityName;
+  }
+
+  _selectedLocationLabel() {
+    const cityName = this._selectedCityLabel();
+    const poi = document.getElementById('location-mini-poi')?.textContent || '';
+    const poiName = poi.replace(/^landmark:\s*/i, '').trim();
+    if (!cityName) return null;
+    if (poiName && poiName !== '--' && !/^searched location$/i.test(poiName)) {
+      return `${poiName}, ${cityName}`;
+    }
+    return cityName;
+  }
+
+  _closestSearchCity(context) {
+    const fromView = closestCityForSearch(
+      context?.view?.latitude,
+      context?.view?.longitude,
+    );
+    return fromView?.name || context?.locality || this._selectedCityLabel() || null;
+  }
+
+  _riskBrief(context) {
+    return buildOverviewRiskBrief({
+      selectedLocation: this._selectedLocationLabel(),
+      selectedCity: this._selectedCityLabel(),
+      closestCity: this._closestSearchCity(context),
+      locality: context?.locality,
+      placeLabels: context?.placeLabels,
+      view: context?.view,
+    });
+  }
+
+  async _riskHeadlines(brief, view) {
+    const empty = { localHeadlines: [], govCrimeHeadlines: [], alJazeera: null };
+    if (!Number.isFinite(view?.latitude) || !Number.isFinite(view?.longitude)) {
+      return empty;
+    }
+    try {
+      const params = new URLSearchParams({
+        latitude: String(view.latitude),
+        longitude: String(view.longitude),
+        q: brief.newsQuery || '',
+        region: brief.region || '',
+        place: brief.searchCity || brief.locationName || '',
+      });
+      const response = await fetch(`/api/regional-risk-news?${params}`, {
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!response.ok) return empty;
+      const data = await response.json();
+      return {
+        localHeadlines: Array.isArray(data?.articles) ? data.articles.slice(0, 8) : [],
+        govCrimeHeadlines: Array.isArray(data?.govArticles)
+          ? data.govArticles.slice(0, 10)
+          : [],
+        alJazeera: data?.alJazeera
+          ? {
+              status: String(data.alJazeera.status || 'unavailable'),
+              lookbackDays: Number(data.alJazeera.lookbackDays) || 90,
+              url: 'https://www.aljazeera.com/',
+              articles: Array.isArray(data.alJazeera.articles)
+                ? data.alJazeera.articles.slice(0, 5)
+                : [],
+            }
+          : null,
+      };
+    } catch {
+      return empty;
+    }
   }
 
   /** Name of the CCTV camera currently open, when one is. */
@@ -356,7 +509,8 @@ export class AskPanel {
     const row = this._rows.get(providerId);
     if (!row) return;
     row.ask.disabled = busy;
-    row.overview.disabled = busy;
+    if (row.overview) row.overview.disabled = busy;
+    if (row.risk) row.risk.disabled = busy;
     if (busy && message) this._setStatus(providerId, message);
   }
 
@@ -365,10 +519,18 @@ export class AskPanel {
     if (row) row.status.textContent = text || '';
   }
 
-  _setAnswer(providerId, text) {
+  _prependAnswer(providerId, text) {
     const row = this._rows.get(providerId);
-    if (!row) return;
-    row.output.textContent = text || '';
+    if (!row?.output) return;
+    const next = prependOutputLog(row.output.textContent, text);
+    if (!next) return;
+    row.output.textContent = next;
     row.output.scrollTop = 0;
+    row.entries = (row.entries || 0) + 1;
+    if (row.logCount) {
+      row.logCount.hidden = false;
+      row.logCount.textContent =
+        row.entries === 1 ? '1 report' : `${row.entries} reports`;
+    }
   }
 }

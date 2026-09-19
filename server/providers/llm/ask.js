@@ -170,11 +170,13 @@ export function admitLlmAskRequest({ method, contentType, origin, host } = {}) {
   return { ok: true };
 }
 
-/** Longest question the Ask route forwards. */
-export const LLM_QUESTION_MAX_CHARS = 2000;
-
-/** Largest Ask request body the route reads. */
-export const LLM_ASK_MAX_BODY_BYTES = 64 * 1024;
+/**
+ * Largest Ask request body the route reads. The question itself has NO length
+ * limit: Overview and Risk Assessment carry full instructions, and a cap cut
+ * them mid-sentence. This bound only keeps one request from exhausting the
+ * dev server's memory; two megabytes is far beyond any question plus scene.
+ */
+export const LLM_ASK_MAX_BODY_BYTES = 2 * 1024 * 1024;
 
 /**
  * Turn a raw Ask body into a validated request, or say exactly why not.
@@ -240,9 +242,7 @@ export function parseLlmAskRequest(rawBody, env = process.env) {
       },
     };
   }
-  const question = String(request.question || '')
-    .trim()
-    .slice(0, LLM_QUESTION_MAX_CHARS);
+  const question = String(request.question || '').trim();
   if (!question)
     return {
       ok: false,
@@ -261,13 +261,18 @@ export function parseLlmAskRequest(rawBody, env = process.env) {
 const LLM_ASK_INSTRUCTIONS = [
   "You are the analyst console for God's Eye View, a 3D globe showing live public data.",
   'The user is looking at the scene described by the SCENE JSON below.',
-  'Answer their question about what is on screen using ONLY that JSON.',
+  'Answer their question using that JSON.',
   'It carries the camera position, the place and street labels under the view,',
   'the enabled data layers, the active visual style, and the selected camera if any.',
-  'Never invent a place, a reading, or a layer that the JSON does not contain.',
+  'When SCENE.layerActivity is present, use those counts and low/mid/high levels; do not invent activity.',
+  'When SCENE.riskAssessment is present, it also carries the region profile, official source URLs, localHeadlines, and govCrimeHeadlines.',
+  'Recent incidents come only from SCENE.riskAssessment.localHeadlines.',
+  'Whether Al Jazeera has covered the place comes only from SCENE.riskAssessment.alJazeera.',
+  'Government crime-stat outliers come only from SCENE.riskAssessment.govCrimeHeadlines; if that list is empty, say no outlier was supplied.',
+  'Never invent a place, a reading, a layer, an incident, or a statistic that the JSON does not contain.',
   'Say plainly when the JSON does not cover something rather than guessing.',
   'Write prose for an operator: no markdown, no headings, no bullet characters.',
-  'Be specific and brief, at most one short paragraph unless asked for more.',
+  'Be specific and brief. Stay to one short paragraph unless the question asks for more.',
 ].join(' ');
 
 /**

@@ -455,6 +455,40 @@ let _trafficTimingDroppedTraces = 0;
  * @returns {{enabled:boolean, marksInstalled:number, traceObjectsCreated:number,
  *   uncorrelatedTracesDropped:number}}
  */
+/**
+ * Visit every live traffic dot's point primitive (position, color, pixelSize,
+ * show) without allocating. Read-only: the CCTV picture projector uses it to
+ * draw the vehicles a camera can see onto that camera's monitor plane.
+ * The index is the dot's stable slot, the same one detection uses for its
+ * `VEH-0000` tag.
+ * @param {(point: object, index: number) => void} visit
+ * @returns {void}
+ */
+export function forEachTrafficDot(visit) {
+  if (!_enabled || typeof visit !== 'function') return;
+  for (let i = 0; i < _dots.length; i += 1) {
+    const point = _dots[i]?.point;
+    if (point?.position) visit(point, i);
+  }
+}
+
+/**
+ * Show only the vehicles whose slot is in `indices` (the ones detection has
+ * given a `VEH-0000` tag), or every vehicle when `indices` is null. A vehicle
+ * on a closed road stays hidden either way. Writes only on change, so calling
+ * it every frame is cheap.
+ * @param {Set<number>|null} indices
+ * @returns {void}
+ */
+export function setTrafficTagFilter(indices) {
+  for (let i = 0; i < _dots.length; i += 1) {
+    const dot = _dots[i];
+    if (!dot?.point) continue;
+    const wanted = !dot.road?.flow?.closure && (!indices || indices.has(i));
+    if (dot.point.show !== wanted) dot.point.show = wanted;
+  }
+}
+
 export function getTrafficTimingDiagnostics() {
   return {
     enabled: Boolean(TRAFFIC_TIMING_ENABLED),

@@ -95,6 +95,38 @@ export function frustumVolumeGeometryData(positions) {
  * @param {Cesium.Color} color - Per-camera fill color (already alpha'd).
  * @returns {Cesium.Primitive}
  */
+/**
+ * Appearance for the see-through viewshed volume.
+ *
+ * A translucent-pass volume blends OVER everything inside it: street traffic
+ * dots sit inside the cone, so its near faces washed them out (and under
+ * order-independent translucency no draw order can fix that). The volume is
+ * therefore classified opaque so it draws in the opaque pass, blends its
+ * alpha itself, and writes no depth. Every sprite layer — traffic first of
+ * all — then draws on top of it at full strength, and the volume still tints
+ * the ground and buildings behind it exactly as before.
+ * @returns {Cesium.PerInstanceColorAppearance}
+ */
+export function createFrustumVolumeAppearance() {
+  const appearance = new Cesium.PerInstanceColorAppearance({
+    flat: true,
+    translucent: false,
+    closed: false,
+    renderState: {
+      cull: { enabled: false },
+      depthTest: { enabled: true },
+    },
+  });
+  const getRenderState = appearance.getRenderState.bind(appearance);
+  appearance.getRenderState = function frustumVolumeRenderState() {
+    const rs = getRenderState();
+    rs.depthMask = false;
+    rs.blending = Cesium.BlendingState.ALPHA_BLEND;
+    return rs;
+  };
+  return appearance;
+}
+
 export function createFrustumVolumePrimitive(positions, color) {
   const { positions: flat, indices } = frustumVolumeGeometryData(positions);
   const geometry = new Cesium.Geometry({
@@ -116,13 +148,7 @@ export function createFrustumVolumePrimitive(positions, color) {
         color: Cesium.ColorGeometryInstanceAttribute.fromColor(color),
       },
     }),
-    appearance: new Cesium.PerInstanceColorAppearance({
-      flat: true,
-      translucent: true,
-      renderState: {
-        cull: { enabled: false },
-      },
-    }),
+    appearance: createFrustumVolumeAppearance(),
     asynchronous: false,
     allowPicking: false,
   });

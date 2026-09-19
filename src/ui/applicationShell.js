@@ -9,6 +9,13 @@ import { ContextControls } from './context.js';
 import { CctvControls } from './cctv.js';
 import { RadioControls } from './radio.js';
 import { LocationControls } from './location.js';
+import {
+  buildLocationShortcuts,
+  loadLocationHistory,
+  recordLocationSelection,
+  saveLocationHistory,
+} from './locationShortcuts.js';
+import { bindLocationPanelResize } from './locationPanelResize.js';
 import { bindClearLayersControl } from './layers.js';
 import { bindCameraOrientationControls } from './cameraOrientationControls.js';
 import { createMapSourceControls } from './mapSource.js';
@@ -4601,6 +4608,8 @@ export class StyleManager {
   _initLocationBar() {
     const { CITY_POIS, searchAndFlyTo, LocationSearch } = this.services;
     this._locationControls?.destroy();
+    this._removeLocationPanelResize?.();
+    this._removeLocationPanelResize = null;
     this._locationLookupUnsubscribe?.();
     this._locationLookup?.destroy();
     this._locationLookup = new LocationSearch({
@@ -4639,10 +4648,19 @@ export class StyleManager {
       onSearch: (query) => this._locationLookup.run(query),
       onReset: () => this.resetToGlobeView(),
       onExtra: (id) => this._onPrivateSitePillClick(id),
+      onShortcut: (entry) => this._onLocationShortcut(entry),
     });
     this._locationControls.setExtraLocations([
       ...(this._privateSiteLocations?.values() || []),
     ]);
+    this._locationHistory = loadLocationHistory();
+    // Corner grips on the tray; a taller tray shows more rows of pills.
+    this._removeLocationPanelResize?.();
+    this._removeLocationPanelResize = bindLocationPanelResize({
+      popover: this._locationPills?.closest?.('#location-bar-popover') || null,
+      pills: this._locationPills,
+    });
+    this._refreshLocationShortcuts();
   }
 
   /**
@@ -4656,6 +4674,7 @@ export class StyleManager {
       entries.map((entry) => [entry.id, entry]),
     );
     this._locationControls?.setExtraLocations(entries);
+    this._refreshLocationShortcuts();
     if (
       this._activePrivateSiteId &&
       !this._privateSiteLocations.has(this._activePrivateSiteId)
@@ -4671,6 +4690,41 @@ export class StyleManager {
    * @param {string} id - Private site pill id.
    * @returns {void}
    */
+  /** Rebuild the pinned / LAST / 2ND LAST pills at the front of the row. */
+  _refreshLocationShortcuts() {
+    const { CITY_POIS } = this.services;
+    this._locationControls?.setShortcutLocations(
+      buildLocationShortcuts({
+        cities: CITY_POIS,
+        history: this._locationHistory || [],
+        siteIds: new Set(this._privateSiteLocations?.keys() || []),
+      }),
+    );
+  }
+
+  /** Remember a selection so it can come back as LAST / 2ND LAST. */
+  _rememberLocationSelection(selection) {
+    this._locationHistory = recordLocationSelection(
+      this._locationHistory || [],
+      selection,
+    );
+    saveLocationHistory(this._locationHistory);
+    this._refreshLocationShortcuts();
+  }
+
+  /** A shortcut pill flies straight to its landmark or saved site. */
+  _onLocationShortcut(entry) {
+    const target = entry?.target;
+    if (target?.type === 'site') {
+      this._onPrivateSitePillClick(target.siteId);
+      return;
+    }
+    if (target?.type !== 'poi') return;
+    if (this._expandedCityId !== target.cityId)
+      this._expandPOIRow(target.cityId);
+    this._onPoiClick(target.cityId, target.poiIndex);
+  }
+
   _onPrivateSitePillClick(id) {
     const site = this._privateSiteLocations?.get(id);
     const { flyToLandmark } = this.services;
@@ -4692,6 +4746,11 @@ export class StyleManager {
     this._setActiveLocation(null);
     this._activePrivateSiteId = id;
     this._currentPoi = null;
+    this._rememberLocationSelection({
+      type: 'site',
+      siteId: id,
+      name: site.name,
+    });
     this._locationControls.highlightCity(id);
     if (result) this._currentTarget = result.targetPosition;
     this._selectLocation(site, {
@@ -4797,6 +4856,12 @@ export class StyleManager {
       this._currentPoi = CITY_POIS[cityId].pois[0];
     }
     this._updateLocationMiniStatus();
+    this._rememberLocationSelection({
+      type: 'poi',
+      cityId,
+      poiIndex: 0,
+      name: CITY_POIS[cityId].pois[0].name,
+    });
     this._selectLocation(CITY_POIS[cityId].pois[0], { flying: true });
   }
 
@@ -4825,6 +4890,12 @@ export class StyleManager {
       this._currentPoi = CITY_POIS[cityId].pois[poiIndex];
     }
     this._updateLocationMiniStatus();
+    this._rememberLocationSelection({
+      type: 'poi',
+      cityId,
+      poiIndex,
+      name: CITY_POIS[cityId].pois[poiIndex].name,
+    });
     this._selectLocation(CITY_POIS[cityId].pois[poiIndex], { flying: true });
   }
 
@@ -5595,6 +5666,8 @@ export class StyleManager {
     this._cameraOrientationControls?.destroy();
     this._clearLayersControl?.destroy();
     this._locationControls?.destroy();
+    this._removeLocationPanelResize?.();
+    this._removeLocationPanelResize = null;
     this._cctvControls?.destroy();
     this._radioControls?.destroy();
     this.cockpitView?.stop();

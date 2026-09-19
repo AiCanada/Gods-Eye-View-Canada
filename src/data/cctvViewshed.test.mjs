@@ -126,3 +126,13 @@ test('frustumVolumeGeometryData: no NaN for a tight (probe-clamped) pyramid', ()
   const { positions: flat } = frustumVolumeGeometryData(near);
   for (const v of flat) assert.ok(Number.isFinite(v));
 });
+
+test('viewshed volume draws in the opaque pass without depth writes so traffic reads on top', async () => {
+  const { createFrustumVolumeAppearance } = await import('./cctvViewshed.js');
+  const appearance = createFrustumVolumeAppearance();
+  assert.equal(appearance.translucent, false, 'a translucent-pass volume blends over the dots inside it');
+  const rs = appearance.getRenderState();
+  assert.equal(rs.depthMask, false, 'must not occlude sprites behind its faces');
+  assert.ok(rs.blending?.enabled, 'still see-through: it blends its own alpha');
+  assert.equal(rs.cull.enabled, false);
+});
