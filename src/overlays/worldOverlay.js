@@ -234,6 +234,10 @@ const _customPaintFrame = {
   uiRects: _uiOcclusionRects,
   uiRectCount: 0,
   layoutRevision: 0,
+  // Cards already painted this frame (pooled; read the first paintRectCount).
+  // A painter in a later lane uses them to draw over earlier lanes' cards.
+  paintRects: null,
+  paintRectCount: 0,
 };
 const _paintQueue = [];
 const _paintItemPool = [];
@@ -2010,6 +2014,8 @@ function paintCustomLane(lane) {
     if (!surface || !ctx) continue;
     _customPaintFrame.surface = surface;
     _customPaintFrame.ctx = ctx;
+    _customPaintFrame.paintRects = _paintRectPool;
+    _customPaintFrame.paintRectCount = _paintRectCount;
     if (record.shouldPaint && record.shouldPaint(_customPaintFrame) === false) continue;
     if (detectionTarget && !_detectionSurfacePrepared) {
       clearCanvas(false, true);

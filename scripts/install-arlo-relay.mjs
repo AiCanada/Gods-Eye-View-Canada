@@ -17,7 +17,6 @@ export const RELAY_EXTRA_FILES = Object.freeze([
   'options.html',
   'options.js',
   'options.css',
-  'README.md',
 ]);
 
 const SAFE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*$/;
@@ -25,7 +24,7 @@ const SAFE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*$/;
 /** Windows folder settings files that Chrome refuses inside an extension ("The filename is illegal"). */
 export const WINDOWS_FOLDER_METADATA = Object.freeze(['desktop.ini', 'thumbs.db']);
 
-/** The flat list of files the extension needs: those its manifest names plus the options page and readme. */
+/** The flat list of files the extension needs: those its manifest names plus the options page. */
 export function relayInstallFiles(manifest) {
   const files = new Set();
   const add = (name) => {

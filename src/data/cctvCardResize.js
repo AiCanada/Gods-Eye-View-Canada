@@ -56,10 +56,31 @@ export function saveCardScale(scale, storage = globalThis.localStorage) {
 
 /** True when (x, y) sits on the card rectangle's bottom-right size badge. */
 export function isCardResizeCorner(rect, x, y, grabPx = CCTV_CARD_CORNER_GRAB_PX) {
-  if (!rect || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+  return cardResizeCorner(rect, x, y, grabPx) === 'se';
+}
+
+/** The other three corners take a smaller grab so most of the card still selects its camera. */
+export const CCTV_CARD_PLAIN_CORNER_GRAB_PX = 14;
+
+/**
+ * Which corner of the card (x, y) is on: 'se' is the size badge (click steps the
+ * size, drag resizes); 'nw', 'ne' and 'sw' resize by drag only.
+ * @returns {'nw'|'ne'|'sw'|'se'|null}
+ */
+export function cardResizeCorner(rect, x, y, grabPx = CCTV_CARD_CORNER_GRAB_PX) {
+  if (!rect || !Number.isFinite(x) || !Number.isFinite(y)) return null;
   const right = rect.x + rect.w;
   const bottom = rect.y + rect.h;
-  return x >= right - grabPx && x <= right + 4 && y >= bottom - grabPx && y <= bottom + 4;
+  if (x >= right - grabPx && x <= right + 4 && y >= bottom - grabPx && y <= bottom + 4) return 'se';
+  const plain = Math.min(grabPx, CCTV_CARD_PLAIN_CORNER_GRAB_PX);
+  const west = x >= rect.x - 4 && x <= rect.x + plain;
+  const east = x >= right - plain && x <= right + 4;
+  const north = y >= rect.y - 4 && y <= rect.y + plain;
+  const south = y >= bottom - plain && y <= bottom + 4;
+  if (north && west) return 'nw';
+  if (north && east) return 'ne';
+  if (south && west) return 'sw';
+  return null;
 }
 
 /**
@@ -67,10 +88,13 @@ export function isCardResizeCorner(rect, x, y, grabPx = CCTV_CARD_CORNER_GRAB_PX
  * grows by however far the pointer moved relative to its size, averaged over
  * width and height so a diagonal drag feels natural.
  */
-export function draggedCardScale({ startScale, rect, startX, startY, x, y }) {
+export function draggedCardScale({ startScale, rect, startX, startY, x, y, corner = 'se' }) {
   const width = Math.max(1, Number(rect?.w) || 1);
   const height = Math.max(1, Number(rect?.h) || 1);
-  const growth = ((width + (x - startX)) / width + (height + (y - startY)) / height) / 2;
+  // Pulling a corner AWAY from the card grows it, whichever corner it is.
+  const dx = (x - startX) * (corner === 'nw' || corner === 'sw' ? -1 : 1);
+  const dy = (y - startY) * (corner === 'nw' || corner === 'ne' ? -1 : 1);
+  const growth = ((width + dx) / width + (height + dy) / height) / 2;
   return clampCardScale((Number(startScale) || 1) * growth);
 }
 
@@ -97,24 +121,32 @@ export function bindCctvCardResize({
     const bounds = canvas.getBoundingClientRect();
     return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
   };
-  const badgeAt = (x, y) => {
+  const cornerAt = (x, y) => {
     const hit = hitTest(x, y);
-    return hit?.rect && isCardResizeCorner(hit.rect, x, y) ? hit : null;
+    const corner = hit?.rect ? cardResizeCorner(hit.rect, x, y) : null;
+    return corner ? { hit, corner } : null;
   };
-  const setCursor = (on) => {
-    if (on === cursorOwned) return;
-    cursorOwned = on;
-    canvas.style.cursor = on ? 'pointer' : '';
+  const badgeAt = (x, y) => {
+    const found = cornerAt(x, y);
+    return found?.corner === 'se' ? found.hit : null;
+  };
+  const CORNER_CURSOR = { se: 'pointer', nw: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize' };
+  const setCursor = (corner) => {
+    const next = corner || false;
+    if (next === cursorOwned) return;
+    cursorOwned = next;
+    canvas.style.cursor = next ? CORNER_CURSOR[next] : '';
   };
 
   const onDown = (event) => {
     if (press || event.button !== 0 || !isEnabled()) return;
     const { x, y } = local(event);
-    const hit = badgeAt(x, y);
-    if (!hit) return;
+    const found = cornerAt(x, y);
+    if (!found) return;
+    const { hit, corner } = found;
     event.preventDefault();
     event.stopPropagation();
-    press = { pointerId: event.pointerId, startX: x, startY: y, startScale: getScale(), rect: { w: hit.rect.w, h: hit.rect.h }, dragged: false };
+    press = { pointerId: event.pointerId, startX: x, startY: y, startScale: getScale(), rect: { w: hit.rect.w, h: hit.rect.h }, corner, dragged: false };
     try {
       container.setPointerCapture?.(event.pointerId);
     } catch {
@@ -133,7 +165,7 @@ export function bindCctvCardResize({
       if (Math.abs(next - getScale()) >= 0.01) setScale(next);
       return;
     }
-    setCursor(isEnabled() && Boolean(badgeAt(x, y)));
+    setCursor(isEnabled() ? cornerAt(x, y)?.corner || null : null);
   };
   const onUp = (event) => {
     if (!press || event.pointerId !== press.pointerId) return;
@@ -145,7 +177,8 @@ export function bindCctvCardResize({
       // Already released.
     }
     // One click steps to the next size; a drag keeps the size it reached.
-    if (!press.dragged) setScale(nextCardSizeStep(press.startScale));
+    // (Only the badge steps; a plain corner that was merely clicked changes nothing.)
+    if (!press.dragged && press.corner === 'se') setScale(nextCardSizeStep(press.startScale));
     press = null;
     saveCardScale(getScale(), storage);
     onDragEnd?.();

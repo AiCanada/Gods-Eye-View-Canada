@@ -57,7 +57,7 @@ test('request validation: unknown provider, missing key, incomplete custom endpo
   assert.equal(parseLlmAskRequest(JSON.stringify({ provider: 'xai', question: '   ' }), KEYED).status, 400);
   const ok = parseLlmAskRequest(JSON.stringify({ provider: 'xai', question: 'q'.repeat(5000), context: [1] }), KEYED);
   assert.equal(ok.ok, true);
-  assert.equal(ok.question.length, 2000, 'question is capped');
+  assert.equal(ok.question.length, 5000, 'a question is never cut short');
   assert.deepEqual(ok.context, {}, 'a non-object context is dropped');
 });
 
@@ -77,6 +77,9 @@ test('the upstream call is the shared chat-completions dialect, reasoning effort
   assert.equal(call.payload.max_tokens, 4096);
   assert.equal(call.payload.reasoning_effort, 'low');
   assert.equal(call.payload.messages[0].role, 'system');
+  assert.match(call.payload.messages[0].content, /localHeadlines/);
+  assert.match(call.payload.messages[0].content, /govCrimeHeadlines/);
+  assert.match(call.payload.messages[0].content, /unless the question asks for more/);
   assert.match(call.payload.messages[1].content, /"view":1[\s\S]*QUESTION:\nWhat is here\?/);
 
   const quiet = buildLlmAskCall(nvidia.provider, nvidia.settings, 'q', {}, { ...KEYED, NVIDIA_REASONING_EFFORT: 'none' });

@@ -12,6 +12,7 @@ export class LocationControls {
     onSearch,
     onReset,
     onExtra = null,
+    onShortcut = null,
     doc = document,
     requestFrame = (callback) => requestAnimationFrame(callback),
     cancelFrame = (id) => cancelAnimationFrame(id),
@@ -25,6 +26,7 @@ export class LocationControls {
       onSearch,
       onReset,
       onExtra,
+      onShortcut,
       doc,
       requestFrame,
       cancelFrame,
@@ -33,6 +35,8 @@ export class LocationControls {
     this.poiRemovers = [];
     this.extraRemovers = [];
     this.extraPills = [];
+    this.shortcutRemovers = [];
+    this.shortcutPills = [];
     this.firstCityPill = null;
     this.frame = null;
     this.destroyed = false;
@@ -50,9 +54,10 @@ export class LocationControls {
     }
     // The city row has no visible scrollbar and holds more cities than fit, so
     // a plain mouse wheel scrolls it sideways. Trackpads already scroll it.
-    if (typeof elements.pills.addEventListener === 'function') {
-      this.bind(elements.pills, 'wheel', (event) => {
-        const row = elements.pills;
+    // The same holds for the landmark row of a city with many stops.
+    for (const row of [elements.pills, elements.poiRow]) {
+      if (typeof row?.addEventListener !== 'function') continue;
+      this.bind(row, 'wheel', (event) => {
         if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
         if (row.scrollWidth <= row.clientWidth) return;
         row.scrollLeft += event.deltaY;
@@ -163,6 +168,35 @@ export class LocationControls {
         this.elements.pills.insertBefore(pill, this.firstCityPill);
       else this.elements.pills.appendChild(pill);
       this.extraPills.push(pill);
+    }
+  }
+  /**
+   * Shortcut pills at the very front of the row: pinned landmarks plus the
+   * last and second-last locations selected. A click calls onShortcut(entry).
+   * @param {Array<{id: string, name: string, title?: string, role?: string, target: object}>} entries
+   */
+  setShortcutLocations(entries = []) {
+    if (this.destroyed) return;
+    for (const remove of this.shortcutRemovers.splice(0)) remove();
+    for (const pill of this.shortcutPills.splice(0)) pill.remove();
+    const before = this.elements.pills.firstChild || null;
+    for (const entry of entries) {
+      const pill = this.doc.createElement('button');
+      pill.type = 'button';
+      pill.className = 'location-pill location-pill-shortcut';
+      pill.dataset.locationId = entry.id;
+      if (entry.role) pill.dataset.shortcutRole = entry.role;
+      pill.textContent = entry.name;
+      pill.title = entry.title || entry.name;
+      this.bind(
+        pill,
+        'click',
+        () => this.onShortcut?.(entry),
+        this.shortcutRemovers,
+      );
+      if (before) this.elements.pills.insertBefore(pill, before);
+      else this.elements.pills.appendChild(pill);
+      this.shortcutPills.push(pill);
     }
   }
   highlightPoi(index) {

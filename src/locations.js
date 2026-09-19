@@ -23,7 +23,7 @@ export const CITY_POIS = {
       // Placed over the uptown harbourfront, the centre of the city. Move this
       // lat/lon to put the zone somewhere more specific.
       { name: 'Saint John Danger Zone', lat: 45.2733, lon: -66.0633, alt: 2600, pitch: -38, heading: 20, buildingHeight: 0 },
-      { name: 'Saint John Reversing Falls Rapids DZ', lat: 45.2578, lon: -66.0878, alt: 1200, pitch: -30, heading: 200, buildingHeight: 10 },
+      { name: 'Rapid Falls DZ', lat: 45.2578, lon: -66.0878, alt: 1200, pitch: -30, heading: 200, buildingHeight: 10 },
       { name: 'Saint John City Market DZ', lat: 45.2731, lon: -66.0597, alt: 500, pitch: -30, heading: 180, buildingHeight: 20 },
       { name: 'Saint John Carleton Martello Tower DZ', lat: 45.2600, lon: -66.0736, alt: 700, pitch: -30, heading: 90, buildingHeight: 12 },
       { name: 'Saint John Partridge Island DZ', lat: 45.2386, lon: -66.0487, alt: 1500, pitch: -28, heading: 340, buildingHeight: 20 },
@@ -342,6 +342,64 @@ export const LOCATIONS = Object.entries(CITY_POIS).map(([id, city]) => ({
   lon: city.pois[0].lon,
 }));
 
+/** Metro-scale cap for "closest city" crime-search matching. */
+export const CLOSEST_CITY_MAX_KM = 150;
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const toRad = (degrees) => (degrees * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Searchable city name for a preset: alias first so Saint John is not
+ * "Saint John Danger Zone".
+ * @param {{name?: string, aliases?: string[]}|null|undefined} city
+ * @returns {string}
+ */
+export function presetCitySearchName(city) {
+  const alias = Array.isArray(city?.aliases)
+    ? city.aliases.find((name) => String(name || '').trim())
+    : '';
+  if (alias) return String(alias).trim();
+  return String(city?.name || '')
+    .replace(/\s+danger zone\s*$/i, '')
+    .replace(/\s+dz\s*$/i, '')
+    .trim();
+}
+
+/**
+ * Closest curated city to a point, for crime-stat search.
+ * @param {number} lat
+ * @param {number} lon
+ * @returns {{name: string, distKm: number, source: string}|null}
+ */
+export function closestCityForSearch(lat, lon) {
+  const latitude = Number(lat);
+  const longitude = Number(lon);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  let best = null;
+  const consider = (name, cityLat, cityLon, source) => {
+    const label = String(name || '').trim();
+    if (!label || !Number.isFinite(cityLat) || !Number.isFinite(cityLon)) return;
+    const distKm = haversineKm(latitude, longitude, cityLat, cityLon);
+    if (!best || distKm < best.distKm) best = { name: label, distKm, source };
+  };
+  for (const city of Object.values(CITY_POIS)) {
+    const poi = city?.pois?.[0];
+    consider(presetCitySearchName(city), poi?.lat, poi?.lon, 'preset');
+  }
+  for (const city of CANADIAN_CITIES) {
+    consider(city.name, city.lat, city.lon, 'gazetteer');
+  }
+  if (!best || best.distKm > CLOSEST_CITY_MAX_KM) return null;
+  return best;
+}
+
 /** Camera distance used when the gazetteer answers a search: a whole-city view. */
 export const CITY_OVERVIEW_RANGE_M = 14000;
 /** Camera distance for a gazetteer city when a close view was asked for. */
@@ -538,7 +596,14 @@ export function flyToLandmark(viewer, lat, lon, options = {}) {
 
   // Use sampled height if available, otherwise fall back to pre-baked city ground elevation.
   // Google 3D Tiles don't populate globe terrain, so first fly-to always gets the fallback.
-  const terrainHeight = (sampledHeight != null && sampledHeight > 0) ? sampledHeight : groundElevation;
+  // The sample comes from whatever terrain tiles are loaded, and on the way in
+  // from far away those are coarse: over Calgary they read ~600 m against a true
+  // ~1045 m, which parked the camera a few metres above the street. The city's
+  // known elevation is therefore a floor, never overruled by a lower sample.
+  const terrainHeight = Math.max(
+    (sampledHeight != null && sampledHeight > 0) ? sampledHeight : 0,
+    groundElevation,
+  );
 
   const bounds = normalizeBuildingBounds(buildingBounds);
   const targetHeight = bounds ? terrainHeight + bounds.height / 2 : terrainHeight + buildingHeight;

@@ -1917,6 +1917,7 @@ export async function getBasemapLabelContext(viewer) {
       placeLabels: [],
       streetLabels: [],
       nearbyPlaceLabels: [],
+      locality: null,
     };
   }
 
@@ -1955,6 +1956,7 @@ export async function getBasemapLabelContext(viewer) {
       nearbyPlace.name,
       nearbyPlace.address,
     ])).slice(0, 24),
+    locality: place?.locality || viewportPlaces?.dominantLocality || null,
   };
 }
 

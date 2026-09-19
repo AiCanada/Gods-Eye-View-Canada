@@ -1129,10 +1129,10 @@ test('a feed page still drawing is not reported as an unknown layout', async () 
 
 // ---- install script and package.json ----
 
-test('the installer copies only the files the manifest names plus the options page and readme', () => {
+test('the installer copies only the files the manifest names plus the options page', () => {
   const manifest = JSON.parse(readRelayFile('manifest.json'));
   const files = relayInstallFiles(manifest);
-  assert.deepEqual(files, ['README.md', 'content.js', 'manifest.json', 'options.css', 'options.html', 'options.js', 'relay-logic.js', 'service-worker.js']);
+  assert.deepEqual(files, ['content.js', 'manifest.json', 'options.css', 'options.html', 'options.js', 'relay-logic.js', 'service-worker.js']);
   assert.deepEqual(extensionFiles().sort(), [...files].sort(), 'the extension folder holds exactly the installed files');
   for (const name of ['../evil.js', 'sub/dir.js', '.hidden.js', 'C:\\evil.js', 'evil..js', '']) {
     assert.throws(() => relayInstallFiles({ ...manifest, background: { service_worker: name, type: 'module' } }), /Refusing/, name);

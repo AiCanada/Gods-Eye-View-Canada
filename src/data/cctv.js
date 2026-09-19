@@ -61,6 +61,8 @@
  */
 import * as Cesium from 'cesium';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
+import { clearCctvTrafficPlanes, monitorPlaneFrame, setCctvTrafficPlane } from './cctvTrafficProjection.js';
+import { setCctvThumbnailTrafficActive } from './cctvThumbnailTraffic.js';
 import {
   CCTV_ACTIVATION_RESULT,
   activateCctvCameraFromWorldClick,
@@ -478,6 +480,8 @@ let _projectionOverlayOwnerId = null;
  * thumbnail absent because its monitor plane is the active representation.
  */
 let _activeCameraCardEnabled = false;
+/** Camera ids that currently have a thumbnail card entry. */
+let _thumbnailEntryIds = new Set();
 // Hover-summoned card (owner round 2, item B): pointing at a cardless camera
 // icon shows its card immediately as a PINNED entry (budget-exempt, top
 // draw-pass declutter priority).
@@ -1814,6 +1818,56 @@ function destroyProjectionPrimitiveCollection(viewer) {
  * No-op when the record has no plane runtime (idle neighbors have no plane).
  * @param {Object} record - Camera record.
  */
+/**
+ * What the traffic projector needs to know about a monitor plane: where the
+ * camera is mounted, where the picture stands, how it is turned, how big it is.
+ */
+function trafficPlaneSpec(geometry, positions, orientation) {
+  return {
+    mount: positions.mount,
+    center: positions.capCenter,
+    orientation,
+    halfW: geometry.halfW,
+    halfH: geometry.halfH,
+  };
+}
+
+/** Projection frames for thumbnail traffic, rebuilt only when a pose or its ground changes. */
+const _thumbnailTrafficFrames = new WeakMap();
+
+/**
+ * Where a camera looks, for standing its thumbnail over the area it shows.
+ * A camera whose heading nobody knows gets no frame: its bearing is a
+ * placeholder, so its card stays at the mount.
+ * @param {string} cameraId
+ * @returns {object|null}
+ */
+function thumbnailTrafficFrame(cameraId) {
+  const record = _recordById.get(cameraId);
+  const camera = record?.camera;
+  if (!camera || camera.headingConfidence === 'unknown') return null;
+  const groundAlt = groundAltFor(record);
+  const key = [camera.lat, camera.lon, camera.headingDeg, camera.pitchDeg, camera.fovDeg,
+    camera.rangeM, camera.mountHeightM, groundAlt, record.probeClampRangeM].join('|');
+  const cached = _thumbnailTrafficFrames.get(record);
+  if (cached?.key === key) return cached.frame;
+  let frame = null;
+  try {
+    const geometry = record.frustumGeometry
+      || computeFrustumGeometry(camera, groundAlt, record.probeClampRangeM);
+    const positions = record.frustumPositions || frustumCartesians(geometry);
+    frame = monitorPlaneFrame(trafficPlaneSpec(
+      geometry,
+      positions,
+      planeOrientationFor(camera, positions.capCenter),
+    ));
+  } catch {
+    frame = null;
+  }
+  _thumbnailTrafficFrames.set(record, { key, frame });
+  return frame;
+}
+
 function updatePlanePlacement(record) {
   const runtime = record?.projection;
   if (!runtime?.planeEntity && !runtime?.planePrimitive) return;
@@ -1822,6 +1876,11 @@ function updatePlanePlacement(record) {
   const positions = record.frustumPositions || frustumCartesians(geometry);
   const orientation = planeOrientationFor(record.camera, positions.capCenter);
   const dimensions = new Cesium.Cartesian2(geometry.halfW * 2, geometry.halfH * 2);
+  runtime.trafficPlane = trafficPlaneSpec(geometry, positions, orientation);
+  // A calibration edit moves the picture; keep the projected traffic on it.
+  if (runtime.planeEntity?.show || runtime.planePrimitive?.show) {
+    setCctvTrafficPlane(_viewer, runtime.cameraId, runtime.trafficPlane);
+  }
   if (runtime.planeEntity) {
     runtime.planeEntity.position = positions.capCenter;
     runtime.planeEntity.orientation = orientation;
@@ -1859,6 +1918,8 @@ function setPlaneVisible(runtime, visible) {
   const show = !!visible;
   if (runtime.planeEntity) runtime.planeEntity.show = show;
   if (runtime.planePrimitive) runtime.planePrimitive.show = show;
+  // Street traffic the camera can see is drawn onto its open picture.
+  setCctvTrafficPlane(_viewer, runtime.cameraId, show ? runtime.trafficPlane : null);
   if (show) restoreSpriteOrder(_viewer);
   if (visible && runtime.overlayEntry && runtime.cameraId) {
     if (_projectionOverlayOwnerId !== runtime.cameraId) {
@@ -1887,6 +1948,7 @@ function createProjectionPlane(record, runtime, geometry, positions) {
   });
   const orientation = planeOrientationFor(record.camera, positions.capCenter);
   const dimensions = new Cesium.Cartesian2(geometry.halfW * 2, geometry.halfH * 2);
+  runtime.trafficPlane = trafficPlaneSpec(geometry, positions, orientation);
   runtime.planeEntity = _viewer.entities.add({
     id: `cctv-${record.camera.id}-plane`,
     properties: { cctvCameraId: record.camera.id },
@@ -2112,6 +2174,7 @@ function ensureProjectionRuntime(record) {
  */
 function destroyProjectionRuntime(runtime) {
   if (!runtime) return;
+  setCctvTrafficPlane(_viewer, runtime.cameraId, null);
   if (runtime.video) {
     runtime.video.pause();
     runtime.video.removeAttribute('src');
@@ -3345,7 +3408,11 @@ function pushAmbientCardEntries() {
     if (!record?.position) return;
     entries.push(createCctvThumbnailOverlayEntry({
       id,
-      position: record.position,
+      // The card stands where the camera LOOKS, not where it is mounted: that
+      // is where its spatial picture opens, so the thumbnail already lines up
+      // with the map and nothing jumps when it is clicked. A camera with no
+      // usable pose keeps its mount position.
+      position: thumbnailTrafficFrame(id)?.center || record.position,
       gapPx: CARD_GAP_PX,
       scale: _cardScale,
       title: record.camera.name,
@@ -3367,6 +3434,17 @@ function pushAmbientCardEntries() {
     entries,
     CCTV_OVERLAY_SOURCE_OPTIONS,
   );
+  // The monitor plane and the thumbnail are two views of the same camera; when
+  // the active camera gains or loses its thumbnail the plane must follow.
+  const hadActive = _thumbnailEntryIds.has(_activeCameraId);
+  _thumbnailEntryIds = new Set(entries.map((entry) => entry.id));
+  if (_activeCameraId && hadActive !== _thumbnailEntryIds.has(_activeCameraId)) {
+    const projection = _recordById.get(_activeCameraId)?.projection;
+    if (projection) {
+      setPlaneVisible(projection, !!(_enabled && _showProjection
+        && !_thumbnailEntryIds.has(_activeCameraId)));
+    }
+  }
 }
 
 /**
@@ -3655,6 +3733,8 @@ function stopCardFrameLoop() {
  */
 function teardownAmbientCards() {
   stopCardFrameLoop();
+  _thumbnailEntryIds = new Set();
+  setCctvThumbnailTrafficActive(false);
   _cctvOverlayHost.clearSource(CCTV_OVERLAY_SOURCE_ID);
   _cctvOverlayHost.setVisible(CCTV_OVERLAY_SOURCE_ID, false);
   clearHoverCard();
@@ -3687,6 +3767,7 @@ export function hideCctvRecordVisuals(records, destroyVolume, activeCameraId = n
     if (record?.projection?.planeEntity) record.projection.planeEntity.show = false;
     if (record?.projection?.planePrimitive) record.projection.planePrimitive.show = false;
   }
+  clearCctvTrafficPlanes();
 }
 
 function hideCctvVisuals() {
@@ -3722,7 +3803,10 @@ export function refreshCoverageStyles() {
     // One live plane in the world at a time (§2c): only the active camera's
     // far cap carries the monitor plane; idle neighbors get the faint
     // wireframe only.
-    const planeShowing = !!(_enabled && _showProjection && isActive);
+    // ...and never beside its own thumbnail: a camera showing as a card keeps
+    // the card, and the spatial plane stays closed until the card goes.
+    const planeShowing = !!(_enabled && _showProjection && isActive
+      && !_thumbnailEntryIds.has(record.camera.id));
 
     const inVisibleSet = coverageVisible.has(record.camera.id);
     for (const entity of record.coverageEntities || []) {
@@ -6017,6 +6101,8 @@ const cctvLayer = {
     // Ambient card tier: shared host source + policy-gated frame pacer + the
     // initial selection pass (moveEnd drives every later reselection).
     _cctvOverlayHost.setVisible(CCTV_OVERLAY_SOURCE_ID, true);
+    // Vehicles driving behind a thumbnail are repainted over its picture.
+    setCctvThumbnailTrafficActive(true);
     startCardFrameLoop();
     refreshAmbientCards();
     maybeSeedArea();

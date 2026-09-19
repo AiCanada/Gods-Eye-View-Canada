@@ -308,3 +308,135 @@
 #location-search.searching {
   opacity: 0.5;
 }
+
+/* Every location must be reachable: both rows scroll sideways and SHOW that
+   they do. The hidden scrollbar left the far cities and a long landmark row
+   looking like they did not exist. Scoped through #location-bar so it outranks the dock rules and
+   wins over their `scrollbar-width: none`. */
+#command-dock #location-bar .location-pills,
+#command-dock #location-bar .poi-row-container.expanded,
+.location-pills,
+.poi-row-container.expanded {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(127, 231, 255, 0.55) rgba(127, 231, 255, 0.08);
+  padding-bottom: 4px;
+}
+
+#command-dock #location-bar .poi-row-container.expanded {
+  max-height: 2.6rem;
+}
+
+#command-dock #location-bar .location-pills::-webkit-scrollbar,
+#command-dock #location-bar .poi-row-container.expanded::-webkit-scrollbar,
+.location-pills::-webkit-scrollbar,
+.poi-row-container.expanded::-webkit-scrollbar {
+  display: block;
+  height: 6px;
+}
+
+.location-pills::-webkit-scrollbar-thumb,
+.poi-row-container.expanded::-webkit-scrollbar-thumb {
+  background: rgba(127, 231, 255, 0.55);
+  border-radius: 3px;
+}
+
+.location-pills::-webkit-scrollbar-track,
+.poi-row-container.expanded::-webkit-scrollbar-track {
+  background: rgba(127, 231, 255, 0.08);
+}
+
+/* Pinned landmark plus LAST / 2ND LAST, ahead of the cities. */
+.location-pill.location-pill-shortcut {
+  border-color: rgba(255, 196, 92, 0.6);
+  color: rgba(255, 220, 150, 0.95);
+}
+
+.location-pill.location-pill-shortcut[data-shortcut-role='pinned'] {
+  border-color: rgba(255, 120, 120, 0.65);
+  color: rgba(255, 190, 190, 0.98);
+}
+
+/* Corner grips: the LOCATION tray resizes from any corner (locationPanelResize.js). */
+.location-resize-grip {
+  position: absolute;
+  z-index: 6;
+  width: 16px;
+  height: 16px;
+  touch-action: none;
+  opacity: 0.55;
+  transition: opacity 120ms ease-out;
+}
+
+.location-resize-grip:hover {
+  opacity: 1;
+}
+
+.location-resize-grip::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 2px solid rgba(127, 231, 255, 0.9);
+}
+
+.location-resize-grip-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.location-resize-grip-nw::after {
+  border-right: none;
+  border-bottom: none;
+}
+
+.location-resize-grip-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.location-resize-grip-ne::after {
+  border-left: none;
+  border-bottom: none;
+}
+
+.location-resize-grip-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.location-resize-grip-sw::after {
+  border-right: none;
+  border-top: none;
+}
+
+.location-resize-grip-se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+.location-resize-grip-se::after {
+  border-left: none;
+  border-top: none;
+}
+
+/* A resized tray lays its pills out in as many rows as its height holds and
+   lets the city row take the space it was given. */
+#command-dock #location-bar .location-pills,
+.location-pills {
+  grid-template-rows: repeat(var(--location-pill-rows, 2), auto);
+}
+
+#command-dock #location-bar .location-popover-resized .location-city-row {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+}
+
+#command-dock #location-bar .location-popover-resized .location-pills {
+  flex: 1 1 auto;
+  align-content: start;
+}
