@@ -147,7 +147,8 @@ async function postWds(path, body, timeoutMs = 15000) {
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error(`StatCan WDS returned ${response.status}`);
+    if (!response.ok)
+      throw new Error(`StatCan WDS returned ${response.status}`);
     return await readResponseJsonCapped(response, METADATA_MAX_BYTES);
   } finally {
     clearTimeout(timeout);
@@ -198,13 +199,8 @@ async function loadTableMetadata() {
  * }} options
  */
 function classifyStatCanOutliers(rows, options) {
-  const {
-    cityMember,
-    canadaMember,
-    violationById,
-    rateStatId,
-    pctStatId,
-  } = options;
+  const { cityMember, canadaMember, violationById, rateStatId, pctStatId } =
+    options;
   const latest = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
     if (row?.status && row.status !== 'SUCCESS') continue;
@@ -247,8 +243,10 @@ function classifyStatCanOutliers(rows, options) {
       canadaValue > 0
     ) {
       const ratio = cityValue / canadaValue;
-      if (ratio >= RATE_HIGH_VS_CANADA) score = Math.max(score, ratio / RATE_HIGH_VS_CANADA);
-      else if (ratio > 0 && ratio <= RATE_LOW_VS_CANADA) score = Math.max(score, RATE_LOW_VS_CANADA / ratio);
+      if (ratio >= RATE_HIGH_VS_CANADA)
+        score = Math.max(score, ratio / RATE_HIGH_VS_CANADA);
+      else if (ratio > 0 && ratio <= RATE_LOW_VS_CANADA)
+        score = Math.max(score, RATE_LOW_VS_CANADA / ratio);
       if (ratio >= RATE_HIGH_VS_CANADA) {
         flags.push(`${ratio.toFixed(1)} times the Canada rate`);
       } else if (ratio <= RATE_LOW_VS_CANADA) {
