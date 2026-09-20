@@ -51,7 +51,24 @@ const PACKS = [
   // transcanadahighway.com page (build-transcanada-links.mjs).
   'cams-transcanada-links.json',
   'cams-on.json',
+  // The Canadian webcam listing (build-canada-listing.mjs), last: everything
+  // above wins the duplicate checks, so only cameras not acquired yet are added
+  // (the city systems, harbours, ferries, ski hills, resorts).
+  'cams-canada-listing.json',
 ];
+
+// In the listing, a camera on the SAME host as an earlier camera a few metres
+// away is another view from the same pole (Ontario 511 and DriveBC list every
+// view separately), not a second copy of it, so the position rule spares it.
+// A copy reached through a different directory is on a different host.
+const SAME_HOST_IS_ANOTHER_VIEW = new Set(['cams-canada-listing.json']);
+const hostOf = (href) => {
+  try {
+    return new URL(href).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+};
 
 const haversineKm = (a, b) => {
   const R = 6371;
@@ -140,17 +157,23 @@ for (const file of PACKS) {
     // the current frame from the operator's page on each request. Validate the
     // page instead, and key deduplication off it.
     const resolverBacked = Boolean(cam.frameResolver && cam.pageUrl);
-    const dedupeKey = resolverBacked ? cam.pageUrl : cam.url;
+    // A stream-only camera stores no still: `feedType: 'none'` with its HLS
+    // playlist in `videoUrl`, which the server plays as video (every pack alike).
+    const streamOnly = !resolverBacked && cam.feedType === 'none';
+    const dedupeKey = resolverBacked ? cam.pageUrl : streamOnly ? cam.videoUrl : cam.url;
 
     if (resolverBacked) {
       if (!/^https?:\/\//i.test(cam.pageUrl)) { reject('bad resolver pageUrl'); continue; }
       if (cam.url) { reject('resolver-backed entry must not store a feed url'); continue; }
+    } else if (streamOnly) {
+      if (typeof cam.videoUrl !== 'string' || !/^https:\/\/[^\s]+\.m3u8(?:\?|$)/i.test(cam.videoUrl)) { reject('stream-only entry without a plain https .m3u8 videoUrl'); continue; }
+      if (cam.url) { reject('stream-only entry must not store a still url'); continue; }
     } else if (typeof cam.url !== 'string' || !/^https?:\/\//i.test(cam.url)) {
       reject('bad url');
       continue;
     }
     let urlRejected = '';
-    if (!resolverBacked) {
+    if (!resolverBacked && !streamOnly) {
       if (/\.(html?|asp|php)(\?|$)/i.test(cam.url) && !/snapshot\.php|player\.php/i.test(cam.url)) {
         urlRejected = 'url points at an HTML page';
       } else if (MIRRORED_FEEDS.some((m) => cam.url.includes(m))) {
@@ -167,7 +190,7 @@ for (const file of PACKS) {
     }
     if (urlRejected) { reject(urlRejected); continue; }
 
-    if (!FEED_TYPES.has(cam.feedType)) { reject(`unsupported feedType ${cam.feedType}`); continue; }
+    if (!streamOnly && !FEED_TYPES.has(cam.feedType)) { reject(`unsupported feedType ${cam.feedType}`); continue; }
 
     const lat = Number(cam.lat);
     const lon = Number(cam.lon);
@@ -180,7 +203,10 @@ for (const file of PACKS) {
     // The same camera reached through two directories (nbcams.ca and a
     // provincial dump both list the NB 511 cameras) shows up twice a few
     // metres apart; the earlier, higher-priority pack wins.
-    if (placedEarlier.some((other) => haversineKm(other, { lat, lon }) <= DUPLICATE_RADIUS_KM)) {
+    const ownHost = hostOf(dedupeKey);
+    const anotherView = (other) =>
+      SAME_HOST_IS_ANOTHER_VIEW.has(file) && ownHost && hostOf(other.pageUrl || other.url || other.videoUrl) === ownHost;
+    if (placedEarlier.some((other) => haversineKm(other, { lat, lon }) <= DUPLICATE_RADIUS_KM && !anotherView(other))) {
       reject('duplicate of a camera in a higher-priority pack');
       continue;
     }

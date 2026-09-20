@@ -81,6 +81,7 @@ export {
   admitLlmAskRequest,
   buildLlmAskCall,
   llmAnswerFromUpstream,
+  llmAnswerTokens,
   llmAskTimeoutMs,
   llmMaxTokens,
   llmProviderRoster,

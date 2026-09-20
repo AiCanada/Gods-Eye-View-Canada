@@ -1,0 +1,1070 @@
+{
+ "Kelly's Mountain, Nova Scotia, Canada": {
+  "lat": 46.251926,
+  "lon": -60.528126,
+  "label": "Kelly's Mountain, Englishtown, Nova Scotia",
+  "kind": "peak"
+ },
+ "Stoney Trail & 52 St SE, Alberta, Canada": {
+  "lat": 51.041467,
+  "lon": -113.920939,
+  "label": "Stoney Trail SE, Calgary, Alberta",
+  "kind": "motorway"
+ },
+ "Badger, Newfoundland and Labrador, Canada": {
+  "lat": 48.978414,
+  "lon": -56.044006,
+  "label": "Badger, Newfoundland and Labrador",
+  "kind": "town"
+ },
+ "Bay Roberts, Newfoundland and Labrador, Canada": {
+  "lat": 47.575924,
+  "lon": -53.283341,
+  "label": "Bay Roberts, Newfoundland and Labrador",
+  "kind": "town"
+ },
+ "Birchy Narrows, Newfoundland and Labrador, Canada": {
+  "lat": 52.720322,
+  "lon": -55.966792,
+  "label": "Birchy Narrows Island, Pinsents Arm, Newfoundland and Labrador",
+  "kind": "island"
+ },
+ "Cacheriver, Newfoundland and Labrador, Canada": {
+  "lat": 47.573347,
+  "lon": -52.733309,
+  "label": "Memorial University of Newfoundland and Labrador, St. John's, Newfoundland and Labrador",
+  "kind": "university"
+ },
+ "Flower's Cove, Newfoundland and Labrador, Canada": {
+  "lat": 51.300445,
+  "lon": -56.742709,
+  "label": "Flower's Cove, Newfoundland and Labrador",
+  "kind": "town"
+ },
+ "Foxtrap, Newfoundland and Labrador, Canada": {
+  "lat": 47.507325,
+  "lon": -52.995141,
+  "label": "Foxtrap River, Conception Bay South, Newfoundland and Labrador",
+  "kind": "stream"
+ },
+ "Gander, Newfoundland and Labrador, Canada": {
+  "lat": 48.959229,
+  "lon": -54.618788,
+  "label": "Gander, Newfoundland and Labrador",
+  "kind": "town"
+ },
+ "Goobies, Newfoundland and Labrador, Canada": {
+  "lat": 47.942856,
+  "lon": -53.963246,
+  "label": "Goobies, Newfoundland and Labrador",
+  "kind": "locality"
+ },
+ "Grand Falls-Windsor, Newfoundland and Labrador, Canada": {
+  "lat": 48.944151,
+  "lon": -55.652618,
+  "label": "Grand Falls-Windsor, Newfoundland and Labrador",
+  "kind": "town"
+ },
+ "Harbour Breton, Newfoundland and Labrador, Canada": {
+  "lat": 47.471026,
+  "lon": -55.825795,
+  "label": "Harbour Breton, Newfoundland and Labrador",
+  "kind": "town"
+ },
+ "Lewisporte, Newfoundland and Labrador, Canada": {
+  "lat": 49.246293,
+  "lon": -55.059357,
+  "label": "Lewisporte, Newfoundland and Labrador",
+  "kind": "town"
+ },
+ "Lumsden, Newfoundland and Labrador, Canada": {
+  "lat": 49.294139,
+  "lon": -53.587889,
+  "label": "Lumsden, Newfoundland and Labrador",
+  "kind": "town"
+ },
+ "Paddy's Pond, Newfoundland and Labrador, Canada": {
+  "lat": 47.468428,
+  "lon": -52.889509,
+  "label": "St. John's (Paddys Pond) Water Aerodrome, St. John's, Newfoundland and Labrador",
+  "kind": "aerodrome"
+ },
+ "Port au Port, Newfoundland and Labrador, Canada": {
+  "lat": 50.706904,
+  "lon": -57.358898,
+  "label": "Port au Choix, Newfoundland and Labrador",
+  "kind": "town"
+ },
+ "Port aux Basques, Newfoundland and Labrador, Canada": {
+  "lat": 47.577664,
+  "lon": -59.142419,
+  "label": "Port Aux Basques, Newfoundland and Labrador",
+  "kind": "town"
+ },
+ "Pynn's Brook, Newfoundland and Labrador, Canada": {
+  "lat": 48.950485,
+  "lon": -55.870269,
+  "label": "Pynn's Brook, Newfoundland and Labrador",
+  "kind": "stream"
+ },
+ "Ranger Lake, Newfoundland and Labrador, Canada": {
+  "lat": 55.058563,
+  "lon": -59.209321,
+  "label": "Ranger Bight Brook, Newfoundland and Labrador",
+  "kind": "lake"
+ },
+ "Salmonier, Newfoundland and Labrador, Canada": {
+  "lat": 47.282793,
+  "lon": -53.265405,
+  "label": "Salmonier, Newfoundland and Labrador",
+  "kind": "village"
+ },
+ "Salt Pond, Newfoundland and Labrador, Canada": {
+  "lat": 53.486141,
+  "lon": -55.912748,
+  "label": "Salt Pond, Newfoundland and Labrador",
+  "kind": "bay"
+ },
+ "Springdale, Newfoundland and Labrador, Canada": {
+  "lat": 49.499851,
+  "lon": -56.07404,
+  "label": "Springdale, Newfoundland and Labrador",
+  "kind": "town"
+ },
+ "Bradner Rd, Abbotsford, British Columbia, Canada": {
+  "lat": 49.096997,
+  "lon": -122.427009,
+  "label": "Bradner, Abbotsford, British Columbia",
+  "kind": "suburb"
+ },
+ "L.Hwy-SE Pitt Meadows, British Columbia, Canada": {
+  "lat": 49.242962,
+  "lon": -122.719924,
+  "label": "Lougheed Hwy (EB) at Kennedy Rd, Pitt Meadows, British Columbia",
+  "kind": "bus_stop"
+ },
+ "Sutton Pass VI, British Columbia, Canada": {
+  "lat": 49.281138,
+  "lon": -125.353073,
+  "label": "Sutton Pass, Area D (Sproat Lake), British Columbia",
+  "kind": "saddle"
+ },
+ "Angus & Marine, Vancouver, British Columbia, Canada": {
+  "lat": 49.253823,
+  "lon": -123.247328,
+  "label": "University of British Columbia Botanical Garden, Electoral Area A, British Columbia",
+  "kind": "garden"
+ },
+ "Arbutus Greenway SWM, Vancouver, British Columbia, Canada": {
+  "lat": 49.236645,
+  "lon": -123.155212,
+  "label": "Arbutus Greenway, Vancouver, British Columbia",
+  "kind": "cycleway"
+ },
+ "Arbutus & Lahb, Vancouver, British Columbia, Canada": {
+  "lat": 49.248476,
+  "lon": -123.154211,
+  "label": "Lahb Avenue, Vancouver, British Columbia",
+  "kind": "residential"
+ },
+ "Boundary Street & 1st Avenue, Vancouver, British Columbia, Canada": {
+  "lat": 49.269175,
+  "lon": -123.023835,
+  "label": "Boundary Rd (SB) at East 1st Ave, Vancouver, British Columbia",
+  "kind": "bus_stop"
+ },
+ "Boundary Canada Way, Vancouver, British Columbia, Canada": {
+  "lat": 49.073622,
+  "lon": -123.004422,
+  "label": "Boundary Bay Airport, Delta, British Columbia",
+  "kind": "aerodrome"
+ },
+ "Boundary & Lougheed, Vancouver, British Columbia, Canada": {
+  "lat": 49.265264,
+  "lon": -123.025422,
+  "label": "Lougheed Hwy (WB) at Boundary Loop, Vancouver, British Columbia",
+  "kind": "bus_stop"
+ },
+ "Cambie Street & 2nd Avenue, Vancouver, British Columbia, Canada": {
+  "lat": 49.267916,
+  "lon": -123.114822,
+  "label": "Cambie Street Bridge, Vancouver, British Columbia",
+  "kind": "primary"
+ },
+ "Cambie Bridge, Vancouver, British Columbia, Canada": {
+  "lat": 49.274304,
+  "lon": -123.114539,
+  "label": "Cambie Bridge, Vancouver, British Columbia",
+  "kind": "cycleway"
+ },
+ "Carolina Grt Northern, Vancouver, British Columbia, Canada": {
+  "lat": 49.248464,
+  "lon": -123.234155,
+  "label": "The University of British Columbia Vancouver, Electoral Area A, British Columbia",
+  "kind": "university"
+ },
+ "Denman & Beach, Vancouver, British Columbia, Canada": {
+  "lat": 49.290841,
+  "lon": -123.140311,
+  "label": "Park Beach Manor, Vancouver, British Columbia",
+  "kind": "apartments"
+ },
+ "Gladstone & MBE, Vancouver, British Columbia, Canada": {
+  "lat": 49.205799,
+  "lon": -123.060133,
+  "label": "Gladstone-Riverside Park, Vancouver, British Columbia",
+  "kind": "park"
+ },
+ "Granville Street & 12th Avenue, Vancouver, British Columbia, Canada": {
+  "lat": 49.260528,
+  "lon": -123.138827,
+  "label": "Granville Street (SB) at West 12th Avenue, Vancouver, British Columbia",
+  "kind": "bus_stop"
+ },
+ "Granville & Robson, Vancouver, British Columbia, Canada": {
+  "lat": 49.281558,
+  "lon": -123.119972,
+  "label": "Downtown Robson St & Granville St, Vancouver, British Columbia",
+  "kind": "information"
+ },
+ "Joyce & Vanness, Vancouver, British Columbia, Canada": {
+  "lat": 49.242785,
+  "lon": -123.043185,
+  "label": "Joyce Medical Innovations, Vancouver, British Columbia",
+  "kind": "medical_supply"
+ },
+ "Kingsway & Broadway, Vancouver, British Columbia, Canada": {
+  "lat": 49.262721,
+  "lon": -123.098079,
+  "label": "East Broadway (EB) at Kingsway, Vancouver, British Columbia",
+  "kind": "bus_stop"
+ },
+ "Knight Bridge, Vancouver, British Columbia, Canada": {
+  "lat": 49.208321,
+  "lon": -123.077297,
+  "label": "Knight Street Bridge, Richmond, British Columbia",
+  "kind": "bridge"
+ },
+ "Nanaimo & Dundas, Vancouver, British Columbia, Canada": {
+  "lat": 49.284411,
+  "lon": -123.056706,
+  "label": "Nanaimo Street (SB) at Dundas St, Vancouver, British Columbia",
+  "kind": "bus_stop"
+ },
+ "Oak Street & 70th Avenue, Vancouver, British Columbia, Canada": {
+  "lat": 49.208843,
+  "lon": -123.130108,
+  "label": "Oak St (NB) at West 70th Ave, Vancouver, British Columbia",
+  "kind": "bus_stop"
+ },
+ "Sawmill East Marine, Vancouver, British Columbia, Canada": {
+  "lat": 49.279437,
+  "lon": -123.066666,
+  "label": "Vancouver East, Vancouver, British Columbia",
+  "kind": "political"
+ },
+ "Sawmill West Marine, Vancouver, British Columbia, Canada": {
+  "lat": 49.207009,
+  "lon": -123.033565,
+  "label": "Sawmill Crescent West, Vancouver, British Columbia",
+  "kind": "residential"
+ },
+ "Victoria Vic Com, Vancouver, British Columbia, Canada": {
+  "lat": 48.427315,
+  "lon": -123.36865,
+  "label": "Vancouver Island Lash Supply Company, Victoria, British Columbia",
+  "kind": "beauty"
+ },
+ "Yukon & SW Marine Drive, Vancouver, British Columbia, Canada": {
+  "lat": 49.209684,
+  "lon": -123.11698,
+  "label": "Marine Drive, Vancouver, British Columbia",
+  "kind": "station"
+ },
+ "Calgary loc10, Calgary, Alberta, Canada": {
+  "lat": 51.045606,
+  "lon": -114.057541,
+  "label": "Calgary, Alberta",
+  "kind": "city"
+ },
+ "Calgary loc109, Calgary, Alberta, Canada": {
+  "lat": 51.045606,
+  "lon": -114.057541,
+  "label": "Calgary, Alberta",
+  "kind": "city"
+ },
+ "Calgary loc159, Calgary, Alberta, Canada": {
+  "lat": 51.045606,
+  "lon": -114.057541,
+  "label": "Calgary, Alberta",
+  "kind": "city"
+ },
+ "Calgary loc169, Calgary, Alberta, Canada": {
+  "lat": 51.045606,
+  "lon": -114.057541,
+  "label": "Calgary, Alberta",
+  "kind": "city"
+ },
+ "Calgary loc171, Calgary, Alberta, Canada": {
+  "lat": 51.045606,
+  "lon": -114.057541,
+  "label": "Calgary, Alberta",
+  "kind": "city"
+ },
+ "Calgary loc210, Calgary, Alberta, Canada": {
+  "lat": 51.045606,
+  "lon": -114.057541,
+  "label": "Calgary, Alberta",
+  "kind": "city"
+ },
+ "York Region loc393, York Region, Ontario, Canada": {
+  "lat": 44.28792,
+  "lon": -79.419767,
+  "label": "York Region, Georgina, Ontario",
+  "kind": "industrial"
+ },
+ "York Region loc394, York Region, Ontario, Canada": {
+  "lat": 44.28792,
+  "lon": -79.419767,
+  "label": "York Region, Georgina, Ontario",
+  "kind": "industrial"
+ },
+ "York Region loc395, York Region, Ontario, Canada": {
+  "lat": 44.28792,
+  "lon": -79.419767,
+  "label": "York Region, Georgina, Ontario",
+  "kind": "industrial"
+ },
+ "York Region loc396, York Region, Ontario, Canada": {
+  "lat": 44.28792,
+  "lon": -79.419767,
+  "label": "York Region, Georgina, Ontario",
+  "kind": "industrial"
+ },
+ "York Region loc397, York Region, Ontario, Canada": {
+  "lat": 44.28792,
+  "lon": -79.419767,
+  "label": "York Region, Georgina, Ontario",
+  "kind": "industrial"
+ },
+ "York Region loc398, York Region, Ontario, Canada": {
+  "lat": 44.28792,
+  "lon": -79.419767,
+  "label": "York Region, Georgina, Ontario",
+  "kind": "industrial"
+ },
+ "York Region loc399, York Region, Ontario, Canada": {
+  "lat": 44.28792,
+  "lon": -79.419767,
+  "label": "York Region, Georgina, Ontario",
+  "kind": "industrial"
+ },
+ "York Region loc400, York Region, Ontario, Canada": {
+  "lat": 44.28792,
+  "lon": -79.419767,
+  "label": "York Region, Georgina, Ontario",
+  "kind": "industrial"
+ },
+ "York Region loc401, York Region, Ontario, Canada": {
+  "lat": 44.28792,
+  "lon": -79.419767,
+  "label": "York Region, Georgina, Ontario",
+  "kind": "industrial"
+ },
+ "York Region loc402, York Region, Ontario, Canada": {
+  "lat": 44.28792,
+  "lon": -79.419767,
+  "label": "York Region, Georgina, Ontario",
+  "kind": "industrial"
+ },
+ "Toronto loc8294, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc8296, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc8297, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc8299, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc8301, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc8302, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc8303, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc8304, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc8305, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc9337, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc9338, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc9339, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc9340, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Toronto loc9341, Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Calgary loc223, Calgary, Alberta, Canada": {
+  "lat": 51.045606,
+  "lon": -114.057541,
+  "label": "Calgary, Alberta",
+  "kind": "city"
+ },
+ "New Brunswick 511 Cctv/63, New Brunswick, Canada": {
+  "lat": 45.965939,
+  "lon": -66.6518,
+  "label": "The Lily Dipper Cafe, Fredericton, New Brunswick",
+  "kind": "cafe"
+ },
+ "Newfoundland and Labrador 511 Cctv/48, Newfoundland and Labrador, Canada": {
+  "lat": 47.597135,
+  "lon": -52.719046,
+  "label": "St. John's, Newfoundland and Labrador",
+  "kind": "house_number"
+ },
+ "Newfoundland and Labrador 511 Cctv/50, Newfoundland and Labrador, Canada": {
+  "lat": 47.597135,
+  "lon": -52.719046,
+  "label": "St. John's, Newfoundland and Labrador",
+  "kind": "house_number"
+ },
+ "Saskatchewan 511 Cctv/59, Saskatchewan, Canada": null,
+ "Manitoba 511 Cctv/62, Manitoba, Canada": null,
+ "Alberta 511 Cctv/755, Alberta, Canada": null,
+ "Alberta 511 Cctv/756, Alberta, Canada": null,
+ "Alberta 511 Cctv/757, Alberta, Canada": null,
+ "Ontario 511 loc84--2, Ontario, Canada": {
+  "lat": 43.508369,
+  "lon": -79.863813,
+  "label": "Milton, Ontario",
+  "kind": "house_number"
+ },
+ "Ontario 511 loc86--2, Ontario, Canada": {
+  "lat": 43.508369,
+  "lon": -79.863813,
+  "label": "Milton, Ontario",
+  "kind": "house_number"
+ },
+ "Ontario 511 loc85--2, Ontario, Canada": {
+  "lat": 43.508369,
+  "lon": -79.863813,
+  "label": "Milton, Ontario",
+  "kind": "house_number"
+ },
+ "Ontario 511 loc88--2, Ontario, Canada": {
+  "lat": 43.508369,
+  "lon": -79.863813,
+  "label": "Milton, Ontario",
+  "kind": "house_number"
+ },
+ "Highway 401 at James Snow Parkway, Ontario, Canada": {
+  "lat": 43.53374,
+  "lon": -79.839249,
+  "label": "Milton, Ontario",
+  "kind": "house_number"
+ },
+ "Ontario 511 loc91--2, Ontario, Canada": {
+  "lat": 43.508369,
+  "lon": -79.863813,
+  "label": "Milton, Ontario",
+  "kind": "house_number"
+ },
+ "Ontario 511 loc90--2, Ontario, Canada": {
+  "lat": 43.508369,
+  "lon": -79.863813,
+  "label": "Milton, Ontario",
+  "kind": "house_number"
+ },
+ "Ontario 511 loc89--2, Ontario, Canada": {
+  "lat": 43.508369,
+  "lon": -79.863813,
+  "label": "Milton, Ontario",
+  "kind": "house_number"
+ },
+ "Ontario 511 loc46--3, Burlington, Ontario, Canada": {
+  "lat": 43.267884,
+  "lon": -79.84143,
+  "label": "Hamilton, Ontario",
+  "kind": "house"
+ },
+ "Castle Junction - Hwy 93S south, Alberta, Canada": null,
+ "View of Fairmont Le Château Frontenac in Quebec City, Quebec, Canada": {
+  "lat": 46.811818,
+  "lon": -71.205144,
+  "label": "Fairmont Le Château Frontenac, Quebec, Quebec",
+  "kind": "hotel"
+ },
+ "View of the runways at Trudeau Airport in Montreal, Canada, Quebec, Canada": null,
+ "Montréal - Trudeau Airport, Quebec, Canada": {
+  "lat": 45.468729,
+  "lon": -73.742488,
+  "label": "Montréal–Trudeau International Airport, Dorval, Quebec",
+  "kind": "aerodrome"
+ },
+ "Panoramic view over Saguenay bay in Québec, Quebec, Canada": null,
+ "Saguenay - Québec, Quebec, Canada": {
+  "lat": 48.405959,
+  "lon": -71.069183,
+  "label": "Saguenay, Quebec",
+  "kind": "city"
+ },
+ "Panoramic view from Ottawa, Canada, Ontario, Canada": {
+  "lat": 45.426238,
+  "lon": -75.670379,
+  "label": "A View from Two Sides, Ottawa, Ontario",
+  "kind": "artwork"
+ },
+ "View over the Niagara Falls, Ontario, Canada": {
+  "lat": 43.112156,
+  "lon": -79.117391,
+  "label": "Niagara Falls—Niagara-on-the-Lake, Niagara Falls, Ontario",
+  "kind": "political"
+ },
+ "View from Niagara Falls City in Ontario, Ontario, Canada": {
+  "lat": 43.071361,
+  "lon": -79.097325,
+  "label": "Falls View Brethren in Christ Church, Niagara Falls, Ontario",
+  "kind": "place_of_worship"
+ },
+ "View of the streets of Niagara Falls in Canada, Ontario, Canada": {
+  "lat": 43.088746,
+  "lon": -79.072506,
+  "label": "Hornblower Niagara Funicular, Niagara Falls, Ontario",
+  "kind": "funicular"
+ },
+ "View of Hurontario Street in Collingwood, Ontario, Canada": {
+  "lat": 44.501436,
+  "lon": -80.217703,
+  "label": "Government of Canada, Collingwood, Ontario",
+  "kind": "government"
+ },
+ "Fort Erie, view over the Canada Bound Truck Inspection, Ontario, Canada": null,
+ "Canada Bound Truck Inspection, Ontario, Canada": {
+  "lat": 43.984256,
+  "lon": -79.582007,
+  "label": "Truck Inspection Station, King, Ontario",
+  "kind": "service"
+ },
+ "View over the Colborne Port in Ontario, Canada, Ontario, Canada": null,
+ "Colborne - Ontario, Ontario, Canada": {
+  "lat": 42.886239,
+  "lon": -79.25139,
+  "label": "Port Colborne, Ontario",
+  "kind": "city"
+ },
+ "View from Parry Sound in Ontario, Ontario, Canada": {
+  "lat": 45.405015,
+  "lon": -80.103389,
+  "label": "Sound View Court, McDougall Township, Ontario",
+  "kind": "residential"
+ },
+ "Panoramic view over Ottawa in Ontario, Canada, Ontario, Canada": {
+  "lat": 45.409086,
+  "lon": -75.692689,
+  "label": "Retirement In View, Ottawa, Ontario",
+  "kind": "financial_advisor"
+ },
+ "View of Kennisis Lake in Haliburton, Canada, Ontario, Canada": {
+  "lat": 45.133555,
+  "lon": -78.7329,
+  "label": "Crests of Kennisis Hiking Trail, Algonquin Highlands, Ontario",
+  "kind": "path"
+ },
+ "View over the Downtown Clock Tower of Steinbach, Canada, Manitoba, Canada": null,
+ "Steinbach - Canada, Manitoba, Canada": {
+  "lat": 49.525441,
+  "lon": -96.685427,
+  "label": "Steinbach, Manitoba",
+  "kind": "city"
+ },
+ "Panoramic view of the Vancouver Harbour area, Canada, British Columbia, Canada": null,
+ "Panorama of Vancouver - Canada, British Columbia, Canada": {
+  "lat": 49.332248,
+  "lon": -122.952124,
+  "label": "Panorama Creek, District of North Vancouver, British Columbia",
+  "kind": "stream"
+ },
+ "View over the port of Vancouver, Canada, British Columbia, Canada": {
+  "lat": 49.27655,
+  "lon": -122.856764,
+  "label": "The Completion of the Canadian Pacific Railway, Port Moody, British Columbia",
+  "kind": "monument"
+ },
+ "View of downtown Calgary, Alberta, Canada": {
+  "lat": 51.046405,
+  "lon": -114.082145,
+  "label": "University of Calgary Downtown Campus, Calgary, Alberta",
+  "kind": "university"
+ },
+ "View of the port of Alberni in Canada, British Columbia, Canada": {
+  "lat": 49.290239,
+  "lon": -123.13207,
+  "label": "Consulate General of the Republic of Indonesia, Vancouver, British Columbia",
+  "kind": "diplomatic"
+ },
+ "View of the port area of Nanaimo in Canada, British Columbia, Canada": null,
+ "Nanaimo - Canada, British Columbia, Canada": {
+  "lat": 49.163877,
+  "lon": -123.938122,
+  "label": "Nanaimo, British Columbia",
+  "kind": "city"
+ },
+ "View over the Revelstoke railway in British Columbia, Canada, British Columbia, Canada": {
+  "lat": 51.008041,
+  "lon": -118.187271,
+  "label": "Revelstoke Viewpoint, Area B (Shelter Bay/Mica Creek), British Columbia",
+  "kind": "viewpoint"
+ },
+ "View over the BC Place Stadium in Vancouver, British Columbia, Canada": null,
+ "Vancouver - BC Place Stadium, British Columbia, Canada": {
+  "lat": 49.276841,
+  "lon": -123.109427,
+  "label": "BC Place Stadium East/West, Vancouver, British Columbia",
+  "kind": "parking"
+ },
+ "View of Craig Bay in Parksville, Canada, British Columbia, Canada": {
+  "lat": 48.453711,
+  "lon": -123.461649,
+  "label": "Interstate Batteries of Coastal British Columbia, View Royal, British Columbia",
+  "kind": "battery"
+ },
+ "View of Canmore in Alberta, Canada, Alberta, Canada": {
+  "lat": 51.086518,
+  "lon": -115.345301,
+  "label": "Mountain View Inn, Canmore, Alberta",
+  "kind": "hotel"
+ },
+ "View over the Saint John River in Fredericton, Canada, New Brunswick, Canada": null,
+ "Fredericton - Canada, New Brunswick, Canada": {
+  "lat": 45.963231,
+  "lon": -66.643243,
+  "label": "Fredericton, New Brunswick",
+  "kind": "city"
+ },
+ "View of Officers' Square in Fredericton, Canada, New Brunswick, Canada": {
+  "lat": 45.961863,
+  "lon": -66.638955,
+  "label": "Officers' Square, Fredericton, New Brunswick",
+  "kind": "park"
+ },
+ "View from Deep Cove in Vancouver, Canada, British Columbia, Canada": {
+  "lat": 49.309587,
+  "lon": -122.952159,
+  "label": "Baker View Street, District of North Vancouver, British Columbia",
+  "kind": "residential"
+ },
+ "View over Victoria harbour in Canada, British Columbia, Canada": {
+  "lat": 48.42533,
+  "lon": -123.390422,
+  "label": "Victoria Inner Harbour Airport, Victoria, British Columbia",
+  "kind": "aerodrome"
+ },
+ "View over the Ross Bay in Victoria, Canada, British Columbia, Canada": null,
+ "Ross Bay - Victoria, British Columbia, Canada": {
+  "lat": 48.411163,
+  "lon": -123.34053,
+  "label": "Ross Bay Cemetery, Victoria, British Columbia",
+  "kind": "cemetery"
+ },
+ "View over the White Rock's pier in Canada, British Columbia, Canada": null,
+ "White Rock - Canada, British Columbia, Canada": {
+  "lat": 49.023536,
+  "lon": -122.797924,
+  "label": "White Rock, British Columbia",
+  "kind": "city"
+ },
+ "View of Central Memorial Park in Calgary, Alberta, Canada": null,
+ "Central Memorial Park - Calgary, Alberta, Canada": {
+  "lat": 51.041122,
+  "lon": -114.069902,
+  "label": "Central Memorial Park, Calgary, Alberta",
+  "kind": "park"
+ },
+ "View of Crystal Cove Beach in Tofino, Canada, British Columbia, Canada": null,
+ "Tofino - Crystal Cove Beach, British Columbia, Canada": {
+  "lat": 49.127486,
+  "lon": -125.901277,
+  "label": "Crystal Cove Beach Resort, Tofino, British Columbia",
+  "kind": "yes"
+ },
+ "View from Tofino Long Beach, British Columbia, Canada": {
+  "lat": 49.082256,
+  "lon": -125.780611,
+  "label": "Tofino-Long Beach Airport, Area C (Long Beach), British Columbia",
+  "kind": "aerodrome"
+ },
+ "View of He Tin Kis Beach in Ucluelet, Canada, British Columbia, Canada": null,
+ "Ucluelet - Canada, British Columbia, Canada": {
+  "lat": 48.942682,
+  "lon": -125.546049,
+  "label": "Ucluelet, British Columbia",
+  "kind": "village"
+ },
+ "View over the St. John's harbour in Newfoundland And Labrador, Newfoundland and Labrador, Canada": null,
+ "St. John's - Newfoundland And Labrador, Newfoundland and Labrador, Canada": {
+  "lat": 47.573347,
+  "lon": -52.733309,
+  "label": "Memorial University of Newfoundland and Labrador, St. John's, Newfoundland and Labrador",
+  "kind": "university"
+ },
+ "Panoramic view over Cold Lake in Canada, Alberta, Canada": null,
+ "Cold Lake - Canada, Alberta, Canada": {
+  "lat": 54.46046,
+  "lon": -110.192871,
+  "label": "Cold Lake, Alberta",
+  "kind": "city"
+ },
+ "View on the main square of the Whistler Olympic and Paralympic Village, British Columbia, Canada": null,
+ "Whistler Olympic Plaza - Whistler, British Columbia, Canada": {
+  "lat": 50.11871,
+  "lon": -122.954504,
+  "label": "Whistler Olympic Plaza, Whistler, British Columbia",
+  "kind": "attraction"
+ },
+ "View of downtown Canmore in Canada, Alberta, Canada": {
+  "lat": 51.088477,
+  "lon": -115.34646,
+  "label": "Canmore Downtown Hostel, Canmore, Alberta",
+  "kind": "hostel"
+ },
+ "View over the shops of Canmore, Canada, Alberta, Canada": {
+  "lat": 51.088247,
+  "lon": -115.346274,
+  "label": "The Shops of Canmore, Canmore, Alberta",
+  "kind": "retail"
+ },
+ "View from Railway Avenue in Canmore, Canada, Alberta, Canada": {
+  "lat": 51.093985,
+  "lon": -115.357536,
+  "label": "TD Insurance Auto Centre, Canmore, Alberta",
+  "kind": "car_repair"
+ },
+ "View over the Olympic Plaza in West Vancouver, Canada, British Columbia, Canada": null,
+ "Olympic Plaza - West Vancouver, British Columbia, Canada": {
+  "lat": 49.266561,
+  "lon": -123.115699,
+  "label": "Olympic Village, Vancouver, British Columbia",
+  "kind": "station"
+ },
+ "Langdal, Sunshine Coast, British Columbia, Canada": {
+  "lat": 49.434045,
+  "lon": -123.476463,
+  "label": "Langdale Ferry Terminal, Area F (West Howe Sound), British Columbia",
+  "kind": "ferry_terminal"
+ },
+ "Departure Ba, Nanaimo, British Columbia, Canada": {
+  "lat": 49.201768,
+  "lon": -123.957515,
+  "label": "Departure Bay, Nanaimo, British Columbia",
+  "kind": "bay"
+ },
+ "Swartz Ba, Victoria, British Columbia, Canada": {
+  "lat": 48.6892,
+  "lon": -123.410534,
+  "label": "Victoria (Swartz Bay) Berth 2 (Foot Access), North Saanich, British Columbia",
+  "kind": "footway"
+ },
+ "Tsawwasse, Vancouver, British Columbia, Canada": {
+  "lat": 49.03557,
+  "lon": -123.105618,
+  "label": "Tsawwassen First Nation, British Columbia",
+  "kind": "aboriginal_lands"
+ },
+ "Duke Poin, Nanaimo, British Columbia, Canada": {
+  "lat": 49.150578,
+  "lon": -123.881721,
+  "label": "Duke Point, Nanaimo, British Columbia",
+  "kind": "cape"
+ },
+ "Revelstoke Mountain Resort,, British Columbia, Canada": {
+  "lat": 50.969263,
+  "lon": -118.109209,
+  "label": "Revelstoke Mountain Resort, Area B (Shelter Bay/Mica Creek), British Columbia",
+  "kind": "winter_sports"
+ },
+ "Grouse Mountain, North Vancouver,, British Columbia, Canada": {
+  "lat": 49.379472,
+  "lon": -123.07678,
+  "label": "Grouse Mountain, District of North Vancouver, British Columbia",
+  "kind": "winter_sports"
+ },
+ "Mount Washington Alpine Resort,, British Columbia, Canada": {
+  "lat": 49.750505,
+  "lon": -125.302194,
+  "label": "Mount Washington Alpine Resort, Area C (Puntledge/Black Creek), British Columbia",
+  "kind": "winter_sports"
+ },
+ "Kingston, ON, Kingston, Ontario, Canada": {
+  "lat": 44.230687,
+  "lon": -76.481323,
+  "label": "Kingston, Ontario",
+  "kind": "city"
+ },
+ "Shag Harbour UFO Site, Nova Scotia, Canada": {
+  "lat": 43.493911,
+  "lon": -65.717993,
+  "label": "Shag Harbour, Nova Scotia",
+  "kind": "village"
+ },
+ "#1136 Hwy 325, Blockhouse, NS, Nova Scotia, Canada": {
+  "lat": 44.434169,
+  "lon": -64.411558,
+  "label": "Blockhouse, Nova Scotia",
+  "kind": "house_number"
+ },
+ "British Columbia, British Columbia, Canada": {
+  "lat": 49.257892,
+  "lon": -123.242975,
+  "label": "University of British Columbia, Electoral Area A, British Columbia",
+  "kind": "administrative"
+ },
+ "Chemainus, British Columbia, Canada": {
+  "lat": 48.841408,
+  "lon": -123.825397,
+  "label": "Chemainus River Park, Area F (Cowichan Lake South / Skutz Falls), British Columbia",
+  "kind": "park"
+ },
+ "Prince Rupert, British Columbia, Canada": {
+  "lat": 54.312657,
+  "lon": -130.32549,
+  "label": "Prince Rupert, British Columbia",
+  "kind": "city"
+ },
+ "Peggy’s Cove Lighthouse - Canada, Nova Scotia, Canada": {
+  "lat": 44.491595,
+  "lon": -63.918958,
+  "label": "Peggy's Cove Lighthouse, Peggys Cove, Nova Scotia",
+  "kind": "footway"
+ },
+ "Burntcoat - Nova Scotia, Nova Scotia, Canada": {
+  "lat": 45.3109,
+  "lon": -63.807467,
+  "label": "Burntcoat Head, Burntcoat, Nova Scotia",
+  "kind": "park"
+ },
+ "Nova Scotia - Halifax, Nova Scotia, Canada": {
+  "lat": 44.649992,
+  "lon": -63.57448,
+  "label": "Nova Scotia College of Art & Design, Halifax, Nova Scotia",
+  "kind": "college"
+ },
+ "Lockeport - Nova Scotia, Nova Scotia, Canada": {
+  "lat": 43.700389,
+  "lon": -65.114716,
+  "label": "Lockeport, Nova Scotia",
+  "kind": "town"
+ },
+ "Baccaro Point Lighthouse - Nova Scotia, Nova Scotia, Canada": {
+  "lat": 46.267149,
+  "lon": -60.125794,
+  "label": "Low Point Lighthouse, New Victoria, Nova Scotia",
+  "kind": "lighthouse"
+ },
+ "Truro - Nova Scotia, Nova Scotia, Canada": {
+  "lat": 45.365697,
+  "lon": -63.286497,
+  "label": "Truro, Nova Scotia",
+  "kind": "town"
+ },
+ "Snug Cov, Bowen Island, British Columbia, Canada": {
+  "lat": 49.379492,
+  "lon": -123.331345,
+  "label": "Bowen Island (Snug Cove), Bowen Island Municipality, British Columbia",
+  "kind": "ferry_terminal"
+ },
+ "Campbell River, British Columbia, Canada": {
+  "lat": 50.023071,
+  "lon": -125.244153,
+  "label": "Campbell River, British Columbia",
+  "kind": "city"
+ },
+ "Salt Spring Islan, Fulford Harbour, British Columbia, Canada": {
+  "lat": 48.769394,
+  "lon": -123.451126,
+  "label": "Salt Spring Island (Fulford Harbour), Salt Spring Island Electoral Area, British Columbia",
+  "kind": "ferry_terminal"
+ },
+ "Descanso Ba, Gabriola Island, British Columbia, Canada": {
+  "lat": 49.177824,
+  "lon": -123.858716,
+  "label": "Gabriola Island (Descanso Bay), Area B (DeCourcy/Gabriola/Mudge), British Columbia",
+  "kind": "ferry_terminal"
+ },
+ "West Vancouve, Horseshoe Bay, British Columbia, Canada": {
+  "lat": 49.374441,
+  "lon": -123.273919,
+  "label": "Horseshoe Bay, West Vancouver, British Columbia",
+  "kind": "suburb"
+ },
+ "Westvie, Powell River, British Columbia, Canada": {
+  "lat": 49.833957,
+  "lon": -124.528836,
+  "label": "Westview Fuels, Powell River, British Columbia",
+  "kind": "fuel"
+ },
+ "Salt Spring Islan, Vesuvius, British Columbia, Canada": {
+  "lat": 48.881253,
+  "lon": -123.573386,
+  "label": "Salt Spring Island (Vesuvius Bay), Salt Spring Island Electoral Area, British Columbia",
+  "kind": "ferry_terminal"
+ },
+ "Kelowna - Sails, British Columbia, Canada": {
+  "lat": 49.88632,
+  "lon": -119.49937,
+  "label": "Spirit of Sail, Kelowna, British Columbia",
+  "kind": "fountain"
+ },
+ "Abbotsford, British Columbia, Canada": {
+  "lat": 49.052116,
+  "lon": -122.329479,
+  "label": "Abbotsford, British Columbia",
+  "kind": "city"
+ },
+ "Hidden Valley Whitehorse Yukon, Yukon, Canada": {
+  "lat": 60.829605,
+  "lon": -135.202693,
+  "label": "Hidden Valley, Whitehorse, Yukon",
+  "kind": "suburb"
+ },
+ "Salmon Arm, British Columbia, Canada": {
+  "lat": 50.700506,
+  "lon": -119.279053,
+  "label": "Salmon Arm, British Columbia",
+  "kind": "town"
+ },
+ "Thompson Ri., British Columbia, Canada": {
+  "lat": 50.867988,
+  "lon": -120.28767,
+  "label": "North Thompson Oxbows Jensen Island Provincial Park, Area P (Rivers and the Peaks), British Columbia",
+  "kind": "nature_reserve"
+ },
+ "Uni.NBC Prince George, British Columbia, Canada": {
+  "lat": 53.892566,
+  "lon": -122.814716,
+  "label": "University of Northern British Columbia, Prince George, British Columbia",
+  "kind": "university"
+ },
+ "Mont-Sainte-Anne, QC, Quebec, Canada": {
+  "lat": 47.087722,
+  "lon": -70.926068,
+  "label": "Mont-Sainte-Anne, Beaupré, Quebec",
+  "kind": "sports_centre"
+ },
+ "Mount St. Louis Moonstone, ON, Ontario, Canada": {
+  "lat": 44.62365,
+  "lon": -79.666698,
+  "label": "Mount St. Louis Moonstone, Oro-Medonte, Ontario",
+  "kind": "sports_centre"
+ },
+ "Vancouver, British Columbia, Canada": {
+  "lat": 49.260872,
+  "lon": -123.113952,
+  "label": "Vancouver, British Columbia",
+  "kind": "city"
+ },
+ "Kingston, Ontario, Canada": {
+  "lat": 44.230687,
+  "lon": -76.481323,
+  "label": "Kingston, Ontario",
+  "kind": "city"
+ },
+ "Toronto, Ontario, Canada": {
+  "lat": 43.653482,
+  "lon": -79.383935,
+  "label": "Toronto, Ontario",
+  "kind": "city"
+ },
+ "Ottawa, Ontario, Canada": {
+  "lat": 45.420878,
+  "lon": -75.690111,
+  "label": "Ottawa, Ontario",
+  "kind": "city"
+ },
+ "Calgary, Alberta, Canada": {
+  "lat": 51.045606,
+  "lon": -114.057541,
+  "label": "Calgary, Alberta",
+  "kind": "city"
+ },
+ "York Region, Ontario, Canada": {
+  "lat": 44.28792,
+  "lon": -79.419767,
+  "label": "York Region, Georgina, Ontario",
+  "kind": "industrial"
+ },
+ "Burlington, Ontario, Canada": {
+  "lat": 43.324892,
+  "lon": -79.796683,
+  "label": "Burlington, Ontario",
+  "kind": "city"
+ },
+ "Castanet Kelowna, British Columbia, Canada": {
+  "lat": 49.887918,
+  "lon": -119.495902,
+  "label": "Kelowna, British Columbia",
+  "kind": "city"
+ },
+ "Kelowna, British Columbia, Canada": {
+  "lat": 49.887918,
+  "lon": -119.495902,
+  "label": "Kelowna, British Columbia",
+  "kind": "city"
+ }
+}

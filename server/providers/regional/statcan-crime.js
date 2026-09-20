@@ -133,6 +133,36 @@ function slimDimension(dimension) {
   };
 }
 
+/**
+ * The table's own notes, English only: what each total includes and leaves
+ * out, which series cannot be compared across years, which numbers were
+ * corrected after publication. The ground-truth checks read these; a note is
+ * linked to one member of one dimension (or to the whole table).
+ */
+function slimFootnotes(cube) {
+  return (Array.isArray(cube?.footnote) ? cube.footnote : [])
+    .map((note) => ({
+      id: note?.footnoteId ?? null,
+      text: String(note?.footnotesEn || '').trim(),
+      dimension: note?.link?.dimensionPositionId ?? null,
+      memberId: note?.link?.memberId ?? null,
+    }))
+    .filter((note) => note.text);
+}
+
+function slimCorrections(cube) {
+  return (Array.isArray(cube?.correction) ? cube.correction : [])
+    .map((entry) => ({
+      date: String(entry?.correctionDate || '').slice(0, 10) || null,
+      note: String(entry?.correctionNoteEn || '')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    }))
+    .filter((entry) => entry.note);
+}
+
 async function postWds(path, body, timeoutMs = 15000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -182,7 +212,15 @@ async function loadTableMetadata() {
       /^statistics$/i.test(dimension.dimensionNameEn),
     ) || { member: [] },
   );
-  const value = { geography, violations, statistics };
+  const value = {
+    geography,
+    violations,
+    statistics,
+    footnotes: slimFootnotes(cube),
+    corrections: slimCorrections(cube),
+    startYear: String(cube?.cubeStartDate || '').slice(0, 4) || null,
+    endYear: String(cube?.cubeEndDate || '').slice(0, 4) || null,
+  };
   metadataCache = { at: now, value };
   return value;
 }
@@ -381,7 +419,15 @@ async function fetchStatCanCrimeOutliers(city) {
 }
 
 export {
+  STATCAN_PRODUCT_ID,
+  STATCAN_TABLE_LABEL,
   STATCAN_TABLE_URL,
+  cubeCoordinate,
+  findMemberByName,
+  loadTableMetadata,
+  postWds,
+  slimCorrections,
+  slimFootnotes,
   classifyStatCanOutliers,
   STATCAN_MAX_OUTLIERS,
   fetchStatCanCrimeOutliers,

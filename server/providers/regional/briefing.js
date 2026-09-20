@@ -7,6 +7,7 @@ import {
   fetchRegionalNews,
   fetchRiskNews,
 } from './news.js';
+import { fetchCountryGroundTruth } from './country-ground-truth.js';
 import { validRegionalPoint } from './query.js';
 import { coalesceProxyRequest } from '../common/http.js';
 import { locationRegionKey } from '../../../src/data/regionalBrief.js';
@@ -23,6 +24,8 @@ const REGIONAL_BRIEF_MAX_CACHE = 120;
 const _regionalBriefCache = new Map();
 
 const _regionalBriefInFlight = new Map();
+
+const _groundTruthInFlight = new Map();
 
 const _regionalBriefRateLimiter = makeRateLimiter({
   windowMs: 60_000,
@@ -325,6 +328,61 @@ function regionalBriefProxy() {
         res.end(
           JSON.stringify({
             error: 'Regional risk news is temporarily unavailable',
+          }),
+        );
+      }
+    });
+
+    // Country Ground Truth Assessment: checks computed from a country's own
+    // published statistics table. One upstream sweep a day (the table is
+    // annual); every press after that is answered from memory.
+    middlewares.use('/api/country-ground-truth', async (req, res) => {
+      if (req.method !== 'GET') {
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+        return;
+      }
+      if (!_riskNewsRateLimiter(clientKey(req))) {
+        res.writeHead(429, {
+          'Content-Type': 'application/json',
+          'Retry-After': '10',
+        });
+        res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
+        return;
+      }
+      const url = new URL(req.url || '', 'http://localhost');
+      const country = String(url.searchParams.get('country') || '').trim();
+      if (!/^[A-Za-z]{2}$/.test(country)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({ error: 'A two-letter country code is required' }),
+        );
+        return;
+      }
+      const request = coalesceProxyRequest(
+        _groundTruthInFlight,
+        country.toUpperCase(),
+        () =>
+          fetchCountryGroundTruth(
+            country,
+            String(url.searchParams.get('name') || ''),
+          ),
+      );
+      try {
+        const payload = await request.promise;
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=300',
+        });
+        res.end(JSON.stringify(payload));
+      } catch {
+        res.writeHead(503, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+        });
+        res.end(
+          JSON.stringify({
+            error: 'The country statistics table is temporarily unavailable',
           }),
         );
       }

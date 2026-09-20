@@ -99,13 +99,30 @@ body.cockpit-mode #ask-panel {
   gap: 6px;
   align-items: center;
   margin-top: 6px;
-  flex-wrap: wrap;
+  /* Overview, Risk Assessment and Country Ground Truth Assessment share one
+     row: a little smaller than the other buttons, and a long name breaks onto
+     a second line inside its own button instead of pushing the row apart. */
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 4px;
   flex: 0 0 auto;
 }
 
 .ask-overview-btn,
-.ask-risk-btn {
-  white-space: nowrap;
+.ask-risk-btn,
+.ask-ground-truth-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 5px;
+  font-size: 8px;
+  letter-spacing: 0.6px;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+}
+
+.ask-overview-btn {
+  flex: 0 1 auto;
 }
 
 .ask-log-count {
@@ -131,6 +148,74 @@ body.cockpit-mode #ask-panel {
   border-left: 2px solid rgba(127, 231, 255, 0.4);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* The log is for reading, selecting and copying. */
+.ask-output {
+  user-select: text;
+  cursor: text;
+}
+
+.ask-output:focus-visible {
+  outline: 1px solid rgba(127, 231, 255, 0.55);
+  outline-offset: 1px;
+}
+
+/* Ctrl+F in the panel: a search field over the output box (askOutputFind.js). */
+.ask-find {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  flex: 0 0 auto;
+}
+
+.ask-find[hidden] {
+  display: none;
+}
+
+.ask-find-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: rgba(220, 245, 255, 0.95);
+  background: rgba(0, 18, 26, 0.7);
+  border: 1px solid rgba(127, 231, 255, 0.35);
+  border-radius: 5px;
+  outline: none;
+}
+
+.ask-find-input:focus {
+  border-color: rgba(127, 231, 255, 0.75);
+}
+
+.ask-find-count {
+  flex: 0 0 auto;
+  min-width: 44px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-align: right;
+  color: rgba(127, 231, 255, 0.7);
+  white-space: nowrap;
+}
+
+.ask-find .ask-find-btn {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 3px 6px;
+  font-size: 9px;
+}
+
+::highlight(ask-find) {
+  background-color: rgba(255, 214, 102, 0.35);
+  color: #fff;
+}
+
+::highlight(ask-find-current) {
+  background-color: rgba(255, 153, 51, 0.9);
+  color: #000;
 }
 
 .ask-output:empty {

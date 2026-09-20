@@ -232,6 +232,60 @@ The September 2026 listing (142,690 rows from 172 sources) built to
   and 496 YouTube/Vimeo embeds. 2,276 cameras marked inactive in the listing
   are kept. The exact tables are in `tools/camera-pack/cctv_sources.intl.report.txt`.
 
+## Canadian webcam listing
+
+`canada_webcams.tsv` is the same 24-column listing as the US and international
+ones, Canada only. It is a raw download and is never committed. It is the
+**lowest-priority** Canadian pack: most of what it lists the pack already holds
+from the provinces' own camera lists, so it adds only what was not acquired yet.
+
+```bash
+node tools/camera-pack/build-canada-listing.mjs --input <path>/canada_webcams.tsv   # add --offline to ask the geocoder nothing
+node tools/camera-pack/merge-pack.mjs
+```
+
+The pure helpers live in `canada-listing-tsv.mjs`; the build writes
+`sources/cams-canada-listing.json`, a report beside it, and
+`sources/canada-listing-geocode.json` (every address it looked up, so a rebuild
+asks nothing twice).
+
+- **Already acquired.** A row whose still is already in the pack is skipped
+  (DriveBC serves one camera at two addresses; both count as the same). A row
+  listed twice is written once. Then `merge-pack.mjs` drops any camera within
+  25 m of one from a higher-priority pack, unless it is on the same host, where
+  it is another view from the same pole (Ontario 511 and DriveBC list every view
+  separately). Inside the listing, a camera reached through two hosts (the City
+  of Toronto's own open-data site and Ontario 511's re-listing) is written once,
+  the operator's own host winning.
+- **Views.** A row with two or more distinct view stills becomes one camera per
+  view, `calist-<id>-<DIR>`, with that direction as its estimated heading.
+- **Streams.** A row with only an HLS playlist (City of Edmonton, City of
+  Kamloops) is `feedType: 'none'` with the playlist in `videoUrl`, served as
+  video like every other stream-only camera. A row with only a web page, a
+  plain-http stream or a YouTube/Vimeo embed has nothing to store.
+- **No coordinates: placed by address.** The row's location, its street names
+  or its town are looked up with Photon, one request a second. Vancouver names
+  its views by two streets run together ("Beatty Robson", "Cambie02East" for
+  Cambie at 2nd Avenue); Newfoundland and Labrador's highway cameras by a place
+  name with no spaces ("Portauxbasques"). An answer must be in Canada, in the
+  row's province, and a place, never the province itself. Such a camera is
+  `coordConfidence: 'estimated'` with `placedBy: 'address'` and the address in
+  `placedAddress`; its owner can move it (right-click its thumbnail, drag, and
+  right-click to save). Cameras that share an address step off it on a 40 m
+  ring, so the 25 m duplicate rule keeps every one.
+- **Nothing to place by.** A row with no coordinates and only a serial number
+  for a name ("Alberta 511 camera 48", "Toronto TMC loc8279") is reported and
+  left out: it would otherwise be dropped onto a city centre it may be nowhere
+  near.
+- **Left out.** School, university, college and library cameras, as everywhere.
+  Advertising-billboard monitors: devices left reachable and found by scanning
+  address space, with no operator page that publishes them. A marina, heliport
+  or ski club that embeds its own camera on its own site is a published webcam
+  and stays.
+
+The September 2026 listing (7,387 rows) added **4,848 cameras**
+to the Canadian pack, which now holds **9,615**: 4,811 stills and 37 stream-only cameras (Nova Scotia Webcams, City of Kamloops), 4,540 placed by the listing's own point and 308 by address (170 from a street, junction or place name, 138 at their town's centre because the listing gives no address). The largest additions are the City of Toronto (1,017 views), the City of Vancouver (852), the City of Surrey (597), the City of Ottawa (458), York Region (378), Panomax (210), Ontario 511 views the pack did not have (201), the City of Edmonton (190) and the City of Calgary (103). Left out: 2,815 rows the pack already held, 754 with only a web page (Québec 511's 678 are in the pack from Québec's own dataset), 107 listed twice through two hosts, 380 that merge-pack.mjs dropped as copies of cameras in higher-priority packs (the same address, or within 25 m on another host), 38 with no coordinates, no address and no town, 17 school, university and library cameras, 2 billboard monitors, and 1 address the geocoder could not find. No camera the pack held before was lost.
+
 ## On-demand Road511 lookup
 
 A camera with no public still (`feedType: 'none'`, `lookup: 'road511'`) costs
@@ -285,6 +339,7 @@ would refuse; the September 2026 build has none.
 | `cams-transcanada.json` | Provincial systems linked from transcanadahighway.com | mixed |
 | `cams-transcanada-links.json` | Individual city, news and tourism webcams listed on the same page | estimated, geocoded from the listing |
 | `cams-on.json` | Ontario 511's own camera list, every view | exact |
+| `cams-canada-listing.json` | The Canadian webcam listing (`canada_webcams.tsv`): the city systems (Vancouver, Surrey, Ottawa, York Region, Toronto, Calgary, Edmonton, Kamloops, Langley), harbours, ferries, ski hills and resorts | exact where the listing gives a point, else estimated from the address |
 
 ### United States
 
@@ -417,6 +472,7 @@ node build-quebec511.mjs   # Québec 511 open data (sources/quebec511-cameras.ge
 node build-drivebc.mjs     # DriveBC              (sources/drivebc-webcams.json -> sources/cams-drivebc.json)
 node build-alberta511.mjs  # Alberta 511          (sources/alberta511-cameras.json -> sources/cams-alberta511.json)
 node build-transcanada-links.mjs  # listed webcams (sources/transcanada-webcams.html -> sources/cams-transcanada-links.json)
+node build-canada-listing.mjs --input <path>/canada_webcams.tsv  # Canadian webcam listing -> sources/cams-canada-listing.json (+ .report.txt)
 node merge-pack.mjs        # validate, dedupe, order -> ../../config/cctv_sources.canada.json
 node build-road511-us.mjs --input <path>/us_public_webcams.tsv  # -> ../../config/cctv_sources.us.json + cctv_sources.us.report.txt
 node build-intl.mjs --input <path>/international_webcams.tsv  # -> ../../config/cctv_sources.intl.json + cctv_sources.intl.report.txt

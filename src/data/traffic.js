@@ -78,6 +78,15 @@ const OVERLAP_THRESHOLD = 0.6;
 const MAX_DOTS = 6000;
 /** @const {number} Polylines longer than this are simplified by sub-sampling */
 const MAX_WAYPOINTS_PER_ROAD = 80;
+/** @constant {number} Main-thread time one slice of road parsing may take
+ *  before the thread is handed back (see parseRoads). Not smaller: the first
+ *  height probe after a drawn frame waits for the GPU to finish that frame
+ *  (about 70 ms measured, against 3 ms for the probes behind it), so a slice
+ *  must be long enough to be mostly probes. Measured on 705 roads: 8 ms slices
+ *  took 44 s to the full roads, 50 ms 16 s, 100 ms 5 s, 150 ms 4 s, against 2 s
+ *  for the one frozen pass. 100 ms is the longest stall that still answers
+ *  the hand. */
+const ROAD_PARSE_SLICE_MS = 100;
 /** @const {number} Km — minimum viewport center shift before allowing refresh */
 const MIN_CENTER_SHIFT_KM = 0.35;
 /**
@@ -754,6 +763,19 @@ function clearRoadsFailure() {
 }
 
 /**
+ * Hand the thread back between slices of road parsing, so the map draws its
+ * frames and answers the mouse. A macro-task, not a frame wait, so the slices
+ * fill whatever the frames leave free. Answers null, meaning carry straight on, where there is no frame to
+ * protect: outside a browser, and in a hidden tab (whose timers crawl).
+ * @returns {Promise<void>|null}
+ */
+function roadParseBreather() {
+  if (typeof requestAnimationFrame !== 'function') return null;
+  if (typeof document !== 'undefined' && document.hidden) return null;
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
  * Parse an Overpass `out geom;` JSON response into internal road objects.
  *
  * Each OSM `way` element carries an inline `geometry` array of `{lat, lon}`
@@ -765,15 +787,26 @@ function clearRoadsFailure() {
  *  3. Sample terrain height once at the first vertex (avoids per-vertex cost).
  *  4. Convert to Cartesian3 waypoints and pre-compute inter-vertex distances.
  *
+ * Step 3 is the whole cost: `scene.sampleHeight` is a synchronous GPU
+ * read-back, a few milliseconds per road, and a city's roads in one go held
+ * the page still for three seconds and more. So the roads are parsed in
+ * slices of ROAD_PARSE_SLICE_MS with the thread handed back between them
+ * (roadParseBreather): the same roads and the same probes in the same order,
+ * with the map moving meanwhile. A load that is superseded or
+ * switched off while a slice waits stops there and answers null; its caller
+ * drops it, as it drops any stale response.
+ *
  * @param {Object} overpassData - Raw JSON response from the Overpass API.
  * @param {Array}  overpassData.elements - Array of OSM elements.
- * @returns {Array<{coords:number[][], type:string, waypoints:Cesium.Cartesian3[], segmentDist:number[]}>}
- *   Parsed road objects ready for dot spawning.
+ * @param {number} generation - `_loadGeneration` at call time.
+ * @returns {Promise<Array<{coords:number[][], type:string, waypoints:Cesium.Cartesian3[], segmentDist:number[]}>|null>}
+ *   Parsed road objects ready for dot spawning, or null when superseded.
  */
-function parseRoads(overpassData) {
+async function parseRoads(overpassData, generation) {
   if (!overpassData || !overpassData.elements) return [];
 
   const roads = [];
+  let sliceEnd = performance.now() + ROAD_PARSE_SLICE_MS;
   for (const el of overpassData.elements) {
     if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) continue;
 
@@ -829,6 +862,15 @@ function parseRoads(overpassData) {
     }
 
     roads.push({ coords, type, oneway, waypoints, segmentDist });
+
+    if (performance.now() >= sliceEnd) {
+      const breather = roadParseBreather();
+      if (breather) {
+        await breather;
+        if (generation !== _loadGeneration || !_enabled) return null;
+      }
+      sliceEnd = performance.now() + ROAD_PARSE_SLICE_MS;
+    }
   }
 
   return roads;
@@ -2084,9 +2126,11 @@ function markTrafficTimingMoveEnd() {
 /**
  * Instrumented twin of `parseRoads`. Operation ordering and road output match
  * the normal function; debug-only clocks accumulate synchronous height and
- * waypoint-materialization time independently.
+ * waypoint-materialization time independently, and count the times the thread
+ * was handed back (`parseYields`), which `road-parse-total`, a wall time,
+ * includes.
  */
-function parseRoadsTimed(overpassData, trace) {
+async function parseRoadsTimed(overpassData, trace, generation) {
   /* TRACE_ONLY_BEGIN */
   const _trafficTimingState = trafficTimingPass(trace, trace?.currentPass || 'full');
   const _trafficTimingParseStartTime = performance.now();
@@ -2123,7 +2167,9 @@ function parseRoadsTimed(overpassData, trace) {
   let _trafficTimingSampleHeightCalls = 0;
   let _trafficTimingSampleHeightMs = 0;
   let _trafficTimingWaypointMaterializationMs = 0;
+  let _trafficTimingParseYields = 0;
   /* TRACE_ONLY_END */
+  let sliceEnd = performance.now() + ROAD_PARSE_SLICE_MS;
   for (const el of overpassData.elements) {
     if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) continue;
 
@@ -2183,11 +2229,25 @@ function parseRoadsTimed(overpassData, trace) {
     /* TRACE_ONLY_END */
 
     roads.push({ coords, type, oneway, waypoints, segmentDist });
+
+    if (performance.now() >= sliceEnd) {
+      const breather = roadParseBreather();
+      if (breather) {
+        /* TRACE_ONLY_BEGIN */
+        _trafficTimingParseYields += 1;
+        /* TRACE_ONLY_END */
+        await breather;
+        if (generation !== _loadGeneration || !_enabled) return null;
+      }
+      sliceEnd = performance.now() + ROAD_PARSE_SLICE_MS;
+    }
   }
 
   /* TRACE_ONLY_BEGIN */
   const _trafficTimingMetrics = {
     roadCount: roads.length,
+    // road-parse-total is wall time and includes the time handed back.
+    parseYields: _trafficTimingParseYields,
     sampleHeightCalls: _trafficTimingSampleHeightCalls,
     sampleHeightMeanMs: _trafficTimingSampleHeightCalls
       ? _trafficTimingSampleHeightMs / _trafficTimingSampleHeightCalls
@@ -2278,7 +2338,7 @@ async function loadRoadsForBoundsTimed(bounds, altitude, expectedAnchor) {
 // Disabled-path contract: these references resolve directly to the original
 // functions. Instrumentation adds no load-path callbacks or per-item checks.
 const _parseRoads = TRAFFIC_TIMING_ENABLED
-  ? (data, trace) => (trace ? parseRoadsTimed(data, trace) : parseRoads(data))
+  ? (data, generation, trace) => (trace ? parseRoadsTimed(data, trace, generation) : parseRoads(data, generation))
   : parseRoads;
 const _loadRoadsForBounds = TRAFFIC_TIMING_ENABLED
   ? loadRoadsForBoundsTimed
@@ -2396,7 +2456,9 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
       );
       // Discard stale response if a newer load was triggered while waiting
       if (generation !== _loadGeneration) return;
-      const majorRoads = _parseRoads(majorData, trace);
+      const majorRoads = await _parseRoads(majorData, generation, trace);
+      // The parse hands frames back to the map, so it can be overtaken too.
+      if (!majorRoads || generation !== _loadGeneration) return;
       // A partial answer (some road tiles failed) renders but is not kept, and
       // marks the load incomplete, so the view is retried after a backoff and
       // the retry asks only for the missing tiles (decoded tiles are cached).
@@ -2421,7 +2483,8 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
     );
     if (generation !== _loadGeneration) return;
 
-    const fullRoads = _parseRoads(fullData, trace);
+    const fullRoads = await _parseRoads(fullData, generation, trace);
+    if (!fullRoads || generation !== _loadGeneration) return;
     if (fullData?.partial) incomplete = true;
     else cache.full = fullRoads;
     if (!await applyFlowThenRender(
