@@ -15,6 +15,7 @@ import {
   overviewLocationName,
   overviewRiskSources,
   prependOutputLog,
+  resolveOverviewCountry,
 } from './askOverview.js';
 
 test('place labels and country codes classify Canada, the US, and everywhere else', () => {
@@ -32,6 +33,59 @@ test('place labels and country codes classify Canada, the US, and everywhere els
     classifyOverviewRegion({ placeLabels: ['Tokyo, Japan'] }),
     'international',
   );
+});
+
+test('Toronto is in Canada: the geocoder decides the country, then the Canadian gazetteer, never a latitude band', () => {
+  const toronto = { latitude: 43.6532, longitude: -79.3832 };
+  assert.equal(
+    classifyOverviewRegion({ selectedLocation: 'Toronto', ...toronto }),
+    'usa',
+    'the latitude bands alone read southern Ontario as the United States',
+  );
+
+  const geocoded = resolveOverviewCountry({
+    place: { countryCode: 'ca', country: 'Canada' },
+    closestCity: { name: 'Toronto', source: 'preset' },
+  });
+  assert.deepEqual(geocoded, { countryCode: 'CA', country: 'Canada' });
+  const brief = buildOverviewRiskBrief({
+    ...geocoded,
+    selectedLocation: 'Toronto',
+    closestCity: 'Toronto',
+    view: toronto,
+  });
+  assert.equal(brief.region, 'canada');
+  assert.equal(brief.countryCode, 'CA');
+  assert.ok(brief.officialSources.some((source) => /statcan/.test(source.url)));
+
+  assert.deepEqual(
+    resolveOverviewCountry({
+      place: null,
+      closestCity: { name: 'Hamilton', source: 'gazetteer' },
+    }),
+    { countryCode: 'CA', country: 'Canada' },
+    'no geocoder answer: a nearest city from the Canadian gazetteer says Canada',
+  );
+  assert.deepEqual(
+    resolveOverviewCountry({
+      place: { countryCode: 'US', country: 'United States' },
+      closestCity: { name: 'Windsor', source: 'gazetteer' },
+    }),
+    { countryCode: 'US', country: 'United States' },
+    'Detroit, 3 km from Windsor: the geocoder wins over the gazetteer',
+  );
+  assert.deepEqual(
+    resolveOverviewCountry({ place: { countryCode: 'FR', country: '' } }),
+    { countryCode: 'FR', country: null },
+  );
+  assert.equal(
+    resolveOverviewCountry({
+      place: { countryCode: '' },
+      closestCity: { name: 'Austin', source: 'preset' },
+    }),
+    null,
+  );
+  assert.equal(resolveOverviewCountry(), null);
 });
 
 test('coordinates fall back when labels are missing', () => {

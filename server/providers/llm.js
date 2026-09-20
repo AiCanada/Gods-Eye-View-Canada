@@ -49,14 +49,21 @@ async function handleLlmAsk(req, res) {
   }
   const parsed = parseLlmAskRequest(rawBody);
   if (!parsed.ok) return llmJson(res, parsed.status, parsed.payload);
-  const { provider, settings, question, context } = parsed;
+  const { provider, settings, question, context, answerTokens } = parsed;
 
   // Same opt-in per-IP throttle the other paid LLM route uses. It sits
   // after validation so a keyless, malformed or unknown-provider request
   // costs no quota slot, exactly as hud-summary's keyless path does.
   if (!enforceOptInRateLimit(openAiRateLimiter(), req, res)) return;
 
-  const call = buildLlmAskCall(provider, settings, question, context);
+  const call = buildLlmAskCall(
+    provider,
+    settings,
+    question,
+    context,
+    process.env,
+    answerTokens,
+  );
   // A closed browser tab must not leave a billed upstream call running to
   // completion: abort it the moment the response socket goes away.
   const disconnect = new AbortController();

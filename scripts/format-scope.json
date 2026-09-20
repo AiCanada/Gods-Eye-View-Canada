@@ -134,6 +134,12 @@
   "server/providers/regional/http.js",
   "server/providers/regional/news.js",
   "server/providers/regional/statcan-crime.js",
+  "server/providers/regional/statcan-ground-truth.js",
+  "server/providers/regional/fbi-ground-truth.js",
+  "server/providers/regional/country-ground-truth.js",
+  "server/providers/regional/un-ground-truth.js",
+  "server/providers/regional/eurostat-ground-truth.js",
+  "server/providers/regional/country-codes.js",
   "server/providers/regional/place.js",
   "server/providers/regional/query.js",
   "server/providers/regional/weather-effects.js",
@@ -304,5 +310,11 @@
   "src/askOverview.js",
   "src/askOverview.test.mjs",
   "src/tooling/regionalRiskNews.test.mjs",
-  "src/tooling/statcanCrime.test.mjs"
+  "src/tooling/statcanCrime.test.mjs",
+  "src/tooling/statcanGroundTruth.test.mjs",
+  "src/tooling/fbiGroundTruth.test.mjs",
+  "src/tooling/unGroundTruth.test.mjs",
+  "src/tooling/eurostatGroundTruth.test.mjs",
+  "src/askOutputFind.js",
+  "src/askOutputFind.test.mjs"
 ]

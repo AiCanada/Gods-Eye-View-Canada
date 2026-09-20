@@ -1,14 +1,21 @@
 import * as Cesium from 'cesium';
 import { closestCityForSearch } from './locations.js';
 import { getBasemapLabelContext } from './voice/gevActions.js';
+import { fetchLocationRegion } from './data/regionalBrief.js';
+import { createOutputFind } from './askOutputFind.js';
 import {
+  buildGroundTruthQuestion,
   buildLayerActivity,
   buildOverviewQuestion,
   buildOverviewRiskBrief,
   buildRiskAssessmentQuestion,
   formatAskLogEntry,
+  formatGroundTruthBody,
+  GROUND_TRUTH_ANSWER_TOKENS,
+  groundTruthForModel,
   formatRiskSearchBody,
   prependOutputLog,
+  resolveOverviewCountry,
 } from './askOverview.js';
 
 /**
@@ -18,7 +25,11 @@ import {
  *
  * It is silent until asked. There is no timer, no camera-move hook and no
  * startup call: a language model is contacted when the operator presses Ask,
- * Overview, or Risk Assessment, and at no other time. Overview rates on-screen
+ * Overview, Risk Assessment, or Country Ground Truth Assessment, and at no
+ * other time. Country Ground Truth Assessment checks the selected country's own
+ * published statistics table (totals against their parts, the "other"
+ * categories, new categories and partial data, recomputed arithmetic), shows
+ * what the checks found, and has the model explain it. Overview rates on-screen
  * activity (low/mid/high) and how it changes operational risk. Risk Assessment
  * can run first. Each Risk press searches government and local sources, shows
  * those hits, and prepends them on a running output log. Each press costs one
@@ -40,6 +51,8 @@ const ASK_URL = '/api/llm/ask';
  * aborting first and reporting something vaguer.
  */
 const CLIENT_TIMEOUT_MARGIN_MS = 10000;
+/** How long a press waits to learn which country the view is in. */
+const COUNTRY_LOOKUP_TIMEOUT_MS = 8000;
 /** Used only until the roster has said what the server's ceiling is. */
 const DEFAULT_ASK_TIMEOUT_MS = 240000;
 
@@ -53,7 +66,7 @@ export class AskPanel {
     this._askTimeoutMs = DEFAULT_ASK_TIMEOUT_MS;
     /** @type {Map<string, AbortController>} One in-flight request per model. */
     this._inFlight = new Map();
-    /** @type {Map<string, {input: HTMLInputElement, ask: HTMLButtonElement, overview: HTMLButtonElement, risk: HTMLButtonElement, output: HTMLElement, logCount: HTMLElement, status: HTMLElement, entries: number}>} */
+    /** @type {Map<string, {input: HTMLInputElement, ask: HTMLButtonElement, overview: HTMLButtonElement, risk: HTMLButtonElement, groundTruth: HTMLButtonElement, output: HTMLElement, logCount: HTMLElement, status: HTMLElement, entries: number}>} */
     this._rows = new Map();
 
     this._panel = document.getElementById('ask-panel');
@@ -72,6 +85,16 @@ export class AskPanel {
       this._toggle.setAttribute('aria-expanded', String(!hidden));
       this._toggle.title = hidden ? 'Show the LLM panel' : 'Hide the LLM panel';
     });
+
+    // Ctrl+F / Cmd+F with the pointer or the focus in this panel searches the
+    // output box instead of the page (askOutputFind.js). Anywhere else the
+    // browser's own find is left alone. Capture phase on the window, ahead of
+    // every other key handler: the application's single-letter hotkeys never
+    // see the F, and an active surface (POWER UP, a lightbox) that claims
+    // Escape for itself does not take the one that closes this search.
+    /** @type {string|null} The model row the pointer is over. */
+    this._hoverProvider = null;
+    window.addEventListener('keydown', (event) => this._onFindKey(event), true);
 
     // Reading the roster asks the server which keys exist. It contacts no
     // model and costs nothing.
@@ -175,9 +198,15 @@ export class AskPanel {
     risk.textContent = 'RISK ASSESSMENT';
     risk.title = `Have ${provider.label} assess risk from government crime-stat outliers and correlated sources. Can run before Overview`;
 
+    const groundTruth = document.createElement('button');
+    groundTruth.type = 'button';
+    groundTruth.className = 'scene-btn ask-ground-truth-btn';
+    groundTruth.textContent = 'COUNTRY GROUND TRUTH ASSESSMENT';
+    groundTruth.title = `Check the selected country's own published statistics for incidents left out of totals, misuse of "other", new or partial categories, and wrong numbers, then have ${provider.label} explain what was found`;
+
     const actions = document.createElement('div');
     actions.className = 'ask-actions';
-    actions.append(overview, risk);
+    actions.append(overview, risk, groundTruth);
 
     const logCount = document.createElement('div');
     logCount.className = 'ask-log-count';
@@ -187,13 +216,26 @@ export class AskPanel {
     output.className = 'ask-output';
     output.setAttribute('role', 'status');
     output.setAttribute('aria-live', 'polite');
+    // Focusable, so a click in the log puts Ctrl+F (and the arrow keys) here.
+    output.tabIndex = 0;
+    const find = createOutputFind({ output });
 
     controls.append(input, ask);
-    row.append(controls, actions, status, logCount, output);
+    row.append(controls, actions, status, logCount, find.element, output);
+    row.addEventListener('mouseenter', () => {
+      this._hoverProvider = provider.id;
+    });
+    row.addEventListener('mouseleave', () => {
+      if (this._hoverProvider === provider.id) this._hoverProvider = null;
+    });
 
     ask.addEventListener('click', () => this._askTyped(provider.id));
     overview.addEventListener('click', () => void this.overview(provider.id));
     risk.addEventListener('click', () => void this.riskAssessment(provider.id));
+    groundTruth.addEventListener(
+      'click',
+      () => void this.groundTruthAssessment(provider.id),
+    );
     // The globe's single-letter hotkeys already ignore keystrokes whose target
     // is a text field, so only Enter needs handling here.
     input.addEventListener('keydown', (event) => {
@@ -207,12 +249,51 @@ export class AskPanel {
       ask,
       overview,
       risk,
+      groundTruth,
+      find,
       output,
       logCount,
       status,
       entries: 0,
     });
     return row;
+  }
+
+  /**
+   * Ctrl+F / Cmd+F: open the search of the row that has the focus, else the
+   * row under the pointer. With neither, or with nothing in that row's log
+   * yet, the browser's own find runs as usual.
+   *
+   * Any other Ctrl/Cmd chord pressed with the focus inside the panel (Ctrl+C
+   * on a selected answer, Ctrl+A in the question) stays the browser's: the
+   * globe's single-letter hotkeys take modified letters too, so copying an
+   * answer used to toggle the CCTV layer.
+   */
+  _onFindKey(event) {
+    if (event.key === 'Escape') {
+      const open = [...this._rows.values()].find(
+        (row) => row.find?.isOpen() && row.find.element.contains(event.target),
+      );
+      if (!open) return;
+      event.preventDefault();
+      event.stopPropagation();
+      open.find.close();
+      open.output.focus({ preventScroll: true });
+      return;
+    }
+    if (!(event.ctrlKey || event.metaKey)) return;
+    if (event.target?.closest?.('#ask-panel')) event.stopPropagation();
+    if (event.altKey || event.shiftKey) return;
+    if (String(event.key).toLowerCase() !== 'f') return;
+    if (this._body?.hidden) return;
+    const focused = event.target?.closest?.('.ask-row')?.dataset?.provider;
+    const providerId = this._rows.has(focused) ? focused : this._hoverProvider;
+    const row = this._rows.get(providerId);
+    if (!row || !row.output.textContent) return;
+    event.preventDefault();
+    event.stopPropagation();
+    for (const [id, other] of this._rows) if (id !== providerId) other.find?.close();
+    row.find.open();
   }
 
   /** Ask whatever is typed in one model's box. */
@@ -236,7 +317,7 @@ export class AskPanel {
    */
   async overview(providerId) {
     const context = await this.sceneContext();
-    const brief = this._riskBrief(context);
+    const brief = await this._riskBrief(context);
     return this.ask(buildOverviewQuestion(brief), {
       provider: providerId,
       label: 'Overview',
@@ -264,7 +345,7 @@ export class AskPanel {
     this._setBusy(providerId, true, 'Searching risk sources...');
     try {
       const context = await this.sceneContext();
-      const brief = this._riskBrief(context);
+      const brief = await this._riskBrief(context);
       const headlines = await this._riskHeadlines(brief, context.view);
       context.riskAssessment = { ...brief, ...headlines };
       this._prependAnswer(
@@ -290,10 +371,99 @@ export class AskPanel {
   }
 
   /**
+   * Country Ground Truth Assessment for the country of the selected location.
+   * The server computes the checks from that country's own statistics table;
+   * they are shown first, then one model is asked to explain them. A country
+   * with no table connected says so and asks no model.
+   *
+   * @param {string} providerId
+   */
+  async groundTruthAssessment(providerId) {
+    const row = this._rows.get(providerId);
+    if (!row) return null;
+    if (this._inFlight.has(providerId)) {
+      this._setStatus(providerId, 'Still working on the last question.');
+      return null;
+    }
+
+    this._inFlight.set(providerId, new AbortController());
+    this._setBusy(providerId, true, 'Checking the country’s published statistics...');
+    try {
+      const context = await this.sceneContext();
+      const brief = await this._riskBrief(context);
+      const evidence = await this._groundTruthEvidence(brief);
+      const countryName = evidence.country || brief.country || brief.locationName;
+      this._prependAnswer(
+        providerId,
+        formatAskLogEntry('GROUND TRUTH CHECKS', formatGroundTruthBody(evidence), {
+          locationName: countryName,
+        }),
+      );
+      if (evidence.status !== 'ready') {
+        this._inFlight.delete(providerId);
+        this._setBusy(providerId, false);
+        this._setStatus(
+          providerId,
+          evidence.status === 'excluded'
+            ? 'This country is left out of the assessment.'
+            : evidence.status === 'nodata'
+              ? 'No published figures to assess for this country.'
+              : 'Could not tell which country this is.',
+        );
+        return null;
+      }
+      // Every finding is already on screen; the model gets the strongest of
+      // each check, and room to list them.
+      context.groundTruth = groundTruthForModel(evidence);
+      return await this.ask(buildGroundTruthQuestion(evidence), {
+        provider: providerId,
+        label: 'Ground truth assessment',
+        kind: 'COUNTRY GROUND TRUTH ASSESSMENT',
+        locationName: countryName,
+        context,
+        continueFlight: true,
+        answerTokens: GROUND_TRUTH_ANSWER_TOKENS,
+      });
+    } catch (error) {
+      this._inFlight.delete(providerId);
+      this._setBusy(providerId, false);
+      this._setStatus(providerId, error?.message || 'Ground truth check failed.');
+      return null;
+    }
+  }
+
+  /** The server's checks for the brief's country; throws when they cannot be had. */
+  async _groundTruthEvidence(brief) {
+    const code = String(brief?.countryCode || '').trim();
+    if (!/^[A-Za-z]{2}$/.test(code)) {
+      return {
+        status: 'unsupported',
+        // No country could be read for this view at all.
+        country: null,
+        connected: [
+          { country: 'Canada', source: 'Statistics Canada table 35-10-0177-01' },
+          { country: 'United States', source: 'FBI Crime Data Explorer (Uniform Crime Reporting Program)' },
+          { country: 'European countries', source: 'Eurostat, police-recorded offences by category' },
+          { country: 'Every other country', source: 'United Nations SDG database and World Health Organization estimates' },
+        ],
+      };
+    }
+    const params = new URLSearchParams({ country: code, name: brief?.country || '' });
+    const response = await fetch(`/api/country-ground-truth?${params}`, {
+      signal: AbortSignal.timeout(90000),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.status) {
+      throw new Error(data?.error || 'The country statistics table could not be read.');
+    }
+    return data;
+  }
+
+  /**
    * Send one question to one model with the current scene as context.
    *
    * @param {string} question
-   * @param {{provider: string, label?: string, kind?: string, locationName?: string, continueFlight?: boolean, context?: object}} options
+   * @param {{provider: string, label?: string, kind?: string, locationName?: string, continueFlight?: boolean, context?: object, answerTokens?: number}} options
    */
   async ask(question, options) {
     const providerId = options?.provider;
@@ -326,7 +496,12 @@ export class AskPanel {
       const response = await fetch(ASK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: providerId, question, context }),
+        body: JSON.stringify({
+          provider: providerId,
+          question,
+          context,
+          ...(options.answerTokens ? { answerTokens: options.answerTokens } : {}),
+        }),
         signal: controller.signal,
       });
       const data = await response.json().catch(() => null);
@@ -448,8 +623,34 @@ export class AskPanel {
     return fromView?.name || context?.locality || this._selectedCityLabel() || null;
   }
 
-  _riskBrief(context) {
+  /**
+   * Which country the view is in: the reverse geocoder's answer, else the
+   * Canadian gazetteer's nearest city, else null (labels and coordinates
+   * decide). Never throws; a press must not fail because a lookup did.
+   */
+  async _viewCountry(view) {
+    const latitude = Number(view?.latitude);
+    const longitude = Number(view?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    let place = null;
+    try {
+      place = await fetchLocationRegion(latitude, longitude, {
+        signal: AbortSignal.timeout(COUNTRY_LOOKUP_TIMEOUT_MS),
+      });
+    } catch {
+      place = null;
+    }
+    return resolveOverviewCountry({
+      place,
+      closestCity: closestCityForSearch(latitude, longitude),
+    });
+  }
+
+  async _riskBrief(context) {
+    const where = await this._viewCountry(context?.view);
     return buildOverviewRiskBrief({
+      country: where?.country,
+      countryCode: where?.countryCode,
       selectedLocation: this._selectedLocationLabel(),
       selectedCity: this._selectedCityLabel(),
       closestCity: this._closestSearchCity(context),
@@ -511,6 +712,7 @@ export class AskPanel {
     row.ask.disabled = busy;
     if (row.overview) row.overview.disabled = busy;
     if (row.risk) row.risk.disabled = busy;
+    if (row.groundTruth) row.groundTruth.disabled = busy;
     if (busy && message) this._setStatus(providerId, message);
   }
 
@@ -526,6 +728,8 @@ export class AskPanel {
     if (!next) return;
     row.output.textContent = next;
     row.output.scrollTop = 0;
+    // An open search keeps working on the log it now has.
+    row.find?.refresh();
     row.entries = (row.entries || 0) + 1;
     if (row.logCount) {
       row.logCount.hidden = false;

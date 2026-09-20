@@ -94,6 +94,23 @@ export function llmMaxTokens(env = process.env) {
   return Number.isFinite(value) && value > 0 ? value : 2048;
 }
 
+/** The most a single question may raise its own answer budget to. */
+export const LLM_ANSWER_TOKENS_CEILING = 8192;
+
+/**
+ * The answer budget for one question. LLM_MAX_TOKENS is the everyday budget; a
+ * question that must list its findings (Country Ground Truth Assessment) says
+ * how much room it needs, and gets the larger of the two, never more than
+ * LLM_ANSWER_TOKENS_CEILING. Without this a listed answer ends mid-list, or a
+ * reasoning model spends the whole budget before writing a word.
+ */
+export function llmAnswerTokens(requested, env = process.env) {
+  const everyday = llmMaxTokens(env);
+  const wanted = Math.floor(Number(requested));
+  if (!Number.isFinite(wanted) || wanted <= 0) return everyday;
+  return Math.max(everyday, Math.min(wanted, LLM_ANSWER_TOKENS_CEILING));
+}
+
 /**
  * A reasoning model can think for a long time. Measured on NVIDIA NIM's
  * kimi-k3, a one-word answer takes ~100s and the Overview prompt takes longer,
@@ -186,7 +203,7 @@ export const LLM_ASK_MAX_BODY_BYTES = 2 * 1024 * 1024;
  *
  * @param {string} rawBody
  * @param {NodeJS.ProcessEnv} [env]
- * @returns {{ok: true, provider: object, settings: object, question: string, context: object}
+ * @returns {{ok: true, provider: object, settings: object, question: string, context: object, answerTokens: number}
  *   | {ok: false, status: number, payload: object}}
  */
 export function parseLlmAskRequest(rawBody, env = process.env) {
@@ -255,7 +272,14 @@ export function parseLlmAskRequest(rawBody, env = process.env) {
     !Array.isArray(request.context)
       ? request.context
       : {};
-  return { ok: true, provider, settings, question, context };
+  return {
+    ok: true,
+    provider,
+    settings,
+    question,
+    context,
+    answerTokens: llmAnswerTokens(request.answerTokens, env),
+  };
 }
 
 const LLM_ASK_INSTRUCTIONS = [
@@ -269,10 +293,12 @@ const LLM_ASK_INSTRUCTIONS = [
   'Recent incidents come only from SCENE.riskAssessment.localHeadlines.',
   'Whether Al Jazeera has covered the place comes only from SCENE.riskAssessment.alJazeera.',
   'Government crime-stat outliers come only from SCENE.riskAssessment.govCrimeHeadlines; if that list is empty, say no outlier was supplied.',
+  'When SCENE.groundTruth is present, it carries checks computed from one country’s own published statistics table: totals against their parts, unfounded incidents, the table’s own notes, the "other" categories, late-starting series, and recomputed arithmetic. Findings, numbers and notes about that table come only from SCENE.groundTruth.',
   'Never invent a place, a reading, a layer, an incident, or a statistic that the JSON does not contain.',
   'Say plainly when the JSON does not cover something rather than guessing.',
   'Write prose for an operator: no markdown, no headings, no bullet characters.',
   'Be specific and brief. Stay to one short paragraph unless the question asks for more.',
+  'When the QUESTION sets out its own output layout (numbered sections, heading lines to copy, lists of details), follow that layout exactly; it overrides the two rules before this one.',
 ].join(' ');
 
 /**
@@ -286,6 +312,7 @@ export function buildLlmAskCall(
   question,
   context,
   env = process.env,
+  answerTokens = null,
 ) {
   const payload = {
     model: settings.model,
@@ -296,7 +323,7 @@ export function buildLlmAskCall(
         content: `SCENE:\n${JSON.stringify(context ?? {})}\n\nQUESTION:\n${question}`,
       },
     ],
-    max_tokens: llmMaxTokens(env),
+    max_tokens: answerTokens ?? llmMaxTokens(env),
     temperature: 0.3,
     stream: false,
   };

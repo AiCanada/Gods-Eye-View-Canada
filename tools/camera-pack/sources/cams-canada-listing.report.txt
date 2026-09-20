@@ -1,0 +1,578 @@
+Canadian webcam listing -> sources\cams-canada-listing.json
+input: canada_webcams.tsv  rows 7387  (identical copies 0, conflicting ids 0, no id 0)
+
+entries written: 5228  (merge-pack.mjs still drops any within 25 m of a camera the pack already holds)
+    4884  still, placed by the listing
+     307  still, placed by address
+      37  stream only (HLS)
+
+listed twice through two hosts (the operator's own host kept, a 511 re-listing dropped): 107
+      67  Ontario 511 / City of Toronto
+      20  Ontario 511 / Ottawa
+       9  Alberta 511
+       3  Whistler Resort Webcams
+       2  Ontario 511
+       1  nbcams.ca
+       1  bccams.ca / Hakai Institute
+       1  bccams.ca / Mill Bay Marina
+       1  bccams.ca / Revelstoke Mountain Resort
+       1  CBC Prince Edward Island Webcam
+       1  CBC Calgary Webcam
+
+left out before placing:
+      17  school, university, college or library camera
+       3  not a Canadian province or territory
+       2  unpublished device (billboard monitor), not an operator webcam
+
+already acquired (same address as a camera in the pack, or listed twice): 2815
+     943  Ontario 511
+     580  Alberta 511
+     503  DriveBC
+     463  City of Vancouver
+      63  New Brunswick 511
+      56  Saskatchewan 511
+      53  Nova Scotia Public Works
+      42  Newfoundland and Labrador 511
+      37  City of Surrey Traffic Cameras
+      26  nbcams.ca
+      15  Yukon 511
+       8  SkylineWebcams
+       7  PEI 511
+       4  CCG e-Nav Ice Monitoring
+       3  Castanet Scenic Webcams
+       2  nbcams.ca / Poley Mountain
+       2  NL Transportation Highway Cams
+       1  NTV Webcams
+       1  nbcams.ca / Biron Engineering
+       1  CBC New Brunswick Webcam
+       1  CBC Toronto Webcam
+       1  Royal Newfoundland Yacht Club Webcam
+       1  SilverStar Mountain Resort
+       1  DriveBC (rescued URL variant)
+       1  BC Ferries
+
+nothing to watch (a web page only, or a stream the server cannot carry): 754
+     678  Quebec 511 / MTQ
+      52  Nova Scotia Webcams
+       4  Skaping / Sommet Saint-Sauveur
+       3  (no source)
+       2  bccams.ca / ESIS
+       2  Parks Canada Ivvavik Operational Weather Cameras
+       1  Skaping / Golden Skybridge
+       1  Skaping / Mont Rigaud
+       1  Skaping / Tremblant
+       1  Skaping / Ski Saint-Bruno
+       1  Skaping / Montreal Grand Port
+       1  Mariner's Cove Marina Healey Lake
+       1  Dore Lake Lodge SaskLakes Webcam
+       1  Green Lake Lodge SaskLakes Webcam
+       1  Manitou Springs Resort SaskLakes Webcam
+       1  Moose Horn Lodge SaskLakes Webcam
+       1  Skaping / Cypress Mountain
+       1  Skaping / Mount Norquay
+       1  Skaping / Alpine Ski Club
+
+placed by address: 309   lookups made this run: 1
+  NS-DPW-Kelly's Mountain  Kelly's Mountain  <-  "Kelly's Mountain, Nova Scotia, Canada"  =>  Kelly's Mountain, Englishtown, Nova Scotia  (46.251926, -60.528126)
+  AB-511-583  Stoney Trail & 52 St SE facing S  <-  "Stoney Trail & 52 St SE, Alberta, Canada"  =>  Stoney Trail SE, Calgary, Alberta  (51.041467, -113.920939)
+  NL-HWY-badger-amec  NL Highway Camera – Badger  <-  "Badger, Newfoundland and Labrador, Canada"  =>  Badger, Newfoundland and Labrador  (48.978414, -56.044006)
+  NL-HWY-bayroberts-amec  NL Highway Camera – Bayroberts  <-  "Bay Roberts, Newfoundland and Labrador, Canada"  =>  Bay Roberts, Newfoundland and Labrador  (47.575924, -53.283341)
+  NL-HWY-birchynarrows-amec  NL Highway Camera – Birchynarrows  <-  "Birchy Narrows, Newfoundland and Labrador, Canada"  =>  Birchy Narrows Island, Pinsents Arm, Newfoundland and Labrador  (52.720322, -55.966792)
+  NL-HWY-cacheriver-amec  NL Highway Camera – Cacheriver  <-  "Cacheriver, Newfoundland and Labrador, Canada"  =>  Memorial University of Newfoundland and Labrador, St. John's, Newfoundland and Labrador  (47.573347, -52.733309)
+  NL-HWY-flowerscove  NL Highway Camera – Flowerscove  <-  "Flower's Cove, Newfoundland and Labrador, Canada"  =>  Flower's Cove, Newfoundland and Labrador  (51.300445, -56.742709)
+  NL-HWY-foxtrap  NL Highway Camera – Foxtrap  <-  "Foxtrap, Newfoundland and Labrador, Canada"  =>  Foxtrap River, Conception Bay South, Newfoundland and Labrador  (47.507325, -52.995141)
+  NL-HWY-gander  NL Highway Camera – Gander  <-  "Gander, Newfoundland and Labrador, Canada"  =>  Gander, Newfoundland and Labrador  (48.959229, -54.618788)
+  NL-HWY-goobies  NL Highway Camera – Goobies  <-  "Goobies, Newfoundland and Labrador, Canada"  =>  Goobies, Newfoundland and Labrador  (47.942856, -53.963246)
+  NL-HWY-grandfallswindsor  NL Highway Camera – Grandfallswindsor  <-  "Grand Falls-Windsor, Newfoundland and Labrador, Canada"  =>  Grand Falls-Windsor, Newfoundland and Labrador  (48.944151, -55.652618)
+  NL-HWY-harbourbreton-amec  NL Highway Camera – Harbourbreton  <-  "Harbour Breton, Newfoundland and Labrador, Canada"  =>  Harbour Breton, Newfoundland and Labrador  (47.471026, -55.825795)
+  NL-HWY-lewisporte-amec  NL Highway Camera – Lewisporte  <-  "Lewisporte, Newfoundland and Labrador, Canada"  =>  Lewisporte, Newfoundland and Labrador  (49.246293, -55.059357)
+  NL-HWY-lumsden-amec  NL Highway Camera – Lumsden  <-  "Lumsden, Newfoundland and Labrador, Canada"  =>  Lumsden, Newfoundland and Labrador  (49.294139, -53.587889)
+  NL-HWY-paddyspond  NL Highway Camera – Paddyspond  <-  "Paddy's Pond, Newfoundland and Labrador, Canada"  =>  St. John's (Paddys Pond) Water Aerodrome, St. John's, Newfoundland and Labrador  (47.468428, -52.889509)
+  NL-HWY-portauport-amec  NL Highway Camera – Portauport  <-  "Port au Port, Newfoundland and Labrador, Canada"  =>  Port au Choix, Newfoundland and Labrador  (50.706904, -57.358898)
+  NL-HWY-portauxbasques  NL Highway Camera – Portauxbasques  <-  "Port aux Basques, Newfoundland and Labrador, Canada"  =>  Port Aux Basques, Newfoundland and Labrador  (47.577664, -59.142419)
+  NL-HWY-pynnsbrook  NL Highway Camera – Pynnsbrook  <-  "Pynn's Brook, Newfoundland and Labrador, Canada"  =>  Pynn's Brook, Newfoundland and Labrador  (48.950485, -55.870269)
+  NL-HWY-rangerlake-amec  NL Highway Camera – Rangerlake  <-  "Ranger Lake, Newfoundland and Labrador, Canada"  =>  Ranger Bight Brook, Newfoundland and Labrador  (55.058563, -59.209321)
+  NL-HWY-salmonier  NL Highway Camera – Salmonier  <-  "Salmonier, Newfoundland and Labrador, Canada"  =>  Salmonier, Newfoundland and Labrador  (47.282793, -53.265405)
+  NL-HWY-saltpond  NL Highway Camera – Saltpond  <-  "Salt Pond, Newfoundland and Labrador, Canada"  =>  Salt Pond, Newfoundland and Labrador  (53.486141, -55.912748)
+  NL-HWY-springdale  NL Highway Camera – Springdale  <-  "Springdale, Newfoundland and Labrador, Canada"  =>  Springdale, Newfoundland and Labrador  (49.499851, -56.07404)
+  CA4-XX-cam-6847a87290  Abbotsford (Bradner Rd.) BC  <-  "Bradner Rd, Abbotsford, British Columbia, Canada"  =>  Bradner, Abbotsford, British Columbia  (49.096997, -122.427009)
+  CA4-XX-cam-04af5b2857  Sutton Pass VI BC  <-  "Sutton Pass VI, British Columbia, Canada"  =>  Sutton Pass, Area D (Sproat Lake), British Columbia  (49.281138, -125.353073)
+  BC-VAN-TCM230  Angus Marine - South  <-  "Angus & Marine, Vancouver, British Columbia, Canada"  =>  University of British Columbia Botanical Garden, Electoral Area A, British Columbia  (49.253823, -123.247328)
+  BC-VAN-TCM241  Arbutus Greenway SWM - North  <-  "Arbutus Greenway SWM, Vancouver, British Columbia, Canada"  =>  Arbutus Greenway, Vancouver, British Columbia  (49.236645, -123.155212)
+  BC-VAN-TCM242  Arbutus Greenway SWM - South  <-  "Arbutus Greenway SWM, Vancouver, British Columbia, Canada"  =>  Arbutus Greenway, Vancouver, British Columbia  (49.237004, -123.155212)
+  BC-VAN-TCM247  Arbutus Lahb - East  <-  "Arbutus & Lahb, Vancouver, British Columbia, Canada"  =>  Lahb Avenue, Vancouver, British Columbia  (49.248476, -123.154211)
+  BC-VAN-TCM265  Boundary1st S - East  <-  "Boundary Street & 1st Avenue, Vancouver, British Columbia, Canada"  =>  Boundary Rd (SB) at East 1st Ave, Vancouver, British Columbia  (49.269175, -123.023835)
+  BC-VAN-TCM267  Boundary1st S - West  <-  "Boundary Street & 1st Avenue, Vancouver, British Columbia, Canada"  =>  Boundary Rd (SB) at East 1st Ave, Vancouver, British Columbia  (49.269534, -123.023835)
+  BC-VAN-TCM279  Boundary Canada Way - West  <-  "Boundary Canada Way, Vancouver, British Columbia, Canada"  =>  Boundary Bay Airport, Delta, British Columbia  (49.073622, -123.004422)
+  BC-VAN-TCM286  Boundary Lougheed South - East  <-  "Boundary & Lougheed, Vancouver, British Columbia, Canada"  =>  Lougheed Hwy (WB) at Boundary Loop, Vancouver, British Columbia  (49.265264, -123.025422)
+  BC-VAN-TCM287  Boundary Lougheed South - South  <-  "Boundary & Lougheed, Vancouver, British Columbia, Canada"  =>  Lougheed Hwy (WB) at Boundary Loop, Vancouver, British Columbia  (49.265623, -123.025422)
+  BC-VAN-TCM288  Boundary Lougheed South - West  <-  "Boundary & Lougheed, Vancouver, British Columbia, Canada"  =>  Lougheed Hwy (WB) at Boundary Loop, Vancouver, British Columbia  (49.265518, -123.025033)
+  BC-VAN-TCM319  Cambie02East - East  <-  "Cambie Street & 2nd Avenue, Vancouver, British Columbia, Canada"  =>  Cambie Street Bridge, Vancouver, British Columbia  (49.267916, -123.114822)
+  BC-VAN-TCM324  Cambie02West - West  <-  "Cambie Street & 2nd Avenue, Vancouver, British Columbia, Canada"  =>  Cambie Street Bridge, Vancouver, British Columbia  (49.268275, -123.114822)
+  BC-VAN-TCM343  Cambie Bridge - East  <-  "Cambie Bridge, Vancouver, British Columbia, Canada"  =>  Cambie Bridge, Vancouver, British Columbia  (49.274304, -123.114539)
+  BC-VAN-TCM345  Cambie Bridge - West  <-  "Cambie Bridge, Vancouver, British Columbia, Canada"  =>  Cambie Bridge, Vancouver, British Columbia  (49.274663, -123.114539)
+  BC-VAN-TCM356  Carolina Grt Northern - South  <-  "Carolina Grt Northern, Vancouver, British Columbia, Canada"  =>  The University of British Columbia Vancouver, Electoral Area A, British Columbia  (49.248464, -123.234155)
+  BC-VAN-TCM379  Denman Beach - North  <-  "Denman & Beach, Vancouver, British Columbia, Canada"  =>  Park Beach Manor, Vancouver, British Columbia  (49.290841, -123.140311)
+  BC-VAN-TCM380  Denman Beach - South  <-  "Denman & Beach, Vancouver, British Columbia, Canada"  =>  Park Beach Manor, Vancouver, British Columbia  (49.2912, -123.140311)
+  BC-VAN-TCM407  Gladstone MBE - North  <-  "Gladstone & MBE, Vancouver, British Columbia, Canada"  =>  Gladstone-Riverside Park, Vancouver, British Columbia  (49.205799, -123.060133)
+  BC-VAN-TCM413  Granville12South - East  <-  "Granville Street & 12th Avenue, Vancouver, British Columbia, Canada"  =>  Granville Street (SB) at West 12th Avenue, Vancouver, British Columbia  (49.260528, -123.138827)
+  BC-VAN-TCM414  Granville12South - South  <-  "Granville Street & 12th Avenue, Vancouver, British Columbia, Canada"  =>  Granville Street (SB) at West 12th Avenue, Vancouver, British Columbia  (49.260887, -123.138827)
+  BC-VAN-TCM415  Granville12South - West  <-  "Granville Street & 12th Avenue, Vancouver, British Columbia, Canada"  =>  Granville Street (SB) at West 12th Avenue, Vancouver, British Columbia  (49.260782, -123.138438)
+  BC-VAN-TCM443  Granville Robson South - East  <-  "Granville & Robson, Vancouver, British Columbia, Canada"  =>  Downtown Robson St & Granville St, Vancouver, British Columbia  (49.281558, -123.119972)
+  BC-VAN-TCM444  Granville Robson South - South  <-  "Granville & Robson, Vancouver, British Columbia, Canada"  =>  Downtown Robson St & Granville St, Vancouver, British Columbia  (49.281917, -123.119972)
+  BC-VAN-TCM445  Granville Robson South - West  <-  "Granville & Robson, Vancouver, British Columbia, Canada"  =>  Downtown Robson St & Granville St, Vancouver, British Columbia  (49.281812, -123.119583)
+  BC-VAN-TCM468  Joyce Vanness South - South  <-  "Joyce & Vanness, Vancouver, British Columbia, Canada"  =>  Joyce Medical Innovations, Vancouver, British Columbia  (49.242785, -123.043185)
+  BC-VAN-TCM482  Kingsway Broadway North - East  <-  "Kingsway & Broadway, Vancouver, British Columbia, Canada"  =>  East Broadway (EB) at Kingsway, Vancouver, British Columbia  (49.262721, -123.098079)
+  BC-VAN-TCM484  Kingsway Broadway North - West  <-  "Kingsway & Broadway, Vancouver, British Columbia, Canada"  =>  East Broadway (EB) at Kingsway, Vancouver, British Columbia  (49.26308, -123.098079)
+  BC-VAN-TCM493  Knight Bridge - East  <-  "Knight Bridge, Vancouver, British Columbia, Canada"  =>  Knight Street Bridge, Richmond, British Columbia  (49.208321, -123.077297)
+  BC-VAN-TCM495  Knight Bridge - West  <-  "Knight Bridge, Vancouver, British Columbia, Canada"  =>  Knight Street Bridge, Richmond, British Columbia  (49.20868, -123.077297)
+  BC-VAN-TCM552  Nanaimo Dundas South - South  <-  "Nanaimo & Dundas, Vancouver, British Columbia, Canada"  =>  Nanaimo Street (SB) at Dundas St, Vancouver, British Columbia  (49.284411, -123.056706)
+  BC-VAN-TCM553  Nanaimo Dundas South - West  <-  "Nanaimo & Dundas, Vancouver, British Columbia, Canada"  =>  Nanaimo Street (SB) at Dundas St, Vancouver, British Columbia  (49.28477, -123.056706)
+  BC-VAN-TCM569  Oak70 - East  <-  "Oak Street & 70th Avenue, Vancouver, British Columbia, Canada"  =>  Oak St (NB) at West 70th Ave, Vancouver, British Columbia  (49.208843, -123.130108)
+  BC-VAN-TCM570  Oak70 - West  <-  "Oak Street & 70th Avenue, Vancouver, British Columbia, Canada"  =>  Oak St (NB) at West 70th Ave, Vancouver, British Columbia  (49.209202, -123.130108)
+  BC-VAN-TCM654  Sawmill East Marine - East  <-  "Sawmill East Marine, Vancouver, British Columbia, Canada"  =>  Vancouver East, Vancouver, British Columbia  (49.279437, -123.066666)
+  BC-VAN-TCM658  Sawmill West Marine - West  <-  "Sawmill West Marine, Vancouver, British Columbia, Canada"  =>  Sawmill Crescent West, Vancouver, British Columbia  (49.207009, -123.033565)
+  BC-VAN-TCM708  Victoria Vic Com - West  <-  "Vancouver, British Columbia, Canada (town centre: the listing gives no address)"  =>  Vancouver, British Columbia  (49.260872, -123.113952)
+  BC-VAN-TCM709  Yukon SWMarine - North  <-  "Yukon & SW Marine Drive, Vancouver, British Columbia, Canada"  =>  Marine Drive, Vancouver, British Columbia  (49.209684, -123.11698)
+  ON-TO-337  Toronto TMC loc8239  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653482, -79.383935)
+  ON-TO-338  Toronto TMC loc8240  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653841, -79.383935)
+  ON-TO-339  Toronto TMC loc8265  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653736, -79.383584)
+  ON-TO-340  Toronto TMC loc8266  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653482, -79.383438)
+  ON-TO-341  Toronto TMC loc8267  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653228, -79.383584)
+  ON-TO-342  Toronto TMC loc8269  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653123, -79.383935)
+  ON-TO-343  Toronto TMC loc8270  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653228, -79.384286)
+  ON-TO-344  Toronto TMC loc8271  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653482, -79.384432)
+  ON-TO-345  Toronto TMC loc8272  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653736, -79.384286)
+  ON-TO-346  Toronto TMC loc8273  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.654201, -79.383935)
+  ON-TO-347  Toronto TMC loc8274  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.65399, -79.383233)
+  ON-TO-348  Toronto TMC loc8275  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653482, -79.382942)
+  ON-TO-349  Toronto TMC loc8276  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.652974, -79.383233)
+  ON-TO-350  Toronto TMC loc8277  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.652763, -79.383935)
+  ON-TO-351  Toronto TMC loc8278  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.652974, -79.384637)
+  ON-TO-352  Toronto TMC loc8279  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653482, -79.384928)
+  ON-TO-353  Toronto TMC loc8280  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.65399, -79.384637)
+  ON-TO-354  Toronto TMC loc8281  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.65456, -79.383935)
+  ON-TO-355  Toronto TMC loc8282  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.654244, -79.382881)
+  ON-TO-356  Toronto TMC loc8283  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653482, -79.382445)
+  ON-TO-357  Toronto TMC loc8284  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.65272, -79.382881)
+  ON-TO-358  Toronto TMC loc8286  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.652404, -79.383935)
+  ON-TO-359  Toronto TMC loc8288  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.65272, -79.384989)
+  ON-TO-360  Toronto TMC loc8289  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653482, -79.385425)
+  ON-TO-361  Toronto TMC loc8290  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.654244, -79.384989)
+  ON-TO-362  Toronto TMC loc8291  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.654919, -79.383935)
+  ON-TO-363  Toronto TMC loc8292  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.654498, -79.38253)
+  ON-TO-364  Toronto TMC loc8293  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653482, -79.381948)
+  ON-TO-365  Toronto TMC loc8300  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.652466, -79.38253)
+  ON-OTT-49  Ottawa Traffic Camera 49  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.690111)
+  ON-OTT-53  Ottawa Traffic Camera 53  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.421237, -75.690111)
+  ON-OTT-54  Ottawa Traffic Camera 54  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.421132, -75.689749)
+  ON-OTT-57  Ottawa Traffic Camera 57  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.689599)
+  ON-OTT-78  Ottawa Traffic Camera 78  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420624, -75.689749)
+  ON-OTT-84  Ottawa Traffic Camera 84  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420519, -75.690111)
+  ON-OTT-86  Ottawa Traffic Camera 86  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420624, -75.690473)
+  ON-OTT-89  Ottawa Traffic Camera 89  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.690623)
+  ON-OTT-92  Ottawa Traffic Camera 92  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.421132, -75.690473)
+  ON-OTT-93  Ottawa Traffic Camera 93  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.421597, -75.690111)
+  ON-OTT-94  Ottawa Traffic Camera 94  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.421386, -75.689387)
+  ON-OTT-97  Ottawa Traffic Camera 97  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.689087)
+  ON-OTT-106  Ottawa Traffic Camera 106  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.42037, -75.689387)
+  ON-OTT-109  Ottawa Traffic Camera 109  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420159, -75.690111)
+  ON-OTT-117  Ottawa Traffic Camera 117  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.42037, -75.690835)
+  ON-OTT-122  Ottawa Traffic Camera 122  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.691135)
+  ON-OTT-137  Ottawa Traffic Camera 137  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.421386, -75.690835)
+  ON-OTT-142  Ottawa Traffic Camera 142  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.421956, -75.690111)
+  ON-OTT-156  Ottawa Traffic Camera 156  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.42164, -75.689025)
+  ON-OTT-163  Ottawa Traffic Camera 163  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.688575)
+  ON-OTT-165  Ottawa Traffic Camera 165  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420116, -75.689025)
+  ON-OTT-166  Ottawa Traffic Camera 166  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.4198, -75.690111)
+  ON-OTT-179  Ottawa Traffic Camera 179  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420116, -75.691197)
+  ON-OTT-180  Ottawa Traffic Camera 180  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.691647)
+  ON-OTT-203  Ottawa Traffic Camera 203  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.42164, -75.691197)
+  ON-OTT-226  Ottawa Traffic Camera 226  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.422315, -75.690111)
+  ON-OTT-249  Ottawa Traffic Camera 249  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.421894, -75.688663)
+  ON-OTT-251  Ottawa Traffic Camera 251  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.688063)
+  ON-OTT-262  Ottawa Traffic Camera 262  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.419862, -75.688663)
+  ON-OTT-263  Ottawa Traffic Camera 263  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.419441, -75.690111)
+  ON-OTT-274  Ottawa Traffic Camera 274  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.419862, -75.691559)
+  ON-OTT-275  Ottawa Traffic Camera 275  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.692159)
+  ON-OTT-280  Ottawa Traffic Camera 280  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.421894, -75.691559)
+  ON-OTT-287  Ottawa Traffic Camera 287  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.422675, -75.690111)
+  ON-OTT-297  Ottawa Traffic Camera 297  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.422148, -75.688301)
+  ON-OTT-325  Ottawa Traffic Camera 325  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.687551)
+  ON-OTT-330  Ottawa Traffic Camera 330  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.419608, -75.688301)
+  ON-OTT-331  Ottawa Traffic Camera 331  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.419081, -75.690111)
+  ON-OTT-343  Ottawa Traffic Camera 343  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.419608, -75.691921)
+  ON-OTT-350  Ottawa Traffic Camera 350  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.692671)
+  ON-OTT-351  Ottawa Traffic Camera 351  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.422148, -75.691921)
+  ON-OTT-353  Ottawa Traffic Camera 353  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.423034, -75.690111)
+  ON-OTT-371  Ottawa Traffic Camera 371  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.422402, -75.687939)
+  ON-OTT-372  Ottawa Traffic Camera 372  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.687039)
+  ON-OTT-373  Ottawa Traffic Camera 373  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.419354, -75.687939)
+  ON-OTT-374  Ottawa Traffic Camera 374  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.418722, -75.690111)
+  ON-OTT-379  Ottawa Traffic Camera 379  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.419354, -75.692283)
+  ON-OTT-380  Ottawa Traffic Camera 380  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.420878, -75.693183)
+  ON-OTT-393  Ottawa Traffic Camera 393  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.422402, -75.692283)
+  ON-OTT-398  Ottawa Traffic Camera 398  <-  "Ottawa, Ontario, Canada (town centre: the listing gives no address)"  =>  Ottawa, Ontario  (45.423393, -75.690111)
+  AB-CGY-10  Calgary Traffic Camera loc10  <-  "Calgary, Alberta, Canada (town centre: the listing gives no address)"  =>  Calgary, Alberta  (51.045606, -114.057541)
+  AB-CGY-109  Calgary Traffic Camera loc109  <-  "Calgary, Alberta, Canada (town centre: the listing gives no address)"  =>  Calgary, Alberta  (51.045965, -114.057541)
+  AB-CGY-159  Calgary Traffic Camera loc159  <-  "Calgary, Alberta, Canada (town centre: the listing gives no address)"  =>  Calgary, Alberta  (51.04586, -114.057137)
+  AB-CGY-169  Calgary Traffic Camera loc169  <-  "Calgary, Alberta, Canada (town centre: the listing gives no address)"  =>  Calgary, Alberta  (51.045606, -114.056969)
+  AB-CGY-171  Calgary Traffic Camera loc171  <-  "Calgary, Alberta, Canada (town centre: the listing gives no address)"  =>  Calgary, Alberta  (51.045352, -114.057137)
+  AB-CGY-210  Calgary Traffic Camera loc210  <-  "Calgary, Alberta, Canada (town centre: the listing gives no address)"  =>  Calgary, Alberta  (51.045247, -114.057541)
+  ON-YORK-393  York Region Traffic Camera loc393  <-  "York Region, Ontario, Canada (town centre: the listing gives no address)"  =>  York Region, Georgina, Ontario  (44.28792, -79.419767)
+  ON-YORK-394  York Region Traffic Camera loc394  <-  "York Region, Ontario, Canada (town centre: the listing gives no address)"  =>  York Region, Georgina, Ontario  (44.288279, -79.419767)
+  ON-YORK-395  York Region Traffic Camera loc395  <-  "York Region, Ontario, Canada (town centre: the listing gives no address)"  =>  York Region, Georgina, Ontario  (44.288174, -79.419412)
+  ON-YORK-396  York Region Traffic Camera loc396  <-  "York Region, Ontario, Canada (town centre: the listing gives no address)"  =>  York Region, Georgina, Ontario  (44.28792, -79.419265)
+  ON-YORK-397  York Region Traffic Camera loc397  <-  "York Region, Ontario, Canada (town centre: the listing gives no address)"  =>  York Region, Georgina, Ontario  (44.287666, -79.419412)
+  ON-YORK-398  York Region Traffic Camera loc398  <-  "York Region, Ontario, Canada (town centre: the listing gives no address)"  =>  York Region, Georgina, Ontario  (44.287561, -79.419767)
+  ON-YORK-399  York Region Traffic Camera loc399  <-  "York Region, Ontario, Canada (town centre: the listing gives no address)"  =>  York Region, Georgina, Ontario  (44.287666, -79.420122)
+  ON-YORK-400  York Region Traffic Camera loc400  <-  "York Region, Ontario, Canada (town centre: the listing gives no address)"  =>  York Region, Georgina, Ontario  (44.28792, -79.420269)
+  ON-YORK-401  York Region Traffic Camera loc401  <-  "York Region, Ontario, Canada (town centre: the listing gives no address)"  =>  York Region, Georgina, Ontario  (44.288174, -79.420122)
+  ON-YORK-402  York Region Traffic Camera loc402  <-  "York Region, Ontario, Canada (town centre: the listing gives no address)"  =>  York Region, Georgina, Ontario  (44.288639, -79.419767)
+  ON-TO-366  Toronto TMC Camera loc8294  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.652045, -79.383935)
+  ON-TO-367  Toronto TMC Camera loc8296  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.652466, -79.38534)
+  ON-TO-368  Toronto TMC Camera loc8297  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653482, -79.385922)
+  ON-TO-369  Toronto TMC Camera loc8299  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.654498, -79.38534)
+  ON-TO-370  Toronto TMC Camera loc8301  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.655279, -79.383935)
+  ON-TO-371  Toronto TMC Camera loc8302  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.654752, -79.382179)
+  ON-TO-372  Toronto TMC Camera loc8303  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653482, -79.381452)
+  ON-TO-373  Toronto TMC Camera loc8304  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.652212, -79.382179)
+  ON-TO-374  Toronto TMC Camera loc8305  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.651685, -79.383935)
+  ON-TO-375  Toronto TMC Camera loc9337  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.652212, -79.385691)
+  ON-TO-376  Toronto TMC Camera loc9338  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.653482, -79.386418)
+  ON-TO-377  Toronto TMC Camera loc9339  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.654752, -79.385691)
+  ON-TO-378  Toronto TMC Camera loc9340  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.655638, -79.383935)
+  ON-TO-379  Toronto TMC Camera loc9341  <-  "Toronto, Ontario, Canada (town centre: the listing gives no address)"  =>  Toronto, Ontario  (43.655006, -79.381828)
+  AB-CGY-223  Calgary Traffic Camera loc223  <-  "Calgary, Alberta, Canada (town centre: the listing gives no address)"  =>  Calgary, Alberta  (51.045352, -114.057945)
+  ON-511-loc87--2  Highway 401 at James Snow Parkway  <-  "Highway 401 at James Snow Parkway, Ontario, Canada"  =>  Milton, Ontario  (43.53374, -79.839249)
+  ON-511-loc46--3  Ontario 511 loc46--3  <-  "Burlington, Ontario, Canada (town centre: the listing gives no address)"  =>  Burlington, Ontario  (43.324892, -79.796683)
+  SKYLINE-live2069  Fairmont Le Château Frontenac - Quebec City  <-  "View of Fairmont Le Château Frontenac in Quebec City, Quebec, Canada"  =>  Fairmont Le Château Frontenac, Quebec, Quebec  (46.811818, -71.205144)
+  SKYLINE-live5959  Montréal - Trudeau Airport  <-  "Montréal - Trudeau Airport, Quebec, Canada"  =>  Montréal–Trudeau International Airport, Dorval, Quebec  (45.468729, -73.742488)
+  SKYLINE-live3995  Saguenay - Québec  <-  "Saguenay - Québec, Quebec, Canada"  =>  Saguenay, Quebec  (48.405959, -71.069183)
+  SKYLINE-live3703  Panorama of Ottawa - Canada  <-  "Panoramic view from Ottawa, Canada, Ontario, Canada"  =>  A View from Two Sides, Ottawa, Ontario  (45.426238, -75.670379)
+  SKYLINE-live2505  Niagara Falls  <-  "View over the Niagara Falls, Ontario, Canada"  =>  Niagara Falls—Niagara-on-the-Lake, Niagara Falls, Ontario  (43.112156, -79.117391)
+  SKYLINE-live5918  Niagara Falls - Ontario  <-  "View from Niagara Falls City in Ontario, Ontario, Canada"  =>  Falls View Brethren in Christ Church, Niagara Falls, Ontario  (43.071361, -79.097325)
+  SKYLINE-live5356  Streets of Niagara Falls - Canada  <-  "View of the streets of Niagara Falls in Canada, Ontario, Canada"  =>  Hornblower Niagara Funicular, Niagara Falls, Ontario  (43.088746, -79.072506)
+  SKYLINE-live2076  Collingwood - Hurontario Street  <-  "View of Hurontario Street in Collingwood, Ontario, Canada"  =>  Government of Canada, Collingwood, Ontario  (44.501436, -80.217703)
+  SKYLINE-live2727  Canada Bound Truck Inspection  <-  "Canada Bound Truck Inspection, Ontario, Canada"  =>  Truck Inspection Station, King, Ontario  (43.984256, -79.582007)
+  SKYLINE-live5699  Colborne - Ontario  <-  "Colborne - Ontario, Ontario, Canada"  =>  Port Colborne, Ontario  (42.886239, -79.25139)
+  SKYLINE-live5772  Parry Sound - Canada  <-  "View from Parry Sound in Ontario, Ontario, Canada"  =>  Sound View Court, McDougall Township, Ontario  (45.405015, -80.103389)
+  SKYLINE-live3702  Ottawa - Canada  <-  "Panoramic view over Ottawa in Ontario, Canada, Ontario, Canada"  =>  Retirement In View, Ottawa, Ontario  (45.409086, -75.692689)
+  SKYLINE-live3450  Haliburton - Canada  <-  "View of Kennisis Lake in Haliburton, Canada, Ontario, Canada"  =>  Crests of Kennisis Hiking Trail, Algonquin Highlands, Ontario  (45.133555, -78.7329)
+  SKYLINE-live5207  Steinbach - Canada  <-  "Steinbach - Canada, Manitoba, Canada"  =>  Steinbach, Manitoba  (49.525441, -96.685427)
+  SKYLINE-live5590  Panorama of Vancouver - Canada  <-  "Panorama of Vancouver - Canada, British Columbia, Canada"  =>  Panorama Creek, District of North Vancouver, British Columbia  (49.332248, -122.952124)
+  SKYLINE-live5047  Port of Vancouver - Canada  <-  "View over the port of Vancouver, Canada, British Columbia, Canada"  =>  The Completion of the Canadian Pacific Railway, Port Moody, British Columbia  (49.27655, -122.856764)
+  SKYLINE-live2063  Calgary - Alberta  <-  "View of downtown Calgary, Alberta, Canada"  =>  University of Calgary Downtown Campus, Calgary, Alberta  (51.046405, -114.082145)
+  SKYLINE-live3825  Alberni - Canada  <-  "View of the port of Alberni in Canada, British Columbia, Canada"  =>  Consulate General of the Republic of Indonesia, Vancouver, British Columbia  (49.290239, -123.13207)
+  SKYLINE-live3808  Nanaimo - Canada  <-  "Nanaimo - Canada, British Columbia, Canada"  =>  Nanaimo, British Columbia  (49.163877, -123.938122)
+  SKYLINE-live2372  Revelstoke - Railfan  <-  "View over the Revelstoke railway in British Columbia, Canada, British Columbia, Canada"  =>  Revelstoke Viewpoint, Area B (Shelter Bay/Mica Creek), British Columbia  (51.008041, -118.187271)
+  SKYLINE-live3588  Vancouver - BC Place Stadium  <-  "Vancouver - BC Place Stadium, British Columbia, Canada"  =>  BC Place Stadium East/West, Vancouver, British Columbia  (49.276841, -123.109427)
+  SKYLINE-live3232  Parksville - Tigh-Na-Mara  <-  "View of Craig Bay in Parksville, Canada, British Columbia, Canada"  =>  Interstate Batteries of Coastal British Columbia, View Royal, British Columbia  (48.453711, -123.461649)
+  SKYLINE-live2486  Canmore - Canada  <-  "View of Canmore in Alberta, Canada, Alberta, Canada"  =>  Mountain View Inn, Canmore, Alberta  (51.086518, -115.345301)
+  SKYLINE-live4675  Fredericton - Canada  <-  "Fredericton - Canada, New Brunswick, Canada"  =>  Fredericton, New Brunswick  (45.963231, -66.643243)
+  SKYLINE-live4676  Fredericton - Officers' Square  <-  "View of Officers' Square in Fredericton, Canada, New Brunswick, Canada"  =>  Officers' Square, Fredericton, New Brunswick  (45.961863, -66.638955)
+  SKYLINE-live5255  Vancouver - Deep Cove  <-  "View from Deep Cove in Vancouver, Canada, British Columbia, Canada"  =>  Baker View Street, District of North Vancouver, British Columbia  (49.309587, -122.952159)
+  SKYLINE-live3752  Victoria Harbour - Canada  <-  "View over Victoria harbour in Canada, British Columbia, Canada"  =>  Victoria Inner Harbour Airport, Victoria, British Columbia  (48.42533, -123.390422)
+  SKYLINE-live3977  Ross Bay - Victoria  <-  "Ross Bay - Victoria, British Columbia, Canada"  =>  Ross Bay Cemetery, Victoria, British Columbia  (48.411163, -123.34053)
+  SKYLINE-live4044  White Rock - Canada  <-  "White Rock - Canada, British Columbia, Canada"  =>  White Rock, British Columbia  (49.023536, -122.797924)
+  SKYLINE-live2080  Central Memorial Park - Calgary  <-  "Central Memorial Park - Calgary, Alberta, Canada"  =>  Central Memorial Park, Calgary, Alberta  (51.041122, -114.069902)
+  SKYLINE-live3340  Tofino - Crystal Cove Beach  <-  "Tofino - Crystal Cove Beach, British Columbia, Canada"  =>  Crystal Cove Beach Resort, Tofino, British Columbia  (49.127486, -125.901277)
+  SKYLINE-live2402  Tofino - Long Beach  <-  "View from Tofino Long Beach, British Columbia, Canada"  =>  Tofino-Long Beach Airport, Area C (Long Beach), British Columbia  (49.082256, -125.780611)
+  SKYLINE-live6189  Ucluelet - Canada  <-  "Ucluelet - Canada, British Columbia, Canada"  =>  Ucluelet, British Columbia  (48.942682, -125.546049)
+  SKYLINE-live3996  St. John's - Newfoundland And Labrador  <-  "St. John's - Newfoundland And Labrador, Newfoundland and Labrador, Canada"  =>  Memorial University of Newfoundland and Labrador, St. John's, Newfoundland and Labrador  (47.573706, -52.733309)
+  SKYLINE-live4328  Cold Lake - Canada  <-  "Cold Lake - Canada, Alberta, Canada"  =>  Cold Lake, Alberta  (54.46046, -110.192871)
+  SKYLINE-live2078  Whistler Olympic Plaza - Whistler  <-  "Whistler Olympic Plaza - Whistler, British Columbia, Canada"  =>  Whistler Olympic Plaza, Whistler, British Columbia  (50.11871, -122.954504)
+  SKYLINE-live3406  Center of Canmore - Canada  <-  "View of downtown Canmore in Canada, Alberta, Canada"  =>  Canmore Downtown Hostel, Canmore, Alberta  (51.088477, -115.34646)
+  SKYLINE-live2666  The Shops of Canmore - Canada  <-  "View over the shops of Canmore, Canada, Alberta, Canada"  =>  The Shops of Canmore, Canmore, Alberta  (51.088247, -115.346274)
+  SKYLINE-live2756  Canmore - Railway Avenue  <-  "View from Railway Avenue in Canmore, Canada, Alberta, Canada"  =>  TD Insurance Auto Centre, Canmore, Alberta  (51.093985, -115.357536)
+  SKYLINE-live2503  Olympic Plaza - West Vancouver  <-  "Olympic Plaza - West Vancouver, British Columbia, Canada"  =>  Olympic Village, Vancouver, British Columbia  (49.266561, -123.115699)
+  BC-FERRY-LNG-1  BC Ferries Sunshine Coast (Langdale) cam 1  <-  "Langdal, Sunshine Coast, British Columbia, Canada"  =>  Langdale Ferry Terminal, Area F (West Howe Sound), British Columbia  (49.434045, -123.476463)
+  BC-FERRY-NAN-1  BC Ferries Nanaimo (Departure Bay) cam 1  <-  "Departure Ba, Nanaimo, British Columbia, Canada"  =>  Departure Bay, Nanaimo, British Columbia  (49.201768, -123.957515)
+  BC-FERRY-SWB-1  BC Ferries Victoria (Swartz Bay) cam 1  <-  "Swartz Ba, Victoria, British Columbia, Canada"  =>  Victoria (Swartz Bay) Berth 2 (Foot Access), North Saanich, British Columbia  (48.6892, -123.410534)
+  BC-FERRY-TSA-1  BC Ferries Vancouver (Tsawwassen) cam 1  <-  "Tsawwasse, Vancouver, British Columbia, Canada"  =>  Tsawwassen First Nation, British Columbia  (49.03557, -123.105618)
+  BC-FERRY-DUK-2  BC Ferries Nanaimo (Duke Point) cam 2  <-  "Duke Poin, Nanaimo, British Columbia, Canada"  =>  Duke Point, Nanaimo, British Columbia  (49.150578, -123.881721)
+  BC-FERRY-LNG-2  BC Ferries Sunshine Coast (Langdale) cam 2  <-  "Langdal, Sunshine Coast, British Columbia, Canada"  =>  Langdale Ferry Terminal, Area F (West Howe Sound), British Columbia  (49.434404, -123.476463)
+  BC-FERRY-NAN-2  BC Ferries Nanaimo (Departure Bay) cam 2  <-  "Departure Ba, Nanaimo, British Columbia, Canada"  =>  Departure Bay, Nanaimo, British Columbia  (49.202127, -123.957515)
+  BC-FERRY-SWB-2  BC Ferries Victoria (Swartz Bay) cam 2  <-  "Swartz Ba, Victoria, British Columbia, Canada"  =>  Victoria (Swartz Bay) Berth 2 (Foot Access), North Saanich, British Columbia  (48.689559, -123.410534)
+  BC-FERRY-TSA-2  BC Ferries Vancouver (Tsawwassen) cam 2  <-  "Tsawwasse, Vancouver, British Columbia, Canada"  =>  Tsawwassen First Nation, British Columbia  (49.035929, -123.105618)
+  BC-FERRY-SWB-3  BC Ferries Victoria (Swartz Bay) cam 3  <-  "Swartz Ba, Victoria, British Columbia, Canada"  =>  Victoria (Swartz Bay) Berth 2 (Foot Access), North Saanich, British Columbia  (48.689454, -123.410149)
+  BC-FERRY-TSA-3  BC Ferries Vancouver (Tsawwassen) cam 3  <-  "Tsawwasse, Vancouver, British Columbia, Canada"  =>  Tsawwassen First Nation, British Columbia  (49.035824, -123.10523)
+  BC-FERRY-TSA-4  BC Ferries Vancouver (Tsawwassen) cam 4  <-  "Tsawwasse, Vancouver, British Columbia, Canada"  =>  Tsawwassen First Nation, British Columbia  (49.03557, -123.10507)
+  OZOLIO-CID_YZXU00001A4C  Revelstoke Mountain Resort Skywalk Camera  <-  "Revelstoke Mountain Resort,, British Columbia, Canada"  =>  Revelstoke Mountain Resort, Area B (Shelter Bay/Mica Creek), British Columbia  (50.969263, -118.109209)
+  OZOLIO-CID_SRJT00000B8D  Grouse Mountain Outpost / City View  <-  "Grouse Mountain, North Vancouver,, British Columbia, Canada"  =>  Grouse Mountain, District of North Vancouver, British Columbia  (49.379472, -123.07678)
+  OZOLIO-CID_YBLM00000045  Grouse Mountain  <-  "Grouse Mountain, North Vancouver,, British Columbia, Canada"  =>  Grouse Mountain, District of North Vancouver, British Columbia  (49.379831, -123.07678)
+  OZOLIO-CID_VOOW000008F9  Mount Washington Alpine Lodge  <-  "Mount Washington Alpine Resort,, British Columbia, Canada"  =>  Mount Washington Alpine Resort, Area C (Puntledge/Black Creek), British Columbia  (49.750505, -125.302194)
+  OZOLIO-CID_AVKF00001489  Mount Washington Marmot Metre  <-  "Mount Washington Alpine Resort,, British Columbia, Canada"  =>  Mount Washington Alpine Resort, Area C (Puntledge/Black Creek), British Columbia  (49.750864, -125.302194)
+  OZOLIO-CID_HQCJ000005B6  Grouse Mountain Bear Pond  <-  "Grouse Mountain, North Vancouver,, British Columbia, Canada"  =>  Grouse Mountain, District of North Vancouver, British Columbia  (49.379726, -123.07639)
+  OZOLIO-CID_LCTK0000070A  Grouse Mountain Bear Habitat Cam - Front  <-  "Grouse Mountain, North Vancouver,, British Columbia, Canada"  =>  Grouse Mountain, District of North Vancouver, British Columbia  (49.379472, -123.076228)
+  OZOLIO-CID_SGPR0000096C  Grouse Mountain Bear Yard Cam  <-  "Grouse Mountain, North Vancouver,, British Columbia, Canada"  =>  Grouse Mountain, District of North Vancouver, British Columbia  (49.379218, -123.07639)
+  OZOLIO-CID_MMVG00001A6A  Grouse Mountain Penguin Webcam  <-  "Grouse Mountain, North Vancouver,, British Columbia, Canada"  =>  Grouse Mountain, District of North Vancouver, British Columbia  (49.379113, -123.07678)
+  OZOLIO-CID_MDTW00001862  Grouse Mountain Sea Otters  <-  "Grouse Mountain, North Vancouver,, British Columbia, Canada"  =>  Grouse Mountain, District of North Vancouver, British Columbia  (49.379218, -123.07717)
+  OZOLIO-CID_NRKX000015DD  Grouse Mountain Giraffe Habitat  <-  "Grouse Mountain, North Vancouver,, British Columbia, Canada"  =>  Grouse Mountain, District of North Vancouver, British Columbia  (49.379472, -123.077332)
+  OZOLIO-CID_NJNR00000DFE  Grouse Mountain African Savanna  <-  "Grouse Mountain, North Vancouver,, British Columbia, Canada"  =>  Grouse Mountain, District of North Vancouver, British Columbia  (49.379726, -123.07717)
+  OZOLIO-CID_QTGQ00001565  Richardson Beach South East  <-  "Kingston, ON, Kingston, Ontario, Canada"  =>  Kingston, Ontario  (44.230687, -76.481323)
+  OZOLIO-CID_NWHO00001754  Waaban Crossing  <-  "Kingston, ON, Kingston, Ontario, Canada"  =>  Kingston, Ontario  (44.231046, -76.481323)
+  OZOLIO-CID_CISZ0000141B  Monument Cam Harbor view  <-  "Kingston, ON, Kingston, Ontario, Canada"  =>  Kingston, Ontario  (44.230941, -76.480968)
+  OZOLIO-CID_PCIZ00001583  Hanson Sign Cam  <-  "Kingston, ON, Kingston, Ontario, Canada"  =>  Kingston, Ontario  (44.230687, -76.480822)
+  NSWC-SHAGHARBOUR  Shag Harbour  <-  "Shag Harbour UFO Site, Nova Scotia, Canada"  =>  Shag Harbour, Nova Scotia  (43.493911, -65.717993)
+  NSWC-BERNART  Bernart Art Maze  <-  "#1136 Hwy 325, Blockhouse, NS, Nova Scotia, Canada"  =>  Blockhouse, Nova Scotia  (44.434169, -64.411558)
+  BC-IPCAM-CASTANET-89S9  Castanet-linked IPCamLive  <-  "British Columbia, British Columbia, Canada"  =>  University of British Columbia, Electoral Area A, British Columbia  (49.257892, -123.242975)
+  BC-FERRY-CHM-1  BC Ferries Chemainus cam 1  <-  "Chemainus, British Columbia, Canada"  =>  Chemainus River Park, Area F (Cowichan Lake South / Skutz Falls), British Columbia  (48.841408, -123.825397)
+  BC-FERRY-PPR-1  BC Ferries Prince Rupert cam 1  <-  "Prince Rupert, British Columbia, Canada"  =>  Prince Rupert, British Columbia  (54.312657, -130.32549)
+  SKYLINE-live5836  Peggy’s Cove Lighthouse - Canada  <-  "Peggy’s Cove Lighthouse - Canada, Nova Scotia, Canada"  =>  Peggy's Cove Lighthouse, Peggys Cove, Nova Scotia  (44.491595, -63.918958)
+  SKYLINE-live5990  Burntcoat - Nova Scotia  <-  "Burntcoat - Nova Scotia, Nova Scotia, Canada"  =>  Burntcoat Head, Burntcoat, Nova Scotia  (45.3109, -63.807467)
+  SKYLINE-live2995  Nova Scotia - Halifax  <-  "Nova Scotia - Halifax, Nova Scotia, Canada"  =>  Nova Scotia College of Art & Design, Halifax, Nova Scotia  (44.649992, -63.57448)
+  SKYLINE-live3932  Lockeport - Nova Scotia  <-  "Lockeport - Nova Scotia, Nova Scotia, Canada"  =>  Lockeport, Nova Scotia  (43.700389, -65.114716)
+  SKYLINE-live5989  Baccaro Point Lighthouse - Nova Scotia  <-  "Baccaro Point Lighthouse - Nova Scotia, Nova Scotia, Canada"  =>  Low Point Lighthouse, New Victoria, Nova Scotia  (46.267149, -60.125794)
+  SKYLINE-live3931  Truro - Nova Scotia  <-  "Truro - Nova Scotia, Nova Scotia, Canada"  =>  Truro, Nova Scotia  (45.365697, -63.286497)
+  BC-FERRY-BOW-1  BC Ferries Bowen Island (Snug Cove) cam 1  <-  "Snug Cov, Bowen Island, British Columbia, Canada"  =>  Bowen Island (Snug Cove), Bowen Island Municipality, British Columbia  (49.379492, -123.331345)
+  BC-FERRY-CAM-1  BC Ferries Campbell River cam 1  <-  "Campbell River, British Columbia, Canada"  =>  Campbell River, British Columbia  (50.023071, -125.244153)
+  BC-FERRY-FUL-1  BC Ferries Fulford Harbour (Salt Spring Island) cam 1  <-  "Salt Spring Islan, Fulford Harbour, British Columbia, Canada"  =>  Salt Spring Island (Fulford Harbour), Salt Spring Island Electoral Area, British Columbia  (48.769394, -123.451126)
+  BC-FERRY-GAB-1  BC Ferries Gabriola Island (Descanso Bay) cam 1  <-  "Descanso Ba, Gabriola Island, British Columbia, Canada"  =>  Gabriola Island (Descanso Bay), Area B (DeCourcy/Gabriola/Mudge), British Columbia  (49.177824, -123.858716)
+  BC-FERRY-HSB-1  BC Ferries Horseshoe Bay (West Vancouver) cam 1  <-  "West Vancouve, Horseshoe Bay, British Columbia, Canada"  =>  Horseshoe Bay, West Vancouver, British Columbia  (49.374441, -123.273919)
+  BC-FERRY-PVB-1  BC Ferries Powell River (Westview) cam 1  <-  "Westvie, Powell River, British Columbia, Canada"  =>  Westview Fuels, Powell River, British Columbia  (49.833957, -124.528836)
+  BC-FERRY-VES-1  BC Ferries Vesuvius (Salt Spring Island) cam 1  <-  "Salt Spring Islan, Vesuvius, British Columbia, Canada"  =>  Salt Spring Island (Vesuvius Bay), Salt Spring Island Electoral Area, British Columbia  (48.881253, -123.573386)
+  BC-FERRY-HSB-2  BC Ferries Horseshoe Bay (West Vancouver) cam 2  <-  "West Vancouve, Horseshoe Bay, British Columbia, Canada"  =>  Horseshoe Bay, West Vancouver, British Columbia  (49.3748, -123.273919)
+  BC-FERRY-HSB-3  BC Ferries Horseshoe Bay (West Vancouver) cam 3  <-  "West Vancouve, Horseshoe Bay, British Columbia, Canada"  =>  Horseshoe Bay, West Vancouver, British Columbia  (49.374695, -123.273529)
+  BC-FERRY-HSB-4  BC Ferries Horseshoe Bay (West Vancouver) cam 4  <-  "West Vancouve, Horseshoe Bay, British Columbia, Canada"  =>  Horseshoe Bay, West Vancouver, British Columbia  (49.374441, -123.273367)
+  BC-CASTANET-1  Castanet Scenic Cam 1  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887918, -119.495902)
+  BC-CASTANET-2  Castanet Scenic Cam 2  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.888277, -119.495902)
+  BC-CASTANET-4  Castanet Scenic Cam 4  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.888172, -119.495508)
+  BC-CASTANET-5  Kelowna - Sails  <-  "Kelowna - Sails, British Columbia, Canada"  =>  Spirit of Sail, Kelowna, British Columbia  (49.88632, -119.49937)
+  BC-CASTANET-7  Castanet Scenic Cam 7  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887918, -119.495344)
+  BC-CASTANET-8  Castanet Scenic Cam 8  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887664, -119.495508)
+  BC-CASTANET-9  Castanet Scenic Cam 9  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887559, -119.495902)
+  BC-CASTANET-11  Castanet Scenic Cam 11  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887664, -119.496296)
+  BC-CASTANET-13  Castanet Scenic Cam 13  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887918, -119.49646)
+  BC-CASTANET-14  Castanet Scenic Cam 14  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.888172, -119.496296)
+  BC-CASTANET-15  Castanet Scenic Cam 15  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.888637, -119.495902)
+  BC-CASTANET-16  Castanet Scenic Cam 16  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.888426, -119.495113)
+  BC-CASTANET-17  Castanet Scenic Cam 17  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887918, -119.494787)
+  BC-CASTANET-18  Castanet Scenic Cam 18  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.88741, -119.495113)
+  BC-CASTANET-19  Castanet Scenic Cam 19  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887199, -119.495902)
+  BC-CASTANET-20  Castanet Scenic Cam 20  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.88741, -119.496691)
+  BC-CASTANET-21  Castanet Scenic Cam 21  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887918, -119.497017)
+  BC-CASTANET-22  Castanet Scenic Cam 22  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.888426, -119.496691)
+  BC-CASTANET-23  Castanet Scenic Cam 23  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.888996, -119.495902)
+  BC-CASTANET-24  Castanet Scenic Cam 24  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.88868, -119.494719)
+  BC-CASTANET-25  Castanet Scenic Cam 25  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887918, -119.494229)
+  BC-CASTANET-26  Castanet Scenic Cam 26  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887156, -119.494719)
+  BC-CASTANET-27  Castanet Scenic Cam 27  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.88684, -119.495902)
+  BC-CASTANET-28  Castanet Scenic Cam 28  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887156, -119.497085)
+  BC-CASTANET-29  Castanet Scenic Cam 29  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.887918, -119.497575)
+  BC-CASTANET-30  Castanet Scenic Cam 30  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.88868, -119.497085)
+  BC-CASTANET-31  Castanet Scenic Cam 31  <-  "Kelowna, British Columbia, Canada (town centre: the listing gives no address)"  =>  Kelowna, British Columbia  (49.889355, -119.495902)
+  CA4-XX-cam-3aad18f6f2  Abbotsford BC  <-  "Abbotsford, British Columbia, Canada"  =>  Abbotsford, British Columbia  (49.052116, -122.329479)
+  CA4-XX-cam-f4628dd809  Hidden Valley Whitehorse Yukon  <-  "Hidden Valley Whitehorse Yukon, Yukon, Canada"  =>  Hidden Valley, Whitehorse, Yukon  (60.829605, -135.202693)
+  CA4-XX-cam-daa2a784dc  Salmon Arm BC  <-  "Salmon Arm, British Columbia, Canada"  =>  Salmon Arm, British Columbia  (50.700506, -119.279053)
+  CA4-XX-cam-9a3207f1c3  Thompson Ri. BC  <-  "Thompson Ri., British Columbia, Canada"  =>  North Thompson Oxbows Jensen Island Provincial Park, Area P (Rivers and the Peaks), British Columbia  (50.867988, -120.28767)
+  CA4-XX-cam-45388e9f3b  Uni.NBC Prince George BC  <-  "Uni.NBC Prince George, British Columbia, Canada"  =>  University of Northern British Columbia, Prince George, British Columbia  (53.892566, -122.814716)
+  QC-MSA-msacam2  Mont-Sainte-Anne cam 2  <-  "Mont-Sainte-Anne, QC, Quebec, Canada"  =>  Mont-Sainte-Anne, Beaupré, Quebec  (47.087722, -70.926068)
+  QC-MSA-msacam3  Mont-Sainte-Anne cam 3  <-  "Mont-Sainte-Anne, QC, Quebec, Canada"  =>  Mont-Sainte-Anne, Beaupré, Quebec  (47.088081, -70.926068)
+  QC-MSA-msacam4  Mont-Sainte-Anne cam 4  <-  "Mont-Sainte-Anne, QC, Quebec, Canada"  =>  Mont-Sainte-Anne, Beaupré, Quebec  (47.087976, -70.925695)
+  QC-MSA-msacam5  Mont-Sainte-Anne cam 5  <-  "Mont-Sainte-Anne, QC, Quebec, Canada"  =>  Mont-Sainte-Anne, Beaupré, Quebec  (47.087722, -70.92554)
+  QC-MSA-msacam6  Mont-Sainte-Anne cam 6  <-  "Mont-Sainte-Anne, QC, Quebec, Canada"  =>  Mont-Sainte-Anne, Beaupré, Quebec  (47.087468, -70.925695)
+  ON-MSLM-adventure-top  Adventure Top  <-  "Mount St. Louis Moonstone, ON, Ontario, Canada"  =>  Mount St. Louis Moonstone, Oro-Medonte, Ontario  (44.62365, -79.666698)
+  ON-MSLM-beginner-area  Beginner Area  <-  "Mount St. Louis Moonstone, ON, Ontario, Canada"  =>  Mount St. Louis Moonstone, Oro-Medonte, Ontario  (44.624009, -79.666698)
+  ON-MSLM-junkyard  Junkyard  <-  "Mount St. Louis Moonstone, ON, Ontario, Canada"  =>  Mount St. Louis Moonstone, Oro-Medonte, Ontario  (44.623904, -79.666341)
+  ON-MSLM-moonstone-base  Moonstone Base  <-  "Mount St. Louis Moonstone, ON, Ontario, Canada"  =>  Mount St. Louis Moonstone, Oro-Medonte, Ontario  (44.62365, -79.666193)
+  ON-MSLM-mslm-base  MSL Base  <-  "Mount St. Louis Moonstone, ON, Ontario, Canada"  =>  Mount St. Louis Moonstone, Oro-Medonte, Ontario  (44.623396, -79.666341)
+  ON-MSLM-easystreet  Easy Street  <-  "Mount St. Louis Moonstone, ON, Ontario, Canada"  =>  Mount St. Louis Moonstone, Oro-Medonte, Ontario  (44.623291, -79.666698)
+  ON-MSLM-josl-huter  Josl Huter Express  <-  "Mount St. Louis Moonstone, ON, Ontario, Canada"  =>  Mount St. Louis Moonstone, Oro-Medonte, Ontario  (44.623396, -79.667055)
+  BC-MTW-EMB_SKAO00000241-still  Mount Washington Alpine Cam (still)  <-  "Mount Washington Alpine Resort,, British Columbia, Canada"  =>  Mount Washington Alpine Resort, Area C (Puntledge/Black Creek), British Columbia  (49.750759, -125.301801)
+  BC-MTW-EMB_ONTI0000039F-still  Mount Washington Cam ONTI (still)  <-  "Mount Washington Alpine Resort,, British Columbia, Canada"  =>  Mount Washington Alpine Resort, Area C (Puntledge/Black Creek), British Columbia  (49.750505, -125.301638)
+  BC-MTW-EMB_COAR00000B24-still  Mount Washington Nordic Cam  <-  "Mount Washington Alpine Resort,, British Columbia, Canada"  =>  Mount Washington Alpine Resort, Area C (Puntledge/Black Creek), British Columbia  (49.750251, -125.301801)
+
+...of which at their town's centre, because the listing gives no address: 138
+      50  Ottawa (City of Ottawa Traffic)
+      43  Toronto (City of Toronto TMC)
+      26  Kelowna (Castanet Scenic Webcams)
+      10  York Region (York Region Traffic Cameras)
+       7  Calgary (City of Calgary Traffic Cameras)
+       1  Vancouver (City of Vancouver)
+       1  Burlington (Ontario 511 / Burlington)
+
+no coordinates and nothing to look up (a serial number only, and no town): 38
+      24  Alberta 511
+       7  Ontario 511
+       2  BC Ferries
+       2  Newfoundland and Labrador 511
+       1  New Brunswick 511
+       1  Saskatchewan 511
+       1  Manitoba 511
+
+address not found: 1
+  Alberta 511 | Castle Junction - Hwy 93S south | tried: Castle Junction - Hwy 93S south, Alberta, Canada
+
+entries by source:
+    1222  City of Toronto TMC
+     855  City of Vancouver
+     597  City of Surrey Traffic Cameras
+     478  City of Ottawa Traffic
+     392  York Region Traffic Cameras
+     224  City of Calgary Traffic Cameras
+     210  Panomax
+     201  Ontario 511
+     190  City of Edmonton Traffic Cameras
+      90  Ontario 511 / Burlington
+      57  Nova Scotia 511
+      49  Manitoba 511
+      46  SkylineWebcams
+      41  CCG e-Nav Ice Monitoring
+      31  NL Transportation Highway Cams
+      28  Castanet Scenic Webcams
+      24  BC Ferries
+      23  Port of Vancouver
+      21  Nova Scotia Webcams
+      16  City of Kamloops Traffic Webcams
+      16  Ontario 511 / Ottawa
+      14  Township of Langley Traffic Cameras
+      13  Lake Louise Ski Resort
+      12  Alberta 511
+      12  Big White Ski Resort
+      10  Sun Peaks Resort
+      10  Ozolio
+       9  NTV Webcams
+       9  bccams.ca / Bullet Security Marina
+       8  Ontario 511 / London
+       8  Ontario 511 / Windsor
+       8  balticlivecam.com Canada
+       8  Vernon Yacht Club Webcam
+       7  Saskatchewan 511
+       7  BC Ferries / bccams.ca
+       7  City of Moncton Webcams
+       7  Mount St. Louis Moonstone
+       6  Newfoundland and Labrador 511
+       6  Port of Montreal
+       6  Ontario 511 / City of Toronto
+       6  Ontario 511 / Waterloo Region
+       6  bccams.ca / SilverStar
+       6  Holiday Park Resort Webcams
+       6  Kicking Horse Mountain Resort
+       6  Fernie Alpine Resort
+       6  Nakiska Ski Resort
+       5  Ozolio / Grouse Mountain
+       5  Whistler Resort Webcams
+       5  Bromont Montagne Skaping
+       5  Mont-Sainte-Anne Ski Resort
+       4  DriveBC
+       4  Skaping
+       4  Ozolio / Revelstoke
+       4  peicams.ca
+       4  bccams.ca / Hakai Institute
+       4  Fairmont Hot Springs / RadishWeb
+       4  bccams.ca / Trail Airport
+       4  Parks Canada Remote Cameras
+       4  Sunshine Village Banff
+       4  Sheet Harbour Marina Webcam
+       4  UBC Weather Webcams
+       4  City of Kingston Webcams
+       4  Ozolio / City of Kingston
+       3  Roundshot
+       3  nbcams.ca
+       3  bccams.ca / Whistler
+       3  bccams.ca / Revelstoke Mountain Resort
+       3  bccams.ca / Town of Sidney
+       3  bccams.ca / Sheridan Lake (Beddow)
+       3  CBC Saskatchewan Webcam
+       3  The Landscapes Lake of Bays Webcams
+       3  Benlo CottageCam Stoney Lake
+       3  Golf Atlantide Webcam
+       3  Kimberley Alpine Resort
+       3  Hardtarget/international rescue
+       3  Mount Washington Alpine Resort
+       2  Sault Ste. Marie International Bridge Commission
+       2  New Brunswick 511
+       2  NL Environment Flood Cams
+       2  Telemark Nordic / Castanet
+       2  bccams.ca / South Chilcotin
+       2  bccams.ca / Castlegar Airport
+       2  bccams.ca / Nelson Airport
+       2  bccams.ca / Duncan Airport
+       2  bccams.ca / Island Lake Lodge
+       2  Murphy Cottage Severn River Webcams
+       2  Cumberland Lake Park Webcams
+       2  Port Browning Marina Webcams
+       2  Skaping / Blue Mountain
+       2  Ozolio / Mt Washington
+       2  Banff Jasper Collection Webcam
+       2  Banff Jasper Collection / Elk + Avenue Webcam
+       2  Club Nautique Sept-Îles Webcam
+       2  Devil's Glen Country Club Webcam
+       2  Whitewater Ski Resort
+       2  DriveBC (rescued URL variant)
+       2  Ozolio / Mount Washington Alpine Resort
+       1  Blue Water Bridge Canada
+       1  Juniper Hotel
+       1  Sundial Hotel
+       1  City of Kelowna / Castanet
+       1  McKinley Beach / Castanet
+       1  Big Sky Golf / Castanet
+       1  Kelowna Nordic / Castanet
+       1  SilverStar / Castanet
+       1  bccams.ca / Port Renfrew
+       1  bccams.ca / Valemount
+       1  bccams.ca / Whitewater
+       1  bccams.ca / Barkerville
+       1  bccams.ca / Copper Point Golf
+       1  bccams.ca / Lac Le Jeune
+       1  bccams.ca / Saanich
+       1  Castanet / Predator Ridge
+       1  CBC Nova Scotia Harbour Cam
+       1  bccams.ca / Kicking Horse
+       1  bccams.ca / Powder Creek Lodge
+       1  bccams.ca / Bridge Lake
+       1  bccams.ca / Pat Bay
+       1  CBC Manitoba Webcam
+       1  CBC Toronto Webcam
+       1  CBC Edmonton Webcam
+       1  CBC Thunder Bay Webcam
+       1  CBC Vancouver Webcam
+       1  Malachi Lake Malacam
+       1  Myraspi ClearPi Malachi
+       1  Allport Marina Lake Muskoka
+       1  Tomahawk Resort Regina Bay Webcam
+       1  Honey Harbour Boat Club Marina Webcam
+       1  Wye Heritage Marina Axis Webcam
+       1  Lakeview Park Marina Windsor Webcam
+       1  McKinley Beach Marina Webcam
+       1  Cap au Leste MeteoChicoutimi Webcam
+       1  Camping Alma La Colonie Webcam
+       1  Relais La Chapelle Webcam
+       1  Collins Bay Marina Webcam
+       1  City of Kingston Confederation Basin Webcam
+       1  City of Kingston Portsmouth Olympic Harbour Webcam
+       1  Lakeshore Yacht Club Webcam
+       1  Emerald Lake Lodge Webcam
+       1  Hummingbird Lodge Webcam
+       1  Sidney North Saanich Yacht Club Webcam
+       1  Wintergreen Golf Webcam
+       1  Helijet Harbour Webcam
+       1  Georgian Peaks Club Webcam
+       1  Sissiboo Landing Webcam
+       1  Mansfield Ski Club Webcam
+       1  Sunshine Coast Resort Webcam
+       1  Fernie Golf & Country Club Webcam
+       1  Mont Farlagne / Républik Nature Webcam
+       1  SilverStar Mountain Resort
+       1  Revelstoke Snowmobile Club
+       1  Halifax Emera Oval Webcam
+       1  Castle Mountain Resort
+       1  Marmot Basin Roundshot
+       1  Nova Scotia Public Works
+       1  IPCamLive / Castanet
+       1  Abbotsford Weather Webcam
+       1  Whitehorse Meteo Webcam
+
+entries by province:
+    2499  on
+    1788  bc
+     498  ab
+     209  qc
+      99  ns
+      51  mb
+      50  nl
+      17  nb
+      10  sk
+       6  pei
+       1  yt

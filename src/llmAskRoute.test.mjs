@@ -5,6 +5,7 @@ import {
   buildLlmAskCall,
   llmAnswerFromUpstream,
   llmAskTimeoutMs,
+  llmAnswerTokens,
   llmMaxTokens,
   llmProviderRoster,
   parseLlmAskRequest,
@@ -59,6 +60,21 @@ test('request validation: unknown provider, missing key, incomplete custom endpo
   assert.equal(ok.ok, true);
   assert.equal(ok.question.length, 5000, 'a question is never cut short');
   assert.deepEqual(ok.context, {}, 'a non-object context is dropped');
+});
+
+test('a question that lists its findings may raise its own answer budget, up to a ceiling and never below the everyday one', () => {
+  assert.equal(llmAnswerTokens(undefined, {}), 2048);
+  assert.equal(llmAnswerTokens(6000, {}), 6000);
+  assert.equal(llmAnswerTokens(6000, { LLM_MAX_TOKENS: '16000' }), 16000, 'the operator’s larger budget stands');
+  assert.equal(llmAnswerTokens(1_000_000, {}), 8192);
+  assert.equal(llmAnswerTokens(100, {}), 2048);
+  assert.equal(llmAnswerTokens('lots', {}), 2048);
+  const listed = parseLlmAskRequest(JSON.stringify({ provider: 'xai', question: 'q', answerTokens: 6000 }), KEYED);
+  assert.equal(listed.answerTokens, 6000);
+  const call = buildLlmAskCall(listed.provider, listed.settings, listed.question, {}, KEYED, listed.answerTokens);
+  assert.equal(call.payload.max_tokens, 6000);
+  assert.match(call.payload.messages[0].content, /follow that layout exactly/);
+  assert.match(call.payload.messages[0].content, /SCENE\.groundTruth/);
 });
 
 test('limits are read from the live environment, not at import', () => {

@@ -103,6 +103,36 @@ function regionFromCoordinates(latitude, longitude) {
   return 'international';
 }
 
+/**
+ * The country of the view, from evidence rather than from latitude bands.
+ * Toronto, Hamilton, London, Windsor and Niagara all lie south of the 45th
+ * parallel, inside the box that otherwise reads "United States", so a selected
+ * location named only "Toronto" was classified as the USA: Risk Assessment
+ * searched US sources for it and Country Ground Truth found no table.
+ *
+ * The reverse geocoder's answer wins. When it has none (offline, rate limited,
+ * open water), a nearest city from the built-in Canadian gazetteer says
+ * Canada. Otherwise null, and the caller falls back to labels and coordinates.
+ *
+ * @param {{
+ *   place?: {countryCode?: string|null, country?: string|null}|null,
+ *   closestCity?: {name?: string, source?: string}|null,
+ * }} input
+ * @returns {{countryCode: string, country: string|null}|null}
+ */
+export function resolveOverviewCountry(input = {}) {
+  const code = String(input.place?.countryCode || '')
+    .trim()
+    .toUpperCase();
+  if (/^[A-Z]{2}$/.test(code)) {
+    const name = String(input.place?.country || '').trim();
+    return { countryCode: code, country: name ? name : null };
+  }
+  if (input.closestCity?.source === 'gazetteer')
+    return { countryCode: 'CA', country: 'Canada' };
+  return null;
+}
+
 /** Official sources the risk paragraph must review for a region. */
 export function overviewRiskSources(region) {
   if (region === 'canada') return CANADA_SOURCES;
@@ -376,6 +406,265 @@ export function buildRiskAssessmentQuestion(brief) {
     'Write one short prose paragraph. Mention extra sources only when they correlate with on-screen activity or when a government crime-stat outlier is actually supplied.',
     'No markdown, no headings, no bullet characters. Do not invent incidents or statistics.',
   ].join('\n');
+}
+
+/** Findings of each check the model is handed, strongest first. */
+export const GROUND_TRUTH_MODEL_FINDINGS = 10;
+/**
+ * Checks whose List Details show only their strongest findings, in the panel's
+ * entry and in the model's answer alike. The numbered line above them still
+ * carries the full count.
+ */
+export const GROUND_TRUTH_DETAIL_LIMITS = Object.freeze({
+  totalsAgainstParts: 5,
+  coverage: 5,
+  reportingToPolice: 5,
+  unfounded: 5,
+  exclusionNotes: 5,
+});
+/** Room a listed Ground Truth answer needs (see llmAnswerTokens on the server). */
+export const GROUND_TRUTH_ANSWER_TOKENS = 6000;
+
+const found = (check) => Number(check?.found) || 0;
+const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+
+/** "police covering 96.4% of the population reported in 2025 (8 years under 90%, lowest 77% in 2021)", or ''. */
+function coveragePhrase(coverage) {
+  const latest = coverage?.latest;
+  if (!latest) return '';
+  const lowest = coverage.findings?.[0];
+  const low = found(coverage);
+  return `police covering ${latest.coveragePct}% of the population reported in ${latest.year}${low ? ` (${plural(low, 'year', 'years')} under 90%, lowest ${lowest.coveragePct}% in ${lowest.year})` : ''}`;
+}
+
+/** "5 kinds of crime where under half of victims told the police (lowest 4% for sexual assault in 2024)", or ''. */
+function reportingPhrase(reporting) {
+  if (!reporting?.published) return '';
+  const low = found(reporting);
+  const lowest = reporting.findings?.[0];
+  return low
+    ? `${plural(low, 'kind of crime', 'kinds of crime')} where under half of victims told the police (lowest ${lowest.reportedToPolicePct}% for ${lowest.crime} in ${lowest.year})`
+    : 'no kind of crime where under half of victims told the police';
+}
+
+/** How the police figure sits against the independent estimate, or ''. */
+function independentPhrase(arithmetic) {
+  const compared = arithmetic?.independentSource;
+  if (!compared) return '';
+  return `, the police homicide rate ${compared.position} the World Health Organization's estimate for ${compared.whoYear}`;
+}
+
+/** What the source says of reports police struck out, or that it says nothing. */
+function unfoundedPhrase(unfounded) {
+  if (unfounded?.notPublished)
+    return 'no count published of police reports struck as "unfounded"';
+  return `${plural(found(unfounded), 'category', 'categories')} with 10% or more of police reports struck as "unfounded"`;
+}
+
+/**
+ * The four section lines of a Ground Truth report, counted from the evidence.
+ * The panel prints them and the model is told to copy them, so a count is
+ * never something a model arrived at.
+ * @param {object} evidence
+ * @returns {string[]}
+ */
+export function groundTruthSectionHeadings(evidence) {
+  const checks = evidence?.checks || {};
+  const others = found(checks.otherCategories);
+  const larger = (checks.otherCategories?.findings || []).filter(
+    (item) => item?.largerThanEveryNamedCategory,
+  ).length;
+  const moved = found(checks.movedToOtherNotes);
+  return [
+    `1. Incidents left out of totals, ${[plural(found(checks.totalsAgainstParts), "total that doesn't equal its listed parts", "totals that don't equal their listed parts"), coveragePhrase(checks.coverage), reportingPhrase(checks.reportingToPolice), unfoundedPhrase(checks.unfounded)].filter(Boolean).join(', ')}, and ${plural(found(checks.exclusionNotes), 'exclusion note', 'exclusion notes')}`,
+    checks.otherCategories?.notPublished
+      ? `2. Use of "other", nothing to check: ${checks.otherCategories.reason || 'this source publishes no "other" category'}`
+      : `2. Use of "other", ${plural(others, 'unusual "other" category', 'unusual "other" categories')}${larger ? `, ${larger} larger than every named category beside ${larger === 1 ? 'it' : 'them'}` : ''}${moved ? `, and ${plural(moved, 'note', 'notes')} filing offences under "other"` : ''}`,
+    `3. New categories and partial data, ${plural(found(checks.lateStarts), 'series that starts late', 'series that start late')} and ${plural(found(checks.comparabilityNotes), 'note', 'notes')} ruling out comparison across years`,
+    `4. Incorrect numbers, ${Number(checks.arithmetic?.checked) || 0} published figures recomputed from the counts with ${found(checks.arithmetic)} disagreeing${independentPhrase(checks.arithmetic)}, and ${checks.corrections?.notPublished ? 'no list of corrections published' : `${plural(found(checks.corrections), 'correction', 'corrections')} issued`}`,
+  ];
+}
+
+const noteLine = (note) =>
+  `- ${note?.categories?.length ? `${note.categories.slice(0, 3).join('; ')}${note.categories.length > 3 ? ` and ${note.categories.length - 3} more` : ''}: ` : ''}${note?.note || ''}`;
+
+/**
+ * The findings as one line each, by section: the top five of each section 1
+ * check (GROUND_TRUTH_DETAIL_LIMITS), every finding of the rest. Section 4 has
+ * details only when a recomputed figure disagrees with the published one.
+ * @param {object} evidence
+ * @returns {string[][]} Four arrays of lines.
+ */
+export function groundTruthDetailLines(evidence) {
+  const checks = evidence?.checks || {};
+  const limited = (name) => {
+    const findings = Array.isArray(checks[name]?.findings)
+      ? checks[name].findings
+      : [];
+    return Object.hasOwn(GROUND_TRUTH_DETAIL_LIMITS, name)
+      ? findings.slice(0, GROUND_TRUTH_DETAIL_LIMITS[name])
+      : findings;
+  };
+  const list = (check) =>
+    Array.isArray(check?.findings) ? check.findings : [];
+  return [
+    [
+      ...limited('totalsAgainstParts').map(
+        (item) =>
+          `- ${item.category} (${item.year}): reports ${item.reportedTotal}, its ${item.partsListed} listed parts add to ${item.sumOfListedParts}, difference ${item.difference} (${item.differencePct}%); ${item.reading}`,
+      ),
+      ...[
+        // The latest year first, then the years with the least coverage.
+        ...(checks.coverage?.latest ? [checks.coverage.latest] : []),
+        ...limited('coverage').filter(
+          (item) => item.year !== checks.coverage?.latest?.year,
+        ),
+      ]
+        .slice(0, GROUND_TRUTH_DETAIL_LIMITS.coverage)
+        .map(
+          (item) =>
+            `- ${item.year}: police covering ${item.coveragePct}% of the population reported; ${item.populationNotCovered} people lived where no report was made, and nothing there is in any total. ${item.violentCrimesReported} violent crimes were reported; at the same rate the rest would add about ${item.atTheSameRateTheRestWouldAdd} (arithmetic on the published figures, not a count)`,
+        ),
+      ...limited('reportingToPolice').map(
+        (item) =>
+          `- ${item.crime} (${item.year}): ${item.reportedToPolicePct}% of victims told the police; the other ${item.neverReportedPct}% are in no police total (the country's victimization survey)`,
+      ),
+      ...limited('unfounded').map(
+        (item) =>
+          `- ${item.category} (${item.year}): ${item.struckAsUnfounded} reports struck as unfounded (${item.percentUnfounded}%), ${item.countedInTotals ?? 'n/a'} counted`,
+      ),
+      ...limited('exclusionNotes').map(noteLine),
+    ],
+    [
+      ...list(checks.otherCategories).map(
+        (item) =>
+          `- ${item.category} (${item.year}): ${item.incidents} ${item.unit === 'arrests' ? 'arrests' : 'incidents'}; ${(item.reasons || []).join('; ')}`,
+      ),
+      ...list(checks.movedToOtherNotes).map(noteLine),
+    ],
+    [
+      ...list(checks.lateStarts).map(
+        (item) =>
+          `- ${item.category}: table starts ${item.tableStartsIn}, reaches its recent level in ${item.reachesRecentLevelIn} (${item.incidentsTheYearBefore ?? 'no figure'} the year before, ${item.incidentsThatYear} that year, ${item.latestIncidents} in ${item.latestYear})`,
+      ),
+      ...list(checks.comparabilityNotes).map(noteLine),
+    ],
+    list(checks.arithmetic).map((item) =>
+      item.note
+        ? `- ${item.category} (${item.year}): ${item.note}`
+        : item.check === 'rate against incidents'
+          ? `- ${item.category} (${item.year}): published rate ${item.publishedRate}, its incidents imply ${item.rateTheIncidentsImply} (off by ${item.offByPct}%)`
+          : `- ${item.category} (${item.year}): published change ${item.publishedChangePct}%, its two rates imply ${item.changeTheRatesImplyPct}% (off by ${item.offByPoints} points)`,
+    ),
+  ];
+}
+
+/**
+ * The evidence as the model gets it: the strongest findings of each check,
+ * with `found` still saying how many there were. The panel has already listed
+ * every one of them; a model asked to recite 65 series runs out of answer.
+ * @param {object} evidence
+ * @param {number} [limit]
+ */
+export function groundTruthForModel(
+  evidence,
+  limit = GROUND_TRUTH_MODEL_FINDINGS,
+) {
+  const checks = {};
+  for (const [name, check] of Object.entries(evidence?.checks || {})) {
+    const findings = Array.isArray(check?.findings) ? check.findings : [];
+    const most = Object.hasOwn(GROUND_TRUTH_DETAIL_LIMITS, name)
+      ? Math.min(limit, GROUND_TRUTH_DETAIL_LIMITS[name])
+      : limit;
+    checks[name] = {
+      ...check,
+      findings: findings.slice(0, most),
+      listed: Math.min(findings.length, most),
+    };
+  }
+  // The levels and the limits stay out of what the model sees: the report is
+  // the counts and the details, with no grade and no caveat line.
+  const {
+    indicator: _indicator,
+    limits: _limits,
+    homicideCounts: _homicideCounts,
+    ...rest
+  } = evidence || {};
+  return { ...rest, checks };
+}
+
+/**
+ * Country Ground Truth Assessment: what a country's own statistics table shows
+ * about how its totals are built. The evidence (SCENE.groundTruth) is computed
+ * by the server from the table; the model lays it out and explains it, and
+ * adds nothing.
+ * @param {{country?: string|null, source?: string|null, year?: number|null}} evidence
+ * @returns {string}
+ */
+export function buildGroundTruthQuestion(evidence) {
+  const country = String(evidence?.country || 'this country');
+  const [one, two, three, four] = groundTruthSectionHeadings(evidence);
+  const disagreeing = found(evidence?.checks?.arithmetic);
+  return [
+    `Give a Country Ground Truth Assessment for ${country}, using only SCENE.groundTruth, which holds checks computed from ${evidence?.source || 'the country’s own published statistics table'}${evidence?.year ? ` (latest year ${evidence.year})` : ''}.`,
+    '',
+    'Write the answer in exactly this layout, with nothing before it. Copy the four numbered lines word for word; their counts are already correct.',
+    '',
+    one,
+    'List Details:',
+    '(one line per finding, each starting with "- ": first the items of checks.totalsAgainstParts, then the items of checks.coverage when it is present (its "latest" year first, then its findings: the share of the population whose police reported, how many people lived where no report was made, and the labelled at-the-same-rate arithmetic), then the items of checks.reportingToPolice when it is present (the share of victims of each kind of crime who told the police, and the share who are therefore in no police total), then the items of checks.unfounded (when it says notPublished, one line saying the source publishes no count of unfounded reports), then the items of checks.exclusionNotes; each of these holds its top five at most, and that is all to list: no "and N more" line in this section; for an exclusion say which total it understates)',
+    two,
+    'List Details:',
+    '(one line per finding: every item of checks.otherCategories with its incidents and its reasons, then every item of checks.movedToOtherNotes; when checks.otherCategories says notPublished, write no List Details under 2)',
+    three,
+    'List Details:',
+    '(one line per finding: every item of checks.lateStarts with the year it reaches its recent level, then every item of checks.comparabilityNotes with the comparison it rules out)',
+    four,
+    disagreeing
+      ? 'List Details:\n(one line per item of checks.arithmetic: the published figure and the figure its own counts imply, or, for a comparison with an independent source, both figures and the interval)'
+      : '(nothing disagreed, so write no List Details under 4)',
+    '',
+    'The lines in brackets are instructions: replace them, do not copy them. A check gives its strongest findings in "findings", says in "listed" how many that is and in "found" how many there were; list every finding given, and in sections 2 and 3 where found is larger than listed end that group with a line "- and N more, listed in GROUND TRUTH CHECKS below".',
+    'Quote numbers exactly as given. Say what each practice does to the totals; do not say why the agency does it, because the table cannot show intent. Do not grade or rate the country: no CLEAR, WATCH or FLAGGED levels, no indicator, no overall verdict. The answer ends with section 4: no closing summary, caveat or limits line after it.',
+    'Plain text only: no markdown, no bold, no tables. Do not invent categories, numbers, notes or incidents.',
+  ].join('\n');
+}
+
+/**
+ * Operator-visible report of one Ground Truth press, in the same layout the
+ * model is asked for, with every finding listed. It costs no model request.
+ * @param {object} evidence
+ * @returns {string}
+ */
+export function formatGroundTruthBody(evidence = {}) {
+  if (evidence?.status === 'excluded' || evidence?.status === 'nodata') {
+    return `${evidence.reason || 'There is nothing to assess for this country.'} No model was asked.`;
+  }
+  if (evidence?.status === 'unsupported') {
+    const connected = (evidence.connected || [])
+      .map((entry) => `${entry.country} (${entry.source})`)
+      .join(', ');
+    return [
+      evidence.country
+        ? `${evidence.country} is not in the United Nations' table of countries and areas, so no source lists it: there is nothing to check and no model was asked.`
+        : 'Could not tell which country this view is in, so there is nothing to check and no model was asked.',
+      connected ? `Sources: ${connected}.` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+  const headings = groundTruthSectionHeadings(evidence);
+  const details = groundTruthDetailLines(evidence);
+  const lines = [
+    `${evidence.source || 'National statistics table'}, ${evidence.geography || evidence.country || ''} ${evidence.year || ''}`.trim(),
+    ...(evidence.scope ? [evidence.scope] : []),
+  ];
+  headings.forEach((heading, index) => {
+    lines.push(heading);
+    // 4. Incorrect numbers: details only when something disagreed.
+    if (details[index].length) lines.push('List Details:', ...details[index]);
+  });
+  return lines.join('\n');
 }
 
 function articleLine(article) {
