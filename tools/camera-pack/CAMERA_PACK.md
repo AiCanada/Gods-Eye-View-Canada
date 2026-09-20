@@ -25,7 +25,6 @@ The file list defaults to all three packs. A typical `.env`:
 ```
 CCTV_SOURCES_FILE=config/cctv_sources.canada.json,config/cctv_sources.us.json,config/cctv_sources.intl.json
 CCTV_COUNTRIES=*
-CCTV_BROWSER_DIRECT_HOSTS=quebec511.info
 ```
 
 `CCTV_COUNTRIES=CA,US` leaves every classified international camera out. Leave
@@ -393,13 +392,17 @@ While a camera is down the proxy
 backs off from it and shows the placeholder card, so an offline camera costs
 one failed request per backoff window, not one per refresh.
 
-**Direct media only.** Every Canadian entry's `url` must return an image. HLS
-playlists are excluded until the app ships an HLS player: a plain `<video>`
-element cannot decode them, so such a camera rendered a blank plane while
-reporting itself live. In the US pack a stream-only camera is kept as a lookup
-camera instead, its stream in `videoUrl`, which the server never serves.
-In the international pack a stream-only camera is `feedType: 'none'` with
-`videoUrl`, also never served. Cameras that exist only as a YouTube live embed are excluded too: a
+**Direct media only for `url`.** Every entry's `url` must return an image. A
+stream-only camera is `feedType: 'none'` with its HLS playlist in `videoUrl`, in
+every pack alike (in the US pack it may also be a Road511 lookup camera). Such a
+camera is served as `feedType: 'hls'`: current Chrome and Safari play HLS in a
+plain `<video>`, MPEG-TS and fragmented MP4 both, so the server brings the
+stream to its own origin (`/api/cctv/media/<id>?hls=1`, then `/api/cctv/hls/<id>`
+for everything the playlist names, same public host only) and the picture can be
+textured onto the monitor plane and drawn in the panel. Video plays only when
+the user clicks the camera; nothing is loaded for a thumbnail, and a camera's
+thumbnail is the last picture it showed. A `videoUrl` that is not a plain
+`.m3u8` on a public host (a player page, a `GetVideo` endpoint) is not served. Cameras that exist only as a YouTube live embed are excluded too: a
 YouTube live manifest is a short-lived signed URL and would rot in a stored
 catalogue. The Confederation Bridge camera falls in this category.
 
@@ -464,17 +467,16 @@ to 10 minutes.
 `CCTV_STREETVIEW_FALLBACK=1`, a camera whose frame fails can fall back to a
 billed Street View still, and only for the active camera, never for map cards.
 
-**Québec 511 refuses every server.** Its stills sit behind a Cloudflare bot
-filter that answers `403` to the proxy whatever identity or headers it sends:
-Cloudflare recognises the server's connection itself, not just its headers, and
-only a real browser (or Windows' own `curl.exe`) gets a picture. So the proxy does
-not try. `CCTV_BROWSER_DIRECT_HOSTS=quebec511.info` makes `/api/cctv/sources`
-hand each Québec camera's still address to the viewer's browser as
-`browserImageUrl`, and the CCTV panel loads it directly, the way quebec511.info's
-own map does, refreshing at most once a minute. Québec 511 sends no CORS header,
-so the still can never become a WebGL texture: those cameras' monitor planes and
-map cards keep their placeholder, and their `/api/cctv/frame` route answers with
-the synthetic card at once without contacting Québec 511 or Street View.
+**Québec 511 refuses Node's `fetch`, not every server.** Its stills sit behind a
+bot filter that answers `403` to Node's built-in `fetch` client every time,
+whatever identity or headers it sends, and answers `node:https` (and `curl`)
+normally. The proxy asks it through `node:https`, so Québec cameras are proxied
+like any other and get map thumbnails, cards and monitor pictures. Do not list
+`quebec511.info` in `CCTV_BROWSER_DIRECT_HOSTS`: that setting hands a host's
+stills to the viewer's browser, and because such a still carries no CORS header
+it can show in the panel and on a map thumbnail but never on the 3D monitor
+plane. It is a last resort for an operator that refuses every server-side
+client, and none in the current packs needs it.
 
 **SkylineWebcams HLS is a decoy.** Its `hd-auth.skylinewebcams.com` playlists
 return HTTP 200 with a valid content type but serve segments named

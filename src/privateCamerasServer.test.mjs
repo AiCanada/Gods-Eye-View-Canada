@@ -90,7 +90,7 @@ test('a pinned site goes through the pinned transport and reports a mismatch', a
     throw Object.assign(new Error('mismatch'), { code: 'GEV_PIN_MISMATCH' });
   };
   const result = await fetchPrivateFrame(
-    { url: 'https://ha.local:8123/api/camera_proxy/camera.aarlo_front', auth: { type: 'bearer', token: 't' }, tlsFingerprint: 'AB:CD' },
+    { url: 'https://ha.local:8123/api/camera_proxy/camera.privatecam_front', auth: { type: 'bearer', token: 't' }, tlsFingerprint: 'AB:CD' },
     { fetchImpl: async () => assert.fail('the unpinned transport must not be used'), pinnedFetchImpl },
   );
   assert.equal(usedPinned, 'AB:CD');
@@ -179,32 +179,32 @@ test('the preview server lists cameras but refuses edits', async (t) => {
   assert.equal(JSON.parse((await request('/status')).body).editable, false);
 });
 
-test('the Arlo website is never contacted or sent a login', async () => {
+test('the Private_CCTV_Feed website is never contacted or sent a login', async () => {
   let requests = 0;
   const refuse = async () => {
     requests += 1;
     throw new Error('must not be called');
   };
   const result = await fetchPrivateFrame(
-    { url: 'https://my.arlo.com/#/feed', auth: { type: 'basic', username: 'someone@example.com', password: 'secret' } },
+    { url: 'https://feed.private-cctv.example/#/feed', auth: { type: 'basic', username: 'someone@example.com', password: 'secret' } },
     { fetchImpl: refuse, pinnedFetchImpl: refuse },
   );
-  assert.deepEqual(result, { ok: false, reason: 'arlo needs a local bridge' });
+  assert.deepEqual(result, { ok: false, reason: 'private_cctv_feed needs a local bridge' });
   assert.equal(requests, 0);
 });
 
-test('a camera still pointing at the Arlo website is told about the browser feed relay as well as a bridge', async (t) => {
+test('a camera still pointing at the Private_CCTV_Feed website is told about the browser feed relay as well as a bridge', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-private-cams-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(path.join(root, 'config'));
   fs.writeFileSync(path.join(root, 'config', 'private-cameras.json'), JSON.stringify({
     version: 2,
-    sites: [{ id: 'home', kind: 'home', name: 'Home', auth: 'login', username: 'owner@example.com', password: 'arlo-password', lat: 45, lon: -66, cameras: [{ id: 'front', name: 'Front', source: 'https://my.arlo.com/#/feed' }] }],
+    sites: [{ id: 'home', kind: 'home', name: 'Home', auth: 'login', username: 'owner@example.com', password: 'feed-password', lat: 45, lon: -66, cameras: [{ id: 'front', name: 'Front', source: 'https://feed.private-cctv.example/#/feed' }] }],
   }));
-  const never = async () => assert.fail('the Arlo website is never contacted');
+  const never = async () => assert.fail('the Private_CCTV_Feed website is never contacted');
   const offline = await install(privateCamerasProxy({ sourceRoot: root, fetchImpl: never, pinnedFetchImpl: never }))('/frame/private-home--front');
   assert.equal(offline.headers['X-Private-Camera'], 'offline');
-  assert.match(offline.body, /PRIVATE CAMERA · ARLO NEEDS A LOCAL BRIDGE/);
+  assert.match(offline.body, /PRIVATE CAMERA · PRIVATE_CCTV_FEED NEEDS A LOCAL BRIDGE/);
   const hint = /<text[^>]*font-size="18"[^>]*>([^<]*)<\/text>/.exec(offline.body)?.[1];
   assert.equal(hint, 'Choose Browser feed relay, or set up a local bridge, in POWER UP');
   assert.ok(hint.length <= 80, 'the hint fits the 960 px placeholder');
@@ -260,7 +260,7 @@ test('the store guard is the first middleware on both the dev and the preview se
 });
 
 // ---------------------------------------------------------------------------
-// GEV Arlo Feed Relay
+// GEV Private_CCTV_Feed Relay
 // ---------------------------------------------------------------------------
 
 const EXTENSION_ID = 'abcdefghijklmnopabcdefghijklmnop';
@@ -325,19 +325,19 @@ const sendFrame = (request, camera, { bytes = JPEG, type = 'image/jpeg', clip, h
   request('/relay/frame', {
     method: 'POST',
     body: bytes,
-    headers: { ...extensionHeaders(), 'x-arlo-camera': encodeURIComponent(camera), ...(clip === undefined ? {} : { 'x-arlo-clip': encodeURIComponent(clip) }), 'content-type': type, 'content-length': String(bytes.length), ...headers },
+    headers: { ...extensionHeaders(), 'x-private-cctv-feed-camera': encodeURIComponent(camera), ...(clip === undefined ? {} : { 'x-private-cctv-feed-clip': encodeURIComponent(clip) }), 'content-type': type, 'content-length': String(bytes.length), ...headers },
     ...options,
   });
 const sendHeartbeat = (request, state = 'feed', seen = ['front', 'ff'], headers = {}, extra = {}) =>
   request('/relay/heartbeat', { method: 'POST', body: { state, seen, ...extra }, headers: { ...extensionHeaders(), 'content-type': 'application/json', ...headers } });
-/** Opaque tags the extension puts on heartbeats, one per my.arlo.com tab. */
+/** Opaque tags the extension puts on heartbeats, one per feed.private-cctv.example tab. */
 const FEED_TAB = { reporter: '0123456789abcdef' };
 const OTHER_TAB = { reporter: 'fedcba9876543210' };
 const offlineReason = (response) => /PRIVATE CAMERA · ([A-Z ]+)</.exec(response.body)?.[1];
 const readStore = (root) => JSON.parse(fs.readFileSync(path.join(root, 'config', 'private-cameras.json'), 'utf8'));
 
 function relayRoot(t, { paired = true } = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-arlo-relay-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-private-cctv-feed-relay-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(path.join(root, 'config'));
   fs.writeFileSync(path.join(root, 'config', 'private-cameras.json'), JSON.stringify({
@@ -349,13 +349,13 @@ function relayRoot(t, { paired = true } = {}) {
         name: 'Home',
         auth: 'relay',
         username: 'owner@example.com',
-        password: 'arlo-password',
+        password: 'feed-password',
         lat: 45.27,
         lon: -66.06,
         ...(paired ? { relayExtensionId: EXTENSION_ID, relaySecretHash: RELAY.hash } : {}),
         cameras: [
           { id: 'front', name: 'Front', source: '', headingDeg: 180 },
-          { id: 'ff', name: 'Ff', source: 'https://my.arlo.com/#/feed', headingDeg: 90 },
+          { id: 'ff', name: 'Ff', source: 'https://feed.private-cctv.example/#/feed', headingDeg: 90 },
           { id: 'back-yard', name: 'Back Yard', source: '', headingDeg: 0 },
         ],
       },
@@ -416,7 +416,7 @@ test('relay routes refuse preflights, web pages and other machines without readi
   for (const route of ['/relay/frame', '/relay/pair-request', '/relay/pair-status', '/relay/heartbeat', '/relay/approve', '/relay/unpair']) {
     const preflight = await request(route, {
       method: 'OPTIONS',
-      headers: { origin: `chrome-extension://${EXTENSION_ID}`, 'sec-fetch-site': 'none', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization,x-arlo-camera' },
+      headers: { origin: `chrome-extension://${EXTENSION_ID}`, 'sec-fetch-site': 'none', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization,x-private-cctv-feed-camera' },
     });
     assert.equal(preflight.status, 403, route);
   }
@@ -609,11 +609,11 @@ test('approval goes through the POWER UP gate and stores only the extension id a
   const store = readStore(root);
   const stored = store.sites.find((site) => site.id === 'home');
   assert.deepEqual([stored.relayExtensionId, stored.relaySecretHash], [EXTENSION_ID, pending.hash]);
-  assert.deepEqual([stored.username, stored.password], ['owner@example.com', 'arlo-password'], 'the saved Arlo login is kept');
+  assert.deepEqual([stored.username, stored.password], ['owner@example.com', 'feed-password'], 'the saved Private_CCTV_Feed login is kept');
   assert.equal(JSON.stringify(store).includes(pending.secret), false, 'the secret itself is never stored');
 
   const status = await request('/status');
-  for (const hidden of [pending.hash, pending.secret, 'arlo-password', 'owner@example.com']) assert.equal(status.body.includes(hidden), false, hidden);
+  for (const hidden of [pending.hash, pending.secret, 'feed-password', 'owner@example.com']) assert.equal(status.body.includes(hidden), false, hidden);
   const home = status.json().kinds[0].sites[0];
   assert.deepEqual(home.relay, { paired: true, extensionId: EXTENSION_ID, state: null, lastHeartbeatAt: null, connected: false, unknownNames: [] });
   assert.deepEqual(home.cameras.map((camera) => [camera.matchName, camera.lastFrameAt, camera.lastClip]), [['front', null, ''], ['ff', null, ''], ['back yard', null, '']]);
@@ -649,8 +649,8 @@ test('relay pictures: every check happens before the body is read, and an accept
   unread(await sendFrame(request, 'front', { headers: { authorization: `Basic ${RELAY.secret}` } }), 401, 'not a bearer');
   unread(await sendFrame(request, 'front', { headers: { authorization: `Bearer ${RELAY.hash}` } }), 401, 'the hash is not the secret');
   unread(await sendFrame(request, 'front', { headers: { origin: `chrome-extension://${OTHER_EXTENSION_ID}` } }), 403, 'another extension holding the secret');
-  unread(await sendFrame(request, 'front', { headers: { 'x-arlo-camera': undefined } }), 400, 'no camera name');
-  unread(await sendFrame(request, 'front', { headers: { 'x-arlo-camera': '%E0%A4%A' } }), 400, 'a broken escape');
+  unread(await sendFrame(request, 'front', { headers: { 'x-private-cctv-feed-camera': undefined } }), 400, 'no camera name');
+  unread(await sendFrame(request, 'front', { headers: { 'x-private-cctv-feed-camera': '%E0%A4%A' } }), 400, 'a broken escape');
   unread(await sendFrame(request, 'front\u0007'), 400, 'a control character');
   unread(await sendFrame(request, 'x'.repeat(201)), 400, 'a camera name over 200 characters');
   unread(await sendFrame(request, '   '), 400, 'a blank camera name');
@@ -693,7 +693,7 @@ test('relay pictures: every check happens before the body is read, and an accept
 
   const tooSoon = await sendFrame(request, 'front', { bytes: PNG, type: 'image/png' });
   assert.equal(tooSoon.status, 429, 'one camera, at most one picture every two seconds');
-  assert.equal((await sendFrame(request, 'Ff', { bytes: WEBP, type: 'image/webp' })).status, 204, 'other cameras are not held back, and a saved my.arlo.com source still matches by name');
+  assert.equal((await sendFrame(request, 'Ff', { bytes: WEBP, type: 'image/webp' })).status, 204, 'other cameras are not held back, and a saved feed.private-cctv.example source still matches by name');
   t.mock.timers.tick(RELAY_MIN_FRAME_INTERVAL_MS);
   assert.equal((await sendFrame(request, 'front', { bytes: PNG, type: 'image/png' })).status, 204);
   const png = await request('/frame/private-home--front');
@@ -711,8 +711,8 @@ test('a relay camera without a current picture says why: not paired, not connect
   t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 8, 13, 14, 20).getTime() });
   const unpairedRoot = relayRoot(t, { paired: false });
   const unpaired = await relayHarness(privateCamerasProxy({ sourceRoot: unpairedRoot }))('/frame/private-home--front');
-  assert.equal(offlineReason(unpaired), 'ARLO RELAY NOT PAIRED');
-  assert.match(unpaired.body, /Pair the GEV Arlo Feed Relay in POWER UP/);
+  assert.equal(offlineReason(unpaired), 'FEED RELAY NOT PAIRED');
+  assert.match(unpaired.body, /Pair the GEV Private_CCTV_Feed Relay in POWER UP/);
 
   const root = relayRoot(t);
   const never = async () => assert.fail('a relay camera is never fetched');
@@ -723,8 +723,8 @@ test('a relay camera without a current picture says why: not paired, not connect
     return response;
   };
   let offline = await placeholder();
-  assert.equal(offlineReason(offline), 'ARLO RELAY NOT CONNECTED');
-  assert.match(offline.body, /Open your my\.arlo\.com feed with the GEV Arlo Feed Relay/);
+  assert.equal(offlineReason(offline), 'FEED RELAY NOT CONNECTED');
+  assert.match(offline.body, /Open your camera site feed with the GEV Private_CCTV_Feed Relay/);
   assert.match(offline.body, /Back Yard/);
 
   const badHeartbeats = [
@@ -745,7 +745,7 @@ test('a relay camera without a current picture says why: not paired, not connect
   assert.equal((await sendHeartbeat(request, 'feed', [], { origin: undefined })).status, 403);
   const oversized = await sendHeartbeat(request, 'feed', [], { 'content-length': '5000' });
   assert.deepEqual([oversized.status, oversized.req.bodyRead], [413, false]);
-  assert.equal(offlineReason(await placeholder()), 'ARLO RELAY NOT CONNECTED', 'refused heartbeats count for nothing');
+  assert.equal(offlineReason(await placeholder()), 'FEED RELAY NOT CONNECTED', 'refused heartbeats count for nothing');
 
   const startedAt = Date.now();
   const beat = await sendHeartbeat(request, 'feed', ['front', 'FF', 'Garage']);
@@ -753,12 +753,12 @@ test('a relay camera without a current picture says why: not paired, not connect
   offline = await placeholder();
   assert.equal(offlineReason(offline), 'WAITING FOR A CLIP');
   assert.match(offline.body, /Shows the next motion clip from this camera/);
-  assert.match(offline.body, /Or set its Arlo name in POWER UP/, 'an unmatched feed name might be this camera');
+  assert.match(offline.body, /Or set its Private_CCTV_Feed name in POWER UP/, 'an unmatched feed name might be this camera');
   assert.equal(offlineReason(await placeholder('private-home--front')), 'PICTURE ON ITS WAY', 'the feed shows a clip of this camera');
   let relay = (await request('/status')).json().kinds[0].sites[0].relay;
   assert.deepEqual([relay.connected, relay.state, relay.lastHeartbeatAt, relay.unknownNames], [true, 'feed', startedAt, ['garage']]);
 
-  // Another Arlo tab's worse report does not override a tab reading the feed for a while.
+  // Another Private_CCTV_Feed tab's worse report does not override a tab reading the feed for a while.
   assert.equal((await sendHeartbeat(request, 'layout-unknown', [])).status, 200);
   assert.equal((await request('/status')).json().kinds[0].sites[0].relay.state, 'feed');
   assert.equal((await sendFrame(request, 'front', { clip: 'Motion · 2:20 PM' })).status, 204);
@@ -776,14 +776,14 @@ test('a relay camera without a current picture says why: not paired, not connect
   t.mock.timers.tick(1000);
   assert.equal((await sendHeartbeat(request, 'signed-out', [], {}, FEED_TAB)).status, 200);
   offline = await placeholder();
-  assert.equal(offlineReason(offline), 'ARLO SIGNED OUT');
-  assert.match(offline.body, /Sign in at my\.arlo\.com to refresh pictures/);
+  assert.equal(offlineReason(offline), 'FEED SIGNED OUT');
+  assert.match(offline.body, /Sign in at your camera site to refresh pictures/);
   const signedOutFront = await placeholder('private-home--front');
-  assert.equal(offlineReason(signedOutFront), 'ARLO SIGNED OUT', 'an old picture is not shown as if current');
+  assert.equal(offlineReason(signedOutFront), 'FEED SIGNED OUT', 'an old picture is not shown as if current');
   assert.match(signedOutFront.body, /Last clip picture arrived 14:20/);
 
   t.mock.timers.tick(RELAY_HEARTBEAT_STALE_MS + 1);
-  assert.equal(offlineReason(await placeholder()), 'ARLO SIGNED OUT', 'a signed-out report still says to sign in once the relay goes quiet');
+  assert.equal(offlineReason(await placeholder()), 'FEED SIGNED OUT', 'a signed-out report still says to sign in once the relay goes quiet');
   relay = (await request('/status')).json().kinds[0].sites[0].relay;
   assert.deepEqual([relay.connected, relay.state], [false, 'signed-out']);
 
@@ -791,9 +791,9 @@ test('a relay camera without a current picture says why: not paired, not connect
   assert.equal(offlineReason(await placeholder()), 'WAITING FOR A CLIP');
   assert.equal((await request('/frame/private-home--front')).headers['X-Private-Camera'], 'relay', 'signed in again, the kept picture is shown');
   t.mock.timers.tick(RELAY_HEARTBEAT_STALE_MS + 1);
-  assert.equal(offlineReason(await placeholder()), 'ARLO RELAY NOT CONNECTED', 'a relay silent for ten minutes is not connected');
+  assert.equal(offlineReason(await placeholder()), 'FEED RELAY NOT CONNECTED', 'a relay silent for ten minutes is not connected');
   const quietFront = await placeholder('private-home--front');
-  assert.equal(offlineReason(quietFront), 'ARLO RELAY NOT CONNECTED');
+  assert.equal(offlineReason(quietFront), 'FEED RELAY NOT CONNECTED');
   assert.match(quietFront.body, /Last clip picture arrived 14:20/);
   relay = (await request('/status')).json().kinds[0].sites[0].relay;
   assert.deepEqual([relay.connected, relay.state], [false, 'feed']);
@@ -829,8 +829,8 @@ test('unpairing, removed cameras, a new sign-in mode and removed sites all forge
   const unpaired = await request('/relay/unpair', { method: 'POST', body: { siteId: 'home' }, headers: pageHeaders() });
   assert.deepEqual([unpaired.status, unpaired.json()], [200, { ok: true }]);
   const stored = readStore(root).sites[0];
-  assert.deepEqual([stored.relayExtensionId, stored.relaySecretHash, stored.username, stored.password], ['', '', 'owner@example.com', 'arlo-password']);
-  assert.equal(offlineReason(await request('/frame/private-home--front')), 'ARLO RELAY NOT PAIRED', 'pictures and heartbeat are forgotten');
+  assert.deepEqual([stored.relayExtensionId, stored.relaySecretHash, stored.username, stored.password], ['', '', 'owner@example.com', 'feed-password']);
+  assert.equal(offlineReason(await request('/frame/private-home--front')), 'FEED RELAY NOT PAIRED', 'pictures and heartbeat are forgotten');
   assert.equal((await sendFrame(request, 'front')).status, 401, 'the old secret no longer works');
   assert.equal((await request('/relay/pair-status', { headers: extensionHeaders({ origin: null }) })).status, 401);
 
@@ -843,14 +843,14 @@ test('unpairing, removed cameras, a new sign-in mode and removed sites all forge
     kind: 'home',
     siteId: 'home',
     auth: 'token',
-    cameras: [{ id: 'front', name: 'Front', source: 'camera.aarlo_front' }, { id: 'ff', name: 'Ff', source: 'camera.aarlo_ff' }, { id: 'back-yard', name: 'Back Yard', source: 'camera.aarlo_back_yard' }],
+    cameras: [{ id: 'front', name: 'Front', source: 'camera.privatecam_front' }, { id: 'ff', name: 'Ff', source: 'camera.privatecam_ff' }, { id: 'back-yard', name: 'Back Yard', source: 'camera.privatecam_back_yard' }],
   });
   assert.equal(token.status, 200, token.body);
   assert.equal(readStore(second).sites[0].relayExtensionId, '');
   const relayAgain = await save(other, { kind: 'home', siteId: 'home', auth: 'relay', cameras: [{ id: 'front', name: 'Front', source: null }, { id: 'ff', name: 'Ff', source: null }, { id: 'back-yard', name: 'Back Yard', source: null }] });
   assert.equal(relayAgain.status, 200, relayAgain.body);
   assert.equal(relayAgain.json().status.kinds[0].sites[0].relay.paired, false);
-  assert.equal(offlineReason(await other('/frame/private-home--front')), 'ARLO RELAY NOT PAIRED');
+  assert.equal(offlineReason(await other('/frame/private-home--front')), 'FEED RELAY NOT PAIRED');
 
   // A removed site forgets its pictures even if a new site later takes the same id.
   const third = relayRoot(t);
@@ -861,10 +861,10 @@ test('unpairing, removed cameras, a new sign-in mode and removed sites all forge
   assert.equal(offlineReason(await another('/frame/private-home--front')), 'NOT CONFIGURED');
   const recreated = await save(another, { kind: 'home', name: 'Home', auth: 'relay', lat: 45.27, lon: -66.06, cameras: [{ name: 'Front' }] });
   assert.deepEqual([recreated.status, recreated.json().siteId], [200, 'home']);
-  assert.equal(offlineReason(await another('/frame/private-home--front')), 'ARLO RELAY NOT PAIRED');
+  assert.equal(offlineReason(await another('/frame/private-home--front')), 'FEED RELAY NOT PAIRED');
 });
 
-test('a camera whose Arlo match name changes loses its picture, so it never shows another camera', async (t) => {
+test('a camera whose Private_CCTV_Feed match name changes loses its picture, so it never shows another camera', async (t) => {
   t.mock.timers.enable({ apis: ['Date'], now: 40_000_000 });
   const root = relayRoot(t);
   const request = relayHarness(privateCamerasProxy({ sourceRoot: root }));
@@ -885,21 +885,21 @@ test('a camera whose Arlo match name changes loses its picture, so it never show
   assert.equal((await sendFrame(request, 'ff', { bytes: PNG, type: 'image/png' })).status, 204);
 
   await save([{ id: 'front', name: 'FRONT' }, { id: 'ff', name: 'Ff' }, backYard]);
-  assert.deepEqual([await shown('front'), await shown('ff')], [JPEG, PNG], 'a Name that still matches the same Arlo camera keeps its picture');
+  assert.deepEqual([await shown('front'), await shown('ff')], [JPEG, PNG], 'a Name that still matches the same Private_CCTV_Feed camera keeps its picture');
 
-  // Renamed: the picture came from the Arlo camera "front", which this camera no longer matches.
+  // Renamed: the picture came from the Private_CCTV_Feed camera "front", which this camera no longer matches.
   await save([{ id: 'front', name: 'Front Door' }, { id: 'ff', name: 'Ff' }, backYard]);
   assert.deepEqual([await shown('front'), await shown('ff')], ['WAITING FOR A CLIP', PNG], 'only the renamed camera loses its picture');
   assert.deepEqual((await sendHeartbeat(request)).json(), { missing: [], unknown: ['front'] });
 
-  // A changed Arlo name override.
+  // A changed Private_CCTV_Feed name override.
   await save([{ id: 'front', name: 'Front Door', source: 'Front' }, { id: 'ff', name: 'Ff' }, backYard]);
   assert.equal((await sendFrame(request, 'front')).status, 204);
   assert.deepEqual(await shown('front'), JPEG);
   await save([{ id: 'front', name: 'Front Door', source: 'Porch' }, { id: 'ff', name: 'Ff' }, backYard]);
-  assert.equal(await shown('front'), 'WAITING FOR A CLIP', 'a new Arlo name drops the picture of the old one');
+  assert.equal(await shown('front'), 'WAITING FOR A CLIP', 'a new Private_CCTV_Feed name drops the picture of the old one');
 
-  // Two cameras swap Arlo names: neither shows the other's picture.
+  // Two cameras swap Private_CCTV_Feed names: neither shows the other's picture.
   await save([{ id: 'front', name: 'Front', source: null }, { id: 'ff', name: 'Ff', source: null }, backYard]);
   assert.equal((await sendFrame(request, 'front')).status, 204);
   assert.deepEqual([await shown('front'), await shown('ff')], [JPEG, PNG]);
@@ -908,5 +908,5 @@ test('a camera whose Arlo match name changes loses its picture, so it never show
   assert.deepEqual([await shown('front'), await shown('ff')], ['PICTURE ON ITS WAY', 'PICTURE ON ITS WAY'], "neither camera keeps the other camera's picture");
   assert.deepEqual((await sendHeartbeat(request)).json(), { missing: ['front', 'ff'], unknown: [] }, 'the relay is asked for both pictures again');
   assert.equal((await sendFrame(request, 'front', { bytes: PNG, type: 'image/png' })).status, 204);
-  assert.deepEqual([await shown('front'), await shown('ff')], ['PICTURE ON ITS WAY', PNG], 'the Arlo camera "front" now fills the camera that names it');
+  assert.deepEqual([await shown('front'), await shown('ff')], ['PICTURE ON ITS WAY', PNG], 'the Private_CCTV_Feed camera "front" now fills the camera that names it');
 });

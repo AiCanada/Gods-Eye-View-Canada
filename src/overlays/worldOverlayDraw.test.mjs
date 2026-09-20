@@ -596,3 +596,42 @@ test('the sky plate scale is a whisper, not a second plate', () => {
   );
   assert.ok(lightest * SKY_PLATE_SCALE < 0.12, 'the feathered plate must read as bare text');
 });
+
+test('a centred placement puts the chosen point of the card on its anchor, with no leader, and is never moved off it', () => {
+  const input = {
+    anchorX: 400,
+    anchorY: 300,
+    width: 104,
+    height: 80,
+    viewportWidth: 1600,
+    viewportHeight: 900,
+    gap: 20,
+    leaderOffset: 14,
+    preferred: 'center',
+    verticalOnly: true,
+    centerOffsetX: 52,
+    centerOffsetY: 31,
+  };
+  const variants = placementVariants(input);
+  // Centred means on the anchor or not at all: no above/below fallbacks.
+  assert.deepEqual(variants.map((variant) => variant.corner), ['center']);
+  const [center] = variants;
+  assert.equal(center.rect.x + 52, 400);
+  assert.equal(center.rect.y + 31, 300);
+  assert.equal(center.leaderOffset, 0);
+  assert.deepEqual([center.leadFromX, center.leadFromY, center.leadToX, center.leadToY], [400, 300, 400, 300]);
+
+  // Near a viewport edge the card hangs over it instead of sliding off its anchor.
+  const [edge] = placementVariants({ ...input, anchorX: 10, anchorY: 5 });
+  assert.equal(edge.rect.x + 52, 10);
+  assert.equal(edge.rect.y + 31, 5);
+
+  // Without offsets the middle of the card lands on the anchor; every other
+  // preference keeps its clamped fallbacks.
+  const plain = placementVariants({ anchorX: 400, anchorY: 300, width: 100, height: 60, viewportWidth: 1600, viewportHeight: 900, preferred: 'center' });
+  assert.deepEqual(plain.map((variant) => variant.corner), ['center']);
+  assert.deepEqual([plain[0].rect.x, plain[0].rect.y], [350, 270]);
+  const above = placementVariants({ anchorX: 10, anchorY: 300, width: 100, height: 60, viewportWidth: 1600, viewportHeight: 900, preferred: 'above' });
+  assert.deepEqual(above.map((variant) => variant.corner), ['above', 'below', 'right', 'left']);
+  assert.equal(above[0].rect.x, 4, 'still clamped into the viewport');
+});

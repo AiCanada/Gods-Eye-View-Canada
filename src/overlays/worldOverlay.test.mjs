@@ -22,6 +22,7 @@ import {
   initWorldOverlay,
   isOverlayPointVisible,
   normalizeOverlayEntry,
+  overlayRotationFromScreenVector,
   paintLaneForOverlayEntry,
   registerWorldOverlayPaintLane,
   removeOverlayEntry,
@@ -2140,4 +2141,21 @@ test('diagnostics facade preserves the complete binding shape', () => {
     'candidateIndexSize', 'entriesBySource', 'paintedBySource',
   ];
   assert.deepEqual(Object.keys(diagnostics).sort(), fields.sort());
+});
+
+test('a card is turned to run from its anchor toward its target on screen, at any angle', () => {
+  const deg = (radians) => Math.round((radians * 180) / Math.PI);
+  assert.equal(deg(overlayRotationFromScreenVector(0, -50)), 0, 'target straight up the screen: upright');
+  assert.equal(deg(overlayRotationFromScreenVector(50, -50)), 45);
+  assert.equal(deg(overlayRotationFromScreenVector(50, 0)), 90);
+  assert.equal(deg(overlayRotationFromScreenVector(0, 50)), 180, 'a known direction may turn the card right over');
+  assert.equal(deg(overlayRotationFromScreenVector(-50, 0)), -90);
+  // A line whose direction is unknown is folded into the upright half.
+  assert.equal(deg(overlayRotationFromScreenVector(0, 50, true)), 0);
+  assert.equal(deg(overlayRotationFromScreenVector(50, 50, true)), -45);
+  assert.equal(deg(overlayRotationFromScreenVector(-50, 50, true)), 45);
+  assert.equal(deg(overlayRotationFromScreenVector(50, -50, true)), 45);
+  // A target on the anchor, or a broken projection, leaves the card upright.
+  assert.equal(overlayRotationFromScreenVector(1, 1), 0);
+  assert.equal(overlayRotationFromScreenVector(NaN, 5), 0);
 });

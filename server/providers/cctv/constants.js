@@ -42,9 +42,21 @@ export const CCTV_SOURCE_STAT_INTERVAL_MS = 10 * 1000;
 export const DEFAULT_AUSTIN_ROWS_URL =
   'https://data.austintexas.gov/api/views/b4k4-adkb/rows.json?accessType=DOWNLOAD';
 /** Hosts whose stills the viewer's browser loads itself when
- * CCTV_BROWSER_DIRECT_HOSTS is unset. Québec 511 refuses every server, so its
- * cameras need this to show a picture; set the variable empty to turn it off. */
-export const DEFAULT_CCTV_BROWSER_DIRECT_HOSTS = 'quebec511.info';
+ * CCTV_BROWSER_DIRECT_HOSTS is unset: none. A browser-loaded still carries no
+ * CORS header: it shows in the panel and as a map thumbnail, but can never
+ * become the 3D monitor plane. Québec 511 used to be listed here because it refuses Node's
+ * fetch; the proxy now reaches it through node:https (see media.js), so its
+ * cameras are proxied like every other. */
+export const DEFAULT_CCTV_BROWSER_DIRECT_HOSTS = '';
+/** Hosts whose cameras get ROAD-MATCHED map thumbnails when
+ * CCTV_ROAD_MATCH_HOSTS is unset: the thumbnail stands on the road nearest the
+ * camera (the widest road in its picture, along the bottom edge) and is drawn as
+ * wide as that stretch of road. Québec 511's autoroute cameras are all road
+ * cameras with a plain forward view, which is what the match assumes. `*` means
+ * every camera; empty (the default) means none: thumbnails stay upright where
+ * their picture opens, and the owner lines them up by hand instead (right-click
+ * a thumbnail; saved in config/cctv_thumbnail_alignments.json). */
+export const DEFAULT_CCTV_ROAD_MATCH_HOSTS = '';
 /** Most cameras one /sources area may load: the nearest ones win. A hard
  * ceiling with no setting, query parameter or off switch. The catalogue itself
  * keeps every camera; only what one selected area loads is capped. */
@@ -143,7 +155,7 @@ export const CCTV_FRAME_CACHE_MAX_BYTES = 24 * 1024 * 1024;
 /** Per-host upstream gate: concurrent requests, spacing between starts, and
  * how many requests may wait (and for how long) before a throttled placeholder. */
 export const CCTV_HOST_MAX_CONCURRENT = 2;
-export const CCTV_HOST_SPACING_MS = 250;
+export const CCTV_HOST_SPACING_MS = 150;
 export const CCTV_HOST_QUEUE_MAX = 32;
 export const CCTV_HOST_QUEUE_WAIT_MS = 4 * 1000;
 /** A 429 (or a 503 with Retry-After) blocks the host for Retry-After, kept

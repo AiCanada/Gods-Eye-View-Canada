@@ -1,14 +1,15 @@
-// GEV Arlo Feed Relay service worker (module). All network work happens here
+// GEV Private_CCTV_Feed Relay service worker (module). All network work happens here
 // because content scripts cannot reach localhost. It downloads the newest clip
 // thumbnail without credentials and relays only the picture bytes, the camera
 // name and a short clip label to Gods Eye View on this computer. Thumbnail
 // addresses stay in memory: they are never logged, stored or sent to GEV.
+import './relay-config.js';
 import './relay-logic.js';
 
-const relay = globalThis.GevArloRelay;
+const relay = globalThis.GevPrivateCctvFeedRelay;
 const GEV_ORIGIN = relay.GEV_ORIGIN;
-const ARLO_ORIGIN = 'https://my.arlo.com';
-const DB_NAME = 'gev-arlo-relay';
+const PRIVATE_CCTV_FEED_ORIGIN = relay.FEED_ORIGIN;
+const DB_NAME = 'gev-private-cctv-feed-relay';
 const DB_VERSION = 1;
 const STORE_NAME = 'pairing';
 const SECRET_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -96,7 +97,7 @@ function isOptionsPage(url) {
 
 function allowedSender(type, sender) {
   if (!sender || sender.id !== chrome.runtime.id) return false;
-  if (PAGE_MESSAGES.has(type)) return sender.origin === ARLO_ORIGIN && sender.frameId === 0 && Boolean(sender.tab);
+  if (PAGE_MESSAGES.has(type)) return sender.origin === PRIVATE_CCTV_FEED_ORIGIN && sender.frameId === 0 && Boolean(sender.tab);
   if (OPTIONS_MESSAGES.has(type)) return isOptionsPage(sender.url);
   return false;
 }
@@ -175,7 +176,7 @@ async function writePairing(changes) {
 async function epochFor(secret) {
   if (!secret) return '';
   if (epochMemo.secret !== secret) {
-    const epoch = (await relay.sha256Hex(`gev-arlo-relay-epoch:${secret}`)).slice(0, 16);
+    const epoch = (await relay.sha256Hex(`gev-private-cctv-feed-relay-epoch:${secret}`)).slice(0, 16);
     epochMemo = { secret, epoch };
   }
   return epochMemo.epoch;
@@ -184,11 +185,11 @@ async function epochFor(secret) {
 // An opaque tag for the tab a heartbeat comes from, so GEV believes a tab's own
 // sign-out at once while a sign-in page left open in another tab still cannot
 // override the tab reading the feed. It is a hash of the pairing epoch and the
-// tab id, never the tab id itself or anything from Arlo.
+// tab id, never the tab id itself or anything from Private_CCTV_Feed.
 async function reporterFor(sender, epoch) {
   const tabId = sender && sender.tab ? sender.tab.id : undefined;
   if (!epoch || !Number.isInteger(tabId) || tabId < 0) return '';
-  return (await relay.sha256Hex(`gev-arlo-relay-tab:${epoch}:${tabId}`)).slice(0, 16);
+  return (await relay.sha256Hex(`gev-private-cctv-feed-relay-tab:${epoch}:${tabId}`)).slice(0, 16);
 }
 
 // ---- diagnostics (memory only) ----
@@ -265,7 +266,7 @@ async function readJson(response) {
   }
 }
 
-// ---- messages from the Arlo feed tab ----
+// ---- messages from the Private_CCTV_Feed feed tab ----
 
 async function handleFrame(message) {
   const camera = relay.cleanLabel(message.camera);
@@ -324,8 +325,8 @@ async function pushFrame({ secret, epoch, camera, matchKey, key, url, clip }) {
     record(camera, 'thumbnail is not a picture');
     return { ok: false, done: true, refused: true };
   }
-  const headers = { Authorization: `Bearer ${secret}`, 'Content-Type': type, 'X-Arlo-Camera': encodeURIComponent(camera) };
-  if (clip) headers['X-Arlo-Clip'] = encodeURIComponent(clip);
+  const headers = { Authorization: `Bearer ${secret}`, 'Content-Type': type, 'X-Private-Cctv-Feed-Camera': encodeURIComponent(camera) };
+  if (clip) headers['X-Private-Cctv-Feed-Clip'] = encodeURIComponent(clip);
   let answer;
   try {
     answer = await fetch(`${GEV_ORIGIN}/api/private-cams/relay/frame`, { ...GEV_FETCH_OPTIONS, method: 'POST', headers, body: bytes });

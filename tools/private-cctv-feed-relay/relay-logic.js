@@ -1,20 +1,31 @@
-// GEV Arlo Feed Relay: pure logic shared by the content script (loaded first in
+// GEV Private_CCTV_Feed Relay: pure logic shared by the content script (loaded first in
 // the manifest) and the module service worker (side-effect import). It is a
 // classic script with no import/export statements so both contexts can run it;
-// it only ever defines globalThis.GevArloRelay. Nothing here touches the page's
+// it only ever defines globalThis.GevPrivateCctvFeedRelay. Nothing here touches the page's
 // JavaScript, storage, cookies or the network.
-(function defineGevArloRelay(root) {
+(function defineGevPrivateCctvFeedRelay(root) {
   'use strict';
 
-  if (root.GevArloRelay) return;
+  if (root.GevPrivateCctvFeedRelay) return;
 
   const GEV_ORIGIN = 'http://localhost:4173';
-  const ALLOWED_IMAGE_HOSTS = Object.freeze([
-    'arlos3-prod-z1.s3.amazonaws.com',
-    'arlos3-prod-z2.s3.amazonaws.com',
-    'arlos3-prod-z3.s3.amazonaws.com',
-    'arlos3-prod-z4.s3.amazonaws.com',
-  ]);
+  // The feed site and its picture hosts come from relay-config.js, which the
+  // installer writes from the owner's untracked local config. Without it the
+  // reserved example hosts below apply and nothing real is relayed.
+  const SITE = root.GevPrivateCctvFeedConfig || {};
+  const FEED_ORIGIN = typeof SITE.feedOrigin === 'string' && /^https:\/\/[^/]+$/.test(SITE.feedOrigin)
+    ? SITE.feedOrigin
+    : 'https://feed.private-cctv.example';
+  const ALLOWED_IMAGE_HOSTS = Object.freeze(
+    Array.isArray(SITE.imageHosts) && SITE.imageHosts.length
+      ? SITE.imageHosts.map((host) => String(host).toLowerCase())
+      : [
+        'clips-z1.private-cctv.example',
+        'clips-z2.private-cctv.example',
+        'clips-z3.private-cctv.example',
+        'clips-z4.private-cctv.example',
+      ],
+  );
   const SELECTORS = Object.freeze({
     item: 'div.feed-item-host',
     name: 'span.device-name',
@@ -30,7 +41,7 @@
   const CAMERA_NAME_MAX_LENGTH = 200;
   const CLIP_MAX_LENGTH = 80;
   const THUMBNAIL_MAX_BYTES = 8 * 1024 * 1024;
-  const ARLO_PAGE_BASE = 'https://my.arlo.com/';
+  const PRIVATE_CCTV_FEED_PAGE_BASE = `${FEED_ORIGIN}/`;
   const IMAGE_PATH = /\.(?:jpe?g|png|webp)$/i;
   const SIGNED_OUT_ROUTE = /^#\/(login|signin|signup|forgot)/i;
   const FEED_ROUTE = /^#\/feed(?![\w-])/i;
@@ -50,7 +61,7 @@
     }
   }
 
-  /** Only https thumbnails on Arlo's four S3 recording hosts, with an image path. */
+  /** Only https thumbnails on Private_CCTV_Feed's four S3 recording hosts, with an image path. */
   function isAllowedThumbnailUrl(url) {
     const parsed = parseUrl(url);
     if (!parsed) return false;
@@ -94,7 +105,7 @@
     return element && typeof element.textContent === 'string' ? element.textContent : '';
   }
 
-  /** Every feed card in document order (Arlo lists the newest clip first). */
+  /** Every feed card in document order (Private_CCTV_Feed lists the newest clip first). */
   function readFeedItems(rootNode) {
     const items = [];
     if (!rootNode || typeof rootNode.querySelectorAll !== 'function') return items;
@@ -106,7 +117,7 @@
       const image = host.querySelector(SELECTORS.image);
       const rawSrc = image && typeof image.getAttribute === 'function' ? image.getAttribute('src') : null;
       if (!name || typeof rawSrc !== 'string' || !rawSrc.trim()) continue;
-      const resolved = parseUrl(rawSrc.trim(), ARLO_PAGE_BASE);
+      const resolved = parseUrl(rawSrc.trim(), PRIVATE_CCTV_FEED_PAGE_BASE);
       if (!resolved) continue;
       const clip = cleanLabel(
         [SELECTORS.type, SELECTORS.date, SELECTORS.time]
@@ -145,7 +156,7 @@
 
   /**
    * Whether a tab should report at all: one showing feed cards, or one on the
-   * feed or a sign-in route. A tab on another Arlo page (devices, settings with
+   * feed or a sign-in route. A tab on another Private_CCTV_Feed page (devices, settings with
    * a change-password form, ...) says nothing, so it never contradicts the tab
    * that reads the feed.
    */
@@ -211,9 +222,10 @@
     return '';
   }
 
-  root.GevArloRelay = Object.freeze({
+  root.GevPrivateCctvFeedRelay = Object.freeze({
     GEV_ORIGIN,
     ALLOWED_IMAGE_HOSTS,
+    FEED_ORIGIN,
     SELECTORS,
     FEED_STATES,
     PAIRING_CODE_ALPHABET,

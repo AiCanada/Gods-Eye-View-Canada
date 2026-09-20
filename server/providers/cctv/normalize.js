@@ -388,8 +388,8 @@ export function normalizeSourceItem(item) {
     // A camera with no public still names the service that can look one up
     // when the user opens it. Only Road511 is known; anything else is dropped.
     lookup: item.lookup === 'road511' ? 'road511' : '',
-    // An HLS-only camera keeps its stream address for reference. It is never
-    // proxied or served: the app ships no HLS player.
+    // An HLS-only camera's stream. It plays through the same-origin HLS proxy
+    // (cctv/hls-proxy.js), and only when the user clicks the camera.
     videoUrl: typeof item.videoUrl === 'string' ? item.videoUrl : '',
     // Some operators publish only a frame whose URL carries the capture
     // timestamp, so no single URL stays valid. Such a camera declares the page

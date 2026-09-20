@@ -507,6 +507,19 @@ export function normalizeOverlayEntry(sourceId, entry) {
       : Number.POSITIVE_INFINITY,
     pinnedBypassesSafeTop: entry.pinnedBypassesSafeTop === true,
     placement: String(entry.placement || 'auto'),
+    // A world point the card is turned toward: "up the card" runs from the
+    // anchor to it on screen, at any angle. `orientAmbiguous` means the line
+    // is known but not its direction, so the upright-most end is taken.
+    orientTo: typeof entry.orientTo === 'function' ? entry.orientTo : null,
+    orientAmbiguous: entry.orientAmbiguous === true,
+    // Which point of a centred thumbnail's PICTURE lands on the anchor.
+    pictureAnchor: entry.pictureAnchor === 'bottom' ? 'bottom' : 'center',
+    // World-matched size: the picture is drawn this many metres wide at the
+    // anchor's distance (0 = the ordinary altitude curve).
+    worldWidthM: Number.isFinite(Number(entry.worldWidthM)) ? Math.max(0, Number(entry.worldWidthM)) : 0,
+    worldWidthBasePx: Number.isFinite(Number(entry.worldWidthBasePx)) ? Math.max(1, Number(entry.worldWidthBasePx)) : 96,
+    worldScaleMin: Number.isFinite(Number(entry.worldScaleMin)) ? Number(entry.worldScaleMin) : 0.35,
+    worldScaleMax: Number.isFinite(Number(entry.worldScaleMax)) ? Number(entry.worldScaleMax) : 3,
     cardStyle: entry.cardStyle,
     image: entry.image ?? null,
     metadata: entry.metadata ?? null,
@@ -927,8 +940,11 @@ export function hitTestWorldOverlay(x, y, options = {}) {
     if (options.sourceId && hit.sourceId !== options.sourceId) continue;
     if (options.collisionGroup && hit.entry.collisionGroup !== options.collisionGroup) continue;
     if (typeof options.filter === 'function' && !options.filter(hit.entry)) continue;
-    if (x < hit.x || x > hit.x + hit.w || y < hit.y || y > hit.y + hit.h) continue;
-    return { sourceId: hit.sourceId, entryId: hit.entryId, entry: hit.entry, rect: hit };
+    const local = unrotatePoint(hit, x, y, _hitLocal);
+    if (local.x < hit.x || local.x > hit.x + hit.w || local.y < hit.y || local.y > hit.y + hit.h) continue;
+    // `localX/localY`: the pointer in the card's own unturned frame, for callers
+    // that go on to test parts of the card (resize corners).
+    return { sourceId: hit.sourceId, entryId: hit.entryId, entry: hit.entry, rect: hit, localX: local.x, localY: local.y };
   }
   return null;
 }
@@ -1584,6 +1600,9 @@ function snapshotAndProject(entry, source, viewProjection, keyhole) {
     const safeTop = Math.min(entry.safeTopMaxPx, _canvasHeight * entry.safeTopRatio);
     if (record.screen.y < safeTop) return null;
   }
+  record.rotation = entry.orientTo
+    ? overlayRotationToward(entry, record.screen, viewProjection)
+    : 0;
   if (!isOverlayPointVisible(
     entry,
     record.position,
@@ -1610,7 +1629,19 @@ function snapshotAndProject(entry, source, viewProjection, keyhole) {
   // path. Passing its five doubles through a non-inlined helper boxed them for
   // every thumbnail candidate and broke the shared 154 B/candidate gate.
   const altitudeCurve = entry.altitudeScale;
-  if (altitudeCurve && Number.isFinite(cameraAltitude)) {
+  if (entry.worldWidthM > 0) {
+    // Pixels per metre at the anchor's distance, from the live vertical field
+    // of view. The card is a thing in the world here, so it takes this size
+    // and not the altitude curve's.
+    const fovy = _viewer.camera.frustum?.fovy;
+    if (Number.isFinite(fovy) && fovy > 0 && distance > 0) {
+      const pixelsPerMetre = _canvasHeight / (2 * distance * Math.tan(fovy / 2));
+      record.paintScale = Math.max(
+        entry.worldScaleMin,
+        Math.min(entry.worldScaleMax, (entry.worldWidthM * pixelsPerMetre) / entry.worldWidthBasePx),
+      );
+    }
+  } else if (altitudeCurve && Number.isFinite(cameraAltitude)) {
     let altitudeFactor = 1;
     if (cameraAltitude > altitudeCurve.fullEnd) {
       if (cameraAltitude <= altitudeCurve.midEnd) {
@@ -1658,6 +1689,16 @@ function snapshotAndProject(entry, source, viewProjection, keyhole) {
     record.placementInput.leaderOffset = entry.leaderOffsetPx;
   }
   record.placementInput.preferred = entry.placement;
+  // A centred thumbnail puts the middle of its PICTURE on the anchor, not the
+  // middle of the card (the title strip sits under the picture).
+  if (entry.placement === 'center' && entry.variant === 'thumbnail') {
+    record.placementInput.centerOffsetX = (record.layout.padX + record.layout.thumbW / 2) * record.paintScale;
+    record.placementInput.centerOffsetY = (record.layout.padY
+      + (entry.pictureAnchor === 'bottom' ? record.layout.thumbH : record.layout.thumbH / 2)) * record.paintScale;
+  } else {
+    record.placementInput.centerOffsetX = undefined;
+    record.placementInput.centerOffsetY = undefined;
+  }
   record.placementInput.verticalOnly = entry.verticalOnly;
   record.placementInput.viewportMargin = entry.viewportMargin;
   placementVariants(record.placementInput, record.placements);
@@ -1827,6 +1868,10 @@ function collectFrameCandidates(keyhole, viewProjection) {
     }
     for (let a = 0; a < domain.candidateCount; a++) {
       const candidate = domain.candidates[a];
+      // A centred card has one place it can be. Yielding to a protected card
+      // (the active camera's title) would remove it outright, so it stays and
+      // the protected card, painted later, simply reads on top of it.
+      if (candidate._record?.entry?.placement === 'center') continue;
       let count = 0;
       for (let i = 0; i < candidate.placements.length; i++) {
         const placement = candidate.placements[i];
@@ -1947,6 +1992,14 @@ function publishPaintRect(item) {
   rect.y = placement.rect.y;
   rect.w = placement.rect.w;
   rect.h = placement.rect.h;
+  // Where the card ended up relative to its anchor (QA and source painters).
+  rect.corner = placement.corner;
+  rect.anchorX = placement.anchorX;
+  rect.anchorY = placement.anchorY;
+  rect.paintScale = record.paintScale;
+  // The rect is the card BEFORE turning; readers that care turn a point into
+  // its frame with this angle about (anchorX, anchorY).
+  rect.rotation = Number.isFinite(record.rotation) ? record.rotation : 0;
   rect.sourceId = record.entry.source;
   rect.entryId = record.entry.id;
   rect.entry = record.entry;
@@ -2038,6 +2091,64 @@ function paintCustomLane(lane) {
   }
 }
 
+/**
+ * The clockwise angle (radians) that turns a card's "up" from screen-up to the
+ * on-screen direction from its anchor toward `entry.orientTo()`. 0 when the
+ * target cannot be projected or sits on the anchor.
+ */
+function overlayRotationToward(entry, screen, viewProjection) {
+  let target = null;
+  try {
+    target = entry.orientTo();
+  } catch {
+    return 0;
+  }
+  if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y) || !Number.isFinite(target.z)) return 0;
+  const w = viewProjection.m3 * target.x + viewProjection.m7 * target.y
+    + viewProjection.m11 * target.z + viewProjection.m15;
+  if (!(w > 0)) return 0;
+  const tx = ((viewProjection.m0 * target.x + viewProjection.m4 * target.y
+    + viewProjection.m8 * target.z + viewProjection.m12) / w * 0.5 + 0.5) * _canvasWidth;
+  const ty = (0.5 - (viewProjection.m1 * target.x + viewProjection.m5 * target.y
+    + viewProjection.m9 * target.z + viewProjection.m13) / w * 0.5) * _canvasHeight;
+  return overlayRotationFromScreenVector(tx - screen.x, ty - screen.y, entry.orientAmbiguous);
+}
+
+/**
+ * Pure half of the above: screen vector to card rotation. An ambiguous line is
+ * folded into the upright half (never more than a quarter turn either way).
+ * @param {number} dx Screen x from anchor to target.
+ * @param {number} dy Screen y from anchor to target (down is positive).
+ * @param {boolean} [ambiguous]
+ * @returns {number} Radians, clockwise, in (-PI, PI].
+ */
+export function overlayRotationFromScreenVector(dx, dy, ambiguous = false) {
+  if (!Number.isFinite(dx) || !Number.isFinite(dy) || dx * dx + dy * dy < 4) return 0;
+  let angle = Math.atan2(dx, -dy);
+  if (ambiguous) {
+    if (angle > Math.PI / 2) angle -= Math.PI;
+    else if (angle < -Math.PI / 2) angle += Math.PI;
+  }
+  return angle;
+}
+
+/** A screen point brought into an item's unrotated card space (its own when not turned). */
+function unrotatePoint(rect, x, y, out) {
+  if (!rect.rotation) {
+    out.x = x;
+    out.y = y;
+    return out;
+  }
+  const dx = x - rect.anchorX;
+  const dy = y - rect.anchorY;
+  const cos = Math.cos(rect.rotation);
+  const sin = Math.sin(rect.rotation);
+  out.x = rect.anchorX + dx * cos + dy * sin;
+  out.y = rect.anchorY - dx * sin + dy * cos;
+  return out;
+}
+const _hitLocal = { x: 0, y: 0 };
+
 function paintEntryItem(item, keyhole) {
   const { record, placement } = item;
   const entry = record.entry;
@@ -2055,6 +2166,14 @@ function paintEntryItem(item, keyhole) {
   const finalAlpha = record.sourceAlpha * item.temporalAlpha
     * record.distanceAlpha * record.altitudeAlpha * keyholeAlpha;
   if (finalAlpha <= 0.001) return;
+  // A turned card is the same card, drawn in a frame rotated about its anchor.
+  const turned = record.rotation !== 0 && Number.isFinite(record.rotation);
+  if (turned) {
+    _ctx.save();
+    _ctx.translate(placement.anchorX, placement.anchorY);
+    _ctx.rotate(record.rotation);
+    _ctx.translate(-placement.anchorX, -placement.anchorY);
+  }
   if (record.paintScale === 1) {
     paintOverlayEntry(_ctx, entry, placement, finalAlpha);
   } else {
@@ -2069,6 +2188,7 @@ function paintEntryItem(item, keyhole) {
     paintOverlayEntry(_ctx, entry, scaled, finalAlpha);
     _ctx.restore();
   }
+  if (turned) _ctx.restore();
   publishPaintRect(item);
   if (_paintedBySource[entry.source] === undefined) {
     _paintedBySource[entry.source] = 0;

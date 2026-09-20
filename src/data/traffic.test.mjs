@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import trafficLayer, {
   deriveTrafficFlowError,
   trafficFeedPresentation,
+  nearestRoadBearing,
 } from './traffic.js';
 import { DataLayerManager, layerFeedState } from './manager.js';
 
@@ -198,4 +199,30 @@ test('traffic can be destroyed before its first enable and destroyed repeatedly'
   assert.doesNotThrow(() => traffic.destroy(viewer));
   assert.doesNotThrow(() => traffic.destroy(viewer));
   assert.equal(traffic.getStats().count, 0);
+});
+
+test('the road nearest a camera gives the line its thumbnail is turned along', () => {
+  const lat = 45.5;
+  const lon = -73.6;
+  const east = (metres) => lon + metres / (111_320 * Math.cos((lat * Math.PI) / 180));
+  const north = (metres) => lat + metres / 111_320;
+  const roads = [
+    // A motorway running north-east, passing 30 m from the point.
+    { type: 'motorway', coords: [[east(-200 + 21), north(-200 - 21)], [east(200 + 21), north(200 - 21)]] },
+    // A side street running due east, 12 m away: nearer, but the big road is what a road camera watches.
+    { type: 'residential', coords: [[east(-100), north(12)], [east(100), north(12)]] },
+  ];
+  const found = nearestRoadBearing(roads, lat, lon);
+  assert.equal(found.type, 'motorway');
+  assert.ok(Math.abs(found.bearingDeg - 45) < 0.5, String(found.bearingDeg));
+  assert.ok(Math.abs(found.distanceM - 29.7) < 0.5, String(found.distanceM));
+  // Without the motorway the side street is taken; a road has two directions, reported as 0 to 180.
+  const street = nearestRoadBearing(roads.slice(1), lat, lon);
+  assert.ok(Math.abs(street.bearingDeg - 90) < 0.5);
+  assert.ok(Math.abs(street.distanceM - 12) < 0.2);
+  assert.ok(Math.abs(street.lat - north(12)) < 1e-6 && Math.abs(street.lon - lon) < 1e-6, 'the nearest point ON the road');
+  // Nothing within reach, malformed roads, bad input.
+  assert.equal(nearestRoadBearing(roads.slice(1), lat, lon, 5), null);
+  assert.equal(nearestRoadBearing([{ coords: [[lon, lat]] }, null, { coords: 'x' }], lat, lon), null);
+  assert.equal(nearestRoadBearing(roads, NaN, lon), null);
 });

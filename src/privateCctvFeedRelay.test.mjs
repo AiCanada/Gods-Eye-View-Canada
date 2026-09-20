@@ -6,10 +6,10 @@ import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
-import { installArloRelay, relayInstallDestination, relayInstallFiles } from '../scripts/install-arlo-relay.mjs';
+import { installPrivateCctvFeedRelay, relayInstallDestination, relayInstallFiles } from '../scripts/install-private-cctv-feed-relay.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const RELAY_DIR = path.join(ROOT, 'tools', 'arlo-feed-relay');
+const RELAY_DIR = path.join(ROOT, 'tools', 'private-cctv-feed-relay');
 const EXTENSION_ID = 'abcdefghijklmnopabcdefghijklmnop';
 const GEV = 'http://localhost:4173/api/private-cams';
 const S3_QUERY = '?AWSAccessKeyId=ASIAEXAMPLE&Expires=1757880000&Signature=c2lnbmF0dXJl%2B%3D&x-amz-security-token=IQoJb3JpZ2luX2Vj';
@@ -21,7 +21,7 @@ const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x
 const readRelayFile = (name) => readFileSync(path.join(RELAY_DIR, name), 'utf8');
 const plain = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
 const sha256 = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
-const s3 = (zone, id, ext = 'jpg') => `https://arlos3-prod-${zone}.s3.amazonaws.com/5K7-1234/ABCDEF/recordings/${id}.${ext}${S3_QUERY}`;
+const s3 = (zone, id, ext = 'jpg') => `https://clips-${zone}.private-cctv.example/5K7-1234/ABCDEF/recordings/${id}.${ext}${S3_QUERY}`;
 const settle = async () => {
   for (let round = 0; round < 20; round += 1) await new Promise((resolve) => setImmediate(resolve));
 };
@@ -34,9 +34,9 @@ function createRelayContext(extra = {}) {
   return context;
 }
 
-const relay = createRelayContext().GevArloRelay;
+const relay = createRelayContext().GevPrivateCctvFeedRelay;
 
-// ---- a minimal fake DOM mirroring the observed my.arlo.com feed markup ----
+// ---- a minimal fake DOM mirroring the observed feed.private-cctv.example feed markup ----
 
 function compileSelector(selector) {
   const match = /^([a-z][a-z0-9-]*)?((?:\.[a-z0-9_-]+)*)(?:\[([a-z-]+)=([a-z0-9_-]+)\])?$/i.exec(selector);
@@ -108,7 +108,7 @@ const FF_OLDER = s3('z3', '1757600000000');
 
 const SAMPLE_FEED = [
   { name: `${NEWLINE}  front  `, src: FRONT_NEWEST, type: 'Person', date: '9/13', time: '2:14 PM' },
-  { name: 'ff', src: 'https://arlos3-prod-z3.s3.amazonaws.com/5K7-1234/ABCDEF/recordings/placeholder.jpg?Expires=1' },
+  { name: 'ff', src: 'https://clips-z3.private-cctv.example/5K7-1234/ABCDEF/recordings/placeholder.jpg?Expires=1' },
   { name: 'ff', src: '/assets/images/feed-placeholder.png' },
   { name: 'front', src: FRONT_OLDER },
   { name: 'ff', src: FF_NEWEST, type: 'Vehicle', date: '', time: '14:02' },
@@ -125,7 +125,7 @@ test('relay logic is a classic script that exposes one frozen object', () => {
   assert.equal(Object.isFrozen(relay), true);
   assert.equal(relay.GEV_ORIGIN, 'http://localhost:4173');
   assert.equal(Object.isFrozen(relay.ALLOWED_IMAGE_HOSTS), true);
-  assert.deepEqual([...relay.ALLOWED_IMAGE_HOSTS], ['arlos3-prod-z1.s3.amazonaws.com', 'arlos3-prod-z2.s3.amazonaws.com', 'arlos3-prod-z3.s3.amazonaws.com', 'arlos3-prod-z4.s3.amazonaws.com']);
+  assert.deepEqual([...relay.ALLOWED_IMAGE_HOSTS], ['clips-z1.private-cctv.example', 'clips-z2.private-cctv.example', 'clips-z3.private-cctv.example', 'clips-z4.private-cctv.example']);
   assert.deepEqual(plain(relay.SELECTORS), {
     item: 'div.feed-item-host',
     name: 'span.device-name',
@@ -141,32 +141,32 @@ test('relay logic is a classic script that exposes one frozen object', () => {
   }
 });
 
-test('only https image paths on the four Arlo S3 recording hosts are allowed thumbnails', () => {
+test('only https image paths on the four Private_CCTV_Feed S3 recording hosts are allowed thumbnails', () => {
   for (const zone of ['z1', 'z2', 'z3', 'z4']) assert.equal(relay.isAllowedThumbnailUrl(s3(zone, '1757800000000')), true, zone);
   assert.equal(relay.isAllowedThumbnailUrl(s3('z2', 'clip', 'JPEG')), true);
   assert.equal(relay.isAllowedThumbnailUrl(s3('z2', 'clip', 'png')), true);
   assert.equal(relay.isAllowedThumbnailUrl(s3('z2', 'clip', 'webp')), true);
-  assert.equal(relay.isAllowedThumbnailUrl('https://arlos3-prod-z2.s3.amazonaws.com/a/recordings/b.jpg'), true, 'no query');
-  assert.equal(relay.isAllowedThumbnailUrl('HTTPS://ARLOS3-PROD-Z2.S3.AMAZONAWS.COM/a/recordings/b.jpg'), true, 'URL parsing lower-cases the scheme and host');
+  assert.equal(relay.isAllowedThumbnailUrl('https://clips-z2.private-cctv.example/a/recordings/b.jpg'), true, 'no query');
+  assert.equal(relay.isAllowedThumbnailUrl('HTTPS://CLIPS-Z2.PRIVATE-CCTV.EXAMPLE/a/recordings/b.jpg'), true, 'URL parsing lower-cases the scheme and host');
 
   const refused = [
     s3('z2', 'clip').replace('https:', 'http:'),
     s3('z5', 'clip'),
-    'https://arlos3-prod-z2.s3.amazonaws.com.evil.test/a/recordings/b.jpg',
-    'https://arlos3-prod-z2.s3.amazonaws.com./a/recordings/b.jpg',
-    'https://evil-arlos3-prod-z2.s3.amazonaws.com/a/b.jpg',
-    'https://evil.test/arlos3-prod-z2.s3.amazonaws.com/b.jpg',
-    'https://s3.amazonaws.com/arlos3-prod-z2/a/b.jpg',
-    'https://my.arlo.com/a/recordings/b.jpg',
-    'https://user:pass@arlos3-prod-z2.s3.amazonaws.com/a/recordings/b.jpg',
-    'https://user@arlos3-prod-z2.s3.amazonaws.com/a/recordings/b.jpg',
-    'https://arlos3-prod-z2.s3.amazonaws.com:8443/a/recordings/b.jpg',
-    'https://arlos3-prod-z2.s3.amazonaws.com/assets/placeholder.jpg',
-    'https://arlos3-prod-z2.s3.amazonaws.com/assets/Feed-PlaceHolder-Image.PNG',
-    'https://arlos3-prod-z2.s3.amazonaws.com/a/recordings/b.mp4',
-    'https://arlos3-prod-z2.s3.amazonaws.com/a/recordings/b.jpg.html',
-    'https://arlos3-prod-z2.s3.amazonaws.com/a/recordings/',
-    'https://arlos3-prod-z2.s3.amazonaws.com/a/recordings/b?name=.jpg',
+    'https://clips-z2.private-cctv.example.evil.test/a/recordings/b.jpg',
+    'https://clips-z2.private-cctv.example./a/recordings/b.jpg',
+    'https://evil-clips-z2.private-cctv.example/a/b.jpg',
+    'https://evil.test/clips-z2.private-cctv.example/b.jpg',
+    'https://s3.amazonaws.com/clips-z2/a/b.jpg',
+    'https://feed.private-cctv.example/a/recordings/b.jpg',
+    'https://user:pass@clips-z2.private-cctv.example/a/recordings/b.jpg',
+    'https://user@clips-z2.private-cctv.example/a/recordings/b.jpg',
+    'https://clips-z2.private-cctv.example:8443/a/recordings/b.jpg',
+    'https://clips-z2.private-cctv.example/assets/placeholder.jpg',
+    'https://clips-z2.private-cctv.example/assets/Feed-PlaceHolder-Image.PNG',
+    'https://clips-z2.private-cctv.example/a/recordings/b.mp4',
+    'https://clips-z2.private-cctv.example/a/recordings/b.jpg.html',
+    'https://clips-z2.private-cctv.example/a/recordings/',
+    'https://clips-z2.private-cctv.example/a/recordings/b?name=.jpg',
     'data:image/jpeg;base64,/9j/4AAQ',
     'not a url',
     '',
@@ -211,7 +211,7 @@ test('camera names normalize exactly like the server core', async (t) => {
 });
 
 test('urlKey keeps the origin and path and drops the signed query', () => {
-  assert.equal(relay.urlKey(FRONT_NEWEST), 'https://arlos3-prod-z2.s3.amazonaws.com/5K7-1234/ABCDEF/recordings/1757800000001.jpg');
+  assert.equal(relay.urlKey(FRONT_NEWEST), 'https://clips-z2.private-cctv.example/5K7-1234/ABCDEF/recordings/1757800000001.jpg');
   assert.equal(relay.urlKey(`${FRONT_NEWEST}#frag`), relay.urlKey(FRONT_NEWEST.replace('Signature=', 'Signature=other')));
   assert.doesNotMatch(relay.urlKey(FRONT_NEWEST), /[?#]|Signature|Expires|token/);
   assert.equal(relay.urlKey('nope'), '');
@@ -223,8 +223,8 @@ test('readFeedItems reads name, absolute picture address and clip label per card
   const items = plain(relay.readFeedItems(doc));
   assert.deepEqual(items, [
     { name: 'front', src: new URL(FRONT_NEWEST).href, clip: 'Person · 9/13 · 2:14 PM' },
-    { name: 'ff', src: 'https://arlos3-prod-z3.s3.amazonaws.com/5K7-1234/ABCDEF/recordings/placeholder.jpg?Expires=1', clip: 'Motion · 9/13 · 2:14 PM' },
-    { name: 'ff', src: 'https://my.arlo.com/assets/images/feed-placeholder.png', clip: 'Motion · 9/13 · 2:14 PM' },
+    { name: 'ff', src: 'https://clips-z3.private-cctv.example/5K7-1234/ABCDEF/recordings/placeholder.jpg?Expires=1', clip: 'Motion · 9/13 · 2:14 PM' },
+    { name: 'ff', src: 'https://feed.private-cctv.example/assets/images/feed-placeholder.png', clip: 'Motion · 9/13 · 2:14 PM' },
     { name: 'front', src: new URL(FRONT_OLDER).href, clip: 'Motion · 9/13 · 2:14 PM' },
     { name: 'ff', src: new URL(FF_NEWEST).href, clip: 'Vehicle · 14:02' },
     { name: 'FF', src: new URL(FF_OLDER).href, clip: 'Motion · 9/13 · 2:14 PM' },
@@ -255,7 +255,7 @@ test('pickNewestPerCamera keeps the first allowed picture per normalized camera 
   assert.equal(newest.get('ff').clip, 'Vehicle · 14:02');
   assert.equal(newest.has('back yard'), false, 'a camera without a recent clip is simply absent');
   assert.equal(relay.pickNewestPerCamera(null).size, 0);
-  assert.equal(relay.pickNewestPerCamera([{ name: 'front', src: 'http://arlos3-prod-z2.s3.amazonaws.com/a.jpg' }, null, { name: '  ', src: FRONT_NEWEST }]).size, 0);
+  assert.equal(relay.pickNewestPerCamera([{ name: 'front', src: 'http://clips-z2.private-cctv.example/a.jpg' }, null, { name: '  ', src: FRONT_NEWEST }]).size, 0);
 });
 
 test('detectFeedState distinguishes signed out, feed, no clips and an unknown layout', () => {
@@ -282,7 +282,7 @@ test('only a tab showing the feed, or on the feed or a sign-in route, reports', 
   assert.equal(relay.isReportablePage('layout-unknown', { hash: '#/feed/' }), true);
   assert.equal(relay.isReportablePage('signed-out', { hash: '#/login' }), true);
   assert.equal(relay.isReportablePage('signed-out', { hash: '#/settings/password' }), false, 'a change-password form elsewhere is not a sign-out');
-  assert.equal(relay.isReportablePage('layout-unknown', { hash: '#/devices' }), false, 'another Arlo page is not an unknown feed layout');
+  assert.equal(relay.isReportablePage('layout-unknown', { hash: '#/devices' }), false, 'another Private_CCTV_Feed page is not an unknown feed layout');
   assert.equal(relay.isReportablePage('no-cards', { hash: '#/feedback' }), false);
   assert.equal(relay.isReportablePage('layout-unknown', null), false);
 });
@@ -337,23 +337,23 @@ test('sniffImageType recognises JPEG, PNG and WebP magic bytes only', () => {
 
 // ---- static checks ----
 
-test('the manifest is MV3 with only the Arlo thumbnail hosts and local GEV as host permissions', () => {
+test('the manifest is MV3 with only the Private_CCTV_Feed thumbnail hosts and local GEV as host permissions', () => {
   const manifest = JSON.parse(readRelayFile('manifest.json'));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.name, 'GEV Arlo Feed Relay');
+  assert.equal(manifest.name, 'GEV Private_CCTV_Feed Relay');
   assert.equal(manifest.version, '1.0.0');
   assert.equal(manifest.minimum_chrome_version, '116');
   assert.deepEqual(manifest.background, { service_worker: 'service-worker.js', type: 'module' });
   assert.deepEqual(manifest.host_permissions, [
-    'https://arlos3-prod-z1.s3.amazonaws.com/*',
-    'https://arlos3-prod-z2.s3.amazonaws.com/*',
-    'https://arlos3-prod-z3.s3.amazonaws.com/*',
-    'https://arlos3-prod-z4.s3.amazonaws.com/*',
+    'https://clips-z1.private-cctv.example/*',
+    'https://clips-z2.private-cctv.example/*',
+    'https://clips-z3.private-cctv.example/*',
+    'https://clips-z4.private-cctv.example/*',
     'http://localhost:4173/*',
     'http://127.0.0.1:4173/*',
   ]);
   assert.ok(manifest.permissions === undefined || (Array.isArray(manifest.permissions) && manifest.permissions.length === 0));
-  assert.deepEqual(manifest.content_scripts, [{ matches: ['https://my.arlo.com/*'], js: ['relay-logic.js', 'content.js'], run_at: 'document_idle', all_frames: false }]);
+  assert.deepEqual(manifest.content_scripts, [{ matches: ['https://feed.private-cctv.example/*'], js: ['relay-config.js', 'relay-logic.js', 'content.js'], run_at: 'document_idle', all_frames: false }]);
   assert.equal(manifest.options_page, 'options.html');
   for (const key of ['externally_connectable', 'key', 'web_accessible_resources', 'optional_permissions', 'optional_host_permissions', 'content_security_policy', 'action', 'sandbox', 'update_url']) {
     assert.equal(Object.hasOwn(manifest, key), false, key);
@@ -393,7 +393,7 @@ test('no extension file uses cookies, webRequest, debugger, storage, eval or HTM
     /\.pem\b/,
   ];
   const code = extensionFiles().filter((name) => /\.(?:js|html|json|css)$/.test(name));
-  assert.deepEqual(code.sort(), ['content.js', 'manifest.json', 'options.css', 'options.html', 'options.js', 'relay-logic.js', 'service-worker.js']);
+  assert.deepEqual(code.sort(), ['content.js', 'manifest.json', 'options.css', 'options.html', 'options.js', 'relay-config.js', 'relay-logic.js', 'service-worker.js']);
   for (const name of code) {
     const source = readRelayFile(name);
     for (const pattern of forbidden) assert.doesNotMatch(source, pattern, `${name} must not match ${pattern}`);
@@ -422,7 +422,7 @@ test('options.html has no inline script, inline handlers or inline styles', () =
   assert.doesNotMatch(html, /\sstyle\s*=/i);
   assert.doesNotMatch(html, /<style\b/i);
   assert.doesNotMatch(html, /(?:src|href)="(?:https?:)?\/\//i);
-  for (const label of ['PAIR WITH GODS EYE VIEW', 'FORGET PAIRING', 'https://my.arlo.com/#/feed', 'use this relay at your own risk', 'Code from Gods Eye View', 'extension ID both match']) assert.ok(html.includes(label), label);
+  for (const label of ['PAIR WITH GODS EYE VIEW', 'FORGET PAIRING', 'your camera site feed page', 'use this relay at your own risk', 'Code from Gods Eye View', 'extension ID both match']) assert.ok(html.includes(label), label);
 });
 
 test('the service worker fetches thumbnails with credentials omitted and redirects refused', () => {
@@ -435,7 +435,7 @@ test('the service worker fetches thumbnails with credentials omitted and redirec
   assert.match(options[1], /referrerPolicy: 'no-referrer'/);
   assert.match(source, /await fetch\(url, THUMBNAIL_FETCH_OPTIONS\)/);
   assert.doesNotMatch(source, /credentials: 'include'|credentials: 'same-origin'/);
-  assert.deepEqual([...source.matchAll(/^\s*import\s.*$/gm)].map((match) => match[0].trim()), ["import './relay-logic.js';"]);
+  assert.deepEqual([...source.matchAll(/^\s*import\s.*$/gm)].map((match) => match[0].trim()), ["import './relay-config.js';", "import './relay-logic.js';"]);
 });
 
 // ---- service worker behaviour with fake Chrome, IndexedDB and network ----
@@ -447,7 +447,7 @@ function fakeIndexedDB() {
   return {
     stores,
     open(name, requested) {
-      assert.equal(name, 'gev-arlo-relay');
+      assert.equal(name, 'gev-private-cctv-feed-relay');
       const openRequest = {};
       later(() => {
         const database = {
@@ -514,7 +514,7 @@ const jsonResponse = (status, body) => new Response(JSON.stringify(body), { stat
 const emptyResponse = (status) => new Response(null, { status });
 const imageResponse = (bytes, type = 'image/jpeg', status = 200) => new Response(bytes, { status, headers: { 'content-type': type } });
 
-const FEED_SENDER = Object.freeze({ id: EXTENSION_ID, origin: 'https://my.arlo.com', frameId: 0, tab: { id: 3 }, url: 'https://my.arlo.com/#/feed' });
+const FEED_SENDER = Object.freeze({ id: EXTENSION_ID, origin: 'https://feed.private-cctv.example', frameId: 0, tab: { id: 3 }, url: 'https://feed.private-cctv.example/#/feed' });
 const OPTIONS_SENDER = Object.freeze({ id: EXTENSION_ID, origin: `chrome-extension://${EXTENSION_ID}`, tab: { id: 4 }, url: `chrome-extension://${EXTENSION_ID}/options.html` });
 
 function loadServiceWorker({ clock } = {}) {
@@ -531,10 +531,13 @@ function loadServiceWorker({ clock } = {}) {
     },
   };
   const context = createRelayContext({ chrome, indexedDB, fetch: (url, options) => network.fetchImpl(url, options), Response, Headers, ...(clock ? { Date: { now: () => clock.now } } : {}) });
-  const importLine = "import './relay-logic.js';";
-  const source = readRelayFile('service-worker.js');
-  assert.ok(source.includes(importLine));
-  vm.runInContext(`'use strict';${source.replace(importLine, '')}`, context, { filename: 'service-worker.js' });
+  const importLines = ["import './relay-config.js';", "import './relay-logic.js';"];
+  let source = readRelayFile('service-worker.js');
+  for (const importLine of importLines) {
+    assert.ok(source.includes(importLine));
+    source = source.replace(importLine, '');
+  }
+  vm.runInContext(`'use strict';${source}`, context, { filename: 'service-worker.js' });
   assert.equal(typeof listeners.message, 'function');
   assert.equal(typeof listeners.installed, 'function');
   const dispatch = (message, sender) =>
@@ -572,7 +575,7 @@ test('the service worker ignores messages from the wrong senders', async () => {
     [frame, OPTIONS_SENDER],
     [frame, { ...FEED_SENDER, frameId: 2 }],
     [frame, { ...FEED_SENDER, origin: 'https://evil.test' }],
-    [frame, { ...FEED_SENDER, origin: 'http://my.arlo.com' }],
+    [frame, { ...FEED_SENDER, origin: 'http://feed.private-cctv.example' }],
     [frame, { ...FEED_SENDER, tab: undefined }],
     [frame, { ...FEED_SENDER, id: 'ponmlkjihgfedcbaponmlkjihgfedcba' }],
     [{ type: 'heartbeat', state: 'feed', seen: [] }, OPTIONS_SENDER],
@@ -580,7 +583,7 @@ test('the service worker ignores messages from the wrong senders', async () => {
     [{ type: 'pair' }, { ...OPTIONS_SENDER, url: 'chrome-extension://ponmlkjihgfedcbaponmlkjihgfedcba/options.html' }],
     [{ type: 'pair' }, { ...OPTIONS_SENDER, url: `chrome-extension://${EXTENSION_ID}/options.html.evil` }],
     [{ type: 'forget' }, { ...OPTIONS_SENDER, id: undefined }],
-    [{ type: 'status' }, { ...OPTIONS_SENDER, url: 'https://my.arlo.com/options.html' }],
+    [{ type: 'status' }, { ...OPTIONS_SENDER, url: 'https://feed.private-cctv.example/options.html' }],
     [{ type: 'unknown' }, OPTIONS_SENDER],
     [null, OPTIONS_SENDER],
     [{ type: 'status' }, null],
@@ -677,7 +680,7 @@ test('a paired service worker relays thumbnail bytes, camera name and clip label
   assert.equal(frame.options.method, 'POST');
   assert.equal(frame.options.credentials, 'omit');
   assert.equal(frame.options.redirect, 'error');
-  assert.deepEqual(frame.options.headers, { Authorization: `Bearer ${sw.secret}`, 'Content-Type': 'image/jpeg', 'X-Arlo-Camera': 'front', 'X-Arlo-Clip': encodeURIComponent(clip) });
+  assert.deepEqual(frame.options.headers, { Authorization: `Bearer ${sw.secret}`, 'Content-Type': 'image/jpeg', 'X-Private-Cctv-Feed-Camera': 'front', 'X-Private-Cctv-Feed-Clip': encodeURIComponent(clip) });
   assert.deepEqual([...frame.options.body], [...JPEG]);
   for (const value of [frame.url, ...Object.values(frame.options.headers)]) assert.doesNotMatch(value, /amazonaws|Signature|recordings|Expires/);
 
@@ -697,10 +700,10 @@ test('refused, oversized, unknown, rate-limited and unreachable frames report ou
   const outcomes = async () => (await sw.dispatch({ type: 'status' }, OPTIONS_SENDER)).recent.map((entry) => `${entry.camera}: ${entry.outcome}`);
   const send = (camera, url) => sw.dispatch({ type: 'frame', camera, url, clip: 'Motion' }, FEED_SENDER);
 
-  const evil = 'https://arlos3-prod-z2.s3.amazonaws.com.evil.test/a/recordings/b.jpg?Signature=x';
+  const evil = 'https://clips-z2.private-cctv.example.evil.test/a/recordings/b.jpg?Signature=x';
   assert.deepEqual((({ ok, done }) => ({ ok, done }))(await send('front', evil)), { ok: false, done: true });
   assert.equal(sw.network.calls.length, 0);
-  assert.equal((await outcomes())[0], 'front: unsupported host: arlos3-prod-z2.s3.amazonaws.com.evil.test');
+  assert.equal((await outcomes())[0], 'front: unsupported host: clips-z2.private-cctv.example.evil.test');
 
   const expired = s3('z2', 'expired');
   sw.network.on(expired, () => new Response('<Error/>', { status: 403, headers: { 'content-type': 'application/xml' } }));
@@ -795,7 +798,7 @@ test('an unpaired service worker sends nothing, heartbeats are bounded JSON and 
   assert.notEqual(sentBeat.reporter, beat.epoch);
 
   // One tab keeps its tag (so GEV believes its own sign-out at once); another tab gets its own.
-  await sw.dispatch({ type: 'heartbeat', state: 'signed-out', seen: [] }, { ...FEED_SENDER, url: 'https://my.arlo.com/#/login' });
+  await sw.dispatch({ type: 'heartbeat', state: 'signed-out', seen: [] }, { ...FEED_SENDER, url: 'https://feed.private-cctv.example/#/login' });
   const sameTab = JSON.parse(sw.network.calls.at(-1).options.body);
   assert.deepEqual([sameTab.state, sameTab.reporter], ['signed-out', sentBeat.reporter]);
   await sw.dispatch({ type: 'heartbeat', state: 'feed', seen: [] }, { ...FEED_SENDER, tab: { id: 7 } });
@@ -1096,7 +1099,7 @@ test('the content script heartbeats first, relays each newest picture once and d
   await step(1500, false);
   assert.deepEqual(page.take(), [beat(['ff', 'front'])]);
 
-  // Another Arlo page in the tab says nothing; the sign-in page says signed out.
+  // Another Private_CCTV_Feed page in the tab says nothing; the sign-in page says signed out.
   list.children.length = 0;
   page.location.hash = '#/devices';
   page.clock.now += 3 * 60 * 1000;
@@ -1132,41 +1135,41 @@ test('a feed page still drawing is not reported as an unknown layout', async () 
 test('the installer copies only the files the manifest names plus the options page', () => {
   const manifest = JSON.parse(readRelayFile('manifest.json'));
   const files = relayInstallFiles(manifest);
-  assert.deepEqual(files, ['content.js', 'manifest.json', 'options.css', 'options.html', 'options.js', 'relay-logic.js', 'service-worker.js']);
+  assert.deepEqual(files, ['content.js', 'manifest.json', 'options.css', 'options.html', 'options.js', 'relay-config.js', 'relay-logic.js', 'service-worker.js']);
   assert.deepEqual(extensionFiles().sort(), [...files].sort(), 'the extension folder holds exactly the installed files');
   for (const name of ['../evil.js', 'sub/dir.js', '.hidden.js', 'C:\\evil.js', 'evil..js', '']) {
     assert.throws(() => relayInstallFiles({ ...manifest, background: { service_worker: name, type: 'module' } }), /Refusing/, name);
   }
   const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-  assert.equal(pkg.scripts['arlo-relay:install'], 'node scripts/install-arlo-relay.mjs');
+  assert.equal(pkg.scripts['private-cctv-feed-relay:install'], 'node scripts/install-private-cctv-feed-relay.mjs');
 });
 
 test('the install folder is fixed per user and platform', () => {
-  assert.equal(relayInstallDestination({ platform: 'win32', env: { LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' }, homedir: 'C:\\Users\\me' }), 'C:\\Users\\me\\AppData\\Local\\GEV\\arlo-feed-relay');
-  assert.equal(relayInstallDestination({ platform: 'win32', env: {}, homedir: 'C:\\Users\\me' }), 'C:\\Users\\me\\AppData\\Local\\GEV\\arlo-feed-relay');
-  assert.equal(relayInstallDestination({ platform: 'linux', env: { XDG_DATA_HOME: '/xdg/data' }, homedir: '/home/me' }), '/xdg/data/gev/arlo-feed-relay');
-  assert.equal(relayInstallDestination({ platform: 'linux', env: { XDG_DATA_HOME: 'relative' }, homedir: '/home/me' }), '/home/me/.local/share/gev/arlo-feed-relay');
-  assert.equal(relayInstallDestination({ platform: 'darwin', env: {}, homedir: '/Users/me' }), '/Users/me/.local/share/gev/arlo-feed-relay');
+  assert.equal(relayInstallDestination({ platform: 'win32', env: { LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' }, homedir: 'C:\\Users\\me' }), 'C:\\Users\\me\\AppData\\Local\\GEV\\private-cctv-feed-relay');
+  assert.equal(relayInstallDestination({ platform: 'win32', env: {}, homedir: 'C:\\Users\\me' }), 'C:\\Users\\me\\AppData\\Local\\GEV\\private-cctv-feed-relay');
+  assert.equal(relayInstallDestination({ platform: 'linux', env: { XDG_DATA_HOME: '/xdg/data' }, homedir: '/home/me' }), '/xdg/data/gev/private-cctv-feed-relay');
+  assert.equal(relayInstallDestination({ platform: 'linux', env: { XDG_DATA_HOME: 'relative' }, homedir: '/home/me' }), '/home/me/.local/share/gev/private-cctv-feed-relay');
+  assert.equal(relayInstallDestination({ platform: 'darwin', env: {}, homedir: '/Users/me' }), '/Users/me/.local/share/gev/private-cctv-feed-relay');
 });
 
-test('installArloRelay copies the extension, updates in place and refuses symbolic links', (t) => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'gev-arlo-relay-test-'));
+test('installPrivateCctvFeedRelay copies the extension, updates in place and refuses symbolic links', (t) => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'gev-private-cctv-feed-relay-test-'));
   try {
     const source = path.join(temp, 'source');
     mkdirSync(source);
     for (const name of extensionFiles()) writeFileSync(path.join(source, name), readRelayFile(name));
     writeFileSync(path.join(source, 'extra-notes.txt'), 'not part of the extension');
-    const destination = path.join(temp, 'LocalAppData', 'GEV', 'arlo-feed-relay');
-    const result = installArloRelay({ sourceDir: source, destination });
+    const destination = path.join(temp, 'LocalAppData', 'GEV', 'private-cctv-feed-relay');
+    const result = installPrivateCctvFeedRelay({ sourceDir: source, destination });
     assert.equal(result.destination, destination);
     assert.deepEqual(readdirSync(destination).sort(), [...result.files].sort());
     for (const name of result.files) assert.equal(readFileSync(path.join(destination, name), 'utf8'), readRelayFile(name), name);
     writeFileSync(path.join(source, 'options.css'), 'body { color: red; }');
-    installArloRelay({ sourceDir: source, destination });
+    installPrivateCctvFeedRelay({ sourceDir: source, destination });
     assert.equal(readFileSync(path.join(destination, 'options.css'), 'utf8'), 'body { color: red; }');
 
     rmSync(path.join(source, 'content.js'));
-    assert.throws(() => installArloRelay({ sourceDir: source, destination: path.join(temp, 'other') }), /missing: content\.js/);
+    assert.throws(() => installPrivateCctvFeedRelay({ sourceDir: source, destination: path.join(temp, 'other') }), /missing: content\.js/);
     writeFileSync(path.join(source, 'content.js'), readRelayFile('content.js'));
 
     const target = path.join(temp, 'elsewhere');
@@ -1178,24 +1181,24 @@ test('installArloRelay copies the extension, updates in place and refuses symbol
       t.diagnostic(`symbolic link checks skipped: ${error.code}`);
       return;
     }
-    assert.throws(() => installArloRelay({ sourceDir: source, destination: link }), /symbolic link/);
-    assert.throws(() => installArloRelay({ sourceDir: source, destination: path.join(link, 'arlo-feed-relay') }), /symbolic link/);
-    assert.throws(() => installArloRelay({ sourceDir: link, destination: path.join(temp, 'third') }), /symbolic link/);
+    assert.throws(() => installPrivateCctvFeedRelay({ sourceDir: source, destination: link }), /symbolic link/);
+    assert.throws(() => installPrivateCctvFeedRelay({ sourceDir: source, destination: path.join(link, 'private-cctv-feed-relay') }), /symbolic link/);
+    assert.throws(() => installPrivateCctvFeedRelay({ sourceDir: link, destination: path.join(temp, 'third') }), /symbolic link/);
     assert.deepEqual(readdirSync(target), [], 'nothing was written through the link');
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
 });
 
-test('installArloRelay clears the Windows folder settings that stop Chrome loading the extension', async () => {
+test('installPrivateCctvFeedRelay clears the Windows folder settings that stop Chrome loading the extension', async () => {
   const { chmodSync } = await import('node:fs');
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'gev-arlo-relay-test-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'gev-private-cctv-feed-relay-test-'));
   try {
     const source = path.join(temp, 'source');
     mkdirSync(source);
     for (const name of extensionFiles()) writeFileSync(path.join(source, name), readRelayFile(name));
-    const destination = path.join(temp, 'GEV', 'arlo-feed-relay');
-    installArloRelay({ sourceDir: source, destination, platform: 'linux' });
+    const destination = path.join(temp, 'GEV', 'private-cctv-feed-relay');
+    installPrivateCctvFeedRelay({ sourceDir: source, destination, platform: 'linux' });
 
     // What Explorer and a folder's Properties leave behind: settings files, and read-only copies.
     writeFileSync(path.join(destination, 'desktop.ini'), '[ViewState]\r\nFolderType=Generic\r\n');
@@ -1204,7 +1207,7 @@ test('installArloRelay clears the Windows folder settings that stop Chrome loadi
     chmodSync(path.join(destination, 'content.js'), 0o444);
 
     const attribCalls = [];
-    const result = installArloRelay({ sourceDir: source, destination, platform: 'win32', run: (command, args) => attribCalls.push([command, ...args]) });
+    const result = installPrivateCctvFeedRelay({ sourceDir: source, destination, platform: 'win32', run: (command, args) => attribCalls.push([command, ...args]) });
     assert.deepEqual(result.removedMetadata.map((name) => name.toLowerCase()).sort(), ['desktop.ini', 'thumbs.db']);
     assert.equal(readdirSync(destination).some((name) => /^(desktop\.ini|thumbs\.db)$/i.test(name)), false, 'Chrome refuses a folder holding either file');
     assert.deepEqual(result.extras, ['notes.txt'], 'other stray files are reported, not deleted');
@@ -1214,7 +1217,7 @@ test('installArloRelay clears the Windows folder settings that stop Chrome loadi
       ['attrib', '-R', '-S', '-H', path.join(destination, '*')],
     ]);
 
-    const elsewhere = installArloRelay({ sourceDir: source, destination: path.join(temp, 'posix'), platform: 'linux', run: () => assert.fail('attrib runs on Windows only') });
+    const elsewhere = installPrivateCctvFeedRelay({ sourceDir: source, destination: path.join(temp, 'posix'), platform: 'linux', run: () => assert.fail('attrib runs on Windows only') });
     assert.deepEqual([elsewhere.removedMetadata, elsewhere.extras], [[], []]);
   } finally {
     rmSync(temp, { recursive: true, force: true });

@@ -4,6 +4,7 @@ import {
   CCTV_PROXY_USER_AGENT,
   browserDirectHosts,
   browserDirectImageUrl,
+  roadMatchedThumbnail,
 } from '../../server/providers/cctv/upstream-headers.js';
 
 const env = { CCTV_BROWSER_DIRECT_HOSTS: ' Quebec511.info , www.example.org ' };
@@ -32,11 +33,26 @@ test('everything else stays with the proxy', () => {
   assert.equal(browserDirectImageUrl(still('https://www.drivebc.ca/images/1.jpg'), {}), '', 'the default lists Québec 511 only');
 });
 
-test('unset, Québec 511 stills go to the browser by default', () => {
-  assert.deepEqual(browserDirectHosts({}), ['quebec511.info']);
+test('unset, no still goes to the browser: every camera is proxied and can show a map thumbnail', () => {
+  assert.deepEqual(browserDirectHosts({}), []);
   assert.equal(
     browserDirectImageUrl(still('https://www.quebec511.info/Images/Cameras/Quebec/cam/19901.jpg'), {}),
-    'https://www.quebec511.info/Images/Cameras/Quebec/cam/19901.jpg',
+    '',
   );
   assert.equal(CCTV_PROXY_USER_AGENT, 'gods-eye-view-cctv-proxy/1.0');
+});
+
+test('road-matched thumbnails are off by default and scoped by host when switched on', () => {
+  const quebec = { url: 'https://www.quebec511.info/Images/Cameras/Montreal/cam/1360038.jpg' };
+  const other = { url: 'https://g1.ipcamlive.com/player/snapshot.php?alias=x' };
+  // Off unless asked for: thumbnails are upright and aligned by hand instead.
+  assert.equal(roadMatchedThumbnail(quebec, {}), false);
+  const on = { CCTV_ROAD_MATCH_HOSTS: 'quebec511.info' };
+  assert.equal(roadMatchedThumbnail(quebec, on), true);
+  assert.equal(roadMatchedThumbnail(other, on), false);
+  assert.equal(roadMatchedThumbnail({ url: 'https://notquebec511.info/x.jpg' }, on), false, 'a look-alike host is not listed');
+  assert.equal(roadMatchedThumbnail(other, { CCTV_ROAD_MATCH_HOSTS: '*' }), true);
+  assert.equal(roadMatchedThumbnail(quebec, { CCTV_ROAD_MATCH_HOSTS: '' }), false);
+  assert.equal(roadMatchedThumbnail(other, { CCTV_ROAD_MATCH_HOSTS: 'example.org, IPCamLive.com' }), true);
+  assert.equal(roadMatchedThumbnail({ url: 'not a url' }, {}), false);
 });

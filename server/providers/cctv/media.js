@@ -283,6 +283,137 @@ async function readCappedResponseBytes(upstream, maxBytes) {
   }
 }
 
+const JPEG_START = Buffer.from([0xff, 0xd8, 0xff]);
+const JPEG_END = Buffer.from([0xff, 0xd9]);
+
+/**
+ * Finds the first whole JPEG in a motion-JPEG stream as its bytes arrive.
+ *
+ * A part that declares a believable Content-Length is cut to it. Otherwise (or
+ * when that length turns out wrong) the picture runs to the last end-of-image
+ * marker before the next part delimiter: a JPEG can carry an embedded preview
+ * with an end marker of its own, so the first marker is not proof the picture
+ * is over.
+ *
+ * Work is linear in the bytes read: they are copied once into a buffer that
+ * doubles, and each search resumes where the last one stopped. Joining and
+ * rescanning everything on every chunk made a stream that never completes a
+ * picture cost gigabytes of copying before the byte cap, on the proxy's one
+ * thread.
+ * @param {string} [boundary] The boundary parameter, leading dashes dropped.
+ * @returns {{push: (chunk: Uint8Array) => Buffer|null}}
+ */
+export function createMotionJpegScanner(boundary = '') {
+  // The body's delimiter is always two dashes and the boundary, whether or not
+  // the operator also put dashes in the parameter itself.
+  const delimiter = Buffer.from(
+    boundary ? `--${boundary}` : '\r\n--',
+    'latin1',
+  );
+  let buffer = Buffer.allocUnsafe(64 * 1024);
+  let length = 0;
+  let start = -1;
+  let startSearchFrom = 0;
+  let delimiterSearchFrom = 0;
+  let declared = NaN;
+  let declaredChecked = false;
+  return {
+    push(chunk) {
+      if (length + chunk.byteLength > buffer.length) {
+        const grown = Buffer.allocUnsafe(
+          Math.max(buffer.length * 2, length + chunk.byteLength),
+        );
+        buffer.copy(grown, 0, 0, length);
+        buffer = grown;
+      }
+      Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength).copy(
+        buffer,
+        length,
+      );
+      length += chunk.byteLength;
+      const seen = buffer.subarray(0, length);
+      if (start < 0) {
+        start = seen.indexOf(JPEG_START, startSearchFrom);
+        if (start < 0) {
+          startSearchFrom = Math.max(0, length - (JPEG_START.length - 1));
+          return null;
+        }
+        const partHeaders = seen
+          .subarray(Math.max(0, start - 512), start)
+          .toString('latin1');
+        declared = Number(
+          /content-length:\s*(\d+)\s*\r?\n/i.exec(partHeaders)?.[1],
+        );
+        delimiterSearchFrom = start;
+      }
+      if (
+        !declaredChecked &&
+        Number.isFinite(declared) &&
+        declared > JPEG_START.length &&
+        length >= start + declared
+      ) {
+        declaredChecked = true;
+        // Some servers count the line break after the picture in that length.
+        const cut = seen.subarray(start, start + declared);
+        const end = cut.lastIndexOf(JPEG_END);
+        if (end >= cut.length - 4)
+          return Buffer.from(cut.subarray(0, end + JPEG_END.length));
+      }
+      // Looked for even while a declared length is still unmet: a delimiter
+      // arriving first proves that length wrong, and waiting on it would run
+      // the stream to the byte cap.
+      const next = seen.indexOf(delimiter, delimiterSearchFrom);
+      if (next < 0) {
+        delimiterSearchFrom = Math.max(start, length - (delimiter.length - 1));
+        return null;
+      }
+      const end = seen.subarray(start, next).lastIndexOf(JPEG_END);
+      if (end < 0) {
+        delimiterSearchFrom = next + 1;
+        return null;
+      }
+      return Buffer.from(seen.subarray(start, start + end + JPEG_END.length));
+    },
+  };
+}
+
+/** The first whole JPEG in these bytes of a motion-JPEG stream, or null. */
+export function firstJpegInMotionStream(bytes, boundary = '') {
+  return createMotionJpegScanner(boundary).push(bytes);
+}
+
+/**
+ * Read a motion-JPEG stream only until its first picture is whole, then hang
+ * up. Some operators (Taiwan's freeway and highway bureaus, about 3,500
+ * cameras) publish nothing but such a stream, so without this their cameras
+ * have no still, and so no map thumbnail. Gives up at maxBytes.
+ */
+async function readFirstMotionJpeg(upstream, contentType, maxBytes) {
+  if (
+    !upstream.body ||
+    typeof upstream.body[Symbol.asyncIterator] !== 'function'
+  )
+    return null;
+  const boundary = (
+    /boundary="?([^";]+)"?/i.exec(contentType)?.[1] || ''
+  ).replace(/^-+/, '');
+  const scanner = createMotionJpegScanner(boundary);
+  let total = 0;
+  let frame = null;
+  try {
+    for await (const chunk of upstream.body) {
+      total += chunk.byteLength;
+      if (total > maxBytes) break;
+      frame = scanner.push(chunk);
+      if (frame) break;
+    }
+  } catch {
+    frame = null;
+  }
+  cancelQuietly(upstream);
+  return frame;
+}
+
 /** Open registered media within a header deadline; leave timely live bodies running. */
 export async function fetchCctvMediaUpstream(
   url,
@@ -466,6 +597,128 @@ const cancelQuietly = (response) => {
 };
 
 /**
+ * Hosts that refused `fetch` and then answered the node:https request. They are
+ * asked that way first from then on (until it fails once), so a refusing
+ * operator costs one wasted request per server run, not one per frame.
+ */
+const _refererHosts = new Set([
+  // Measured to refuse fetch and answer node:https: asked that way from the
+  // first frame, so a fresh server does not spend its first request on a 403.
+  'www.quebec511.info',
+  'snapshots.media.verkeerscentrum.be',
+]);
+
+/**
+ * Warm connections for the node:https path: at most two per host, kept alive.
+ *
+ * Québec 511's firewall refuses most NEW connections and keeps serving one it
+ * has already answered. Measured: five stills over one kept-alive connection
+ * went 403, 200, 200, 200, 200 (30 to 50 ms each once warm); five stills each
+ * on a connection of its own went 403, 200, 403, 403, 403. Node's default agent
+ * opens a new connection for every concurrent request, which is the second
+ * pattern. Two matches the per-host gate (CCTV_HOST_MAX_CONCURRENT), so every
+ * request rides a warm connection. Idle sockets are unref'd by the agent and
+ * never hold the process open.
+ */
+const STILL_AGENT_OPTIONS = Object.freeze({
+  keepAlive: true,
+  keepAliveMsecs: 30_000,
+  maxSockets: 2,
+  maxFreeSockets: 2,
+});
+const _stillAgents = {
+  'https:': new https.Agent(STILL_AGENT_OPTIONS),
+  'http:': new http.Agent(STILL_AGENT_OPTIONS),
+};
+/** A refused NEW connection is retried this many times, this far apart. */
+const REFUSED_CONNECTION_RETRIES = 2;
+const REFUSED_CONNECTION_RETRY_MS = 150;
+
+/**
+ * Fetch one still through node:https with a same-site `Referer`.
+ *
+ * Two kinds of operator refuse the ordinary fetch. Some guard their stills
+ * against hotlinking and answer 403 unless the request names their own site as
+ * the referrer. Others (Québec 511, 678 cameras) refuse Node's `fetch` client
+ * outright, every time, whatever headers it carries, yet answer node:https and
+ * curl over a connection they have warmed to (see STILL_AGENT_OPTIONS). This
+ * path serves both. It sends only a User-Agent and a Referer (that same
+ * firewall turned away some requests with more), follows no redirects, and
+ * byte-caps the body.
+ * @returns {Promise<{status:number,headers:Headers,body:Buffer|null,contentType:string}|null>}
+ */
+export function requestCctvImageWithReferer(
+  url,
+  { timeoutMs, maxBytes, signal } = {},
+) {
+  return new Promise((resolve) => {
+    let target;
+    try {
+      target = new URL(url);
+    } catch {
+      resolve(null);
+      return;
+    }
+    const client = target.protocol === 'http:' ? http : https;
+    const request = client.get(
+      target,
+      {
+        headers: {
+          'User-Agent': CCTV_PROXY_USER_AGENT,
+          Referer: `${target.origin}/`,
+        },
+        timeout: timeoutMs,
+        signal,
+        agent: _stillAgents[target.protocol],
+      },
+      (response) => {
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(response.headers)) {
+          if (value !== undefined)
+            headers.set(
+              name,
+              Array.isArray(value) ? value.join(', ') : String(value),
+            );
+        }
+        const contentType = headers.get('content-type') || '';
+        const status = response.statusCode || 0;
+        if (
+          status < 200 ||
+          status >= 300 ||
+          !contentType.startsWith('image/')
+        ) {
+          response.resume();
+          resolve({ status, headers, body: null, contentType });
+          return;
+        }
+        const chunks = [];
+        let total = 0;
+        response.on('data', (chunk) => {
+          total += chunk.length;
+          if (total > maxBytes) {
+            request.destroy();
+            resolve({ status, headers, body: null, contentType });
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.on('end', () =>
+          resolve({
+            status,
+            headers,
+            body: Buffer.concat(chunks),
+            contentType,
+          }),
+        );
+        response.on('error', () => resolve(null));
+      },
+    );
+    request.on('timeout', () => request.destroy());
+    request.on('error', () => resolve(null));
+  });
+}
+
+/**
  * Fetch one upstream CCTV image within the frame-refresh budget.
  *
  * A timeout is treated like every other upstream miss so the caller can
@@ -495,10 +748,21 @@ export async function fetchCctvImageFromUpstream(
     maxBytes = CCTV_FRAME_MAX_BODY_BYTES,
     onResponse,
     allowUrl,
+    refererRequest,
+    secondAttempt = true,
   } = {},
 ) {
   if (!url || !/^https?:\/\//i.test(url)) return null;
   const guarded = typeof allowUrl === 'function';
+  // The node:https second attempt is for hosts a catalogue vouches for, and only
+  // on the real network (or when a test supplies its own requester). Guarded
+  // URLs never take it: it has no public-address check of its own.
+  // `secondAttempt: false` switches it off for a host with a request budget:
+  // there every extra request is one the budget never counted.
+  const viaReferer =
+    guarded || !secondAttempt || (fetchImpl && !refererRequest)
+      ? null
+      : refererRequest || requestCctvImageWithReferer;
   const doFetch = fetchImpl || (guarded ? publicOnlyFetch() : fetch);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
@@ -506,7 +770,68 @@ export async function fetchCctvImageFromUpstream(
       new DOMException('CCTV upstream frame fetch timed out', 'TimeoutError'),
     );
   }, timeoutMs);
+  const refused = (status) => status === 401 || status === 403;
+  /**
+   * One still through node:https. A refusal is nearly always a NEW connection
+   * being turned away (see STILL_AGENT_OPTIONS), so it is asked again, briefly,
+   * until a connection sticks; after that every request reuses it.
+   * @returns {Promise<{image: object|null, status: number}>}
+   */
+  const askHttps = async (host) => {
+    const ask = () =>
+      viaReferer(url, { timeoutMs, maxBytes, signal: controller.signal });
+    let answer = await ask();
+    for (
+      let retry = 0;
+      retry < REFUSED_CONNECTION_RETRIES &&
+      answer &&
+      !answer.body &&
+      refused(answer.status);
+      retry += 1
+    ) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, REFUSED_CONNECTION_RETRY_MS),
+      );
+      if (controller.signal.aborted) return { image: null, status: 0 };
+      answer = await ask();
+    }
+    if (!answer) return { image: null, status: 0 };
+    if (typeof onResponse === 'function') {
+      try {
+        onResponse({ status: answer.status, headers: answer.headers });
+      } catch {
+        /* an observer never breaks the fetch */
+      }
+    }
+    if (!answer.body) return { image: null, status: answer.status };
+    _refererHosts.add(host);
+    return {
+      image: { ok: true, body: answer.body, contentType: answer.contentType },
+      status: answer.status,
+    };
+  };
   try {
+    let host = '';
+    try {
+      host = new URL(url).host;
+    } catch {
+      host = '';
+    }
+    // A host already known to refuse fetch is asked the other way first: one
+    // request, not a refused one plus a retry.
+    let httpsRefused = false;
+    if (viaReferer && _refererHosts.has(host)) {
+      const direct = await askHttps(host);
+      if (direct.image) return direct.image;
+      // Only a refusal says anything about the HOST. A 404, a timeout, a 429
+      // or a non-image answer is about this camera or this moment: the miss
+      // stands, the host stays remembered, and nothing more is sent (fetch is
+      // known to be refused here, and after a 429 more requests are the last
+      // thing the operator wants).
+      if (!refused(direct.status)) return null;
+      _refererHosts.delete(host);
+      httpsRefused = true;
+    }
     let target = url;
     let upstream;
     for (let hop = 0; ; hop += 1) {
@@ -530,6 +855,22 @@ export async function fetchCctvImageFromUpstream(
       target = new URL(location, target).href;
     }
     const contentType = upstream.headers.get('content-type') || '';
+    if (viaReferer && (upstream.status === 401 || upstream.status === 403)) {
+      // Refused outright: hotlink protection, or a firewall that turns away
+      // Node's fetch client but not node:https.
+      cancelQuietly(upstream);
+      // Both ways refused already: that is the answer, not a reason to ask again.
+      if (httpsRefused) return null;
+      return (await askHttps(host)).image;
+    }
+    if (upstream.ok && /^multipart\/x-mixed-replace/i.test(contentType)) {
+      // A camera published only as a motion-JPEG stream: its first picture is
+      // the still.
+      const frame = await readFirstMotionJpeg(upstream, contentType, maxBytes);
+      return frame
+        ? { ok: true, body: frame, contentType: 'image/jpeg' }
+        : null;
+    }
     if (!upstream.ok || !contentType.startsWith('image/')) {
       controller.abort();
       return null;

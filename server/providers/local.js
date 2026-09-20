@@ -23,6 +23,7 @@ import { seaSurfaceTemperatureProxy } from './sst.js';
 import { googlePlacesContextProxy } from './places.js';
 import { keySetupEndpoint } from '../standalone/key-setup.js';
 import { privateCamerasProxy } from './private-cameras.js';
+import { deviceFeedsProxy } from './device-feeds.js';
 import { locationSwitchReleaseEndpoint } from './location-switch.js';
 
 /** Construct the local provider plugins in their established order. */
@@ -45,6 +46,8 @@ function localProviderPlugins() {
     cctvProxy({ sourceRoot: defaultSourceRoot }),
     // Home and business security cameras: separate from the public CCTV proxy.
     privateCamerasProxy({ sourceRoot: defaultSourceRoot }),
+    // The owner's own drones, robots, marine drones and GPS trackers.
+    deviceFeedsProxy({ sourceRoot: defaultSourceRoot }),
     radioBrowserProxy(),
     gbfsProxy(),
     adsbLolProxy(),

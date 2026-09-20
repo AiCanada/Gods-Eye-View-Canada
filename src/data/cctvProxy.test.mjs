@@ -5,7 +5,10 @@ import http from 'node:http';
 import {
   createPublicOnlyFetch,
   fetchCctvImageFromUpstream,
+  createMotionJpegScanner,
   fetchCctvMediaUpstream,
+  firstJpegInMotionStream,
+  requestCctvImageWithReferer,
 } from '../../server/providers/cctv/media.js';
 import { isPublicAddress, isPublicHostname } from '../../server/providers/cctv/frame-resolver.js';
 import { safeRoad511StillUrl } from '../../server/providers/cctv/road511-lookup.js';
@@ -402,4 +405,276 @@ test('rejected snapshot responses abort the upstream download', async () => {
     assert.equal(result, null);
     assert.equal(signal.aborted, true);
   }
+});
+
+const jpegAnswer = (status = 200, contentType = 'image/jpeg') => ({
+  status,
+  headers: new Headers({ 'content-type': contentType }),
+  body: status === 200 && contentType.startsWith('image/') ? Buffer.from('jpeg') : null,
+  contentType,
+});
+
+test('a host that refuses fetch is asked through node:https, then asked that way first', async () => {
+  const url = 'https://refuses-fetch.example.org/cam/1.jpg';
+  let fetches = 0;
+  const asked = [];
+  const seen = [];
+  const options = {
+    fetchImpl: async () => {
+      fetches += 1;
+      return new Response('no', { status: 403, headers: { 'content-type': 'text/html' } });
+    },
+    refererRequest: async (href) => {
+      asked.push(href);
+      return jpegAnswer();
+    },
+    onResponse: (response) => seen.push(response.status),
+  };
+  const first = await fetchCctvImageFromUpstream(url, options);
+  assert.equal(first.ok, true);
+  assert.equal(first.contentType, 'image/jpeg');
+  assert.deepEqual(seen, [403, 200]);
+  assert.equal(fetches, 1);
+
+  const second = await fetchCctvImageFromUpstream(url, options);
+  assert.equal(second.ok, true);
+  assert.equal(fetches, 1, 'the remembered host skips the refused fetch');
+  assert.deepEqual(asked, [url, url]);
+});
+
+test('a refusal on both paths is a miss, asked three times in all, and the host is not remembered', async () => {
+  const url = 'https://refuses-everything.example.org/cam/1.jpg';
+  let fetches = 0;
+  let asks = 0;
+  const options = {
+    fetchImpl: async () => {
+      fetches += 1;
+      return new Response('no', { status: 403 });
+    },
+    refererRequest: async () => {
+      asks += 1;
+      return jpegAnswer(403, 'text/html');
+    },
+  };
+  assert.equal(await fetchCctvImageFromUpstream(url, options), null);
+  assert.equal(asks, 3, 'a refused new connection is retried twice');
+  assert.equal(await fetchCctvImageFromUpstream(url, options), null);
+  assert.equal(fetches, 2, 'fetch is still tried first');
+});
+
+test('a remembered host is forgotten only when it REFUSES; a camera-level miss sends nothing more', async () => {
+  const url = 'https://changes-its-mind.example.org/cam/1.jpg';
+  let fetches = 0;
+  let asks = 0;
+  let httpsStatus = 200;
+  let refuseFetch = true;
+  const seen = [];
+  const options = {
+    fetchImpl: async () => {
+      fetches += 1;
+      return refuseFetch
+        ? new Response('no', { status: 403 })
+        : new Response('jpeg', { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    },
+    refererRequest: async () => {
+      asks += 1;
+      return httpsStatus === 200 ? jpegAnswer() : jpegAnswer(httpsStatus, 'text/html');
+    },
+    onResponse: (response) => seen.push(response.status),
+  };
+  assert.equal((await fetchCctvImageFromUpstream(url, options)).ok, true);
+  assert.deepEqual([fetches, asks], [1, 1]);
+
+  // One camera's 404, and a 429, are not the host refusing: one request each,
+  // no fetch, no repeat, and the last status the caller saw is the real one.
+  for (const status of [404, 429]) {
+    httpsStatus = status;
+    seen.length = 0;
+    assert.equal(await fetchCctvImageFromUpstream(url, options), null);
+    assert.deepEqual(seen, [status]);
+  }
+  assert.deepEqual([fetches, asks], [1, 3]);
+  httpsStatus = 200;
+  assert.equal((await fetchCctvImageFromUpstream(url, options)).ok, true);
+  assert.deepEqual([fetches, asks], [1, 4], 'still remembered: asked through node:https first');
+
+  // A refusal forgets the host and tries fetch once. With fetch refused as well
+  // that is the answer: no third node:https request.
+  httpsStatus = 403;
+  assert.equal(await fetchCctvImageFromUpstream(url, options), null);
+  assert.deepEqual([fetches, asks], [2, 7]);
+  // Forgotten: fetch first again, and a host that now answers fetch is served by it.
+  refuseFetch = false;
+  assert.equal((await fetchCctvImageFromUpstream(url, options)).ok, true);
+  assert.deepEqual([fetches, asks], [3, 7]);
+});
+
+test('a host with a request budget never gets a second attempt', async () => {
+  let asks = 0;
+  const result = await fetchCctvImageFromUpstream('https://511.example.org/map/Cctv/7', {
+    secondAttempt: false,
+    fetchImpl: async () => new Response('no', { status: 403 }),
+    refererRequest: async () => {
+      asks += 1;
+      return jpegAnswer();
+    },
+  });
+  assert.equal(result, null);
+  assert.equal(asks, 0);
+});
+
+test('a still no catalogue vouches for never takes the unguarded node:https path', async () => {
+  let asks = 0;
+  const result = await fetchCctvImageFromUpstream('https://cams.example.org/a.jpg', {
+    allowUrl: () => true,
+    fetchImpl: async () => new Response('no', { status: 403 }),
+    refererRequest: async () => {
+      asks += 1;
+      return jpegAnswer();
+    },
+  });
+  assert.equal(result, null);
+  assert.equal(asks, 0);
+});
+
+test('the node:https still request names the site as referrer, caps the body and follows no redirect', async (t) => {
+  const requests = [];
+  const server = http.createServer((req, res) => {
+    requests.push({ url: req.url, referer: req.headers.referer, accept: req.headers.accept });
+    if (req.url === '/moved.jpg') {
+      res.writeHead(302, { location: '/frame.jpg' });
+      res.end();
+    } else if (req.url === '/big.jpg') {
+      res.writeHead(200, { 'content-type': 'image/jpeg' });
+      res.end(Buffer.alloc(4096));
+    } else {
+      res.writeHead(200, { 'content-type': 'image/jpeg' });
+      res.end('jpeg');
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => {
+    // The still path keeps its connections alive; close them so the server can stop.
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const options = { timeoutMs: 2000, maxBytes: 1024 };
+
+  const frame = await requestCctvImageWithReferer(`${base}/frame.jpg`, options);
+  assert.equal(frame.status, 200);
+  assert.equal(frame.body.toString(), 'jpeg');
+  assert.equal(requests[0].referer, `${base}/`);
+  assert.equal(requests[0].accept, undefined);
+
+  const moved = await requestCctvImageWithReferer(`${base}/moved.jpg`, options);
+  assert.equal(moved.status, 302);
+  assert.equal(moved.body, null);
+  assert.equal(requests.length, 2, 'the redirect was not followed');
+
+  const big = await requestCctvImageWithReferer(`${base}/big.jpg`, options);
+  assert.equal(big.body, null);
+  assert.equal(await requestCctvImageWithReferer('not a url', options), null);
+});
+
+const SOI = [0xff, 0xd8, 0xff, 0xe0];
+const EOI = [0xff, 0xd9];
+const fakeJpeg = (fill, size = 40) => Buffer.from([...SOI, ...Array(size).fill(fill), ...EOI]);
+
+test('the first picture of a motion-JPEG stream is found by its length, or by the next boundary', () => {
+  const picture = fakeJpeg(7);
+  const declared = Buffer.concat([
+    Buffer.from(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${picture.length}\r\n\r\n`),
+    picture,
+    Buffer.from('\r\n--frame\r\n'),
+  ]);
+  assert.deepEqual(firstJpegInMotionStream(declared, 'frame'), picture);
+  assert.equal(firstJpegInMotionStream(declared.subarray(0, declared.length - 20), 'frame'), null, 'not whole yet');
+
+  // A length that also counts the line break after the picture (seen live).
+  const padded = Buffer.concat([
+    Buffer.from(`--frame\r\nContent-Length: ${picture.length + 2}\r\n\r\n`),
+    picture,
+    Buffer.from('\r\n--frame\r\n'),
+  ]);
+  assert.deepEqual(firstJpegInMotionStream(padded, 'frame'), picture);
+
+  // No length: an embedded preview's end marker must not end the picture early.
+  const withPreview = Buffer.from([...SOI, 1, 2, ...EOI, 3, 4, 5, ...EOI]);
+  const undeclared = Buffer.concat([Buffer.from('--frame\r\nContent-Type: image/jpeg\r\n\r\n'), withPreview, Buffer.from('\r\n--frame\r\n')]);
+  assert.deepEqual(firstJpegInMotionStream(undeclared, 'frame'), withPreview);
+  assert.equal(firstJpegInMotionStream(undeclared.subarray(0, undeclared.length - 11), 'frame'), null, 'no boundary yet');
+  assert.deepEqual(firstJpegInMotionStream(undeclared, ''), withPreview, 'works without a boundary parameter');
+  assert.equal(firstJpegInMotionStream(Buffer.from('--frame\r\n\r\nnot a picture'), 'frame'), null);
+});
+
+test('a camera published only as a motion-JPEG stream yields its first picture, and the stream is hung up', async () => {
+  const picture = fakeJpeg(9, 300);
+  let cancelled = false;
+  let pulls = 0;
+  const body = new ReadableStream({
+    pull(controller) {
+      pulls += 1;
+      const part = Buffer.concat([Buffer.from(`--myboundary\r\nContent-Type: image/jpeg\r\nContent-Length: ${picture.length}\r\n\r\n`), picture, Buffer.from('\r\n')]);
+      // Deliver in two pieces so the finder has to wait for the rest.
+      controller.enqueue(new Uint8Array(pulls % 2 ? part.subarray(0, 100) : part.subarray(100)));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  }, { highWaterMark: 0 });
+  const result = await fetchCctvImageFromUpstream('https://streams.example.org/cam', {
+    fetchImpl: async () => new Response(body, { headers: { 'content-type': 'multipart/x-mixed-replace;boundary=--myboundary' } }),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.contentType, 'image/jpeg');
+  assert.deepEqual(result.body, picture);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(cancelled, true);
+  assert.ok(pulls <= 4, `read ${pulls} pieces of an endless stream`);
+});
+
+test('a motion-JPEG stream that never completes a picture within the cap is a miss', async () => {
+  const body = new ReadableStream({
+    pull(controller) {
+      controller.enqueue(new Uint8Array(Buffer.concat([Buffer.from(SOI), Buffer.alloc(600, 1)])));
+    },
+  }, { highWaterMark: 0 });
+  const result = await fetchCctvImageFromUpstream('https://streams.example.org/endless', {
+    maxBytes: 2048,
+    fetchImpl: async () => new Response(body, { headers: { 'content-type': 'multipart/x-mixed-replace; boundary=frame' } }),
+  });
+  assert.equal(result, null);
+});
+
+test('the motion-JPEG scanner works chunk by chunk, and a wrong declared length does not strand it', () => {
+  const CRLF = String.fromCharCode(13, 10);
+  const picture = fakeJpeg(5, 900);
+  const stream = Buffer.concat([
+    Buffer.from(`--cam${CRLF}Content-Type: image/jpeg${CRLF}${CRLF}`),
+    picture,
+    Buffer.from(`${CRLF}--cam${CRLF}Content-Type: image/jpeg${CRLF}${CRLF}`),
+  ]);
+  const scanner = createMotionJpegScanner('cam');
+  let found = null;
+  let pushes = 0;
+  for (let at = 0; at < stream.length && !found; at += 7) {
+    pushes += 1;
+    found = scanner.push(stream.subarray(at, at + 7));
+  }
+  assert.deepEqual(found, picture);
+  assert.ok(pushes > 100, 'fed in many small pieces');
+
+  // A declared length far larger than the picture: the next delimiter settles it.
+  const lying = Buffer.concat([
+    Buffer.from(`--cam${CRLF}Content-Length: 99999999${CRLF}${CRLF}`),
+    picture,
+    Buffer.from(`${CRLF}--cam${CRLF}`),
+  ]);
+  assert.deepEqual(firstJpegInMotionStream(lying, 'cam'), picture);
+
+  // The boundary word alone inside the data is not a delimiter; two dashes and the word is.
+  const body = Buffer.concat([Buffer.from([...SOI, 1]), Buffer.from('cam'), Buffer.from([2, ...EOI])]);
+  const tricky = Buffer.concat([Buffer.from(`--cam${CRLF}${CRLF}`), body, Buffer.from(`${CRLF}--cam${CRLF}`)]);
+  assert.deepEqual(firstJpegInMotionStream(tricky, 'cam'), body);
 });

@@ -160,7 +160,7 @@ test('no key makes no request; a key saved later is read on the next call', asyn
   assert.equal((await lookup.lookup(houston)).lookupState, 'resolved');
   assert.equal(calls.length, 1, 'answered from the cache');
   assert.equal(lookup.counters.road511CacheHits, 1);
-  assert.deepEqual(lookup.peek(houston), { lookupState: 'resolved', url: 'https://cams.example.org/1001.jpg' });
+  assert.deepEqual(lookup.peek(houston), { lookupState: 'resolved', url: 'https://cams.example.org/1001.jpg', kind: 'still' });
 });
 
 test('only a catalogue camera marked for Road511 is ever looked up', async () => {
@@ -302,8 +302,9 @@ test('the disk cache is reused by a new instance with no request, and holds no k
   const saved = JSON.parse(text);
   assert.equal(saved.format, 'gev-road511-lookups/1');
   assert.deepEqual(Object.keys(saved.entries).sort(), ['us511-TX-cam-40', 'us511-TX-cam-41']);
-  assert.deepEqual(Object.keys(saved.entries['us511-TX-cam-40']).sort(), ['at', 'state', 'url']);
-  assert.deepEqual(Object.keys(saved.entries['us511-TX-cam-41']).sort(), ['at', 'state']);
+  // `kind` tells a still from a stream; `v` marks answers given since streams are read.
+  assert.deepEqual(Object.keys(saved.entries['us511-TX-cam-40']).sort(), ['at', 'kind', 'state', 'url', 'v']);
+  assert.deepEqual(Object.keys(saved.entries['us511-TX-cam-41']).sort(), ['at', 'state', 'v']);
 
   const restarted = fakeFetch(() => {
     throw new Error('a restart must not look anything up again');
@@ -312,6 +313,7 @@ test('the disk cache is reused by a new instance with no request, and holds no k
   assert.deepEqual(await second.lookup(camera('us511-TX-cam-40')), {
     lookupState: 'resolved',
     url: 'https://cams.example.org/40.jpg',
+    kind: 'still',
     retryAfterMs: 0,
   });
   assert.equal((await second.lookup(camera('us511-TX-cam-41'))).lookupState, 'no-image');

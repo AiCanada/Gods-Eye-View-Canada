@@ -82,8 +82,52 @@ export function safeRoad511StillUrl(value) {
   return parsed.href;
 }
 
+/**
+ * An HLS playlist the proxy may later fetch: https on a public host name, no
+ * credentials, a path ending in .m3u8. '' otherwise.
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function safeRoad511StreamUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  let parsed;
+  try {
+    parsed = new URL(value.trim());
+  } catch {
+    return '';
+  }
+  if (parsed.protocol !== 'https:') return '';
+  if (parsed.username || parsed.password) return '';
+  if (!isPublicHostname(parsed.hostname)) return '';
+  if (!/\.m3u8$/i.test(parsed.pathname)) return '';
+  return parsed.href;
+}
+
+/** Cache entries written since streams are read carry this. */
+const ENTRY_VERSION = 2;
+
 const isObject = (value) =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * The HLS stream of a Road511 feature that is video only (511NJ: every camera
+ * lists `hls_url` and no still). '' when there is none.
+ * @param {unknown} payload
+ * @returns {string}
+ */
+export function road511StreamUrl(payload) {
+  const root = isObject(payload) ? payload : {};
+  const data = isObject(root.data) ? root.data : root;
+  const merged = {
+    ...data,
+    ...(isObject(data.properties) ? data.properties : {}),
+  };
+  for (const field of ['hls_url', 'hlsUrl', 'stream_url', 'streamUrl']) {
+    const safe = safeRoad511StreamUrl(merged[field]);
+    if (safe) return safe;
+  }
+  return '';
+}
 
 /**
  * Pull the camera still out of a Road511 feature-details payload. The shape is
@@ -201,10 +245,22 @@ export function createRoad511Lookup({
       if (entries.has(id) || !isObject(entry) || !Number.isFinite(entry.at))
         continue;
       if (entry.state === 'resolved') {
-        const url = safeRoad511StillUrl(entry.url);
-        if (url) entries.set(id, { state: 'resolved', url, at: entry.at });
-      } else if (entry.state === 'no-image') {
-        entries.set(id, { state: 'no-image', url: '', at: entry.at });
+        const kind = entry.kind === 'hls' ? 'hls' : 'still';
+        const url =
+          kind === 'hls'
+            ? safeRoad511StreamUrl(entry.url)
+            : safeRoad511StillUrl(entry.url);
+        if (url)
+          entries.set(id, { state: 'resolved', url, kind, at: entry.at });
+      } else if (entry.state === 'no-image' && entry.v === ENTRY_VERSION) {
+        // A "no image" from before streams were read is dropped: that camera
+        // may have a stream, so it is asked again.
+        entries.set(id, {
+          state: 'no-image',
+          url: '',
+          kind: 'still',
+          at: entry.at,
+        });
       }
     }
     trim();
@@ -230,8 +286,14 @@ export function createRoad511Lookup({
       if (at - entry.at >= ttlOf(entry)) continue;
       out[id] =
         entry.state === 'resolved'
-          ? { state: entry.state, url: entry.url, at: entry.at }
-          : { state: entry.state, at: entry.at };
+          ? {
+              state: entry.state,
+              url: entry.url,
+              kind: entry.kind || 'still',
+              at: entry.at,
+              v: ENTRY_VERSION,
+            }
+          : { state: entry.state, at: entry.at, v: ENTRY_VERSION };
     }
     writing = writeJsonFileAtomic(cacheFile, {
       format: LOOKUP_FORMAT,
@@ -246,9 +308,9 @@ export function createRoad511Lookup({
     await writing;
   }
 
-  function remember(id, state, url = '') {
+  function remember(id, state, url = '', kind = 'still') {
     entries.delete(id);
-    entries.set(id, { state, url, at: now() });
+    entries.set(id, { state, url, kind, at: now() });
     trim();
     dirty = true;
     if (flushTimer || !cacheFile) return;
@@ -288,8 +350,13 @@ export function createRoad511Lookup({
    */
   function peek(source) {
     const entry = source ? freshEntry(source.id) : null;
-    if (entry) return { lookupState: entry.state, url: entry.url };
-    return { lookupState: 'unresolved', url: '' };
+    if (entry)
+      return {
+        lookupState: entry.state,
+        url: entry.url,
+        kind: entry.kind || 'still',
+      };
+    return { lookupState: 'unresolved', url: '', kind: 'still' };
   }
 
   const cancelBody = (response) => {
@@ -395,7 +462,18 @@ export function createRoad511Lookup({
       const url = road511StillUrl(payload, { view: viewOf(source.id) });
       if (url) {
         remember(source.id, 'resolved', url);
-        return { lookupState: 'resolved', url, retryAfterMs: 0 };
+        return { lookupState: 'resolved', url, kind: 'still', retryAfterMs: 0 };
+      }
+      // No still, but a stream: a video-only camera (all of 511NJ).
+      const stream = road511StreamUrl(payload);
+      if (stream) {
+        remember(source.id, 'resolved', stream, 'hls');
+        return {
+          lookupState: 'resolved',
+          url: stream,
+          kind: 'hls',
+          retryAfterMs: 0,
+        };
       }
       remember(source.id, 'no-image');
       return { lookupState: 'no-image', url: '', retryAfterMs: 0 };
@@ -451,7 +529,13 @@ export function createRoad511Lookup({
     const cached = freshEntry(source.id);
     if (cached) {
       counters.road511CacheHits += 1;
-      return { lookupState: cached.state, url: cached.url, retryAfterMs: 0 };
+      return {
+        lookupState: cached.state,
+        url: cached.url,
+        // A cached STREAM must still answer as one, or the route calls it a still.
+        kind: cached.kind || 'still',
+        retryAfterMs: 0,
+      };
     }
     const held = heldBack(source);
     if (held) return held;

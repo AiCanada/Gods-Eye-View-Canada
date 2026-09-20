@@ -73,7 +73,7 @@ The data proxies under `server/providers/` are written so the browser cannot tur
 
 ## Private home and business security cameras
 
-POWER UP → **HOME SECURITY · ARLO** and **BUSINESS SECURITY** add your own
+POWER UP → **HOME SECURITY · PRIVATE_CCTV_FEED** and **BUSINESS SECURITY** add your own
 cameras. They are deliberately separate from the public CCTV proxy and catalogue
 (`server/providers/private-cameras.js`, `src/privateCamerasCore.mjs`):
 
@@ -100,8 +100,8 @@ cameras. They are deliberately separate from the public CCTV proxy and catalogue
   Home Assistant, Scrypted or NVR certificates) is checked on the TLS handshake
   before any request byte is written. Only JPEG, PNG, WebP and GIF stills are
   relayed; an SVG or HTML answer is dropped.
-- **Arlo.** The app never signs in to Arlo. Arlo cameras come through a bridge you
-  run (Home Assistant with hass-aarlo, or Scrypted), which holds the Arlo login
+- **Private_CCTV_Feed.** The app never signs in to Private_CCTV_Feed. Private_CCTV_Feed cameras come through a bridge you
+  run (Home Assistant with a camera integration, or Scrypted), which holds the Private_CCTV_Feed login
   and two-factor codes, or through the optional browser feed relay described
   below. Give the bridge a dedicated, non-admin user for the long-lived access
   token you paste here, and prefer its https address.
@@ -118,21 +118,21 @@ cameras. They are deliberately separate from the public CCTV proxy and catalogue
   local program can also forge the headers the POWER UP routes check, so none of
   these gates protects against software already running as you.
 
-### Arlo browser feed relay
+### Private_CCTV_Feed browser feed relay
 
-A personal Arlo account offers no API key, camera address or RTSP stream, and
-GEV will not script Arlo's sign-in, which would mean defeating its bot
+A personal Private_CCTV_Feed account offers no API key, camera address or RTSP stream, and
+GEV will not script Private_CCTV_Feed's sign-in, which would mean defeating its bot
 protection. A home site set to **Browser feed relay** instead receives pictures
-from **GEV Arlo Feed Relay**, a personal unpacked Chrome extension in
-`tools/arlo-feed-relay` (`npm run arlo-relay:install`):
+from **GEV Private_CCTV_Feed Relay**, a personal unpacked Chrome extension in
+`tools/private-cctv-feed-relay` (`npm run private-cctv-feed-relay:install`):
 
 - **What leaves the extension.** While your own signed-in
-  `https://my.arlo.com/#/feed` tab is open, the extension reads the newest clip
+  `https://feed.private-cctv.example/#/feed` tab is open, the extension reads the newest clip
   thumbnail per camera from that page, fetches the image without credentials
-  from Arlo's image host and sends GEV only the image bytes, the camera name and
+  from Private_CCTV_Feed's image host and sends GEV only the image bytes, the camera name and
   a short clip label (such as "Motion · 2:14 PM"). It never reads or forwards
-  cookies, `localStorage` / `sessionStorage`, `Authorization` headers or any Arlo
-  login; it never clicks, scrolls, reloads or keeps the Arlo session alive; it
+  cookies, `localStorage` / `sessionStorage`, `Authorization` headers or any Private_CCTV_Feed
+  login; it never clicks, scrolls, reloads or keeps the Private_CCTV_Feed session alive; it
   has no `cookies`, `tabs`, `scripting`, `webRequest` or `debugger` permission
   and runs nothing in the page's own JavaScript world. The signed thumbnail
   addresses stay in the extension's memory: they are never logged, stored or
@@ -174,24 +174,65 @@ from **GEV Arlo Feed Relay**, a personal unpacked Chrome extension in
   Frames, heartbeats and unmatched camera names live in memory only: nothing the
   relay sends is written to disk, and a restart forgets it. A heartbeat answer
   tells the extension only which of the camera names it reported still need a
-  picture and which match no camera, so it downloads a thumbnail from Arlo only
+  picture and which match no camera, so it downloads a thumbnail from Private_CCTV_Feed only
   when GEV will take it.
 - **No stale picture passes for a current one.** A relay picture is shown only
-  while the relay keeps reporting and its feed tab shows Arlo signed in. When
-  that tab reports that Arlo signed the page out, the pictures give way within
+  while the relay keeps reporting and its feed tab shows Private_CCTV_Feed signed in. When
+  that tab reports that Private_CCTV_Feed signed the page out, the pictures give way within
   seconds. Each heartbeat carries an opaque tag for its tab (a hash, not the tab
-  or any Arlo value), so a sign-in page left open in another tab does not
+  or any Private_CCTV_Feed value), so a sign-in page left open in another tab does not
   override a tab that reported reading the feed in the last 2.5 minutes. Without
   a current picture the camera shows a placeholder saying why, with the time the
-  last picture arrived. A camera whose Arlo name changes on save (a new Name or
-  Arlo name, or two Arlo names swapped) drops its picture, so it never shows
+  last picture arrived. A camera whose Private_CCTV_Feed name changes on save (a new Name or
+  Private_CCTV_Feed name, or two Private_CCTV_Feed names swapped) drops its picture, so it never shows
   another camera's.
-- **Arlo's terms.** Arlo's Terms of Service prohibit data-gathering or
-  extraction tools and unapproved applications, and allow Arlo to terminate
+- **Private_CCTV_Feed's terms.** Private_CCTV_Feed's Terms of Service prohibit data-gathering or
+  extraction tools and unapproved applications, and allow Private_CCTV_Feed to terminate
   accounts that use them. The relay is a personal tool you install and run at
-  your own risk; Arlo neither makes nor approves it. Its pictures are the latest
-  motion-clip thumbnails, not live video, and they stop when Arlo signs the web
+  your own risk; Private_CCTV_Feed neither makes nor approves it. Its pictures are the latest
+  motion-clip thumbnails, not live video, and they stop when Private_CCTV_Feed signs the web
   page out after inactivity.
+
+## Your own drones, robots, marine drones and GPS trackers
+
+POWER UP → **YOUR DEVICES** adds any number of devices of four kinds
+(`server/providers/device-feeds.js`, `src/deviceFeedsCore.mjs`). The rules are
+the private cameras' rules:
+
+- **At rest.** Addresses and logins live only in `config/device-feeds.json` —
+  git-ignored, written through the same owner-only credential-store writer as
+  `.env`, and answered `404` by a guard that runs before any static file
+  handling, however the name is cased, percent-encoded or shortened. A store
+  that cannot be read is never overwritten by a save.
+- **Browser ↔ server.** Every `/api/device-feeds/*` route answers only the
+  machine running the server (the Provider Settings gate) and only this page
+  (Fetch Metadata). The card is told "saved" flags and masked addresses, never a
+  value; the map layer is told a name, a kind and a position, never an address
+  or a login. Devices can be saved only under the dev server.
+- **Server ↔ device.** Only http(s) addresses with no login inside them. A login
+  is sent only over https, or over plain http to a device on your own network.
+  A username and password answer the device's challenge and nothing else
+  (Digest preferred, Basic only when that is what it asks for); bearer tokens
+  and API keys go on the request. A redirect is never followed, so a login is
+  never carried to wherever a device points. Answers are size-capped, a picture
+  must be an image, and a device is asked at most once every 5 seconds, less
+  often while it is not answering.
+- **Follow and record (Ultra Security Package, or any device).** A device's
+  recording (what the map knew within 50 km of it, and its own track) is a
+  folder of daily JSON-lines files under `config/device-recordings/`. It holds
+  where someone's tracker or phone has been, so it is treated like the login
+  store: git-ignored, answered `404` by the same guard, and written only by
+  `POST /api/device-feeds/record/<id>`, which answers this machine and this
+  page only, refuses a device whose RECORD switch is off, saves no more often
+  than every 10 seconds, and re-checks every record against the position the
+  SERVER knows for the device. A camera is saved by name and place, never by
+  stream address. Removing a device leaves its recordings; delete the folder to
+  delete them. A phone is only ever reached through an app installed on it
+  that reports to a server of its owner's: there is no lookup by number. Use it
+  for devices and people you are responsible for, who know.
+- **Local devices are reachable on purpose.** Drones, robots and boats live on
+  your own network, so these addresses may be private ones. Only the machine
+  running the server can set them.
 
 ## Network exposure — the operator threat model
 

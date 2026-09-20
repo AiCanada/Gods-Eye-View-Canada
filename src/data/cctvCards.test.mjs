@@ -18,6 +18,7 @@ import {
   CCTV_CARD_SCALE_FULL_M,
   CCTV_CARD_SCALE_MID_M,
   CCTV_CARD_SCALE_MIN,
+  CCTV_CARD_THUMB_W,
   CCTV_FRAME_CACHE_MAX,
   applyFrameResult,
   cardFetchPolicy,
@@ -289,4 +290,54 @@ test('planFrameCachePrune: default cap is the exported cache bound', () => {
   assert.equal(drops.length, 5);
   // Oldest stamps go first.
   assert.deepEqual(drops.sort(), ['cam-000', 'cam-001', 'cam-002', 'cam-003', 'cam-004']);
+});
+
+test('a thumbnail standing where its camera looks is centred there; one at the mount stays above the camera icon', () => {
+  const base = { id: 'cam-a', position: { x: 1, y: 2, z: 3 }, title: 'A', frameSlot: createFrameSlot() };
+  assert.equal(createCctvThumbnailOverlayEntry({ ...base, centered: true }).placement, 'center');
+  assert.equal(createCctvThumbnailOverlayEntry(base).placement, 'auto');
+  const source = readFileSync(new URL('./cctv.js', import.meta.url), 'utf8');
+  // Centred only when there is a spot, and the last good spot is kept: the card
+  // never drops back onto its own camera icon because one frame had no answer.
+  assert.ok(source.includes('centered: Boolean(spot) || Boolean(road) || Boolean(aligned),'));
+  assert.ok(source.includes('return spot || record.position;'));
+});
+
+test('every camera thumbnail stands where its picture opens, a camera of unknown heading included', () => {
+  const source = readFileSync(new URL('./cctv.js', import.meta.url), 'utf8');
+  const start = source.indexOf('function thumbnailTrafficFrame(');
+  assert.ok(start > 0);
+  assert.equal(source.slice(start, start + 400).includes("headingConfidence === 'unknown'"), false);
+});
+
+test('a road-matched thumbnail stands on the bottom edge of its picture and carries its ground width', () => {
+  const base = { id: 'cam-a', position: { x: 1, y: 2, z: 3 }, title: 'A', frameSlot: createFrameSlot() };
+  const matched = createCctvThumbnailOverlayEntry({ ...base, centered: true, pictureAnchor: 'bottom', worldWidthM: 30, scale: 2 });
+  assert.equal(matched.placement, 'center');
+  assert.equal(matched.pictureAnchor, 'bottom');
+  assert.equal(matched.worldWidthM, 30);
+  // The base is the UNSCALED width, so the user's card size still multiplies the match.
+  assert.equal(matched.worldWidthBasePx, CCTV_CARD_THUMB_W);
+  const plain = createCctvThumbnailOverlayEntry(base);
+  assert.equal(plain.pictureAnchor, 'center');
+  assert.equal(plain.worldWidthM, 0);
+  const host = readFileSync(new URL('../overlays/worldOverlay.js', import.meta.url), 'utf8');
+  assert.ok(host.includes("entry.pictureAnchor === 'bottom' ? record.layout.thumbH : record.layout.thumbH / 2"));
+  assert.ok(host.includes('(entry.worldWidthM * pixelsPerMetre) / entry.worldWidthBasePx'));
+});
+
+test('a turned thumbnail carries its target, and clicks and vehicles follow the turn', () => {
+  const base = { id: 'cam-a', position: { x: 1, y: 2, z: 3 }, title: 'A', frameSlot: createFrameSlot() };
+  const target = () => ({ x: 4, y: 5, z: 6 });
+  const turned = createCctvThumbnailOverlayEntry({ ...base, centered: true, orientTo: target, orientAmbiguous: true });
+  assert.equal(turned.orientTo, target);
+  assert.equal(turned.orientAmbiguous, true);
+  assert.equal(createCctvThumbnailOverlayEntry(base).orientTo, null);
+  const host = readFileSync(new URL('../overlays/worldOverlay.js', import.meta.url), 'utf8');
+  assert.ok(host.includes('_ctx.rotate(record.rotation);'));
+  assert.ok(host.includes('const local = unrotatePoint(hit, x, y, _hitLocal);'), 'hit-testing happens in the card’s own frame');
+  const resize = readFileSync(new URL('./cctvCardResize.js', import.meta.url), 'utf8');
+  assert.ok(resize.includes('cardResizeCorner(hit.rect, hit.localX ?? x, hit.localY ?? y)'));
+  const traffic = readFileSync(new URL('./cctvThumbnailTraffic.js', import.meta.url), 'utf8');
+  assert.ok(traffic.includes('picture.rot = Number.isFinite(rect.rotation) ? rect.rotation : 0;'));
 });

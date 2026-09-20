@@ -1,5 +1,5 @@
 /**
- * POWER UP → HOME SECURITY (Arlo via a local bridge or the browser feed relay)
+ * POWER UP → HOME SECURITY (Private_CCTV_Feed via a local bridge or the browser feed relay)
  * and BUSINESS SECURITY (snapshot URL + login) cards inside the Provider
  * Settings dialog.
  *
@@ -15,9 +15,9 @@
  * the server spreads the site's cameras around that point on the side each one
  * faces, and any camera icon can then be dragged to its exact spot on the map.
  *
- * A home site can instead use the Arlo browser feed relay: a personal Chrome
- * extension (tools/arlo-feed-relay) that forwards the newest clip thumbnail of
- * each camera from the user's own signed-in my.arlo.com feed tab. Such a site
+ * A home site can instead use the Private_CCTV_Feed browser feed relay: a personal Chrome
+ * extension (tools/private-cctv-feed-relay) that forwards the newest clip thumbnail of
+ * each camera from the user's own signed-in camera site feed tab. Such a site
  * sends no login anywhere. Its panel shows the pairing and the relay's last
  * heartbeat, approves a pairing request or removes the pairing, and re-reads
  * GET /status every 15 s while the dialog is open without touching anything
@@ -36,7 +36,7 @@ const NOMINATIM_SEARCH = 'https://nominatim.openstreetmap.org/search';
 export const RELAY_REFRESH_MS = 15000;
 /** Same as the server's RELAY_HEARTBEAT_STALE_MS: an older heartbeat means the relay is gone. */
 const RELAY_HEARTBEAT_STALE_MS = 10 * 60 * 1000;
-const RELAY_SOURCE_HINT = 'Arlo camera name (blank = same as Name)';
+const RELAY_SOURCE_HINT = 'Private_CCTV_Feed camera name (blank = same as Name)';
 
 /** Every way a home site can get its pictures, in menu order. */
 const HOME_AUTH_CHOICES = Object.freeze([
@@ -46,12 +46,12 @@ const HOME_AUTH_CHOICES = Object.freeze([
 ]);
 
 const RELAY_STATE_TEXT = new Map([
-  ['feed', 'Relay connected — reading your Arlo feed'],
-  ['no-cards', 'Your Arlo feed has no clips loaded'],
-  ['layout-unknown', 'Arlo feed layout not recognised — the relay needs an update'],
+  ['feed', 'Relay connected — reading your Private_CCTV_Feed feed'],
+  ['no-cards', 'Your Private_CCTV_Feed feed has no clips loaded'],
+  ['layout-unknown', 'Private_CCTV_Feed feed layout not recognised — the relay needs an update'],
 ]);
-const RELAY_SIGNED_OUT_TEXT = 'Arlo signed out — open my.arlo.com and sign in to refresh pictures';
-const RELAY_NOT_CONNECTED_TEXT = 'Relay not connected — open your my.arlo.com feed in Chrome with the extension installed';
+const RELAY_SIGNED_OUT_TEXT = 'Private_CCTV_Feed signed out — open your camera site and sign in to refresh pictures';
+const RELAY_NOT_CONNECTED_TEXT = 'Relay not connected — open your camera site feed in Chrome with the extension installed';
 const RELAY_NOT_PAIRED_TEXT = 'Relay not paired — open the extension options, press PAIR WITH GODS EYE VIEW and approve the request here';
 /** The only addresses the relay extension can reach Gods Eye View at. */
 const RELAY_GEV_ORIGINS = Object.freeze(['http://localhost:4173', 'http://127.0.0.1:4173']);
@@ -61,7 +61,7 @@ const TRANSPORT_LABELS = Object.freeze({
   https: ['HTTPS', 'Encrypted in transit'],
   'lan-http': ['LOCAL NETWORK', 'Plain http that never leaves your local network — https is still better'],
   insecure: ['NOT SECURE', 'A login would cross the internet unencrypted'],
-  relay: ['BROWSER RELAY', 'Pictures come from your own signed-in Arlo feed tab through the paired Chrome extension; no login is sent anywhere'],
+  relay: ['BROWSER RELAY', 'Pictures come from your own signed-in Private_CCTV_Feed feed tab through the paired Chrome extension; no login is sent anywhere'],
   none: ['', ''],
 });
 
@@ -137,7 +137,7 @@ export function splitSiteLocationQuery(query) {
  *
  * A home site on the browser feed relay sends no bridge URL, token, username,
  * password or certificate fingerprint at all, so whatever is saved for them
- * stays saved; a camera's Arlo name may be blank (it then matches its Name).
+ * stays saved; a camera's Private_CCTV_Feed name may be blank (it then matches its Name).
  */
 export function collectPrivateSiteUpdate(kindId, siteId, values, cameras) {
   const body = { kind: kindId, name: values.name || '' };
@@ -184,19 +184,19 @@ function relayName(text) {
   return typeof text === 'string' ? text.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase() : '';
 }
 
-/** The saved Arlo name of a relay camera when it differs from its own name, else '' — pure, exported for tests. */
-export function relayArloNameOverride(camera) {
+/** The saved Private_CCTV_Feed name of a relay camera when it differs from its own name, else '' — pure, exported for tests. */
+export function relayPrivateCctvFeedNameOverride(camera) {
   const matchName = typeof camera?.matchName === 'string' ? camera.matchName : '';
   return matchName && matchName !== relayName(camera.name) ? matchName : '';
 }
 
 /**
  * Placeholder and accessible label of a camera row's source box — pure,
- * exported for tests. `saved` holds the masked saved source and the saved Arlo
+ * exported for tests. `saved` holds the masked saved source and the saved Private_CCTV_Feed
  * name override.
  */
 export function cameraSourceField(kind, saved = {}, relay = false) {
-  if (relay) return { placeholder: saved.arloName ? `Arlo name “${saved.arloName}” — saved (type the Name to clear)` : RELAY_SOURCE_HINT, label: RELAY_SOURCE_HINT };
+  if (relay) return { placeholder: saved.privateCctvFeedName ? `Private_CCTV_Feed name “${saved.privateCctvFeedName}” — saved (type the Name to clear)` : RELAY_SOURCE_HINT, label: RELAY_SOURCE_HINT };
   return { placeholder: saved.source ? `${saved.source} — saved` : kind?.sourceHint || '', label: kind?.id === 'home' ? 'Camera entity or snapshot URL' : 'Snapshot URL' };
 }
 
@@ -245,10 +245,10 @@ export function relayCameraLine(camera) {
   return `${name}: last clip picture ${clockTime(camera.lastFrameAt)}${clip ? ` (${clip})` : ''}`;
 }
 
-/** The hint for Arlo camera names that matched no camera, or '' — pure, exported for tests. */
+/** The hint for Private_CCTV_Feed camera names that matched no camera, or '' — pure, exported for tests. */
 export function relayUnknownNamesText(site) {
   const names = Array.isArray(site?.relay?.unknownNames) ? site.relay.unknownNames.map(tidy).filter(Boolean) : [];
-  return names.length ? `Your Arlo feed has cameras named ${names.map((name) => `“${name}”`).join(', ')} that match no camera here — set a camera's Arlo name` : '';
+  return names.length ? `Your Private_CCTV_Feed feed has cameras named ${names.map((name) => `“${name}”`).join(', ')} that match no camera here — set a camera's Private_CCTV_Feed name` : '';
 }
 
 /** The pairing request line, or '' when no request is waiting — pure, exported for tests. */
@@ -274,7 +274,7 @@ export function relayPendingRequests(pending) {
  */
 export function relayOriginWarning(origin) {
   if (typeof origin !== 'string' || !/^https?:\/\//.test(origin) || RELAY_GEV_ORIGINS.includes(origin)) return '';
-  return `The Arlo relay only reaches Gods Eye View at http://localhost:4173, but this page is on ${origin} — start the app on port 4173 to use it.`;
+  return `The Private_CCTV_Feed relay only reaches Gods Eye View at http://localhost:4173, but this page is on ${origin} — start the app on port 4173 to use it.`;
 }
 
 /**
@@ -353,7 +353,7 @@ export function siteLocateMessage(point) {
 }
 
 /** Mount the section into `host`; returns a handle whose destroy() stops pending work. */
-export function initPrivateCameraSetup({ host, documentRef = globalThis.document, fetchImpl, signal } = {}) {
+export function initPrivateCameraSetup({ host, documentRef = globalThis.document, fetchImpl, signal, onSections = null } = {}) {
   if (!host || !documentRef) return { destroy() {} };
   const doFetch = fetchImpl || globalThis.fetch?.bind(globalThis);
   const lifetime = new AbortController();
@@ -477,7 +477,7 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
   };
 
   const labelSource = (field, kind, relay) => {
-    const { placeholder, label } = cameraSourceField(kind, { source: field.dataset.savedSource, arloName: field.dataset.arloName }, relay);
+    const { placeholder, label } = cameraSourceField(kind, { source: field.dataset.savedSource, privateCctvFeedName: field.dataset.privateCctvFeedName }, relay);
     field.placeholder = placeholder;
     field.setAttribute('aria-label', label);
   };
@@ -490,7 +490,7 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     remove.addEventListener('click', () => row.remove());
     const source = input(documentRef, { name: 'source' });
     source.dataset.savedSource = camera.source || '';
-    source.dataset.arloName = relayArloNameOverride(camera);
+    source.dataset.privateCctvFeedName = relayPrivateCctvFeedNameOverride(camera);
     labelSource(source, kind, relay);
     row.append(input(documentRef, { name: 'name', value: camera.name || '', placeholder: 'Name', label: 'Camera name' }), source, facingSelect(camera), remove);
     list.append(row);
@@ -502,7 +502,7 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     details.open = open;
     const steps = element(documentRef, 'ol');
     for (const parts of [
-      ['Run ', code('npm run arlo-relay:install'), ' in the app folder.'],
+      ['Run ', code('npm run private-cctv-feed-relay:install'), ' in the app folder.'],
       [
         'Open ',
         code('chrome://extensions'),
@@ -510,9 +510,7 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
       ],
       ["Open the extension's options (Details → Extension options) and press PAIR WITH GODS EYE VIEW. Gods Eye View gives that request a code: APPROVE only the request here whose code and extension ID both match the options page."],
       [
-        'Keep ',
-        code('https://my.arlo.com/#/feed'),
-        ' open and signed in — reload that tab once after installing or updating the extension — and add my.arlo.com to ',
+        'Keep your camera site feed page (the FEED link on this card) open and signed in — reload that tab once after installing or updating the extension — and add that site to ',
         code('chrome://settings/performance'),
         ' → “Always keep these sites active”.',
       ],
@@ -521,15 +519,15 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
       step.append(...parts);
       steps.append(step);
     }
-    details.append(element(documentRef, 'summary', '', 'SET UP THE ARLO FEED RELAY'), steps);
+    details.append(element(documentRef, 'summary', '', 'SET UP THE PRIVATE_CCTV_FEED FEED RELAY'), steps);
     return details;
   };
 
   const renderRelay = (site, pending) => {
     const box = element(documentRef, 'div', 'private-cams-relay');
     box.append(
-      element(documentRef, 'p', 'private-cams-warning', "Arlo's terms of service prohibit data-extraction tools and allow Arlo to close accounts. Use the relay at your own risk."),
-      element(documentRef, 'p', 'private-cams-relay-limits', 'Pictures are the latest motion-clip thumbnails, not live video; Arlo signs the web page out after inactivity.'),
+      element(documentRef, 'p', 'private-cams-warning', "Private_CCTV_Feed's terms of service prohibit data-extraction tools and allow Private_CCTV_Feed to close accounts. Use the relay at your own risk."),
+      element(documentRef, 'p', 'private-cams-relay-limits', 'Pictures are the latest motion-clip thumbnails, not live video; Private_CCTV_Feed signs the web page out after inactivity.'),
     );
     const originWarning = relayOriginWarning(globalThis.location?.origin);
     if (originWarning) box.append(element(documentRef, 'p', 'private-cams-warning private-cams-relay-origin', originWarning));
@@ -587,7 +585,7 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
 
     const unpairRelay = async () => {
       if (lifetime.signal.aborted || !editable || busy) return;
-      const ok = typeof globalThis.confirm !== 'function' || globalThis.confirm(`Unpair the Arlo feed relay from ${site.name}? Its cameras get no new pictures until you pair again.`);
+      const ok = typeof globalThis.confirm !== 'function' || globalThis.confirm(`Unpair the Private_CCTV_Feed feed relay from ${site.name}? Its cameras get no new pictures until you pair again.`);
       if (!ok) return;
       busy = true;
       syncControls();
@@ -665,15 +663,15 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
       head.append(badge);
     }
     block.append(head);
-    let arloWarning = null;
-    if (site.arloWebsite) {
-      arloWarning = element(
+    let privateCctvFeedWarning = null;
+    if (site.privateCctvFeedWebsite) {
+      privateCctvFeedWarning = element(
         documentRef,
         'p',
         'private-cams-warning',
-        'No picture: this site points at the Arlo website (my.arlo.com), which is a sign-in page, not a camera feed — so these cameras stay dark and no login is sent there. Use a local bridge — Home Assistant with the Aarlo integration (Bridge URL http://<home-assistant>:8123, a long-lived token, cameras like camera.aarlo_front) or Scrypted with its Arlo plugin (each camera’s snapshot URL) — or choose “Browser feed relay (Chrome extension)” below to receive clip pictures from your own signed-in my.arlo.com feed (your saved login stays saved).',
+        'No picture: this site points at the Private_CCTV_Feed website, which is a sign-in page, not a camera feed — so these cameras stay dark and no login is sent there. Use a local bridge — Home Assistant with a camera integration (Bridge URL http://<home-assistant>:8123, a long-lived token, cameras like camera.privatecam_front) or Scrypted with its Private_CCTV_Feed plugin (each camera’s snapshot URL) — or choose “Browser feed relay (Chrome extension)” below to receive clip pictures from your own signed-in camera site feed (your saved login stays saved).',
       );
-      block.append(arloWarning);
+      block.append(privateCctvFeedWarning);
     }
 
     // Location: a street address or a postal / ZIP code places the site.
@@ -797,10 +795,10 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
       loginField('username').hidden = mode !== 'login';
       loginField('password').hidden = mode !== 'login';
       loginField('tlsFingerprint').hidden = relay;
-      if (arloWarning) arloWarning.hidden = relay;
+      if (privateCctvFeedWarning) privateCctvFeedWarning.hidden = relay;
       if (relayBox) relayBox.hidden = !relay;
       let sourceHeading = kind.id === 'home' ? 'ENTITY OR SNAPSHOT URL' : 'SNAPSHOT URL';
-      if (relay) sourceHeading = 'ARLO CAMERA NAME';
+      if (relay) sourceHeading = 'PRIVATE_CCTV_FEED CAMERA NAME';
       headCells[1].textContent = sourceHeading;
       for (const field of list.querySelectorAll('[data-field="source"]')) labelSource(field, kind, relay);
     };
@@ -910,11 +908,11 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     head.append(led, element(documentRef, 'strong', '', kind.title));
     head.append(element(documentRef, 'span', 'private-cams-count', `${kind.sites.length} site${kind.sites.length === 1 ? '' : 's'} · ${total} camera${total === 1 ? '' : 's'}`));
     if (kind.feedUrl) {
-      const feed = element(documentRef, 'a', 'key-setup-get', 'OPEN ARLO FEED ↗');
+      const feed = element(documentRef, 'a', 'key-setup-get', 'OPEN PRIVATE_CCTV_FEED FEED ↗');
       feed.href = kind.feedUrl;
       feed.target = '_blank';
       feed.rel = 'noopener noreferrer';
-      feed.title = 'Opens your Arlo feed, where your own Arlo sign-in applies';
+      feed.title = 'Opens your Private_CCTV_Feed feed, where your own Private_CCTV_Feed sign-in applies';
       head.append(feed);
     }
     const sites = element(documentRef, 'div', 'private-cams-sites');
@@ -941,6 +939,8 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
       ),
     );
     for (const kind of status.kinds || []) host.append(renderKind(kind, status.relayPending || null));
+    // The dashboard chip counts each section once: ON when it holds a camera.
+    onSections?.((status.kinds || []).map((kind) => ({ id: `cameras-${kind.id}`, set: (kind.sites || []).some((site) => (site.cameras || []).length > 0) })));
     host.hidden = false;
     syncRelayTimer();
   };
