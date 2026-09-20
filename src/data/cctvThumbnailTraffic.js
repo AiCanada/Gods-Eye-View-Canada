@@ -88,6 +88,13 @@ export function collectThumbnailPictures(frame) {
     picture.y = rect.y + padY * scale;
     picture.w = thumbW * scale;
     picture.h = thumbH * scale;
+    // A card turned along its road: vehicles are tested and placed in its own
+    // unturned frame, then drawn back in the turned one.
+    picture.rot = Number.isFinite(rect.rotation) ? rect.rotation : 0;
+    picture.px = rect.anchorX;
+    picture.py = rect.anchorY;
+    picture.cos = Math.cos(picture.rot);
+    picture.sin = Math.sin(picture.rot);
     picture.placed = picture.placed || [];
     picture.placed.length = 0;
     count += 1;
@@ -216,10 +223,16 @@ export function paintTrafficOverThumbnails(
   let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
   for (let i = 0; i < cards; i += 1) {
     const p = _pictures[i];
-    if (p.x < minX) minX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.x + p.w > maxX) maxX = p.x + p.w;
-    if (p.y + p.h > maxY) maxY = p.y + p.h;
+    // A turned picture can reach its own diagonal from the pivot in any direction.
+    const reach = p.rot ? Math.hypot(p.w, p.h) + Math.hypot(p.px - (p.x + p.w / 2), p.py - (p.y + p.h / 2)) : 0;
+    const loX = p.rot ? p.px - reach : p.x;
+    const loY = p.rot ? p.py - reach : p.y;
+    const hiX = p.rot ? p.px + reach : p.x + p.w;
+    const hiY = p.rot ? p.py + reach : p.y + p.h;
+    if (loX < minX) minX = loX;
+    if (loY < minY) minY = loY;
+    if (hiX > maxX) maxX = hiX;
+    if (hiY > maxY) maxY = hiY;
   }
 
   let drawn = 0;
@@ -230,17 +243,34 @@ export function paintTrafficOverThumbnails(
     if (sx < minX || sx > maxX || sy < minY || sy > maxY) return;
     for (let i = 0; i < cards; i += 1) {
       const p = _pictures[i];
-      if (sx < p.x || sx > p.x + p.w || sy < p.y || sy > p.y + p.h) continue;
+      let lx = sx;
+      let ly = sy;
+      if (p.rot) {
+        const dx = sx - p.px;
+        const dy = sy - p.py;
+        lx = p.px + dx * p.cos + dy * p.sin;
+        ly = p.py - dx * p.sin + dy * p.cos;
+      }
+      if (lx < p.x || lx > p.x + p.w || ly < p.y || ly > p.y + p.h) continue;
       if (tagsLeft <= 0) return;
       if (occluder?.isPointVisible && !occluder.isPointVisible(point.position)) return;
       const roadY = p.y + p.h * (THUMBNAIL_ROAD_BAND_TOP
-        + (1 - THUMBNAIL_ROAD_BAND_TOP) * ((sy - p.y) / p.h));
-      // No room for the identifier means no dot either.
-      const tag = placeTag(ctx, sx, roadY, index, p, p.placed);
+        + (1 - THUMBNAIL_ROAD_BAND_TOP) * ((ly - p.y) / p.h));
+      let drawX = lx;
+      let drawY = roadY;
+      if (p.rot) {
+        const dx = lx - p.px;
+        const dy = roadY - p.py;
+        drawX = p.px + dx * p.cos - dy * p.sin;
+        drawY = p.py + dx * p.sin + dy * p.cos;
+      }
+      // No room for the identifier means no dot either. A turned picture has no
+      // upright box to keep the tag inside, so only overlap is checked there.
+      const tag = placeTag(ctx, drawX, drawY, index, p.rot ? null : p, p.placed);
       if (!tag) return;
       p.placed.push(tag);
-      drawVehicle(ctx, sx, roadY, point);
-      paintTag(ctx, sx, roadY, tag);
+      drawVehicle(ctx, drawX, drawY, point);
+      paintTag(ctx, drawX, drawY, tag);
       drawn += 1;
       tagsLeft -= 1;
       _diag.tags += 1;

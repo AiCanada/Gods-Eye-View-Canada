@@ -1,4 +1,4 @@
-// Options page for the GEV Arlo Feed Relay. It talks only to this extension's
+// Options page for the GEV Private_CCTV_Feed Relay. It talks only to this extension's
 // service worker and renders everything with textContent.
 (function startRelayOptions() {
   'use strict';
@@ -10,7 +10,7 @@
   const NOT_RECOGNISED_TEXT = 'Not paired — Gods Eye View no longer recognises this pairing. Press PAIR WITH GODS EYE VIEW to pair again.';
   const STATE_LABELS = {
     feed: 'reading the feed',
-    'signed-out': 'Arlo signed out',
+    'signed-out': 'Private_CCTV_Feed signed out',
     'no-cards': 'no clips loaded',
     'layout-unknown': 'feed layout not recognised',
   };
@@ -58,7 +58,7 @@
 
   function describePairing(reply) {
     if (reply.paired === true) {
-      const site = typeof reply.siteName === 'string' && reply.siteName ? reply.siteName : 'your Arlo site';
+      const site = typeof reply.siteName === 'string' && reply.siteName ? reply.siteName : 'your Private_CCTV_Feed site';
       const cameras = Array.isArray(reply.cameras) && reply.cameras.length ? ` (cameras: ${reply.cameras.join(', ')})` : '';
       return `Paired with “${site}” in Gods Eye View${cameras}`;
     }
@@ -85,7 +85,7 @@
     const reply = await refreshPairing();
     pollTimer = 0;
     if (reply.approved === true || (reply.paired === true && reply.local === 'paired' && !reply.pendingExpired)) {
-      view.pairProgress.textContent = 'Approved — the relay is paired. Keep your my.arlo.com feed open.';
+      view.pairProgress.textContent = 'Approved — the relay is paired. Keep your camera site feed open.';
       return;
     }
     if (reply.local === 'pending' || reply.reachable === false) {
@@ -163,7 +163,7 @@
       view.feedLine.textContent = `Feed tab report at ${timeLabel(beat.at)}: ${state} · GEV: ${beat.outcome || 'unknown'}`;
     } else {
       view.feedLine.textContent =
-        'No my.arlo.com feed report since the relay last woke up (one arrives every 2 minutes). If none comes, reload your my.arlo.com feed tab: a tab opened before the extension was installed or updated is not read.';
+        'No camera site feed report since the relay last woke up (one arrives every 2 minutes). If none comes, reload your camera site feed tab: a tab opened before the extension was installed or updated is not read.';
     }
   }
 

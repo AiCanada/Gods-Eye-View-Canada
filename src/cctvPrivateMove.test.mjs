@@ -72,8 +72,8 @@ test('a moved camera keeps its spot through site saves until the site gets a new
     lat: 45.2733,
     lon: -66.0633,
     cameras: [
-      { name: 'Front', source: 'camera.aarlo_front', headingDeg: 'S' },
-      { name: 'Back Yard', source: 'camera.aarlo_back_yard', headingDeg: 'N' },
+      { name: 'Front', source: 'camera.privatecam_front', headingDeg: 'S' },
+      { name: 'Back Yard', source: 'camera.privatecam_back_yard', headingDeg: 'N' },
     ],
   });
   assert.equal(saved.ok, true, saved.error);

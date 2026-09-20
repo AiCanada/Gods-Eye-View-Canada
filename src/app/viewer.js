@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { installRenderRecovery } from './renderRecovery.js';
 
 /** Wheel and trackpad zoom speed; Cesium's default is 5. */
 export const GLOBE_ZOOM_FACTOR = 10;
@@ -142,6 +143,10 @@ export function createApplicationViewer({ container, creditContainer }) {
     infoBox: false,
     baseLayer: false,
     creditContainer,
+    // Frame errors are handled by installRenderRecovery, which restarts the
+    // loop and raises this same modal itself once an error proves permanent.
+    // (Constructor-only: Cesium has no setter for it.)
+    showRenderLoopErrors: false,
     msaaSamples: 4,
     contextOptions: { webgl: { preserveDrawingBuffer: true } },
   });
@@ -156,6 +161,8 @@ export function createApplicationViewer({ container, creditContainer }) {
       canvas: viewer.scene.canvas,
       isDestroyed: () => viewer.isDestroyed(),
     });
+    // One failed asset load must not freeze the application for good.
+    installRenderRecovery(viewer);
     viewer.scene.globe.show = false;
     viewer.scene.skyAtmosphere.show = true;
     viewer.scene.skyAtmosphere.atmosphereLightIntensity = 18;

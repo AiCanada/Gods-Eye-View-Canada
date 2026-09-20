@@ -97,7 +97,12 @@ test('a camera with no public still makes no request, even with ROAD511_API_KEY 
   const root = setup(t, [
     cam('us511-TX-cam-7', {
       country: 'US', region: 'TX', city: 'Houston', lat: 29.76, lon: -95.37, feedType: 'none', lookup: 'road511',
-      videoUrl: 'https://cams.example.org/7.m3u8',
+    }),
+    // Stream-only: its pack lists an HLS playlist, so it is a video camera with
+    // nothing to look up.
+    cam('us511-TX-cam-11', {
+      country: 'US', region: 'TX', city: 'Houston', lat: 29.77, lon: -95.37, feedType: 'none', lookup: 'road511',
+      videoUrl: 'https://cams.example.org/11.stream/playlist.m3u8',
     }),
     cam('us511-MD-cam-8', { country: 'US', region: 'MD', lat: 39.29, lon: -76.61, feedType: 'none' }),
   ]);
@@ -115,10 +120,16 @@ test('a camera with no public still makes no request, even with ROAD511_API_KEY 
   assert.equal(res.headers['X-CCTV-Lookup'], 'no-image');
   assert.match(String(res.body), /NO PUBLIC IMAGE/);
 
-  assert.equal((await request('/media/us511-TX-cam-7')).status, 404, 'the kept video address is never proxied');
+  assert.equal((await request('/media/us511-TX-cam-7')).status, 404, 'a camera with nothing to play has no media');
   const stream = JSON.parse((await request('/stream/us511-TX-cam-7')).body);
   assert.equal(stream.feedType, 'none');
   assert.equal(stream.mediaUrl, null);
+  // A pack stream is an HLS camera in every pack, played through this origin,
+  // and describing it costs neither an upstream request nor a Road511 lookup.
+  const video = JSON.parse((await request('/stream/us511-TX-cam-11')).body);
+  assert.equal(video.feedType, 'hls');
+  assert.equal(video.mediaUrl, '/api/cctv/media/us511-TX-cam-11');
+  assert.equal(video.directStreamUrl, null);
   assert.equal(calls.length, 0);
   assert.equal((await health(request)).counters.road511Calls, 0);
 });

@@ -50,7 +50,7 @@ with a reason; usefulness can also be `decline` or `discuss`.
   Encourage early discussion for substantial features.
 - Do not merge `bilawalsidhu/gods-eye-view` wholesale. Camera catalogues stay in
   this fork's three file packs (Canada, US, international) plus live Austin,
-  Caltrans and TfL overlays. Public CCTV stays free of private/Arlo cameras.
+  Caltrans and TfL overlays. Public CCTV stays free of private/Private_CCTV_Feed cameras.
   Area loading stays at most 1,000 cameras within 50 km. Street-traffic sprites
   stay above CCTV coverage and the open camera picture.
 

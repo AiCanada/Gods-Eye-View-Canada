@@ -395,6 +395,14 @@ snapshot address, use username + password.
 
 ### Security at a glance
 
+- An Ultra Security Package (POWER UP → YOUR DEVICES) follows a tracker or a
+  phone on the map and can save what the map knows within 50 km of it, under
+  the git-ignored `config/device-recordings/`, never served as a file. A phone
+  is reached only through an app installed on it, never by its number.
+- Your drones, robots, marine drones and GPS trackers (POWER UP → YOUR DEVICES)
+  follow the same rules: addresses and logins stay in the git-ignored
+  `config/device-feeds.json`, the routes answer only this machine, and the map
+  is told a name and a position, never an address or a login.
 - Private camera settings live in the git-ignored, owner-only
   `config/private-cameras.json`, which the server never hands out as a file.
   POWER UP shows only whether a password or token is saved, never its value.

@@ -23,12 +23,17 @@ import cctvLayer, {
   CCTV_PROJECTION_OVERLAY_SOURCE_OPTIONS,
   _createCctvProjectionAppearanceForTest,
   _createCctvProjectionPlaneForTest,
+  _projectionImageSourceForTest,
   _extractPickedCameraIdForTest,
   _updateCctvProjectionPlaneForTest,
   _setCctvCoverageStateForTest,
   _pushAmbientCardEntriesForTest,
   _setCctvOverlayHostForTest,
   activationProbeClampRange,
+  expectedMonitorRangeM,
+  nearFieldRoadSpot,
+  roadMatchDirection,
+  sightLineGroundHitM,
   bindCctvWorldClickGesture,
   clearProbeClampOnDeactivation,
   computeFrustumGeometry,
@@ -1296,4 +1301,98 @@ test('frameSignatureFromPixels: empty or junk input yields null (always redraw)'
   assert.equal(frameSignatureFromPixels(null), null);
   assert.equal(frameSignatureFromPixels(undefined), null);
   assert.equal(frameSignatureFromPixels({}), null);
+});
+
+test('an idle thumbnail stands where the monitor picture will open, not at the full pose range', () => {
+  const road = { rangeM: 500, pitchDeg: -6, mountHeightM: 10 };
+  // Flat ground: a 10 m mount pitched 6 degrees down meets the road 95.7 m out,
+  // and the picture opens 4 m short of that, as the activation clamp does.
+  const flat = expectedMonitorRangeM(road);
+  assert.ok(Math.abs(flat - (10 / Math.sin((6 * Math.PI) / 180) - 4)) < 0.01, String(flat));
+  // Loaded terrain beats the flat guess; a clear sight line means no clamp.
+  assert.equal(expectedMonitorRangeM(road, { groundHitM: 45 }), 41);
+  assert.equal(expectedMonitorRangeM(road, { groundHitM: Infinity }), null);
+  // What the last activation's probe found beats both, a miss included.
+  assert.equal(expectedMonitorRangeM(road, { probed: { rangeM: 40 }, groundHitM: 45 }), 40);
+  assert.equal(expectedMonitorRangeM(road, { probed: { rangeM: null }, groundHitM: 45 }), null);
+  // The live clamp beats everything.
+  assert.equal(expectedMonitorRangeM(road, { liveClampM: 33, probed: { rangeM: 40 } }), 33);
+  // A level or upward camera, and a hand-set range, are never clamped.
+  assert.equal(expectedMonitorRangeM({ ...road, pitchDeg: 0 }), null);
+  assert.equal(expectedMonitorRangeM({ ...road, pitchDeg: 5 }), null);
+  assert.equal(expectedMonitorRangeM({ ...road, calibration: { rangeScale: 0.5 } }), null);
+  // A hit beyond the pose range does not shorten it.
+  assert.equal(expectedMonitorRangeM({ rangeM: 60, pitchDeg: -6, mountHeightM: 10 }), null);
+});
+
+test('the sight line is stepped against the terrain beneath it', () => {
+  const pitchRad = (-6 * Math.PI) / 180;
+  // Flat terrain at 0 m under a 10 m mount: the crossing is interpolated.
+  const flat = sightLineGroundHitM({ mountAltM: 10, pitchRad, maxM: 400, heightAt: () => 0 });
+  assert.ok(Math.abs(flat - 10 / Math.sin(-pitchRad)) < 0.01, String(flat));
+  // Rising ground is met sooner.
+  const rising = sightLineGroundHitM({ mountAltM: 10, pitchRad, maxM: 400, heightAt: (d) => d * 0.1 });
+  assert.ok(rising > 45 && rising < 50, String(rising));
+  // Falling away faster than the line drops: clear the whole way.
+  assert.equal(sightLineGroundHitM({ mountAltM: 10, pitchRad, maxM: 400, heightAt: (d) => -d }), Infinity);
+  // Unloaded terrain gives no opinion, and an upward camera has no ground hit.
+  assert.equal(sightLineGroundHitM({ mountAltM: 10, pitchRad, maxM: 400, heightAt: () => undefined }), null);
+  assert.equal(sightLineGroundHitM({ mountAltM: 10, pitchRad: 0.1, maxM: 400, heightAt: () => 0 }), null);
+});
+
+test('a sight line that starts under the terrain gives no opinion, not a hit at the first step', () => {
+  const pitchRad = (-6 * Math.PI) / 180;
+  // Mount altitude from a coarse ground prior, loaded terrain 8 m above it.
+  assert.equal(sightLineGroundHitM({ mountAltM: 10, pitchRad, maxM: 500, heightAt: () => 18 }), null);
+  // No opinion means the flat-ground estimate, not the 12 m floor on the camera icon.
+  const flat = expectedMonitorRangeM({ rangeM: 500, pitchDeg: -6, mountHeightM: 10 }, { groundHitM: null });
+  assert.ok(flat > 90, String(flat));
+});
+
+test('the bottom edge of a road camera picture meets the road just ahead of the camera', () => {
+  // 10 m mount, 6 degrees down, 70 degree lens, 16:9 picture.
+  const spot = nearFieldRoadSpot({ pitchDeg: -6, fovDeg: 70, mountHeightM: 10 });
+  assert.ok(spot.forwardM > 17 && spot.forwardM < 21, String(spot.forwardM));
+  assert.ok(spot.widthM > 27 && spot.widthM < 33, String(spot.widthM));
+  // A steeper camera looks at road nearer its foot, across a narrower strip.
+  const steep = nearFieldRoadSpot({ pitchDeg: -30, fovDeg: 70, mountHeightM: 10 });
+  assert.ok(steep.forwardM < spot.forwardM && steep.widthM < spot.widthM);
+  // A higher mount sees a wider strip, farther out.
+  const high = nearFieldRoadSpot({ pitchDeg: -6, fovDeg: 70, mountHeightM: 20 });
+  assert.ok(Math.abs(high.widthM - spot.widthM * 2) < 0.01 && Math.abs(high.forwardM - spot.forwardM * 2) < 0.01);
+  // A camera whose lower edge never comes down has no road spot.
+  assert.equal(nearFieldRoadSpot({ pitchDeg: 25, fovDeg: 40, mountHeightM: 10 }), null);
+});
+
+test('a road-matched thumbnail runs along the real road, the way the camera faces when that is known', () => {
+  // Known heading 40, road line 45/225: the road end nearest the heading.
+  assert.deepEqual(roadMatchDirection({ headingDeg: 40, headingKnown: true, roadBearingDeg: 45 }), { alongDeg: 45, ambiguous: false, onRoad: true });
+  assert.deepEqual(roadMatchDirection({ headingDeg: 230, headingKnown: true, roadBearingDeg: 45 }), { alongDeg: 225, ambiguous: false, onRoad: true });
+  // Looking plainly ACROSS the road: the camera's own heading stands.
+  assert.deepEqual(roadMatchDirection({ headingDeg: 135, headingKnown: true, roadBearingDeg: 45 }), { alongDeg: 135, ambiguous: false, onRoad: false });
+  // Heading unknown: the road's line, direction left to the painter.
+  assert.deepEqual(roadMatchDirection({ headingDeg: 0, headingKnown: false, roadBearingDeg: 45 }), { alongDeg: 45, ambiguous: true, onRoad: true });
+  // No road loaded: the heading when known, nothing when not (the card stays upright).
+  assert.deepEqual(roadMatchDirection({ headingDeg: 370, headingKnown: true, roadBearingDeg: null }), { alongDeg: 10, ambiguous: false, onRoad: false });
+  assert.equal(roadMatchDirection({ headingDeg: 0, headingKnown: false, roadBearingDeg: null }), null);
+});
+
+test('the map plane is handed the freshly swapped buffer, so its picture actually refreshes', () => {
+  // Cesium re-uploads a canvas texture only when the uniform gets a NEW object.
+  // The plane was always handed the one working canvas: uploaded once (usually
+  // as the placeholder) and never again, so the panel showed the camera and the
+  // map showed a dark plane, for every still camera in every pack.
+  const canvas = { name: 'working canvas' };
+  const buffers = [{ name: 'buffer 0' }, { name: 'buffer 1' }];
+  const runtime = { canvas, buffers, bufferIndex: 0 };
+  assert.equal(_projectionImageSourceForTest(runtime), buffers[0]);
+  runtime.bufferIndex = 1;
+  assert.equal(_projectionImageSourceForTest(runtime), buffers[1], 'a swap changes the object the plane sees');
+  assert.notEqual(_projectionImageSourceForTest(runtime), canvas);
+  // Before the first swap there are no buffers yet: the working canvas (placeholder) stands in.
+  assert.equal(_projectionImageSourceForTest({ canvas }), canvas);
+  // A video feed binds its element directly; Cesium refreshes that itself.
+  const video = { name: 'video' };
+  assert.equal(_projectionImageSourceForTest({ video, canvas, buffers, bufferIndex: 1 }), video);
+  assert.equal(_projectionImageSourceForTest(null), null);
 });

@@ -1,25 +1,25 @@
-// GEV Arlo Feed Relay content script (isolated world, top frame of my.arlo.com).
+// GEV Private_CCTV_Feed Relay content script (isolated world, top frame of the camera site feed).
 // It reads what the feed page already shows (camera name, clip label and the
 // newest thumbnail address per camera) and hands it to this extension's service
 // worker, which does all network work. It never clicks, scrolls, reloads or
 // navigates the page, never reads storage or cookies and never touches the
 // page's own JavaScript.
 //
-// A thumbnail is downloaded from Arlo only when GEV will take it: the heartbeat
+// A thumbnail is downloaded from Private_CCTV_Feed only when GEV will take it: the heartbeat
 // goes first, and its answer says whether GEV accepts this relay, which of the
 // cameras seen here still need a picture and which names match no camera. A
 // refused thumbnail is never fetched again; other failures back off.
-(function startGevArloFeedRelay() {
+(function startGevPrivateCctvFeedRelay() {
   'use strict';
 
-  const relay = globalThis.GevArloRelay;
+  const relay = globalThis.GevPrivateCctvFeedRelay;
   if (!relay || typeof chrome !== 'object' || !chrome || !chrome.runtime) return;
 
   const DEBOUNCE_MS = 1500;
   const MAX_DEBOUNCE_WAIT_MS = 10000;
   const HEARTBEAT_MS = 120000;
   // While GEV does not take the relay (not paired or approved yet, not running),
-  // only a heartbeat goes out, every 15 seconds: no Arlo traffic at all.
+  // only a heartbeat goes out, every 15 seconds: no Private_CCTV_Feed traffic at all.
   const NOT_READY_CHECK_MS = 15000;
   // A feed page still drawing is not reported as an unknown layout this early.
   const STARTUP_GRACE_MS = 20000;
@@ -216,7 +216,7 @@
       return;
     }
     const { state, newest } = readFeed();
-    // Another Arlo page in this tab says nothing, so it never contradicts a tab reading the feed.
+    // Another Private_CCTV_Feed page in this tab says nothing, so it never contradicts a tab reading the feed.
     if (!relay.isReportablePage(state, location)) return;
     const now = Date.now();
     if (state === 'layout-unknown' && now - startedAt < STARTUP_GRACE_MS) {

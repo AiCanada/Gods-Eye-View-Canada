@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -35,4 +36,18 @@ test('the browser still refreshes at most once a minute, whatever the app asks f
   assert.equal(new URL(slow).searchParams.get('gev'), String(Math.floor(now / (5 * 60000))), 'a slower cadence is kept');
   const withQuery = browserDirectFrameUrl({ browserImageUrl: 'https://a.example/cam.jpg?size=large' }, 0, now);
   assert.equal(new URL(withQuery).searchParams.get('size'), 'large', 'existing query parameters survive');
+});
+
+test('a browser-direct camera gets a map thumbnail: its card loads the operator still, without asking for CORS', () => {
+  const source = readFileSync(new URL('./cctv.js', import.meta.url), 'utf8');
+  const start = source.indexOf('function fetchCardFrame(');
+  const end = source.indexOf('/** Starts the card-frame pacer');
+  assert.ok(start > 0 && end > start);
+  const body = source.slice(start, end);
+  assert.match(body, /image\.src = cardFrameUrl\(record\.camera, refreshMs\)/);
+  assert.match(body, /isBrowserDirect\(camera\)\s*\?\s*browserDirectFrameUrl\(camera, refreshMs\)\s*:\s*frameUrlFor\(camera, refreshMs\)/);
+  // The old gate parked these cards on a placeholder.
+  assert.doesNotMatch(body, /if \(isBrowserDirect\(record\.camera\)/);
+  // Asking for CORS would make the operator's header-less answer fail to load.
+  assert.doesNotMatch(body, /\.crossOrigin\s*=/);
 });

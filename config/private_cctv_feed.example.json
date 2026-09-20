@@ -1,0 +1,5 @@
+{
+  "feedUrl": "https://cameras.example.com/#/feed",
+  "imageHosts": ["clips-1.example.com", "clips-2.example.com"],
+  "cloudHostSuffixes": ["example.com"]
+}

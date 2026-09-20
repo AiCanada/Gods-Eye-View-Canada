@@ -7,7 +7,7 @@ import {
   initPrivateCameraSetup,
   isRelaySite,
   privateCameraAuthChoices,
-  relayArloNameOverride,
+  relayPrivateCctvFeedNameOverride,
   relayCameraLine,
   relayOriginWarning,
   relayPairedText,
@@ -23,16 +23,16 @@ const PIN = 'AB'.repeat(32);
 const LOCATION = { name: 'Home', postalCode: '', address: '42 Charlotte St', lat: '45.2733', lon: '-66.0633', locationLabel: '42 Charlotte St, Saint John' };
 const TYPED = { bridgeUrl: 'https://ha.local:8123', token: 'typed-token', username: 'me@example.com', password: 'typed password', tlsFingerprint: PIN };
 const CREDENTIAL_KEYS = ['bridgeUrl', 'token', 'username', 'password', 'tlsFingerprint'];
-const NOT_CONNECTED = 'Relay not connected — open your my.arlo.com feed in Chrome with the extension installed';
+const NOT_CONNECTED = 'Relay not connected — open your camera site feed in Chrome with the extension installed';
 const NOT_PAIRED = 'Relay not paired — open the extension options, press PAIR WITH GODS EYE VIEW and approve the request here';
-const RELAY_HINT = 'Arlo camera name (blank = same as Name)';
+const RELAY_HINT = 'Private_CCTV_Feed camera name (blank = same as Name)';
 const NOW = Date.UTC(2026, 8, 13, 18, 0, 0);
 
 function relaySite(relay = {}, cameras = []) {
   return { id: 'home', name: 'Home', auth: 'relay', relay: { paired: true, extensionId: EXTENSION_ID, state: null, lastHeartbeatAt: null, connected: false, unknownNames: [], ...relay }, cameras };
 }
 
-test('relay mode sends auth relay, leaves out every bridge and login key, and allows a blank Arlo name', () => {
+test('relay mode sends auth relay, leaves out every bridge and login key, and allows a blank Private_CCTV_Feed name', () => {
   const body = collectPrivateSiteUpdate('home', 'home', { ...LOCATION, ...TYPED, auth: 'relay' }, [
     { id: 'front', name: 'Front', source: '', headingDeg: 'S' },
     { id: '', name: 'Back Yard', source: 'backyard', headingDeg: '' },
@@ -56,7 +56,7 @@ test('relay mode sends auth relay, leaves out every bridge and login key, and al
 });
 
 test('token and login modes send exactly what they did before the relay', () => {
-  const cameras = [{ id: 'front', name: 'Front', source: 'camera.aarlo_front', headingDeg: 'N' }];
+  const cameras = [{ id: 'front', name: 'Front', source: 'camera.privatecam_front', headingDeg: 'N' }];
   assert.deepEqual(collectPrivateSiteUpdate('home', 'home', { ...LOCATION, ...TYPED, auth: 'token' }, cameras), {
     kind: 'home',
     name: 'Home',
@@ -72,7 +72,7 @@ test('token and login modes send exactly what they did before the relay', () => 
     lat: 45.2733,
     lon: -66.0633,
     locationLabel: '42 Charlotte St, Saint John',
-    cameras: [{ id: 'front', name: 'Front', source: 'camera.aarlo_front', headingDeg: 'N' }],
+    cameras: [{ id: 'front', name: 'Front', source: 'camera.privatecam_front', headingDeg: 'N' }],
   });
   const login = collectPrivateSiteUpdate('home', '', { ...LOCATION, bridgeUrl: 'https://ha.local:8123', auth: 'login', token: '', username: 'me', password: '', tlsFingerprint: '' }, cameras);
   assert.equal(login.auth, 'login');
@@ -88,15 +88,15 @@ test('token and login modes send exactly what they did before the relay', () => 
 
 test('relay status text follows the heartbeat state, and a stale heartbeat reads as not connected', () => {
   const beat = { connected: true, lastHeartbeatAt: NOW - 60_000 };
-  assert.equal(relayStatusText(relaySite({ ...beat, state: 'feed' }), NOW), 'Relay connected — reading your Arlo feed');
-  assert.equal(relayStatusText(relaySite({ ...beat, state: 'signed-out' }), NOW), 'Arlo signed out — open my.arlo.com and sign in to refresh pictures');
-  assert.equal(relayStatusText(relaySite({ ...beat, state: 'no-cards' }), NOW), 'Your Arlo feed has no clips loaded');
-  assert.equal(relayStatusText(relaySite({ ...beat, state: 'layout-unknown' }), NOW), 'Arlo feed layout not recognised — the relay needs an update');
+  assert.equal(relayStatusText(relaySite({ ...beat, state: 'feed' }), NOW), 'Relay connected — reading your Private_CCTV_Feed feed');
+  assert.equal(relayStatusText(relaySite({ ...beat, state: 'signed-out' }), NOW), 'Private_CCTV_Feed signed out — open your camera site and sign in to refresh pictures');
+  assert.equal(relayStatusText(relaySite({ ...beat, state: 'no-cards' }), NOW), 'Your Private_CCTV_Feed feed has no clips loaded');
+  assert.equal(relayStatusText(relaySite({ ...beat, state: 'layout-unknown' }), NOW), 'Private_CCTV_Feed feed layout not recognised — the relay needs an update');
   assert.equal(relayStatusText(relaySite(), NOW), NOT_CONNECTED, 'no heartbeat yet');
   assert.equal(relayStatusText(relaySite({ state: 'feed', connected: false, lastHeartbeatAt: NOW - 11 * 60_000 }), NOW), NOT_CONNECTED, 'the server says stale');
   assert.equal(relayStatusText(relaySite({ state: 'feed', connected: true, lastHeartbeatAt: NOW - 11 * 60_000 }), NOW), NOT_CONNECTED, 'stale by the time it is shown');
-  assert.equal(relayStatusText(relaySite({ state: 'signed-out', connected: false, lastHeartbeatAt: NOW - 11 * 60_000 }), NOW), 'Arlo signed out — open my.arlo.com and sign in to refresh pictures', 'matches the camera placeholder');
-  assert.equal(relayStatusText(relaySite({ ...beat, state: 'constructor' }), NOW), 'Relay connected — reading your Arlo feed', 'no prototype lookups');
+  assert.equal(relayStatusText(relaySite({ state: 'signed-out', connected: false, lastHeartbeatAt: NOW - 11 * 60_000 }), NOW), 'Private_CCTV_Feed signed out — open your camera site and sign in to refresh pictures', 'matches the camera placeholder');
+  assert.equal(relayStatusText(relaySite({ ...beat, state: 'constructor' }), NOW), 'Relay connected — reading your Private_CCTV_Feed feed', 'no prototype lookups');
   assert.equal(relayStatusText({ auth: 'relay' }, NOW), NOT_PAIRED);
   assert.equal(relayStatusText(relaySite({ paired: false, extensionId: '' }), NOW), NOT_PAIRED, 'an unpaired site says how to pair before anything else');
   assert.deepEqual(
@@ -128,7 +128,7 @@ test('paired, pairing request, unknown camera and per-camera lines', () => {
   assert.equal(relayPairedText({ relay: null }), 'Not paired');
   assert.equal(relayPendingText({ extensionId: EXTENSION_ID, code: 'K7PM3Q', expiresInSeconds: 90 }), `Pairing request from extension ${EXTENSION_ID} — code K7PM3Q`);
   assert.equal(relayPendingText(null), '');
-  assert.equal(relayUnknownNamesText(relaySite({ unknownNames: ['garage', 'front door'] })), "Your Arlo feed has cameras named “garage”, “front door” that match no camera here — set a camera's Arlo name");
+  assert.equal(relayUnknownNamesText(relaySite({ unknownNames: ['garage', 'front door'] })), "Your Private_CCTV_Feed feed has cameras named “garage”, “front door” that match no camera here — set a camera's Private_CCTV_Feed name");
   assert.equal(relayUnknownNamesText(relaySite()), '');
   const at = new Date(2026, 8, 13, 14, 2, 30).getTime();
   assert.equal(relayCameraLine({ name: 'Front', lastFrameAt: at, lastClip: 'Motion · 13 · 2:02 PM' }), 'Front: last clip picture 14:02 (Motion · 13 · 2:02 PM)');
@@ -141,7 +141,7 @@ test('paired, pairing request, unknown camera and per-camera lines', () => {
   assert.deepEqual(lines.requests.map((request) => request.text), [`Pairing request from extension ${EXTENSION_ID} — code K7PM3Q`]);
 });
 
-test('home sites offer the relay only when the server accepts it, and relay rows ask for the Arlo camera name', () => {
+test('home sites offer the relay only when the server accepts it, and relay rows ask for the Private_CCTV_Feed camera name', () => {
   assert.deepEqual(
     privateCameraAuthChoices({ authModes: ['token', 'login', 'relay'] }).map(([value, label]) => [value, label]),
     [
@@ -151,14 +151,14 @@ test('home sites offer the relay only when the server accepts it, and relay rows
     ],
   );
   assert.deepEqual(privateCameraAuthChoices({ authModes: ['token', 'login'] }).map(([value]) => value), ['token', 'login']);
-  const home = { id: 'home', sourceHint: 'camera.aarlo_front or a bridge snapshot URL' };
+  const home = { id: 'home', sourceHint: 'camera.privatecam_front or a bridge snapshot URL' };
   assert.deepEqual(cameraSourceField(home, {}, true), { placeholder: RELAY_HINT, label: RELAY_HINT });
-  assert.deepEqual(cameraSourceField(home, { arloName: 'backyard' }, true), { placeholder: 'Arlo name “backyard” — saved (type the Name to clear)', label: RELAY_HINT });
-  assert.deepEqual(cameraSourceField(home, { source: 'camera.aarlo_front' }, false), { placeholder: 'camera.aarlo_front — saved', label: 'Camera entity or snapshot URL' });
+  assert.deepEqual(cameraSourceField(home, { privateCctvFeedName: 'backyard' }, true), { placeholder: 'Private_CCTV_Feed name “backyard” — saved (type the Name to clear)', label: RELAY_HINT });
+  assert.deepEqual(cameraSourceField(home, { source: 'camera.privatecam_front' }, false), { placeholder: 'camera.privatecam_front — saved', label: 'Camera entity or snapshot URL' });
   assert.deepEqual(cameraSourceField({ id: 'business', sourceHint: 'https://192.168.1.64/snap.jpg' }, {}, false), { placeholder: 'https://192.168.1.64/snap.jpg', label: 'Snapshot URL' });
-  assert.equal(relayArloNameOverride({ name: 'Back  Yard', matchName: 'back yard' }), '');
-  assert.equal(relayArloNameOverride({ name: 'Back Yard', matchName: 'backyard' }), 'backyard');
-  assert.equal(relayArloNameOverride({ name: 'Front' }), '');
+  assert.equal(relayPrivateCctvFeedNameOverride({ name: 'Back  Yard', matchName: 'back yard' }), '');
+  assert.equal(relayPrivateCctvFeedNameOverride({ name: 'Back Yard', matchName: 'backyard' }), 'backyard');
+  assert.equal(relayPrivateCctvFeedNameOverride({ name: 'Front' }), '');
   assert.equal(isRelaySite(relaySite()), true);
   assert.equal(isRelaySite({ auth: 'token', relay: { paired: false } }), false);
   assert.equal(isRelaySite({ auth: 'relay', relay: null }), false);
@@ -268,17 +268,17 @@ class FakeElement {
 }
 
 function statusFixture({ relay = {}, pending = null, cameras } = {}) {
-  const camera = (id, name, matchName, extra = {}) => ({ id, name, source: '', headingDeg: 180, facing: 'S', placed: true, arloWebsite: false, matchName, lastFrameAt: null, lastClip: '', ...extra });
+  const camera = (id, name, matchName, extra = {}) => ({ id, name, source: '', headingDeg: 180, facing: 'S', placed: true, privateCctvFeedWebsite: false, matchName, lastFrameAt: null, lastClip: '', ...extra });
   return {
     editable: true,
     relayPending: pending,
     kinds: [
       {
         id: 'home',
-        title: 'HOME SECURITY · ARLO',
-        unlocks: 'Your Arlo cameras',
-        feedUrl: 'https://my.arlo.com/#/feed',
-        sourceHint: 'camera.aarlo_front or a bridge snapshot URL',
+        title: 'HOME SECURITY · PRIVATE_CCTV_FEED',
+        unlocks: 'Your Private_CCTV_Feed cameras',
+        feedUrl: 'https://feed.private-cctv.example/#/feed',
+        sourceHint: 'camera.privatecam_front or a bridge snapshot URL',
         authModes: ['token', 'login', 'relay'],
         sites: [
           {
@@ -298,7 +298,7 @@ function statusFixture({ relay = {}, pending = null, cameras } = {}) {
             passwordSet: true,
             tlsFingerprint: '',
             transport: 'relay',
-            arloWebsite: false,
+            privateCctvFeedWebsite: false,
             relay: { paired: false, extensionId: '', state: null, lastHeartbeatAt: null, connected: false, unknownNames: [], ...relay },
             cameras: cameras || [camera('front', 'Front', 'front'), camera('ff', 'Ff', 'ff'), camera('back-yard', 'Back Yard', 'backyard')],
           },
@@ -319,9 +319,9 @@ function statusFixture({ relay = {}, pending = null, cameras } = {}) {
             passwordSet: false,
             tlsFingerprint: '',
             transport: 'https',
-            arloWebsite: false,
+            privateCctvFeedWebsite: false,
             relay: { paired: false, extensionId: '' },
-            cameras: [camera('porch', 'Porch', 'camera.aarlo_porch', { source: 'camera.aarlo_porch', placed: false })],
+            cameras: [camera('porch', 'Porch', 'camera.privatecam_porch', { source: 'camera.privatecam_porch', placed: false })],
           },
         ],
       },
@@ -347,7 +347,7 @@ const flush = async () => {
   for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
 };
 
-test('an Arlo site still pointing at my.arlo.com is told about the browser feed relay, and the warning goes once the relay is chosen', async (t) => {
+test('a Private_CCTV_Feed site still pointing at feed.private-cctv.example is told about the browser feed relay, and the warning goes once the relay is chosen', async (t) => {
   t.mock.timers.enable({ apis: ['setInterval'] });
   const documentRef = { createElement: (tag) => new FakeElement(tag) };
   const dialog = new FakeElement('div');
@@ -358,18 +358,18 @@ test('an Arlo site still pointing at my.arlo.com is told about the browser feed 
   Object.assign(saved, {
     auth: 'login',
     transport: 'none',
-    arloWebsite: true,
+    privateCctvFeedWebsite: true,
     relay: { paired: false, extensionId: '' },
-    cameras: saved.cameras.map((camera) => ({ ...camera, source: 'https://my.arlo.com/#/feed', arloWebsite: true, matchName: camera.name.toLowerCase() })),
+    cameras: saved.cameras.map((camera) => ({ ...camera, source: 'https://feed.private-cctv.example/#/feed', privateCctvFeedWebsite: true, matchName: camera.name.toLowerCase() })),
   });
   const setup = initPrivateCameraSetup({ host, documentRef, fetchImpl: fakeServer(status).fetch });
   await flush();
   const home = host.querySelector('[data-site-id="home"]');
-  const warning = home.querySelectorAll('.private-cams-warning').find((node) => /Arlo website/.test(node.textContent));
-  assert.ok(warning, 'the Arlo website warning is shown');
+  const warning = home.querySelectorAll('.private-cams-warning').find((node) => /Private_CCTV_Feed website/.test(node.textContent));
+  assert.ok(warning, 'the Private_CCTV_Feed website warning is shown');
   assert.equal(warning.hidden, false);
   assert.match(warning.textContent, /Use a local bridge/);
-  assert.match(warning.textContent, /choose “Browser feed relay \(Chrome extension\)” below to receive clip pictures from your own signed-in my\.arlo\.com feed \(your saved login stays saved\)/);
+  assert.match(warning.textContent, /choose “Browser feed relay \(Chrome extension\)” below to receive clip pictures from your own signed-in camera site feed \(your saved login stays saved\)/);
   const auth = home.querySelector('[data-field="auth"]');
   assert.equal(auth.value, 'login');
   auth.value = 'relay';
@@ -397,8 +397,8 @@ test('POWER UP shows the relay panel, refreshes it in place without touching typ
   for (const name of CREDENTIAL_KEYS) assert.equal(loginField(home, name).hidden, true, `${name} hidden in relay mode`);
   const relayBox = home.querySelector('.private-cams-relay');
   assert.equal(relayBox.hidden, false);
-  assert.match(relayBox.querySelector('.private-cams-warning').textContent, /terms of service prohibit data-extraction tools and allow Arlo to close accounts/);
-  assert.match(relayBox.querySelector('.private-cams-relay-steps').textContent, /npm run arlo-relay:install.*chrome:\/\/extensions.*Always keep these sites active/);
+  assert.match(relayBox.querySelector('.private-cams-warning').textContent, /terms of service prohibit data-extraction tools and allow Private_CCTV_Feed to close accounts/);
+  assert.match(relayBox.querySelector('.private-cams-relay-steps').textContent, /npm run private-cctv-feed-relay:install.*chrome:\/\/extensions.*Always keep these sites active/);
   assert.equal(home.querySelector('.private-cams-relay-status').textContent, NOT_PAIRED);
   assert.equal(home.querySelector('.private-cams-relay-paired').textContent, 'Not paired');
   assert.deepEqual(home.querySelectorAll('.private-cams-relay-cameras li').map((line) => line.textContent), ['Front: waiting for a clip', 'Ff: waiting for a clip', 'Back Yard: waiting for a clip']);
@@ -407,8 +407,8 @@ test('POWER UP shows the relay panel, refreshes it in place without touching typ
   assert.match(relayBox.querySelector('.private-cams-relay-steps').textContent, /APPROVE only the request here whose code and extension ID both match the options page/);
   assert.equal(home.querySelector('.private-cams-relay-unpair'), null, 'nothing to unpair yet');
   const sources = home.querySelectorAll('.private-cams-cameras [data-field="source"]');
-  assert.deepEqual(sources.map((field) => field.placeholder), [RELAY_HINT, RELAY_HINT, 'Arlo name “backyard” — saved (type the Name to clear)']);
-  assert.equal(home.querySelector('.private-cams-camera-head').children[1].textContent, 'ARLO CAMERA NAME');
+  assert.deepEqual(sources.map((field) => field.placeholder), [RELAY_HINT, RELAY_HINT, 'Private_CCTV_Feed name “backyard” — saved (type the Name to clear)']);
+  assert.equal(home.querySelector('.private-cams-camera-head').children[1].textContent, 'PRIVATE_CCTV_FEED CAMERA NAME');
 
   const cottage = host.querySelector('[data-site-id="cottage"]');
   assert.equal(cottage.querySelector('.private-cams-relay').hidden, true);
@@ -432,7 +432,7 @@ test('POWER UP shows the relay panel, refreshes it in place without touching typ
   assert.equal(home.querySelector('.private-cams-site-head [data-field="name"]'), siteName);
   assert.equal(siteName.value, 'Typed site name');
   assert.equal(sources[2].value, 'back yard');
-  assert.equal(home.querySelector('.private-cams-relay-status').textContent, 'Relay connected — reading your Arlo feed');
+  assert.equal(home.querySelector('.private-cams-relay-status').textContent, 'Relay connected — reading your Private_CCTV_Feed feed');
   assert.equal(home.querySelector('.private-cams-relay-status').dataset.tone, 'ok');
   assert.equal(home.querySelector('.private-cams-relay-paired').textContent, `Paired with extension ${EXTENSION_ID}`);
   assert.equal(home.querySelector('.private-cams-relay-cameras li').textContent, 'Front: last clip picture 14:02 (Motion · 2:02 PM)');
@@ -490,7 +490,7 @@ test('POWER UP shows the relay panel, refreshes it in place without touching typ
   assert.equal(loginField(home, 'bridgeUrl').hidden, false);
   assert.equal(loginField(home, 'token').hidden, false);
   assert.equal(relayBox.hidden, true);
-  assert.equal(sources[0].placeholder, 'camera.aarlo_front or a bridge snapshot URL');
+  assert.equal(sources[0].placeholder, 'camera.privatecam_front or a bridge snapshot URL');
   auth.value = 'relay';
   auth.dispatch('change');
   loginField(home, 'password').value = 'typed but hidden';

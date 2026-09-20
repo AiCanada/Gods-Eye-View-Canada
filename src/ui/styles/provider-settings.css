@@ -635,7 +635,7 @@ body.scene-playback-mode #key-setup {
   }
 }
 
-/* Arlo browser feed relay: status, pairing request and setup steps of a home
+/* Private_CCTV_Feed browser feed relay: status, pairing request and setup steps of a home
    site set to "Browser feed relay". */
 .private-cams-transport[data-transport='relay'] {
   color: rgba(54, 220, 255, 0.88);
@@ -784,4 +784,103 @@ body.scene-playback-mode #key-setup {
     grid-row: auto;
     justify-self: start;
   }
+}
+
+/* YOUR DEVICES: drones, robots, marine drones and GPS trackers
+   (src/deviceFeedsSetup.js). Reuses the private-camera card language. */
+.device-feeds-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.device-feeds-feed {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.5rem 0.55rem;
+  background: rgba(4, 14, 20, 0.38);
+  border: 1px solid rgba(100, 200, 220, 0.16);
+  border-radius: 0.36rem;
+}
+
+.device-feeds-feed-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.device-feeds-paths,
+.device-feeds-fixed {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.device-feeds-feed [hidden] {
+  display: none;
+}
+
+.device-feeds-feed input,
+.device-feeds-feed select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.36rem 0.45rem;
+  color: rgba(225, 244, 248, 0.92);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  background: rgba(4, 14, 20, 0.72);
+  border: 1px solid rgba(100, 200, 220, 0.22);
+  border-radius: 0.3rem;
+}
+
+.device-feeds-feed input:focus,
+.device-feeds-feed select:focus {
+  border-color: rgba(54, 220, 255, 0.65);
+  outline: none;
+}
+
+.device-feeds-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+}
+
+.device-feeds-option {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  color: rgba(225, 244, 248, 0.88);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.05rem;
+  cursor: pointer;
+}
+
+.device-feeds-feed .device-feeds-option input {
+  width: auto;
+  padding: 0;
+  accent-color: #36dcff;
+}
+
+.device-feeds-state,
+.device-feeds-bridge {
+  margin: 0;
+  color: rgba(170, 205, 215, 0.78);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.04rem;
+}
+
+.device-feeds-state:empty {
+  display: none;
+}
+
+.device-feeds-state[data-ok='true'] {
+  color: rgba(84, 227, 156, 0.9);
+}
+
+.device-feeds-bridge {
+  padding: 0.3rem 0.45rem;
+  color: rgba(255, 210, 74, 0.9);
+  border-left: 2px solid rgba(255, 210, 74, 0.6);
 }

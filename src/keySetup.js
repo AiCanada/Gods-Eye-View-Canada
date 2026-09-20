@@ -1,5 +1,6 @@
 import { createSurfaceKeyboard } from './ui/surfaceKeyboard.js';
 import { initPrivateCameraSetup } from './privateCamerasSetup.js';
+import { initDeviceFeedSetup } from './deviceFeedsSetup.js';
 
 /**
  * The POWER UP surface — paste a key, get a power.
@@ -18,9 +19,28 @@ import { initPrivateCameraSetup } from './privateCamerasSetup.js';
  */
 
 /** Chip label — pure, exported for tests. */
-export function keySetupChipLabel(status) {
-  const missing = Math.max(0, (status?.total || 0) - (status?.setCount || 0));
-  return missing > 0 ? `POWER UP · ${missing} ${missing === 1 ? 'KEY' : 'KEYS'} WAITING` : 'POWERED UP';
+export function keySetupChipLabel(status, sections = []) {
+  const { missing } = keySetupPowerUpCount(status, sections);
+  if (missing <= 0) return 'POWERED UP';
+  // Once the sections are known, what is waiting is not only keys.
+  if (sections.length) return `POWER UP · ${missing} WAITING`;
+  return `POWER UP · ${missing} ${missing === 1 ? 'KEY' : 'KEYS'} WAITING`;
+}
+
+/**
+ * Every power-up on the dashboard, counted once each: the provider keys (an
+ * alternatives group is one), and the sections that hold the owner's own things
+ * (home cameras, business cameras, drones, robots, marine drones, trackers,
+ * security packages), each ON when it holds at least one. Pure.
+ * @param {{setCount?: number, total?: number}|null} status
+ * @param {Array<{id: string, set: boolean}>} [sections]
+ * @returns {{on: number, total: number, missing: number}}
+ */
+export function keySetupPowerUpCount(status, sections = []) {
+  const list = Array.isArray(sections) ? sections : [];
+  const total = (status?.total || 0) + list.length;
+  const on = Math.min(status?.setCount || 0, status?.total || 0) + list.filter((section) => section?.set === true).length;
+  return { on, total, missing: Math.max(0, total - on) };
 }
 
 /**
@@ -186,6 +206,11 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
   const privateHost = rowsHost && documentRef.createElement ? documentRef.createElement('div') : null;
   if (privateHost) privateHost.className = 'private-cams';
   let privateSetup = null;
+  // YOUR DEVICES: drones, robots, marine drones and GPS trackers, rendered after
+  // the cameras and kept across re-renders the same way (src/deviceFeedsSetup.js).
+  const deviceHost = rowsHost && documentRef.createElement ? documentRef.createElement('div') : null;
+  if (deviceHost) deviceHost.className = 'private-cams device-feeds';
+  let deviceSetup = null;
   const applyButton = root.querySelector('[data-key-setup-apply]');
   const closeButton = root.querySelector('[data-key-setup-close]');
   const chipLabel = chip.querySelector('[data-key-setup-chip-label]') || chip;
@@ -194,17 +219,31 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
   let busy = false;
   let open = false;
 
+  // The sections report what they hold as soon as they know (and again after
+  // every save), so the chip counts every power-up, not only the keys.
+  const sectionCounts = new Map();
+  const syncChip = () => {
+    const sections = [...sectionCounts.values()].flat();
+    chipLabel.textContent = keySetupChipLabel(status, sections);
+    // Fully powered is the owner's clean screen: the chip retires. The dialog
+    // stays reachable this session (and via ?setup=1) to swap or verify keys.
+    chip.hidden = keySetupPowerUpCount(status, sections).missing <= 0;
+  };
+  const onSections = (group) => (sections) => {
+    if (disposed) return;
+    sectionCounts.set(group, Array.isArray(sections) ? sections : []);
+    syncChip();
+  };
+
   const render = (nextStatus) => {
     if (disposed) return;
     status = nextStatus;
-    chipLabel.textContent = keySetupChipLabel(status);
-    // Fully powered is the owner's clean screen: the chip retires. The dialog
-    // stays reachable this session (and via ?setup=1) to swap or verify keys.
-    chip.hidden = status.setCount >= status.total;
+    syncChip();
     if (!rowsHost) return;
     rowsHost.textContent = '';
     for (const key of status.keys || []) rowsHost.append(buildRow(documentRef, key));
     if (privateHost) rowsHost.append(privateHost);
+    if (deviceHost) rowsHost.append(deviceHost);
   };
 
   const visible = () => root.isConnected
@@ -225,6 +264,7 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
     root.hidden = false;
     // A relay pairing request made while the dialog was closed shows straight away.
     privateSetup?.refresh?.();
+    deviceSetup?.refresh?.();
     globalThis.requestAnimationFrame?.(() => {
       if (!open) return;
       root.classList.add('visible');
@@ -333,7 +373,8 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
   });
 
   render(status);
-  if (privateHost) privateSetup = initPrivateCameraSetup({ host: privateHost, documentRef, fetchImpl: doFetch, signal: lifetime.signal });
+  if (privateHost) privateSetup = initPrivateCameraSetup({ host: privateHost, documentRef, fetchImpl: doFetch, signal: lifetime.signal, onSections: onSections('cameras') });
+  if (deviceHost) deviceSetup = initDeviceFeedSetup({ host: deviceHost, documentRef, fetchImpl: doFetch, signal: lifetime.signal, onSections: onSections('devices') });
 
   // Re-entry for a fully-keyed setup, demos, and support: ?setup=1 opens the
   // dialog even though the chip has retired.
@@ -350,6 +391,7 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
     closeButton?.removeEventListener('click', close);
     applyButton?.removeEventListener('click', onApply);
     privateSetup?.destroy();
+    deviceSetup?.destroy();
   };
   return { open: openDialog, close, render, destroy };
 }

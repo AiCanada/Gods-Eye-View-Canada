@@ -77,6 +77,8 @@ import {
 import { CITY_POIS } from '../locations.js';
 import { cityIdByName } from './cctvCityMatch.js';
 import { browserDirectFrameUrl, isBrowserDirect } from './cctvBrowserDirect.js';
+import { getRoadsRevision, roadBearingNear } from './traffic.js';
+import { bearingBetween, bindCctvCardAlign } from './cctvCardAlign.js';
 import {
   registerPickOwner,
   resolvePickId,
@@ -147,6 +149,8 @@ const MAX_AUTO_HOP_SEC = 90;
 const HEALTH_SYNC_INTERVAL_MS = 7000;
 const ACTIVE_FRAME_REFRESH_MS = 10000;
 const IDLE_FRAME_REFRESH_MS = 60000;
+/** How often an idle stream camera's thumbnail is retaken from its video. */
+const STREAM_CARD_REFRESH_MS = 5 * 60 * 1000;
 const PROJECTION_ACTIVE_REFRESH_MS = 10000;
 const PROJECTION_IDLE_REFRESH_MS = 60000;
 const PROJECTION_CANVAS_WIDTH = 1920;
@@ -344,6 +348,14 @@ let _privateCamerasListener = null;
 /** Map card size chosen by dragging a card corner (cctvCardResize.js), per browser. */
 let _cardScale = loadCardScale();
 let _unbindCardResize = null;
+let _unbindCardAlign = null;
+/** The video camera the user clicked: the only one whose video may play. */
+let _videoPlayCameraId = null;
+/** Hand-made thumbnail alignments by camera id: {lat, lon, bearingDeg|null} (saved in config/cctv_thumbnail_alignments.json). */
+let _thumbAlignments = new Map();
+let _thumbAlignmentsLoaded = false;
+/** The thumbnail being aligned right now: {id, draft, saving}. */
+let _alignSession = null;
 let _unbindPrivateMove = null;
 let _lastHopAt = 0;
 let _lastViewContext = '';
@@ -444,9 +456,9 @@ const LOCATION_KEEP_ACTIVE_RADIUS_KM = 2;
 // holding card reselection after this long.
 const LOCATION_SWITCH_STALE_MS = 12_000;
 // Global static-frame pacing (owner finding 3): the pacer ticks at the burst
-// spacing (250 ms) but cardFetchPolicy gates launches — cold fill (selected
-// cards still missing their FIRST frame) allows up to 4 in-flight fetches at
-// 250 ms spacing; steady state keeps the salvaged Part C gate of at most one
+// spacing (CCTV_CARD_FETCH_BURST_SPACING_MS) but cardFetchPolicy gates
+// launches — cold fill (selected cards still missing their FIRST frame) allows
+// up to CCTV_CARD_FETCH_BURST_LIMIT in-flight fetches at that spacing; steady state keeps the salvaged Part C gate of at most one
 // request per second with an in-flight fetch blocking the tick, so slow
 // responses only lower the rate.
 const CARD_FETCH_TICK_MS = CCTV_CARD_FETCH_BURST_SPACING_MS;
@@ -679,6 +691,43 @@ function isVideoFeedType(feedType) {
  * @param {Object} camera
  * @returns {boolean}
  */
+/**
+ * Whether a camera is a video feed with no thumbnail to offer. Video plays
+ * only when its camera is clicked, so nothing is loaded for a thumbnail; once a
+ * video camera has been played, the last picture it showed is kept and becomes
+ * its thumbnail ("no current picture: show the prior one").
+ */
+function videoWithoutCardPicture(camera) {
+  if (!isVideoFeedType(normalizeFeedType(camera?.feedType))) return false;
+  // Its last picture, kept from when it was played, is its thumbnail.
+  return !_cardFrameSlots.get(camera.id)?.frame;
+}
+
+/**
+ * A video-only camera whose HLS stream the server brings to this origin
+ * (`feedType: 'hls'`): the same for every pack, Canadian, US or international,
+ * and whether the stream came from the pack or from a Road511 lookup.
+ */
+function isStreamCamera(camera) {
+  return normalizeFeedType(camera?.feedType) === 'hls';
+}
+
+let _nativeHls = null;
+/** Whether this browser plays HLS in a plain <video> (current Chrome and Safari do). */
+function nativeHlsSupported() {
+  if (_nativeHls === null) {
+    try {
+      const probe = document.createElement('video');
+      _nativeHls = Boolean(
+        probe.canPlayType('application/vnd.apple.mpegurl') || probe.canPlayType('application/x-mpegURL'),
+      );
+    } catch {
+      _nativeHls = false;
+    }
+  }
+  return _nativeHls;
+}
+
 function cameraHasStill(camera) {
   return !!camera && normalizeFeedType(camera.feedType) !== 'none';
 }
@@ -1109,6 +1158,130 @@ export function activationProbeClampRange(rangeM, hitDistanceM) {
 }
 
 /**
+ * The range a camera's monitor picture is EXPECTED to open at, before anyone
+ * has activated it. Activation clamps the picture just short of the first thing
+ * its sight line hits, and for a road camera that is nearly always the road: a
+ * 10 m mount pitched 6 degrees down meets flat ground 96 m out, far short of a
+ * 500 m pose range. A thumbnail placed at the unclamped range stood several
+ * hundred metres beyond (on screen: above) the picture it turns into.
+ *
+ * Order of trust: the live clamp, then what the last activation's probe found
+ * for this same pose, then the flat-ground estimate. A range the user set by
+ * hand overrides every clamp, exactly as it does on activation.
+ * @param {Object} camera Pose: rangeM, pitchDeg, mountHeightM, calibration.
+ * @param {{liveClampM?: number|null, probed?: {rangeM: number|null}|null, groundHitM?: number|null}} [known]
+ *   `groundHitM`: where the sight line meets the loaded terrain, when known
+ *   (see sightLineGroundHitM); without it the ground is taken as flat.
+ * @returns {number|null} Clamp range in metres, or null for the full pose range.
+ */
+export function expectedMonitorRangeM(camera, { liveClampM = null, probed = null, groundHitM = null } = {}) {
+  if (Number.isFinite(liveClampM)) return liveClampM;
+  if (Math.abs(normalizeCalibration(camera?.calibration).rangeScale - 1) > 0.0001) return null;
+  if (probed) return Number.isFinite(probed.rangeM) ? probed.rangeM : null;
+  const pitch = toRad(clamp(safeNumber(camera?.pitchDeg, -17), -89, 89));
+  if (!(pitch < 0)) return null;
+  if (groundHitM === Infinity) return null;
+  const flatHitM = safeNumber(camera?.mountHeightM, 24) / Math.sin(-pitch);
+  return activationProbeClampRange(camera?.rangeM, Number.isFinite(groundHitM) ? groundHitM : flatHitM);
+}
+
+/**
+ * Where a camera's sight line meets the terrain, by stepping along it and
+ * comparing its altitude with the terrain height beneath. Height lookups read
+ * the terrain tiles already loaded: no raycast, no render. Measured against the
+ * activation probe on a Montréal autoroute camera this found 45 m where the
+ * probe found 44 m and flat ground would have said 96 m.
+ * @param {{mountAltM: number, pitchRad: number, maxM: number, stepM?: number, heightAt: (distanceM: number) => number|undefined}} input
+ *   `heightAt` takes the distance ALONG the sight line.
+ * @returns {number|null} Distance to the hit; Infinity when the line stays clear
+ *   for all of maxM; null when the terrain is not loaded (no opinion).
+ */
+export function sightLineGroundHitM({ mountAltM, pitchRad, maxM, stepM = 5, heightAt }) {
+  if (!(pitchRad < 0) || !Number.isFinite(mountAltM) || !(maxM > 0)) return null;
+  let previousGap = null;
+  let previousD = 0;
+  for (let d = stepM; d <= maxM; d += stepM) {
+    const terrain = heightAt(d);
+    if (!Number.isFinite(terrain)) return null; // unloaded terrain: no opinion
+    const gap = mountAltM + d * Math.sin(pitchRad) - terrain;
+    if (gap <= 0) {
+      // Under the terrain at the very first step means the mount altitude and
+      // the loaded terrain disagree (a coarse ground prior, a slope): that is
+      // not a hit 5 m out, it is no information.
+      if (previousGap == null) return null;
+      if (previousGap <= 0) return d;
+      // Linear crossing between the last clear sample and this one.
+      return previousD + (d - previousD) * (previousGap / (previousGap - gap));
+    }
+    previousGap = gap;
+    previousD = d;
+  }
+  return Infinity; // looked the whole way: the sight line stays clear
+}
+
+/**
+ * Where the BOTTOM edge of a camera's picture meets the ground, and how much
+ * ground that edge covers. In a road camera's picture the road is widest at the
+ * bottom: that is the road nearest the camera, where the lower edge of its
+ * field of view comes down. A 10 m mount pitched 6 degrees down with a 70 degree
+ * lens meets the road 19 m ahead, across a strip 30 m wide.
+ *
+ * Flat ground is assumed: over 10 to 60 m the error is small, and this is what
+ * lets a thumbnail stand on the map with its road over the map's road.
+ * @param {Object} camera Pose: pitchDeg, fovDeg, mountHeightM.
+ * @returns {{forwardM: number, widthM: number}|null} Null when the lower edge
+ *   never comes down (a level or upward camera).
+ */
+export function nearFieldRoadSpot(camera) {
+  const pitch = toRad(clamp(safeNumber(camera?.pitchDeg, -17), -89, 89));
+  const hFov = toRad(clamp(safeNumber(camera?.fovDeg, 74), 8, 160));
+  const vFov = 2 * Math.atan(Math.tan(hFov / 2) / PROJECTION_VERT_ASPECT);
+  const depression = Math.min(toRad(89), vFov / 2 - pitch);
+  if (!(depression > toRad(2))) return null;
+  const mount = Math.max(1, safeNumber(camera?.mountHeightM, 24));
+  const slantM = mount / Math.sin(depression);
+  return {
+    forwardM: mount / Math.tan(depression),
+    widthM: 2 * slantM * Math.tan(hFov / 2),
+  };
+}
+
+/**
+ * Which way a road-matched thumbnail's picture runs on the map: the direction
+ * "up the picture" points, away from the camera along the road. Pure.
+ *
+ * The road itself is the best witness. A camera whose heading is known takes
+ * the road direction nearest that heading, unless it plainly looks ACROSS the
+ * road (more than 50 degrees off), when its own heading stands. A camera whose
+ * heading nobody knows takes the road's line and is marked ambiguous: the road
+ * says where it runs, not which way the camera faces along it, so the painter
+ * picks whichever end keeps the picture the right way up.
+ * @param {{headingDeg: number, headingKnown: boolean, roadBearingDeg: number|null}} input
+ * @returns {{alongDeg: number, ambiguous: boolean, onRoad: boolean}|null} Null: no direction at all.
+ */
+export function roadMatchDirection({ headingDeg, headingKnown, roadBearingDeg }) {
+  const heading = normalizeHeading(safeNumber(headingDeg, 0));
+  if (!Number.isFinite(roadBearingDeg)) {
+    return headingKnown ? { alongDeg: heading, ambiguous: false, onRoad: false } : null;
+  }
+  const road = normalizeHeading(roadBearingDeg);
+  if (!headingKnown) return { alongDeg: road, ambiguous: true, onRoad: true };
+  const off = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
+  const back = normalizeHeading(road + 180);
+  const candidate = off(road, heading) <= off(back, heading) ? road : back;
+  return off(candidate, heading) <= 50
+    ? { alongDeg: candidate, ambiguous: false, onRoad: true }
+    : { alongDeg: heading, ambiguous: false, onRoad: false };
+}
+
+/** What a remembered probe result is valid for: the pose it was fired along. */
+function probePoseKey(camera, regime = currentSurfaceRegime()) {
+  // The regime too: a probe against photoreal buildings says nothing about
+  // the bare terrain globe, and the other way round.
+  return [regime, camera.lat, camera.lon, camera.headingDeg, camera.pitchDeg, camera.rangeM, camera.mountHeightM].join('|');
+}
+
+/**
  * Computes the great-circle distance between two points using the haversine formula.
  * @param {number} lat1 - Latitude of point 1 (degrees).
  * @param {number} lon1 - Longitude of point 1 (degrees).
@@ -1315,7 +1488,10 @@ function buildCatalogFromSources(rawSources) {
       license: String(source.license || source.licenseNote || ''),
       poseSource,
       // Set by the server for operators that refuse server-side clients: the
-      // viewer's browser loads this still itself (panel only, see cctvBrowserDirect.js).
+      // viewer's browser loads this still itself (panel and map thumbnail, see cctvBrowserDirect.js).
+      // Set by the server (CCTV_ROAD_MATCH_HOSTS): this camera's map thumbnail is
+      // matched to the road nearest the camera.
+      roadMatch: source.roadMatch === true,
       browserImageUrl: typeof source.browserImageUrl === 'string' && /^https:\/\//i.test(source.browserImageUrl)
         ? source.browserImageUrl
         : '',
@@ -1600,7 +1776,8 @@ function paintNextProjectionBuffer(runtime) {
  */
 function refreshProjectionTextures(record) {
   const runtime = record?.projection;
-  if (!runtime || runtime.mode === 'video') return;
+  // A playing video refreshes itself; an idle video camera shows a canvas note.
+  if (!runtime || (runtime.mode === 'video' && runtime.video && !runtime.viaCanvas)) return;
   const now = Date.now();
   if (now - safeNumber(runtime.lastTextureSwapAt, 0) < PROJECTION_TEXTURE_SWAP_MS) return;
 
@@ -1662,7 +1839,10 @@ function activeFrameRefreshMsFor(camera) {
  * @returns {number}
  */
 function idleFrameRefreshMsFor(camera) {
-  return Math.max(IDLE_FRAME_REFRESH_MS, safeNumber(camera?.frameRefreshMs, 0));
+  // A stream camera's thumbnail costs a playlist and a video segment, not one
+  // small still: it is retaken far less often.
+  const floor = isStreamCamera(camera) ? STREAM_CARD_REFRESH_MS : IDLE_FRAME_REFRESH_MS;
+  return Math.max(floor, safeNumber(camera?.frameRefreshMs, 0));
 }
 
 /**
@@ -1671,7 +1851,10 @@ function idleFrameRefreshMsFor(camera) {
  * @returns {string} Media URL.
  */
 function mediaUrlFor(camera) {
-  return `${MEDIA_ENDPOINT}/${encodeURIComponent(camera.id)}?ts=${Math.floor(Date.now() / 15000)}`;
+  const base = `${MEDIA_ENDPOINT}/${encodeURIComponent(camera.id)}?ts=${Math.floor(Date.now() / 15000)}`;
+  // A stream camera plays its live playlist where the browser can; elsewhere
+  // the server cuts short MP4 clips from it (fragmented-MP4 streams only).
+  return isStreamCamera(camera) && nativeHlsSupported() ? `${base}&hls=1` : base;
 }
 
 /**
@@ -1722,11 +1905,25 @@ function paintProjectionPlaceholder(ctx, camera, health = null) {
  * @returns {HTMLCanvasElement|HTMLVideoElement|*} 
  */
 function projectionImageSource(runtime) {
-  if (runtime?.video) return runtime.video;
+  // A video drawn through the canvas buffers (`viaCanvas`) is textured like a still.
+  if (runtime?.video && !runtime.viaCanvas) return runtime.video;
+  // The buffer last swapped in, NOT the working canvas. Cesium re-uploads a
+  // canvas texture only when the uniform receives a new object (see
+  // paintNextProjectionBuffer). The primitive plane was always handed the one
+  // working canvas, so its texture was uploaded once, usually while that canvas
+  // still held the placeholder, and never again: the panel showed the camera's
+  // picture and the map showed a dark plane, for every still camera.
+  const buffer = runtime?.buffers?.[runtime.bufferIndex];
+  if (buffer) return buffer;
   if (runtime?.canvas) return runtime.canvas;
   const image = runtime?.planeMaterial?.image;
   if (!image) return null;
   return typeof image.getValue === 'function' ? image.getValue() : image;
+}
+
+/** Test seam for the rule above. */
+export function _projectionImageSourceForTest(runtime) {
+  return projectionImageSource(runtime);
 }
 
 function syncProjectionPrimitiveImage(runtime) {
@@ -1832,30 +2029,168 @@ function trafficPlaneSpec(geometry, positions, orientation) {
   };
 }
 
+/** How long one terrain reading of a sight line is trusted: terrain refines as tiles load. */
+const SIGHT_LINE_HIT_TTL_MS = 5000;
+/** Spread so the cards do not all re-read their terrain on the same frame. */
+const SIGHT_LINE_HIT_JITTER_MS = 2500;
+const _sightLineHits = new WeakMap();
+
+/** The record's sight line against the loaded terrain, re-read every few seconds. */
+function terrainSightLineHitM(record) {
+  const globe = _viewer?.scene?.globe;
+  if (!globe?.show || typeof globe.getHeight !== 'function') return null;
+  const now = Date.now();
+  const cached = _sightLineHits.get(record);
+  const camera = record.camera;
+  const key = probePoseKey(camera);
+  if (cached && cached.key === key && now < cached.until) return cached.hitM;
+  let hitM = null;
+  try {
+    const pitchRad = toRad(clamp(safeNumber(camera.pitchDeg, -17), -89, 89));
+    const horizontal = Math.cos(pitchRad);
+    const carto = new Cesium.Cartographic();
+    hitM = sightLineGroundHitM({
+      mountAltM: groundAltFor(record) + safeNumber(camera.mountHeightM, 24),
+      pitchRad,
+      // The whole pose range: a line that is clear for the part that was read
+      // is not clear for the part that was not.
+      maxM: Math.max(1, safeNumber(camera.rangeM, 700)),
+      heightAt: (distanceM) => {
+        const at = projectPoint(camera.lat, camera.lon, camera.headingDeg, distanceM * horizontal);
+        return globe.getHeight(Cesium.Cartographic.fromDegrees(at.lon, at.lat, 0, carto));
+      },
+    });
+  } catch {
+    hitM = null;
+  }
+  // Whole metres: terrain refining by centimetres must not move the card.
+  if (Number.isFinite(hitM)) hitM = Math.round(hitM);
+  _sightLineHits.set(record, {
+    key,
+    hitM,
+    until: now + SIGHT_LINE_HIT_TTL_MS + Math.random() * SIGHT_LINE_HIT_JITTER_MS,
+  });
+  return hitM;
+}
+
+const _roadSpots = new WeakMap();
+
+/** The record's near-field road spot as a world position, re-derived about once a second. */
+function thumbnailRoadSpot(record) {
+  const camera = record?.camera;
+  if (!camera) return null;
+  const held = _roadSpots.get(record);
+  const nowMs = Date.now();
+  const roadsRevision = getRoadsRevision();
+  if (held && nowMs < held.recheckAt && held.roadsRevision === roadsRevision
+    && held.positions === (record.frustumPositions || null)) return held.spot;
+  let spot = null;
+  try {
+    const near = nearFieldRoadSpot(camera);
+    if (near) {
+      // The real road by the camera (the traffic layer's road lines), when loaded.
+      const road = roadBearingNear(camera.lat, camera.lon);
+      const direction = roadMatchDirection({
+        headingDeg: camera.headingDeg,
+        headingKnown: camera.headingConfidence !== 'unknown',
+        roadBearingDeg: road ? road.bearingDeg : null,
+      });
+      // On the road's own line when the road decided the direction; otherwise
+      // straight ahead of the mount. An ambiguous camera stands ON the road by
+      // the camera: which way is "ahead" is exactly what is not known.
+      const from = direction?.onRoad ? road : camera;
+      const along = direction ? direction.alongDeg : camera.headingDeg;
+      const at = projectPoint(from.lat, from.lon, along, direction?.ambiguous ? 0 : near.forwardM);
+      const ahead = direction ? projectPoint(at.lat, at.lon, along, 40) : null;
+      // The loaded terrain under that point when there is any, else the mount's ground.
+      const globe = _viewer?.scene?.globe;
+      const heightAt = (point) => {
+        const terrain = globe?.show && typeof globe.getHeight === 'function'
+          ? globe.getHeight(Cesium.Cartographic.fromDegrees(point.lon, point.lat))
+          : undefined;
+        return Number.isFinite(terrain) ? terrain : groundAltFor(record);
+      };
+      spot = {
+        position: Cesium.Cartesian3.fromDegrees(at.lon, at.lat, heightAt(at)),
+        // A second point farther along the road: the painter turns the card so
+        // "up the picture" runs from the first point toward this one.
+        ahead: ahead ? Cesium.Cartesian3.fromDegrees(ahead.lon, ahead.lat, heightAt(ahead)) : null,
+        ambiguous: Boolean(direction?.ambiguous),
+        widthM: near.widthM,
+      };
+    }
+  } catch {
+    spot = null;
+  }
+  _roadSpots.set(record, {
+    spot,
+    roadsRevision,
+    positions: record.frustumPositions || null,
+    recheckAt: nowMs + THUMBNAIL_FRAME_RECHECK_MS + Math.random() * THUMBNAIL_FRAME_RECHECK_MS,
+  });
+  return spot;
+}
+
 /** Projection frames for thumbnail traffic, rebuilt only when a pose or its ground changes. */
 const _thumbnailTrafficFrames = new WeakMap();
+/** How often a card's frame is fully re-derived when nothing visibly changed. */
+const THUMBNAIL_FRAME_RECHECK_MS = 1000;
 
 /**
- * Where a camera looks, for standing its thumbnail over the area it shows.
- * A camera whose heading nobody knows gets no frame: its bearing is a
- * placeholder, so its card stays at the mount.
+ * Where a camera's spatial picture opens, for standing its thumbnail on that
+ * same spot. Every camera has one, a camera of unknown heading included: its
+ * picture opens along its placeholder bearing, and a thumbnail anywhere else
+ * would jump when clicked (385 of Québec 511's 678 cameras are such).
  * @param {string} cameraId
  * @returns {object|null}
  */
 function thumbnailTrafficFrame(cameraId) {
   const record = _recordById.get(cameraId);
   const camera = record?.camera;
-  if (!camera || camera.headingConfidence === 'unknown') return null;
-  const groundAlt = groundAltFor(record);
+  if (!camera) return null;
+  // Called every frame for every card. Everything that moves the picture
+  // replaces one of these three references (geometry rewrite, activation
+  // clamp, remembered probe), so comparing them is the whole steady-state
+  // cost; the full check below runs about once a second per card.
+  const held = _thumbnailTrafficFrames.get(record);
+  const nowMs = Date.now();
+  if (held && nowMs < held.recheckAt
+    && held.positions === (record.frustumPositions || null)
+    && held.clamp === record.probeClampRangeM
+    && held.lastProbe === (record.lastProbe || null)) return held.frame;
+  // An idle record's own geometry runs to the full pose range; the picture will
+  // not open there (see expectedMonitorRangeM), so the frame is built at the
+  // range it WILL open at, from the same ground the record's geometry used.
+  const live = Number.isFinite(record.probeClampRangeM);
+  const probed = record.lastProbe?.key === probePoseKey(camera) ? record.lastProbe : null;
+  const expectedRangeM = expectedMonitorRangeM(camera, {
+    liveClampM: record.probeClampRangeM,
+    probed,
+    groundHitM: live || probed ? null : terrainSightLineHitM(record),
+  });
+  const useRecordGeometry = live || expectedRangeM == null;
+  const groundAlt = Number.isFinite(record.frustumGeometry?.groundAltM)
+    ? record.frustumGeometry.groundAltM
+    : groundAltFor(record);
   const key = [camera.lat, camera.lon, camera.headingDeg, camera.pitchDeg, camera.fovDeg,
-    camera.rangeM, camera.mountHeightM, groundAlt, record.probeClampRangeM].join('|');
+    camera.rangeM, camera.mountHeightM, groundAlt, expectedRangeM, useRecordGeometry].join('|');
   const cached = _thumbnailTrafficFrames.get(record);
-  if (cached?.key === key) return cached.frame;
+  // The record's geometry is REPLACED whenever it is rewritten (ground snap,
+  // activation range clamp, calibration), sometimes from a ground sample this
+  // key never sees. Its identity is the reliable staleness test: a frame built
+  // from an older geometry stands where the picture used to be.
+  if (cached?.key === key && cached.positions === (record.frustumPositions || null)) {
+    cached.recheckAt = nowMs + THUMBNAIL_FRAME_RECHECK_MS + Math.random() * THUMBNAIL_FRAME_RECHECK_MS;
+    cached.clamp = record.probeClampRangeM;
+    cached.lastProbe = record.lastProbe || null;
+    return cached.frame;
+  }
   let frame = null;
   try {
-    const geometry = record.frustumGeometry
-      || computeFrustumGeometry(camera, groundAlt, record.probeClampRangeM);
-    const positions = record.frustumPositions || frustumCartesians(geometry);
+    const geometry = (useRecordGeometry && record.frustumGeometry)
+      || computeFrustumGeometry(camera, groundAlt, expectedRangeM);
+    const positions = (useRecordGeometry && record.frustumGeometry && record.frustumPositions)
+      || frustumCartesians(geometry);
     frame = monitorPlaneFrame(trafficPlaneSpec(
       geometry,
       positions,
@@ -1864,7 +2199,14 @@ function thumbnailTrafficFrame(cameraId) {
   } catch {
     frame = null;
   }
-  _thumbnailTrafficFrames.set(record, { key, frame });
+  _thumbnailTrafficFrames.set(record, {
+    key,
+    frame,
+    positions: record.frustumPositions || null,
+    clamp: record.probeClampRangeM,
+    lastProbe: record.lastProbe || null,
+    recheckAt: nowMs + THUMBNAIL_FRAME_RECHECK_MS + Math.random() * THUMBNAIL_FRAME_RECHECK_MS,
+  });
   return frame;
 }
 
@@ -2102,7 +2444,10 @@ function createProjectionRuntime(record) {
 
   paintProjectionPlaceholder(ctx, record.camera);
 
-  if (mode === 'video') {
+  if (mode === 'video' && _videoPlayCameraId !== record.camera.id) {
+    // Not clicked: no request is made. The plane says how to start it.
+    runtime.idleNote = 'VIDEO · CLICK THE CAMERA TO PLAY';
+  } else if (mode === 'video') {
     const video = document.createElement('video');
     video.muted = true;
     video.loop = true;
@@ -2114,6 +2459,85 @@ function createProjectionRuntime(record) {
     video.addEventListener('canplay', () => {
       video.play().catch(() => {});
     });
+    // A looked-up stream arrives as a clip of its last few seconds: when one
+    // ends the next is fetched, so the picture keeps moving forward in time
+    // instead of replaying the same seconds for ever.
+    if (isStreamCamera(record.camera) && nativeHlsSupported()) {
+      // A live playlist: it never ends, so there is nothing to loop or chain.
+      video.loop = false;
+      // Some operators serve an incomplete certificate chain, which the proxy
+      // cannot verify and a browser can. When the proxied stream fails, the
+      // server may name the stream's own address: play that directly, once.
+      video.addEventListener('error', async () => {
+        if (runtime.video !== video || runtime.triedDirectStream) return;
+        runtime.triedDirectStream = true;
+        try {
+          const response = await fetch(`/api/cctv/stream/${encodeURIComponent(record.camera.id)}`, { cache: 'no-store' });
+          const direct = response.ok ? (await response.json())?.directStreamUrl : null;
+          if (runtime.video !== video || typeof direct !== 'string' || !direct.startsWith('https://')) return;
+          // A cross-origin stream draws to a canvas but does not survive Cesium's
+          // direct video-texture path (the plane stayed dark): texture the plane
+          // from the canvas buffers instead, which this video is drawn into anyway.
+          runtime.viaCanvas = true;
+          runtime.lastSwappedCanvasStamp = -1;
+          video.src = direct;
+          video.play().catch(() => {});
+        } catch {
+          /* no direct address: the plane keeps its note */
+        }
+      }, { once: true });
+    } else if (isStreamCamera(record.camera)) {
+      video.loop = false;
+      // The next clip loads in a SECOND element while the finished one keeps
+      // its last picture on the plane; they change places only once the new
+      // one has a picture. Re-pointing the one element at the next clip left
+      // the plane blank for as long as that clip took to arrive.
+      const discard = (element) => {
+        try {
+          element.pause();
+          element.removeAttribute('src');
+          element.load();
+        } catch {
+          /* already released */
+        }
+      };
+      const queueNext = (current) => {
+        current.addEventListener('ended', () => {
+          if (runtime.video !== current) return;
+          const next = document.createElement('video');
+          next.muted = true;
+          next.loop = false;
+          next.autoplay = true;
+          next.playsInline = true;
+          next.crossOrigin = 'anonymous';
+          next.preload = 'auto';
+          next.addEventListener('loadeddata', () => {
+            if (runtime.video !== current) {
+              discard(next);
+              return;
+            }
+            runtime.video = next;
+            if (runtime.planeMaterial) runtime.planeMaterial.image = next;
+            syncProjectionPrimitiveImage(runtime);
+            next.play().catch(() => {});
+            discard(current);
+            queueNext(next);
+          }, { once: true });
+          next.addEventListener('error', () => {
+            discard(next);
+            // No new clip: the last picture stays, and it is asked for again shortly.
+            setTimeout(() => {
+              if (runtime.video === current) {
+                queueNext(current);
+                current.dispatchEvent(new Event('ended'));
+              }
+            }, 4000);
+          }, { once: true });
+          next.src = `${mediaUrlFor(record.camera)}&clip=${Date.now()}`;
+        }, { once: true });
+      };
+      queueNext(video);
+    }
     runtime.video = video;
   } else if (mode === 'image') {
     const img = new Image();
@@ -2308,12 +2732,27 @@ function drawProjectionFrame(record) {
     return;
   }
 
+  if (runtime.mode === 'video' && !runtime.video) {
+    if (runtime.drawnNote !== runtime.idleNote) {
+      runtime.drawnNote = runtime.idleNote;
+      runtime.canvasStamp = (runtime.canvasStamp || 0) + 1;
+      paintProjectionPlaceholder(runtime.ctx, record.camera, { message: runtime.idleNote });
+    }
+    return;
+  }
+
   if (runtime.mode === 'video' && runtime.video) {
     const video = runtime.video;
     if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
       runtime.ctx.clearRect(0, 0, PROJECTION_CANVAS_WIDTH, PROJECTION_CANVAS_HEIGHT);
       runtime.ctx.drawImage(video, 0, 0, PROJECTION_CANVAS_WIDTH, PROJECTION_CANVAS_HEIGHT);
       runtime.canvasStamp = (runtime.canvasStamp || 0) + 1;
+      // The panel shows a picture taken from this video; tell it when a new one is due.
+      const nowMs = Date.now();
+      if (nowMs - safeNumber(runtime.lastPreviewNotifyAt, 0) >= VIDEO_PREVIEW_REFRESH_MS) {
+        runtime.lastPreviewNotifyAt = nowMs;
+        notifyListenersThrottled();
+      }
       return;
     }
     paintPlaceholderThrottled(record, runtime, health);
@@ -3268,7 +3707,8 @@ function refreshAmbientCards() {
       id,
       distanceKm: haversineKm(viewerLat, viewerLon, record.camera.lat, record.camera.lon),
       inView,
-      isVideo: isVideoFeedType(normalizeFeedType(record.camera.feedType)),
+      // "Video" here means "no thumbnail possible": a clip camera has one.
+      isVideo: videoWithoutCardPicture(record.camera),
       sx,
       sy,
     });
@@ -3341,6 +3781,121 @@ function refreshAmbientCards() {
 }
 
 /** The ambient card under a canvas point, for its size badge (not part of the click-selection path). */
+/** Load the saved thumbnail alignments once per enable. */
+async function loadThumbnailAlignments() {
+  if (_thumbAlignmentsLoaded) return;
+  _thumbAlignmentsLoaded = true;
+  try {
+    const response = await fetch('/api/cctv/alignments', { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    const next = new Map();
+    for (const [id, a] of Object.entries(data?.alignments || {})) {
+      if (Number.isFinite(a?.lat) && Number.isFinite(a?.lon)) {
+        next.set(id, { lat: a.lat, lon: a.lon, bearingDeg: Number.isFinite(a.bearingDeg) ? a.bearingDeg : null });
+      }
+    }
+    _thumbAlignments = next;
+    if (next.size) pushAmbientCardEntries();
+  } catch (error) {
+    _thumbAlignmentsLoaded = false;
+    console.warn('[Data:CCTV] saved thumbnail alignments unavailable:', error?.message || error);
+  }
+}
+
+/** The alignment in force for a camera: the draft while it is being aligned, else the saved one. */
+function thumbnailAlignmentFor(id) {
+  return _alignSession?.id === id ? _alignSession.draft : _thumbAlignments.get(id) || null;
+}
+
+const _alignmentSpots = new WeakMap();
+
+/** World points for an alignment: where the picture's middle stands, and a point "up the picture". */
+function alignmentSpot(record, alignment) {
+  const held = _alignmentSpots.get(alignment);
+  const nowMs = Date.now();
+  if (held && nowMs < held.recheckAt) return held;
+  const globe = _viewer?.scene?.globe;
+  const heightAt = (lat, lon) => {
+    const terrain = globe?.show && typeof globe.getHeight === 'function'
+      ? globe.getHeight(Cesium.Cartographic.fromDegrees(lon, lat))
+      : undefined;
+    return Number.isFinite(terrain) ? terrain : groundAltFor(record);
+  };
+  const spot = {
+    position: Cesium.Cartesian3.fromDegrees(alignment.lon, alignment.lat, heightAt(alignment.lat, alignment.lon)),
+    ahead: null,
+    recheckAt: nowMs + 2000,
+  };
+  if (Number.isFinite(alignment.bearingDeg)) {
+    const ahead = projectPoint(alignment.lat, alignment.lon, alignment.bearingDeg, 40);
+    spot.ahead = Cesium.Cartesian3.fromDegrees(ahead.lon, ahead.lat, heightAt(ahead.lat, ahead.lon));
+  }
+  _alignmentSpots.set(alignment, spot);
+  return spot;
+}
+
+/** Start aligning a thumbnail from wherever it stands now. */
+function beginThumbnailAlign(id, anchor) {
+  if (_alignSession || !_recordById.has(id)) return false;
+  const saved = _thumbAlignments.get(id);
+  let draft = saved ? { ...saved } : null;
+  if (!draft) {
+    const ground = privateGlobePoint(anchor.x, anchor.y);
+    if (!ground) return false;
+    draft = { lat: ground.lat, lon: ground.lon, bearingDeg: null };
+  }
+  _alignSession = { id, draft, saving: false };
+  holdContinuousRender('cctv-card-align');
+  pushAmbientCardEntries();
+  return true;
+}
+
+function endThumbnailAlign() {
+  if (!_alignSession) return;
+  _alignSession = null;
+  releaseContinuousRender('cctv-card-align');
+  pushAmbientCardEntries();
+}
+
+/** Write the draft to the tracked alignment file through the dev server. */
+async function saveThumbnailAlign() {
+  const session = _alignSession;
+  if (!session || session.saving) return;
+  session.saving = true;
+  const { id, draft } = session;
+  // In force at once, saved or not: a failed save still holds for this session.
+  _thumbAlignments.set(id, { ...draft });
+  try {
+    const response = await fetch(`/api/cctv/alignments/${encodeURIComponent(id)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const saved = (await response.json())?.alignment;
+    if (saved) _thumbAlignments.set(id, saved);
+    console.info(`[Data:CCTV] thumbnail alignment saved for ${id} (config/cctv_thumbnail_alignments.json)`);
+  } catch (error) {
+    console.warn(`[Data:CCTV] thumbnail alignment for ${id} could not be saved; it holds for this session only:`, error?.message || error);
+  }
+  if (_alignSession === session) endThumbnailAlign();
+}
+
+/** Forget a camera's saved alignment: back to where the program places it, upright. */
+async function resetThumbnailAlign() {
+  const session = _alignSession;
+  if (!session) return;
+  const { id } = session;
+  _thumbAlignments.delete(id);
+  endThumbnailAlign();
+  try {
+    await fetch(`/api/cctv/alignments/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  } catch (error) {
+    console.warn(`[Data:CCTV] saved alignment for ${id} could not be removed:`, error?.message || error);
+  }
+}
+
 function hitTestAmbientCard(x, y) {
   return _cctvOverlayHost.hitTest(x, y, { sourceId: CCTV_OVERLAY_SOURCE_ID });
 }
@@ -3406,23 +3961,61 @@ function pushAmbientCardEntries() {
   const push = (id, { pinned = false, active = false } = {}) => {
     const record = _recordById.get(id);
     if (!record?.position) return;
+    // The last good spot is kept: a card that was told to centre itself must
+    // never drop back onto its own camera icon because one frame had no answer.
+    let spot = thumbnailTrafficFrame(id)?.center || null;
+    // Road-matched thumbnails: standing on the road nearest the camera, as
+    // wide as that road. For the hosts the server names (Québec 511 by default),
+    // and for any browser-loaded still, which can never be the 3D monitor
+    // picture, so its thumbnail is the only picture that camera has.
+    // A hand alignment (saved, or being made right now) outranks all of it.
+    const aligned = thumbnailAlignmentFor(id);
+    const aligning = _alignSession?.id === id;
+    const road = !aligned && (record.camera.roadMatch || isBrowserDirect(record.camera))
+      ? thumbnailRoadSpot(record)
+      : null;
     entries.push(createCctvThumbnailOverlayEntry({
       id,
       // The card stands where the camera LOOKS, not where it is mounted: that
       // is where its spatial picture opens, so the thumbnail already lines up
-      // with the map and nothing jumps when it is clicked. A camera with no
-      // usable pose keeps its mount position.
-      position: thumbnailTrafficFrame(id)?.center || record.position,
+      // with the map and nothing jumps when it is clicked. Only a camera whose
+      // geometry cannot be built keeps its mount position.
+      // Read every frame, not captured once: the picture's spot moves after the
+      // card is raised (terrain ground snap, range clamp on activation), and a
+      // captured position left the thumbnail standing above its own plane.
+      position: () => {
+        const hand = thumbnailAlignmentFor(id);
+        if (hand) return alignmentSpot(record, hand).position;
+        if (road) return thumbnailRoadSpot(record)?.position || road.position;
+        const center = thumbnailTrafficFrame(id)?.center;
+        if (center) spot = center;
+        return spot || record.position;
+      },
+      centered: Boolean(spot) || Boolean(road) || Boolean(aligned),
+      pictureAnchor: road ? 'bottom' : 'center',
+      worldWidthM: road ? road.widthM : 0,
+      // Turned to run along its road (any angle), read live like the position.
+      orientTo: aligned
+        ? () => {
+          const hand = thumbnailAlignmentFor(id);
+          return hand ? alignmentSpot(record, hand).ahead : null;
+        }
+        : road?.ahead ? () => thumbnailRoadSpot(record)?.ahead || road.ahead : null,
+      orientAmbiguous: !aligned && Boolean(road?.ambiguous),
+      aligning,
       gapPx: CARD_GAP_PX,
       scale: _cardScale,
       title: record.camera.name,
       frameSlot: ensureCardFrameSlot(id),
       rank: rank++,
-      pinned,
+      // The thumbnail being aligned must not be decluttered away mid-gesture.
+      pinned: pinned || aligning,
       active,
     }));
   };
   for (const id of _cardIds) push(id, { pinned: id === _hoverCardId });
+  if (_alignSession && !_cardIds.has(_alignSession.id) && _alignSession.id !== _hoverCardId
+    && _alignSession.id !== _activeCameraId) push(_alignSession.id, { pinned: true });
   if (_hoverCardId && !_cardIds.has(_hoverCardId) && _hoverCardId !== _activeCameraId) {
     push(_hoverCardId, { pinned: true });
   }
@@ -3483,7 +4076,7 @@ function handleHoverMove(position) {
   const eligible = !!record
     && cameraId !== _activeCameraId
     && !_cardIds.has(cameraId)
-    && !isVideoFeedType(normalizeFeedType(record.camera.feedType));
+    && !videoWithoutCardPicture(record.camera);
   if (eligible) {
     cancelHoverRelease();
     _hoverCardId = cameraId;
@@ -3555,8 +4148,9 @@ function hoverFetchCardFrame(record) {
 /**
  * Card-frame pacer tick (owner finding 3): launches AT MOST one fetch per
  * tick, with cardFetchPolicy deciding whether a launch is allowed. Cold fill
- * — any selected card still missing its FIRST frame — bursts up to 4
- * in-flight fetches at 250 ms spacing so arriving in a new area populates
+ * — any selected card still missing its FIRST frame — bursts up to
+ * CCTV_CARD_FETCH_BURST_LIMIT in-flight fetches at the burst spacing so
+ * arriving in a new area populates
  * in a few seconds instead of 16-32 s; once every selected card has a first
  * frame the layer drops back to the salvaged steady-state gate (single
  * flight, one request per second). Priority: frameless cards first in ring
@@ -3579,6 +4173,10 @@ function cardFrameTick() {
     const record = _recordById.get(id);
     // A camera with no public still never takes a pacer launch.
     if (!record || !cameraHasStill(record.camera)) return;
+    // Video plays only when its camera is clicked: a thumbnail never loads a
+    // stream. A video camera's thumbnail is the last picture it showed while
+    // it was open (kept in its slot), and nothing is fetched for it here.
+    if (isVideoFeedType(normalizeFeedType(record.camera.feedType))) return;
     const slot = ensureCardFrameSlot(id);
     if (_cardFetchPendingIds.has(id)) {
       // An in-flight first-frame fetch keeps cold-fill mode active without
@@ -3632,10 +4230,8 @@ function cardFrameTick() {
  */
 function fetchCardFrame(record, slot, refreshMs, { userGesture = false } = {}) {
   if (typeof document !== 'undefined' && document.hidden && !userGesture) return;
-  // Drawing a browser-direct still (no CORS header) would taint the card canvas
-  // and break its texture upload, so these cards keep their placeholder. A
-  // camera with no public still has nothing to fetch at all.
-  if (isBrowserDirect(record.camera) || !cameraHasStill(record.camera)) {
+  // A camera with no public still has nothing to fetch at all.
+  if (!cameraHasStill(record.camera)) {
     Object.assign(slot, applyFrameResult(slot, { ok: false, frame: null }, Date.now()));
     return;
   }
@@ -3645,7 +4241,7 @@ function fetchCardFrame(record, slot, refreshMs, { userGesture = false } = {}) {
   _cardFetchPendingIds.add(cameraId);
   if (_cardLastFetchAt > 0 && !userGesture) {
     const spacing = now - _cardLastFetchAt;
-    // NOTE: cold-fill bursts legitimately push this to ~250 ms — read it
+    // NOTE: cold-fill bursts legitimately push this down to the burst spacing — read it
     // together with the ambientCards.fetchMode telemetry.
     _cardMinFetchSpacingMs = _cardMinFetchSpacingMs == null
       ? spacing
@@ -3680,7 +4276,19 @@ function fetchCardFrame(record, slot, refreshMs, { userGesture = false } = {}) {
   };
   image.onload = () => settle(true);
   image.onerror = () => settle(false);
-  image.src = frameUrlFor(record.camera, refreshMs);
+  // A browser-direct still (no CORS header) taints the frame canvas it is copied
+  // to. That is harmless here: thumbnails are painted on the 2D overlay with
+  // drawImage, which accepts a tainted source, and nothing reads that overlay
+  // back or uploads it as a texture. The image must NOT ask for CORS
+  // (crossOrigin unset), or the operator's header-less answer fails to load.
+  image.src = cardFrameUrl(record.camera, refreshMs);
+}
+
+/** Where a card's still comes from: the operator directly, or the proxy. */
+function cardFrameUrl(camera, refreshMs) {
+  return isBrowserDirect(camera)
+    ? browserDirectFrameUrl(camera, refreshMs)
+    : frameUrlFor(camera, refreshMs);
 }
 
 /** Starts the card-frame pacer (idempotent; policy-gated per tick). */
@@ -4565,7 +5173,8 @@ function applyLookupResult(cameraId, result, { notify = true } = {}) {
   const state = String(result?.lookupState || '').toLowerCase();
   if (state === 'resolved') {
     camera.lookupState = 'resolved';
-    camera.feedType = 'image';
+    // A still, or (video-only operators such as 511NJ) a clip cut from the stream.
+    camera.feedType = normalizeFeedType(result?.feedType) === 'hls' ? 'hls' : 'image';
     camera.lookupRetryAt = 0;
     // The plane was painting the lookup note: rebuild it as an image plane.
     const runtime = record.projection;
@@ -4966,6 +5575,52 @@ function buildSummaryText() {
  * @param {string|null} [activeId=null] - Active camera ID for the `active` flag.
  * @returns {Object} Public camera state.
  */
+/** How often the panel's picture of a video camera is retaken. */
+const VIDEO_PREVIEW_REFRESH_MS = 4000;
+let _videoPreview = { id: '', at: 0, url: '' };
+
+/**
+ * A JPEG (data URL) of a video camera's current picture for the panel's <img>,
+ * taken from the frame its monitor plane last drew. Same-origin video through
+ * the proxy, so the canvas can be read. Null until the video has a picture.
+ */
+function videoPreviewUrlFor(record) {
+  const runtime = record?.projection;
+  const video = runtime?.video;
+  const id = record?.camera?.id || '';
+  if (!video || !(video.readyState >= 2) || !(video.videoWidth > 0)) {
+    return _videoPreview.id === id ? _videoPreview.url || null : null;
+  }
+  const now = Date.now();
+  if (_videoPreview.id === id && _videoPreview.url && now - _videoPreview.at < VIDEO_PREVIEW_REFRESH_MS) {
+    return _videoPreview.url;
+  }
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 360;
+    const ctx2d = canvas.getContext('2d', { willReadFrequently: true });
+    ctx2d.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // A stream's first drawable frames are blank (fully transparent) for a
+    // moment after it starts. A blank is not a picture: keep the prior one.
+    const probe = ctx2d.getImageData(0, 0, canvas.width, 8).data;
+    let seen = 0;
+    for (let i = 3; i < probe.length; i += 4) seen += probe[i];
+    if (seen === 0) return _videoPreview.id === id ? _videoPreview.url || null : null;
+    _videoPreview = { id, at: now, url: canvas.toDataURL('image/jpeg', 0.82) };
+    // The same picture is this camera's thumbnail from now on.
+    const card = document.createElement('canvas');
+    card.width = CCTV_FRAME_CANVAS_W;
+    card.height = CCTV_FRAME_CANVAS_H;
+    card.getContext('2d').drawImage(video, 0, 0, card.width, card.height);
+    const slot = ensureCardFrameSlot(id);
+    Object.assign(slot, applyFrameResult(slot, { ok: true, frame: card }, now));
+  } catch {
+    return _videoPreview.id === id ? _videoPreview.url || null : null;
+  }
+  return _videoPreview.url;
+}
+
 function getPublicCameraState(record, activeId = null) {
   const resolvedActiveId = activeId || getActiveRecord()?.camera.id || null;
   const camera = record.camera;
@@ -5021,11 +5676,15 @@ function getPublicCameraState(record, activeId = null) {
     // panel's <img>; every other camera goes through the proxy, and only the
     // active camera's preview asks as active. A camera with no public still
     // has no frame to request: the panel shows its lookup note instead.
+    // A video camera has no still on the server: the panel's <img> gets a
+    // picture taken from the video already playing on its monitor plane.
     frameUrl: !hasStill
       ? null
-      : isBrowserDirect(camera)
-        ? browserDirectFrameUrl(camera, refreshMs)
-        : frameUrlFor(camera, refreshMs, { active: isActive }),
+      : isVideoFeedType(normalizeFeedType(camera.feedType))
+        ? videoPreviewUrlFor(record)
+        : isBrowserDirect(camera)
+          ? browserDirectFrameUrl(camera, refreshMs)
+          : frameUrlFor(camera, refreshMs, { active: isActive }),
     mediaUrl: hasStill ? mediaUrlFor(camera) : null,
     lookup: camera.lookup || '',
     lookupState: camera.lookupState || '',
@@ -5116,7 +5775,7 @@ function uiState() {
     },
     // Ambient card tier telemetry (QA harnesses assert the fetch pacing —
     // minFrameFetchSpacingMs reads together with fetchMode: cold-fill bursts
-    // legitimately reach ~250 ms, steady state stays >=1000 ms).
+    // legitimately reach the burst spacing, steady state stays >=1000 ms).
     ambientCards: {
       count: _cardIds.size,
       limit: CCTV_AMBIENT_CARD_MAX,
@@ -5274,9 +5933,13 @@ function runActivationObstructionProbe(record) {
       if (runtime?.planePrimitive) exclude.push(runtime.planePrimitive);
     }
     const hit = scene.pickFromRay(new Cesium.Ray(mountPos, dir), exclude);
+    // A miss is not remembered: fired before the tiles along the line have
+    // loaded it means nothing, and it would pin the thumbnail at full range.
     if (!hit?.position) return;
     const dist = Cesium.Cartesian3.distance(mountPos, hit.position);
     record.probeClampRangeM = activationProbeClampRange(camera.rangeM, dist);
+    // The thumbnail stands here from now on, clamp cleared or not.
+    record.lastProbe = { key: probePoseKey(camera), rangeM: record.probeClampRangeM };
   } catch {
     // probe failure → keep the unclamped range
   }
@@ -5341,6 +6004,24 @@ export function setActiveCamera(cameraId, { explicit = false } = {}) {
   const record = _recordById.get(cameraId);
   const previousActiveRecord = getActiveRecord();
   const lookupStarted = explicit && maybeLookupCamera(record);
+  // Video plays only when its camera is clicked. An automatic activation
+  // (start-up default, AUTO HOP, NEAREST on arrival) never starts one; a click
+  // on a camera that is already active but idle starts it now.
+  if (explicit && _videoPlayCameraId !== cameraId) {
+    _videoPlayCameraId = cameraId;
+    const runtime = record.projection;
+    if (runtime?.mode === 'video' && !runtime.video && cameraId === _activeCameraId) {
+      releaseProjectionRuntime(runtime);
+      _projectionEntities = _projectionEntities.filter((entry) => entry !== runtime);
+      if (_enabled && _showProjection) {
+        ensureProjectionRuntime(record);
+        refreshCoverageStyles();
+        startProjectionLoop();
+      }
+    }
+  } else if (!explicit && _videoPlayCameraId && _videoPlayCameraId !== cameraId) {
+    _videoPlayCameraId = null;
+  }
   // Re-selecting the already-active camera is a no-op: re-running the
   // activation path re-probes and rewrites the plane entity's geometry, and
   // that async primitive rebuild visibly flashes the monitor plane (owner
@@ -5968,7 +6649,7 @@ const cctvLayer = {
     _unbindCardResize = bindCctvCardResize({
       canvas: _viewer.scene.canvas,
       hitTest: (x, y) => hitTestAmbientCard(x, y),
-      isEnabled: () => _enabled && !_calibrationMode,
+      isEnabled: () => _enabled && !_calibrationMode && !_alignSession,
       getScale: () => _cardScale,
       setScale: (scale) => {
         _cardScale = scale;
@@ -5983,6 +6664,38 @@ const cctvLayer = {
         releaseContinuousRender('cctv-card-resize');
       },
     });
+    // Right-click a map thumbnail to line it up with the map by hand (move, turn),
+    // right-click it again to save. See cctvCardAlign.js.
+    _unbindCardAlign?.();
+    _unbindCardAlign = bindCctvCardAlign({
+      canvas: _viewer.scene.canvas,
+      hitTest: (x, y) => hitTestAmbientCard(x, y),
+      isEnabled: () => _enabled && !_calibrationMode,
+      getSession: () => _alignSession,
+      begin: beginThumbnailAlign,
+      pickGround: privateGlobePoint,
+      screenUpBearing: (x, y) => {
+        const here = privateGlobePoint(x, y);
+        const above = privateGlobePoint(x, y - 60);
+        return here && above ? bearingBetween(here.lat, here.lon, above.lat, above.lon) : null;
+      },
+      update: (patch) => {
+        if (!_alignSession) return;
+        // A NEW object each time: the world points cached against the old one go with it.
+        _alignSession.draft = { ..._alignSession.draft, ...patch };
+        _viewer?.scene?.requestRender?.();
+      },
+      save: saveThumbnailAlign,
+      cancel: endThumbnailAlign,
+      reset: resetThumbnailAlign,
+      onDragStart: () => {
+        if (_viewer?.scene) _viewer.scene.screenSpaceCameraController.enableInputs = false;
+      },
+      onDragEnd: () => {
+        if (_viewer?.scene) _viewer.scene.screenSpaceCameraController.enableInputs = true;
+      },
+    });
+    loadThumbnailAlignments();
     // Drag a private (home or business) camera icon to a new spot; a click still selects it.
     _unbindPrivateMove?.();
     _unbindPrivateMove = bindPrivateCameraMove({
@@ -6299,6 +7012,13 @@ const cctvLayer = {
     releaseContinuousRender('cctv-adjust');
     _unbindCardResize?.();
     _unbindCardResize = null;
+    _unbindCardAlign?.();
+    _unbindCardAlign = null;
+    if (_alignSession) {
+      _alignSession = null;
+      releaseContinuousRender('cctv-card-align');
+    }
+    _thumbAlignmentsLoaded = false;
     _unbindPrivateMove?.();
     _unbindPrivateMove = null;
     if (_clickHandler) {
@@ -6491,6 +7211,32 @@ const cctvLayer = {
       if (objects.length >= maxCount) break;
     }
     return objects;
+  },
+
+  /**
+   * The loaded cameras as plain records: what a device recording saves about
+   * the cameras near it (src/data/deviceRecorder.js). Never a stream address.
+   * @param {number} [maxCount]
+   * @returns {{id: string, name: string|null, lat: number, lon: number, city: string|null, feedType: string|null}[]}
+   */
+  getAnalystRecords(maxCount = 2000) {
+    if (!_enabled || _records.length === 0) return [];
+    const limit = Number.isFinite(maxCount) ? Math.max(1, Math.floor(maxCount)) : 2000;
+    const out = [];
+    for (const record of _records) {
+      if (out.length >= limit) break;
+      const camera = record.camera;
+      if (!Number.isFinite(camera?.lat) || !Number.isFinite(camera?.lon)) continue;
+      out.push({
+        id: String(camera.id),
+        name: camera.name || null,
+        lat: camera.lat,
+        lon: camera.lon,
+        city: camera.city || null,
+        feedType: camera.feedType || null,
+      });
+    }
+    return out;
   },
 
   /**

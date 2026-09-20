@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "GEV Private_CCTV_Feed Relay",
+  "version": "1.0.0",
+  "description": "Sends the newest clip picture per camera from your open, signed-in camera site feed to Gods Eye View on this computer.",
+  "minimum_chrome_version": "116",
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://feed.private-cctv.example/*"],
+      "js": ["relay-config.js", "relay-logic.js", "content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "options_page": "options.html",
+  "permissions": [],
+  "host_permissions": [
+    "https://clips-z1.private-cctv.example/*",
+    "https://clips-z2.private-cctv.example/*",
+    "https://clips-z3.private-cctv.example/*",
+    "https://clips-z4.private-cctv.example/*",
+    "http://localhost:4173/*",
+    "http://127.0.0.1:4173/*"
+  ]
+}

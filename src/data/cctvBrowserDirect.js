@@ -1,12 +1,14 @@
 /**
  * Browser-direct CCTV stills.
  *
- * Some operators (Québec 511) refuse every server-side client, so the server
- * hands those cameras' still addresses to the viewer's browser instead
+ * An operator may refuse every server-side client. For hosts the owner lists
+ * (none by default), the server hands those cameras' still addresses to the
+ * viewer's browser instead
  * (`browserImageUrl` on /api/cctv/sources, driven by CCTV_BROWSER_DIRECT_HOSTS).
- * The browser can show such a still in an <img>, but the operator sends no CORS
- * header, so it can never become a WebGL texture: monitor planes and camera
- * cards keep their placeholder for these cameras.
+ * The browser can show such a still in an <img> and draw it on a 2D canvas, so
+ * it shows in the camera panel and as the camera's map thumbnail (thumbnails are
+ * painted on the 2D overlay). The operator sends no CORS header, so it can
+ * never become a WebGL texture: only the 3D monitor plane keeps its placeholder.
  */
 
 /** Never ask a browser-direct operator for a new still more often than this. */

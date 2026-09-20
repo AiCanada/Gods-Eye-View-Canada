@@ -175,6 +175,8 @@ let _pointCollection = null;
 let _dots = [];
 /** @type {Array<{coords:number[][], type:string, waypoints:Cesium.Cartesian3[], segmentDist:number[]}>} Parsed roads with pre-computed Cartesian3 waypoints */
 let _roads = [];
+/** Bumped whenever the road list is replaced, so readers can cache against it. */
+let _roadsRevision = 0;
 /** @type {boolean} Whether the layer is currently enabled */
 let _enabled = false;
 /** @type {Function|null} Disposer returned by preRender event subscription */
@@ -470,6 +472,69 @@ export function forEachTrafficDot(visit) {
     const point = _dots[i]?.point;
     if (point?.position) visit(point, i);
   }
+}
+
+/** Main roads pull harder than side streets: a road camera watches the big road it stands by. */
+const ROAD_BEARING_TYPE_BONUS_M = Object.freeze({ motorway: 25, trunk: 20, primary: 12, secondary: 6 });
+
+/**
+ * The road nearest a point: where it runs, and the nearest point on it. Pure.
+ * A road has two directions; `bearingDeg` is one of them (0 to 180).
+ * @param {Array<{coords:number[][], type?:string}>} roads `coords` are [lon, lat].
+ * @param {number} lat
+ * @param {number} lon
+ * @param {number} [maxM=80] Roads farther than this are ignored.
+ * @returns {{bearingDeg:number, lat:number, lon:number, distanceM:number, type:string}|null}
+ */
+export function nearestRoadBearing(roads, lat, lon, maxM = 80) {
+  if (!Array.isArray(roads) || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const mPerLat = 111_320;
+  const mPerLon = 111_320 * Math.cos((lat * Math.PI) / 180);
+  const latSpan = maxM / mPerLat;
+  const lonSpan = maxM / Math.max(1, mPerLon);
+  let best = null;
+  let bestScore = Infinity;
+  for (let r = 0; r < roads.length; r += 1) {
+    const coords = roads[r]?.coords;
+    if (!Array.isArray(coords) || coords.length < 2) continue;
+    const bonus = ROAD_BEARING_TYPE_BONUS_M[roads[r].type] || 0;
+    for (let i = 1; i < coords.length; i += 1) {
+      const a = coords[i - 1];
+      const b = coords[i];
+      if ((a[1] < lat - latSpan && b[1] < lat - latSpan) || (a[1] > lat + latSpan && b[1] > lat + latSpan)
+        || (a[0] < lon - lonSpan && b[0] < lon - lonSpan) || (a[0] > lon + lonSpan && b[0] > lon + lonSpan)) continue;
+      const ax = (a[0] - lon) * mPerLon;
+      const ay = (a[1] - lat) * mPerLat;
+      const bx = (b[0] - lon) * mPerLon;
+      const by = (b[1] - lat) * mPerLat;
+      const dx = bx - ax;
+      const dy = by - ay;
+      const lengthSq = dx * dx + dy * dy;
+      if (lengthSq < 1e-6) continue;
+      const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / lengthSq));
+      const px = ax + dx * t;
+      const py = ay + dy * t;
+      const distanceM = Math.sqrt(px * px + py * py);
+      if (distanceM > maxM) continue;
+      const score = distanceM - bonus;
+      if (score >= bestScore) continue;
+      bestScore = score;
+      let bearingDeg = (Math.atan2(dx, dy) * 180) / Math.PI;
+      bearingDeg = ((bearingDeg % 180) + 180) % 180;
+      best = { bearingDeg, lat: lat + py / mPerLat, lon: lon + px / mPerLon, distanceM, type: roads[r].type || '' };
+    }
+  }
+  return best;
+}
+
+/** The loaded road nearest a point (see nearestRoadBearing), and the road list's revision. */
+export function roadBearingNear(lat, lon, maxM = 80) {
+  return _enabled && _roads.length ? nearestRoadBearing(_roads, lat, lon, maxM) : null;
+}
+
+/** Changes whenever the loaded roads are replaced. */
+export function getRoadsRevision() {
+  return _enabled ? _roadsRevision : -1;
 }
 
 /**
@@ -1802,6 +1867,7 @@ function renderRoadsForAltitude(roads, altitude, label, trace = null) {
   const renderId = state ? ++trace.renderSequence : null;
   clearDots();
   _roads = roads;
+  _roadsRevision += 1;
   _lastRenderAltitude = altitude;
 
   // At high altitude, drop minor roads to reduce visual noise

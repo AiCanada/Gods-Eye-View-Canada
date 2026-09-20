@@ -123,7 +123,10 @@ export function bindCctvCardResize({
   };
   const cornerAt = (x, y) => {
     const hit = hitTest(x, y);
-    const corner = hit?.rect ? cardResizeCorner(hit.rect, x, y) : null;
+    // A turned card reports the pointer in its own unturned frame.
+    const corner = hit?.rect
+      ? cardResizeCorner(hit.rect, hit.localX ?? x, hit.localY ?? y)
+      : null;
     return corner ? { hit, corner } : null;
   };
   const badgeAt = (x, y) => {

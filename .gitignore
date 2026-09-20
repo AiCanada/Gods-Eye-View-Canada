@@ -16,6 +16,9 @@ pinokio/.installed
 # Private home/business security cameras: logins and camera addresses
 # (POWER UP → SECURITY CAMERAS). Never committed.
 config/private-cameras.json
+config/device-feeds.json
+config/device-recordings/
+config/.device-feeds.json.*.tmp
 config/.private-cameras.json.*.tmp
 
 # Raw camera-pack downloads (tools/camera-pack/CAMERA_PACK.md): only the parsed
@@ -28,3 +31,6 @@ tools/camera-pack/sources/511on.json
 tools/camera-pack/sources/511on-cameras.json
 tools/camera-pack/sources/alberta511-cameras.json
 tools/camera-pack/sources/drivebc-webcams.json
+
+# Your own camera site for the Private_CCTV_Feed relay (never committed).
+config/private_cctv_feed.local.json

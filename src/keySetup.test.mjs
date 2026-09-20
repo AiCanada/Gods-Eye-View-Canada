@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   collectKeyUpdates,
   keySetupChipLabel,
+  keySetupPowerUpCount,
   stripKeylessBasemapFromHash,
 } from './keySetup.js';
 
@@ -11,6 +12,25 @@ test('the chip counts what is missing, and retires the count at zero', () => {
   assert.equal(keySetupChipLabel({ setCount: 7, total: 8 }), 'POWER UP · 1 KEY WAITING');
   assert.equal(keySetupChipLabel({ setCount: 8, total: 8 }), 'POWERED UP');
   assert.equal(keySetupChipLabel(null), 'POWERED UP', 'no status is not a broken label');
+});
+
+test('the chip counts every power-up: keys, camera sections and device sections', () => {
+  const keys = { setCount: 5, total: 12 };
+  const sections = [
+    { id: 'cameras-home', set: true },
+    { id: 'cameras-business', set: false },
+    { id: 'devices-drone', set: false },
+    { id: 'devices-robot', set: false },
+    { id: 'devices-marine', set: false },
+    { id: 'devices-tracker', set: true },
+    { id: 'devices-security', set: false },
+  ];
+  assert.deepEqual(keySetupPowerUpCount(keys, sections), { on: 7, total: 19, missing: 12 });
+  assert.equal(keySetupChipLabel(keys, sections), 'POWER UP · 12 WAITING');
+  assert.equal(keySetupChipLabel({ setCount: 12, total: 12 }, sections.map((section) => ({ ...section, set: true }))), 'POWERED UP');
+  assert.equal(keySetupChipLabel({ setCount: 12, total: 12 }, sections), 'POWER UP · 5 WAITING', 'all keys in, sections still waiting');
+  assert.deepEqual(keySetupPowerUpCount(null, null), { on: 0, total: 0, missing: 0 });
+  assert.deepEqual(keySetupPowerUpCount({ setCount: 20, total: 12 }, []), { on: 12, total: 12, missing: 0 }, 'never more on than there are');
 });
 
 test('collectKeyUpdates keeps only non-empty trimmed values', () => {

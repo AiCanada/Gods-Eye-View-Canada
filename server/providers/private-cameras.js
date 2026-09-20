@@ -10,8 +10,9 @@ import {
   applyPrivateCameraUpdate,
   applyRelayPairing,
   clearRelayPairing,
+  configurePrivateCctvFeed,
   credentialTransport,
-  isArloCloudUrl,
+  isPrivateCctvFeedCloudUrl,
   isRelaySite,
   movePrivateCamera,
   emptyPrivateCameraConfig,
@@ -25,6 +26,7 @@ import {
   relayMatchName,
 } from '../../src/privateCamerasCore.mjs';
 import { defaultSourceRoot } from './common/source-root.js';
+import { PRIVATE_CCTV_FEED_LOCAL_CONFIG, parsePrivateCctvFeedConfig } from '../../src/privateCctvFeedConfig.mjs';
 
 /**
  * Private home and business security cameras — kept separate from the public
@@ -48,8 +50,8 @@ import { defaultSourceRoot } from './common/source-root.js';
  * login is never replayed elsewhere; a pinned certificate fingerprint is
  * enforced before any header is sent; only raster images are relayed.
  *
- * GEV Arlo Feed Relay (tools/arlo-feed-relay): a browser extension that, while
- * the owner's own signed-in my.arlo.com feed is open, passes the newest clip
+ * GEV Private_CCTV_Feed Relay (tools/private-cctv-feed-relay): a browser extension that, while
+ * the owner's own signed-in camera site feed is open, passes the newest clip
  * picture of each camera here. Its routes answer the same machine only, and
  * only a Chrome extension (Sec-Fetch-Site none, a chrome-extension:// Origin on
  * every POST); everything but the pairing request needs its bearer secret, and
@@ -80,7 +82,7 @@ import { defaultSourceRoot } from './common/source-root.js';
 
 export const PRIVATE_FRAME_TIMEOUT_MS = 8000;
 export const PRIVATE_FRAME_MAX_BYTES = 16 * 1024 * 1024;
-/** Largest clip picture the Arlo relay may send. */
+/** Largest clip picture the Private_CCTV_Feed relay may send. */
 export const RELAY_FRAME_MAX_BYTES = 8 * 1024 * 1024;
 /** Largest pairing request or heartbeat body. */
 export const RELAY_JSON_MAX_BYTES = 4096;
@@ -106,7 +108,7 @@ const RELAY_PAIR_CALLERS_MAX = 16;
 const RELAY_PENDING_MAX = 4;
 const RELAY_UNKNOWN_NAMES_MAX = 5;
 /**
- * Several my.arlo.com tabs report on their own; a recent report of a better
+ * Several camera site feed tabs report on their own; a recent report of a better
  * state (a tab reading the feed) is kept over another tab's worse one for this
  * long. A tab's own worse report (its page just signed out) counts at once.
  */
@@ -271,8 +273,8 @@ export async function fetchPrivateFrame(
   { fetchImpl = fetch, pinnedFetchImpl = pinnedFetch, timeoutMs = PRIVATE_FRAME_TIMEOUT_MS, maxBytes = PRIVATE_FRAME_MAX_BYTES } = {},
 ) {
   if (!target?.url) return { ok: false, reason: 'not configured' };
-  // Arlo's website is a sign-in page, not a picture: it is never contacted or sent a login.
-  if (isArloCloudUrl(target.url)) return { ok: false, reason: 'arlo needs a local bridge' };
+  // Private_CCTV_Feed's website is a sign-in page, not a picture: it is never contacted or sent a login.
+  if (isPrivateCctvFeedCloudUrl(target.url)) return { ok: false, reason: 'private_cctv_feed needs a local bridge' };
   const auth = target.auth || { type: 'none' };
   const transport = credentialTransport(target.url);
   if (transport === 'invalid') return { ok: false, reason: 'invalid address' };
@@ -335,7 +337,7 @@ export function privateFetchSiteAllowed(headers = {}) {
 }
 
 /**
- * Admission for the GEV Arlo Feed Relay's own routes. Locality is exactly the
+ * Admission for the GEV Private_CCTV_Feed Relay's own routes. Locality is exactly the
  * Provider Settings gate (loopback socket, local Host, no proxy or forwarding
  * headers, no sharing mode). On top of that only a browser extension's service
  * worker gets in: browsers label its requests Sec-Fetch-Site none, and each of
@@ -353,8 +355,8 @@ export function admitRelayRequest(req) {
     proxyHeaders: headers,
     env: process.env,
   });
-  if (!locality.ok) return { ok: false, status: locality.status, error: locality.error.replace('Provider Settings', 'The Arlo relay') };
-  const refused = { ok: false, status: 403, error: 'The Arlo relay answers only its browser extension' };
+  if (!locality.ok) return { ok: false, status: locality.status, error: locality.error.replace('Provider Settings', 'The Private_CCTV_Feed relay') };
+  const refused = { ok: false, status: 403, error: 'The Private_CCTV_Feed relay answers only its browser extension' };
   if (headers['sec-fetch-site'] !== 'none') return refused;
   const origin = headers.origin;
   const match = typeof origin === 'string' ? RELAY_EXTENSION_ORIGIN.exec(origin) : null;
@@ -363,7 +365,7 @@ export function admitRelayRequest(req) {
   } else if (req.method === 'GET') {
     if (origin !== undefined && !match) return refused;
   } else {
-    return { ok: false, status: 403, error: 'The Arlo relay answers only GET and POST' };
+    return { ok: false, status: 403, error: 'The Private_CCTV_Feed relay answers only GET and POST' };
   }
   return { ok: true, extensionId: match ? match[1] : null };
 }
@@ -479,14 +481,14 @@ const SECURITY_HEADERS = Object.freeze({
 
 /** One line under the reason saying what to do about it. */
 const OFFLINE_HINTS = Object.freeze({
-  'arlo needs a local bridge': 'Choose Browser feed relay, or set up a local bridge, in POWER UP',
-  'arlo relay not connected': 'Open your my.arlo.com feed with the GEV Arlo Feed Relay',
-  'arlo relay not paired': 'Pair the GEV Arlo Feed Relay in POWER UP',
-  'arlo signed out': 'Sign in at my.arlo.com to refresh pictures',
+  'private_cctv_feed needs a local bridge': 'Choose Browser feed relay, or set up a local bridge, in POWER UP',
+  'feed relay not connected': 'Open your camera site feed with the GEV Private_CCTV_Feed Relay',
+  'feed relay not paired': 'Pair the GEV Private_CCTV_Feed Relay in POWER UP',
+  'feed signed out': 'Sign in at your camera site to refresh pictures',
   'login refused': 'Check this site login in POWER UP',
   'not a still image': 'Use a JPEG snapshot address, not a web page',
   'not configured': 'Add this camera in POWER UP',
-  'picture on its way': 'The Arlo feed shows a clip from this camera',
+  'picture on its way': 'The Private_CCTV_Feed feed shows a clip from this camera',
   'waiting for a clip': 'Shows the next motion clip from this camera',
 });
 
@@ -537,18 +539,53 @@ export function isPrivateStoreRequest(rawUrl, { sourceRoot = defaultSourceRoot, 
 }
 
 export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl, pinnedFetchImpl } = {}) {
+  // Which site the owner's feed lives on is local, untracked configuration.
+  // It decides which hosts are never sent a saved login, so it is re-read when
+  // the file changes (no restart needed) and a broken file is said out loud:
+  // read silently, a typo left that guard knowing only the example hosts.
+  const feedConfigPath = path.join(sourceRoot, PRIVATE_CCTV_FEED_LOCAL_CONFIG);
+  let feedConfigStamp = '';
+  let feedConfigCheckedAt = 0;
+  const refreshFeedConfig = (force = false) => {
+    const now = Date.now();
+    if (!force && now - feedConfigCheckedAt < 2000) return;
+    feedConfigCheckedAt = now;
+    let stamp = 'missing';
+    try {
+      const stat = fs.statSync(feedConfigPath);
+      stamp = `${stat.mtimeMs}:${stat.size}`;
+    } catch {
+      stamp = 'missing';
+    }
+    if (stamp === feedConfigStamp) return;
+    feedConfigStamp = stamp;
+    let feedRaw = null;
+    if (stamp !== 'missing') {
+      try {
+        feedRaw = JSON.parse(fs.readFileSync(feedConfigPath, 'utf8'));
+      } catch (error) {
+        console.warn(`[Private cameras] ${PRIVATE_CCTV_FEED_LOCAL_CONFIG} could not be read (${error?.message || error}). The vendor site is NOT recognised until it is fixed.`);
+      }
+    }
+    const parsed = parsePrivateCctvFeedConfig(feedRaw);
+    for (const problem of parsed.problems) {
+      console.warn(`[Private cameras] ${PRIVATE_CCTV_FEED_LOCAL_CONFIG}: ${problem}`);
+    }
+    configurePrivateCctvFeed(parsed);
+  };
+  refreshFeedConfig(true);
   const storePath = path.join(sourceRoot, 'config', 'private-cameras.json');
   let cache = { mtimeMs: -1, size: -1, config: emptyPrivateCameraConfig() };
   const failures = new Map();
   const inflight = new Map();
   const fetchOptions = { ...(fetchImpl ? { fetchImpl } : {}), ...(pinnedFetchImpl ? { pinnedFetchImpl } : {}) };
 
-  // GEV Arlo Feed Relay state. Memory only: it is gone when the server stops.
+  // GEV Private_CCTV_Feed Relay state. Memory only: it is gone when the server stops.
   /** public camera id → { body, contentType, receivedAt, clip } */
   const relayFrames = new Map();
   /** site id → { state, seen, at, reporter } */
   const relayHeartbeats = new Map();
-  /** site id → Arlo feed names (normalised) that matched no camera of that site */
+  /** site id → Private_CCTV_Feed feed names (normalised) that matched no camera of that site */
   const relayUnknownNames = new Map();
   /** extension id → when its recent pairing requests arrived */
   const relayPairTimes = new Map();
@@ -561,6 +598,9 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
   const relayPending = new Map();
 
   const readConfig = ({ strict = false } = {}) => {
+    // Every path that may go on to fetch a camera reads the config first, so the
+    // vendor-site guard is current before any saved login can be sent.
+    refreshFeedConfig();
     try {
       const { mtimeMs, size } = fs.statSync(storePath);
       if (mtimeMs !== cache.mtimeMs || size !== cache.size) {
@@ -633,8 +673,8 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
   /**
    * Drop relay memory for sites that went away or stopped being relay sites, for
    * removed cameras, and for cameras that kept their id but now match another
-   * Arlo feed name (a new Name, a new Arlo name, or two Arlo names swapped): a
-   * picture arrived for the Arlo camera its old name matched, so keeping it
+   * Private_CCTV_Feed feed name (a new Name, a new Private_CCTV_Feed name, or two Private_CCTV_Feed names swapped): a
+   * picture arrived for the Private_CCTV_Feed camera its old name matched, so keeping it
    * could show another camera's picture.
    */
   const forgetRelayChanges = (before, after) => {
@@ -651,13 +691,13 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     }
   };
 
-  /** A site's Arlo feed names that still match none of its cameras. */
+  /** A site's Private_CCTV_Feed feed names that still match none of its cameras. */
   const unknownNamesFor = (site) => {
     const matchNames = new Set(site.cameras.map((camera) => relayMatchName(camera)));
     return (relayUnknownNames.get(site.id) || []).filter((name) => !matchNames.has(name));
   };
 
-  /** Remember an unmatched Arlo feed name: names that match a camera by now are dropped, and the newest five are kept. */
+  /** Remember an unmatched Private_CCTV_Feed feed name: names that match a camera by now are dropped, and the newest five are kept. */
   const rememberUnknownName = (site, name) => {
     if (!name) return;
     const names = unknownNamesFor(site);
@@ -695,13 +735,13 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
 
   /**
    * A relay camera's latest picture, or why there is none. Nothing is fetched.
-   * A picture is shown only while the relay is reporting and Arlo is signed in;
+   * A picture is shown only while the relay is reporting and Private_CCTV_Feed is signed in;
    * otherwise the placeholder says why, with the time its last picture arrived,
    * so an old picture never passes for a current one.
    */
   const relayFrameFor = (publicId, target, site) => {
     const name = target.name;
-    if (!site?.relayExtensionId || !site.relaySecretHash) return { ok: false, reason: 'arlo relay not paired', name };
+    if (!site?.relayExtensionId || !site.relaySecretHash) return { ok: false, reason: 'feed relay not paired', name };
     const frame = relayFrames.get(publicId);
     const heartbeat = relayHeartbeats.get(target.siteId);
     const lastHeard = Math.max(heartbeat ? heartbeat.at : -Infinity, frame ? frame.receivedAt : -Infinity);
@@ -710,10 +750,10 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     if (frame && !quiet && !signedOut) return { ok: true, body: frame.body, contentType: frame.contentType, name, relay: true };
     const lastPicture = frame ? `Last clip picture arrived ${clockTime(frame.receivedAt)}` : '';
     // A signed-out report wins even once the relay goes quiet: signing in is what brings pictures back.
-    if (signedOut) return { ok: false, reason: 'arlo signed out', name, detail: lastPicture };
-    if (quiet) return { ok: false, reason: 'arlo relay not connected', name, detail: lastPicture };
+    if (signedOut) return { ok: false, reason: 'feed signed out', name, detail: lastPicture };
+    if (quiet) return { ok: false, reason: 'feed relay not connected', name, detail: lastPicture };
     if (heartbeat?.seen?.includes(target.matchName)) return { ok: false, reason: 'picture on its way', name };
-    const detail = unknownNamesFor(site).length ? 'Or set its Arlo name in POWER UP if the feed calls it something else' : '';
+    const detail = unknownNamesFor(site).length ? 'Or set its Private_CCTV_Feed name in POWER UP if the feed calls it something else' : '';
     return { ok: false, reason: 'waiting for a clip', name, detail };
   };
 
@@ -826,7 +866,7 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
       const names = [...new Set(seen.map((name) => normalizeRelayCameraName(name)).filter(Boolean))];
       const previous = relayHeartbeats.get(site.id);
       // A leftover sign-in tab does not override another tab that is reading the feed, but the
-      // tab that sent the better report is believed at once when its own page gets worse (Arlo
+      // tab that sent the better report is believed at once when its own page gets worse (Private_CCTV_Feed
       // signed it out): only a report from the very same tab tag replaces it inside the hold.
       const sameReporter = Boolean(reporter) && previous?.reporter === reporter;
       const outranked = previous && !sameReporter && now - previous.at < RELAY_HEARTBEAT_HOLD_MS && RELAY_STATE_RANK[previous.state] > RELAY_STATE_RANK[state];
@@ -849,10 +889,10 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     }
 
     // POST /relay/frame — every header is checked before a single body byte is read.
-    const camera = relayHeaderText(headers['x-arlo-camera'], 200);
-    if (camera === null || !normalizeRelayCameraName(camera)) return refuse(400, { error: 'X-Arlo-Camera must name the camera' });
-    const clip = headers['x-arlo-clip'] === undefined ? '' : relayHeaderText(headers['x-arlo-clip'], 80);
-    if (clip === null) return refuse(400, { error: 'X-Arlo-Clip is not valid' });
+    const camera = relayHeaderText(headers['x-private-cctv-feed-camera'], 200);
+    if (camera === null || !normalizeRelayCameraName(camera)) return refuse(400, { error: 'X-Private-Cctv-Feed-Camera must name the camera' });
+    const clip = headers['x-private-cctv-feed-clip'] === undefined ? '' : relayHeaderText(headers['x-private-cctv-feed-clip'], 80);
+    if (clip === null) return refuse(400, { error: 'X-Private-Cctv-Feed-Clip is not valid' });
     const contentType = headers['content-type'];
     if (!RELAY_IMAGE_TYPES.has(contentType)) return refuse(415, { error: 'Only JPEG, PNG or WebP pictures are accepted' });
     const length = headers['content-length'];
@@ -895,7 +935,7 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
         return respondJson(res, 400, { error: 'Bad request' });
       }
       // No relay route answers a CORS preflight, and no route ever sends CORS headers.
-      if (url.pathname.startsWith('/relay/') && req.method === 'OPTIONS') return relayRefuse(req, res, 403, { error: 'The Arlo relay does not answer preflight requests' });
+      if (url.pathname.startsWith('/relay/') && req.method === 'OPTIONS') return relayRefuse(req, res, 403, { error: 'The Private_CCTV_Feed relay does not answer preflight requests' });
       if (RELAY_EXTENSION_ROUTES.has(url.pathname)) {
         try {
           return await relayExtensionRoute(req, res, url.pathname);
@@ -949,7 +989,7 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
         if (url.pathname === '/relay/approve' && req.method === 'POST') {
           // POWER UP approves one waiting pairing request for one relay site: the one
           // from the extension id and with the code the user compared, and no other.
-          if (!allowEdit) return respondJson(res, 403, { error: 'The Arlo relay can only be paired under the dev server' });
+          if (!allowEdit) return respondJson(res, 403, { error: 'The Private_CCTV_Feed relay can only be paired under the dev server' });
           const read = await readJsonBody(req, RELAY_JSON_MAX_BYTES);
           if (!read.ok) return respondJson(res, read.status, { error: read.error });
           const again = 'press PAIR WITH GODS EYE VIEW on the relay options page again';
@@ -967,7 +1007,7 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
           return respondJson(res, 200, { ok: true, extensionId: pending.extensionId });
         }
         if (url.pathname === '/relay/unpair' && req.method === 'POST') {
-          if (!allowEdit) return respondJson(res, 403, { error: 'The Arlo relay can only be unpaired under the dev server' });
+          if (!allowEdit) return respondJson(res, 403, { error: 'The Private_CCTV_Feed relay can only be unpaired under the dev server' });
           const read = await readJsonBody(req, RELAY_JSON_MAX_BYTES);
           if (!read.ok) return respondJson(res, read.status, { error: read.error });
           const siteId = read.value?.siteId;

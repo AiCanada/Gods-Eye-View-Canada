@@ -92,9 +92,14 @@ export const CCTV_CARD_SCALE_MIN = 0.35;
 /** Steady-state global gate: one card-frame fetch per second. */
 export const CCTV_CARD_FETCH_STEADY_SPACING_MS = 1_000;
 /** Cold-fill burst spacing between fetch launches. */
-export const CCTV_CARD_FETCH_BURST_SPACING_MS = 250;
+export const CCTV_CARD_FETCH_BURST_SPACING_MS = 150;
 /** Cold-fill burst max concurrent in-flight fetches. */
-export const CCTV_CARD_FETCH_BURST_LIMIT = 4;
+export const CCTV_CARD_FETCH_BURST_LIMIT = 6;
+
+/** Shown in place of the title while a thumbnail is being aligned by hand (cctvCardAlign.js). */
+// Short on purpose: the title strip shows about sixteen characters.
+export const CCTV_ALIGN_HINT = 'R-CLICK TO SAVE';
+export const CCTV_ALIGN_ACCENT = '#ffd24a';
 
 /** Distance fade: full inside 70%, gone past this (metro scale stays live). */
 const FADE_DISTANCE_M = 150000;
@@ -330,6 +335,12 @@ export function createCctvThumbnailOverlayEntry({
   active = false,
   gapPx = 16,
   scale = 1,
+  centered = false,
+  pictureAnchor = 'center',
+  worldWidthM = 0,
+  orientTo = null,
+  orientAmbiguous = false,
+  aligning = false,
 } = {}) {
   const hostGap = Math.max(14, (Number(gapPx) || 14) + 6);
   // Drag-to-resize (cctvCardResize.js): the picture and the declutter spacing
@@ -340,11 +351,12 @@ export function createCctvThumbnailOverlayEntry({
     position,
     variant: 'thumbnail',
     paintLane: 'thumbnail',
-    title,
+    // While a thumbnail is being lined up by hand its title says how.
+    title: aligning ? CCTV_ALIGN_HINT : title,
     details: [],
     image: frameSlot,
     requireImage: true,
-    accent: CCTV_THUMBNAIL_STYLE.accent,
+    accent: aligning ? CCTV_ALIGN_ACCENT : CCTV_THUMBNAIL_STYLE.accent,
     priority: active ? 1_000_000 : pinned ? 900_000 : 100_000 - rank,
     selected: false,
     pinned,
@@ -364,6 +376,22 @@ export function createCctvThumbnailOverlayEntry({
     terrainOcclusion: false,
     gapPx: hostGap,
     leaderOffsetPx: Math.max(2, hostGap - 6),
+    // A card standing where its camera looks is centred on that spot, picture
+    // over map, so it lines up with the street it shows. It is never moved off
+    // that spot: when two would overlap, the lower-ranked one waits. A card at
+    // the camera's mount stays above it so the camera icon is never covered.
+    placement: centered ? 'center' : 'auto',
+    // Road-matched cards (see nearFieldRoadSpot in cctv.js): the BOTTOM of the
+    // picture, where the road is widest, stands on that stretch of road, and the
+    // picture is as wide on screen as the ground its bottom edge covers. The
+    // user's size (scale) still multiplies it: the base is the unscaled width.
+    pictureAnchor,
+    worldWidthM,
+    worldWidthBasePx: CCTV_CARD_THUMB_W,
+    // A world point the card is turned toward (see the host's orientTo): the
+    // picture then runs along its road at whatever angle the road has on screen.
+    orientTo,
+    orientAmbiguous,
     verticalOnly: true,
     // CCTV shipped as a STATELESS per-frame rebuild: cards popped in and out on
     // the frame the geometry said so, and above/below was re-decided from
@@ -395,7 +423,7 @@ export function createCctvThumbnailOverlayEntry({
     thumbnailTitleColor: CCTV_THUMBNAIL_STYLE.titleColor,
     thumbnailTitleFont: CCTV_THUMBNAIL_STYLE.titleFont,
     thumbnailLeaderColor: CCTV_THUMBNAIL_STYLE.leader,
-    thumbnailRuleColor: CCTV_THUMBNAIL_STYLE.rule,
+    thumbnailRuleColor: aligning ? CCTV_ALIGN_ACCENT : CCTV_THUMBNAIL_STYLE.rule,
     thumbnailRuleHeight: CCTV_THUMBNAIL_STYLE.ruleHeight,
     thumbnailRadius: CCTV_THUMBNAIL_STYLE.radius,
   };

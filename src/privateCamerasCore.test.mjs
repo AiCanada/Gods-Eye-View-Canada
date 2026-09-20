@@ -8,7 +8,7 @@ import {
   credentialDestinations,
   credentialTransport,
   emptyPrivateCameraConfig,
-  isArloCloudUrl,
+  isPrivateCctvFeedCloudUrl,
   isPrivateNetworkHost,
   maskPrivateCameraSource,
   normalizeFingerprint,
@@ -19,7 +19,7 @@ import {
   privateFrameTarget,
   privateSiteTransport,
   relayMatchName,
-  siteUsesArloWebsite,
+  siteUsesPrivateCctvFeedWebsite,
 } from './privateCamerasCore.mjs';
 import { collectPrivateSiteUpdate } from './privateCamerasSetup.js';
 
@@ -36,9 +36,9 @@ function withHome() {
     token: TOKEN,
     tlsFingerprint: PIN,
     cameras: [
-      { name: 'Front', source: 'camera.aarlo_front', lat: 45.27, lon: -66.06, headingDeg: 90 },
-      { name: 'Ff', source: 'camera.aarlo_ff' },
-      { name: 'Back', source: 'camera.aarlo_back', lat: 45.2701, lon: -66.0601 },
+      { name: 'Front', source: 'camera.privatecam_front', lat: 45.27, lon: -66.06, headingDeg: 90 },
+      { name: 'Ff', source: 'camera.privatecam_ff' },
+      { name: 'Back', source: 'camera.privatecam_back', lat: 45.2701, lon: -66.0601 },
     ],
   });
   assert.equal(result.ok, true, result.error);
@@ -68,7 +68,7 @@ test('several sites of the same kind get distinct ids and distinct public camera
     name: 'Home',
     bridgeUrl: 'https://cottage-ha.local',
     token: 'another-token',
-    cameras: [{ name: 'Front', source: 'camera.aarlo_front', lat: 46, lon: -65 }],
+    cameras: [{ name: 'Front', source: 'camera.privatecam_front', lat: 46, lon: -65 }],
   }, config);
   assert.equal(second.ok, true, second.error);
   assert.equal(second.siteId, 'home-2');
@@ -83,7 +83,7 @@ test('several sites of the same kind get distinct ids and distinct public camera
 test('version 1 stores migrate to the site list', () => {
   const config = normalizePrivateCameraConfig({
     version: 1,
-    sites: { home: { auth: 'token', token: 't', bridgeUrl: 'http://ha.local:8123', cameras: [{ id: 'front', name: 'Front', source: 'camera.aarlo_front' }] } },
+    sites: { home: { auth: 'token', token: 't', bridgeUrl: 'http://ha.local:8123', cameras: [{ id: 'front', name: 'Front', source: 'camera.privatecam_front' }] } },
   });
   assert.equal(config.version, 2);
   assert.deepEqual(config.sites.map((site) => [site.id, site.kind, site.name]), [['home', 'home', 'Home']]);
@@ -117,7 +117,7 @@ test('a login is never allowed over plain http beyond the local network', () => 
   const internet = applyPrivateCameraUpdate({ kind: 'business', name: 'Office', username: 'u', password: 'p', cameras: [{ name: 'A', source: 'http://cams.example.com/snap.jpg' }] });
   assert.equal(internet.ok, false);
   assert.match(internet.error, /plain http to cams\.example\.com.*use https/);
-  const bridge = applyPrivateCameraUpdate({ kind: 'home', name: 'Home', bridgeUrl: 'http://my-ha.duckdns.org:8123', token: 't', cameras: [{ name: 'Front', source: 'camera.aarlo_front' }] });
+  const bridge = applyPrivateCameraUpdate({ kind: 'home', name: 'Home', bridgeUrl: 'http://my-ha.duckdns.org:8123', token: 't', cameras: [{ name: 'Front', source: 'camera.privatecam_front' }] });
   assert.equal(bridge.ok, false);
   assert.match(bridge.error, /Bridge URL/);
   const anonymous = applyPrivateCameraUpdate({ kind: 'business', name: 'Public', cameras: [{ name: 'A', source: 'http://cams.example.com/snap.jpg' }] });
@@ -140,7 +140,7 @@ test('omitted secrets and sources are kept, null clears a secret', () => {
   const kept = applyPrivateCameraUpdate({ kind: 'home', siteId: 'home', cameras: [{ id: 'front', name: 'Front door', lat: 45.1, lon: -66.1 }] }, config);
   assert.equal(kept.ok, true, kept.error);
   assert.equal(kept.config.sites[0].token, TOKEN);
-  assert.equal(kept.config.sites[0].cameras[0].source, 'camera.aarlo_front');
+  assert.equal(kept.config.sites[0].cameras[0].source, 'camera.privatecam_front');
   assert.equal(kept.config.sites[0].cameras[0].id, 'front', 'a renamed camera keeps its id');
   const cleared = applyPrivateCameraUpdate({ kind: 'home', siteId: 'home', token: null }, config);
   assert.equal(cleared.config.sites[0].token, '');
@@ -174,7 +174,7 @@ test('frame targets carry the right login and pin; malformed ids resolve to noth
     cameras: [{ name: 'Dock', source: 'http://10.0.0.2/snap.jpg', lat: 1, lon: 2 }],
   }, withHome().config).config;
   assert.deepEqual(privateFrameTarget(shop, 'private-home--front'), {
-    url: 'https://homeassistant.local:8123/api/camera_proxy/camera.aarlo_front',
+    url: 'https://homeassistant.local:8123/api/camera_proxy/camera.privatecam_front',
     auth: { type: 'bearer', token: TOKEN },
     name: 'Front',
     tlsFingerprint: normalizeFingerprint(PIN),
@@ -227,7 +227,7 @@ test('facing accepts compass points and numbers, reports the nearest point, and 
 });
 
 test('masking keeps entities, hides long path segments and queries', () => {
-  assert.equal(maskPrivateCameraSource('camera.aarlo_front'), 'camera.aarlo_front');
+  assert.equal(maskPrivateCameraSource('camera.privatecam_front'), 'camera.privatecam_front');
   assert.equal(
     maskPrivateCameraSource('https://scrypted.local/endpoint/@scrypted/webhook/public/12/abcdefabcdefabcdefabcdef1234/takePicture'),
     'https://scrypted.local/endpoint/@scrypted/webhook/public/12/•••/takePicture',
@@ -271,9 +271,9 @@ test('a site is placed by postal code and its cameras are spread apart by facing
     lon: -66.0633,
     locationLabel: 'Saint John, NB',
     cameras: [
-      { name: 'Front', source: 'camera.aarlo_front', headingDeg: 'S' },
-      { name: 'Ff', source: 'camera.aarlo_ff', headingDeg: 'S' },
-      { name: 'Back Yard', source: 'camera.aarlo_back_yard', headingDeg: 'N' },
+      { name: 'Front', source: 'camera.privatecam_front', headingDeg: 'S' },
+      { name: 'Ff', source: 'camera.privatecam_ff', headingDeg: 'S' },
+      { name: 'Back Yard', source: 'camera.privatecam_back_yard', headingDeg: 'N' },
     ],
   });
   assert.equal(saved.ok, true, saved.error);
@@ -296,32 +296,32 @@ test('a site is placed by postal code and its cameras are spread apart by facing
   assert.equal(privateCameraStatus(moved.config).kinds[0].sites[0].cameras[0].placed, false);
 });
 
-test("a site pointed at the Arlo website is flagged, since that page is never a camera picture", () => {
-  assert.equal(isArloCloudUrl('https://my.arlo.com/#/feed'), true);
-  assert.equal(isArloCloudUrl('https://ARLO.com/'), true);
-  assert.equal(isArloCloudUrl('https://myapi.arlo.netgear.com/x'), true);
-  assert.equal(isArloCloudUrl('https://homeassistant.local:8123'), false);
-  assert.equal(isArloCloudUrl('https://notarlo.com.example.net/'), false);
-  assert.equal(isArloCloudUrl('camera.aarlo_front'), false);
+test("a site pointed at the Private_CCTV_Feed website is flagged, since that page is never a camera picture", () => {
+  assert.equal(isPrivateCctvFeedCloudUrl('https://feed.private-cctv.example/#/feed'), true);
+  assert.equal(isPrivateCctvFeedCloudUrl('https://PRIVATE-CCTV.EXAMPLE/'), true);
+  assert.equal(isPrivateCctvFeedCloudUrl('https://api.legacy.private-cctv.example/x'), true);
+  assert.equal(isPrivateCctvFeedCloudUrl('https://homeassistant.local:8123'), false);
+  assert.equal(isPrivateCctvFeedCloudUrl('https://notprivate-cctv.example.evil.net/'), false);
+  assert.equal(isPrivateCctvFeedCloudUrl('camera.privatecam_front'), false);
   const config = normalizePrivateCameraConfig({
     version: 2,
     sites: [
-      { kind: 'home', id: 'home', name: 'Home', auth: 'login', bridgeUrl: 'https://my.arlo.com', cameras: [{ id: 'front', name: 'Front', source: 'https://my.arlo.com/#/feed' }] },
+      { kind: 'home', id: 'home', name: 'Home', auth: 'login', bridgeUrl: 'https://feed.private-cctv.example', cameras: [{ id: 'front', name: 'Front', source: 'https://feed.private-cctv.example/#/feed' }] },
       { kind: 'business', id: 'shop', name: 'Shop', cameras: [{ id: 'door', name: 'Door', source: 'https://192.168.1.64/ISAPI/Streaming/channels/101/picture' }] },
     ],
   });
   const status = privateCameraStatus(config);
   const home = status.kinds.find((kind) => kind.id === 'home').sites[0];
   const shop = status.kinds.find((kind) => kind.id === 'business').sites[0];
-  assert.equal(home.arloWebsite, true);
-  assert.equal(home.cameras[0].arloWebsite, true);
-  assert.equal(shop.arloWebsite, false);
-  assert.equal(shop.cameras[0].arloWebsite, false);
+  assert.equal(home.privateCctvFeedWebsite, true);
+  assert.equal(home.cameras[0].privateCctvFeedWebsite, true);
+  assert.equal(shop.privateCctvFeedWebsite, false);
+  assert.equal(shop.cameras[0].privateCctvFeedWebsite, false);
 });
 
 const RELAY_EXTENSION_ID = 'abcdefghijklmnopabcdefghijklmnop';
 const RELAY_SECRET_HASH = `${'c0ffee'.repeat(10)}c0ff`;
-const ARLO_FEED = 'https://my.arlo.com/#/feed';
+const PRIVATE_CCTV_FEED_FEED = 'https://feed.private-cctv.example/#/feed';
 
 function withLoginHome() {
   const result = applyPrivateCameraUpdate({
@@ -334,9 +334,9 @@ function withLoginHome() {
     password: PASSWORD,
     tlsFingerprint: PIN,
     cameras: [
-      { name: 'Front', source: ARLO_FEED, lat: 45.27, lon: -66.06 },
-      { name: 'Ff', source: ARLO_FEED },
-      { name: 'Back Yard', source: ARLO_FEED },
+      { name: 'Front', source: PRIVATE_CCTV_FEED_FEED, lat: 45.27, lon: -66.06 },
+      { name: 'Ff', source: PRIVATE_CCTV_FEED_FEED },
+      { name: 'Back Yard', source: PRIVATE_CCTV_FEED_FEED },
     ],
   });
   assert.equal(result.ok, true, result.error);
@@ -368,17 +368,17 @@ test('the browser feed relay is a third home sign-in mode that keeps saved login
     'saved logins are kept, never blanked',
   );
   assert.deepEqual([site.relayExtensionId, site.relaySecretHash], ['', ''], 'a pairing never comes from a request body');
-  assert.deepEqual(site.cameras.map((camera) => camera.source), [ARLO_FEED, ARLO_FEED, ARLO_FEED], 'older my.arlo.com sources are left alone');
+  assert.deepEqual(site.cameras.map((camera) => camera.source), [PRIVATE_CCTV_FEED_FEED, PRIVATE_CCTV_FEED_FEED, PRIVATE_CCTV_FEED_FEED], 'older feed.private-cctv.example sources are left alone');
   assert.deepEqual(credentialDestinations(site), []);
   assert.equal(privateSiteTransport(site), 'relay');
-  assert.equal(siteUsesArloWebsite(site), false);
+  assert.equal(siteUsesPrivateCctvFeedWebsite(site), false);
 
   const status = privateCameraStatus(relay.config);
   const [home] = status.kinds[0].sites;
   assert.equal(home.transport, 'relay');
-  assert.equal(home.arloWebsite, false);
+  assert.equal(home.privateCctvFeedWebsite, false);
   assert.deepEqual(home.relay, { paired: false, extensionId: '' });
-  assert.deepEqual(home.cameras.map((camera) => [camera.matchName, camera.arloWebsite]), [['front', false], ['ff', false], ['back yard', false]]);
+  assert.deepEqual(home.cameras.map((camera) => [camera.matchName, camera.privateCctvFeedWebsite]), [['front', false], ['ff', false], ['back yard', false]]);
 
   const target = privateFrameTarget(relay.config, 'private-home--back-yard');
   assert.deepEqual(target, { relay: true, siteId: 'home', cameraId: 'back-yard', matchName: 'back yard', name: 'Back Yard' });
@@ -386,19 +386,19 @@ test('the browser feed relay is a third home sign-in mode that keeps saved login
   assert.equal(normalizePrivateCameraConfig(relay.config).sites[0].auth, 'relay', 'the relay mode survives a reload');
 });
 
-test('relay camera names compare the way the Arlo feed writes them', () => {
+test('relay camera names compare the way the Private_CCTV_Feed feed writes them', () => {
   assert.equal(normalizeRelayCameraName('  Back \t  Yard '), 'back yard');
   assert.equal(normalizeRelayCameraName('ＦＲＯＮＴ'), 'front', 'full-width letters fold to plain ones');
   assert.equal(normalizeRelayCameraName(42), '');
   assert.equal(normalizeRelayCameraName(null), '');
   assert.equal(relayMatchName({ name: 'Front', source: '' }), 'front');
   assert.equal(relayMatchName({ name: 'Porch', source: ' Front  Door ' }), 'front door');
-  assert.equal(relayMatchName({ name: 'Ff', source: ARLO_FEED }), 'ff', 'an address is never a name');
+  assert.equal(relayMatchName({ name: 'Ff', source: PRIVATE_CCTV_FEED_FEED }), 'ff', 'an address is never a name');
   assert.equal(relayMatchName({ name: 'Ff', source: '   ' }), 'ff');
   assert.equal(relayMatchName({ name: 'Ff' }), 'ff');
 });
 
-test('a relay camera needs no source; an Arlo name override is plain text and each name reaches one camera', () => {
+test('a relay camera needs no source; a Private_CCTV_Feed name override is plain text and each name reaches one camera', () => {
   const saved = applyPrivateCameraUpdate({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Front door', source: '  Front  ' }, { name: 'Garage' }] });
   assert.equal(saved.ok, true, saved.error);
   assert.deepEqual(saved.config.sites[0].cameras.map((camera) => [camera.source, relayMatchName(camera)]), [['Front', 'front'], ['', 'garage']]);
@@ -409,36 +409,36 @@ test('a relay camera needs no source; an Arlo name override is plain text and ea
     if (expected instanceof RegExp) assert.match(result.error, expected);
     else assert.equal(result.error, expected);
   };
-  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Front door', source: ARLO_FEED }] }, undefined, 'Camera 1 (Front door) Arlo name must be the camera name shown in the Arlo feed, not an address');
-  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Garage' }, { name: 'Dock', source: 'http://10.0.0.2/snap.jpg' }] }, undefined, /Camera 2 \(Dock\) Arlo name must be the camera name shown in the Arlo feed, not an address/);
-  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Front', source: 'x'.repeat(61) }] }, undefined, /Arlo name is not valid/);
-  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Front', source: 'front\u0007' }] }, undefined, /Arlo name is not valid/);
-  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Front' }, { name: 'Porch', source: 'FRONT' }] }, undefined, 'Two cameras would both match the Arlo camera “front”');
-  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Back  Yard' }, { name: 'back yard' }] }, undefined, 'Two cameras would both match the Arlo camera “back yard”');
+  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Front door', source: PRIVATE_CCTV_FEED_FEED }] }, undefined, 'Camera 1 (Front door) Private_CCTV_Feed name must be the camera name shown in the Private_CCTV_Feed feed, not an address');
+  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Garage' }, { name: 'Dock', source: 'http://10.0.0.2/snap.jpg' }] }, undefined, /Camera 2 \(Dock\) Private_CCTV_Feed name must be the camera name shown in the Private_CCTV_Feed feed, not an address/);
+  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Front', source: 'x'.repeat(61) }] }, undefined, /Private_CCTV_Feed name is not valid/);
+  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Front', source: 'front\u0007' }] }, undefined, /Private_CCTV_Feed name is not valid/);
+  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Front' }, { name: 'Porch', source: 'FRONT' }] }, undefined, 'Two cameras would both match the Private_CCTV_Feed camera “front”');
+  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Back  Yard' }, { name: 'back yard' }] }, undefined, 'Two cameras would both match the Private_CCTV_Feed camera “back yard”');
   refuse({ kind: 'home', name: 'Home', auth: 'token', cameras: [{ name: 'Front' }] }, undefined, /needs a camera entity or snapshot URL/);
-  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Front', source: 'camera.aarlo_front' }] }, undefined, 'Camera 1 (Front) Arlo name must be the camera name shown in the Arlo feed, not a Home Assistant entity');
+  refuse({ kind: 'home', name: 'Cottage', auth: 'relay', cameras: [{ name: 'Front', source: 'camera.privatecam_front' }] }, undefined, 'Camera 1 (Front) Private_CCTV_Feed name must be the camera name shown in the Private_CCTV_Feed feed, not a Home Assistant entity');
   // Switching a bridge site to the relay with its sources left blank keeps every saved
   // snapshot address and entity for switching back, and matches each camera by its name.
-  const bridge = applyPrivateCameraUpdate({ kind: 'home', name: 'Home', bridgeUrl: 'https://homeassistant.local:8123', cameras: [{ name: 'Front', source: 'https://homeassistant.local:8123/snap.jpg' }, { name: 'Ff', source: 'camera.aarlo_ff' }] });
+  const bridge = applyPrivateCameraUpdate({ kind: 'home', name: 'Home', bridgeUrl: 'https://homeassistant.local:8123', cameras: [{ name: 'Front', source: 'https://homeassistant.local:8123/snap.jpg' }, { name: 'Ff', source: 'camera.privatecam_ff' }] });
   assert.equal(bridge.ok, true, bridge.error);
   const switched = applyPrivateCameraUpdate({ kind: 'home', siteId: 'home', auth: 'relay', cameras: [{ id: 'front', name: 'Front' }, { id: 'ff', name: 'Ff', source: '' }] }, bridge.config);
   assert.equal(switched.ok, true, switched.error);
-  assert.deepEqual(switched.config.sites[0].cameras.map((camera) => [camera.source, relayMatchName(camera)]), [['https://homeassistant.local:8123/snap.jpg', 'front'], ['camera.aarlo_ff', 'ff']]);
+  assert.deepEqual(switched.config.sites[0].cameras.map((camera) => [camera.source, relayMatchName(camera)]), [['https://homeassistant.local:8123/snap.jpg', 'front'], ['camera.privatecam_ff', 'ff']]);
   assert.deepEqual(privateCameraStatus(switched.config).kinds[0].sites[0].cameras.map((camera) => camera.matchName), ['front', 'ff']);
   assert.equal(applyPrivateCameraUpdate({ kind: 'home', siteId: 'home', auth: 'relay', cameras: [{ name: 'Porch', source: 'https://homeassistant.local:8123/snap.jpg' }] }, bridge.config).ok, false, 'a new row cannot bring an address along');
   const renamed = applyPrivateCameraUpdate({ kind: 'home', siteId: 'home', auth: 'relay', cameras: [{ id: 'front', name: 'Front', source: 'Front porch' }] }, bridge.config);
   assert.equal(renamed.ok, true, renamed.error);
   assert.equal(relayMatchName(renamed.config.sites[0].cameras[0]), 'front porch');
-  // Typing the camera's own name as its Arlo name clears the override.
+  // Typing the camera's own name as its Private_CCTV_Feed name clears the override.
   const sameName = applyPrivateCameraUpdate({ kind: 'home', siteId: 'home', cameras: [{ id: 'front', name: 'Front', source: ' FRONT ' }] }, renamed.config);
   assert.equal(sameName.ok, true, sameName.error);
   assert.equal(sameName.config.sites[0].cameras[0].source, '');
   // The CCTV panel names where a relay camera's pictures come from.
   assert.deepEqual(privateCameraSources(sameName.config).map((source) => source.provider), []);
   const placed = applyPrivateCameraUpdate({ kind: 'home', siteId: 'home', lat: 45.27, lon: -66.06 }, sameName.config);
-  assert.deepEqual(privateCameraSources(placed.config).map((source) => source.provider), ['Arlo browser feed relay (clip pictures)']);
+  assert.deepEqual(privateCameraSources(placed.config).map((source) => source.provider), ['Private_CCTV_Feed browser feed relay (clip pictures)']);
   const placedBridge = applyPrivateCameraUpdate({ kind: 'home', siteId: 'home', lat: 45.27, lon: -66.06 }, bridge.config);
-  assert.deepEqual(privateCameraSources(placedBridge.config).map((source) => source.provider), ['Arlo via local bridge', 'Arlo via local bridge']);
+  assert.deepEqual(privateCameraSources(placedBridge.config).map((source) => source.provider), ['Private_CCTV_Feed via local bridge', 'Private_CCTV_Feed via local bridge']);
 
   // Omitted or '' keeps an override; null clears it back to the camera's own name.
   const kept = applyPrivateCameraUpdate({ kind: 'home', siteId: 'cottage', cameras: [{ id: 'front-door', name: 'Front door', source: '' }, { id: 'garage', name: 'Garage' }] }, saved.config);
@@ -471,7 +471,7 @@ test('a relay pairing is set only by approval, has an exact shape and ends when 
   for (const secretHash of [RELAY_SECRET_HASH.toUpperCase(), RELAY_SECRET_HASH.slice(1), `${RELAY_SECRET_HASH}0`, 'g'.repeat(64), null]) {
     refusePairing('home', { extensionId: RELAY_EXTENSION_ID, secretHash }, /secret/);
   }
-  const tokenHome = applyPrivateCameraUpdate({ kind: 'home', name: 'Home', token: TOKEN, cameras: [{ name: 'Front', source: 'camera.aarlo_front' }] });
+  const tokenHome = applyPrivateCameraUpdate({ kind: 'home', name: 'Home', token: TOKEN, cameras: [{ name: 'Front', source: 'camera.privatecam_front' }] });
   assert.match(applyRelayPairing(tokenHome.config, 'home', { extensionId: RELAY_EXTENSION_ID, secretHash: RELAY_SECRET_HASH }).error, /Browser feed relay/);
 
   // Status says whether and with which extension; the hash never leaves the store.
@@ -491,7 +491,7 @@ test('a relay pairing is set only by approval, has an exact shape and ends when 
   assert.deepEqual([cleared.config.sites[1].relayExtensionId, cleared.config.sites[1].relaySecretHash], ['', '']);
 
   // Leaving the relay mode ends the pairing, and coming back does not restore it.
-  const token = applyPrivateCameraUpdate({ kind: 'home', siteId: 'home', auth: 'token', cameras: [{ id: 'front', name: 'Front', source: 'camera.aarlo_front' }] }, paired.config);
+  const token = applyPrivateCameraUpdate({ kind: 'home', siteId: 'home', auth: 'token', cameras: [{ id: 'front', name: 'Front', source: 'camera.privatecam_front' }] }, paired.config);
   assert.equal(token.ok, true, token.error);
   assert.deepEqual([token.config.sites[0].relayExtensionId, token.config.sites[0].relaySecretHash], ['', '']);
   const back = applyPrivateCameraUpdate({ kind: 'home', siteId: 'home', auth: 'relay' }, token.config);

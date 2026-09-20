@@ -341,7 +341,13 @@ function writePlacement(out, corner, x, y, w, h, anchorX, anchorY, signedLeaderO
   // placement. Keeping the signed pixel offset a Smi avoids boxing a fresh
   // `anchor +/- offset` double on every placement write.
   placement.leaderOffset = signedLeaderOffset;
-  if (corner === 'above' || corner === 'below') {
+  if (corner === 'center') {
+    // The card sits ON its anchor: there is nothing to lead to.
+    placement.leadFromX = anchorX;
+    placement.leadFromY = anchorY;
+    placement.leadToX = anchorX;
+    placement.leadToY = anchorY;
+  } else if (corner === 'above' || corner === 'below') {
     placement.leadFromX = anchorX;
     placement.leadFromY = anchorY;
     // Strictly vertical, always — the shipped leader ran from the anchor's sx to
@@ -365,11 +371,15 @@ const PLACEMENT_ORDERS = Object.freeze({
   below: Object.freeze(['below', 'above', 'right', 'left']),
   right: Object.freeze(['right', 'above', 'below', 'left']),
   left: Object.freeze(['left', 'above', 'below', 'right']),
+  // Centred means ON the anchor or not at all: a card moved off its anchor no
+  // longer lines up with the map, which is the whole point of asking for it.
+  center: Object.freeze(['center']),
 });
 
 const VERTICAL_PLACEMENT_ORDERS = Object.freeze({
   above: Object.freeze(['above', 'below']),
   below: Object.freeze(['below', 'above']),
+  center: Object.freeze(['center']),
 });
 
 function clampPlacementCoordinate(value, size, viewportSize, margin = 4) {
@@ -391,6 +401,10 @@ function clampPlacementCoordinate(value, size, viewportSize, margin = 4) {
  * @param {number} [input.leaderOffset]
  * @param {boolean} [input.verticalOnly]
  * @param {number} [input.viewportMargin]
+ * @param {number} [input.centerOffsetX] For `preferred: 'center'`: the point
+ *   inside the card (from its left edge) that lands on the anchor. Default:
+ *   the card's middle.
+ * @param {number} [input.centerOffsetY] The same, from the card's top edge.
  * @param {Array<object>} [out]
  * @returns {Array<object>}
  */
@@ -406,6 +420,8 @@ export function placementVariants({
   leaderOffset = 0,
   verticalOnly = false,
   viewportMargin = 4,
+  centerOffsetX,
+  centerOffsetY,
 }, out = []) {
   const automatic = anchorY - gap - height >= 4 ? 'above' : 'below';
   const orders = verticalOnly ? VERTICAL_PLACEMENT_ORDERS : PLACEMENT_ORDERS;
@@ -420,7 +436,10 @@ export function placementVariants({
     const corner = order[i];
     let x = anchorX - width / 2;
     let y = anchorY - gap - height;
-    if (corner === 'below') y = anchorY + gap;
+    if (corner === 'center') {
+      x = anchorX - (Number.isFinite(centerOffsetX) ? centerOffsetX : width / 2);
+      y = anchorY - (Number.isFinite(centerOffsetY) ? centerOffsetY : height / 2);
+    } else if (corner === 'below') y = anchorY + gap;
     else if (corner === 'right') {
       x = anchorX + gap;
       y = anchorY - height / 2;
@@ -428,16 +447,21 @@ export function placementVariants({
       x = anchorX - gap - width;
       y = anchorY - height / 2;
     }
+    // A centred card is never pushed back inside the viewport: the push would
+    // slide it off its anchor. It hangs over the edge and the edge fade takes it.
+    const centered = corner === 'center';
     out[i] = writePlacement(
       out[i],
       corner,
-      clampPlacementCoordinate(x, width, viewportWidth, viewportMargin),
-      clampPlacementCoordinate(y, height, viewportHeight, viewportMargin),
+      centered ? x : clampPlacementCoordinate(x, width, viewportWidth, viewportMargin),
+      centered ? y : clampPlacementCoordinate(y, height, viewportHeight, viewportMargin),
       width,
       height,
       anchorX,
       anchorY,
-      corner === 'above' || corner === 'left' ? negativeLeaderOffset : positiveLeaderOffset,
+      corner === 'center'
+        ? 0
+        : corner === 'above' || corner === 'left' ? negativeLeaderOffset : positiveLeaderOffset,
     );
   }
   out.length = order.length;

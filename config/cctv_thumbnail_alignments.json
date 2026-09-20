@@ -1,0 +1,21 @@
+{
+  "format": "gev-cctv-thumbnail-alignments/1",
+  "alignments": {
+    "nb-grand-bay-westfield-nb-highway-7-2": {"lat":45.267121,"lon":-66.204018,"bearingDeg":null},
+    "nb-saint-john-nb-highway-1": {"lat":45.228701,"lon":-66.152791,"bearingDeg":358},
+    "qc511-3322": {"lat":45.465648,"lon":-73.483913,"bearingDeg":334},
+    "qc511-3352": {"lat":45.572155,"lon":-73.662457,"bearingDeg":234},
+    "qc511-3390": {"lat":45.508056,"lon":-73.761219,"bearingDeg":null},
+    "qc511-3391": {"lat":45.501881,"lon":-73.754693,"bearingDeg":null},
+    "qc511-3407": {"lat":45.494947,"lon":-73.679404,"bearingDeg":338},
+    "qc511-3416": {"lat":45.548411,"lon":-73.636289,"bearingDeg":88},
+    "qc511-3417": {"lat":45.551665,"lon":-73.630524,"bearingDeg":null},
+    "qc511-3433": {"lat":45.493856,"lon":-73.693259,"bearingDeg":354},
+    "qc511-3737": {"lat":45.57466,"lon":-73.53051,"bearingDeg":92},
+    "qc511-3959": {"lat":45.48228,"lon":-73.584874,"bearingDeg":96},
+    "sj-fundy-quay": {"lat":45.272023,"lon":-66.063305,"bearingDeg":null},
+    "us511-NY-cam-16093": {"lat":40.752876,"lon":-74.007756,"bearingDeg":null},
+    "us511-PA-cam-3166": {"lat":42.15371,"lon":-79.892161,"bearingDeg":338},
+    "windy-1793884653": {"lat":45.446599,"lon":-66.348724,"bearingDeg":null}
+  }
+}

@@ -20,7 +20,7 @@
   },
   "viewer": {
     "exports": ["./application/viewer"],
-    "modules": ["src/app/viewer.js"],
+    "modules": ["src/app/viewer.js", "src/app/renderRecovery.js"],
     "external": ["cesium"]
   },
   "vite-build": {
@@ -153,6 +153,9 @@
       "server/providers/cctv/constants.js",
       "server/providers/cctv/frame-resolver.js",
       "server/providers/cctv/upstream-headers.js",
+      "server/providers/cctv/thumbnail-alignments.js",
+      "server/providers/cctv/hls-clip.js",
+      "server/providers/cctv/hls-proxy.js",
       "server/providers/cctv/media.js",
       "server/providers/cctv/range.js",
       "server/providers/cctv/normalize.js",
