@@ -19,13 +19,12 @@ Context:
 - Zooming into adjacent streets does not always immediately trigger higher-detail coverage for all visible roads.
 
 Current mitigation in runtime:
-- Fair per-road dot budget allocation (reduces hard starvation under global `MAX_DOTS` cap).
+- No ceiling on dots: every visible road carries its full dot count, so no road is starved by another (the 6,000-dot `MAX_DOTS` cap and its fair-share allocator were removed on September 20, 2026).
 - Center-shift threshold (reduces stale overlap lock while panning).
 
 Next iteration candidates:
 - Prioritize currently visible road segments inside the active viewport before off-center segments.
 - Add neighbor prefetch ring for nearby tiles after jump-to-city actions.
-- Add adaptive dot cap by frame time (coverage first, density second).
 - Promote sync chip from loading indicator to true multi-phase progress.
 
 ---

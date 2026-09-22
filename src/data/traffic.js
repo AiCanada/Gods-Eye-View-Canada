@@ -52,7 +52,8 @@ import {
  *  - Fetch bounds center on the camera's look-at point (`trafficBounds.js`, C4).
  *  - Roads are fetched in two passes: major-only (fast) then full graph (detailed).
  *  - Fetched tiles are cached by clamped bounding-box key to avoid re-fetching.
- *  - Dot budget allocation distributes a hard cap fairly across visible roads.
+ *  - Every visible road carries its full dot count: there is no ceiling on the
+ *    number of vehicles or congestion heat-lines drawn.
  *  - Each dot lerps along pre-computed Cartesian3 waypoints every preRender frame.
  *
  * @module data/traffic
@@ -74,8 +75,6 @@ const ROADS_RETRY_MAX_MS = 60000;
 const DOT_HEIGHT_OFFSET = 3.0;
 /** @const {number} Fraction (0-1) — skip re-fetch when viewport overlap exceeds this */
 const OVERLAP_THRESHOLD = 0.6;
-/** @const {number} Hard cap on total rendered dot primitives for GPU/CPU performance */
-const MAX_DOTS = 6000;
 /** @const {number} Polylines longer than this are simplified by sub-sampling */
 const MAX_WAYPOINTS_PER_ROAD = 80;
 /** @constant {number} Main-thread time one slice of road parsing may take
@@ -143,8 +142,6 @@ const FLOW_BUCKET_COLORS = {
 };
 
 // ─── Jam-viz prototype (live mode only — see 2026-07-21 design doc) ────────
-/** @const {number} Max congestion heat-line polylines per render (jam first). */
-const HEAT_LINE_CAP = 400;
 /** @const {number} Px — glowing jam corridor line width. */
 const HEAT_LINE_JAM_WIDTH = 9;
 /** @const {number} Px — flat slow corridor line width. */
@@ -937,82 +934,6 @@ function computeDotCount(road, altitude) {
 }
 
 /**
- * Distribute a fixed dot budget fairly across all visible roads.
- *
- * Algorithm:
- *  1. Compute ideal dot count per road via `computeDotCount`.
- *  2. Seed one dot to every road that wants at least one (fairness pass).
- *  3. Distribute remaining budget proportionally to each road's ideal count.
- *  4. Assign leftover dots (from floor rounding) to roads with the highest
- *     fractional residuals (largest-remainder method).
- *
- * This prevents high-density motorways from starving smaller residential roads
- * when the global MAX_DOTS cap is reached.
- *
- * @param {Array} roads    - Parsed road objects.
- * @param {number} altitude - Camera altitude in meters (affects spacing).
- * @param {number} dotCap   - Maximum total dots to allocate.
- * @returns {number[]} Per-road dot budgets, same length as `roads`.
- */
-function allocateRoadDotBudgets(roads, altitude, dotCap) {
-  const planned = roads.map((road) => computeDotCount(road, altitude));
-  const budgets = new Array(roads.length).fill(0);
-  let remaining = Math.max(0, dotCap);
-
-  // Pass 1 — fairness seed: give one dot to every road (highest-demand first)
-  const firstPassOrder = planned
-    .map((count, index) => ({ count, index }))
-    .sort((a, b) => b.count - a.count);
-
-  for (const entry of firstPassOrder) {
-    if (remaining <= 0) break;
-    if (entry.count <= 0) continue;
-    budgets[entry.index] = 1;
-    remaining -= 1;
-  }
-
-  if (remaining <= 0) return budgets;
-
-  // Pass 2 — proportional distribution of the remaining budget
-  let totalRemainder = 0;
-  for (let i = 0; i < planned.length; i++) {
-    totalRemainder += Math.max(0, planned[i] - budgets[i]);
-  }
-  if (totalRemainder <= 0) return budgets;
-
-  const residuals = [];
-  let assigned = 0;
-  for (let i = 0; i < planned.length; i++) {
-    const cap = Math.max(0, planned[i] - budgets[i]);
-    if (cap <= 0) continue;
-    const ideal = (cap / totalRemainder) * remaining;
-    const add = Math.min(cap, Math.floor(ideal));
-    budgets[i] += add;
-    assigned += add;
-    residuals.push({ index: i, residual: ideal - add });
-  }
-
-  // Pass 3 — largest-remainder: hand out leftover dots from floor rounding
-  let leftover = remaining - assigned;
-  if (leftover > 0 && residuals.length > 0) {
-    residuals.sort((a, b) => b.residual - a.residual);
-    let cursor = 0;
-    while (leftover > 0 && residuals.length > 0) {
-      const idx = residuals[cursor % residuals.length].index;
-      if (budgets[idx] < planned[idx]) {
-        budgets[idx] += 1;
-        leftover -= 1;
-      }
-      cursor += 1;
-      // Safety valve: avoid infinite loop if all roads are already at their ideal
-      if (cursor > residuals.length * 3 && leftover > 0) break;
-    }
-  }
-
-  return budgets;
-}
-
-/**
  * Spawn animated dot primitives along a single road.
  *
  * Each dot is placed at a random position along the road, assigned a
@@ -1021,20 +942,16 @@ function allocateRoadDotBudgets(roads, altitude, dotCap) {
  *
  * @param {{waypoints:Cesium.Cartesian3[], segmentDist:number[], type:string, coords:number[][]}} road
  *   Parsed road object with pre-computed waypoints.
- * @param {number} altitude      - Camera altitude (used if budgetCount is null).
- * @param {number|null} [budgetCount=null] - Pre-allocated dot count. Falls back
- *   to `computeDotCount` when null.
+ * @param {number} altitude      - Camera altitude; sets the dot spacing.
  */
-function spawnDotsForRoad(road, altitude, budgetCount = null) {
+function spawnDotsForRoad(road, altitude) {
   // Live flow styling (`road.flow` only exists in live mode; keyless path is
   // byte-identical): closures spawn nothing, congestion colors/slows dots.
   const flow = _liveMode ? road.flow : null;
   if (flow?.closure) return;
   if (_liveMode && !flow && _uncoveredMode === 'hide') return;
 
-  const count = Number.isFinite(budgetCount)
-    ? Math.max(0, Math.floor(budgetCount))
-    : computeDotCount(road, altitude);
+  const count = computeDotCount(road, altitude);
   const numSegments = road.waypoints.length - 1;
   if (numSegments < 1 || count <= 0) return;
 
@@ -1076,8 +993,6 @@ function spawnDotsForRoad(road, altitude, budgetCount = null) {
   }
 
   for (let i = 0; i < count; i++) {
-    if (_dots.length >= MAX_DOTS) return;
-
     // Random start position: pick a random segment and offset within it —
     // unless this is a queued jam dot with a platoon placement.
     const segIdx = placements ? placements[i].segIdx : Math.floor(Math.random() * numSegments);
@@ -1225,7 +1140,7 @@ function animate() {
     // Pass the scratch directly: PointPrimitive's position setter clones the
     // value into its own storage (and skips the VBO dirty flag when equal), so
     // the extra defensive clone here allocated 360–720k Cartesian3/s of pure
-    // garbage across 6000 dots. (perf item 5)
+    // garbage across every dot. (perf item 5)
     const a = dot.waypoints[dot.segIdx];
     const b = dot.waypoints[dot.segIdx + 1];
     Cesium.Cartesian3.lerp(a, b, dot.t, _scratchLerp);
@@ -1817,9 +1732,9 @@ function removeHeatLines() {
  * slow/jam roads drape a corridor line onto the rendered 3D tiles — glowing
  * pulsing red for jam, faint flat amber for slow — with the dots animating
  * on top. Two batched GroundPolylinePrimitives (one per bucket) so the jam
- * batch pulses through one shared material. Capped at HEAT_LINE_CAP (jam
- * first, longest first); overflow is logged. No-op in sim mode, when the
- * heatline mode is off, or without ground-primitive support.
+ * batch pulses through one shared material. Every congested road in view is
+ * drawn. No-op in sim mode, when the heatline mode is off, or without
+ * ground-primitive support.
  *
  * @param {Array} roads - Road objects visible in the current render.
  */
@@ -1838,16 +1753,9 @@ function rebuildHeatLines(roads) {
     if (!flow || flow.closure) continue;
     const bucket = flowBucket(flow.level);
     if (bucket === 'free') continue;
-    let len = 0;
-    for (const d of road.segmentDist) len += d;
-    candidates.push({ road, bucket, len });
+    candidates.push({ road, bucket });
   }
-  candidates.sort((a, b) => (a.bucket === b.bucket
-    ? b.len - a.len
-    : (a.bucket === 'jam' ? -1 : 1)));
-  const kept = candidates.slice(0, HEAT_LINE_CAP);
-
-  const instancesFor = (bucket, width) => kept
+  const instancesFor = (bucket, width) => candidates
     .filter((c) => c.bucket === bucket)
     .map((c) => new Cesium.GeometryInstance({
       geometry: new Cesium.GroundPolylineGeometry({ positions: c.road.waypoints, width }),
@@ -1885,17 +1793,14 @@ function rebuildHeatLines(roads) {
     }));
   }
 
-  _heatLineCount = kept.length;
-  if (candidates.length > kept.length) {
-    console.log(`[Data:Traffic] Heat-lines capped at ${HEAT_LINE_CAP} (${candidates.length} congested roads in view)`);
-  }
+  _heatLineCount = candidates.length;
 }
 
 /**
  * Clear existing dots and re-spawn them for the given road set and altitude.
  *
  * When zoomed out (>5 km), only major road types are rendered to reduce clutter.
- * Dot budgets are allocated fairly across visible roads via `allocateRoadDotBudgets`.
+ * Every visible road spawns its full dot count (`computeDotCount`).
  *
  * @param {Array} roads    - Parsed road objects to render.
  * @param {number} altitude - Camera altitude in meters.
@@ -1945,14 +1850,7 @@ function renderRoadsForAltitude(roads, altitude, label, trace = null) {
     roadCount: roads.length,
     visibleRoadCount: filteredRoads.length,
   }) : null;
-  const roadBudgets = allocateRoadDotBudgets(filteredRoads, altitude, MAX_DOTS);
-  for (let i = 0; i < filteredRoads.length; i++) {
-    const road = filteredRoads[i];
-    const budget = roadBudgets[i] || 0;
-    if (budget <= 0) continue;
-    spawnDotsForRoad(road, altitude, budget);
-    if (_dots.length >= MAX_DOTS) break;
-  }
+  for (const road of filteredRoads) spawnDotsForRoad(road, altitude);
 
   const renderMetrics = state ? {
     renderId,
