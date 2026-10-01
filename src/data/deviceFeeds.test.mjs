@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEVICE_FEEDS_CHANGED_EVENT } from '../deviceFeedsCore.mjs';
+import { DEVICE_FEEDS_CHANGED_EVENT, DEVICE_FEEDS_FOCUS_EVENT } from '../deviceFeedsCore.mjs';
+import { WORLD_FOCUS_REQUEST_EVENT } from '../worldFocus.js';
 import {
   DEVICE_FEEDS_LAYER_ID,
   DEVICE_FEEDS_OVERLAY_SOURCE_ID,
@@ -30,16 +31,47 @@ test('only well-formed devices, and only the application’s own picture route',
   const rows = normalizeDevicePositions({
     devices: [
       device({ pictureUrl: '/api/device-feeds/frame/device-drone-scout' }),
+      device({ id: 'device-security-phone', pictureUrl: '/api/ultra-help/picture' }),
       device(),
       device({ id: 'b', lat: 91 }),
       device({ id: 'c', lon: '12' }),
       device({ id: 'd', color: 'url(javascript:1)', pictureUrl: 'https://evil.example/x.jpg', name: '' }),
       null,
+      // One phone package's own picture, by its public id; nothing else under that route.
+      device({ id: 'device-security-van', pictureUrl: '/api/ultra-help/picture/device-security-van' }),
+      device({ id: 'e1', pictureUrl: '/api/ultra-help/picture/../status' }),
+      device({ id: 'e2', pictureUrl: '/api/ultra-help/picture/device-van?t=1' }),
+      device({ id: 'e3', pictureUrl: '/api/ultra-help/picture/van' }),
     ],
   });
-  assert.deepEqual(rows.map((row) => row.id), ['device-drone-scout', 'd']);
+  assert.deepEqual(rows.map((row) => row.id), ['device-drone-scout', 'device-security-phone', 'd', 'device-security-van', 'e1', 'e2', 'e3']);
   assert.equal(rows[0].pictureUrl, '/api/device-feeds/frame/device-drone-scout');
-  assert.deepEqual([rows[1].color, rows[1].pictureUrl, rows[1].name], ['#ffffff', '', 'DEVICE']);
+  assert.equal(rows[1].pictureUrl, '/api/ultra-help/picture');
+  assert.deepEqual([rows[2].color, rows[2].pictureUrl, rows[2].name], ['#ffffff', '', 'DEVICE']);
+  assert.equal(rows[3].pictureUrl, '/api/ultra-help/picture/device-security-van');
+  assert.deepEqual(rows.slice(4).map((row) => row.pictureUrl), ['', '', '']);
+});
+
+// A call for help received through the owner's help network rides the same
+// /positions answer as an amber pin: follow off, so it never takes the camera.
+const helpPin = (extra = {}) => ({
+  id: 'ultra-network:n-0123456789abcdef', kind: 'help', kindLabel: 'NEEDS HELP · 22:14', color: '#ffb000', name: 'Jeff',
+  lat: 45.2744, lon: -66.0622, altM: null, headingDeg: null, speedMps: null, live: true, fixed: false, at: 7,
+  follow: false, record: false, hasPicture: false, pictureUrl: null, error: '', history: null,
+  ...extra,
+});
+
+test('a NEEDS HELP pin from the help network is kept as it is: amber, live, never followed', () => {
+  const rows = normalizeDevicePositions({ devices: [helpPin()] });
+  assert.equal(rows.length, 1);
+  const [row] = rows;
+  assert.equal(row.id, 'ultra-network:n-0123456789abcdef');
+  assert.deepEqual(
+    [row.kind, row.kindLabel, row.color, row.name, row.follow, row.record, row.live, row.pictureUrl],
+    ['help', 'NEEDS HELP · 22:14', '#ffb000', 'Jeff', false, false, true, ''],
+  );
+  assert.deepEqual([row.lat, row.lon, row.altM, row.headingDeg, row.speedMps], [45.2744, -66.0622, null, null, null]);
+  assert.deepEqual(deviceDetailLines(row), ['NEEDS HELP · 22:14']);
 });
 
 test('label lines', () => {
@@ -79,9 +111,11 @@ function fixture({ answers }) {
     clearSource: (...args) => calls.push(['clear', ...args]),
   };
   const listeners = new Map();
+  const dispatched = [];
   const windowRef = {
     addEventListener: (type, fn) => listeners.set(type, fn),
     removeEventListener: (type, fn) => { if (listeners.get(type) === fn) listeners.delete(type); },
+    dispatchEvent: (event) => { dispatched.push(event); return true; },
   };
   const images = [];
   const asked = [];
@@ -91,7 +125,7 @@ function fixture({ answers }) {
     createImage: () => { const image = {}; images.push(image); return image; },
     fetchImpl: async (url) => { asked.push(url); return answers.shift()(); },
   });
-  return { layer, viewer, dataSources, calls, listeners, images, asked };
+  return { layer, viewer, dataSources, calls, listeners, dispatched, images, asked };
 }
 
 const ok = (devices) => () => new Response(JSON.stringify({ devices }), { status: 200 });
@@ -158,4 +192,90 @@ test('saving a device turns the layer on; a change refreshes it', async () => {
   assert.deepEqual(asks.at(-1), ['refresh', DEVICE_FEEDS_LAYER_ID]);
   layer.destroy(viewer);
   assert.equal(listeners.size, 0);
+});
+
+test('MAP on a received call for help asks for one flight to the pin, waiting for the poll when it is not there yet', async () => {
+  const other = helpPin({ id: 'ultra-network:n-fedcba9876543210', name: 'Sam', lat: 45.3, lon: -66.1 });
+  const { layer, viewer, listeners, dispatched } = fixture({
+    answers: [ok([device(), helpPin()]), ok([device(), helpPin(), other])],
+  });
+  layer.attachDataManager({ setEnabled: () => Promise.resolve(true), refreshLayer: () => Promise.resolve(true) });
+  layer.init(viewer);
+  layer.enable(viewer);
+  assert.equal(await layer.update(viewer), true);
+  const focus = listeners.get(DEVICE_FEEDS_FOCUS_EVENT);
+  assert.equal(typeof focus, 'function', 'the layer listens for the Ultra box');
+
+  // The pin is on the map: the request goes out at once, as a help target.
+  focus({ detail: { id: 'ultra-network:n-0123456789abcdef' } });
+  assert.equal(dispatched.length, 1);
+  assert.equal(dispatched[0].type, WORLD_FOCUS_REQUEST_EVENT);
+  assert.equal(dispatched[0].detail.kind, 'help');
+  assert.equal(dispatched[0].detail.id, 'ultra-network:n-0123456789abcdef');
+  for (const axis of ['x', 'y', 'z']) assert.ok(Number.isFinite(dispatched[0].detail.position[axis]));
+  // It is a one-shot flight, never a follow: the layer tracks nothing.
+  assert.equal(layer.getStats().following, null);
+
+  // A pin the poll has not brought yet waits, and flies when it arrives.
+  focus({ detail: { id: 'ultra-network:n-fedcba9876543210' } });
+  assert.equal(dispatched.length, 1);
+  assert.equal(await layer.update(viewer), true);
+  assert.equal(dispatched.length, 2);
+  assert.equal(dispatched[1].detail.id, 'ultra-network:n-fedcba9876543210');
+  assert.equal(dispatched[1].detail.kind, 'help');
+
+  // An empty or malformed ask is inert.
+  focus({ detail: {} });
+  focus(null);
+  assert.equal(dispatched.length, 2);
+
+  layer.destroy(viewer);
+  assert.equal(listeners.has(DEVICE_FEEDS_FOCUS_EVENT), false, 'destroy removes the focus listener');
+  assert.equal(listeners.size, 0);
+});
+
+test('a device with a recording draws its saved route, asked for once and again only when the recording grew', async () => {
+  const track = (points) => () => new Response(JSON.stringify({ id: 'device-tracker-van', points }), { status: 200 });
+  const van = (extra = {}) => device({ id: 'device-tracker-van', kind: 'tracker', kindLabel: 'TRACKER', color: '#ff7ad9', name: 'Van', ...extra });
+  const { layer, viewer, dataSources, asked } = fixture({
+    answers: [
+      ok([van({ history: { days: 2, lastAt: 1000 } })]),
+      track([{ at: 1, lat: 45.2, lon: -66.1 }, { at: 2, lat: 45.21, lon: -66.11 }, { at: 3, lat: 45.22, lon: -66.12 }]),
+      ok([van({ history: { days: 2, lastAt: 1000 } })]),
+      ok([van({ history: { days: 3, lastAt: 2000 } })]),
+      track([{ at: 1, lat: 45.2, lon: -66.1 }, { at: 4, lat: 45.3, lon: -66.2 }]),
+      ok([van({ history: null })]),
+    ],
+  });
+  layer.init(viewer);
+  layer.enable(viewer);
+  const entities = dataSources[0].entities;
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const historyEntity = () => entities.values.find((entity) => entity.id === 'device-feed-history:device-tracker-van');
+
+  assert.equal(await layer.update(viewer), true);
+  await settle();
+  await settle();
+  assert.equal(asked.filter((url) => url.startsWith('/api/device-feeds/track/')).length, 1);
+  assert.equal(asked[1], '/api/device-feeds/track/device-tracker-van');
+  assert.ok(historyEntity(), 'the saved route is drawn');
+  assert.equal(historyEntity().polyline.positions.getValue().length, 3);
+
+  // Same recording: not asked again.
+  assert.equal(await layer.update(viewer), true);
+  await settle();
+  assert.equal(asked.filter((url) => url.startsWith('/api/device-feeds/track/')).length, 1);
+
+  // The recording grew: asked again, redrawn.
+  assert.equal(await layer.update(viewer), true);
+  await settle();
+  await settle();
+  assert.equal(asked.filter((url) => url.startsWith('/api/device-feeds/track/')).length, 2);
+  assert.equal(historyEntity().polyline.positions.getValue().length, 2);
+
+  // No recording any more: the line goes.
+  assert.equal(await layer.update(viewer), true);
+  await settle();
+  assert.equal(historyEntity(), undefined);
+  layer.destroy(viewer);
 });

@@ -361,6 +361,24 @@ function haversineKm(lat1, lon1, lat2, lon2) {
  * @param {{name?: string, aliases?: string[]}|null|undefined} city
  * @returns {string}
  */
+/**
+ * The selected place as the location readout names it: "landmark, city",
+ * or the city alone when there is no landmark, the landmark is a searched
+ * point, or the landmark is the city itself (a saved place shows its own
+ * name on both lines). Null while no city is shown.
+ * @param {unknown} cityText The readout's city line, e.g. "📍 Halifax".
+ * @param {unknown} poiText The readout's landmark line.
+ * @returns {string|null}
+ */
+export function selectedPlaceLabel(cityText, poiText) {
+  const city = String(cityText ?? '').replace(/^📍\s*/u, '').replace(/^location:\s*/i, '').trim();
+  if (!city || city === '--') return null;
+  const poi = String(poiText ?? '').replace(/^landmark:\s*/i, '').trim();
+  if (!poi || poi === '--' || /^searched location$/i.test(poi)) return city;
+  if (poi.toLowerCase() === city.toLowerCase()) return city;
+  return `${poi}, ${city}`;
+}
+
 export function presetCitySearchName(city) {
   const alias = Array.isArray(city?.aliases)
     ? city.aliases.find((name) => String(name || '').trim())

@@ -856,6 +856,13 @@ body.scene-playback-mode #key-setup {
   cursor: pointer;
 }
 
+/* The recording distance sits on the RECORD line: a small select, not a full-width one. */
+.device-feeds-feed .device-feeds-option .device-feeds-record-km {
+  width: auto;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.58rem;
+}
+
 .device-feeds-feed .device-feeds-option input {
   width: auto;
   padding: 0;
@@ -883,4 +890,42 @@ body.scene-playback-mode #key-setup {
   padding: 0.3rem 0.45rem;
   color: rgba(255, 210, 74, 0.9);
   border-left: 2px solid rgba(255, 210, 74, 0.6);
+}
+
+/* "Reports to this app": the address and key the phone is given. */
+.device-feeds-report {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.device-feeds-report-lines {
+  margin: 0;
+  padding: 0.3rem 0.45rem;
+  color: rgba(170, 205, 215, 0.9);
+  border-left: 2px solid rgba(90, 209, 255, 0.6);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.02rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+
+.device-feeds-new-key {
+  align-self: flex-start;
+  padding: 0.28rem 0.55rem;
+  color: rgba(54, 220, 255, 0.85);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.08rem;
+  background: none;
+  border: 1px solid rgba(54, 220, 255, 0.3);
+  border-radius: 0.32rem;
+  cursor: pointer;
+}
+
+.device-feeds-new-key:disabled {
+  cursor: default;
+  opacity: 0.45;
 }

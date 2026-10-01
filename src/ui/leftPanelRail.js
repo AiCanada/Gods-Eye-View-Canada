@@ -1,10 +1,19 @@
 import {
+  PANEL_OVERLAP_CASCADE_PX,
+  PANEL_OVERLAP_VIEWPORT_INSET,
+  allocateOverlappingPanelHeights,
   allocatePanelStackHeights,
-  panelStackAutoCollapseIndices,
   resolveLeftStackBottomBoundary,
+  resolveOverlapCascadeOrder,
   resolvePanelStackCorridor,
 } from '../panelStackLayout.js';
 import { measurePanelNaturalHeight } from './panelMeasurement.js';
+import {
+  capturePanelScroll,
+  isAttributionObstacle,
+  readPanelStackingRank,
+  restorePanelScroll,
+} from './panelRailGeometry.js';
 
 /**
  * Measure and place the left panel rail for one synchronous layout pass.
@@ -52,6 +61,7 @@ export function layoutLeftPanelRail({
   if (windowRef.matchMedia('(max-width: 720px)').matches) {
     stack.classList.remove('layout-focus');
     stack.classList.remove('layout-tail');
+    stack.classList.remove('layout-overlap');
     stack.style.removeProperty('--left-stack-safe-top');
     stack.style.removeProperty('--left-stack-safe-bottom');
     stack.style.removeProperty('--left-stack-centered-height');
@@ -59,6 +69,7 @@ export function layoutLeftPanelRail({
     for (const panel of panels) {
       panel.removeAttribute('aria-hidden');
       panel.style.removeProperty('--left-panel-allocated-height');
+      panel.style.removeProperty('--panel-overlap-top');
     }
     return;
   }
@@ -72,6 +83,7 @@ export function layoutLeftPanelRail({
   let safeTop = baseTop;
   let safeBottom = viewportHeight - baseBottomInset;
   const bottomObstacles = [];
+  const attributionObstacles = [];
 
   for (const obstacle of obstacles) {
     if (stack.contains(obstacle)) continue;
@@ -94,6 +106,8 @@ export function layoutLeftPanelRail({
       rect.right > stackRect.left && rect.left < stackRect.right;
     if (!overlapsHorizontally) continue;
 
+    if (isAttributionObstacle(obstacle))
+      attributionObstacles.push({ top: rect.top });
     if (rect.top < baseTop && rect.bottom <= viewportHeight * 0.5) {
       const obstacleBottom = rect.bottom + safeGap;
       obstacleSafeTop = Math.max(obstacleSafeTop, obstacleBottom);
@@ -148,6 +162,10 @@ export function layoutLeftPanelRail({
         ),
       ]
     : expandedPanelsInDomOrder;
+  // Where the operator had scrolled to, before any height is taken away:
+  // without the allocated height a box stops overflowing and the browser
+  // puts its scroller back to the top, which no later measurement can undo.
+  const scrollMarks = capturePanelScroll(expandedPanels);
   // Clear the prior pass before reading intrinsic heights. The allocated
   // outer height and the inner scroller otherwise feed their constrained
   // size back into the next HUD-mode calculation.
@@ -204,19 +222,72 @@ export function layoutLeftPanelRail({
     tailLayoutTop >= obstacleSafeTop - tailTolerance &&
     tailLayoutBottom <= obstacleSafeBottom + tailTolerance;
   const shouldFocus = exceedsCenteredCorridor && !shouldTail;
+
+  // Owner ruling, 2026-09-28: an open box is free to use the whole screen.
+  // Open boxes leave the rail's flow and float over the tactical HUD at the
+  // top and at the bottom, which is what buys the working area the owner
+  // asked for; they may cover one another and are raised by clicking. A rail
+  // with nothing open keeps the obstacle-aware corridor above, so bare tabs
+  // still never sit on HUD furniture. A box with no painted rectangle cannot
+  // float — that is how Cockpit, which hides this rail's boxes outright,
+  // keeps its own corridor.
+  const floatingPanels = expandedPanels
+    .map((panel, index) => ({ panel, natural: naturalExpandedHeights[index] }))
+    .filter((entry) => entry.panel.getBoundingClientRect().height > 0);
+  // Slots follow the stacking order, never the order the boxes were opened:
+  // the box in front has to start lowest or it swallows the strip every box
+  // behind it is clicked by.
+  const cascadePanels = resolveOverlapCascadeOrder(
+    floatingPanels.map((entry) => readPanelStackingRank(entry.panel)),
+  ).map((index) => floatingPanels[index]);
+  const overlapping = floatingPanels.length > 0;
+  const overlapInset = viewportHeight * PANEL_OVERLAP_VIEWPORT_INSET;
+  const overlapTop = overlapInset;
+  const overlapBottom = resolveLeftStackBottomBoundary({
+    baseBottom: viewportHeight - overlapInset,
+    obstacles: attributionObstacles,
+    safeGap,
+  });
+
   // Focus mode owns the lane, so let every expanded panel share the full
   // obstacle-safe corridor. Tail/normal layouts keep the balanced
   // viewport centering used for compact accordion stacks.
-  const layoutTop = shouldFocus
-    ? obstacleSafeTop
-    : shouldTail
-      ? tailLayoutTop
-      : safeTop;
-  const layoutBottom = shouldFocus
-    ? obstacleSafeBottom
-    : shouldTail
-      ? tailLayoutBottom
-      : safeBottom;
+  const layoutTop = overlapping
+    ? overlapTop
+    : shouldFocus
+      ? obstacleSafeTop
+      : shouldTail
+        ? tailLayoutTop
+        : safeTop;
+  const layoutBottom = overlapping
+    ? overlapBottom
+    : shouldFocus
+      ? obstacleSafeBottom
+      : shouldTail
+        ? tailLayoutBottom
+        : safeBottom;
+  // The collapsed tabs keep the flow column, so they stay visible and
+  // clickable at all times (owner ruling, 2026-09-27) and the floats begin
+  // below them.
+  const flowPanels = panels.filter(
+    (panel) => !floatingPanels.some((entry) => entry.panel === panel),
+  );
+  const flowHeight =
+    flowPanels.reduce(
+      (total, panel) =>
+        total +
+        (collapsedHeights.get(panel.id) ||
+          panel.getBoundingClientRect().height ||
+          0),
+      0,
+    ) +
+    rowGap * Math.max(0, flowPanels.length - 1);
+  const overlapOrigin = flowPanels.length ? flowHeight + rowGap : 0;
+  const overlapPlacements = allocateOverlappingPanelHeights({
+    naturalHeights: cascadePanels.map((entry) => entry.natural),
+    availableHeight: Math.max(0, layoutBottom - layoutTop - overlapOrigin),
+    cascadeStep: PANEL_OVERLAP_CASCADE_PX,
+  });
   const topPct = (layoutTop / viewportHeight) * 100;
   const bottomPct = ((viewportHeight - layoutBottom) / viewportHeight) * 100;
   const topValue = `${topPct.toFixed(3)}vh`;
@@ -233,22 +304,11 @@ export function layoutLeftPanelRail({
     naturalHeights: naturalExpandedHeights,
     availableHeight: expandedAvailableHeight,
   });
-  const autoCollapseIndices = hud.visible
-    ? panelStackAutoCollapseIndices({
-        naturalHeights: naturalExpandedHeights,
-        allocatedHeights: allocatedExpandedHeights,
-        collapseLaterPanels: shouldFocus && hud.variant === 'tactical',
-      })
-    : [];
-  if (autoCollapseIndices.length) {
-    for (const index of autoCollapseIndices) {
-      const panel = expandedPanels[index];
-      panel.classList.add('collapsed', 'layout-auto-collapsed');
-      onCollapse(panel);
-    }
-    onRetry();
-    return;
-  }
+  // Every open box stays open (owner ruling, 2026-09-27): boxes opened
+  // together share the corridor, the newest first, and each scrolls inside
+  // its share. Nothing is collapsed to make room for a sibling, on either
+  // rail; `layout-auto-collapsed` survives only to release panels a previous
+  // version collapsed.
   if (stack.style.getPropertyValue('--left-stack-safe-top') !== topValue) {
     stack.style.setProperty('--left-stack-safe-top', topValue);
   }
@@ -258,22 +318,41 @@ export function layoutLeftPanelRail({
     stack.style.setProperty('--left-stack-safe-bottom', bottomValue);
   }
   stack.style.removeProperty('--left-stack-centered-height');
-  for (const panel of panels)
+  for (const panel of panels) {
     panel.style.removeProperty('--left-panel-allocated-height');
-  expandedPanels.forEach((panel, index) => {
-    panel.style.setProperty(
-      '--left-panel-allocated-height',
-      `${allocatedExpandedHeights[index].toFixed(1)}px`,
-    );
-  });
+    panel.style.removeProperty('--panel-overlap-top');
+  }
+  if (overlapping) {
+    cascadePanels.forEach(({ panel }, index) => {
+      const { offset, height } = overlapPlacements[index];
+      panel.style.setProperty(
+        '--panel-overlap-top',
+        `${(overlapOrigin + offset).toFixed(1)}px`,
+      );
+      panel.style.setProperty(
+        '--left-panel-allocated-height',
+        `${height.toFixed(1)}px`,
+      );
+    });
+  } else {
+    expandedPanels.forEach((panel, index) => {
+      panel.style.setProperty(
+        '--left-panel-allocated-height',
+        `${allocatedExpandedHeights[index].toFixed(1)}px`,
+      );
+    });
+  }
 
-  stack.classList.toggle('layout-focus', shouldFocus);
-  stack.classList.toggle('layout-tail', shouldTail);
-  stack.dataset.layoutMode = shouldFocus
-    ? 'focus'
-    : shouldTail
-      ? 'tail'
-      : 'normal';
+  stack.classList.toggle('layout-overlap', overlapping);
+  stack.classList.toggle('layout-focus', !overlapping && shouldFocus);
+  stack.classList.toggle('layout-tail', !overlapping && shouldTail);
+  stack.dataset.layoutMode = overlapping
+    ? 'overlap'
+    : shouldFocus
+      ? 'focus'
+      : shouldTail
+        ? 'tail'
+        : 'normal';
   stack.dataset.safeTopPct = topPct.toFixed(2);
   stack.dataset.safeBottomPct = (100 - bottomPct).toFixed(2);
   stack.dataset.availableHeightPct = (
@@ -295,11 +374,12 @@ export function layoutLeftPanelRail({
   // obstacles, which put the strip straight through the briefing card.
   // CockpitView.syncSignalLayout() owns `--cockpit-utility-top` instead.
 
-  for (const panel of panels) {
-    const hiddenSibling = shouldFocus && panel.classList.contains('collapsed');
-    if (hiddenSibling) panel.setAttribute('aria-hidden', 'true');
-    else panel.removeAttribute('aria-hidden');
-  }
+  // Collapsed siblings stay visible and reachable in every mode (owner
+  // ruling, 2026-09-27), so none is hidden from assistive technology either.
+  for (const panel of panels) panel.removeAttribute('aria-hidden');
+  // The boxes have their height back, so the scrollers can go back to where
+  // they were before this pass measured anything.
+  restorePanelScroll(scrollMarks);
   // The right controls share this top baseline; update them after the left
   // accordion commits an HUD-variant or obstacle-driven position change.
   onAligned();

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   collectKeyUpdates,
   keySetupChipLabel,
+  keySetupPlaceholder,
   keySetupPowerUpCount,
   stripKeylessBasemapFromHash,
 } from './keySetup.js';
@@ -31,6 +32,21 @@ test('the chip counts every power-up: keys, camera sections and device sections'
   assert.equal(keySetupChipLabel({ setCount: 12, total: 12 }, sections), 'POWER UP · 5 WAITING', 'all keys in, sections still waiting');
   assert.deepEqual(keySetupPowerUpCount(null, null), { on: 0, total: 0, missing: 0 });
   assert.deepEqual(keySetupPowerUpCount({ setCount: 20, total: 12 }, []), { on: 12, total: 12, missing: 0 }, 'never more on than there are');
+});
+
+test('a saved value the provider cannot use reads as saved, and says which box to replace', () => {
+  const vars = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER'];
+  const refused = { set: false, present: true, unusable: ['TWILIO_FROM_NUMBER'] };
+  assert.deepEqual(vars.map((name) => keySetupPlaceholder(refused, name)), [
+    'TWILIO_ACCOUNT_SID saved — paste to replace',
+    'TWILIO_AUTH_TOKEN saved — paste to replace',
+    'TWILIO_FROM_NUMBER saved but not usable — paste to replace',
+  ]);
+  assert.equal(keySetupPlaceholder({ set: true, present: true, unusable: [] }, 'TWILIO_AUTH_TOKEN'), 'TWILIO_AUTH_TOKEN saved — paste to replace');
+  assert.equal(keySetupPlaceholder({ set: false, present: false, unusable: [] }, 'TWILIO_AUTH_TOKEN'), 'paste TWILIO_AUTH_TOKEN');
+  // A status from before `present` existed still reads as it did.
+  assert.equal(keySetupPlaceholder({ set: true }, 'OPENAI_API_KEY'), 'OPENAI_API_KEY saved — paste to replace');
+  assert.equal(keySetupPlaceholder({ set: false }, 'OPENAI_API_KEY'), 'paste OPENAI_API_KEY');
 });
 
 test('collectKeyUpdates keeps only non-empty trimmed values', () => {

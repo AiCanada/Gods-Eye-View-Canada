@@ -15,6 +15,7 @@ import {
 import { createLandMaskSource } from './landmask.js';
 import { encodeRgbaPng } from './png.js';
 import { renderFrontsRgba, renderSstRgba, sstDisplayRange } from './render.js';
+import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
 
 /** Newest OceanColor MODIS Aqua Level-3 SST granules, daily and 8-day mixed. */
 export const CMR_LEVEL3_LIST_URL =
@@ -152,7 +153,9 @@ export function createLevel3Source({
 
   const downloadGrid = async (granule, range) => {
     const url = opendapSubsetUrl(granule.opendapUrl, range);
-    const token = String(env.EARTHDATA_TOKEN || '').trim();
+    const token = localProviderTrusted('earthdata', env)
+      ? String(env.EARTHDATA_TOKEN || '').trim()
+      : '';
     const headers = { 'User-Agent': 'gods-eye-view-sst/1.0' };
     // The Earthdata login goes to OceanColor's own host and nowhere else.
     if (token && new URL(url).hostname === OCEANCOLOR_HOST) {

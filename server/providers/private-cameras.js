@@ -19,12 +19,14 @@ import {
   normalizeFingerprint,
   normalizePrivateCameraConfig,
   normalizeRelayCameraName,
+  privateCameraPolicyRecords,
   privateCameraPublicId,
   privateCameraSources,
   privateCameraStatus,
   privateFrameTarget,
   relayMatchName,
 } from '../../src/privateCamerasCore.mjs';
+import { localRecordsTrusted, noteLocalCamerasSaved, vendorFeedPolicyParts } from '../../src/localIntegrity.mjs';
 import { defaultSourceRoot } from './common/source-root.js';
 import { PRIVATE_CCTV_FEED_LOCAL_CONFIG, parsePrivateCctvFeedConfig } from '../../src/privateCctvFeedConfig.mjs';
 
@@ -507,7 +509,7 @@ function offlineSvg(label, reason, detail = '') {
 
 /** Vite plugin for the private camera routes. */
 /** The credential store and its temporary files, however a URL spells or encodes the name. */
-const STORE_NAME_PATTERN = /private-cameras\.json/i;
+const STORE_NAME_PATTERN = /private-cameras\.json|local-integrity\.(?:json|key)|social-accounts\.(?:json|key)/i;
 
 /**
  * Whether a request could reach the private camera store through the server's
@@ -546,6 +548,7 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
   const feedConfigPath = path.join(sourceRoot, PRIVATE_CCTV_FEED_LOCAL_CONFIG);
   let feedConfigStamp = '';
   let feedConfigCheckedAt = 0;
+  let feedPolicy = vendorFeedPolicyParts(parsePrivateCctvFeedConfig(null));
   const refreshFeedConfig = (force = false) => {
     const now = Date.now();
     if (!force && now - feedConfigCheckedAt < 2000) return;
@@ -571,6 +574,7 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     for (const problem of parsed.problems) {
       console.warn(`[Private cameras] ${PRIVATE_CCTV_FEED_LOCAL_CONFIG}: ${problem}`);
     }
+    feedPolicy = vendorFeedPolicyParts(parsed);
     configurePrivateCctvFeed(parsed);
   };
   refreshFeedConfig(true);
@@ -623,6 +627,29 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     fs.mkdirSync(path.dirname(storePath), { recursive: true });
     replaceCredentialStore(storePath, `${JSON.stringify(config, null, 2)}\n`);
     cache = { mtimeMs: -1, size: -1, config: emptyPrivateCameraConfig() };
+    try {
+      refreshFeedConfig();
+      noteLocalCamerasSaved(sourceRoot, privateCameraPolicyRecords(config), feedPolicy);
+    } catch (error) {
+      console.warn(`[Private cameras] Camera check was not saved (${String(error?.code || 'error').slice(0, 40)})`);
+    }
+  };
+
+  const camerasTrusted = (config) => {
+    try {
+      return localRecordsTrusted(sourceRoot, 'cameras', privateCameraPolicyRecords(config));
+    } catch {
+      return false;
+    }
+  };
+
+  /** The camera site file, separate from the camera list. A missing check is still trusted. */
+  const vendorFeedTrusted = () => {
+    try {
+      return localRecordsTrusted(sourceRoot, 'vendorFeed', feedPolicy);
+    } catch {
+      return false;
+    }
   };
 
   const respondJson = (res, status, payload, extraHeaders = {}) => {
@@ -654,6 +681,7 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
   /** The paired relay site a bearer secret belongs to. Every paired site is compared, with no early exit. */
   const pairedRelaySite = (config, secret) => {
     if (!secret) return null;
+    if (!camerasTrusted(config)) return null;
     const presented = sha256Digest(secret);
     let found = null;
     for (const site of config.sites) {
@@ -761,7 +789,11 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     const config = readConfig();
     const target = privateFrameTarget(config, publicId);
     if (!target) return Promise.resolve({ ok: false, reason: 'not configured', name: '' });
+    if (!camerasTrusted(config)) return Promise.resolve({ ok: false, reason: 'the camera was changed', name: target.name });
     if (target.relay) return Promise.resolve(relayFrameFor(publicId, target, config.sites.find((site) => site.id === target.siteId)));
+    // The site file decides which hosts are never sent a login. A hand edit
+    // stops the fetch; a paired relay does not use that file.
+    if (!vendorFeedTrusted()) return Promise.resolve({ ok: false, reason: 'the camera site was changed', name: target.name });
     const failure = failures.get(publicId);
     if (failure && Date.now() < failure.until) return Promise.resolve({ ok: false, reason: failure.reason, name: target.name });
     // The panel, the projection and the map card can all ask at once: they

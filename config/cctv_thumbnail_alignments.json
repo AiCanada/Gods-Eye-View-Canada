@@ -1,6 +1,9 @@
 {
   "format": "gev-cctv-thumbnail-alignments/1",
   "alignments": {
+    "127": {"lat":30.27274,"lon":-97.741188,"bearingDeg":null},
+    "nb-dieppe-moncton-nb-highway-2-2": {"lat":46.127968,"lon":-64.680595,"bearingDeg":354},
+    "nb-dieppe-place-1604": {"lat":46.095145,"lon":-64.748313,"bearingDeg":null},
     "nb-grand-bay-westfield-nb-highway-7-2": {"lat":45.267121,"lon":-66.204018,"bearingDeg":null},
     "nb-saint-john-nb-highway-1": {"lat":45.228701,"lon":-66.152791,"bearingDeg":358},
     "qc511-3322": {"lat":45.465648,"lon":-73.483913,"bearingDeg":334},

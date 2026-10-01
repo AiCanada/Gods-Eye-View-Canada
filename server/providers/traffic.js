@@ -9,6 +9,12 @@ import {
   tileToBBox as tomtomTileBBox,
 } from '../../src/data/tomtomTiles.js';
 import { haversineKm } from './common/geo.js';
+import { localProviderTrusted } from '../../src/localIntegrity.mjs';
+
+/** The TomTom key when its check still matches. A changed key is treated as unset. */
+function tomtomApiKey() {
+  return localProviderTrusted('tomtom') ? String(process.env.TOMTOM_API_KEY || '') : '';
+}
 
 /**
  * Memory tiers of every installed TomTom proxy, registered on install so a
@@ -182,7 +188,7 @@ export function tomtomProxy() {
   async function fetchUpstream(z, x, y) {
     const url =
       'https://api.tomtom.com/traffic/map/4/tile/flow/relative/' +
-      `${z}/${x}/${y}.pbf?key=${encodeURIComponent(process.env.TOMTOM_API_KEY)}`;
+      `${z}/${x}/${y}.pbf?key=${encodeURIComponent(tomtomApiKey())}`;
     recordUpstreamFetch(); // attempts count — upstream bills the request either way
     const res = await fetch(url, {
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
@@ -222,7 +228,7 @@ export function tomtomProxy() {
         const urlPath = String(req.url || '').split('?')[0];
 
         if (urlPath === '/status') {
-          const hasKey = Boolean(process.env.TOMTOM_API_KEY);
+          const hasKey = Boolean(tomtomApiKey());
           const b = currentBudget();
           sendJson(200, {
             hasKey,
@@ -245,7 +251,7 @@ export function tomtomProxy() {
           sendJson(400, { error: 'invalid_tile' });
           return;
         }
-        if (!process.env.TOMTOM_API_KEY) {
+        if (!tomtomApiKey()) {
           sendJson(503, { error: 'no_key' });
           return;
         }

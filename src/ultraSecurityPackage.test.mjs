@@ -30,7 +30,8 @@ test('the package: a tracker or a phone, every login, follow and record by defau
   assert.equal(kind.title, 'ULTRA SECURITY PACKAGE');
   assert.deepEqual([kind.followDefault, kind.recordDefault], [true, true]);
   assert.equal(DEVICE_RECORD_RADIUS_KM, 50);
-  assert.match(kind.unlocks, /within 50 km/);
+  // The distance is the owner's choice, 1 to 50 km; 50 stays the default.
+  assert.match(kind.unlocks, /within a distance you choose of it, 1 to 50 km/);
   // Said plainly: a phone reports through an app on it, never by its number.
   assert.match(kind.unlocks, /cannot be found by its number/);
   for (const method of ['traccar', 'owntracks', 'home-assistant', 'http-json', 'cellular-tracker', 'phone-app', 'find-my']) {
@@ -138,6 +139,40 @@ test('a recording is never served as a file', () => {
     assert.equal(isDeviceFeedStoreRequest(url, { sourceRoot: root }), true, url);
   }
   assert.equal(isDeviceFeedStoreRequest('/config/DEVICE~2/SECURI~1/2026-0~1.JSO', { sourceRoot: root, realpath: () => path.join(root, 'config', 'device-recordings', 'security-van', '2026-09-20.jsonl') }), true, 'a Windows short name');
+  // The Ultra Security Package's numbers, sealed help tokens, token key, help
+  // inbox and home list (other people's sealed help tokens) are refused by the
+  // same first-in-chain guard, in every spelling.
+  for (const url of [
+    '/config/ultra-help.json',
+    '/config/ultra-tokens.json',
+    '/config/ULTRA-TOKENS.KEY',
+    '/config/ultra%2Dtokens.key',
+    '/config/ultra-tokens.json?raw',
+    '/config/ultra-tokens.json::$DATA',
+    '/config/.ultra-tokens.json.ab12cd34.tmp',
+    '/config/ultra-inbox.json',
+    '/@fs/c/x/config/ultra-tokens.key',
+    '/config/ultra-network.json',
+    '/config/ULTRA-NETWORK.JSON',
+    '/config/ultra%2Dnetwork.json',
+    '/config/.ultra-network.json.ab12cd34.tmp',
+    '/@fs/c/x/config/ultra-network.json',
+    '/config/ultra-outbound.json',
+    '/config/ULTRA-OUTBOUND.JSON',
+    '/config/ultra%2Doutbound.json',
+    '/config/.ultra-outbound.json.ab12cd34.tmp',
+    '/@fs/c/x/config/ultra-outbound.json',
+    '/config/local-integrity.json',
+    '/config/local-integrity.key',
+    '/config/.local-integrity.key.ab12cd34.tmp',
+    '/config/social-accounts.json',
+    '/config/social-accounts.key',
+    '/config/.social-accounts.key.ab12cd34.tmp',
+    '/@fs/c/x/config/local-integrity.json',
+  ]) {
+    assert.equal(isDeviceFeedStoreRequest(url, { sourceRoot: root }), true, url);
+  }
+  assert.equal(isDeviceFeedStoreRequest('/config/ultra-thumbs.json', { sourceRoot: root }), false, 'an unrelated ultra- file is still served');
 });
 
 test('record: only a recording device, only this machine, judged by the serverâ€™s own position', async () => {
@@ -178,4 +213,49 @@ test('record: only a recording device, only this machine, judged by the serverâ€
   assert.deepEqual([feed.follow, feed.record, feed.recording.files], [true, true, 1]);
   const positions = (await request('/positions', { headers: { 'sec-fetch-site': 'same-origin' } })).json();
   assert.deepEqual(positions.devices.map((device) => [device.id, device.follow, device.record]), [['device-security-van', true, true], ['device-tracker-quiet', false, false]]);
+});
+
+test('the docs say what RECORD does with a received NEEDS HELP pin', async () => {
+  // The pin is an ordinary row on the Your Devices layer, so a package of the
+  // receiver's with RECORD on keeps it among its surroundings. That is the
+  // accepted caveat in the CHANGELOG; nothing may still claim it is never
+  // recorded. If a filter is ever added, this pin fails and the docs change.
+  const { ultraNetworkPin } = await import('./ultraNetwork.mjs');
+  const { createDeviceRecorder } = await import('./data/deviceRecorder.js');
+  const now = Date.parse('2026-09-29T12:00:00Z');
+  const pin = ultraNetworkPin(
+    { id: 'n-0123456789abcdef', name: 'Sam' },
+    { lat: 45.3, lon: -66.1, at: now - 1000, until: now + 3_600_000, from: 'Sam' },
+    now,
+  );
+  assert.equal(pin?.kind, 'help');
+  const own = { id: 'security-home', kind: 'security', name: 'Home', lat: 45.27, lon: -66.06, record: true, recordKm: 50, at: now };
+  const layer = {
+    getAnalystRecords: () =>
+      [own, pin].map((row) => ({ id: row.id, kind: row.kind, name: row.name, lat: row.lat, lon: row.lon, live: row.live, timeMs: row.at })),
+  };
+  const dataManager = { layers: new Map([['devices', { enabled: true, module: layer }]]), isEnabled: () => true };
+  let posted = null;
+  const recorder = createDeviceRecorder({
+    now: () => now,
+    fetchImpl: async (url, init) => {
+      posted = { url, body: JSON.parse(init.body) };
+      return { ok: true, json: async () => ({ ok: true, kept: 1 }) };
+    },
+  });
+  await recorder.tick([own], dataManager, { skip: ['traffic'] });
+  assert.equal(posted?.url, '/api/device-feeds/record/security-home');
+  const kept = buildDeviceRecordingLine(posted.body, own);
+  assert.ok(
+    kept.line.layers.devices.some((row) => row.kind === 'help' && row.id === `ultra-network:n-0123456789abcdef`),
+    'a recording package keeps the NEEDS HELP pin among its surroundings',
+  );
+  const state = fs.readFileSync(new URL('../docs/CURRENT-STATE.md', import.meta.url), 'utf8');
+  const feeds = fs.readFileSync(new URL('../server/providers/device-feeds.js', import.meta.url), 'utf8');
+  for (const text of [state, feeds]) {
+    assert.doesNotMatch(text, /never followed or recorded/);
+    assert.doesNotMatch(text, /never followed, never recorded/);
+  }
+  assert.match(state, /RECORD[^.]*config\/device-recordings/);
+  assert.match(feeds, /RECORD on captures it/);
 });

@@ -15,8 +15,10 @@
  * roughly 700 characters; every other provider key is far shorter. */
 export const KEY_SETUP_VALUE_LIMIT = 4096;
 
-/** Most env var NAMES accepted in one save. The registry defines nineteen. */
-export const KEY_SETUP_UPDATE_LIMIT = 20;
+/** Most env var NAMES accepted in one save. The registry defines twenty-nine,
+ * plus seven optional boxes (the LLM and swarm MODEL ids and the directory
+ * write token). */
+export const KEY_SETUP_UPDATE_LIMIT = 40;
 
 /** Header line written above keys the panel appends to a .env file. */
 export const KEY_SETUP_APPEND_HEADER = '# Keys added by the in-app POWER UP panel';
@@ -127,40 +129,71 @@ export const KEY_SETUP_KEYS = Object.freeze([
   // side on the same view. They share a group: any ONE of them powers the
   // panel, so the POWER UP chip counts the group once and retires as soon as
   // one key is in, rather than nagging for all five.
+  // Each LLM key also carries a MODEL box (`optionalEnvVars`): the model id
+  // the provider is asked for. Optional: an empty box means the provider's
+  // default (server/providers/llm/ask.js), and it never decides whether the
+  // key counts as set. `placeholder` is that default; `options` are ids the
+  // box suggests, any id the provider lists may be typed instead.
   Object.freeze({
     id: 'nvidia',
     group: 'llm',
     title: 'NVIDIA NIM',
-    unlocks: 'Ask panel: typed questions and one-click overviews of the view',
+    unlocks: 'AI Risk & Truth Assessment: typed questions and one-click overviews of the view',
     getUrl: 'https://build.nvidia.com/',
     envVars: Object.freeze(['NVIDIA_API_KEY']),
+    optionalEnvVars: Object.freeze([
+      Object.freeze({ name: 'NVIDIA_MODEL', label: 'MODEL', placeholder: 'moonshotai/kimi-k3', options: Object.freeze([]) }),
+    ]),
     tier: 'free',
   }),
   Object.freeze({
     id: 'xai',
     group: 'llm',
     title: 'xAI GROK',
-    unlocks: 'Ask panel: adds Grok as a second opinion on the current view',
+    unlocks: 'AI Risk & Truth Assessment: adds Grok as a second opinion on the current view',
     getUrl: 'https://console.x.ai/',
     envVars: Object.freeze(['XAI_API_KEY']),
+    optionalEnvVars: Object.freeze([
+      Object.freeze({ name: 'XAI_MODEL', label: 'MODEL', placeholder: 'grok-4.6', options: Object.freeze([]) }),
+    ]),
     tier: 'metered',
   }),
   Object.freeze({
     id: 'anthropic',
     group: 'llm',
     title: 'ANTHROPIC CLAUDE',
-    unlocks: 'Ask panel: adds Claude as a second opinion on the current view',
+    unlocks: 'AI Risk & Truth Assessment: adds Claude as a second opinion on the current view',
     getUrl: 'https://console.anthropic.com/',
     envVars: Object.freeze(['ANTHROPIC_API_KEY']),
+    optionalEnvVars: Object.freeze([
+      Object.freeze({ name: 'ANTHROPIC_MODEL', label: 'MODEL', placeholder: 'claude-fable-5-1', options: Object.freeze([]) }),
+    ]),
     tier: 'metered',
   }),
   Object.freeze({
     id: 'openrouter',
     group: 'llm',
     title: 'OPENROUTER',
-    unlocks: 'Ask panel: one key that reaches many models (set OPENROUTER_MODEL)',
+    unlocks: 'AI Risk & Truth Assessment: one key that reaches many models; NVIDIA Nemotron 3 Ultra (free) unless another is chosen',
     getUrl: 'https://openrouter.ai/keys',
     envVars: Object.freeze(['OPENROUTER_API_KEY']),
+    optionalEnvVars: Object.freeze([
+      Object.freeze({
+        name: 'OPENROUTER_MODEL',
+        label: 'MODEL',
+        placeholder: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+        // OpenRouter's own ids, read from its model list on 2026-09-27.
+        options: Object.freeze([
+          'nvidia/nemotron-3-ultra-550b-a55b:free',
+          'nvidia/nemotron-3-super-120b-a12b:free',
+          'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+          'nvidia/nemotron-3.5-lightning:free',
+          'nvidia/nemotron-3-ultra-550b-a55b',
+          'nvidia/nemotron-3-super-120b-a12b',
+          'openai/gpt-5.2',
+        ]),
+      }),
+    ]),
     tier: 'metered',
   }),
   // Escape hatch: any other OpenAI-compatible endpoint, including one running
@@ -170,10 +203,88 @@ export const KEY_SETUP_KEYS = Object.freeze([
     id: 'custom',
     group: 'llm',
     title: 'CUSTOM LLM',
-    unlocks: 'Ask panel: any OpenAI-compatible endpoint, local or hosted',
+    unlocks: 'AI Risk & Truth Assessment: any OpenAI-compatible endpoint, local or hosted',
     getUrl: 'https://platform.openai.com/docs/api-reference/chat',
     envVars: Object.freeze(['CUSTOM_LLM_API_KEY', 'CUSTOM_LLM_BASE_URL', 'CUSTOM_LLM_MODEL']),
     tier: 'free',
+  }),
+  // Social Media Analysis → the bot swarms, each on a key of its own, apart
+  // from the Ask panel's xAI key and voice control's OpenAI key. GROK BOT and
+  // its Chief of Staff webhook share a group: either one powers GROK BOT
+  // SWARM. With neither, the swarm still runs: it opens the Grok Bot desktop
+  // app with its task copied, for the Chief of Staff bot.
+  Object.freeze({
+    id: 'grok-bot',
+    group: 'grok-bot',
+    title: 'GROK BOT',
+    unlocks: 'Social Media → GROK BOT SWARM: seven bots at once on their own xAI key (without one, the task goes to your Chief of Staff bot in Grok Bot)',
+    getUrl: 'https://console.x.ai/',
+    envVars: Object.freeze(['GROK_BOT_API_KEY']),
+    optionalEnvVars: Object.freeze([
+      Object.freeze({ name: 'XAI_SWARM_MODEL', label: 'MODEL', placeholder: 'grok-4.6', options: Object.freeze([]) }),
+    ]),
+    tier: 'metered',
+  }),
+  Object.freeze({
+    id: 'grok-bot-chief-of-staff',
+    group: 'grok-bot',
+    title: 'GROK BOT — CHIEF OF STAFF',
+    unlocks: 'Social Media → GROK BOT SWARM with no API key: each press sends the task to a webhook routine of your Chief of Staff bot in Grok Bot (Routines → When a webhook fires; paste its Webhook URL and Webhook key)',
+    getUrl: 'https://docs.x.ai/grok-bot/skills-routines-and-automations',
+    envVars: Object.freeze(['GROK_BOT_WEBHOOK_URL', 'GROK_BOT_WEBHOOK_KEY']),
+    tier: 'free',
+  }),
+  Object.freeze({
+    id: 'openai-dots',
+    title: 'OPENAI DOTS',
+    unlocks: 'Social Media → OPENAI BOT SWARM: seven bots at once on their own OpenAI key, apart from voice control',
+    getUrl: 'https://platform.openai.com/api-keys',
+    envVars: Object.freeze(['OPENAI_DOTS_API_KEY']),
+    optionalEnvVars: Object.freeze([
+      Object.freeze({ name: 'OPENAI_SWARM_MODEL', label: 'MODEL', placeholder: 'gpt-6-astra', options: Object.freeze([]) }),
+    ]),
+    tier: 'metered',
+  }),
+  // Ultra Security Package SMS relay: a call for help texted to the owner's
+  // own cell (a friend's SEND HELP) and to the saved helpers (the owner's own
+  // SEND HELP) without a tap. Every message costs money at the provider's
+  // rate, so nothing is sent until the keys are here. The two recipes share a
+  // group: either one powers the relay, so the POWER UP chip counts it once.
+  // The server reads these from process.env at call time (2026-09-28 ruling:
+  // a save from this panel applies at once; a hand edit needs a full restart).
+  Object.freeze({
+    id: 'twilio-sms',
+    group: 'ultra-sms',
+    title: 'SMS RELAY — TWILIO',
+    unlocks: "Ultra Security Package: texts a call for help to your own cell and to your saved helpers automatically (costs money per message at Twilio's rate)",
+    getUrl: 'https://console.twilio.com',
+    envVars: Object.freeze(['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER']),
+    tier: 'metered',
+  }),
+  Object.freeze({
+    id: 'ultra-sms-relay',
+    group: 'ultra-sms',
+    title: 'SMS RELAY — YOUR OWN GATEWAY',
+    unlocks: 'Ultra Security Package: the same texts through an https gateway you run (it receives JSON { to, body } with a bearer token)',
+    getUrl: 'https://www.twilio.com/docs/messaging/api/message-resource',
+    envVars: Object.freeze(['ULTRA_SMS_RELAY_URL', 'ULTRA_SMS_RELAY_TOKEN']),
+    tier: 'free',
+  }),
+  // Hidden because the Ultra box owns its own form (HELP NETWORK → SAVE
+  // DIRECTORY); registering the names is what lets POST /api/setup/keys
+  // accept them. The write token is optional: without it PUBLISH MY TOKEN
+  // copies the entry for the owner to send instead of writing to GitHub.
+  Object.freeze({
+    id: 'ultra-directory',
+    title: 'HELP NETWORK DIRECTORY',
+    unlocks: 'Ultra Security Package → HELP NETWORK: the shared list of help links your group publishes; set it from that box',
+    getUrl: 'https://github.com/settings/personal-access-tokens',
+    envVars: Object.freeze(['ULTRA_DIRECTORY_URL']),
+    optionalEnvVars: Object.freeze([
+      Object.freeze({ name: 'ULTRA_DIRECTORY_WRITE_TOKEN', label: 'GITHUB WRITE TOKEN', placeholder: 'github_pat_…', options: Object.freeze([]) }),
+    ]),
+    tier: 'free',
+    hidden: true,
   }),
 ]);
 
@@ -340,8 +451,77 @@ export function knownKeySetupEnvVars() {
   const names = new Set();
   for (const entry of KEY_SETUP_KEYS) {
     for (const envVar of entry.envVars) names.add(envVar);
+    for (const optional of entry.optionalEnvVars || []) names.add(optional.name);
   }
   return names;
+}
+
+// The SMS relay's own acceptance rules (twilioKeys and gatewayKeys in
+// src/ultraSmsRelay.mjs), copied here because this module imports nothing.
+// A value the relay would never use is refused at save time and never
+// counts as set, so POWER UP and the Ultra box agree on whether the relay
+// is configured. A test in keySetupCore.test.mjs pins that the two agree.
+const SMS_E164 = /^\+[1-9]\d{7,14}$/;
+const SMS_SECRET = /^[\x21-\x7e]{1,512}$/;
+
+/** Whether a hostname is an IPv4 literal in 100.64.0.0/10, the range Tailscale hands out. */
+function smsTailnetLiteral(hostname) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname);
+  if (!m) return false;
+  const octets = m.slice(1).map(Number);
+  return octets.every((o) => o <= 255) && octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127;
+}
+
+/** https anywhere, or http to a Tailscale literal, never with user:password in it. */
+function smsRelayUrlOk(value) {
+  if (value.length > 2048) return false;
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.username || url.password) return false;
+  return url.protocol === 'https:' || (url.protocol === 'http:' && smsTailnetLiteral(url.hostname));
+}
+
+/**
+ * The Webhook URL Grok Bot shows for a routine: https on its own backend
+ * (api2.cursor.sh, or api.origin.cursor.com), /automations/webhook/<id>, and
+ * nothing else, so the webhook key it carries goes nowhere but Grok Bot.
+ */
+function grokBotWebhookUrlOk(value) {
+  if (value.length > 2048) return false;
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.search || url.hash) return false;
+  const host = url.hostname.toLowerCase();
+  if (!host.endsWith('.cursor.sh') && !host.endsWith('.cursor.com')) return false;
+  return /^\/automations\/webhook\/[A-Za-z0-9._~%-]{1,200}$/.test(url.pathname);
+}
+
+const KEY_SETUP_FORMATS = Object.freeze({
+  GROK_BOT_WEBHOOK_URL: [grokBotWebhookUrlOk, "GROK_BOT_WEBHOOK_URL must be the Webhook URL Grok Bot shows for the routine: https://api2.cursor.sh/automations/webhook/…"],
+  GROK_BOT_WEBHOOK_KEY: [(v) => SMS_SECRET.test(v), 'GROK_BOT_WEBHOOK_KEY is longer than any real key (512 max)'],
+  TWILIO_ACCOUNT_SID: [(v) => /^[A-Za-z0-9]{2,64}$/.test(v), 'TWILIO_ACCOUNT_SID is letters and digits only (it starts AC)'],
+  TWILIO_AUTH_TOKEN: [(v) => SMS_SECRET.test(v), 'TWILIO_AUTH_TOKEN is longer than any real token (512 max)'],
+  TWILIO_FROM_NUMBER: [(v) => SMS_E164.test(v.replace(/[\s()-]/g, '')), 'TWILIO_FROM_NUMBER needs + and the country code, e.g. +15065550100'],
+  ULTRA_SMS_RELAY_URL: [smsRelayUrlOk, 'ULTRA_SMS_RELAY_URL must be https, or http to a 100.64.x.x Tailscale address, with no user:password in it'],
+  ULTRA_SMS_RELAY_TOKEN: [(v) => SMS_SECRET.test(v), 'ULTRA_SMS_RELAY_TOKEN is longer than any real token (512 max)'],
+});
+
+/**
+ * Why a value can never work for this env var, or '' when it can (or when
+ * the name has no format beyond a plain key's). The sentence names the
+ * rule, never the value.
+ */
+export function keySetupValueProblem(name, value) {
+  const rule = Object.hasOwn(KEY_SETUP_FORMATS, name) ? KEY_SETUP_FORMATS[name] : null;
+  return rule && !rule[0](String(value ?? '')) ? rule[1] : '';
 }
 
 /** Tooltip guidance for a control gated by one registry entry. */
@@ -371,24 +551,44 @@ export function isKeySetupExternallyManaged({
 
 /**
  * Build the status payload the panel renders from: the registry, plus
- * per-entry `set` resolved against the given environment. It never includes
- * a value, suffix, or other credential material.
+ * per-entry `set`, `present` and `unusable` resolved against the given
+ * environment. It never includes a value, suffix, or other credential
+ * material.
  * @param {Record<string, string|undefined>} env e.g. process.env
  */
 export function keySetupStatus(env = {}) {
   const keys = KEY_SETUP_KEYS.filter((entry) => !entry.hidden).map((entry) => {
     const values = entry.envVars.map((name) => String(env[name] ?? '').trim());
-    const set = values.every((value) => value.length > 0);
+    // A value the provider would refuse (a hand-edited .env, or one saved
+    // before its rule existed) is not set, so the row and the chip never
+    // claim a relay the box calls NOT CONFIGURED. It is still there, though:
+    // `present` keeps the row's REMOVE (or its external badge), and
+    // `unusable` names the refused variables, never their values.
+    const unusable = entry.envVars.filter(
+      (name, i) => values[i].length > 0 && keySetupValueProblem(name, values[i]),
+    );
+    const present = values.every((value) => value.length > 0);
+    const set = present && unusable.length === 0;
     return {
       id: entry.id,
       title: entry.title,
       unlocks: entry.unlocks,
       getUrl: entry.getUrl,
       envVars: [...entry.envVars],
+      // A model id is a choice, not a credential: the box shows the one in use.
+      optionalEnvVars: (entry.optionalEnvVars || []).map((optional) => ({
+        name: optional.name,
+        label: optional.label,
+        placeholder: optional.placeholder,
+        options: [...(optional.options || [])],
+        value: String(env[optional.name] ?? '').trim(),
+      })),
       tier: entry.tier,
       group: entry.group || null,
       clientExposed: Boolean(entry.clientExposed),
       set,
+      present,
+      unusable,
     };
   });
   // Alternatives share a group: it counts once in the total and any member
@@ -448,6 +648,10 @@ export function validateKeySetupUpdates(body) {
     if (/[#"'$\\`]/.test(value)) {
       return { ok: false, error: `${name} contains a character that is not valid in a key (#, quotes, $, \\, or backtick)` };
     }
+    // A few names have a shape of their own (the SMS relay's number, gateway
+    // address and ids): refuse what the relay would silently never use.
+    const problem = keySetupValueProblem(name, value);
+    if (problem) return { ok: false, error: problem };
     updates[name] = value;
   }
   return { ok: true, updates };

@@ -184,7 +184,8 @@
 }
 
 .hud-bottom-right {
-  bottom: 180px;
+  /* The very bottom of the right side, just above the POWER UP chip. */
+  bottom: calc(0.9rem + 2.6rem);
   right: 36px;
 }
 

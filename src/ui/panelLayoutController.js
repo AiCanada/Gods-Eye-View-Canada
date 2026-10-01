@@ -1,5 +1,9 @@
 /** Own rail measurement, layout scheduling and dock tray observation. */
-import { layoutLeftPanelRail, layoutRightPanelRail } from './panelRails.js';
+import {
+  layoutLeftPanelRail,
+  layoutRightPanelRail,
+  resolvePanelRaiseOrder,
+} from './panelRails.js';
 const COCKPIT_LAYOUT_SETTLE_MS = 240;
 /**
  * Fixed UI regions that can occupy the left accordion's vertical lane.
@@ -8,7 +12,6 @@ const COCKPIT_LAYOUT_SETTLE_MS = 240;
  * intersect it at the current viewport size.
  */
 const LEFT_STACK_OBSTACLE_SELECTOR = [
-  '#ask-panel',
   '#cockpit-hud .cockpit-topline',
   '#cockpit-hud .cockpit-topline > div',
   '#title-bar',
@@ -91,6 +94,10 @@ export class PanelLayoutController {
     this._rightStackResizeObserver = null;
     this._cockpitLayoutFrame = null;
     this._cockpitLayoutTimer = null;
+    this._panelRaiseSequence = new Map();
+    this._panelRaiseCounter = 0;
+    this._panelRaiseRemovers = [];
+    this._panelRaiseSettleRemove = null;
     this._leftPanelStack = document.getElementById('left-panel-stack');
     this._rightPanelStack = document.getElementById('right-context-rail');
     this._ppToggles = document.getElementById('pp-toggles');
@@ -112,6 +119,113 @@ export class PanelLayoutController {
       this._scheduleRightPanelLayout({ reconsiderAutoCollapse: true });
       this.scheduleCockpitLayout();
     }, COCKPIT_LAYOUT_SETTLE_MS);
+  }
+
+  /**
+   * Click-to-raise for the overlapping rail boxes (owner ruling, 2026-09-28).
+   * The listener watches the rail in the capture phase and consumes nothing:
+   * a box has to rise on the very press that hits its collapse button, ticks
+   * a toggle or lands in a text field, so nothing here may call
+   * preventDefault or stop propagation. `keydown` is here because the
+   * collapse buttons and the controls inside a box are reachable by keyboard,
+   * where no pointer event is ever dispatched.
+   * @param {HTMLElement} stack Rail whose boxes compete for the front.
+   */
+  _initPanelRaiseOrder(stack) {
+    if (!stack?.addEventListener) return;
+    const handler = (event) => {
+      const panel = [...(stack.children || [])].find(
+        (child) =>
+          child.matches?.('[data-panel-id]') && child.contains?.(event.target),
+      );
+      // A press holds the re-cascade until the button comes back up. The box
+      // rises straight away, but if it also slid to its new slot under a held
+      // pointer the control the operator pressed would move out from under
+      // the cursor and the release would land somewhere else: the collapse
+      // button of a box behind another would raise it and never close it.
+      if (panel)
+        this.raisePanel(panel.id, { settle: event.type !== 'keydown' });
+    };
+    for (const type of ['pointerdown', 'keydown']) {
+      stack.addEventListener(type, handler, true);
+      this._panelRaiseRemovers.push(() =>
+        stack.removeEventListener(type, handler, true),
+      );
+    }
+    this._applyPanelRaiseOrder(stack);
+  }
+
+  /**
+   * Record a box as the most recently touched and republish both rails'
+   * stacking order. Only a deliberate touch moves anything: a layout pass
+   * that merely repaints a rail never calls this, so a box that is measured
+   * again stays exactly where the operator left it.
+   *
+   * The rails are then measured again, because the overlap cascade hands out
+   * its slots in this same order: the box that comes to the front takes the
+   * lowest slot, which is what keeps the strip of every box behind it clear.
+   * Nothing happens when the box is already in front, so holding the pointer
+   * down inside one box cannot start a layout loop.
+   * @param {string} panelId DOM id of the box that was touched.
+   * @param {object} [options] How soon the rails may move.
+   * @param {boolean} [options.settle=false] Wait for the pointer to come up.
+   */
+  raisePanel(panelId, { settle = false } = {}) {
+    if (this.destroyed || !panelId) return;
+    if (this._panelRaiseSequence.get(panelId) === this._panelRaiseCounter)
+      return;
+    this._panelRaiseCounter += 1;
+    this._panelRaiseSequence.set(panelId, this._panelRaiseCounter);
+    for (const stack of [this._leftPanelStack, this._rightPanelStack])
+      this._applyPanelRaiseOrder(stack);
+    if (settle) this._schedulePanelRaiseSettle();
+    else this._applyPanelRaiseLayout();
+  }
+
+  _applyPanelRaiseLayout() {
+    this._scheduleLeftPanelLayout();
+    this._scheduleRightPanelLayout();
+  }
+
+  /**
+   * Re-cascade once the pointer is released. The listener is on the window
+   * so a press that wanders off the box still settles, and it runs in the
+   * capture phase before the control's own click, which the scheduled frame
+   * then trails by design.
+   */
+  _schedulePanelRaiseSettle() {
+    if (this._panelRaiseSettleRemove) return;
+    const settle = () => {
+      this._panelRaiseSettleRemove?.();
+      if (!this.destroyed) this._applyPanelRaiseLayout();
+    };
+    const target = this._leftPanelStack?.ownerDocument?.defaultView;
+    if (!target?.addEventListener) {
+      this._applyPanelRaiseLayout();
+      return;
+    }
+    this._panelRaiseSettleRemove = () => {
+      this._panelRaiseSettleRemove = null;
+      for (const type of ['pointerup', 'pointercancel'])
+        target.removeEventListener(type, settle, true);
+    };
+    for (const type of ['pointerup', 'pointercancel'])
+      target.addEventListener(type, settle, true);
+  }
+
+  _applyPanelRaiseOrder(stack) {
+    if (!stack?.querySelectorAll) return;
+    const panels = [...stack.querySelectorAll(':scope > [data-panel-id]')];
+    if (!panels.length) return;
+    const order = resolvePanelRaiseOrder({
+      panelIds: panels.map((panel) => panel.id),
+      raisedAt: this._panelRaiseSequence,
+    });
+    for (const panel of panels) {
+      const rank = String(order.get(panel.id) ?? 1);
+      if (panel.style.getPropertyValue('--panel-raise-z') !== rank)
+        panel.style.setProperty('--panel-raise-z', rank);
+    }
   }
 
   _initCommandDockTrayMetrics() {
@@ -271,6 +385,7 @@ export class PanelLayoutController {
       );
     }
 
+    this._initPanelRaiseOrder(stack);
     this._scheduleRightPanelLayout();
   }
 
@@ -405,6 +520,7 @@ export class PanelLayoutController {
       this._leftStackCockpitModeHandler,
     );
 
+    this._initPanelRaiseOrder(stack);
     this._scheduleLeftPanelLayout();
   }
 
@@ -482,5 +598,8 @@ export class PanelLayoutController {
         this._leftStackCockpitModeHandler,
       );
     this._leftStackCockpitModeHandler = null;
+    for (const remove of this._panelRaiseRemovers) remove();
+    this._panelRaiseRemovers = [];
+    this._panelRaiseSettleRemove?.();
   }
 }

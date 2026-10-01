@@ -17,6 +17,9 @@ const WINDOWS_ACL_VERIFY_SCRIPT = [
   // parent environment set.
   "$env:PSModulePath = Join-Path $PSHOME 'Modules'",
   '$acl = Get-Acl -LiteralPath $env:GEV_ACL_FILE',
+  // A folder's three rules must also reach every file and folder inside it.
+  "$folder = $env:GEV_ACL_FOLDER -eq '1'",
+  "$both = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'",
   'if (-not $acl.AreAccessRulesProtected) { exit 2 }',
   "$allowed = @($env:GEV_ACL_USER_SID, 'S-1-5-18', 'S-1-5-32-544')",
   '$seen = @{}',
@@ -30,6 +33,7 @@ const WINDOWS_ACL_VERIFY_SCRIPT = [
   '  if ($seen.ContainsKey($ruleSid)) { exit 8 }',
   '  $full = [System.Security.AccessControl.FileSystemRights]::FullControl',
   '  if ($rule.FileSystemRights -ne $full) { exit 6 }',
+  '  if ($folder -and $rule.InheritanceFlags -ne $both) { exit 10 }',
   '  $seen[$ruleSid] = $true',
   '}',
   'if ($seen.Count -ne 3) { exit 9 }',
@@ -111,8 +115,23 @@ function resolveWindowsNativeTools(environment, fileSystem, architecture) {
  * Restrict a credential file before any secret is written to it.
  * Dependencies are injectable so every fail-closed branch is unit-testable.
  */
-export function hardenCredentialFile(
+export function hardenCredentialFile(filepath, dependencies = {}) {
+  return restrictToOwner(filepath, false, dependencies);
+}
+
+/**
+ * Restrict a folder of private records (a phone's location history) to this
+ * account, the same three principals a credential file gets, inherited by
+ * every file and folder inside it: the ones already there, and every one
+ * written later, so each write does not need the hardener again.
+ */
+export function hardenPrivateFolder(folder, dependencies = {}) {
+  return restrictToOwner(folder, true, dependencies);
+}
+
+function restrictToOwner(
   filepath,
+  folder,
   {
     platform = process.platform,
     architecture = process.arch,
@@ -121,6 +140,7 @@ export function hardenCredentialFile(
     environment = process.env,
   } = {},
 ) {
+  const mode = folder ? 0o700 : 0o600;
   if (platform !== 'win32') {
     try {
       if (platform === 'darwin') {
@@ -129,8 +149,8 @@ export function hardenCredentialFile(
         });
         if (!commandCompletedSuccessfully(aclRemoval)) return false;
       }
-      fileSystem.chmodSync(filepath, 0o600);
-      return (fileSystem.statSync(filepath).mode & 0o777) === 0o600;
+      fileSystem.chmodSync(filepath, mode);
+      return (fileSystem.statSync(filepath).mode & 0o777) === mode;
     } catch {
       return false;
     }
@@ -156,15 +176,18 @@ export function hardenCredentialFile(
       : null;
     if (!sid) return false;
 
+    // On a folder each rule is inherited by everything inside it (OI)(CI),
+    // and icacls carries the change down to what is already there.
+    const rights = folder ? '(OI)(CI)F' : 'F';
     const applied = spawn(
       tools.icacls,
       [
         filepath,
         '/inheritance:r',
         '/grant:r',
-        `*${sid}:F`,
-        '*S-1-5-18:F',
-        '*S-1-5-32-544:F',
+        `*${sid}:${rights}`,
+        `*S-1-5-18:${rights}`,
+        `*S-1-5-32-544:${rights}`,
       ],
       { stdio: 'ignore', windowsHide: true },
     );
@@ -205,6 +228,7 @@ export function hardenCredentialFile(
         env: {
           ...verifyEnvironment,
           GEV_ACL_FILE: filepath,
+          GEV_ACL_FOLDER: folder ? '1' : '',
           GEV_ACL_USER_SID: sid,
           PSModulePath: powershellModuleDirectory,
         },

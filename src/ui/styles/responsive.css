@@ -204,6 +204,12 @@
   #right-context-rail #pp-toggles.collapsed .pp-header-row,
   #right-context-rail #cctv-panel,
   #right-context-rail #cctv-panel.collapsed,
+  #right-context-rail #data-panel,
+  #right-context-rail #data-panel.collapsed,
+  #right-context-rail #sst-panel,
+  #right-context-rail #sst-panel.collapsed,
+  #right-context-rail #scene-panel,
+  #right-context-rail #scene-panel.collapsed,
   #right-context-rail #radio-panel,
   #right-context-rail #radio-panel.collapsed,
   #right-context-rail #global-context-panel,
@@ -215,14 +221,14 @@
     width: min(244px, calc(100vw - 32px));
   }
 
-  #left-panel-stack > #data-panel,
+  #left-panel-stack > #ask-panel,
   #left-panel-stack > #cctv-panel,
-  #left-panel-stack > #global-context-panel,
-  #left-panel-stack > #scene-panel,
-  #left-panel-stack > #data-panel.collapsed,
+  #left-panel-stack > #ultra-panel,
+  #left-panel-stack > #social-panel,
+  #left-panel-stack > #ask-panel.collapsed,
   #left-panel-stack > #cctv-panel.collapsed,
-  #left-panel-stack > #global-context-panel.collapsed,
-  #left-panel-stack > #scene-panel.collapsed {
+  #left-panel-stack > #ultra-panel.collapsed,
+  #left-panel-stack > #social-panel.collapsed {
     position: relative;
     top: auto;
     right: auto;

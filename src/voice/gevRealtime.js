@@ -9,6 +9,15 @@ import {
   resolveVoiceModel,
   serializeCostLimits,
 } from './voiceCost.js';
+import {
+  nextVoiceProvider,
+  readStoredVoiceProvider,
+  startProviderVoice,
+  voiceProviderFullName,
+  voiceProviderLabel,
+  voiceProviderTitle,
+  writeStoredVoiceProvider,
+} from './gevVoiceProviders.js';
 
 const TOKEN_URL = '/api/realtime/token';
 const REALTIME_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
@@ -220,6 +229,10 @@ export function initGevVoiceCommands({ viewer, styleManager, dataManager, sceneD
     controller.tierHandler = () => controller.toggleVoiceTier();
     ui.tierButton.addEventListener('click', controller.tierHandler);
   }
+  if (ui.providerButton) {
+    controller.providerHandler = () => controller.cycleVoiceProvider();
+    ui.providerButton.addEventListener('click', controller.providerHandler);
+  }
   controller.syncCostUi();
   controller.bindPushToTalkShortcut();
   window.__gevVoiceCommands = controller;
@@ -236,6 +249,7 @@ export class GevRealtimeController {
     this.pc = null;
     this.dc = null;
     this.stream = null;
+    this.voiceTransport = null;
     this.audioEl = null;
     this.visualizerAudioContext = null;
     this.visualizerAnalyser = null;
@@ -268,6 +282,7 @@ export class GevRealtimeController {
     this.radioHandoffDeferredByReservation = false;
     this.buttonHandler = null;
     this.tierHandler = null;
+    this.providerHandler = null;
     this.annotationEventUnsubscribe = null;
     // Voice cost control. The tier is chosen BEFORE a session starts and is
     // baked into the minted token, so a live session always keeps the model it
@@ -348,6 +363,10 @@ export class GevRealtimeController {
     this.pushToTalkMode = pushToTalk;
     this.pushToTalkKeyHeld = pushToTalkKeyHeld;
     this.spaceKeyHeld = spaceKeyHeld;
+    if (readStoredVoiceProvider() !== 'openai') {
+      await this.startProviderSession({ pushToTalk });
+      return;
+    }
     if (!window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) {
       this.setStatus('error', 'WebRTC microphone support unavailable');
       return;
@@ -513,6 +532,87 @@ export class GevRealtimeController {
       const diagnostics = this.connectionDiagnostics();
       this.stop({ preserveStatus: true });
       this.reportError('Realtime connection', error, diagnostics);
+    }
+  }
+
+  /**
+   * Spoken session for Claude, Custom LLM, OpenRouter, Grok, or NVIDIA.
+   * OpenAI stays on the WebRTC path above. Tools still run in this browser.
+   */
+  async startProviderSession({ pushToTalk = false } = {}) {
+    const epoch = ++this.startEpoch;
+    const provider = readStoredVoiceProvider();
+    const fullName = voiceProviderFullName(provider);
+    this.costCapStopped = false;
+    this.setStatus('connecting', fullName);
+    const providerToolAbort = new AbortController();
+    this.activeToolAbortControllers.add(providerToolAbort);
+    const isCurrent = () => epoch === this.startEpoch;
+    try {
+      const transport = await startProviderVoice({
+        provider,
+        pushToTalk,
+        initiallyHeld: this.pushToTalkKeyHeld,
+        isCurrent,
+        getUserMedia: (constraints) => {
+          const media = globalThis.navigator?.mediaDevices;
+          if (typeof media?.getUserMedia !== 'function') {
+            throw new Error('Microphone support is unavailable.');
+          }
+          return media.getUserMedia(constraints);
+        },
+        WebSocket: globalThis.WebSocket,
+        AudioContext: globalThis.AudioContext || globalThis.webkitAudioContext,
+        SpeechRecognition: globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition,
+        speechSynthesis: globalThis.speechSynthesis,
+        MediaRecorder: globalThis.MediaRecorder,
+        fetch: globalThis.fetch.bind(globalThis),
+        setStream: (stream) => {
+          if (!isCurrent()) return;
+          this.stream = stream;
+          this.startVoiceVisualizer(stream);
+        },
+        setStatus: (status, detail) => {
+          if (isCurrent()) this.setStatus(status, detail);
+        },
+        setSpeaker: (speaker) => {
+          if (isCurrent()) this.setVoiceSpeaker(speaker);
+        },
+        fail: (error) => {
+          if (!isCurrent()) return;
+          this.stop({ preserveStatus: true });
+          this.reportError(fullName, error);
+        },
+        runner: (name, args) => this.runner(name, args, {
+          signal: providerToolAbort.signal,
+          isCurrent: () => epoch === this.startEpoch && !this.userTurnPending,
+        }),
+        finishRadio: (result) => this.finishProviderRadio(result),
+        stopForRadio: () => {
+          if (isCurrent()) this.stop();
+        },
+        classifyRadio: (result) => {
+          if (
+            shouldStopVoiceAfterRadioTool(result)
+            && !result?.radioPlaybackRequested
+            && !result?.radioPlaybackSuppressed
+          ) return 'stop';
+          if (result?.radioPlaybackRequested) return 'playback';
+          return '';
+        },
+      });
+      if (!isCurrent()) {
+        transport?.stop?.();
+        return;
+      }
+      if (!transport) return;
+      this.voiceTransport = transport;
+      this.setMicrophoneEnabled(!this.pushToTalkMode || this.pushToTalkKeyHeld);
+      this.setStatus('listening', pushToTalk ? 'Hold Space to talk' : 'Ask or command');
+    } catch (error) {
+      if (!isCurrent()) return;
+      this.stop({ preserveStatus: true });
+      this.reportError(fullName, error);
     }
   }
 
@@ -709,6 +809,7 @@ export class GevRealtimeController {
     this.stream?.getAudioTracks?.().forEach((track) => {
       track.enabled = Boolean(enabled);
     });
+    this.voiceTransport?.setMicrophoneHeld?.(Boolean(enabled));
   }
 
   /**
@@ -836,6 +937,11 @@ export class GevRealtimeController {
     // releases its own resources instead of promoting them onto a stopped
     // controller (H7).
     this.startEpoch++;
+    const providerTransport = this.voiceTransport;
+    this.voiceTransport = null;
+    if (providerTransport) {
+      try { providerTransport.stop(); } catch { /* already stopped */ }
+    }
     this.cancelPushToTalkHold();
     this.radioHandoffEpoch++;
     for (const controller of this.activeToolAbortControllers) controller.abort();
@@ -920,6 +1026,10 @@ export class GevRealtimeController {
     if (removeUi && this.ui?.tierButton && this.tierHandler) {
       this.ui.tierButton.removeEventListener('click', this.tierHandler);
       this.tierHandler = null;
+    }
+    if (removeUi && this.ui?.providerButton && this.providerHandler) {
+      this.ui.providerButton.removeEventListener('click', this.providerHandler);
+      this.providerHandler = null;
     }
     if (removeUi) {
       if (this.shortcutKeyDownHandler) document.removeEventListener('keydown', this.shortcutKeyDownHandler, true);
@@ -1701,6 +1811,53 @@ export class GevRealtimeController {
     }
   }
 
+  /** Hand a prepared station to Radio after a non-OpenAI voice has spoken. */
+  async finishProviderRadio(result) {
+    if (
+      !result?.ok
+      || !result.radioPlaybackRequested
+      || !this.voiceTransport
+      || !this.isActive()
+      || this.isRadioHandoffReserved()
+      || this.radioHandoffInFlight
+    ) return;
+    const handoffEpoch = ++this.radioHandoffEpoch;
+    const handoffAttemptId = `voice-radio-${this.sessionId}-${handoffEpoch}`;
+    this.radioHandoffInFlight = true;
+    this.radioHandoffAttemptId = handoffAttemptId;
+    this.radioHandoffInFlightResult = result;
+    this.radioLayer?.setVoiceDucked?.(true);
+    const radioHandoff = await startPreparedRadioAfterPlaybackReady(result, {
+      prepareRadio: () => this.radioLayer?.playForVoice?.({ attemptId: handoffAttemptId }),
+      stopVoice: () => this.stop({ preserveRadioPlayback: true }),
+      cancelRadio: () => this.radioLayer?.stopPlayback?.({
+        origin: 'voice-cleanup',
+        attemptId: handoffAttemptId,
+      }),
+      isCurrent: () => (
+        this.voiceTransport != null
+        && this.isActive()
+        && this.radioHandoffInFlight
+        && !this.isRadioHandoffReserved()
+        && handoffEpoch === this.radioHandoffEpoch
+        && !this.userTurnPending
+      ),
+    });
+    const stillCurrent = handoffEpoch === this.radioHandoffEpoch;
+    if (this.radioHandoffAttemptId === handoffAttemptId) {
+      this.radioHandoffInFlight = false;
+      this.radioHandoffAttemptId = null;
+      if (this.radioHandoffInFlightResult === result) {
+        this.radioHandoffInFlightResult = null;
+      }
+    }
+    this.debugLog('tool.radio_handoff', { result: radioHandoff.result });
+    if (radioHandoff.result?.ok || radioHandoff.cancelled || !stillCurrent) return;
+    if (this.voiceTransport && this.isActive() && !this.userTurnPending) {
+      this.setStatus('listening', 'Radio did not start');
+    }
+  }
+
   /** Invalidate delayed Radio work inside the requested authority scope. */
   abortRadioSiblingTools({ responseId = null, scope = 'all' } = {}) {
     for (const [controller, metadata] of this.activeRadioToolControllers) {
@@ -1835,7 +1992,7 @@ export class GevRealtimeController {
    * that owns the session's spend.
    */
   isVoiceSessionSettled() {
-    return !this.isActive() && !this.dc && !this.pc;
+    return !this.isActive() && !this.dc && !this.pc && !this.voiceTransport;
   }
 
   /**
@@ -1848,10 +2005,17 @@ export class GevRealtimeController {
    * disagree, which is exactly what "applies next session" means.
    */
   syncCostUi() {
+    const provider = readStoredVoiceProvider();
+    const openaiVoice = provider === 'openai';
+    if (this.ui?.providerButton) {
+      this.ui.providerButton.textContent = voiceProviderLabel(provider);
+      this.ui.providerButton.title = voiceProviderTitle(provider);
+    }
     const state = this.costTracker.state();
     const pendingTier = resolveVoiceModel(this.voiceTier).tier;
     const isMini = pendingTier === 'mini';
     if (this.ui?.tierButton) {
+      this.ui.tierButton.hidden = !openaiVoice;
       this.ui.tierButton.textContent = isMini ? 'MINI' : 'STD';
       this.ui.tierButton.setAttribute('aria-pressed', isMini ? 'true' : 'false');
       const pendingId = resolveVoiceModel(pendingTier).id;
@@ -1862,6 +2026,7 @@ export class GevRealtimeController {
         }; applies next session`;
     }
     if (this.ui?.costValue) {
+      this.ui.costValue.hidden = !openaiVoice;
       this.ui.costValue.textContent = state.display;
       this.ui.costValue.dataset.level = state.level;
       this.ui.costValue.title =
@@ -1876,6 +2041,13 @@ export class GevRealtimeController {
    * fixed when the ephemeral token is minted, so a live session is deliberately
    * left alone rather than reconnected mid-sentence.
    */
+  cycleVoiceProvider() {
+    const next = writeStoredVoiceProvider(nextVoiceProvider(readStoredVoiceProvider()));
+    if (this.isActive()) this.stop();
+    this.syncCostUi();
+    return next;
+  }
+
   toggleVoiceTier() {
     // Reads the PERSISTED PREFERENCE, never the tracker. The tracker is bound
     // to the live session's model and is immutable, so deriving from it made
@@ -2688,6 +2860,7 @@ function createVoiceControl({ reset = false } = {}) {
         <div class="gev-voice-kicker">AI AGENT</div>
         <div id="gev-voice-status">OFF</div>
         <div class="gev-voice-cost">
+          <button id="gev-voice-provider" class="gev-voice-tier-btn gev-voice-provider-btn" type="button" title="Voice provider — applies when the mic next turns on">OAI</button>
           <button id="gev-voice-tier" class="gev-voice-tier-btn" type="button" aria-pressed="false" title="Voice model tier — applies next session">STD</button>
           <span id="gev-voice-cost-value" class="gev-voice-cost-value" data-level="ok" title="Estimated session cost">~$0.00</span>
         </div>
@@ -2738,6 +2911,7 @@ function createVoiceControl({ reset = false } = {}) {
     helpDetail: root.querySelector('.gev-voice-help-detail'),
     errorDetail: root.querySelector('#gev-voice-error-detail'),
     tierButton: root.querySelector('#gev-voice-tier'),
+    providerButton: root.querySelector('#gev-voice-provider'),
     costValue: root.querySelector('#gev-voice-cost-value'),
   };
 }

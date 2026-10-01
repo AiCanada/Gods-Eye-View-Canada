@@ -1,9 +1,11 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import { createBrowserViteConfig } from '../../build/vite.js';
+import { bindLocalIntegrityRoot, localClientCredential } from '../../src/localIntegrity.mjs';
 import { localProviderPlugins } from '../providers/local.js';
 import { apiNotFoundPlugin } from './api-not-found.js';
 import { routeGuardPlugin } from './route-guard.js';
+import { singleInstancePlugin } from './single-instance.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -13,15 +15,18 @@ export default defineConfig(({ mode }) => {
   for (const [key, value] of Object.entries(loaded)) {
     if (process.env[key] === undefined) process.env[key] = value;
   }
+  bindLocalIntegrityRoot(root);
   return createBrowserViteConfig({
     // The guard goes first: it wraps every route registered after it.
     plugins: [
+      // Stops the previous dev server of this checkout before the port is taken.
+      singleInstancePlugin({ root }),
       routeGuardPlugin(),
       ...localProviderPlugins(),
       apiNotFoundPlugin(),
     ],
-    googleApiKey: process.env.GOOGLE_MAPS_API_KEY,
-    cesiumToken: process.env.CESIUM_ION_TOKEN,
+    googleApiKey: localClientCredential('google', 'GOOGLE_MAPS_API_KEY'),
+    cesiumToken: localClientCredential('cesium', 'CESIUM_ION_TOKEN'),
     host: process.env.HOST,
     port: process.env.PORT,
   });

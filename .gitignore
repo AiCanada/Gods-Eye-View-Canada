@@ -17,6 +17,27 @@ pinokio/.installed
 # (POWER UP → SECURITY CAMERAS). Never committed.
 config/private-cameras.json
 config/device-feeds.json
+config/ultra-help.json
+config/ultra-help.json.*.tmp
+config/.ultra-help.json.*.tmp
+config/ultra-tokens.json
+config/.ultra-tokens.json.*.tmp
+config/ultra-tokens.key
+config/.ultra-tokens.key.*.tmp
+config/ultra-inbox.json
+config/.ultra-inbox.json.*.tmp
+config/ultra-network.json
+config/.ultra-network.json.*.tmp
+config/ultra-outbound.json
+config/.ultra-outbound.json.*.tmp
+config/local-integrity.json
+config/.local-integrity.json.*.tmp
+config/local-integrity.key
+config/.local-integrity.key.*.tmp
+config/social-accounts.json
+config/.social-accounts.json.*.tmp
+config/social-accounts.key
+config/.social-accounts.key.*.tmp
 config/device-recordings/
 config/.device-feeds.json.*.tmp
 config/.private-cameras.json.*.tmp

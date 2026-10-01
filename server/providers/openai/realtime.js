@@ -13,6 +13,10 @@ import {
 } from './constants.js';
 import { realtimeInstructions } from './instructions.js';
 import { GEV_REALTIME_TOOLS } from './tools.js';
+import {
+  LOCAL_PROVIDER_CHANGED_MESSAGE,
+  localProviderTrusted,
+} from '../../../src/localIntegrity.mjs';
 
 function createRealtimeTokenHandler({ annotationGuidance } = {}) {
   return async (req, res) => {
@@ -27,6 +31,12 @@ function createRealtimeTokenHandler({ annotationGuidance } = {}) {
     if (!enforceOptInRateLimit(openAiRateLimiter(), req, res)) return;
 
     const apiKey = process.env.OPENAI_API_KEY;
+    if (apiKey && !localProviderTrusted('openai')) {
+      res.statusCode = 409;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: LOCAL_PROVIDER_CHANGED_MESSAGE }));
+      return;
+    }
     if (!apiKey) {
       res.statusCode = 503;
       res.setHeader('Content-Type', 'application/json');

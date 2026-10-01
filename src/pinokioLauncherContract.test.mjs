@@ -40,7 +40,7 @@ function assertAppFieldForwarded(env, field) {
 
 test('Pinokio start has one fail-closed launcher process', () => {
   const script = require('../pinokio/start.js');
-  assert.equal(script.run[0].params.message, 'node scripts/pinokio-start.mjs');
+  assert.equal(script.run[0].params.message, 'node --max-old-space-size=16384 scripts/pinokio-start.mjs');
   assert.equal(Array.isArray(script.run[0].params.message), false);
   assert.match(script.run[0].params.on[0].event, /\\\[Pinokio\\\] Ready at/);
   for (const field of APP_VALUE_FIELDS) {

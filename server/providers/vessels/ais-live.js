@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { createAisStreamAdapter } from '../../../src/data/aisStreamAdapter.js';
 import { parseSilenceTimeoutEnv } from '../../../src/data/aisWatchdog.js';
 import { clampInt } from '../common/query.js';
+import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
 import {
   AISSTREAM_CACHE_MAX,
   AISSTREAM_STALE_MS,
@@ -300,8 +301,9 @@ function ensureAisStreamConnection() {
     adapter.setWatchdogOptions(aisWatchdogBudgets());
   }
   const policy = aisWatchdogPolicy();
+  const aisAllowed = localProviderTrusted('ais');
   adapter.ensure({
-    hasKey: Boolean(process.env.AISSTREAM_API_KEY),
+    hasKey: Boolean(process.env.AISSTREAM_API_KEY) && aisAllowed,
     hasTransport: Boolean(aisWebSocketImpl()),
     silenceWatch: policy.silenceWatch,
     keyFingerprint: aisKeyFingerprint(),
@@ -311,11 +313,10 @@ function ensureAisStreamConnection() {
 function aisStreamStatusSnapshot() {
   const snapshot = _aisAdapter ? _aisAdapter.snapshot() : null;
   if (snapshot) return snapshot;
+  const aisReady = Boolean(process.env.AISSTREAM_API_KEY) && localProviderTrusted('ais');
   return {
-    status: process.env.AISSTREAM_API_KEY ? 'idle' : 'missing-key',
-    error: process.env.AISSTREAM_API_KEY
-      ? null
-      : 'AISSTREAM_API_KEY is not set',
+    status: aisReady ? 'idle' : 'missing-key',
+    error: aisReady ? null : 'AISSTREAM_API_KEY is not set',
     lastMessageAt: null,
     silentForMs: null,
     reconnectAttempt: 0,
@@ -368,7 +369,7 @@ function disposeAisStream() {
 
 function aisStreamSubscription() {
   return {
-    APIKey: process.env.AISSTREAM_API_KEY,
+    APIKey: localProviderTrusted('ais') ? process.env.AISSTREAM_API_KEY : '',
     BoundingBoxes: parseJsonEnv(
       'AISSTREAM_BOUNDING_BOXES',
       AISSTREAM_DEFAULT_BBOXES,

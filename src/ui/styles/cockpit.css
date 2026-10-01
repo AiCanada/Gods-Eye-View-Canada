@@ -1965,10 +1965,8 @@ body.cockpit-mode #left-panel-stack {
   max-height: none;
   transition: none;
 }
-body.cockpit-mode #left-panel-stack > #scene-panel {
-  display: none !important;
-}
-body.cockpit-mode #left-panel-stack > #sst-panel {
+body.cockpit-mode #left-panel-stack > #ask-panel,
+body.cockpit-mode #left-panel-stack > #ultra-panel {
   display: none !important;
 }
 body.cockpit-mode #right-context-rail {

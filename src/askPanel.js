@@ -1,5 +1,5 @@
 import * as Cesium from 'cesium';
-import { closestCityForSearch } from './locations.js';
+import { closestCityForSearch, selectedPlaceLabel } from './locations.js';
 import { getBasemapLabelContext } from './voice/gevActions.js';
 import { fetchLocationRegion } from './data/regionalBrief.js';
 import { createOutputFind } from './askOutputFind.js';
@@ -72,19 +72,12 @@ export class AskPanel {
     this._panel = document.getElementById('ask-panel');
     this._body = document.getElementById('ask-body');
     this._rowHost = document.getElementById('ask-rows');
-    this._toggle = document.getElementById('ask-toggle');
     this._empty = document.getElementById('ask-empty');
 
     if (!this._panel || !this._rowHost) return;
 
-    this._toggle?.addEventListener('click', () => {
-      if (!this._body) return;
-      this._body.hidden = !this._body.hidden;
-      const hidden = this._body.hidden;
-      this._toggle.textContent = hidden ? '+' : '-';
-      this._toggle.setAttribute('aria-expanded', String(!hidden));
-      this._toggle.title = hidden ? 'Show the LLM panel' : 'Hide the LLM panel';
-    });
+    // Collapsing is the shell's: the panel is a member of the left stack and
+    // its header button is wired with every other panel's (applicationShell).
 
     // Ctrl+F / Cmd+F with the pointer or the focus in this panel searches the
     // output box instead of the page (askOutputFind.js). Anywhere else the
@@ -285,7 +278,7 @@ export class AskPanel {
     if (event.target?.closest?.('#ask-panel')) event.stopPropagation();
     if (event.altKey || event.shiftKey) return;
     if (String(event.key).toLowerCase() !== 'f') return;
-    if (this._body?.hidden) return;
+    if (this._panel?.classList.contains('collapsed')) return;
     const focused = event.target?.closest?.('.ask-row')?.dataset?.provider;
     const providerId = this._rows.has(focused) ? focused : this._hoverProvider;
     const row = this._rows.get(providerId);
@@ -605,14 +598,10 @@ export class AskPanel {
   }
 
   _selectedLocationLabel() {
-    const cityName = this._selectedCityLabel();
-    const poi = document.getElementById('location-mini-poi')?.textContent || '';
-    const poiName = poi.replace(/^landmark:\s*/i, '').trim();
-    if (!cityName) return null;
-    if (poiName && poiName !== '--' && !/^searched location$/i.test(poiName)) {
-      return `${poiName}, ${cityName}`;
-    }
-    return cityName;
+    return selectedPlaceLabel(
+      document.getElementById('location-mini-city')?.textContent,
+      document.getElementById('location-mini-poi')?.textContent,
+    );
   }
 
   _closestSearchCity(context) {

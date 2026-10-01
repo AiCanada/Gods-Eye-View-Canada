@@ -1,0 +1,179 @@
+#ultra-panel {
+  --panel-expanded-width: 320px;
+}
+
+#ultra-panel .panel-glow {
+  position: absolute;
+  inset: -18px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 212, 255, 0.16) 0%,
+    transparent 65%
+  );
+  filter: blur(16px);
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+#ultra-panel .cctv-controls {
+  flex-wrap: wrap;
+}
+
+#ultra-panel .scene-btn {
+  white-space: normal;
+  flex: 1 1 100%;
+  text-align: left;
+  line-height: 1.35;
+}
+
+.ultra-note,
+.ultra-message {
+  margin: 6px 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* The no-directory note ends on a line of its own. */
+#ultra-network-note {
+  white-space: pre-line;
+}
+
+.ultra-picture {
+  display: block;
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  margin: 6px 0;
+}
+
+.ultra-contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ultra-match {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  margin: 4px 0;
+}
+
+#ultra-panel .ultra-skills {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 3px 8px;
+  margin-top: 4px;
+}
+
+#ultra-panel .ultra-skills .cctv-summary-label,
+#ultra-panel .ultra-skills .ultra-note {
+  flex: 1 1 100%;
+  letter-spacing: 0.3px;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+#ultra-panel .ultra-skills .ultra-match {
+  flex: 1 1 46%;
+  align-items: flex-start;
+  margin: 0;
+}
+
+#ultra-panel .ultra-skills .ultra-match.ultra-skill-wide {
+  flex: 1 1 100%;
+}
+
+#ultra-panel .ultra-skill-custom {
+  flex: 1 1 100%;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#ultra-panel .ultra-skills .ultra-note {
+  margin: 2px 0 0;
+}
+
+#ultra-panel .ultra-token-row .sst-readout,
+#ultra-panel .ultra-network-row .sst-readout {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Help messages and share tokens: unread pleas glow, revoked rows dim. */
+.ultra-unread {
+  color: #7fe7ff;
+}
+
+.ultra-inbox-row[data-unread='1'] .sst-readout {
+  color: #7fe7ff;
+  font-weight: 600;
+}
+
+.ultra-token-row[data-revoked='1'] {
+  opacity: 0.55;
+}
+
+/* The revealed link must stay selectable so COPY's fallback can select it. */
+.ultra-reveal pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+  font-size: 10px;
+  margin: 6px 0;
+}
+
+/* The panel's default makes every button a full-width row; inbox, token and
+   home-list rows hold several small actions side by side instead, and SEND
+   HELP shares its row with STAND DOWN. The id is repeated so this outranks
+   that default, which is also written under #ultra-panel. */
+#ultra-panel .ultra-inbox-row .scene-btn,
+#ultra-panel .ultra-token-row .scene-btn,
+#ultra-panel .ultra-network-row .scene-btn,
+#ultra-panel .ultra-release .scene-btn {
+  flex: 0 1 auto;
+}
+
+/* Send help and the help network: the one red button in the box, an amber
+   glow on anyone who needs help, and dimmed rows for links that go nowhere. */
+#ultra-panel .ultra-danger {
+  border-color: #ff4d4d;
+  color: #ffd6d6;
+  font-weight: 700;
+}
+
+.ultra-release-on {
+  color: #ff4d4d;
+}
+
+.ultra-inbox-row.ultra-release-row[data-active='1'] .sst-readout,
+.ultra-network-row[data-state='released'] .sst-readout {
+  color: #ffb000;
+  font-weight: 600;
+}
+
+.ultra-release-row .ultra-plea {
+  font-weight: 400;
+  opacity: 0.9;
+}
+
+.ultra-network-row[data-state='dead'],
+.ultra-network-row[data-state='missing'],
+.ultra-network-row[data-state='moved'],
+.ultra-network-row[data-state='not-tailnet'],
+.ultra-network-row[data-state='no-key'],
+.ultra-network-row[data-state='tampered'],
+.ultra-network-row[data-state='own'] {
+  opacity: 0.55;
+}
+
+/* A link that came from the group directory carries a mark; a pasted one does not. */
+.ultra-network-row[data-source='directory'] .sst-readout::before {
+  content: '◇ ';
+  opacity: 0.7;
+}

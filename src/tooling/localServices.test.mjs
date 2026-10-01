@@ -7,6 +7,7 @@ import {
   existsSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -116,6 +117,7 @@ test('standalone service guards run in development and preview without upstream 
       [militaryInstallationsProxy, '/api/military-installations'],
       [regionalBriefProxy, '/api/regional-brief'],
       [regionalBriefProxy, '/api/regional-risk-news'],
+      [regionalBriefProxy, '/api/social/public-news'],
       [regionalBriefProxy, '/api/country-ground-truth'],
       [regionalBriefProxy, '/api/location-region'],
       [weatherEffectsProxy, '/api/weather-effects'],
@@ -409,4 +411,98 @@ test('key setup writes only the supplied application root, retains request guard
     assert.equal(statSync(path.join(first, '.env')).mode & 0o777, 0o600);
   assert.equal(saved.body.includes('sk-fixture-only-not-a-real-key'), false);
   assert.equal(existsSync(path.join(untouched, '.env')), false);
+});
+
+test('key setup keeps REMOVE for a stored relay value the relay cannot use, and the badge for an exported one', async (t) => {
+  const saved = root(t),
+    bare = root(t);
+  const values = {
+    TWILIO_ACCOUNT_SID: 'ACfixture123',
+    TWILIO_AUTH_TOKEN: 'auth-fixture-secret',
+    /* Accepted before the format rule; the relay cannot use it. */
+    TWILIO_FROM_NUMBER: '15065550100',
+  };
+  writeFileSync(
+    path.join(saved, '.env'),
+    Object.entries(values)
+      .map(
+        ([name, value]) => `${name}=${value}
+`,
+      )
+      .join(''),
+  );
+  /* As Vite's loadEnv does after the boot snapshot. */
+  for (const [name, value] of Object.entries(values)) env(t, name, value);
+  const twilio = async (sourceRoot) => {
+    const answer = await request(
+      install(keySetupEndpoint({ sourceRoot })).get('/api/setup/status'),
+    );
+    assert.equal(answer.status, 200);
+    for (const value of Object.values(values))
+      assert.equal(answer.body.includes(value), false, 'a value was echoed');
+    return answer.json().keys.find((key) => key.id === 'twilio-sms');
+  };
+  /* In this panel's own .env: not set, but REMOVE stays (managed 'file'). */
+  const own = await twilio(saved);
+  assert.equal(own.set, false);
+  assert.equal(own.managed, 'file');
+  assert.deepEqual(own.unusable, ['TWILIO_FROM_NUMBER']);
+  /* The same values exported, with no .env: read-only, badge and all. */
+  assert.equal((await twilio(bare)).managed, 'external');
+  /* One value missing is an unfinished row, editable, as before. */
+  env(t, 'TWILIO_FROM_NUMBER', undefined);
+  assert.equal((await twilio(bare)).managed, null);
+});
+
+test('an unrelated POWER UP save writes no outbound check, and a check that throws still answers saved', async (t) => {
+  const dir = root(t);
+  env(t, 'OPENAI_API_KEY', undefined);
+  env(t, 'ULTRA_DIRECTORY_URL', undefined);
+  env(t, 'ULTRA_DIRECTORY_WRITE_TOKEN', undefined);
+  const saved = await request(
+    install(keySetupEndpoint({ sourceRoot: dir })).get('/api/setup/keys'),
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        OPENAI_API_KEY: 'sk-fixture-only-not-a-real-key',
+      }),
+    },
+  );
+  assert.equal(saved.status, 200);
+  assert.equal(
+    existsSync(path.join(dir, 'config', 'ultra-outbound.json')),
+    false,
+  );
+  const outbound = root(t);
+  let called = false;
+  const answer = await request(
+    install(
+      keySetupEndpoint({
+        sourceRoot: outbound,
+        onEnvSaved() {
+          called = true;
+          throw Object.assign(new Error('no'), { code: 'GEV_TEST' });
+        },
+      }),
+    ).get('/api/setup/keys'),
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        ULTRA_DIRECTORY_URL: 'https://example.test/dir.json',
+      }),
+    },
+  );
+  assert.equal(called, true);
+  assert.equal(answer.status, 200);
+  assert.equal(
+    existsSync(path.join(outbound, 'config', 'ultra-outbound.json')),
+    false,
+  );
+  assert.match(
+    readFileSync(
+      new URL('../../server/providers/local.js', import.meta.url),
+      'utf8',
+    ),
+    /onEnvSaved:\s*noteOutboundEnvSaved/,
+  );
 });

@@ -2,6 +2,7 @@ import { openSkyProxy } from './aircraft/opensky.js';
 import { celestrakProxy, rocketLaunchesProxy } from './space.js';
 import { tomtomProxy } from './traffic.js';
 import { firmsProxy } from './firms.js';
+import { firePerimetersProxy } from './firePerimeters.js';
 import { terrainHeightsProxy } from './terrain.js';
 import { adsbdbProxy } from './aircraft/enrichment.js';
 import { overpassProxy } from './overpass.js';
@@ -10,6 +11,9 @@ import { militaryInstallationsProxy } from './military-installations.js';
 import { regionalBriefProxy } from './regional/briefing.js';
 import { geocodeProxy } from './regional/place.js';
 import { weatherEffectsProxy } from './regional/weather-effects.js';
+import { weatherProxy } from './weather.js';
+import { windProxy } from './wind.js';
+import { cycloneProxy } from './cyclones.js';
 import { cctvProxy } from './cctv.js';
 import { defaultSourceRoot } from './common/source-root.js';
 import { radioBrowserProxy } from './radio.js';
@@ -24,15 +28,24 @@ import { googlePlacesContextProxy } from './places.js';
 import { keySetupEndpoint } from '../standalone/key-setup.js';
 import { privateCamerasProxy } from './private-cameras.js';
 import { deviceFeedsProxy } from './device-feeds.js';
+import { noteOutboundEnvSaved, ultraHelpProxy } from './ultra-help.js';
+import { bindLocalIntegrityRoot } from '../../src/localIntegrity.mjs';
 import { locationSwitchReleaseEndpoint } from './location-switch.js';
+import { socialAccountsProxy } from './socialAccounts.js';
+import { socialSwarmProxy } from './socialSwarm.js';
+import { grokBotDesktopProxy } from './grokBotDesktop.js';
 
 /** Construct the local provider plugins in their established order. */
 function localProviderPlugins() {
+  // Provider checks apply only after this checkout is bound. A unit test
+  // that never binds still uses the keys it set.
+  bindLocalIntegrityRoot(defaultSourceRoot);
   return [
     openSkyProxy(),
     celestrakProxy(),
     tomtomProxy(),
     firmsProxy(),
+    firePerimetersProxy(),
     rocketLaunchesProxy(),
     terrainHeightsProxy(),
     adsbdbProxy(),
@@ -43,11 +56,15 @@ function localProviderPlugins() {
     regionalBriefProxy(),
     geocodeProxy(),
     weatherEffectsProxy(),
+    weatherProxy(),
+    windProxy(),
+    cycloneProxy(),
     cctvProxy({ sourceRoot: defaultSourceRoot }),
     // Home and business security cameras: separate from the public CCTV proxy.
     privateCamerasProxy({ sourceRoot: defaultSourceRoot }),
     // The owner's own drones, robots, marine drones and GPS trackers.
     deviceFeedsProxy({ sourceRoot: defaultSourceRoot }),
+    ultraHelpProxy({ sourceRoot: defaultSourceRoot }),
     radioBrowserProxy(),
     gbfsProxy(),
     adsbLolProxy(),
@@ -59,7 +76,13 @@ function localProviderPlugins() {
     googlePlacesContextProxy(),
     // Releases the area-keyed memory caches above when the user changes place.
     locationSwitchReleaseEndpoint(),
-    keySetupEndpoint(),
+    // The operator's own social logins. The password stays in the encrypted store.
+    socialAccountsProxy({ sourceRoot: defaultSourceRoot }),
+    // Social Media Analysis bot swarms: one paid search request per bot, on a press.
+    socialSwarmProxy(),
+    // Opens the Grok Bot desktop app for that swarm when it has no key of its own.
+    grokBotDesktopProxy(),
+    keySetupEndpoint({ onEnvSaved: noteOutboundEnvSaved }),
   ];
 }
 

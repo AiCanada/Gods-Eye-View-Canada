@@ -163,7 +163,7 @@ const GEV_REALTIME_TOOLS = [
         layerId: {
           type: 'string',
           description:
-            'Common-name mapping for the non-obvious ids: space mission(s) → rocket-launches; fires/wildfires/active fires → local-firms (NASA FIRMS); ships/vessels/boats → ais-live-vessels; undersea/submarine cables → telegeography-submarine-cables; datacenters → local-datacenters; dams → local-dams; bikes/bike share → bikeshare; street traffic/congestion → traffic; traffic cameras → cctv; internet radio/stations → radio.',
+            'Common-name mapping for the non-obvious ids: space mission(s) → rocket-launches; fires/wildfires/active fires → local-firms (NASA FIRMS hotspots); fire perimeters/outlines → fire-perimeters (NIFC WFIGS); wind → wind; rain radar → weather-radar; satellite clouds → weather-satellite; lightning → weather-lightning; cyclones/hurricanes → weather-cyclones; ships/vessels/boats → ais-live-vessels; undersea/submarine cables → telegeography-submarine-cables; datacenters → local-datacenters; dams → local-dams; bikes/bike share → bikeshare; street traffic/congestion → traffic; traffic cameras → cctv; internet radio/stations → radio.',
           enum: [
             'flights',
             'military',
@@ -179,6 +179,12 @@ const GEV_REALTIME_TOOLS = [
             'local-dams',
             'telegeography-submarine-cables',
             'local-firms',
+            'fire-perimeters',
+            'wind',
+            'weather-radar',
+            'weather-satellite',
+            'weather-lightning',
+            'weather-cyclones',
           ],
         },
         enabled: { type: 'boolean' },
@@ -211,6 +217,12 @@ const GEV_REALTIME_TOOLS = [
             'local-dams',
             'telegeography-submarine-cables',
             'local-firms',
+            'fire-perimeters',
+            'wind',
+            'weather-radar',
+            'weather-satellite',
+            'weather-lightning',
+            'weather-cyclones',
           ],
           description: 'Optional layer row to scroll into view and highlight.',
         },
@@ -916,11 +928,12 @@ const GEV_REALTIME_TOOLS = [
               'military',
               'ais-live-vessels',
               'local-firms',
+              'fire-perimeters',
               'earthquakes',
             ],
           },
           description:
-            'Layers to query. fires/wildfires → local-firms; ships/vessels → ais-live-vessels.',
+            'Layers to query. fires/wildfires → local-firms; fire perimeters → fire-perimeters; ships/vessels → ais-live-vessels.',
         },
         scope: {
           type: 'object',

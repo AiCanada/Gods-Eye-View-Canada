@@ -78,6 +78,19 @@ export function stripKeylessBasemapFromHash(hash) {
   }
 }
 
+/**
+ * A key box's placeholder. A value the provider cannot use (it fails its
+ * format rule) still counts as saved, so the owner sees it is there to
+ * replace or REMOVE rather than a row that looks empty. Never the value.
+ * Pure, exported for tests.
+ */
+export function keySetupPlaceholder(key, envVar) {
+  if (!key?.set && !key?.present) return `paste ${envVar}`;
+  return (key.unusable || []).includes(envVar)
+    ? `${envVar} saved but not usable — paste to replace`
+    : `${envVar} saved — paste to replace`;
+}
+
 const TIER_DOTS = Object.freeze({ metered: '🔴', free: '🟡' });
 
 /** Build one key row. All content is our own registry text, set via textContent. */
@@ -143,9 +156,33 @@ function buildRow(documentRef, key) {
       input.spellcheck = false;
       input.dataset.envVar = envVar;
       input.setAttribute('aria-label', envVar);
-      input.placeholder = key.set
-        ? `${envVar} saved — paste to replace`
-        : `paste ${envVar}`;
+      input.placeholder = keySetupPlaceholder(key, envVar);
+      fields.append(input);
+    }
+    // A model box beside an LLM key: the id that provider is asked for. Not a
+    // secret, so it stays readable and shows the id in use; empty means the
+    // provider's default. Known ids are suggested, any other may be typed.
+    for (const optional of key.optionalEnvVars || []) {
+      const input = documentRef.createElement('input');
+      input.type = 'text';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.dataset.envVar = optional.name;
+      input.setAttribute('aria-label', `${key.title} ${optional.label || 'MODEL'}`);
+      input.placeholder = optional.value
+        ? `${optional.label || 'MODEL'} · ${optional.value} (type another to change)`
+        : `${optional.label || 'MODEL'} · default ${optional.placeholder} (type another to change)`;
+      if (optional.options?.length && typeof documentRef.createElement === 'function') {
+        const list = documentRef.createElement('datalist');
+        list.id = `key-setup-options-${optional.name.toLowerCase()}`;
+        for (const option of optional.options) {
+          const item = documentRef.createElement('option');
+          item.value = option;
+          list.append(item);
+        }
+        input.setAttribute('list', list.id);
+        fields.append(list);
+      }
       fields.append(input);
     }
     if (key.managed === 'file') {

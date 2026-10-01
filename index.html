@@ -13,7 +13,7 @@
        with the sources: src/materialSymbolsSubset.test.mjs fails when a source
        names a glyph this list is missing, because a missing glyph does not draw
        a box — the ligature never forms and the element renders the literal word. -->
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0&icon_names=adjust,arrow_drop_down,arrow_forward,arrow_left,arrow_right,bolt,chevron_left,chevron_right,close,close_fullscreen,dark_mode,draw,east,flare,flight,layers_clear,light_mode,local_fire_department,my_location,navigation,normal,on,open_in_full,public,radar,radio,right_panel_close,right_panel_open,rocket_launch,skip_next,skip_previous,view_in_ar" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0&icon_names=911,adjust,arrow_drop_down,arrow_forward,arrow_left,arrow_right,bolt,chevron_left,chevron_right,close,close_fullscreen,dark_mode,draw,east,emergency,flare,flight,layers_clear,light_mode,link,local_fire_department,my_location,navigation,normal,on,open_in_full,public,radar,radio,right_panel_close,right_panel_open,rocket_launch,skip_next,skip_previous,someone,token,view_in_ar" rel="stylesheet" />
 </head>
 <body>
   <div id="cesiumContainer"></div>
@@ -368,7 +368,7 @@
     <div class="compact pp-header-row">
       <span class="pp-header-label">DISPLAY</span>
       <span class="panel-divider" aria-hidden="true"></span>
-      <button class="panel-collapse-btn pp-collapse-btn" data-collapse-target="pp-toggles" title="Collapse panel">&#x25C0;</button>
+      <button class="panel-collapse-btn pp-collapse-btn" data-collapse-target="pp-toggles" title="Expand panel">+</button>
     </div>
     <div class="pp-toggle-group">
       <button class="pp-toggle-btn" id="hud-toggle" title="Intelligence HUD (H)">
@@ -586,16 +586,24 @@
   </div>
 
   <div id="left-panel-stack">
-  <!-- Data Layer Toggle Panel -->
-  <div id="data-panel" class="panel-collapsible collapsed active" data-panel-id="data-panel">
+  <!-- AI Risk & Truth Assessment: operator-driven questions about the current view.
+       A member of the left stack like the others, so it collapses to the same
+       tab. Rows are built at runtime, one per model that holds a key, each with
+       its own input, buttons and log, stacked top to bottom; the stack gives
+       the panel its height and the rows scroll inside it, so several models
+       never overlap. -->
+  <div id="ask-panel" class="panel-collapsible" data-panel-id="ask-panel">
     <div class="panel-glow"></div>
-    <div class="data-panel-inner">
+    <div class="ask-panel-inner">
       <div class="panel-header">
-        <span class="panel-title">DATA LAYERS</span>
+        <span class="panel-title" data-collapsed-title="AI RISK &amp; TRUTH ASSESSMENT">AI RISK &amp; TRUTH ASSESSMENT</span>
         <span class="panel-divider"></span>
-        <button class="panel-collapse-btn" data-collapse-target="data-panel" title="Collapse panel">+</button>
+        <button class="panel-collapse-btn" data-collapse-target="ask-panel" title="Collapse panel">−</button>
       </div>
-      <div id="data-toggles" class="data-toggle-list"></div>
+      <div id="ask-body" class="ask-body">
+        <div id="ask-empty" class="ask-status" aria-live="polite" hidden></div>
+        <div id="ask-rows"></div>
+      </div>
     </div>
   </div>
 
@@ -658,101 +666,340 @@
     </div>
   </div>
 
-  <!-- Sea Surface Temperature Panel -->
-  <div id="sst-panel" class="panel-collapsible collapsed" data-panel-id="sst-panel">
+  <!-- Ultra Security Package: the owner's paired phone, not the CCTV catalogues. -->
+  <div id="ultra-panel" class="panel-collapsible collapsed" data-panel-id="ultra-panel">
     <div class="panel-glow"></div>
-    <div class="sst-panel-inner">
+    <div class="ultra-panel-inner">
       <div class="panel-header">
-        <span class="panel-title" data-collapsed-title="SEA TEMP (SST)">SEA SURFACE TEMPERATURE (SST)</span>
+        <span class="panel-title" data-collapsed-title="ULTRA">ULTRA SECURITY PACKAGE</span>
         <span class="panel-divider"></span>
-        <button class="panel-collapse-btn" data-collapse-target="sst-panel" title="Collapse panel">+</button>
+        <button class="panel-collapse-btn" data-collapse-target="ultra-panel" title="Collapse panel">+</button>
       </div>
-      <div class="sst-subtitle">For temperature-sensitive fish that follow moving thermal fronts</div>
+      <div id="ultra-frame-wrap" class="cctv-frame-wrap" hidden>
+        <img id="ultra-frame" alt="Ultra cell camera still" />
+      </div>
+      <div id="ultra-status" class="sst-readout" role="status" aria-live="polite">PHONE · WAITING</div>
+      <div id="ultra-cam-link" class="sst-readout"></div>
+      <!-- Send help: one press releases this phone's position to every token marked NETWORK for four hours (STAND DOWN any time) and hands the phone the plea for the saved helpers. The incident comes from the FIND HELP select; police and fire stay under FIND HELP. -->
+      <div class="cctv-summary-label">SEND HELP <span id="ultra-release-state"></span></div>
+      <div id="ultra-release" class="cctv-controls ultra-release">
+        <!-- Shown only with more than one package saved: each has its own call, and these buttons act on the one chosen here. -->
+        <select id="ultra-release-package" aria-label="Which package is asking for help" hidden></select>
+        <button id="ultra-release-send" class="scene-btn ultra-danger" type="button">SEND HELP</button>
+        <!-- Always beside SEND HELP: with no call on, a press ends nothing and says so. -->
+        <button id="ultra-release-stand-down" class="scene-btn" type="button">STAND DOWN</button>
+      </div>
+      <p id="ultra-release-note" class="ultra-note"></p>
+      <div id="ultra-release-plea" class="sst-readout" hidden></div>
+      <!-- Help messages from token holders sit first under the status line: an incoming plea outranks the camera controls. -->
+      <div class="cctv-summary-label">HELP MESSAGES <span id="ultra-inbox-count"></span></div>
+      <div id="ultra-inbox" class="ultra-inbox"></div>
       <div class="cctv-controls">
-        <button id="sst-enable-btn" class="scene-btn" type="button" aria-pressed="false">SST OFF</button>
-        <button id="sst-fronts-btn" class="scene-btn" type="button" aria-pressed="true" title="Detect thermal fronts in Level-3 data">FRONTS ON</button>
-        <select id="sst-fronts-sensitivity" aria-label="Thermal front sensitivity" title="How strong a temperature change must be to count as a front"></select>
+        <label class="ultra-match"><input id="ultra-read-aloud" type="checkbox" checked> Read new help messages aloud</label>
+        <button id="ultra-inbox-read-all" class="scene-btn" type="button">MARK ALL READ</button>
       </div>
       <div class="cctv-controls">
-        <select id="sst-product-select" aria-label="Sea surface temperature product"></select>
+        <select id="ultra-model" aria-label="Ultra phone model">
+          <option value="generic-cell">Generic cell</option>
+          <option value="apple-iphone-17">Apple iPhone 17</option>
+          <option value="apple-iphone-16">Apple iPhone 16</option>
+          <option value="apple-iphone-15">Apple iPhone 15</option>
+          <option value="google-pixel">Google Pixel</option>
+          <option value="motorola">Motorola</option>
+          <option value="oppo">Oppo</option>
+          <option value="vivo">Vivo</option>
+          <option value="xiaomi">Xiaomi</option>
+          <option value="samsung-s26">Samsung Galaxy S26</option>
+          <option value="samsung-s22-ultra" selected>Samsung Galaxy S22 Ultra</option>
+          <option value="samsung-z8">Samsung Galaxy Z8</option>
+          <option value="samsung-z3">Samsung Galaxy Z3</option>
+          <option value="samsung-z-fold">Samsung Galaxy Z Fold</option>
+        </select>
       </div>
-      <label class="sst-opacity">
-        <span class="cctv-summary-label">OPACITY</span>
-        <input id="sst-opacity" type="range" min="10" max="100" step="5" value="75" aria-label="Sea surface temperature opacity" />
-      </label>
-      <div class="sst-legend" aria-hidden="true">
-        <span id="sst-legend-min">COLD</span><span class="sst-legend-bar"></span><span id="sst-legend-max">WARM</span>
+      <div class="cctv-controls">
+        <button id="ultra-cam-front" class="scene-btn" type="button" data-ultra-camera="front">Activate Front Cell Cam</button>
       </div>
-      <div id="sst-date" class="sst-readout">DATA DATE · --</div>
-      <div id="sst-fronts" class="sst-readout">FRONTS · --</div>
-      <div id="sst-earthdata" class="sst-readout" role="status" aria-live="polite">EARTHDATA · --</div>
-      <div id="sst-note" class="sst-note">Off. Turn on to drape NASA sea surface temperature over the oceans.</div>
+      <div class="cctv-controls">
+        <button id="ultra-cam-rear" class="scene-btn" type="button" data-ultra-camera="rear">Activate Rear Cell Cam</button>
+      </div>
+      <div class="cctv-controls">
+        <button id="ultra-cam-inner" class="scene-btn" type="button" data-ultra-camera="inner">Activate Inside Fold Cell Cam</button>
+      </div>
+      <div class="cctv-controls" id="ultra-extra-cameras">
+        <button id="ultra-cam-ultrawide" class="scene-btn" type="button" data-ultra-camera="rear-ultrawide" hidden>Activate Rear Ultrawide Cam</button>
+        <button id="ultra-cam-tele" class="scene-btn" type="button" data-ultra-camera="rear-tele" hidden>Activate Rear Telephoto Cam</button>
+      </div>
+      <div class="cctv-summary-label">FIND HELP</div>
+      <div class="cctv-controls">
+        <select id="ultra-incident" aria-label="Classified incident type">
+          <option value="threat">THREAT</option>
+          <option value="fire">FIRE</option>
+          <option value="medical">MEDICAL</option>
+          <option value="other">OTHER</option>
+        </select>
+        <button id="ultra-find" class="scene-btn" type="button">Find Ultra Help</button>
+      </div>
+      <div id="ultra-help-list" class="ultra-matches"></div>
+      <div id="ultra-message" class="sst-readout">Please HELP you are close by, to *Location* of victim in progress, *classified incident type* thank you.</div>
+      <div class="cctv-controls">
+        <button id="ultra-send" class="scene-btn" type="button">Send Ultra Help</button>
+      </div>
+      <div class="cctv-summary-label">PREDEFINED HELP #</div>
+      <form id="ultra-contact" class="cctv-controls ultra-contact">
+        <input id="ultra-contact-label" type="text" placeholder="Helper name" aria-label="Helper name" autocomplete="off" />
+        <input id="ultra-contact-number" type="tel" placeholder="+15065550100" aria-label="Helper phone number" autocomplete="off" />
+        <select id="ultra-contact-kind" aria-label="Helper kind">
+          <option value="police">POLICE</option>
+          <option value="fire">FIRE</option>
+          <option value="other">OTHER</option>
+        </select>
+        <button class="scene-btn" type="submit">SAVE #</button>
+      </form>
+      <p id="ultra-help-store-note" class="ultra-note" hidden>The helpers file was changed and is not being used. The next save replaces it.</p>
+      <p id="ultra-outbound-note" class="ultra-note" hidden></p>
+      <div id="ultra-contacts"></div>
+      <!-- Share help tokens: one link per person; the plaintext only ever lands in the reveal box, which the status poll cannot repaint. -->
+      <div class="cctv-summary-label">SHARE ENCRYPTED ULTRA TOKENS</div>
+      <p id="ultra-token-note" class="ultra-note"></p>
+      <form id="ultra-number" class="cctv-controls ultra-contact">
+        <input id="ultra-number-input" type="tel" placeholder="+15065550100 your cell: calls for help you receive are texted here" aria-label="Your number for SMS help" autocomplete="off">
+        <button class="scene-btn" type="submit">SAVE MY #</button>
+        <button id="ultra-number-clear" class="scene-btn" type="button" hidden>CLEAR MY #</button>
+      </form>
+      <form id="ultra-token" class="cctv-controls ultra-contact">
+        <input id="ultra-token-label" type="text" placeholder="Name of Ultra Token Holder" aria-label="Name of Ultra Token Holder" autocomplete="off">
+        <!-- A token carries the location poll alone: Network is its only switch. -->
+        <label class="ultra-match"><input id="ultra-token-network" type="checkbox" checked> Network</label>
+        <!-- Skill codes are written into the token string. Encrypt seals that list inside the string; leaving every box off mints the short token. -->
+        <div id="ultra-token-skills" class="ultra-skills">
+          <span class="cctv-summary-label">Your Gifts or Skills Encrypted into Token String</span>
+          <label class="ultra-match"><input id="ultra-skill-dr" type="checkbox" data-ultra-skill="dr"> Doctor</label>
+          <label class="ultra-match"><input id="ultra-skill-pm" type="checkbox" data-ultra-skill="pm"> Paramedic</label>
+          <label class="ultra-match"><input id="ultra-skill-fr" type="checkbox" data-ultra-skill="fr"> First Responder</label>
+          <label class="ultra-match"><input id="ultra-skill-lg" type="checkbox" data-ultra-skill="lg"> Lifeguard</label>
+          <label class="ultra-match"><input id="ultra-skill-ff" type="checkbox" data-ultra-skill="ff"> Firefighter</label>
+          <label class="ultra-match ultra-skill-wide"><input id="ultra-skill-sr" type="checkbox" data-ultra-skill="sr"> Search and Rescue (SAR) Specialist</label>
+          <label class="ultra-match"><input id="ultra-skill-br" type="checkbox" data-ultra-skill="br"> Brave</label>
+          <label class="ultra-match"><input id="ultra-skill-st" type="checkbox" data-ultra-skill="st"> Strong</label>
+          <label class="ultra-match"><input id="ultra-skill-cc" type="checkbox" data-ultra-skill="cc"> Crisis Counselor</label>
+          <label class="ultra-match"><input id="ultra-skill-en" type="checkbox" data-ultra-skill="en"> Enforcer</label>
+          <label class="ultra-match"><input id="ultra-skill-ac" type="checkbox" data-ultra-skill="ac"> Animal Control</label>
+          <label class="ultra-match ultra-skill-wide"><input id="ultra-skill-hz" type="checkbox" data-ultra-skill="hz"> Hazardous Materials (HAZMAT)</label>
+          <label class="ultra-match"><input id="ultra-skill-rg" type="checkbox" data-ultra-skill="rg"> Ranger</label>
+          <span class="cctv-summary-label">Your Custom Gifts or Skills Encrypted into Token String</span>
+          <input id="ultra-skill-custom-1" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 1" autocomplete="off" title="A long name is shortened to the words the link can carry.">
+          <input id="ultra-skill-custom-2" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 2" autocomplete="off" title="A long name is shortened to the words the link can carry.">
+          <input id="ultra-skill-custom-3" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 3" autocomplete="off" title="A long name is shortened to the words the link can carry.">
+          <input id="ultra-skill-custom-4" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 4" autocomplete="off" title="A long name is shortened to the words the link can carry.">
+          <input id="ultra-skill-custom-5" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 5" autocomplete="off" title="A long name is shortened to the words the link can carry.">
+          <p id="ultra-skill-custom-preview" class="ultra-note" hidden></p>
+          <label class="ultra-match ultra-skill-wide" title="On: the skill list is sealed inside the token string. Off: the skill codes are written in the link. Either way the link still works. No skills and Encrypt off keeps the short token."><input id="ultra-token-encrypt" type="checkbox"> Encrypt</label>
+        </div>
+        <select id="ultra-token-package" aria-label="Which package" hidden></select>
+        <button id="ultra-token-submit" class="scene-btn" type="submit">GENERATE NEW TOKEN</button>
+      </form>
+      <div id="ultra-token-reveal" class="ultra-reveal" hidden>
+        <pre id="ultra-token-link"></pre>
+        <div class="cctv-controls">
+          <button id="ultra-token-copy-link" class="scene-btn" type="button">COPY LINK</button>
+          <button id="ultra-token-copy" class="scene-btn" type="button">COPY TOKEN</button>
+          <button id="ultra-token-hide" class="scene-btn" type="button">HIDE</button>
+        </div>
+      </div>
+      <div id="ultra-tokens"></div>
+      <!-- Help network: the links this machine's server polls, the directory the group shares, my published token and the SMS relay. Links hold other people's tokens and are never shown here; only hosts are. -->
+      <div class="cctv-summary-label">HELP NETWORK <span id="ultra-network-count"></span></div>
+      <p id="ultra-network-note" class="ultra-note"></p>
+      <form id="ultra-network-me" class="cctv-controls ultra-contact">
+        <input id="ultra-network-me-name" type="text" maxlength="60" placeholder="Your name, as your holders see it" aria-label="Your network name" autocomplete="off">
+        <button class="scene-btn" type="submit">SAVE MY NAME</button>
+      </form>
+      <form id="ultra-directory" class="cctv-controls ultra-contact">
+        <input id="ultra-directory-url" type="url" placeholder="https://raw.githubusercontent.com/<group>/<repo>/main/ultra-directory.json" aria-label="Directory address" autocomplete="off" spellcheck="false">
+        <input id="ultra-directory-token" type="password" placeholder="GitHub write token (optional, never shown)" aria-label="Directory write token" autocomplete="off">
+        <button class="scene-btn" type="submit">SAVE DIRECTORY</button>
+      </form>
+      <div class="cctv-controls">
+        <select id="ultra-publish-token" aria-label="Which token to publish" hidden></select>
+        <!-- Shown only with more than one package saved and DIRECTORY TOKEN chosen: which package's position the new directory token follows. -->
+        <select id="ultra-publish-package" aria-label="Which package to publish" hidden></select>
+        <button id="ultra-network-publish" class="scene-btn" type="button">PUBLISH MY TOKEN</button>
+        <button id="ultra-network-update" class="scene-btn" type="button">UPDATE HOME LIST</button>
+        <button id="ultra-network-poll" class="scene-btn" type="button">CHECK NOW</button>
+      </div>
+      <div id="ultra-network-entry" class="ultra-reveal" hidden>
+        <pre id="ultra-network-entry-text"></pre>
+        <p id="ultra-network-entry-note" class="ultra-note"></p>
+        <div class="cctv-controls">
+          <button id="ultra-network-entry-copy" class="scene-btn" type="button">COPY ENTRY</button>
+          <a id="ultra-network-entry-mail" class="scene-btn" rel="noopener" hidden>EMAIL ENTRY</a>
+          <button id="ultra-network-entry-hide" class="scene-btn" type="button">HIDE</button>
+        </div>
+      </div>
+      <form id="ultra-network-add" class="cctv-controls ultra-contact">
+        <input id="ultra-network-link" type="text" placeholder="Paste a help link someone gave you (https://….ts.net/ultra/help/uht1.…)" aria-label="Help link" autocomplete="off" spellcheck="false">
+        <input id="ultra-network-link-name" type="text" maxlength="60" placeholder="Their name" aria-label="Their name" autocomplete="off">
+        <button class="scene-btn" type="submit">ADD TO HOME LIST</button>
+      </form>
+      <div id="ultra-network-list"></div>
+      <div class="cctv-controls">
+        <span id="ultra-sms-relay" class="sst-readout"></span>
+        <button id="ultra-sms-test" class="scene-btn" type="button">TEST SMS</button>
+      </div>
     </div>
   </div>
 
-  <!-- Scene Director Panel -->
-  <div id="scene-panel" class="panel-collapsible collapsed" data-panel-id="scene-panel">
-    <div class="panel-glow"></div>
-    <div class="scene-panel-inner">
-      <div class="panel-header">
-        <span class="panel-title">SCENES</span>
-        <span class="panel-divider"></span>
-        <button class="panel-collapse-btn" data-collapse-target="scene-panel" title="Collapse panel">+</button>
-      </div>
-      <div class="scene-controls">
-        <select id="scene-select" aria-label="Scene recipe"></select>
-        <button id="scene-new-btn" class="scene-btn">NEW</button>
-        <button id="scene-delete-btn" class="scene-btn scene-btn-danger">DEL</button>
-      </div>
-      <div class="scene-controls">
-        <button id="scene-capture-btn" class="scene-btn">CAPTURE SHOT</button>
-        <button id="scene-update-shot-btn" class="scene-btn">UPDATE SHOT</button>
-      </div>
-      <div id="scene-shot-list" class="scene-shot-list"></div>
-      <div class="scene-controls">
-        <button id="scene-start-btn" class="scene-btn">START</button>
-        <button id="scene-stop-btn" class="scene-btn scene-btn-danger">STOP</button>
-        <button id="scene-next-btn" class="scene-btn">NEXT</button>
-      </div>
-      <div class="scene-controls">
-        <button id="scene-export-btn" class="scene-btn">EXPORT PRESETS</button>
-        <button id="scene-import-btn" class="scene-btn">IMPORT</button>
-        <button id="scene-download-btn" class="scene-btn">RUN LOG</button>
-        <input type="file" id="scene-import-file" accept="application/json,.json" hidden />
-      </div>
-      <div class="scene-progress">
-        <div id="scene-progress-fill">0%</div>
-      </div>
-      <div id="scene-status">Ready</div>
-    </div>
-  </div>
 
-  </div>
-
-  <!-- Ask Panel: operator-driven questions about the current view -->
-  <!-- A sibling of #left-panel-stack, not a member: the stack manager hides
-       collapsed panels and remembers that choice, which would bury a box the
-       operator is meant to reach at any moment, and its layout observer would
-       re-solve the column on every status tick. The panel owns its placement
-       and its own show/hide button, and the left accordion treats it as an
-       obstacle. Rows are built at runtime, one per model that holds a key, so
-       this markup carries no provider names. -->
-  <div id="ask-panel">
-    <div class="ask-panel-inner">
-      <div class="panel-header">
-        <span class="panel-title">LLM</span>
-        <span class="panel-divider"></span>
-        <button id="ask-toggle" class="panel-collapse-btn" type="button" title="Hide the LLM panel" aria-expanded="true" aria-controls="ask-body">-</button>
-      </div>
-      <div id="ask-body" class="ask-body">
-        <div id="ask-empty" class="ask-status" aria-live="polite" hidden></div>
-        <div id="ask-rows"></div>
+    <!-- Social Media Analysis: a left-stack box under CCTV. The user id and
+         password stay encrypted on this computer. Analyze, Breaking News, and
+         Search look up public news for the map place, then send one question. -->
+    <div id="social-panel" class="panel-collapsible collapsed" data-panel-id="social-panel">
+      <div class="panel-glow"></div>
+      <div class="social-panel-inner">
+        <div class="panel-header">
+          <span class="panel-title" data-collapsed-title="SOCIAL MEDIA ANALYSIS">SOCIAL MEDIA ANALYSIS</span>
+          <span class="panel-divider"></span>
+          <button class="panel-collapse-btn" data-collapse-target="social-panel" title="Collapse panel">+</button>
+        </div>
+        <p class="social-note">Your user id and password stay encrypted on this computer for integrated BOT and LLM Location/Search/Request</p>
+        <div class="cctv-summary-label">ACCOUNTS</div>
+        <div class="cctv-controls">
+          <select id="social-account-platform" aria-label="Account platform">
+            <option value="facebook">Facebook</option>
+            <option value="instagram">Instagram</option>
+            <option value="threads">Threads</option>
+            <option value="x">X</option>
+            <option value="truth">Truth Social</option>
+            <option value="snapchat">Snapchat</option>
+            <option value="tiktok">TikTok</option>
+            <option value="find-my">Apple Find My</option>
+            <option value="google-maps">Google Maps</option>
+            <option value="bump">Bump</option>
+            <option value="blink">Blink</option>
+            <option value="life360">Life360</option>
+            <option value="radarly">Radarly</option>
+            <option value="buzzly">Buzzly</option>
+            <option value="vicinity">Vicinity</option>
+            <option value="nearjoy">NearJoy</option>
+            <option value="happn">Happn</option>
+            <option value="pure">Pure</option>
+            <option value="sniffies">Sniffies</option>
+          </select>
+        </div>
+        <div class="cctv-controls">
+          <input id="social-account-handle" class="ask-input" type="text" maxlength="128" autocomplete="off" spellcheck="false" placeholder="User id" aria-label="User id" />
+        </div>
+        <div class="cctv-controls">
+          <input id="social-account-password" class="ask-input" type="password" maxlength="256" autocomplete="off" spellcheck="false" placeholder="Password" aria-label="Password" />
+          <button id="social-account-save" class="scene-btn" type="button">SAVE LOGIN</button>
+        </div>
+        <div class="cctv-controls">
+          <button id="social-account-open" class="scene-btn" type="button">OPEN SITE</button>
+        </div>
+        <ul id="social-account-list" class="social-account-list" aria-label="Saved accounts"></ul>
+        <div class="cctv-controls">
+          <label class="social-show-location" for="social-show-location">
+            <input id="social-show-location" type="checkbox" checked aria-label="Show live location on the map" />
+            SHOW ON MAP
+          </label>
+        </div>
+        <p id="social-location-note" class="social-note">A hooked-up account that shares location displays live position on the map.</p>
+        <div class="cctv-summary-label">LLM</div>
+        <textarea id="social-query" class="ask-input social-query" rows="3" autocomplete="off" aria-label="Analysis, news question, or help to send" placeholder="Type the analysis, news question, or help to send"></textarea>
+        <p class="social-note">Enter looks up public news for this map place, then sends one question that uses the three menus below. The log shows those public items.</p>
+        <div class="cctv-controls">
+          <select id="social-model" aria-label="Language model">
+            <option value="">No model key yet</option>
+          </select>
+        </div>
+        <div class="cctv-controls">
+          <button id="social-analyze" class="scene-btn" type="button">ANALYZE</button>
+          <select id="social-analyze-platform" aria-label="Platform to analyze">
+            <option value="all">All platforms</option>
+            <option value="facebook">Facebook</option>
+            <option value="instagram">Instagram</option>
+            <option value="threads">Threads</option>
+            <option value="x">X</option>
+            <option value="truth">Truth Social</option>
+            <option value="snapchat">Snapchat</option>
+            <option value="tiktok">TikTok</option>
+          </select>
+        </div>
+        <div class="cctv-controls">
+          <button id="social-news" class="scene-btn" type="button">BREAKING NEWS</button>
+          <select id="social-news-platform" aria-label="Platform for breaking news">
+            <option value="all">All</option>
+            <option value="facebook">Facebook</option>
+            <option value="instagram">Instagram</option>
+            <option value="threads">Threads</option>
+            <option value="x">X</option>
+            <option value="truth">Truth Social</option>
+            <option value="tiktok">TikTok</option>
+          </select>
+        </div>
+        <div class="cctv-controls">
+          <button id="social-search" class="scene-btn" type="button">SEARCH</button>
+        </div>
+        <div class="cctv-summary-label">FIND HELP TO SEND</div>
+        <div class="cctv-controls">
+          <button id="social-help" class="scene-btn" type="button">FIND HELP</button>
+          <select id="social-help-platform" aria-label="Location option for finding help">
+            <option value="all">All location options</option>
+            <option value="find-my">Apple Find My</option>
+            <option value="google-maps">Google Maps</option>
+            <option value="snap-map">Snapchat Snap Map</option>
+            <option value="bump">Bump</option>
+            <option value="blink">Blink</option>
+            <option value="life360">Life360</option>
+            <option value="radarly">Radarly</option>
+            <option value="buzzly">Buzzly</option>
+            <option value="vicinity">Vicinity</option>
+            <option value="nearjoy">NearJoy</option>
+            <option value="happn">Happn</option>
+            <option value="pure">Pure</option>
+            <option value="sniffies">Sniffies</option>
+            <option value="instagram-map">Instagram Map</option>
+            <option value="facebook-checkin">Facebook check-ins</option>
+            <option value="instagram-checkin">Instagram check-ins</option>
+            <option value="x-checkin">X check-ins</option>
+          </select>
+        </div>
+        <!-- Bot swarms: one bot per platform, each a single request with the provider's own search, all sent at once on the swarm's own key in POWER UP (GROK BOT, OPENAI DOTS). With no Grok Bot key, GROK BOT SWARM hands its task to the Chief of Staff bot in the Grok Bot desktop app. No login is kept here. -->
+        <div class="cctv-summary-label">GROK BOT SWARM</div>
+        <textarea id="social-swarm-xai-instructions" class="ask-input social-query" rows="3" maxlength="1000" autocomplete="off" aria-label="Grok bot instructions" placeholder="Grok bot instructions. Leave empty for the default: threat incidents near this map place."></textarea>
+        <div class="cctv-controls">
+          <button id="social-swarm-xai-run" class="scene-btn" type="button">GROK BOT SWARM</button>
+          <button id="social-swarm-xai-open" class="scene-btn" type="button">OPEN GROK BOT</button>
+        </div>
+        <div id="social-swarm-xai-status" class="ask-status" role="status" aria-live="polite"></div>
+        <div class="cctv-summary-label">OPENAI BOT SWARM</div>
+        <textarea id="social-swarm-openai-instructions" class="ask-input social-query" rows="3" maxlength="1000" autocomplete="off" aria-label="OpenAI bot instructions" placeholder="OpenAI bot instructions. Leave empty for the default: threat incidents near this map place."></textarea>
+        <div class="cctv-controls">
+          <button id="social-swarm-openai-run" class="scene-btn" type="button">OPENAI BOT SWARM</button>
+          <button id="social-swarm-openai-open" class="scene-btn" type="button">OPEN CHATGPT</button>
+        </div>
+        <div id="social-swarm-openai-status" class="ask-status" role="status" aria-live="polite"></div>
+        <div id="social-status" class="ask-status" role="status" aria-live="polite"></div>
+        <div id="social-output" class="ask-output" role="status" aria-live="polite" tabindex="0"></div>
       </div>
     </div>
   </div>
 
   <!-- Global Context is deliberately independent from the left layer accordion. -->
   <aside id="right-context-rail">
+      <!-- Data Layer Toggle Panel -->
+    <div id="data-panel" class="panel-collapsible collapsed active" data-panel-id="data-panel">
+      <div class="panel-glow"></div>
+      <div class="data-panel-inner">
+        <div class="panel-header">
+          <span class="panel-title">DATA LAYERS</span>
+          <span class="panel-divider"></span>
+          <button class="panel-collapse-btn" data-collapse-target="data-panel" title="Collapse panel">+</button>
+        </div>
+        <div id="data-toggles" class="data-toggle-list"></div>
+      </div>
+    </div>
+
     <div id="global-context-panel" class="panel-collapsible collapsed" data-panel-id="global-context-panel">
       <div class="panel-glow"></div>
       <div class="global-context-panel-inner">
@@ -789,7 +1036,7 @@
               </label>
             </div>
           </div>
-          <button class="panel-collapse-btn" data-collapse-target="global-context-panel" title="Expand panel">▶</button>
+          <button class="panel-collapse-btn" data-collapse-target="global-context-panel" title="Expand panel">+</button>
         </div>
         <div class="global-context-modes" role="tablist" aria-label="Context mode">
           <button id="global-context-flights-btn" class="context-mode-button" type="button" role="tab" tabindex="0" aria-selected="false" aria-controls="context-flights-view" aria-label="CONTACTS" title="Cycles the nearest contacts of whatever type you select — planes, vessels, installations. Satellites track independently.">
@@ -838,63 +1085,134 @@
             </div>
           </div>
         </section>
-        <section id="radio-panel" class="panel-collapsible collapsed" data-panel-id="radio-panel" aria-label="Internet radio companion">
-          <div class="radio-panel-inner">
-            <div class="panel-header">
-              <span class="panel-title">RADIO</span>
-              <span id="radio-layer-state" class="radio-layer-state">OFF</span>
-              <span class="panel-divider"></span>
-              <button class="panel-collapse-btn" data-collapse-target="radio-panel" title="Expand Radio" aria-label="Expand Radio section">+</button>
-            </div>
-            <div class="radio-directory-row">
-              <button id="radio-enable-btn" class="panel-layer-toggle" type="button" aria-pressed="false">ENABLE</button>
-              <label class="radio-filter-label" for="radio-filter">STATION TAG</label>
-              <select id="radio-filter" aria-label="Filter stations by station tag" disabled>
-                <option value="all">All</option>
-              </select>
-            </div>
-            <div id="radio-station-card" class="radio-station-card" aria-live="polite">
-              <strong id="radio-station-name">NO STATION SELECTED</strong>
-              <span id="radio-station-meta">Enable Radio, then choose a globe marker or use next.</span>
-              <span id="radio-station-tags"></span>
-            </div>
-            <div id="radio-tuner" class="radio-tuner" hidden>
-              <div class="radio-tuner-header">
-                <span id="radio-tuner-band-label">DIRECTORY BAND</span>
-                <output id="radio-tuner-value" for="radio-tuner-slider">DRAG TO TUNE</output>
-              </div>
-              <div class="radio-tuner-dial">
-                <div class="radio-tuner-scale" aria-hidden="true"></div>
-                <div id="radio-tuner-needle" class="radio-tuner-needle" aria-hidden="true"></div>
-                <input id="radio-tuner-slider" type="range" min="0" max="0" step="1" value="0"
-                  aria-label="Tune available internet radio stations" aria-valuetext="No station available" disabled />
-              </div>
-              <div class="radio-tuner-readout">
-                <span id="radio-tuner-station">ALL · DRAG THE NEEDLE</span>
-                <span>SNAPS TO AVAILABLE STATIONS</span>
-              </div>
-            </div>
-            <div class="radio-transport" role="group" aria-label="Radio playback">
-              <button id="radio-prev-btn" type="button" aria-label="Previous filtered station" disabled>PREV</button>
-              <button id="radio-play-btn" type="button" aria-label="Play selected station" disabled>PLAY</button>
-              <button id="radio-next-btn" type="button" aria-label="Next filtered station" disabled>NEXT</button>
-              <button id="radio-stop-btn" type="button" aria-label="Stop radio playback" disabled>STOP</button>
-            </div>
-            <label class="radio-volume-row" for="radio-volume">
-              <span>VOLUME</span>
-              <input id="radio-volume" class="gev-quantitative-slider" type="range" min="0" max="100" value="80" aria-label="Radio volume" />
-              <output id="radio-volume-value" class="gev-slider-value" for="radio-volume">80%</output>
-            </label>
-            <div id="radio-playback-state" class="radio-playback-state" role="status" aria-live="polite">Radio off</div>
-            <div class="radio-links">
-              <a id="radio-station-homepage" href="#" target="_blank" rel="noopener noreferrer" hidden>STATION SITE</a>
-              <a href="https://www.radio-browser.info/" target="_blank" rel="noopener noreferrer">DIRECTORY: RADIO BROWSER</a>
-            </div>
-            <p class="radio-privacy">Audio connects directly to the broadcaster after you press play. Your IP is visible to that broadcaster.</p>
-          </div>
-        </section>
       </div>
     </div>
+    <!-- Sea Surface Temperature Panel -->
+    <div id="sst-panel" class="panel-collapsible collapsed" data-panel-id="sst-panel">
+      <div class="panel-glow"></div>
+      <div class="sst-panel-inner">
+        <div class="panel-header">
+          <span class="panel-title" data-collapsed-title="SEA TEMP (SST)">SEA SURFACE TEMPERATURE (SST)</span>
+          <span class="panel-divider"></span>
+          <button class="panel-collapse-btn" data-collapse-target="sst-panel" title="Collapse panel">+</button>
+        </div>
+        <div class="sst-subtitle">For temperature-sensitive fish that follow moving thermal fronts</div>
+        <div class="cctv-controls">
+          <button id="sst-enable-btn" class="scene-btn" type="button" aria-pressed="false">SST OFF</button>
+          <button id="sst-fronts-btn" class="scene-btn" type="button" aria-pressed="true" title="Detect thermal fronts in Level-3 data">FRONTS ON</button>
+          <select id="sst-fronts-sensitivity" aria-label="Thermal front sensitivity" title="How strong a temperature change must be to count as a front"></select>
+        </div>
+        <div class="cctv-controls">
+          <select id="sst-product-select" aria-label="Sea surface temperature product"></select>
+        </div>
+        <label class="sst-opacity">
+          <span class="cctv-summary-label">OPACITY</span>
+          <input id="sst-opacity" type="range" min="10" max="100" step="5" value="75" aria-label="Sea surface temperature opacity" />
+        </label>
+        <div class="sst-legend" aria-hidden="true">
+          <span id="sst-legend-min">COLD</span><span class="sst-legend-bar"></span><span id="sst-legend-max">WARM</span>
+        </div>
+        <div id="sst-date" class="sst-readout">DATA DATE · --</div>
+        <div id="sst-fronts" class="sst-readout">FRONTS · --</div>
+        <div id="sst-earthdata" class="sst-readout" role="status" aria-live="polite">EARTHDATA · --</div>
+        <div id="sst-note" class="sst-note">Off. Turn on to drape NASA sea surface temperature over the oceans.</div>
+      </div>
+    </div>
+
+    <!-- Scene Director Panel -->
+    <div id="scene-panel" class="panel-collapsible collapsed" data-panel-id="scene-panel">
+      <div class="panel-glow"></div>
+      <div class="scene-panel-inner">
+        <div class="panel-header">
+          <span class="panel-title">SCENES</span>
+          <span class="panel-divider"></span>
+          <button class="panel-collapse-btn" data-collapse-target="scene-panel" title="Collapse panel">+</button>
+        </div>
+        <div class="scene-controls">
+          <select id="scene-select" aria-label="Scene recipe"></select>
+          <button id="scene-new-btn" class="scene-btn">NEW</button>
+          <button id="scene-delete-btn" class="scene-btn scene-btn-danger">DEL</button>
+        </div>
+        <div class="scene-controls">
+          <button id="scene-capture-btn" class="scene-btn">CAPTURE SHOT</button>
+          <button id="scene-update-shot-btn" class="scene-btn">UPDATE SHOT</button>
+        </div>
+        <div id="scene-shot-list" class="scene-shot-list"></div>
+        <div class="scene-controls">
+          <button id="scene-start-btn" class="scene-btn">START</button>
+          <button id="scene-stop-btn" class="scene-btn scene-btn-danger">STOP</button>
+          <button id="scene-next-btn" class="scene-btn">NEXT</button>
+        </div>
+        <div class="scene-controls">
+          <button id="scene-export-btn" class="scene-btn">EXPORT PRESETS</button>
+          <button id="scene-import-btn" class="scene-btn">IMPORT</button>
+          <button id="scene-download-btn" class="scene-btn">RUN LOG</button>
+          <input type="file" id="scene-import-file" accept="application/json,.json" hidden />
+        </div>
+        <div class="scene-progress">
+          <div id="scene-progress-fill">0%</div>
+        </div>
+        <div id="scene-status">Ready</div>
+      </div>
+    </div>
+    <!-- Internet radio: not a box of the dashboard. Hidden until selected (the radio
+         control in the Context header, voice, a share link), then shown below the
+         last tab. -->
+    <section id="radio-panel" class="panel-collapsible collapsed" data-panel-id="radio-panel" aria-label="Internet radio companion">
+      <div class="radio-panel-inner">
+        <div class="panel-header">
+          <span class="panel-title">RADIO</span>
+          <span id="radio-layer-state" class="radio-layer-state">OFF</span>
+          <span class="panel-divider"></span>
+          <button class="panel-collapse-btn" data-collapse-target="radio-panel" title="Expand Radio" aria-label="Expand Radio section">+</button>
+        </div>
+        <div class="radio-directory-row">
+          <button id="radio-enable-btn" class="panel-layer-toggle" type="button" aria-pressed="false">ENABLE</button>
+          <label class="radio-filter-label" for="radio-filter">STATION TAG</label>
+          <select id="radio-filter" aria-label="Filter stations by station tag" disabled>
+            <option value="all">All</option>
+          </select>
+        </div>
+        <div id="radio-station-card" class="radio-station-card" aria-live="polite">
+          <strong id="radio-station-name">NO STATION SELECTED</strong>
+          <span id="radio-station-meta">Enable Radio, then choose a globe marker or use next.</span>
+          <span id="radio-station-tags"></span>
+        </div>
+        <div id="radio-tuner" class="radio-tuner" hidden>
+          <div class="radio-tuner-header">
+            <span id="radio-tuner-band-label">DIRECTORY BAND</span>
+            <output id="radio-tuner-value" for="radio-tuner-slider">DRAG TO TUNE</output>
+          </div>
+          <div class="radio-tuner-dial">
+            <div class="radio-tuner-scale" aria-hidden="true"></div>
+            <div id="radio-tuner-needle" class="radio-tuner-needle" aria-hidden="true"></div>
+            <input id="radio-tuner-slider" type="range" min="0" max="0" step="1" value="0"
+              aria-label="Tune available internet radio stations" aria-valuetext="No station available" disabled />
+          </div>
+          <div class="radio-tuner-readout">
+            <span id="radio-tuner-station">ALL · DRAG THE NEEDLE</span>
+            <span>SNAPS TO AVAILABLE STATIONS</span>
+          </div>
+        </div>
+        <div class="radio-transport" role="group" aria-label="Radio playback">
+          <button id="radio-prev-btn" type="button" aria-label="Previous filtered station" disabled>PREV</button>
+          <button id="radio-play-btn" type="button" aria-label="Play selected station" disabled>PLAY</button>
+          <button id="radio-next-btn" type="button" aria-label="Next filtered station" disabled>NEXT</button>
+          <button id="radio-stop-btn" type="button" aria-label="Stop radio playback" disabled>STOP</button>
+        </div>
+        <label class="radio-volume-row" for="radio-volume">
+          <span>VOLUME</span>
+          <input id="radio-volume" class="gev-quantitative-slider" type="range" min="0" max="100" value="80" aria-label="Radio volume" />
+          <output id="radio-volume-value" class="gev-slider-value" for="radio-volume">80%</output>
+        </label>
+        <div id="radio-playback-state" class="radio-playback-state" role="status" aria-live="polite">Radio off</div>
+        <div class="radio-links">
+          <a id="radio-station-homepage" href="#" target="_blank" rel="noopener noreferrer" hidden>STATION SITE</a>
+          <a href="https://www.radio-browser.info/" target="_blank" rel="noopener noreferrer">DIRECTORY: RADIO BROWSER</a>
+        </div>
+        <p class="radio-privacy">Audio connects directly to the broadcaster after you press play. Your IP is visible to that broadcaster.</p>
+      </div>
+    </section>
   </aside>
 
   <div id="scene-runtime"></div>

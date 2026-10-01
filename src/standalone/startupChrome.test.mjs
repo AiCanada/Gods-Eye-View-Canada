@@ -16,6 +16,7 @@ function fixture() {
   const events = [];
   let restored;
   let nextTimer = 0;
+  let ultraDestroyed = 0;
   const controller = new AbortController();
   const context = {
     console,
@@ -33,6 +34,17 @@ function fixture() {
     },
     async initKeySetup() {
       return { destroy: () => events.push('settings:destroy') };
+    },
+    /* The standalone entry starts the Ultra box beside Provider Settings.
+     * These tests are about the welcome cover, so this one is counted on the
+     * side rather than pushed into `events`, which the assertions below
+     * read by position. */
+    initUltraHelpPanel() {
+      return {
+        destroy: () => {
+          ultraDestroyed += 1;
+        },
+      };
     },
   };
   vm.createContext(context);
@@ -57,6 +69,7 @@ function fixture() {
     stop,
     restored,
     controller,
+    ultraCount: () => ultraDestroyed,
     fire(delay) {
       for (const [id, task] of timers) {
         if (task.delay === delay) {
@@ -85,6 +98,9 @@ test('welcome waits for restoration, minimum delay, and the cover transition', a
   assert.deepEqual(f.events, ['hidden', 'welcome']);
   await f.stop();
   assert.deepEqual(f.events.slice(-2), ['welcome:destroy', 'settings:destroy']);
+  // The Ultra box is started beside Provider Settings and goes down with it:
+  // its poll and its map events must not outlive the shell.
+  assert.equal(f.ultraCount(), 1);
   assert.equal(f.timers.size, 0);
 });
 

@@ -664,10 +664,11 @@ test('the voice TOOL SCHEMA matches the pinned release — the mission mapping i
   // Re-pinned again 2026-09-13: the ten largest Canadian metros plus Fort
   // McMurray and Halifax join those enums as preset cities.
   const block = JSON.stringify(GEV_REALTIME_TOOLS);
-  assert.equal(block.length, 26550, 'serialized tool schema length drifted');
+  // Re-pinned 2026-09-26: fire perimeters, wind, radar, clouds, lightning, and cyclones.
+  assert.equal(block.length, 27019, 'serialized tool schema length drifted');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    '98dd5e950e163908552b181a10a18c0e32a400906b755fa51090d635709b7ed5',
+    'c5a77615795749578d34389fc27107f5adeb20c89a934e99056f5acc106d9754',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
   const instructions = fs.readFileSync(new URL('../server/providers/openai/instructions.js', import.meta.url), 'utf8');

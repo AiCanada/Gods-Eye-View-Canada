@@ -9,7 +9,9 @@
 @import './src/ui/styles/radio.css';
 @import './src/ui/styles/cctv.css';
 @import './src/ui/styles/sst.css';
+@import './src/ui/styles/ultra.css';
 @import './src/ui/styles/scenes.css';
+@import './src/ui/styles/social.css';
 @import './src/ui/styles/recording.css';
 @import './src/ui/styles/responsive.css';
 @import './src/ui/styles/command-dock.css';

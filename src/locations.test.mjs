@@ -27,6 +27,7 @@ import {
   CITY_OVERVIEW_RANGE_M,
   closestCityForSearch,
   presetCitySearchName,
+  selectedPlaceLabel,
 } from './locations.js';
 
 function stubViewer() {
@@ -882,4 +883,18 @@ test('Canadian metro names match camera spellings and search wording', () => {
   // A bare metro name now names the preset; naming the province still reaches the gazetteer.
   assert.equal(findCanadianCity('Toronto'), null);
   assert.equal(findCanadianCity('Toronto, ON').name, 'Toronto');
+});
+
+test('the selected place is "landmark, city", never the same name twice', () => {
+  assert.equal(selectedPlaceLabel('📍 Halifax', 'Landmark: Citadel Hill'), 'Citadel Hill, Halifax');
+  assert.equal(selectedPlaceLabel('Location: Halifax', 'Citadel Hill'), 'Citadel Hill, Halifax');
+  // A saved place shows its own name on both lines: said once.
+  assert.equal(selectedPlaceLabel('📍 Saint John Danger Zone', 'Saint John Danger Zone'), 'Saint John Danger Zone');
+  assert.equal(selectedPlaceLabel('📍 Halifax', 'HALIFAX'), 'Halifax');
+  for (const poi of ['', '--', 'Searched location', undefined, null]) {
+    assert.equal(selectedPlaceLabel('📍 Halifax', poi), 'Halifax', String(poi));
+  }
+  for (const city of ['', '--', '📍 --', undefined, null]) {
+    assert.equal(selectedPlaceLabel(city, 'Citadel Hill'), null, String(city));
+  }
 });

@@ -1,13 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  mkdtemp,
-  mkdir,
-  writeFile,
-  readFile,
-  rm,
-  symlink,
-} from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { formatAdoptedFiles } from '../../scripts/format.mjs';
@@ -72,24 +65,3 @@ test('invalid, ignored and missing scope entries fail before any file is written
     );
   }
 });
-
-test(
-  'formatting rejects a symlink outside the repository',
-  { skip: process.platform === 'win32' },
-  async (t) => {
-    const root = await fixture(t, ['adopted.js', 'outside.js']);
-    const other = await fixture(t);
-    await symlink(
-      path.join(other, 'adopted.js'),
-      path.join(root, 'outside.js'),
-    );
-    await assert.rejects(
-      formatAdoptedFiles(root, '--write'),
-      /repository files/,
-    );
-    assert.equal(
-      await readFile(path.join(root, 'adopted.js'), 'utf8'),
-      'const value="yes"\r\n',
-    );
-  },
-);

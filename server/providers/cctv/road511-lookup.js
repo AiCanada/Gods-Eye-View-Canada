@@ -19,6 +19,7 @@ import { readJsonFile, writeJsonFileAtomic } from './json-file.js';
 import { normalizeFeedType } from './normalize.js';
 import { CCTV_PROXY_USER_AGENT } from './upstream-headers.js';
 import { parseRetryAfterMs } from './upstream-gate.js';
+import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
 
 const LOOKUP_FORMAT = 'gev-road511-lookups/1';
 const ID_PREFIX = 'us511-';
@@ -205,8 +206,12 @@ export function createRoad511Lookup({
   maxEntries = ROAD511_CACHE_MAX_ENTRIES,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
-  const apiKey = () =>
-    String((env || process.env).ROAD511_API_KEY || '').trim();
+  const apiKey = () => {
+    const bag = env || process.env;
+    return localProviderTrusted('road511', bag)
+      ? String(bag.ROAD511_API_KEY || '').trim()
+      : '';
+  };
   /** @type {Map<string, {state: 'resolved'|'no-image', url: string, at: number}>} */
   const entries = new Map();
   /** @type {Map<string, {failures: number, until: number}>} */

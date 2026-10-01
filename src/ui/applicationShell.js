@@ -110,10 +110,13 @@ const SHARE_PANEL_STATE_SPECS = Object.freeze([
 ]);
 /** Standard map-view panels cleared out of the way on a fresh Cockpit entry. */
 const COCKPIT_ENTRY_COLLAPSE_PANEL_IDS = Object.freeze([
+  'ask-panel',
   'data-panel',
   'cctv-panel',
   'sst-panel',
+  'ultra-panel',
   'scene-panel',
+  'social-panel',
   'pp-toggles',
   'global-context-panel',
   'radio-panel',
@@ -307,6 +310,13 @@ export class StyleManager {
     // Question box for the current view. Contacts its provider only when the
     // operator presses Ask or Overview.
     this.askPanel = services.AskPanel ? new services.AskPanel(viewer) : null;
+    // Same Ask route as the model box. A press in Social Media Analysis is
+    // the only time it contacts a model. The view it sends is the Ask panel's.
+    this.socialPanel = services.SocialMediaPanel
+      ? new services.SocialMediaPanel(viewer, {
+          sceneContext: () => this.askPanel?.sceneContext?.() ?? null,
+        })
+      : null;
     this._recording.hud = this.hud;
     this._cockpitVisionMode = 'optical';
     this._cockpitVisionRestore = null;
@@ -2832,22 +2842,16 @@ export class StyleManager {
    * @returns {void}
    */
   _syncPanelCollapseButton(panelEl) {
-    const isRightRail = [
-      'pp-toggles',
-      'cctv-panel',
-      'global-context-panel',
-    ].includes(panelEl?.id);
     const collapsed = panelEl.classList.contains('collapsed');
     panelEl
       .querySelectorAll('.panel-collapse-btn[data-collapse-target]')
       .forEach((btn) => {
         const owner = btn.closest('[data-panel-id], #param-slider-panel');
         if (owner !== panelEl) return;
-        if (isRightRail) {
-          btn.textContent = collapsed ? '◀' : '▶';
-        } else {
-          btn.textContent = collapsed ? '+' : '−';
-        }
+        // One glyph pair for every box, whichever rail it is on: + to expand,
+        // − to collapse, as Data Layers has always shown (owner ruling,
+        // 2026-09-27; the right rail used to show ◀/▶).
+        btn.textContent = collapsed ? '+' : '−';
         btn.setAttribute('aria-expanded', String(!collapsed));
         const panelName =
           panelEl
@@ -3030,12 +3034,9 @@ export class StyleManager {
     const leftOwnerPanel = this._leftPanelStack?.contains(panelEl)
       ? panelEl
       : null;
-    const rightOwnerPanel =
-      panelId === 'radio-panel'
-        ? document.getElementById('global-context-panel')
-        : this._rightPanelStack?.contains(panelEl)
-          ? panelEl
-          : null;
+    const rightOwnerPanel = this._rightPanelStack?.contains(panelEl)
+      ? panelEl
+      : null;
     const priorLeftOwner = this._panelLayout._leftStackPreferredPanelId;
     const priorRightOwner = this._panelLayout._rightStackPreferredPanelId;
     if (explicit && !restore && !nextCollapsed && leftOwnerPanel) {
@@ -3090,19 +3091,6 @@ export class StyleManager {
     ) {
       this._setRadioDisclosure?.(false);
     }
-    if (
-      !nextCollapsed &&
-      panelId === 'radio-panel' &&
-      document
-        .getElementById('global-context-panel')
-        ?.classList.contains('collapsed')
-    ) {
-      this.setPanelCollapsed('global-context-panel', false, {
-        restore,
-        persist,
-        syncShare,
-      });
-    }
     if (!nextCollapsed && !restore && panelId === 'location-bar') {
       const otherPanel = document.getElementById('control-panel');
       if (otherPanel && !otherPanel.classList.contains('dock-pinned')) {
@@ -3123,6 +3111,9 @@ export class StyleManager {
       }
     }
     panelEl.classList.toggle('collapsed', nextCollapsed);
+    // A box the operator just opened belongs in front of whatever it now
+    // overlaps, whether it was opened by pointer, keyboard or voice.
+    if (!nextCollapsed) this._panelLayout?.raisePanel?.(panelId);
     if (
       nextCollapsed &&
       this.cockpitView?.active &&

@@ -16,7 +16,9 @@ body.recording-mode #radio-panel,
 body.recording-mode #global-context-panel,
 body.recording-mode #gev-voice-control,
 body.recording-mode #sst-panel,
-body.recording-mode #scene-panel {
+body.recording-mode #ultra-panel,
+body.recording-mode #scene-panel,
+body.recording-mode #social-panel {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;

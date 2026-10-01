@@ -35,7 +35,7 @@
     "doctor": "node scripts/setup-doctor.mjs",
     "format": "node scripts/format.mjs --write",
     "format:check": "node scripts/format.mjs --check",
-    "dev": "vite",
+    "dev": "node --max-old-space-size=16384 ./node_modules/vite/bin/vite.js",
     "dev:secure": "./scripts/dev-secure.sh",
     "opensky:import": "./scripts/opensky-import-client.sh",
     "build": "vite build",
@@ -93,6 +93,21 @@
     "./sources/traffic": "./src/data/tomtomTiles.js",
     "./server/providers/firms": {
       "node": "./server/providers/firms.js"
+    },
+    "./server/providers/fire-perimeters": {
+      "node": "./server/providers/firePerimeters.js"
+    },
+    "./server/providers/weather": {
+      "node": "./server/providers/weather.js"
+    },
+    "./server/providers/wind": {
+      "node": "./server/providers/wind.js"
+    },
+    "./server/providers/cyclones": {
+      "node": "./server/providers/cyclones.js"
+    },
+    "./server/providers/ultra-help": {
+      "node": "./server/providers/ultra-help.js"
     },
     "./server/providers/gbfs": {
       "node": "./server/providers/gbfs.js"

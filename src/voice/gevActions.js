@@ -46,6 +46,15 @@ const PANEL_ALIASES = new Map([
   ['context right panel', 'global-context-panel'],
   ['scenes', 'scene-panel'],
   ['scene', 'scene-panel'],
+  ['llm', 'ask-panel'],
+  ['ai', 'ask-panel'],
+  ['ai risk', 'ask-panel'],
+  ['ai risk and truth', 'ask-panel'],
+  ['ai risk and truth assessment', 'ask-panel'],
+  ['risk and truth', 'ask-panel'],
+  ['risk and truth assessment', 'ask-panel'],
+  ['ask', 'ask-panel'],
+  ['ask panel', 'ask-panel'],
   ['post processing', 'pp-toggles'],
   ['hud controls', 'pp-toggles'],
   ['map stack', 'control-panel'],
@@ -55,7 +64,7 @@ const PANEL_ALIASES = new Map([
   ['sources', 'control-panel'],
 ]);
 
-const PANEL_IDS = new Set(['data-panel', 'location-bar', 'control-panel', 'cctv-panel', 'radio-panel', 'global-context-panel', 'scene-panel', 'pp-toggles']);
+const PANEL_IDS = new Set(['data-panel', 'location-bar', 'control-panel', 'cctv-panel', 'radio-panel', 'global-context-panel', 'scene-panel', 'pp-toggles', 'ask-panel']);
 const CONTEXT_MODE_ALIASES = new Map([
   ['off', 'off'],
   ['none', 'off'],
@@ -177,6 +186,20 @@ const LAYER_ALIASES = new Map([
   ['firms', 'local-firms'],
   ['fires', 'local-firms'],
   ['active fires', 'local-firms'],
+  ['fire perimeters', 'fire-perimeters'],
+  ['fire perimeter', 'fire-perimeters'],
+  ['wildfire perimeters', 'fire-perimeters'],
+  ['wind', 'wind'],
+  ['globe wind', 'wind'],
+  ['rain radar', 'weather-radar'],
+  ['radar', 'weather-radar'],
+  ['satellite clouds', 'weather-satellite'],
+  ['infrared clouds', 'weather-satellite'],
+  ['lightning', 'weather-lightning'],
+  ['lightning density', 'weather-lightning'],
+  ['cyclones', 'weather-cyclones'],
+  ['cyclone advisories', 'weather-cyclones'],
+  ['hurricanes', 'weather-cyclones'],
 ]);
 
 const CITY_ALIASES = new Map([

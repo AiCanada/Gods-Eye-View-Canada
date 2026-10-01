@@ -7,11 +7,12 @@ import {
   shouldHideCollapsedRightPanels,
 } from './rightRailPolicy.js';
 
-test('Tactical HUD hides collapsed right-rail siblings while one panel is expanded', () => {
+test('collapsed right-rail tabs stay in reach while a panel is expanded, Tactical included', () => {
+  // Owner ruling, 2026-09-27: boxes open together and scroll; the tabs never vanish.
   assert.equal(shouldHideCollapsedRightPanels({
     hudVariant: 'tactical',
     hasExpandedPanel: true,
-  }), true);
+  }), false);
 });
 
 test('collapsed launchers remain when Tactical has no expanded panel', () => {
@@ -36,9 +37,11 @@ test('desktop Display participates in Tactical exclusivity without changing mobi
   const ui = readFileSync(new URL('./ui/rightPanelRail.js', import.meta.url), 'utf8');
   const css = readStylesheet(new URL('../style.css', import.meta.url));
   assert.match(ui, /const isMobile = windowRef\.matchMedia\('\(max-width: 720px\)'\)\.matches/);
+  // Radio is not a box of the rail: it opens above the tabs without putting
+  // the rail into its one-box mode, so it is left out of this rule.
   assert.match(
     ui,
-    /!panel\.classList\.contains\('collapsed'\)\s*&&\s*\(!isMobile \|\| panel\.id !== 'pp-toggles'\)/,
+    /!panel\.classList\.contains\('collapsed'\)\s*&&\s*panel\.id !== 'radio-panel'\s*&&\s*\(!isMobile \|\| panel\.id !== 'pp-toggles'\)/,
   );
   assert.doesNotMatch(
     ui,

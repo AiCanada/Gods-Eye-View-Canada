@@ -2,6 +2,10 @@ import { keylessHudSummaryResponse } from '../../../src/hudSummaryResponse.js';
 import { enforceOptInRateLimit, openAiRateLimiter } from './rate-limit.js';
 import { readRequestBody } from '../common/request.js';
 import { OPENAI_HUD_SUMMARY_MODEL_DEFAULT } from './constants.js';
+import {
+  LOCAL_PROVIDER_CHANGED_MESSAGE,
+  localProviderTrusted,
+} from '../../../src/localIntegrity.mjs';
 
 function extractOpenAiResponseText(data) {
   if (typeof data?.output_text === 'string' && data.output_text.trim()) {
@@ -34,6 +38,13 @@ async function handleHudSummary(req, res) {
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
+  if (apiKey && !localProviderTrusted('openai')) {
+    res.statusCode = 409;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(JSON.stringify({ error: LOCAL_PROVIDER_CHANGED_MESSAGE }));
+    return;
+  }
   const keyless = keylessHudSummaryResponse(apiKey);
   if (keyless) {
     res.statusCode = keyless.statusCode;

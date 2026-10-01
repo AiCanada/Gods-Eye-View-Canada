@@ -30,6 +30,21 @@ test('admission: the cross-site simple-request shape is refused before any body 
   assert.equal(admitLlmAskRequest({ method: 'POST', contentType: 'application/json', origin: 'not a url', host: 'localhost:4173' }).status, 403);
 });
 
+test('admission: a rebound host name or a cross-site fetch is refused, even when Origin matches Host', () => {
+  // DNS rebinding: the attacker's own name now points here, so its Origin and Host agree.
+  assert.equal(admitLlmAskRequest({ method: 'POST', contentType: 'application/json', origin: 'http://rebind.evil:4173', host: 'rebind.evil:4173' }).status, 403);
+  assert.equal(admitLlmAskRequest({ method: 'POST', contentType: 'application/json', host: 'rebind.evil:4173' }).status, 403, 'no Origin');
+  assert.equal(admitLlmAskRequest({ method: 'POST', contentType: 'application/json' }).status, 403, 'no Host');
+  for (const fetchSite of ['cross-site', 'same-site', 'none']) {
+    assert.equal(admitLlmAskRequest({ method: 'POST', contentType: 'application/json', origin: 'http://localhost:4173', host: 'localhost:4173', fetchSite }).status, 403, fetchSite);
+  }
+  assert.equal(admitLlmAskRequest({ method: 'POST', contentType: 'application/json', origin: 'http://localhost:4173', host: 'localhost:4173', fetchSite: 'same-origin' }).ok, true);
+  // A name the server was configured to answer, such as a tailnet name, is still this page.
+  assert.equal(admitLlmAskRequest({ method: 'POST', contentType: 'application/json', origin: 'http://box.tail1.ts.net:4173', host: 'box.tail1.ts.net:4173', allowedHosts: ['.ts.net'] }).ok, true);
+  assert.equal(admitLlmAskRequest({ method: 'POST', contentType: 'application/json', origin: 'https://localhost:4173', host: 'localhost:4173', encrypted: true }).ok, true);
+  assert.equal(admitLlmAskRequest({ method: 'POST', contentType: 'application/json', origin: 'http://localhost:4173', host: 'localhost:4173', encrypted: true }).status, 403, 'scheme must match');
+});
+
 test('provider lookup never resolves an inherited Object member', () => {
   assert.equal(resolveLlmProvider('nvidia').id, 'nvidia');
   assert.equal(resolveLlmProvider(undefined).id, 'nvidia', 'default provider');

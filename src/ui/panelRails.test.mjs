@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  capturePanelScroll,
+  restorePanelScroll,
   layoutLeftPanelRail,
   layoutRightPanelRail,
   measurePanelNaturalHeight,
@@ -165,11 +167,15 @@ for (const side of ['left', 'right']) {
   test(`${side} mobile layout releases desktop height/position styles and labels`, () => {
     const f = fixture(side, { mobile: true });
     f.stack.classList.add('layout-focus');
+    f.stack.classList.add('layout-overlap');
     f.stack.style.setProperty(`--${side}-stack-safe-top`, '300px');
     f.first.style.setProperty(`--${side}-panel-allocated-height`, '99px');
+    f.first.style.setProperty('--panel-overlap-top', '120px');
     f.first.setAttribute('aria-hidden', 'true');
     f.run();
     assert.equal(f.stack.dataset.layoutMode, 'mobile');
+    assert.equal(f.stack.classList.contains('layout-overlap'), false);
+    assert.equal(f.first.style.getPropertyValue('--panel-overlap-top'), '');
     assert.equal(
       f.stack.style.getPropertyValue(`--${side}-stack-safe-top`),
       '',
@@ -180,16 +186,30 @@ for (const side of ['left', 'right']) {
     );
     assert.equal(f.first.getAttribute('aria-hidden'), undefined);
   });
-  test(`${side} constrained layout preserves the preferred panel and requests another pass`, () => {
+  test(`${side} constrained layout keeps every open panel open and shares the corridor, the preferred panel first`, () => {
+    // Owner ruling, 2026-09-27: boxes opened together stay open on both rails.
     const f = fixture(side);
     f.expand(f.first, 900);
     f.expand(f.second, 900);
     f.options.preferredPanelId = 'second';
     f.run();
     assert.equal(f.second.classList.contains('collapsed'), false);
-    assert.equal(f.first.classList.contains('layout-auto-collapsed'), true);
-    assert.deepEqual(f.collapsed, ['first']);
-    assert.equal(f.retries(), 1);
+    assert.equal(f.first.classList.contains('collapsed'), false);
+    assert.equal(f.first.classList.contains('layout-auto-collapsed'), false);
+    assert.deepEqual(f.collapsed, []);
+    assert.equal(f.retries(), 0);
+    const allocated = (panel) =>
+      parseFloat(
+        panel.style.getPropertyValue(`--${side}-panel-allocated-height`),
+      );
+    assert.ok(
+      allocated(f.first) > 0 && allocated(f.second) > 0,
+      'both open panels get a share of the corridor',
+    );
+    assert.ok(
+      allocated(f.second) >= allocated(f.first),
+      'the preferred (newest) panel gets at least as much',
+    );
   });
   test(`${side} hidden HUD restores automatic collapse without altering manual collapse`, () => {
     const f = fixture(side, { hud: { visible: false, variant: 'tactical' } });
@@ -201,14 +221,151 @@ for (const side of ['left', 'right']) {
   });
 }
 
+// Owner ruling, 2026-09-28: an open box may use the whole screen, drawing
+// over the tactical HUD at the top and the bottom.
+for (const side of ['left', 'right']) {
+  test(`${side} corridor ignores HUD obstacles only while a box is open`, () => {
+    const f = fixture(side);
+    const blocker = element('blocker', {
+      top: 600,
+      height: 80,
+      left: side === 'left' ? 20 : 1100,
+    });
+    f.options.obstacles = [blocker];
+    f.run();
+    const closedTop = Number(
+      side === 'left' ? f.stack.dataset.safeTopPct : f.stack.dataset.safeTop,
+    );
+    const closedBottom = Number(
+      side === 'left'
+        ? f.stack.dataset.safeBottomPct
+        : f.stack.dataset.safeBottom,
+    );
+    assert.ok(closedBottom < (side === 'left' ? 98 : 882));
+    assert.equal(f.stack.classList.contains('layout-overlap'), false);
+
+    f.expand(f.second, 900);
+    f.run();
+    assert.equal(f.stack.dataset.layoutMode, 'overlap');
+    assert.equal(f.stack.classList.contains('layout-overlap'), true);
+    assert.equal(f.stack.classList.contains('layout-focus'), false);
+    if (side === 'left') {
+      assert.equal(Number(f.stack.dataset.safeTopPct), 2);
+      assert.equal(Number(f.stack.dataset.safeBottomPct), 98);
+    } else {
+      assert.equal(f.stack.dataset.safeTop, '18.0');
+      assert.equal(f.stack.dataset.safeBottom, '882.0');
+    }
+    assert.ok(
+      Number(f.stack.dataset.safeTopPct ?? f.stack.dataset.safeTop) <=
+        closedTop,
+    );
+  });
+
+  test(`${side} overlapping boxes each keep their natural height, cascaded`, () => {
+    const f = fixture(side);
+    f.expand(f.first, 900);
+    f.expand(f.second, 300);
+    f.options.preferredPanelId = 'first';
+    f.run();
+    const read = (panel, name) => panel.style.getPropertyValue(name);
+    const allocated = (panel) =>
+      parseFloat(read(panel, `--${side}-panel-allocated-height`));
+    // 900px viewport, 2% inset each end, no collapsed tab in the flow: 864px
+    // of lane, less the one 40px cascade step.
+    assert.equal(allocated(f.first), 824);
+    assert.equal(allocated(f.second), 300, 'a short box is not padded out');
+    assert.equal(read(f.first, '--panel-overlap-top'), '0.0px');
+    assert.equal(read(f.second, '--panel-overlap-top'), '40.0px');
+  });
+
+  test(`${side} cascade puts the box in front lowest, so the one behind keeps a strip`, () => {
+    // The case the owner would hit first: open the short box, then the tall
+    // one. The tall box is in front, and if it also started at the top of the
+    // lane it would cover the short box outright — collapse button and all.
+    const f = fixture(side);
+    f.expand(f.first, 300);
+    f.expand(f.second, 900);
+    f.first.style.setProperty('--panel-raise-z', '1');
+    f.second.style.setProperty('--panel-raise-z', '2');
+    f.options.preferredPanelId = 'second';
+    f.run();
+    const top = (panel) =>
+      parseFloat(panel.style.getPropertyValue('--panel-overlap-top'));
+    assert.equal(top(f.first), 0);
+    assert.equal(top(f.second), 40, 'the box in front starts below the strip');
+
+    // Clicking the box behind swaps the slots with the stacking order.
+    f.first.style.setProperty('--panel-raise-z', '3');
+    f.run();
+    assert.equal(top(f.second), 0);
+    assert.equal(top(f.first), 40);
+  });
+}
+
+test('the map attribution still bounds an overlapping left rail', () => {
+  const f = fixture('left');
+  const credit = element('credit', { top: 820, height: 28 });
+  credit.closest = (selector) =>
+    selector === '#cesium-credits' ? credit : null;
+  f.options.obstacles = [credit];
+  f.expand(f.first, 900);
+  f.run();
+  assert.equal(f.stack.dataset.layoutMode, 'overlap');
+  assert.equal(Number(f.stack.dataset.safeBottomPct), 89.91);
+});
+
+test('a box the stylesheet hides reserves no room above the right rail floats', () => {
+  // Radio is display:none while collapsed, which is its usual state. It used
+  // to reserve the 42px a tab that has not painted yet is given, so an open
+  // box started a row lower than it had to.
+  const f = fixture('right');
+  f.second.id = 'radio-panel';
+  f.second.computed = { ...f.second.computed, display: 'none' };
+  f.second.rect = { ...f.second.rect, height: 0, bottom: f.second.rect.top };
+  f.expand(f.first, 900);
+  f.run();
+  assert.equal(f.stack.dataset.layoutMode, 'overlap');
+  assert.equal(f.first.style.getPropertyValue('--panel-overlap-top'), '0.0px');
+});
+
+test('Radio stays in the right rail flow instead of floating over it', () => {
+  const f = fixture('right');
+  f.second.id = 'radio-panel';
+  f.expand(f.first, 900);
+  f.expand(f.second, 300);
+  f.run();
+  assert.equal(f.stack.dataset.layoutMode, 'overlap');
+  assert.equal(f.second.style.getPropertyValue('--panel-overlap-top'), '');
+  // Radio holds the flow column, so the float begins below it: 300px of Radio
+  // plus the 12px row gap, and the lane it is left is what remains of the
+  // 864px between the insets.
+  assert.equal(
+    f.first.style.getPropertyValue('--panel-overlap-top'),
+    '312.0px',
+  );
+  assert.equal(
+    parseFloat(
+      f.first.style.getPropertyValue('--right-panel-allocated-height'),
+    ),
+    552,
+  );
+});
+
 test('right layout uses keyboard focus when there is no preferred panel', () => {
   const f = fixture('right');
   f.expand(f.first, 900);
   f.expand(f.second, 900);
   f.options.documentRef.activeElement = f.second;
   f.run();
-  assert.equal(f.first.classList.contains('layout-auto-collapsed'), true);
+  // The focused panel is allocated first; the other stays open beside it.
+  assert.equal(f.first.classList.contains('collapsed'), false);
   assert.equal(f.second.classList.contains('collapsed'), false);
+  const allocated = (panel) =>
+    parseFloat(panel.style.getPropertyValue('--right-panel-allocated-height'));
+  assert.ok(
+    allocated(f.second) >= allocated(f.first) && allocated(f.first) > 0,
+  );
 });
 
 test('right layout retains Display allocation during measurement and caps restored scroll', () => {
@@ -268,4 +425,40 @@ test('natural height includes visible content, margins and wrapper chrome, exclu
     measurePanelNaturalHeight(panel, (node) => node.computed),
     100,
   );
+});
+
+test('a layout pass puts every scroller back where the operator left it', () => {
+  // Owner ruling, 2026-09-28: a box being read must not jump to the top. The
+  // pass has to drop each box's allocated height to measure its natural one,
+  // and with the height gone the box stops overflowing, so the browser sends
+  // its scroller to 0 — which is what the capture/restore pair undoes.
+  const scroller = {
+    scrollTop: 420,
+    scrollLeft: 0,
+    querySelectorAll: () => [],
+  };
+  const quiet = { scrollTop: 0, scrollLeft: 0, querySelectorAll: () => [] };
+  const panel = {
+    scrollTop: 0,
+    scrollLeft: 0,
+    querySelectorAll: () => [scroller, quiet],
+  };
+  const marks = capturePanelScroll([panel]);
+  assert.deepEqual(
+    marks.map(({ top }) => top),
+    [420],
+    'only a scroller that had been moved is worth remembering',
+  );
+  // The browser clamps it while the height is off the box.
+  scroller.scrollTop = 0;
+  restorePanelScroll(marks);
+  assert.equal(scroller.scrollTop, 420);
+  assert.equal(quiet.scrollTop, 0, 'a box at the top is left alone');
+  // A second restore with nothing to do must not touch anything.
+  scroller.scrollTop = 500;
+  restorePanelScroll(marks);
+  assert.equal(scroller.scrollTop, 420);
+  assert.deepEqual(capturePanelScroll([]), []);
+  assert.deepEqual(capturePanelScroll(null), []);
+  restorePanelScroll(null);
 });

@@ -7,6 +7,7 @@ import {
   collectDeviceFeedUpdate,
   deviceFeedCountText,
   deviceFeedStateText,
+  deviceReportInstructions,
   initDeviceFeedSetup,
 } from './deviceFeedsSetup.js';
 
@@ -122,6 +123,37 @@ test('card text', () => {
   assert.equal(deviceFeedStateText({ state: { ok: false, error: 'HTTP 401' } }), 'NO POSITION · HTTP 401');
   assert.equal(deviceFeedStateText({ urlSet: true }), 'Not asked yet');
   assert.equal(deviceFeedStateText({ pictureSet: true }), 'Picture only');
+});
+
+test('the setup card says a help link carries the location alone, with Network on and SEND HELP pressed', () => {
+  // A token carries the location poll alone: no page, no message box. It
+  // shares only while its Network is on and its package's call for help is
+  // on. A stored anytime flag changes nothing.
+  const lines = deviceReportInstructions(
+    { id: 'security-home', reportKey: 'k'.repeat(43) },
+    { reportAddresses: ['http://100.64.1.2:44173'] },
+    { kindId: 'security' },
+  );
+  const share = lines.find((line) => line.startsWith('SHARE A HELP LINK'));
+  assert.ok(share, 'a security package card points at SHARE ENCRYPTED ULTRA TOKENS');
+  assert.match(share, /SHARE ENCRYPTED ULTRA TOKENS/);
+  assert.match(share, /works only while its Network is on and you have pressed SEND HELP/);
+  assert.match(share, /and nothing else\. With Network off it opens nothing/);
+  assert.equal(share.includes('ANYTIME'), false);
+  assert.doesNotMatch(share, /help message/);
+  // The README's share-token bullet tells the same story.
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  const start = readme.indexOf('- Share help tokens (');
+  const end = readme.indexOf('- The help network', start);
+  assert.ok(start >= 0 && end > start, 'the README keeps its share-token bullet');
+  // Read as one line: the README wraps its sentences anywhere.
+  const bullet = readme.slice(start, end).replace(/\s+/g, ' ');
+  assert.match(bullet, /SHARE ENCRYPTED ULTRA TOKENS/);
+  assert.equal(bullet.includes('ANYTIME'), false);
+  assert.match(bullet, /only while its Network is on and you have pressed SEND HELP/);
+  assert.match(bullet, /There is no page and no message box\./);
+  assert.match(bullet, /never shown to a token holder/);
+  assert.doesNotMatch(bullet, /500-character/);
 });
 
 test('one card per kind; add, save, and the saved login is never shown', async () => {

@@ -181,16 +181,21 @@ test('no unchanged Realtime tool definition drifts silently', () => {
     'set_map_stack',
     // 2026-09-12: the Saint John preset joins every locationId enum.
     'control_radio',
+    // 2026-09-28: the fire perimeter, wind and weather layers join the layer
+    // enums and the common-name mapping (fire-perimeters also joins analyst_query).
+    'set_layer_visibility',
+    'show_data_layers_menu',
+    'analyst_query',
   ]);
   const unchanged = realtimeTools()
     .filter((tool) => !TOUCHED.has(tool.name))
     .sort((a, b) => a.name.localeCompare(b.name));
-  assert.equal(unchanged.length, 20);
+  assert.equal(unchanged.length, 17);
   const digest = createHash('sha256')
     .update(JSON.stringify(unchanged))
     .digest('hex')
     .slice(0, 16);
-  assert.equal(digest, '29be24cc41a941a2', 'an unchanged Realtime tool definition drifted');
+  assert.equal(digest, 'aee8132f891593e7', 'an unchanged Realtime tool definition drifted');
 });
 
 test('Radio volume and mission speed share the Sharpen slider visual language', () => {
@@ -214,11 +219,14 @@ test('Radio volume and mission speed share the Sharpen slider visual language', 
   assert.doesNotMatch(css, /#space-mission-panel \[data-mission-replay-speed\]::-webkit-slider-thumb/);
 });
 
-test('Radio is nested inside Context with separate disclosure and power controls', () => {
-  const contextStart = html.indexOf('id="global-context-panel"');
-  const radioStart = html.indexOf('id="radio-panel"');
-  const contextEnd = html.indexOf('\n  </aside>', contextStart);
-  assert.ok(contextStart >= 0 && radioStart > contextStart && radioStart < contextEnd);
+test('Radio is the right rail\'s last member, opened from Context, with separate disclosure and power controls', () => {
+  // Owner ruling, 2026-09-27: Radio is not a box of the dashboard (no tab). It
+  // is the rail's last member, shown below the Scenes tab only when selected.
+  const railStart = html.indexOf('<aside id="right-context-rail">');
+  const sceneStart = html.indexOf('<div id="scene-panel"');
+  const radioStart = html.indexOf('<section id="radio-panel"');
+  const railEnd = html.indexOf('\n  </aside>', railStart);
+  assert.ok(railStart >= 0 && radioStart > sceneStart && radioStart < railEnd);
   assert.match(html, /id="radio-panel"[^>]*data-panel-id="radio-panel"/);
   assert.match(html, /aria-label="Radio playback"/);
   assert.match(html, /id="context-radio-toggle-btn"[^>]*aria-expanded="false"[^>]*aria-controls="context-radio-mini"/);
@@ -269,8 +277,10 @@ test('Radio is nested inside Context with separate disclosure and power controls
   assert.match(radioControlsSource, /classList\.remove\('radio-broadcasting'\)/);
   assert.match(radioBindings, /this\.radio\.getTunerStations\(750\)/);
   assert.match(radioBindings, /radioTunerPointerPosition\(/);
-  assert.doesNotMatch(css, /#right-context-rail\s*>\s*#radio-panel/);
-  assert.match(css, /#global-context-panel #radio-panel\.collapsed/);
+  // Radio is not a box of the dashboard: the rail's last member, shown below
+  // the Scenes tab only when selected (owner ruling, 2026-09-27).
+  assert.match(css, /#right-context-rail\s*>\s*#radio-panel/);
+  assert.doesNotMatch(css, /#global-context-panel #radio-panel\.collapsed/);
   assert.doesNotMatch(css, /\.context-radio-dock\.active:hover \.context-radio-mini/);
   assert.doesNotMatch(css, /\.context-radio-dock\.active:focus-within \.context-radio-mini/);
   assert.match(css, /#right-context-rail #global-context-panel:not\(\.collapsed\) \.context-mode-view,[\s\S]*?#right-context-rail #global-context-panel:not\(\.collapsed\) #radio-panel\s*\{[\s\S]*?flex: 0 0 auto;/);
@@ -299,10 +309,14 @@ test('panel collapse is presentation-only and Radio exposes explicit voice playb
   assert.match(enableMethod, /toggleRadio\(this\._contextRadioMiniEnableBtn\)/);
   assert.match(disclosureBindings, /contextRadioMiniCloseBtn[\s\S]*?setRadioDisclosure\(false, \{ returnFocus: true \}\)/);
   assert.match(disclosureBindings, /contextRadioDetailsBtn[\s\S]*?setPanelCollapsed\('radio-panel', false, \{ explicit: true \}\)/);
+  // The header's radio icon opens the radio controls where they live (below
+  // the Scenes tab) and closes them again; it never opens the compact popover
+  // under Context (owner ruling, 2026-09-27).
   assert.match(
     disclosureBindings,
-    /contextRadioToggleBtn[\s\S]*?!contextPanel\.classList\.contains\('collapsed'\)[\s\S]*?setRadioDisclosure\(false\)[\s\S]*?setPanelCollapsed\('radio-panel', false, \{ explicit: true \}\)[\s\S]*?_revealRadioPanelInsideContext/,
+    /contextRadioToggleBtn[\s\S]*?setRadioDisclosure\(false\);[\s\S]*?setPanelCollapsed\('radio-panel', open, \{ explicit: true \}\)/,
   );
+  assert.doesNotMatch(disclosureBindings, /contextRadioToggleBtn[\s\S]*?_revealRadioPanelInsideContext/);
   assert.doesNotMatch(disclosureBindings, /setPanelCollapsed\('radio-panel', !/);
   assert.match(ui, /setAttribute\('aria-expanded', String\(/);
   assert.match(readFileSync(new URL('./ui/shellFeedback.js', import.meta.url), 'utf8'), /\.hidden = !/);

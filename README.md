@@ -221,7 +221,7 @@ The cockpit even carries its own briefing strip: nearby live signals, regional h
 
 ## 🎙️ Talk to It
 
-> Voice needs an **OpenAI key**. Without one the entire app still runs — the mic button just reports voice is unavailable. The same key drives the **AI HUD summary**: a terse, five-word intelligence-style readout of the current view that regenerates as you move.
+> Voice starts on an **OpenAI key**. The mic's provider control also runs the same commands through Claude, a custom endpoint, OpenRouter, Grok, or NVIDIA, using the keys already saved for Ask. Without a key for the provider you picked, the app still runs — the mic button just reports voice is unavailable. The OpenAI key still drives the **AI HUD summary**: a terse, five-word intelligence-style readout of the current view that regenerates as you move.
 
 Click **GEV MIC**, grant the microphone, and just talk. This is more than a voice-controlled remote:
 
@@ -230,6 +230,7 @@ Click **GEV MIC**, grant the microphone, and just talk. This is more than a voic
 - **👁️ Visual grounding.** At street level, it reads a viewport screenshot to identify legible signage and building names, and is instructed never to hallucinate labels.
 - **🎬 Cinematic framing.** *"Show me the planes overhead"* pulls the camera back, angles it, and frames the live traffic like a director.
 - **🔒 Honest and secure.** The agent only confirms actions that succeeded. Your `OPENAI_API_KEY` never touches the browser; the client only gets a short-lived session token.
+- **🎙️ Same commands, more voices.** Grok is a live voice socket; the xAI key stays on this machine and the browser only receives a short-lived secret. Claude and NVIDIA use this browser's speech. OpenRouter transcribes and speaks on its audio routes. A custom endpoint does that when it has audio routes, and this browser's speech when it does not. Those five do not use the OpenAI spend cap, and a street-level screenshot stays on the OpenAI session.
 
 Twenty-eight tools, four jobs — the commands below come straight from the product's voice test suite and tool playbook:
 
@@ -398,14 +399,158 @@ snapshot address, use username + password.
 - An Ultra Security Package (POWER UP → YOUR DEVICES) follows a tracker or a
   phone on the map and can save what the map knows within 50 km of it, under
   the git-ignored `config/device-recordings/`, never served as a file. A phone
-  is reached only through an app installed on it, never by its number.
+  is reached only through an app installed on it, never by its number. The
+  simplest way is "Reports to this app": the phone's tracking app (Traccar
+  Client, OwnTracks, GPSLogger, Overland) sends positions to a small listener
+  on port 44173 (`DEVICE_REPORT_PORT`) that serves that one route and nothing
+  else, opens only while such a device is saved, and admits a report by the
+  device's own 256-bit key alone. Keep that port inside your network or a VPN
+  (Tailscale, WireGuard); never forward it, or the app's port, on your router.
+  Windows Firewall needs an inbound rule for it (see `.env.example`): the
+  Public profile, which a VPN adapter falls under, blocks node.exe by default.
+  A device with a recording also shows its saved route on the map as a line
+  under its live trail (`/api/device-feeds/track/<id>`, positions only).
+- Share help tokens (Ultra Security Package box → SHARE ENCRYPTED ULTRA TOKENS) are
+  256-bit bearer secrets minted on this machine and kept AES-256-GCM sealed
+  under the git-ignored, owner-only `config/ultra-tokens.key` in
+  `config/ultra-tokens.json`, never served as files. A token carries one
+  thing: the location poll at `/ultra/help/<token>/network` on the same
+  listener as the phone link (LAN or Tailscale). It works only while its
+  Network is on and you have pressed SEND HELP for that token's package:
+  then the holder's own GEVC receives this phone's position and the incident
+  classification, and nothing else. There is no page and no message box.
+  Until SEND HELP the poll answers only "not now"; a token with Network off,
+  and every other path under a token, answers the same 404 as an unknown
+  link. A stored flag that used to keep a token open does not open it. A
+  token published to the group directory is location only too. Tokens are
+  compared in constant time and rate-limited per address. Optional skill sets
+  (Doctor, Paramedic, First Responder, Lifeguard, Firefighter, Search and
+  Rescue, Brave, Strong, Crisis Counselor, Enforcer, Animal Control, HAZMAT,
+  Ranger, plus up to five custom names, or none) are written into the token
+  string. A long custom name is shortened to the words the link can carry,
+  and two that would share one code are refused. Encrypt seals that list
+  inside the string under the token key so
+  the link does not spell it out. No skills and Encrypt off leaves the short
+  `uht1.` plus 43 characters. While this machine's token key still opens the
+  seal, editing a token's flags in the token file and leaving the old check
+  value makes the link answer 404 and marks the row tampered. Skill names are
+  taken from the opened token. The token file keeps an empty skill list. At
+  most 200 help tokens are kept. Deleting or replacing the key file does not
+  stop existing links while that key opens nothing in the file: they still
+  admit by hash. A second copy of the same token stays in the file, and the
+  link follows the one whose seal still opens. Deleting one token's check
+  while another token still has its check answers 404 and marks that row
+  tampered; the check is left missing. A file with no checks yet still
+  admits. Minting a token under a replacement key stops the older links.
+  The helpers file has a check over your number, each saved helper, and each
+  stored call, not the phone model. Change the number or plant a call and
+  leave the old check, while this key opens a seal, and that file is not used
+  for texts or for reloading a call; the box says so, and the next save
+  replaces it with what the box is showing. A help message whose check fails
+  is not shown or read aloud when another message still has a check. A helpers
+  file or an inbox with no check yet is still used. Wiping every helpers-file
+  check or every message check looks like that older file. Replacing the key
+  so it opens nothing still trusts them.
+  Your number (SAVE MY #) is never shown to a token holder: it is where
+  calls for help from your home list are texted, when an SMS relay is set
+  up. REVOKE stops a link at its next request. The token travels in the URL
+  like the phone key, so keep the link private; the encryption defends
+  against a copied or committed file, not an account that can write to this
+  checkout (which could change the code itself), so a shared PC is treated
+  as a compromised one. The desktop page never sends an SMS itself: texts go
+  from this machine's server through the relay you set up, and a text-back
+  or OPEN IN SMS link only opens a messaging app (the phone's own SMS app; on
+  the desktop, whatever handles sms: links, such as Windows Phone Link).
+- The help network (Ultra Security Package box → SEND HELP and HELP NETWORK)
+  gives a token holder your position only while that token's Network is on
+  and you have pressed SEND HELP, and only your name, the coordinates, the two
+  times and one incident word: their GEVC polls `/ultra/help/<token>/network`
+  on your listener every 20 s and gets `{"released":false}` until then. Their
+  GEVC texts only its own owner's SAVE MY # number, never yours, and your own
+  link is never in your own home list. Tokens minted before this read NETWORK
+  off.
+  Your home list of other people's links lives in the git-ignored, owner-only
+  `config/ultra-network.json`, each of their tokens AES-256-GCM sealed under the
+  same `config/ultra-tokens.key`, never served as a file and never painted or
+  logged (rows show a host, never a link); only https `*.ts.net` and
+  `100.64.0.0/10` addresses are polled, re-checked immediately before each call,
+  with no cookie, no Referer, no Authorization and no redirect followed, and
+  every answer is treated as hostile. Each home-list entry has a check over
+  its id, the address it is polled at, and the token's hash. Change that
+  address and leave the old check, and the token is not sent there; the row
+  says TAMPERED, and adding another link does not fill the check in. Deleting
+  one entry's check while another still has one does the same. A home list
+  with no checks yet is still polled, and the next owner write fills them in
+  from whatever the file says then. Wiping every home-list check looks like
+  that older file, so a changed address is trusted on the next poll. The
+  poller never writes the home list. The directory address and its write
+  token, and the SMS relay (Twilio and a gateway saved beside it), have a
+  check in `config/ultra-outbound.json` under the same key. That file holds
+  only the checks. It is written when you save the directory from the box or
+  the relay from POWER UP. A status poll does not write it, and the poller
+  never writes it. Until that save there is no check and the value is still
+  used. Change the directory address or the write token and leave the old
+  check, and UPDATE HOME LIST and PUBLISH MY TOKEN refuse and nothing is
+  fetched or written. Change the relay, including a gateway saved while
+  Twilio is the one sending, and TEST SMS and help texts refuse until you
+  save the relay again from POWER UP. Deleting that check file, or wiping
+  every check in it, looks like a setting that was never saved, so the new
+  value is trusted. One section with no check, while another has one, is
+  still trusted. A key that opens nothing still trusts them. Replacing the
+  key and then minting a token makes the old checks fail until you save that
+  setting again. When its check still matches, the group directory is read
+  only when you click UPDATE HOME LIST, over https, and a merge never deletes an entry and
+  never follows a link whose host changed (it says MOVED instead, until the
+  directory agrees again; a link you added by hand is never switched off by
+  it). One pull adds at most eight links to any one machine, so rows a
+  directory invents for someone's machine cannot use up the requests that
+  machine allows yours. A call you are receiving ends when it ends on the
+  other machine's clock, even if that machine drops off the tailnet first.
+  What you publish to the directory is location only: its holders get the
+  position poll and nothing else — no page, no message box, no number — even
+  while you are asking for help, and the link carries your tailnet address
+  (PUBLISH refuses without one). No holder is shown your number while a call
+  for help is on. An SMS relay
+  (POWER UP → SMS RELAY: Twilio, or your own https gateway) is optional, costs
+  you money per message at your provider's rate, and is the only thing here that
+  sends a text by itself. POWER UP refuses a value the relay could never use (a
+  from-number without + and the country code, a gateway that is neither https
+  nor http to a `100.64.x.x` Tailscale address, a user:password in its address)
+  and does not count a hand-edited one as set (its row keeps REMOVE and marks
+  the value saved but not usable). Its values, and the GitHub write
+  token, live in `.env`, are never printed and never appear in the box, which
+  shows only a provider
+  word, a host and whether it is configured. Nothing is ever addressed to the
+  phone of the person asking for help: a received call's OPEN IN SMS link has no
+  recipient.
 - Your drones, robots, marine drones and GPS trackers (POWER UP → YOUR DEVICES)
   follow the same rules: addresses and logins stay in the git-ignored
   `config/device-feeds.json`, the routes answer only this machine, and the map
-  is told a name and a position, never an address or a login.
+  is told a name and a position, never an address or a login. A phone
+  package's key, address, picture address and login have a check in the same
+  `config/ultra-outbound.json`. Change them and leave the old check, and the
+  phone is not admitted and its position and picture are not fetched until
+  you save the package again. Where the map last put the phone is not part of
+  the check. A drone or a tracker is not. Those devices have their own check
+  in `config/local-integrity.json`, under `config/local-integrity.key`. Change
+  a drone, robot, marine drone, or tracker's address, picture address, or
+  login and leave the old check, and it is not fetched and a report is refused
+  until you save it again. Where the map last put it is not part of that check.
+  Saving a device also checks the address a phone is told to report to, the
+  public name, and the listener certificate paths. Change one and leave the old
+  check, and after the next start that address is left off the card and the
+  certificate is not loaded until you save a device again. The port and the
+  interface are not part of that check.
 - Private camera settings live in the git-ignored, owner-only
   `config/private-cameras.json`, which the server never hands out as a file.
   POWER UP shows only whether a password or token is saved, never its value.
+  A camera's address, login, certificate pin, and paired relay have a check
+  in `config/local-integrity.json`. Change them and leave the old check, and
+  the picture is not fetched and the relay is not admitted until you save the
+  camera again. Where the map last put the camera is not part of the check.
+  Saving a camera also checks `config/private_cctv_feed.local.json`. Change
+  that site file and leave the old check, and a picture is not fetched until
+  you save a camera again. A relay that is already paired still answers.
 - The private camera routes answer only this machine, and sites can be saved
   or paired only under the dev server.
 - The relay extension sends GEV only image bytes, a camera name and a clip
@@ -455,7 +600,10 @@ See [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md) for the authoritative runti
 Use **POWER UP → Provider Settings** to add keys. The tables below explain what
 each provider enables; none is required to start. See the
 [setup instructions](#then-power-it-up--in-the-app-not-in-a-file) for storage
-and configuration details.
+and configuration details. After a key is saved from POWER UP, a later hand
+edit of that key, or of the address it is sent to, is not used until you save
+it again from POWER UP. A later hand edit of which OpenSky sign-in is used is
+not used until you save OpenSky again from POWER UP.
 
 ### Choose the capabilities you want
 

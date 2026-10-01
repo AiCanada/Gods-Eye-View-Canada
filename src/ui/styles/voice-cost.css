@@ -34,6 +34,17 @@
     background var(--transition-fast);
 }
 
+.gev-voice-provider-btn {
+  min-width: 2.85rem;
+  padding: 0 0.16rem;
+  letter-spacing: 0.02rem;
+}
+
+.gev-voice-tier-btn[hidden],
+.gev-voice-cost-value[hidden] {
+  display: none;
+}
+
 .gev-voice-tier-btn:hover {
   color: var(--text-primary);
   border-color: rgba(0, 212, 255, 0.6);

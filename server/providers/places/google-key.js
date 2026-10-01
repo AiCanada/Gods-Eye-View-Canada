@@ -1,4 +1,5 @@
 import { resolveGoogleServerKey } from '../../../scripts/google-server-key.mjs';
+import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
 
 /**
  * Optional Google place context is an empty capability when no key is present,
@@ -22,5 +23,6 @@ export function keylessGooglePlacesResponse(apiKey) {
  * falls back to the shared browser key and nothing changes.
  */
 export function googleServerApiKey() {
+  if (!localProviderTrusted('google')) return '';
   return resolveGoogleServerKey(process.env);
 }

@@ -5,12 +5,13 @@ import {
   coalesceProxyRequest,
 } from '../common/http.js';
 import { launchLibraryRecentUrl } from '../../../src/data/spaceProviderRequests.js';
+import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
 
 export const LL2_CACHE_TTL_MS = 15 * 60_000;
 
 /** Build LL2 request headers without exposing its optional token client-side. */
 export function launchLibraryRequestHeaders(token = process.env.LL2_API_TOKEN) {
-  const normalized = String(token || '').trim();
+  const normalized = localProviderTrusted('launch') ? String(token || '').trim() : '';
   return {
     Accept: 'application/json',
     ...(normalized ? { Authorization: `Token ${normalized}` } : {}),

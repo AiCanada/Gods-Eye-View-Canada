@@ -1,5 +1,283 @@
 # God's Eye View Current State
 
+## Ultra Security Package
+
+The left stack has an ULTRA SECURITY PACKAGE panel, collapsed like Data Layers.
+Camera buttons are limited to the cameras of the selected handset and are sent
+as one command to the paired phone. Find Ultra Help refuses a missing, stale,
+unclassified, or just-sent incident. Help is published police and fire stations
+near the fix, plus numbers saved on this machine. Send Ultra Help is a second
+press and only texts numbers that were on that list. CCTV is not part of this path.
+
+Share encrypted Ultra tokens. The box has HELP MESSAGES under the status line (unread
+count, read-aloud tick, READ / TEXT BACK / REMOVE, MARK ALL READ) and SHARE
+ENCRYPTED ULTRA TOKENS at the bottom (SAVE MY #, GENERATE NEW TOKEN with Network,
+the holder name field "Name of Ultra Token Holder", optional skill sets under
+"Your Gifts or Skills Encrypted into Token String" — the thirteen named ones, up to five custom
+names under "Your Custom Gifts or Skills Encrypted into Token String", shortened to the words the link can carry, or none — and Encrypt,
+which seals those skills inside the token string; a token
+with neither skills nor Encrypt stays `uht1.` plus 43 characters, a reveal
+box with COPY LINK / COPY TOKEN / HIDE that only the SHARE click paints,
+per-token SHARE / NETWORK / REVOKE, revoked rows dimmed
+with REMOVE, RESET
+TOKENS when the store or key is unusable). A token carries one route on the
+report listener: the location poll `/ultra/help/<token>/network`. There is no
+holder page, no `/status` and no `/message` (owner ruling, 2026-10-01): those
+paths, any other path under a token, and the poll on a token with Network
+off, answer the uniform 404 without spending a miss. With Network on the
+poll answers `{"released":false}` until SEND HELP, then exactly name, lat,
+lon, at, until and incident until STAND DOWN; that poll is how another GEVC
+receives the position and the incident classification. A stored anytime
+flag is ignored and new tokens store it false; SMS and Voice are still
+stored (the token's check covers them) but open nothing, and a new token
+stores them off. The POWER UP setup card for a security package says the same.
+Admission is by hash in constant time with one uniform 404, 60 requests and 20
+misses per address a minute. Only the tailnet is answered: a 100.64.0.0/10 or
+fd7a:115c:a1e0::/48 client, behind tailscale serve the one tailnet address it
+forwards, or this machine with no proxy in between, and only for a Host a
+tailnet poll sends (a `*.ts.net` name, an address, or localhost). A LAN
+neighbour holding a published token, a Funnel visitor, a chain of proxies and
+a DNS-rebinding page get that 404 before any budget, read or log line
+(`ultraHolderReachable`). A raw TCP forward in front of the listener (such as
+a TCP-mode Funnel) hides the client and would look like this machine, so none
+should be put there. The phone routes `/ultra/<key>/…` budget unknown keys
+at 20 a minute per address (429 after) before reading the device store; a key
+the last read named still passes to the full check, so a new link works from
+an address whose old tab still asks with the retired key. Keys are compared in
+constant time. The report listener holds at most 256 connections and says a
+refused report once a minute per address, with forwarding headers shown only
+from a loopback socket and cut to 64 characters.
+While the token key still opens the seal, a flag change in the token file is
+that same 404 and does not spend a miss; the row says tampered and offers only
+revoke and remove. A second copy of a hash stays in the file, and the link
+follows the record whose seal opens. A deleted check beside a token that still
+has one is that same 404 and is left missing. A file with no checks yet still
+admits. Skill names are read from the opened token. The token file
+keeps an empty skill list. At most 200 tokens are kept. A missing or replaced
+key still admits by hash while it opens nothing in the file; minting under
+that key stops the older links.
+Tokens live sealed in `config/ultra-tokens.json` under `config/ultra-tokens.key`,
+the inbox (calls received from the home list, and any help messages kept
+from before the message box went) in `config/ultra-inbox.json`, the owner's
+number in `config/ultra-help.json`. An inbox row whose check fails is not shown or
+read aloud when another row still has a check, or when a seal on this
+machine opens; a file with no row checks yet is still shown. The phone link page's 1 s poll now receives
+`{ command, notify }`: a card vibrates, is spoken once the page has been
+tapped (Sound on, or any tap outside the SEND HELP row), and is listed with Map
+and Text back / Open in SMS links (ten cards kept; the card just shown and
+the newest SMS card on screen are the last to go, and once this phone's call
+ends its plea card ages out like any other) — except while this phone's own call for help
+is on, when the page never speaks (what it was saying stops) and, for a THREAT,
+never vibrates — before any camera
+command in the same answer is applied. The owner routes (`/api/ultra-help/tokens`,
+`/number`, `/inbox`) answer only this machine and refuse edits under preview.
+`/api/ultra-help/picture` and `/live` are the newest phone's picture and
+stream, for the box. With a package's public id after them
+(`/picture/device-<package id>`, `/live/device-<package id>`) they are that
+package's phone alone: each package's map card asks for its own, so two
+packages never show each other's camera. Each frame is written to a live view
+whole; a view whose socket is still behind skips frames until it drains, at
+most 16 views stay open (a 17th closes the oldest), and a phone may upload 25
+pictures a second. A picture is served as the type its first bytes are (JPEG,
+PNG or WebP), and only when the upload also named one of those; every Ultra
+answer carries `Cross-Origin-Resource-Policy: same-origin`. The phone's daily
+recordings and `last-report.json` live under `config/device-recordings/`,
+which the first write of a process (and the first after the folder is made
+anew) restricts to this account, SYSTEM and Administrators, inherited by every
+file in it (`hardenPrivateFolder`; 0700 elsewhere). A folder that cannot be
+restricted is said once and still written.
+The box's rows (help messages, tokens, the home list, saved helpers, the phone
+link) are compared one by one, and only a row whose text or buttons changed is
+replaced, so the three-second poll keeps keyboard focus and clicks on the
+others (a call's distance changing repaints that call's row alone); a button
+or link focused in a replaced row is focused again in its new row, without
+scrolling the box. An action's sentence on the status line (a
+refusal, SAVE DIRECTORY's answer, or HELP NOT SENT when the dev server did not
+answer; nothing is retried by itself) stays fifteen seconds through the polls,
+failed ones included.
+
+Help network. The box has SEND HELP under the camera link (SEND HELP /
+EXTEND HELP, with STAND DOWN always beside it and a package choice when more
+than one package is saved; a new press takes the incident from the FIND HELP
+select, EXTEND keeps the call's own; a STAND DOWN with no call on ends nothing,
+and an answer with no call running on the machine puts STOOD DOWN · NO CALL
+FOR HELP IS ON on the status line) and
+HELP NETWORK under SHARE ENCRYPTED ULTRA TOKENS (SAVE MY NAME, SAVE DIRECTORY, PUBLISH MY
+TOKEN, UPDATE HOME LIST, CHECK NOW, ADD TO HOME LIST, rows with RENAME /
+REMOVE, the SMS relay line and TEST SMS); GENERATE NEW TOKEN (it reads GENERATING… while the token is made and GENERATED just after) gains a Network tick and
+token rows a NETWORK ON / NETWORK OFF button, off for anything minted earlier.
+One press releases the phone's position and one of threat / fire / medical /
+other for four hours, until STAND DOWN; the phone link page has the same press
+behind two taps and `POST /ultra/<key>/help`, and its STAND DOWN is always
+shown too (a tap with no call on ends nothing and says it stood down). Each
+package has its own call
+(`releases` in `config/ultra-help.json`), so a press or STAND DOWN for one
+never touches another's, and removing a package ends its call. A new press is
+refused (409) when that package's last position is more than 20 minutes old,
+the same rule as Find Ultra Help; EXTEND of a running call never is, and moves
+the answer's `at` so no receiver times an extended call out. The SMS line says
+what happened to each helper's text (SENDING, SMS SENT, SMS SENT 2/3 · 1 NOT
+SENT, SMS FAILED: …, SMS NOT SENT: DAILY / HOURLY LIMIT); a failed text can be
+tried again a minute later by EXTEND HELP or a new press (nothing retries it
+by itself), and gives back its place in the day's and the hour's count,
+except a timeout, which may have gone and keeps it. After a full
+`npm run dev` restart a call reloaded from the file reads SMS: NOT KNOWN SINCE
+RESTART (what was texted is memory only) until EXTEND HELP. Of fifty texts a
+day the last twenty, a whole PREDEFINED HELP # list, are kept for your own
+call, so friends' calls and TEST SMS stop at thirty, and at forty of a
+provider host's sixty an hour. A refused write of `config/ultra-help.json`
+never refuses SEND HELP or STAND DOWN: the terminal says so once, and the
+box's status poll, the phone's own poll or the home-list poller's tick writes
+it again, no more often than every 15 s, so a STAND DOWN made on the phone
+with no GEV tab open lands too. A dev-server restart in between (POWER UP
+save, SAVE DIRECTORY) keeps memory and never merges the file back over it; a
+full `npm run dev` restart while the file still refuses the write reloads
+the call the file holds. A helpers file that cannot be read (a byte-order
+mark is fine) is never written over: saving helpers, the number or the phone
+model answers 409 until it is fixed by hand, while SEND HELP and STAND DOWN
+still work; once it reads again the call it holds is loaded, except for a
+package pressed meanwhile. A helpers file whose check fails, while this key
+opens a seal, is not used for texts or for reloading a call. The box says
+the helpers file was changed and is not being used, and the next save
+replaces it with what the box is showing. A file with no such check is still
+used. The check covers the number, the helpers and the stored calls, not the
+phone model. A holder's own GEVC polls
+`/ultra/help/<token>/network` every 20 s and gets `{"released":false}` until
+then, else exactly name, lat, lon, at, until and incident; a token with the
+flag off gets the uniform 404 without spending a miss. What is left of a call
+is measured on the peer's clock (the HTTP Date header on its answer), so the
+row ends when the call does even if that machine drops off the tailnet, and
+two links to one call (same machine, same window end) raise one row, also
+after a restart; when the link carrying that row stops hearing the call, the
+row moves to the link that still does and ends with it. Each
+received release is one HELP MESSAGES row of kind `release` (place, time,
+distance, the locally composed plea, READ / OPEN IN SMS with no recipient /
+MAP / REMOVE), spoken aloud once its street is known (the row shows at once
+with coordinates; the voice waits six seconds at most, while `/status` marks
+the row `placing`), popped on the receiver's phone link page, and
+pinned amber on the Your Devices layer through `ultraNetworkPins()` in
+`/api/device-feeds/positions` (memory only and never followed; a package of yours
+with RECORD on can still capture it among the surroundings it saves under
+`config/device-recordings/`). The home list is
+`config/ultra-network.json`, peers' tokens sealed under
+`config/ultra-tokens.key`, written only by owner actions, never by the poller,
+and never served; poll targets are only https `*.ts.net` or `100.64.0.0/10`,
+five seconds, 4 KiB, no redirect, no credential, four a tick, rising to sixteen
+in flight on a long list, oldest-due first, backing off to
+ten minutes. Each home-list entry's check covers its id, the address it is
+polled at, and the token's hash. A rewritten address whose old check is left
+in place is not polled, and the row says tampered; a later add does not fill
+a missing check in. A home list with no checks yet is still polled, including
+an address changed after every check was wiped. Pasting a copy of an entry
+above the real one is not polled, and the real later row stays gone until it
+is removed and added again. The poller never writes the home list.
+The directory address and its write token, the SMS relay (Twilio and a
+gateway saved beside it), and each phone package's key, address, picture
+address and login have a check under `config/ultra-tokens.key`, kept in
+`config/ultra-outbound.json`. That file holds only the checks. It is written
+when you save the directory from the box, the relay from POWER UP, or a
+device. A status poll does not write it, and the home-list poller never
+writes it. Until that save, there is no check and the value is still used.
+A changed directory is not read and is not published. A changed relay is not
+used. A changed phone package is not admitted and is not fetched; a
+place-only edit still is. A drone or a tracker is not part of the check. A
+check file that cannot be read is left as it is, and while this key opens a
+seal the directory, the relay and the phone are not used. Deleting the file
+trusts the values. A section with no check beside one that has a check is
+still trusted. Replacing the key and minting fail-closes the old checks
+until that setting is saved again. A key that opens nothing still trusts
+them. A save while the key file is missing leaves that section's check off.
+`POST /api/ultra-help/release` and `/network` answer this machine
+only and refuse edits under preview. When its check still matches, the
+directory (`ULTRA_DIRECTORY_URL`, https
+only; a Hugging Face file page or download address is read from its `/raw/`
+address, with no Hugging Face token, so that file must be public) is read on
+UPDATE HOME LIST and written on PUBLISH MY TOKEN through the
+GitHub contents API with `ULTRA_DIRECTORY_WRITE_TOKEN`, else copied or emailed;
+a merge adds and renames but never removes, and flags a directory entry MOVED
+(cleared when the directory agrees again; a manual entry is never switched
+off, the disagreement only counted); a call running through an entry flagged
+MOVED or NOT IN DIRECTORY is followed at its old base until it ends, and a
+pull adds at most eight links to any one machine
+(`ULTRA_NETWORK_HOST_ENTRY_LIMIT`), so invented rows cannot spend that
+machine's per-address budget. A failed reverse geocode is asked again a
+minute later, and a street that lands after the peer has moved on sets only
+the address, never the row's position (a row more than 50 m on shows its
+coordinates until the next lookup). PUBLISH MY TOKEN uses the listener's
+tailnet address (an https `*.ts.net` name, else a `100.64.0.0/10` literal) and
+refuses without one (a second click while GitHub answers makes no second
+token or entry); it takes only a token with SMS and ANYTIME off, and makes
+it location only for good (`locationOnly` in `config/ultra-tokens.json`), as
+every token now is: its holders get `/network` alone. No holder is ever shown
+the owner's number. The phone's
+cards, the one-slot command, each package's call and the SMS ledger live on
+`globalThis`, so a dev-server restart (POWER UP save, SAVE DIRECTORY) keeps
+them; STAND DOWN takes back an unpopped plea card, and Find Ultra Help's text
+goes in the card queue, not the command slot. When its check still matches, the SMS relay
+(Twilio or an https gateway, `.env`, never printed) is optional and charged per
+message by the provider. POWER UP refuses a value the relay could never use (a
+from-number without + and the country code, a gateway that is neither https
+nor http to a `100.64.x.x` address, a user:password in its address) and counts
+a hand-edited one as not set, so POWER UP and the box agree; its row keeps
+REMOVE (or the configured externally badge) and marks which value is saved
+but not usable. A friend's call
+with a relay but no SAVE MY # reads NO SMS: SAVE MY # FIRST.
+
+The address a phone is told to report to, the public name beside it, and the
+listener certificate paths have a check in `config/local-integrity.json`,
+written when you save a device. A status poll does not write it. Until that
+save, there is no check and the address is still shown. A hand edit of
+`DEVICE_REPORT_PUBLIC_BASE`, `DEVICE_REPORT_PUBLIC_HOST`,
+`DEVICE_REPORT_TLS_CERT`, or `DEVICE_REPORT_TLS_KEY` is left off the device
+card after the next start, and the certificate is not loaded, until you save
+a device again. The port and the interface are not part of the check. The
+camera site file `config/private_cctv_feed.local.json` is checked when you
+save a camera. Until that save it is still used. A changed site file is not
+used for pictures until you save a camera again. A relay that is already
+paired still answers. Which OpenSky sign-in is used is part of that
+provider's check. A hand edit of `OPENSKY_AUTH_MODE` is not used after the
+next start until you save OpenSky again from POWER UP. A check saved before
+the sign-in was part of it does not match until that save. Deleting the check
+file, or a canary that will not open, trusts the new value. A section with
+no check beside one that has a check is still trusted.
+
+Home and business cameras, drones, robots, marine drones, GPS trackers, and
+provider keys have a separate check under `config/local-integrity.key`, kept
+in `config/local-integrity.json`. That file holds only the checks. It is
+written when you save a camera, a device, or a key from POWER UP. A status
+poll does not write it, and the home-list poller never writes it. Until that
+save, there is no check and the value is still used. A changed camera address,
+login, certificate pin, or paired relay is not fetched and the relay is not
+admitted. A changed drone, robot, marine drone, or tracker address, picture
+address, or login is not fetched and a report is refused. A phone package stays
+on the check above. Where the map last put a camera or a device is not part of
+either check. A changed provider key, or the address it is sent to, is not
+used until you save it again from POWER UP. A hand edit of `.env` is not used
+after the next start until that save. A check file that cannot be read is left
+as it is, and while the key file is valid that section is not used. Deleting
+the file, or a canary that will not open, trusts the values. A section with no
+check beside one that has a check is still trusted. Replacing the key and then
+saving one section fail-closes the others until they are saved again. A missing
+or invalid key file trusts them, and a save while the key file is invalid
+leaves that section's check off.
+
+## Observed weather, wind, and cyclones
+
+Five layers sit beside the existing Open-Meteo cockpit effects and do not share
+code with CCTV. Rain radar (`h`), satellite clouds (`o`), and lightning (`l`)
+read NOAA nowCOAST. Wind (`k`) reads GFS, with ECMWF IFS as the other model.
+Cyclone advisories (`y`) read the National Hurricane Center and cover the
+Atlantic and eastern/central North Pacific. The camera packs are unchanged.
+
+## Fire perimeters
+
+Fire Perimeters is its own layer (`fire-perimeters`, share token `p`), separate
+from NASA FIRMS hotspots. The dev server proxies current NIFC WFIGS perimeters
+and InciWeb incident pages. The layer draws containment-coloured outlines,
+refreshes every five minutes, and opens an InciWeb link on the selected
+incident when the catalog matches. Active Fires also requests MODIS NRT beside
+the three VIIRS sources.
+
 ## State and action outcomes
 
 Share preferences, place lookups and Scene playback expose immutable snapshots
@@ -27,6 +305,162 @@ The ordinary control snapshot includes the current 3D model toggle and mode.
 
 `style.css` imports component styles in their original cascade order. Scene,
 share, HUD and layer engines retain their existing behavior and entry points.
+
+## Social Media Analysis
+
+`#social-panel` is a collapsed box on the left stack, after CCTV. It uses the
+same header and collapse button as the other left-stack boxes. A user id and
+password for each account-menu platform are sealed with AES-256-GCM under
+`config/social-accounts.key` in `config/social-accounts.json`. The HTTP API
+lists the user id and that a password is saved. It does not return the
+password. A public handle can still be saved in the browser under
+`godsEyeView.social.accounts` when no password is entered. The box does not
+sign in to a social platform or read a private account. Its top note is the
+owner's own wording (2026-10-01): "Your user id and password stay encrypted on
+this computer for integrated BOT and LLM Location/Search/Request". The log at
+the bottom (`#social-output`) is at least 200 px and at most min(70vh, 640 px)
+tall while it holds anything, so a crowded box scrolls instead of squeezing it;
+empty, it is hidden. No note sits under the two swarms.
+
+A hooked-up login for Instagram, Snapchat, Apple Find My, Google Maps, Bump,
+Blink, or Life360 shows this browser's live position on the map. The control
+is `#social-show-location`. It starts checked. `godsEyeView.social.showLocation`
+is written only when that box is changed: `0` hides the marker on the next
+visit, and a missing value shows it. The marker is one entity,
+`social-location-fix`, and the camera stays where it is. The position is not
+sent to the model, to Google, or to GDELT. A public handle, Happn, Pure,
+Sniffies, Radarly, and the other accounts do not start the watch. If the
+browser does not share a location, no position is invented from the camera.
+
+Analyze, Breaking News, and Search call `GET /api/social/public-news` on this
+machine before `POST /api/llm/ask`. The news route answers a Host this server
+serves and a same-origin or typed request only (another site's `<img>` is
+cross-site), never cached or sniffed. `/api/llm/ask` takes 20 questions a
+minute from one address (429 with a wait after), counted only for a question
+it will send. A handle shaped like a phone number (seven or more digits) is
+refused, and one saved before is dropped on read. That route searches Google
+News, then GDELT. A chosen platform looks first for a public page the news index already
+lists on that platform's site. If none is listed, it uses a news article that
+names the platform. If that is empty too, it uses headlines about the map
+place and the log says those are not posts from the platform. The titles are
+written in the panel and sent with the question. An empty or failed lookup is
+sent as empty, and the question tells the model not to invent posts. A saved
+user id is included only when it is a public handle. An email and the password
+stay out of that lookup and out of the question. Breaking News and Search use
+the past 7 days. Analyze uses the past 30 days. Find Help does not call this
+route and does not list who is nearby; it sends one question about the chosen
+location apps; the question tells the model only that no public-post lookup
+was run with it. The note under the LLM box ends at "The log shows those
+public items." (owner, 2026-10-01: no note or comment says the box does not
+sign in or look up locations); the SHOW ON MAP note reads "A hooked-up account that shares location displays live
+position on the map." Every press of ANALYZE, BREAKING NEWS, SEARCH or FIND
+HELP has a place (`_resolvePlace`): the location the operator picked, else the
+map's own label at the view, else the town at the middle of the map from
+`GET /api/social/swarm/nearest-city` (the swarm's route), else the nearest city
+in the built-in gazetteer, else the map point itself; the status says "Finding
+the place at the middle of the map..." while it looks. The news lookup searches
+that place, and the question's place line carries the map point too:
+"Current map place: Saint John, New Brunswick (45.2731, -66.0633)." The account route is `GET`, `POST`, and
+`DELETE /api/social/accounts`. It answers only this machine's own page, as
+POWER UP does: a loopback socket, a local Host, an exact local Origin, and JSON
+on a save.
+
+Analyze can name all platforms or one of Facebook, Instagram, Threads, X,
+Truth Social, Snapchat, and TikTok. Breaking News is Facebook, Instagram,
+Threads, X, Truth Social, and TikTok. Search sends one question that covers
+the current analysis platform, news platform, and location option. The news
+lookup follows the analysis and news menus, not the location apps. Find Help
+names Apple Find My, Google Maps, Snap Map, Bump, Blink, Life360, Radarly,
+Buzzly, Vicinity, NearJoy, Happn, Pure, Sniffies, Instagram Map, Facebook,
+Instagram, and X check-ins. The map pin is this device when SHOW ON MAP is
+ticked and a saved login is for a platform that shares location. OPEN SITE,
+beside the ACCOUNTS menu at the top of the box, leaves this console and opens
+the chosen product's own https site; the box has no second list of location
+apps at the bottom (OPEN A LOCATION APP was removed on 2026-10-01; its
+Snap Map page and its Facebook and X searches for the map place have no button
+now, and ACCOUNTS opens those three sites at their main pages). Their
+notes stay in `SOCIAL_LOCATION_OPTIONS`, where Find Help and OPEN SITE read
+them. The question tells the model
+to stay on public information, not to invent posts, and not to enter a private
+account or locate a person who has not published where they are.
+
+GROK BOT SWARM and OPENAI BOT SWARM sit above the log. Each has an
+instructions box (1,000 characters; a pasted key is refused), the button, and
+OPEN GROK BOT (the Grok Bot desktop app, through the route below) or OPEN
+CHATGPT. Neither keeps a login: the `grok` and `openai` slots are gone from
+the account platforms, so the encrypted store refuses them. Each swarm runs on
+a key of its own in POWER UP, never the Ask panel's or voice control's:
+`GROK_BOT_API_KEY` (GROK BOT, model `XAI_SWARM_MODEL`, default `grok-4.6`, to
+`https://api.x.ai/v1/responses`) and `OPENAI_DOTS_API_KEY` (OPENAI DOTS, model
+`OPENAI_SWARM_MODEL`, default `gpt-6-astra`). A press first asks
+`GET /api/social/swarm/status` (booleans only: each key, and the Chief of
+Staff webhook; a Host this server serves and a same-origin fetch). With its
+key, a swarm sends seven `POST /api/social/swarm` requests at once, one per
+bot: X, Facebook, Instagram, Threads, TikTok, Truth Social and local news.
+Grok's X bot uses X Search (from yesterday on, for the default task); its
+other bots use Web Search kept to that platform's own site, and OpenAI's bots
+use web search with the same filter. Local news is unfiltered. An empty box
+asks for threat incidents near the map place in the last 24 hours. Every bot
+is told to search public posts only, report incidents and places rather than
+people, give a link for every item, and answer NOTHING FOUND rather than
+invent one. The button reads SPINNING UP SWARM… until all seven are back; each
+bot's list and links land in the log as it returns, and the status line ends
+with SWARM DONE and the counts. Without its key OPENAI BOT SWARM sends nothing
+and says to add it under POWER UP → OPENAI DOTS.
+
+The task's Place line names the nearest city (owner, 2026-10-01: "Include
+nearest city"): the town the map point is in, from
+`GET /api/social/swarm/nearest-city` (one Nominatim reverse lookup through the
+app's shared one-a-second queue, kept 10 minutes per 0.01° cell, 20 a minute
+from one address, this page only; a province alone is not a town), else the
+nearest city in the built-in gazetteer (`closestCityForSearch`: the 21
+presets and 52 Canadian cities, within 150 km) with its distance, as in
+"Nearest city: Halifax NS (about 33 km away)", else it asks the bot to find
+one. The map point is the ground at the middle of the screen (`_viewPoint`;
+the camera itself only when the view is above the horizon), and the place a
+saved location shows on both readout lines is named once
+(`selectedPlaceLabel`, shared with the Ask panel). Its rules are the owner's
+own wording: "Rules: situational-awareness map, through its GROK BOT SWARM
+button." then "Report incidents and places, not people: do not identify, or
+profile a private person, even when the instructions ask. …"; the seven API
+bots' rules are unchanged.
+
+GROK BOT SWARM without a Grok Bot key hands the same sweep, as one task
+(`planSwarmHandoff`: the seven platforms, the place, the day, the same rules
+plus "you may give each platform to one of your bots", and how to report), to
+the Chief of Staff bot in the Grok Bot desktop app, which manages the other
+bots. With POWER UP → GROK BOT — CHIEF OF STAFF set (`GROK_BOT_WEBHOOK_URL`,
+`GROK_BOT_WEBHOOK_KEY`: the Webhook URL and Webhook key of a routine on that
+bot whose trigger is "When a webhook fires"), `POST
+/api/social/swarm/chief-of-staff` sends it there: one POST with `Authorization:
+Bearer <key>` and JSON `{ source, kind, text, place, latitude, longitude,
+sentAt }`, redirect refused, 20 s, four a minute from one address, and the
+webhook's answer is never passed on (a refusal is said without the key). Grok
+Bot runs the routine once per request, and its report comes back in Grok Bot.
+The URL must be https on a `cursor.sh` or `cursor.com` host with the path
+`/automations/webhook/<id>` and nothing else (Grok Bot builds it on
+`https://api2.cursor.sh`); the rule is checked when POWER UP saves it and again
+before every send, and a hand edit after a save fails its integrity check
+(`grokBotWebhook`). Without a webhook, the page copies the task to the
+clipboard and asks `POST /api/social/grok-bot/open` to open Grok Bot: the
+shortcut in `GROK_BOT_LINK` (.env only, a .lnk or .exe on a local drive, never
+a share; single quotes keep a Windows path), else the app's own
+`grokbot://app/v1/open`, through Explorer under SystemRoot (`open` on macOS,
+`xdg-open` elsewhere), never found on PATH. That route answers only this
+machine's own page (POWER UP's gate), takes nothing from the request, and opens
+at most once every 3 s. The task is kept in the log either way. The Grok Bot
+app (an Electron agent, `grokbot://` and `sand://` links) takes no prompt from
+another program: its links open the app, an agent, a template, settings or the
+sidebar only, so the webhook is the one way to hand a bot input.
+
+Both swarm routes take JSON from this page only, as `/api/llm/ask` and the
+voice routes do (`admitLlmRequestFrom`): a Host this server answers, so a
+DNS-rebinding page whose Origin matches its own Host is refused, an exact
+Origin when one is sent, and a same-origin fetch. The bot route spends a slot
+only on a request it will send (14 bots a minute from one address), refuses a
+key whose check failed (`grokBot`, `openaiDots`), gives each bot 150 s, and
+drops a request whose tab closed. OpenAI's dots live in ChatGPT and are not
+started from here.
 
 ## Scene control ownership
 
@@ -2703,10 +3137,11 @@ silently demoting every later lookup for the session.
 
 ### Voice Control (June 2026)
 
-`GEV MIC` button (bottom UI) starts an OpenAI Realtime session over WebRTC:
+`GEV MIC` button (bottom UI) starts a voice session. OpenAI is the default and still uses Realtime over WebRTC. The provider control on that mic also selects Claude, Custom LLM, OpenRouter, Grok, or NVIDIA. Those five run the same tools in the browser. A viewport screenshot stays on the OpenAI session.
 
 - **Token flow**: browser fetches a short-lived client secret from `/api/realtime/token`; the Vite middleware holds `OPENAI_API_KEY` and posts the full session config (instructions, tool schemas, VAD, truncation) to `api.openai.com/v1/realtime/client_secrets`. SDP exchange goes directly to `api.openai.com/v1/realtime/calls` with the ephemeral token.
 - **Session defaults** (env-tunable): model `gpt-realtime-2` (or `gpt-realtime-2.1-mini` when the MINI tier is selected — see the model-tier entry below), voice `marin`, reasoning effort `low`, semantic VAD with low eagerness, no response interruption, context window truncated to ~3,000 post-instruction tokens with 0.5 retention ratio — the conversational window stays short because map state is fetched live per turn.
+- **Other voice providers** (September 30, 2026). The heading control cycles OpenAI, Claude, Custom LLM, OpenRouter, Grok, and NVIDIA (`godsEyeView.voice.provider`, default `openai`). Switching it stops a live session; the choice applies the next time the mic turns on. Grok opens `wss://api.x.ai/v1/realtime` after `POST /api/llm/voice/session` mints a short-lived secret. The mint body is only `expires_after`. The xAI key stays on this machine. The browser sends the same tool list in `session.update` after the socket opens. Audio is PCM at 24 kHz. The voice model is `grok-voice-latest` (`XAI_VOICE_MODEL`), which is not the Ask chat model `XAI_MODEL`. Claude and NVIDIA listen and speak with the browser, and `POST /api/llm/voice/turn` runs the tools. OpenRouter transcribes and speaks on `POST /api/llm/voice/transcribe` and `POST /api/llm/voice/speak`, then uses that turn route. A custom endpoint uses those audio routes when it has them, and the browser's speech when the audio route answers 404 or 405. A provider key that was changed and no longer matches its check is refused before anything is sent, with the same sentence POWER UP already uses. The OpenAI spend cap stays on OpenAI sessions. Grok, Claude, Custom LLM, OpenRouter, and NVIDIA are billed by those providers.
 - **Twenty-eight tools** (schemas defined server-side in `vite.config.js`, executed client-side in `src/voice/gevActions.js`): `fly_to_location`, `select_nearest_aircraft`, `adjust_camera_zoom`, `zoom_to_globe`, `set_layer_visibility`, `show_data_layers_menu`, `set_panel_open`, `set_visual_style`, `get_entity_context`, `get_current_view_state`, `set_hud`, `set_detection`, `set_map_stack`, `set_post_processing`, `control_scene`, `control_cctv`, `set_context_mode`, `control_cockpit`, `control_radio`, `track_entity`, `stop_tracking`, `frame_overhead`, `annotate_map`, `clear_annotations`, `move_camera`, `fly_route`, `analyst_query`, and `next_iss_pass`.
 > **Reading `npm test` totals:** the count depends on the Node major. The two
 > GC-bracketed allocation microbenchmarks (`src/data/focusAllocations.test.mjs`
@@ -2734,9 +3169,9 @@ silently demoting every later lookup for the session.
   - **Contact-match ties break on hex ascending.** `track_entity` is a mutation fulfilling "follow that one", and the model's observed answer to a non-ok track result is to retry with guesses rather than ask, so the lookup always commits rather than returning an ambiguity. What it owes the caller is stability: hex is unique and always present, so the same query resolves to the same contact for as long as both are loaded.
 - **Visual grounding**: at `local` view scale with no structured identity, the client captures the Cesium canvas (≤1200px JPEG, black-frame detection, double-render for freshness) and sends it as `input_image` with a strict "do not invent labels" instruction.
 - **Context window**: only the latest viewport screenshot stays in context — the client deletes the prior image item (`conversation.item.delete`) before adding a new one (images are the most expensive item, re-billed every turn). Text history is bounded by the **server-side** `truncation: { type: 'retention_ratio', retention_ratio, token_limits.post_instructions }` set in `/api/realtime/token` (cache-friendly batched truncation). There is intentionally **no** client-side per-turn conversation-item cap — deleting from the front of history each turn busts the Realtime prompt cache. A spatially-aware summarize-and-prune policy is specced for a future iteration.
-- **Model tier + spend guard** (`src/voice/voiceCost.js`, August 2026): the voice heading row carries a `STD`/`MINI` toggle and a running session-cost readout (`~$0.42`).
+- **Model tier + spend guard** (`src/voice/voiceCost.js`, August 2026): the voice heading row carries a provider control (`OAI` / `CLAUDE` / `CUSTOM` / `ROUTER` / `GROK` / `NVIDIA`), a `STD`/`MINI` toggle, and a running session-cost readout (`~$0.42`). The toggle and the dollar readout stay visible for OpenAI and hide for the other five. The dollar cap does not meter or stop those sessions.
   - **Tier selection.** `standard` = `gpt-realtime-2` (default), `mini` = `gpt-realtime-2.1-mini` (~3× cheaper per audio token). The client sends `?tier=` to `/api/realtime/token`; the endpoint resolves it through the shared registry, so an unknown, empty, or hostile value falls back to `standard` rather than reaching OpenAI as a model id. Responses echo `X-GEV-Voice-Tier` / `X-GEV-Voice-Model` (plus `X-GEV-Voice-Tier-Fallback: 1` when a bogus tier was downgraded). Persisted at `godsEyeView.voiceCost.tier`.
-  - **Applies NEXT session.** The model is fixed when the ephemeral token is minted, so a live session always keeps the model it connected with; toggling mid-session only records the preference (the button title says so). The cost tracker's lifetime is the session's lifetime and its model binding is immutable from `start()` to `stop()` — rebuilding it on toggle would erase accrued spend and let repeated toggles bypass the cap. The tracker may only be replaced once the session is FULLY SETTLED (`isVoiceSessionSettled()`: not active **and** no data channel **and** no peer connection) — `!isActive()` alone is not enough, because the `error` status reports inactive while the transport can still deliver a late `response.done`. The toggle itself reads and writes only the persisted preference, never the live tracker.
+  - **Applies NEXT session.** The model is fixed when the ephemeral token is minted, so a live session always keeps the model it connected with; toggling mid-session only records the preference (the button title says so). The cost tracker's lifetime is the session's lifetime and its model binding is immutable from `start()` to `stop()` — rebuilding it on toggle would erase accrued spend and let repeated toggles bypass the cap. The tracker may only be replaced once the session is FULLY SETTLED (`isVoiceSessionSettled()`: not active **and** no data channel **and** no peer connection **and** no provider transport) — `!isActive()` alone is not enough, because the `error` status reports inactive while the transport can still deliver a late `response.done`. The toggle itself reads and writes only the persisted preference, never the live tracker.
   - **Env overrides.** `OPENAI_REALTIME_MODEL` / `OPENAI_REALTIME_MODEL_MINI` remain authoritative per tier, so a drifted upstream model id is a `.env` fix rather than a code change. Because an override can point a tier at any model, the client prices against the model id the server actually echoed, **not** the tier it requested. An unrecognised id is billed at the most expensive known rates plus one console warning — under-metering is what lets a cap be overrun.
   - **Metering.** Token usage from each `response.done` is folded into a per-session estimate. Cached tokens are subtracted from their modality totals; any aggregate-minus-details residual (and any payload with no detail at all) is attributed to audio rates, so uncertainty always resolves *upward*.
   - **Thresholds** (one object, persisted at `godsEyeView.voiceCost.limits`): soft warning at **$2** — amber readout plus exactly one console line; hard cap at **$5** — the session ends through the ordinary stop path (data channel and peer connection closed, mic tracks stopped) and the readout reads `Session ended — cost cap`. `0`/negative disables a threshold and round-trips through storage as an `'off'` sentinel (raw `Infinity` would JSON-serialize to `null` and silently restore the default); a corrupt entry falls back to the defaults rather than disarming the cap.

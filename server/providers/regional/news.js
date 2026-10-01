@@ -1,6 +1,7 @@
 import { fetchRegionalText, fetchRegionalJson } from './http.js';
 import { normalizeRegionalArticles } from '../../../src/data/regionalBrief.js';
 import { fetchStatCanCrimeOutliers } from './statcan-crime.js';
+import { buildSocialPublicSearch } from '../../../src/socialMedia.js';
 
 function decodeRssText(value) {
   return String(value || '')
@@ -420,6 +421,159 @@ async function fetchGovCrimeNews(options = {}) {
   }
 }
 
+function googleNewsUrl(query) {
+  const rssParams = new URLSearchParams({
+    q: query,
+    hl: 'en-US',
+    gl: 'US',
+    ceid: 'US:en',
+  });
+  return `https://news.google.com/rss/search?${rssParams}`;
+}
+
+function gdeltNewsUrl(query, timespan) {
+  const params = new URLSearchParams({
+    query,
+    mode: 'artlist',
+    format: 'json',
+    maxrecords: String(RISK_NEWS_MAX_ARTICLES),
+    sort: 'datedesc',
+    timespan,
+  });
+  return `https://api.gdeltproject.org/api/v2/doc/doc?${params}`;
+}
+
+function publicSocialArticle(article) {
+  const title = String(article?.title || '')
+    .replace(/[\u0000-\u001f]/g, ' ')
+    .trim()
+    .slice(0, 180);
+  let url = '';
+  try {
+    const parsed = new URL(String(article?.url || ''));
+    if (parsed.username || parsed.password) return null;
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    url = parsed.href.slice(0, 300);
+  } catch {
+    return null;
+  }
+  if (!title) return null;
+  const domain = String(article?.domain || '')
+    .replace(/[\u0000-\u001f]/g, ' ')
+    .trim()
+    .slice(0, 80);
+  const publishedAt =
+    typeof article?.publishedAt === 'string' ? article.publishedAt.slice(0, 40) : null;
+  return { title, url, domain, publishedAt };
+}
+
+function emptySocialNews(status) {
+  return {
+    status,
+    match: null,
+    source: null,
+    lookbackDays: null,
+    platforms: [],
+    articles: [],
+  };
+}
+
+async function indexedSocialArticles(url, kind, lookbackDays, readText, readJson) {
+  try {
+    if (kind === 'rss') {
+      const xml = await readText(url);
+      return filterRiskNewsArticles(normalizeRssArticles(xml, 12), lookbackDays).slice(
+        0,
+        RISK_NEWS_MAX_ARTICLES,
+      );
+    }
+    const payload = await readJson(url);
+    return filterRiskNewsArticles(
+      normalizeRegionalArticles(payload, RISK_NEWS_MAX_ARTICLES),
+      lookbackDays,
+    ).slice(0, RISK_NEWS_MAX_ARTICLES);
+  } catch {
+    return null;
+  }
+}
+
+async function socialNewsPass(rssQuery, gdeltQuery, plan, readText, readJson) {
+  if (!rssQuery && !gdeltQuery) return { articles: [], failed: false, skipped: true };
+  const [rss, gdelt] = await Promise.all([
+    rssQuery
+      ? indexedSocialArticles(googleNewsUrl(rssQuery), 'rss', plan.lookbackDays, readText, readJson)
+      : [],
+    gdeltQuery
+      ? indexedSocialArticles(
+          gdeltNewsUrl(gdeltQuery, plan.timespan),
+          'gdelt',
+          plan.lookbackDays,
+          readText,
+          readJson,
+        )
+      : [],
+  ]);
+  if (rss?.length) return { articles: rss, source: 'Google News RSS', failed: false };
+  if (gdelt?.length) return { articles: gdelt, source: 'GDELT fallback', failed: false };
+  return { articles: [], source: null, failed: rss === null && gdelt === null };
+}
+
+/**
+ * Public pages and headlines for Social Media Analysis. Google News first,
+ * then GDELT. A platform site hit wins, then an article that names the
+ * platform, then headlines about the place. Nothing here signs in or reads
+ * a private account.
+ * @param {object} [options]
+ */
+async function fetchSocialPublicNews(options = {}) {
+  const plan = buildSocialPublicSearch(options);
+  if (!plan.ok) return emptySocialNews(plan.empty ? 'empty' : 'invalid');
+  const readText =
+    options.readText ||
+    ((url) =>
+      fetchRegionalText(url, {
+        headers: { 'User-Agent': 'GodsEyeView/0.1' },
+        timeoutMs: 12_000,
+      }));
+  const readJson =
+    options.readJson ||
+    ((url) =>
+      fetchRegionalJson(url, {
+        headers: { 'User-Agent': 'GodsEyeView/0.1' },
+        timeoutMs: 12_000,
+      }));
+  const site = await socialNewsPass(plan.siteQuery, plan.gdeltSiteQuery, plan, readText, readJson);
+  const mention = site.articles.length
+    ? null
+    : await socialNewsPass(plan.mentionQuery, plan.gdeltMentionQuery, plan, readText, readJson);
+  const place =
+    site.articles.length || mention?.articles.length
+      ? null
+      : await socialNewsPass(plan.placeQuery, plan.gdeltPlaceQuery, plan, readText, readJson);
+  const hit = site.articles.length ? site : mention?.articles.length ? mention : place?.articles.length ? place : null;
+  const match = site.articles.length ? 'site' : mention?.articles.length ? 'mention' : place?.articles.length ? 'place' : null;
+  const articles = (hit?.articles || []).map(publicSocialArticle).filter(Boolean);
+  if (articles.length) {
+    return {
+      status: 'ready',
+      match,
+      source: hit.source,
+      lookbackDays: plan.lookbackDays,
+      platforms: plan.labels,
+      articles,
+    };
+  }
+  const sawAnswer = [site, mention, place].some((pass) => pass && !pass.failed && !pass.skipped);
+  return {
+    status: sawAnswer ? 'empty' : 'unavailable',
+    match: null,
+    source: null,
+    lookbackDays: plan.lookbackDays,
+    platforms: plan.labels,
+    articles: [],
+  };
+}
+
 export {
   GOV_CRIME_SITES,
   RISK_NEWS_LOOKBACK_DAYS,
@@ -430,6 +584,7 @@ export {
   fetchGovCrimeNews,
   fetchRegionalNews,
   fetchRiskNews,
+  fetchSocialPublicNews,
   filterRiskNewsArticles,
   sanitizeRiskNewsQuery,
 };

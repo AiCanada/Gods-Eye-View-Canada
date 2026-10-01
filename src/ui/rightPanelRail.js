@@ -1,9 +1,16 @@
 import {
+  PANEL_OVERLAP_CASCADE_PX,
+  PANEL_OVERLAP_VIEWPORT_INSET,
+  allocateOverlappingPanelHeights,
   allocatePanelStackHeights,
-  panelStackAutoCollapseIndices,
+  resolveOverlapCascadeOrder,
 } from '../panelStackLayout.js';
 import {
+  capturePanelScroll,
+  isAttributionObstacle,
+  readPanelStackingRank,
   resolveHudRailLayout,
+  restorePanelScroll,
   shouldHideCollapsedRightPanels,
 } from './panelRailGeometry.js';
 
@@ -53,9 +60,12 @@ export function layoutRightPanelRail({
     }
   }
   const isMobile = windowRef.matchMedia('(max-width: 720px)').matches;
+  // Radio is not a box of the rail: selecting it must not put the rail into
+  // its one-box mode, which would hide the tabs it sits above.
   const hasExpandedPanel = panels.some(
     (panel) =>
       !panel.classList.contains('collapsed') &&
+      panel.id !== 'radio-panel' &&
       (!isMobile || panel.id !== 'pp-toggles'),
   );
   const exclusive = shouldHideCollapsedRightPanels({
@@ -71,10 +81,13 @@ export function layoutRightPanelRail({
 
   if (isMobile) {
     stack.classList.remove('layout-focus');
+    stack.classList.remove('layout-overlap');
     stack.style.removeProperty('--right-stack-safe-top');
     stack.style.removeProperty('--right-stack-max-height');
-    for (const panel of panels)
+    for (const panel of panels) {
       panel.style.removeProperty('--right-panel-allocated-height');
+      panel.style.removeProperty('--panel-overlap-top');
+    }
     stack.dataset.layoutMode = 'mobile';
     return;
   }
@@ -87,6 +100,7 @@ export function layoutRightPanelRail({
     ? leftStackTop
     : viewportHeight * 0.26;
   const obstacleRects = [];
+  const attributionRects = [];
 
   for (const obstacle of obstacles) {
     if (stack.contains(obstacle)) continue;
@@ -105,12 +119,14 @@ export function layoutRightPanelRail({
     if (hiddenByAncestor) continue;
     const rect = obstacle.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) continue;
-    obstacleRects.push({
+    const bounds = {
       left: rect.left,
       right: rect.right,
       top: rect.top,
       bottom: rect.bottom,
-    });
+    };
+    obstacleRects.push(bounds);
+    if (isAttributionObstacle(obstacle)) attributionRects.push(bounds);
   }
 
   const visiblePanels = panels.filter(
@@ -118,6 +134,11 @@ export function layoutRightPanelRail({
   );
 
   const displayScrollTop = readDisplayScrollTop();
+  // The same care Display has always had, for every box on the rail: with
+  // its allocated height gone a box stops overflowing, so the browser puts
+  // its scroller back to the top and no later measurement undoes that
+  // (owner ruling, 2026-09-28 — a box being read must not jump).
+  const scrollMarks = capturePanelScroll(visiblePanels);
   // Measure intrinsic content, not the allocation written by the previous
   // layout pass. Display is the exception: its own scrollHeight already
   // exposes every control, and removing its live allocation can reset the
@@ -199,58 +220,128 @@ export function layoutRightPanelRail({
     ),
     availableHeight: expandedAvailableHeight,
   });
-  const autoCollapseIndices = hud.visible
-    ? panelStackAutoCollapseIndices({
-        naturalHeights: expandedPanels.map((panel) =>
-          Math.max(
-            panel.getBoundingClientRect().height,
-            panel.scrollHeight || 0,
-          ),
+
+  // Owner ruling, 2026-09-28, matching the left lane: an open box floats over
+  // the tactical HUD at both ends instead of sharing a corridor squeezed
+  // between HUD furniture, and open boxes may cover one another. Only the map
+  // attribution still bounds the lane. Radio never floats — it stays in the
+  // flow under the Scenes tab where the owner put it (ruling of 2026-09-27) —
+  // and neither does a box with no painted rectangle, which is what keeps
+  // Cockpit's hidden rail out of this mode.
+  const overlapLayout = resolveHudRailLayout({
+    viewportHeight,
+    panelHeight: naturalHeight,
+    laneLeft: stackRect.left,
+    laneRight: stackRect.right,
+    obstacles: attributionRects,
+    baseTop: viewportHeight * PANEL_OVERLAP_VIEWPORT_INSET,
+    baseBottom: viewportHeight * (1 - PANEL_OVERLAP_VIEWPORT_INSET),
+    gap: safeGap,
+    align: 'start',
+  });
+  const floatingPanels = expandedPanels.filter(
+    (panel) =>
+      panel.id !== 'radio-panel' && panel.getBoundingClientRect().height > 0,
+  );
+  // Slots follow the stacking order, never the order the boxes were opened:
+  // the box in front has to start lowest or it swallows the strip every box
+  // behind it is clicked by.
+  const cascadePanels = resolveOverlapCascadeOrder(
+    floatingPanels.map((panel) => readPanelStackingRank(panel)),
+  ).map((index) => floatingPanels[index]);
+  const overlapping = Boolean(overlapLayout) && floatingPanels.length > 0;
+  const railTop = overlapping ? overlapLayout.safeTop : layoutTop;
+  const railBottom = overlapping ? overlapLayout.safeBottom : safeBottom;
+  // The collapsed tabs and Radio keep the flow column above the floats, so
+  // every tab stays visible and clickable (owner ruling, 2026-09-27). A box
+  // the stylesheet hides outright takes up no column, so it must not reserve
+  // any either: Radio is display:none while collapsed, which is its normal
+  // state, and the 42px placeholder every other tab needs was costing the
+  // floats a row of working area for a box that is not on screen.
+  const flowPanels = visiblePanels.filter(
+    (panel) =>
+      !floatingPanels.includes(panel) &&
+      getComputedStyle(panel).display !== 'none',
+  );
+  const flowHeight =
+    flowPanels.reduce(
+      (total, panel) =>
+        total +
+        Math.max(
+          panel.getBoundingClientRect().height,
+          panel.classList.contains('collapsed') ? 42 : 0,
         ),
-        allocatedHeights: expandedHeights,
-        collapseLaterPanels: shouldFocus && hud.variant === 'tactical',
-      })
-    : [];
-  if (autoCollapseIndices.length) {
-    for (const index of autoCollapseIndices) {
-      const panel = expandedPanels[index];
-      panel.classList.add('collapsed', 'layout-auto-collapsed');
-      onCollapse(panel);
-    }
-    onRetry();
-    return;
-  }
+      0,
+    ) +
+    gap * Math.max(0, flowPanels.length - 1);
+  const overlapOrigin = flowPanels.length ? flowHeight + gap : 0;
+  const overlapPlacements = allocateOverlappingPanelHeights({
+    naturalHeights: cascadePanels.map((panel) =>
+      Math.max(panel.getBoundingClientRect().height, panel.scrollHeight || 0),
+    ),
+    availableHeight: Math.max(0, railBottom - railTop - overlapOrigin),
+    cascadeStep: PANEL_OVERLAP_CASCADE_PX,
+  });
+  // Every open box stays open (owner ruling, 2026-09-27), as on the left:
+  // boxes opened together share the corridor, the newest first, and each
+  // scrolls inside its share. Nothing is collapsed to make room for a
+  // sibling; `layout-auto-collapsed` survives only to release panels a
+  // previous version collapsed.
   // Write-if-changed. This pass runs on the 500 ms stats cadence, and an
   // unconditional REMOVE-then-SET of an unchanged allocation is two style
   // mutations per tick on `#pp-toggles` (the one panel the measure-strip
   // above deliberately skips) — churn that reads as a genuine panel move to
   // the world-overlay host's occluder observer and defeats parked-idle
   // render savings. Only a real allocation change may touch the attribute.
-  expandedPanels.forEach((panel, index) => {
-    const next = `${expandedHeights[index].toFixed(1)}px`;
-    if (
-      panel.style.getPropertyValue('--right-panel-allocated-height') !== next
-    ) {
-      panel.style.setProperty('--right-panel-allocated-height', next);
-    }
-  });
+  const writeIfChanged = (panel, name, value) => {
+    if (panel.style.getPropertyValue(name) !== value)
+      panel.style.setProperty(name, value);
+  };
+  const allocatedPanels = overlapping ? floatingPanels : expandedPanels;
+  if (overlapping) {
+    cascadePanels.forEach((panel, index) => {
+      const { offset, height } = overlapPlacements[index];
+      writeIfChanged(
+        panel,
+        '--panel-overlap-top',
+        `${(overlapOrigin + offset).toFixed(1)}px`,
+      );
+      writeIfChanged(
+        panel,
+        '--right-panel-allocated-height',
+        `${height.toFixed(1)}px`,
+      );
+    });
+  } else {
+    expandedPanels.forEach((panel, index) => {
+      writeIfChanged(
+        panel,
+        '--right-panel-allocated-height',
+        `${expandedHeights[index].toFixed(1)}px`,
+      );
+    });
+  }
   for (const panel of panels) {
-    if (expandedPanels.includes(panel)) continue;
-    panel.style.removeProperty('--right-panel-allocated-height');
+    if (!allocatedPanels.includes(panel))
+      panel.style.removeProperty('--right-panel-allocated-height');
+    if (!overlapping || !floatingPanels.includes(panel))
+      panel.style.removeProperty('--panel-overlap-top');
   }
 
-  stack.style.setProperty(
-    '--right-stack-safe-top',
-    `${layoutTop.toFixed(1)}px`,
-  );
+  stack.style.setProperty('--right-stack-safe-top', `${railTop.toFixed(1)}px`);
   stack.style.setProperty(
     '--right-stack-max-height',
-    `${Math.max(0, safeBottom - layoutTop).toFixed(1)}px`,
+    `${Math.max(0, railBottom - railTop).toFixed(1)}px`,
   );
-  stack.classList.toggle('layout-focus', shouldFocus);
-  stack.dataset.layoutMode = shouldFocus ? 'focus' : 'normal';
-  stack.dataset.safeTop = layoutTop.toFixed(1);
-  stack.dataset.safeBottom = safeBottom.toFixed(1);
+  stack.classList.toggle('layout-overlap', overlapping);
+  stack.classList.toggle('layout-focus', !overlapping && shouldFocus);
+  stack.dataset.layoutMode = overlapping
+    ? 'overlap'
+    : shouldFocus
+      ? 'focus'
+      : 'normal';
+  stack.dataset.safeTop = railTop.toFixed(1);
+  stack.dataset.safeBottom = railBottom.toFixed(1);
   stack.dataset.availableHeight = availableHeight.toFixed(1);
   stack.dataset.requiredHeight = naturalHeight.toFixed(1);
   stack.dataset.expandedCount = String(expandedPanels.length);
@@ -262,4 +353,6 @@ export function layoutRightPanelRail({
     );
     displayPanel.scrollTop = Math.min(displayScrollTop, maxScrollTop);
   }
+  // Every other box goes back where it was, now the heights are written.
+  restorePanelScroll(scrollMarks);
 }

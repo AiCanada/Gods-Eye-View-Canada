@@ -223,6 +223,32 @@ const OPTION_GROUPS = Object.freeze({
     booleanOption('showProjection', 'p', true),
     booleanOption('autoHop', 'a', false),
   ]),
+  'weather-radar': Object.freeze([
+    enumOption('opacity', 'o', 'strong', ['light', 'strong'], { light: 'l', strong: 's' }),
+  ]),
+  'weather-satellite': Object.freeze([
+    enumOption('product', 'p', 'clouds-regional', ['clouds', 'clouds-regional'], {
+      clouds: 'g',
+      'clouds-regional': 'r',
+    }),
+    enumOption('opacity', 'o', 'strong', ['light', 'strong'], { light: 'l', strong: 's' }),
+    enumOption('infrared', 'i', 'filtered', ['filtered', 'full'], { filtered: 'f', full: 'u' }),
+  ]),
+  'weather-lightning': Object.freeze([
+    enumOption('product', 'p', 'lightning', ['lightning'], { lightning: 'n' }),
+    enumOption('opacity', 'o', 'strong', ['light', 'strong'], { light: 'l', strong: 's' }),
+  ]),
+  wind: Object.freeze([
+    enumOption('model', 'm', 'gfs', ['gfs', 'ifs'], { gfs: 'g', ifs: 'i' }),
+    enumOption('overlay', 'o', 'none', ['none', 'speed', 'temperature', 'pressure'], {
+      none: 'n',
+      speed: 's',
+      temperature: 't',
+      pressure: 'p',
+    }),
+    booleanOption('paused', 'z', false),
+    enumOption('units', 'u', 'km/h', ['km/h', 'm/s', 'mph'], { 'km/h': 'k', 'm/s': 'm', mph: 'h' }),
+  ]),
   radio: Object.freeze([
     Object.freeze({
       key: 'filter',
@@ -281,6 +307,7 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'device-feeds', token: 'v', disposition: 'enabled-only' }),
   Object.freeze({ id: 'directions', token: 'n', disposition: 'enabled-only' }),
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'fire-perimeters', token: 'p', disposition: 'enabled-only' }),
   Object.freeze({ id: 'flights', token: 'f', disposition: 'enabled+options', optionOwner: 'flights' }),
   Object.freeze({ id: 'local-dams', token: 'q', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-datacenters', token: 'd', disposition: 'enabled-only' }),
@@ -293,6 +320,11 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'satellites', token: 's', disposition: 'enabled+options', optionOwner: 'satellites' }),
   Object.freeze({ id: 'telegeography-submarine-cables', token: 'u', disposition: 'enabled-only' }),
   Object.freeze({ id: 'traffic', token: 't', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'weather-cyclones', token: 'y', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'weather-lightning', token: 'l', disposition: 'enabled+options', optionOwner: 'weather-lightning' }),
+  Object.freeze({ id: 'weather-radar', token: 'h', disposition: 'enabled+options', optionOwner: 'weather-radar' }),
+  Object.freeze({ id: 'weather-satellite', token: 'o', disposition: 'enabled+options', optionOwner: 'weather-satellite' }),
+  Object.freeze({ id: 'wind', token: 'k', disposition: 'enabled+options', optionOwner: 'wind' }),
 ]);
 
 export const REGISTERED_LAYER_IDS = Object.freeze(LAYER_STATE_REGISTRY.map((entry) => entry.id));

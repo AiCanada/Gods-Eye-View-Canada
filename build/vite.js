@@ -32,6 +32,36 @@ export function createBrowserViteConfig({
           // which catches the spellings a pattern cannot).
           '**/private-cameras.json',
           '**/.private-cameras.json.*',
+          // Ultra Security Package stores: the owner's numbers, the sealed
+          // help tokens with their key, the help inbox, the home list of
+          // other people's sealed help tokens, and the checks on the
+          // directory, the relay and the phone packages (also refused by
+          // the device-feeds guard, which catches the other spellings).
+          '**/ultra-help.json',
+          '**/.ultra-help.json.*',
+          '**/ultra-tokens.json',
+          '**/.ultra-tokens.json.*',
+          '**/ultra-tokens.key',
+          '**/.ultra-tokens.key.*',
+          '**/ultra-inbox.json',
+          '**/.ultra-inbox.json.*',
+          '**/ultra-network.json',
+          '**/.ultra-network.json.*',
+          '**/ultra-outbound.json',
+          '**/.ultra-outbound.json.*',
+          // Checks on cameras, tracked devices and provider keys, and the
+          // key those checks are made with. Addresses and secrets stay in
+          // their own files; this one is still never served.
+          '**/local-integrity.json',
+          '**/.local-integrity.json.*',
+          '**/local-integrity.key',
+          '**/.local-integrity.key.*',
+          // Social Media Analysis logins. The password is sealed in the json
+          // file; neither file is served.
+          '**/social-accounts.json',
+          '**/.social-accounts.json.*',
+          '**/social-accounts.key',
+          '**/.social-accounts.key.*',
         ],
       },
       // These headers protect the document containing Provider Settings.

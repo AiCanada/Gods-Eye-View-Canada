@@ -29,6 +29,34 @@ test('explicit build inputs preserve browser-only defines, plugin order and loop
   // Private camera logins are never static files.
   assert.ok(config.server.fs.deny.includes('**/private-cameras.json'));
   assert.ok(config.server.fs.deny.includes('**/.private-cameras.json.*'));
+  // Neither are the Ultra Security Package's numbers, sealed help tokens,
+  // token key, help inbox, home list (other people's sealed tokens) or the
+  // checks on the directory, the relay and the phone packages, nor their
+  // temp files.
+  for (const store of [
+    '**/ultra-help.json',
+    '**/.ultra-help.json.*',
+    '**/ultra-tokens.json',
+    '**/.ultra-tokens.json.*',
+    '**/ultra-tokens.key',
+    '**/.ultra-tokens.key.*',
+    '**/ultra-inbox.json',
+    '**/.ultra-inbox.json.*',
+    '**/ultra-network.json',
+    '**/.ultra-network.json.*',
+    '**/ultra-outbound.json',
+    '**/.ultra-outbound.json.*',
+    '**/local-integrity.json',
+    '**/.local-integrity.json.*',
+    '**/local-integrity.key',
+    '**/.local-integrity.key.*',
+    '**/social-accounts.json',
+    '**/.social-accounts.json.*',
+    '**/social-accounts.key',
+    '**/.social-accounts.key.*',
+  ]) {
+    assert.ok(config.server.fs.deny.includes(store), store);
+  }
   assert.deepEqual(config.optimizeDeps.entries, ['index.html', 'tools/*.html']);
   assert.equal(config.server.headers['X-Frame-Options'], 'DENY');
   assert.equal(
@@ -71,12 +99,14 @@ test('root config retains existing named exports and standalone provider order',
     assert.equal(compatibility[name], value, name);
   const config = standaloneConfig({ mode: 'test' });
   assert.deepEqual(
-    config.plugins.slice(2, -1).map((plugin) => plugin.name),
+    config.plugins.slice(3, -1).map((plugin) => plugin.name),
     providers.localProviderPlugins().map((plugin) => plugin.name),
   );
-  // The guard is registered before every provider: it can only wrap routes
-  // that are added after it.
-  assert.equal(config.plugins[1].name, 'route-guard');
+  // The single-instance guard stops the previous dev server before anything
+  // else runs; the route guard is registered before every provider: it can
+  // only wrap routes that are added after it.
+  assert.equal(config.plugins[1].name, 'dev-single-instance');
+  assert.equal(config.plugins[2].name, 'route-guard');
   assert.equal(config.plugins.at(-2).name, 'gev-key-setup');
   assert.equal(config.plugins.at(-1).name, 'api-not-found');
 });

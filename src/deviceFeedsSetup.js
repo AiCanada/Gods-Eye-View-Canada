@@ -30,7 +30,36 @@ const TRANSPORT_LABELS = {
   'lan-http': 'LOCAL NETWORK',
   insecure: 'NOT ENCRYPTED',
   none: 'NO ADDRESS',
+  'reports-in': 'REPORTS IN',
 };
+
+/**
+ * What to type into the phone for a device that reports to this app. Pure.
+ * @returns {string[]} lines; empty until the device is saved
+ */
+export function deviceReportInstructions(feed, status, { kindId = '' } = {}) {
+  if (!feed?.id || !feed.reportKey) return [];
+  const addresses = Array.isArray(status?.reportAddresses) ? status.reportAddresses : [];
+  const listener = status?.reportListener || {};
+  const lines = [];
+  if (listener.error) lines.push(`NOT LISTENING: ${listener.error}`);
+  else if (!addresses.length) lines.push('NOT LISTENING YET: the dev server opens the report port when a reporting device is saved.');
+  const base = addresses[0] || `http://<this machine>:${listener.port || 44173}`;
+  // The Ultra Security Package has a phone link: a page the phone's browser
+  // opens, which sends the phone's position (and camera) itself. No app.
+  if (kindId === 'security') lines.push(`PHONE LINK (no app needed): open ${base}/ultra/${feed.reportKey}/cam on the phone, allow location, keep it open — the page also has SEND HELP / STAND DOWN`);
+  // Help links are minted in the ULTRA SECURITY PACKAGE box, not here: this
+  // card only points the owner at them so the phone and the links share one story.
+  // A link shares nothing until SEND HELP (owner ruling, 2026-09-28), opens
+  // nothing with Network off, and carries the location poll alone: no page,
+  // no message box (2026-09-30). The card says so.
+  if (kindId === 'security') lines.push('SHARE A HELP LINK: ULTRA SECURITY PACKAGE box → SHARE ENCRYPTED ULTRA TOKENS (a link works only while its Network is on and you have pressed SEND HELP for this package: then the holder\'s own GEVC receives this phone\'s position and the incident classification, and nothing else. With Network off it opens nothing)');
+  lines.push(`TRACCAR CLIENT: server URL ${base} · device identifier ${feed.reportKey}`);
+  lines.push(`OWNTRACKS (HTTP mode) or OVERLAND: ${base}/${feed.reportKey}`);
+  lines.push(`GPSLOGGER (custom URL): ${base}/${feed.reportKey}?lat=%LAT&lon=%LON&timestamp=%TIMESTAMP&speedMps=%SPD&bearing=%DIR&altitude=%ALT`);
+  if (addresses.length > 1) lines.push(`ALSO ANSWERS ON: ${addresses.slice(1).join(' · ')}`);
+  return lines;
+}
 
 function element(documentRef, tag, className, text) {
   const node = documentRef.createElement(tag);
@@ -84,6 +113,7 @@ export function collectDeviceFeedUpdate(kindId, feedId, values) {
   body.lon = lon === '' ? null : Number(lon);
   if (typeof values.follow === 'boolean') body.follow = values.follow;
   if (typeof values.record === 'boolean') body.record = values.record;
+  if (values.recordKm !== undefined && values.recordKm !== '') body.recordKm = Number(values.recordKm);
   return body;
 }
 
@@ -100,13 +130,14 @@ export function deviceRecordingText(feed) {
   const info = feed?.recording;
   if (!info) return feed?.record ? 'RECORDING · nothing saved yet (saves while the map is open and the device has a position)' : '';
   const size = info.bytes >= 1024 * 1024 ? `${(info.bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(info.bytes / 1024))} KB`;
-  return `${feed.record ? 'RECORDING' : 'RECORDED'} · ${info.files} ${info.files === 1 ? 'day' : 'days'} · ${size} in ${info.folder}`;
+  const within = feed.recordKm ? ` · within ${feed.recordKm} km` : '';
+  return `${feed.record ? 'RECORDING' : 'RECORDED'}${within} · ${info.files} ${info.files === 1 ? 'day' : 'days'} · ${size} in ${info.folder}`;
 }
 
 /** One line on how a device is doing. Pure. */
 export function deviceFeedStateText(feed) {
-  if (!feed?.state) return feed?.urlSet ? 'Not asked yet' : feed?.pictureSet ? 'Picture only' : '';
-  if (feed.state.ok) return 'LIVE · position received';
+  if (!feed?.state) return feed?.reportsIn ? 'Waiting for the first report' : feed?.urlSet ? 'Not asked yet' : feed?.pictureSet ? 'Picture only' : '';
+  if (feed.state.ok) return feed.reportsIn ? 'LIVE · reporting in' : 'LIVE · position received';
   return `NO POSITION · ${feed.state.error || 'unreachable'}`;
 }
 
@@ -120,6 +151,9 @@ export function initDeviceFeedSetup({ host, documentRef = globalThis.document, f
   }
   let editable = false;
   let authModes = [];
+  let recordRadiusOptions = [50];
+  /** The last status rendered: the report addresses and listener state come from it. */
+  let currentStatus = null;
 
   const readStatus = async () => {
     const response = await doFetch(STATUS_ENDPOINT, { credentials: 'same-origin', cache: 'no-store', signal: lifetime.signal });
@@ -185,6 +219,13 @@ export function initDeviceFeedSetup({ host, documentRef = globalThis.document, f
     bridgeNote.setAttribute('role', 'note');
     block.append(bridgeNote);
 
+    // "Reports to this app": what to type into the phone, once the device is saved.
+    const reportBlock = element(documentRef, 'div', 'device-feeds-report');
+    const reportLines = element(documentRef, 'pre', 'device-feeds-report-lines');
+    const newKey = button(documentRef, 'device-feeds-new-key', 'NEW KEY', 'Mint a new key; the phone must be given the new one');
+    reportBlock.append(reportLines, newKey);
+    block.append(reportBlock);
+
     const url = input(documentRef, { name: 'url', value: '', placeholder: 'ADDRESS', label: 'Address the position is read from' });
     const picture = input(documentRef, { name: 'pictureUrl', value: '', placeholder: 'CAMERA PICTURE ADDRESS (OPTIONAL: SNAPSHOT OR MJPEG)', label: 'Camera picture address' });
     if (feed?.urlSet) url.placeholder = `SAVED: ${feed.url}`;
@@ -236,7 +277,18 @@ export function initDeviceFeedSetup({ host, documentRef = globalThis.document, f
       return box;
     };
     const follow = toggle('follow', 'FOLLOW ON THE MAP', saved ? feed.follow === true : kind.followDefault === true, 'The map stays on this device wherever it goes. One device is followed at a time.');
-    const record = toggle('record', 'RECORD EVERYTHING WITHIN 50 KM', saved ? feed.record === true : kind.recordDefault === true, 'While the map is open, what every layer that is on knows within 50 km of this device is saved on this computer as it moves.');
+    const record = toggle('record', 'RECORD EVERYTHING WITHIN', saved ? feed.record === true : kind.recordDefault === true, 'While the map is open, what every layer that is on knows within this distance of this device is saved on this computer as it moves.');
+    // How far around the device is saved: 1 to 50 km.
+    const recordKm = element(documentRef, 'select', 'device-feeds-record-km');
+    recordKm.dataset.field = 'recordKm';
+    recordKm.setAttribute('aria-label', 'Recording distance');
+    for (const km of recordRadiusOptions) {
+      const node = element(documentRef, 'option', '', `${km} KM`);
+      node.value = String(km);
+      recordKm.append(node);
+    }
+    recordKm.value = String(saved && recordRadiusOptions.includes(feed.recordKm) ? feed.recordKm : recordRadiusOptions[recordRadiusOptions.length - 1] ?? 50);
+    record.parentElement.append(recordKm);
     block.append(options);
     const recording = element(documentRef, 'p', 'device-feeds-state device-feeds-recording', saved ? deviceRecordingText(feed) : '');
     block.append(recording);
@@ -247,13 +299,18 @@ export function initDeviceFeedSetup({ host, documentRef = globalThis.document, f
       bridgeNote.hidden = direct;
       bridgeNote.textContent = direct ? '' : `This application cannot speak ${spec ? spec.label : 'that method'} directly. ${spec?.bridge || ''}`;
       const pictureOnly = spec?.id === 'snapshot';
-      url.hidden = !direct || pictureOnly;
+      const reportsIn = spec?.reportsIn === true;
+      url.hidden = !direct || pictureOnly || reportsIn;
       if (spec?.urlHint && !feed?.urlSet) url.placeholder = `ADDRESS, FOR EXAMPLE ${spec.urlHint}`;
       picture.hidden = !direct;
       paths.hidden = !direct || spec?.id !== 'http-json';
       fixed.hidden = !direct;
-      login.hidden = !direct;
+      login.hidden = !direct || reportsIn;
       options.hidden = !direct;
+      reportBlock.hidden = !reportsIn;
+      const lines = reportsIn ? deviceReportInstructions(feed?.reportsIn ? feed : null, currentStatus, { kindId: kind.id }) : [];
+      reportLines.textContent = lines.length ? lines.join('\n') : 'Save the device: its key and the address for the phone appear here.';
+      newKey.hidden = !reportsIn || !feed?.reportsIn;
       const mode = authModes.find((item) => item.id === auth.value);
       const fields = new Set(mode?.fields || []);
       username.hidden = !fields.has('username');
@@ -289,6 +346,7 @@ export function initDeviceFeedSetup({ host, documentRef = globalThis.document, f
           password: password.value, token: token.value,
           lat: lat.value, lon: lon.value,
           follow: follow.checked === true, record: record.checked === true,
+          recordKm: recordKm.value,
         });
         const payload = await post(body);
         render(payload.status);
@@ -296,6 +354,18 @@ export function initDeviceFeedSetup({ host, documentRef = globalThis.document, f
       } catch (error) {
         note.textContent = error?.message || 'Not saved';
         saveButton.disabled = false;
+      }
+    });
+    newKey.addEventListener('click', async () => {
+      if (!saved || !editable) return;
+      if (typeof globalThis.confirm === 'function' && !globalThis.confirm(`New key for ${feed.name}? The phone stops reporting until it is given the new one.`)) return;
+      note.textContent = 'Minting…';
+      try {
+        const payload = await post({ kind: kind.id, id: feed.id, name: feed.name, method: feed.method, newReportKey: true });
+        render(payload.status);
+        announce(payload.status);
+      } catch (error) {
+        note.textContent = error?.message || 'No new key';
       }
     });
     removeButton.addEventListener('click', async () => {
@@ -347,6 +417,8 @@ export function initDeviceFeedSetup({ host, documentRef = globalThis.document, f
   function render(status) {
     editable = status?.editable === true;
     authModes = Array.isArray(status?.authModes) ? status.authModes : [];
+    recordRadiusOptions = Array.isArray(status?.recordRadiusOptionsKm) && status.recordRadiusOptionsKm.length ? status.recordRadiusOptionsKm : [50];
+    currentStatus = status || null;
     host.textContent = '';
     host.hidden = false;
     host.append(

@@ -11,11 +11,10 @@
   max-height: calc(100vh - 24px);
 }
 
-#left-panel-stack > #data-panel,
+#left-panel-stack > #ask-panel,
 #left-panel-stack > #cctv-panel,
-#left-panel-stack > #global-context-panel,
-#left-panel-stack > #sst-panel,
-#left-panel-stack > #scene-panel {
+#left-panel-stack > #ultra-panel,
+#left-panel-stack > #social-panel {
   position: relative;
   top: auto;
   right: auto;
@@ -28,35 +27,35 @@
   pointer-events: auto;
 }
 
-#left-panel-stack > #data-panel {
+/* AI Risk & Truth Assessment first, the Ultra Security Package under it, CCTV, then Social Media Analysis. */
+#left-panel-stack > #ask-panel {
   order: 1;
 }
 
-#left-panel-stack > #cctv-panel {
+#left-panel-stack > #ultra-panel {
   order: 2;
 }
 
-#left-panel-stack > #sst-panel {
+#left-panel-stack > #cctv-panel {
   order: 3;
 }
 
-#left-panel-stack > #scene-panel {
+#left-panel-stack > #social-panel {
   order: 4;
 }
 
 /*
- * Runtime focus mode: the layout engine applies this only when the expanded
- * panel's measured natural height plus sibling labels cannot fit inside the
- * live HUD/attribution-safe corridor.
+ * Runtime focus mode: the layout engine applies this when the expanded
+ * panels' measured natural height plus sibling labels cannot fit inside the
+ * live HUD/attribution-safe corridor. The collapsed tabs stay in reach in it
+ * (owner ruling, 2026-09-27): a second box can always be opened beside the
+ * first, and open boxes scroll inside their share of the corridor.
  */
-#left-panel-stack.layout-focus > [data-panel-id].collapsed {
-  display: none;
-}
 
-#left-panel-stack > #data-panel:not(.collapsed),
+#left-panel-stack > #ask-panel:not(.collapsed),
 #left-panel-stack > #cctv-panel:not(.collapsed),
-#left-panel-stack > #sst-panel:not(.collapsed),
-#left-panel-stack > #scene-panel:not(.collapsed) {
+#left-panel-stack > #ultra-panel:not(.collapsed),
+#left-panel-stack > #social-panel:not(.collapsed) {
   box-sizing: border-box;
   flex: 0 1 var(--left-panel-allocated-height, auto);
   height: var(--left-panel-allocated-height, auto);
@@ -68,37 +67,92 @@
  * the canonical control order and center their combined stack at 50vh.
  */
 #left-panel-stack.layout-tail
-  > :is(#data-panel, #cctv-panel, #sst-panel, #scene-panel):not(.collapsed) {
+  > :is(#ask-panel, #cctv-panel, #ultra-panel, #social-panel):not(.collapsed) {
   box-sizing: border-box;
   flex: 0 0 var(--left-panel-allocated-height);
   height: var(--left-panel-allocated-height);
   max-height: var(--left-panel-allocated-height);
 }
 
-#left-panel-stack > #data-panel:not(.collapsed) .data-panel-inner,
+/*
+ * Overlap mode (owner ruling, 2026-09-28). An open box leaves the rail's flow
+ * and floats, so it can use the whole screen — over the tactical HUD at the
+ * top and the bottom — instead of halving the corridor with a sibling. The
+ * collapsed tabs keep the flow column above the floats, which is what keeps
+ * every tab visible and clickable. `--panel-overlap-top` is the rail's own
+ * cascade: the layout pass steps each float past the one before it so a strip
+ * of every box stays exposed whatever the click order is. `--panel-raise-z`
+ * IS that click order, written only when a box is touched, so a box that is
+ * merely remeasured never jumps.
+ */
+#left-panel-stack.layout-overlap > #ask-panel:not(.collapsed),
+#left-panel-stack.layout-overlap > #cctv-panel:not(.collapsed),
+#left-panel-stack.layout-overlap > #ultra-panel:not(.collapsed),
+#left-panel-stack.layout-overlap > #social-panel:not(.collapsed) {
+  position: absolute;
+  top: var(--panel-overlap-top, 0px);
+  left: 0;
+  right: auto;
+  bottom: auto;
+  z-index: var(--panel-raise-z, 1);
+  box-sizing: border-box;
+  width: 100%;
+  flex: 0 0 auto;
+  min-height: 0;
+  height: var(--left-panel-allocated-height, auto);
+  max-height: var(--left-panel-allocated-height, none);
+}
+
+#left-panel-stack > #ask-panel:not(.collapsed) .ask-panel-inner,
 #left-panel-stack > #cctv-panel:not(.collapsed) .cctv-panel-inner,
-#left-panel-stack > #sst-panel:not(.collapsed) .sst-panel-inner,
-#left-panel-stack > #scene-panel:not(.collapsed) .scene-panel-inner {
+#left-panel-stack > #ultra-panel:not(.collapsed) .ultra-panel-inner,
+#left-panel-stack > #social-panel:not(.collapsed) .social-panel-inner {
   height: 100%;
   max-height: 100%;
 }
 
-#left-panel-stack > #data-panel:not(.collapsed) .data-panel-inner {
-  overflow: hidden;
-}
-
+#left-panel-stack > #ask-panel:not(.collapsed) .ask-panel-inner,
 #left-panel-stack > #cctv-panel:not(.collapsed) .cctv-panel-inner,
-#left-panel-stack > #sst-panel:not(.collapsed) .sst-panel-inner,
-#left-panel-stack > #scene-panel:not(.collapsed) .scene-panel-inner {
+#left-panel-stack > #ultra-panel:not(.collapsed) .ultra-panel-inner,
+#left-panel-stack > #social-panel:not(.collapsed) .social-panel-inner {
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
 
+/* The header stays put while the rows scroll under it, so it needs a
+   backing: with the glass alone, a long box (Ultra with its help messages
+   and tokens) paints its scrolled rows straight through the title. It is
+   fully opaque on purpose — at 0.92 the brightest scrolled line still read
+   through the letters of the title. */
 #left-panel-stack > [data-panel-id]:not(.collapsed) .panel-header {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: transparent;
+  background: rgb(12 12 20);
+}
+
+/* The header sticks below the scroller's top padding and keeps a margin
+   under it; these reach the backing through both bands so no row shows
+   above the title or slides half-hidden out from under it. */
+#left-panel-stack > [data-panel-id]:not(.collapsed) .panel-header::before,
+#left-panel-stack > [data-panel-id]:not(.collapsed) .panel-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 18px;
+  background: inherit;
+}
+
+#left-panel-stack > [data-panel-id]:not(.collapsed) .panel-header::before {
+  bottom: 100%;
+}
+
+/* Exactly the header's own margin, so a row sliding under it is covered to
+   that edge and not shaved a few pixels lower. */
+#left-panel-stack > [data-panel-id]:not(.collapsed) .panel-header::after {
+  top: 100%;
+  height: 14px;
 }
 
 #left-panel-stack > [data-panel-id]:not(.collapsed) .panel-divider {
@@ -399,6 +453,8 @@
 #cctv-panel.collapsed .cctv-summary-label,
 #cctv-panel.collapsed #cctv-summary,
 #sst-panel.collapsed .sst-panel-inner > :not(.panel-header),
+#ultra-panel.collapsed .ultra-panel-inner > :not(.panel-header),
+#social-panel.collapsed .social-panel-inner > :not(.panel-header),
 #scene-panel.collapsed .scene-controls,
 #scene-panel.collapsed .scene-shot-list,
 #scene-panel.collapsed .scene-progress,
@@ -410,21 +466,22 @@
   display: none !important;
 }
 
+#ask-panel.collapsed,
 #data-panel.collapsed,
 #cctv-panel.collapsed,
 #sst-panel.collapsed,
-#scene-panel.collapsed {
+#ultra-panel.collapsed,
+#scene-panel.collapsed,
+#social-panel.collapsed {
   width: var(--left-collapsed-width);
 }
 
-#global-context-panel #radio-panel.collapsed {
-  width: 100%;
-}
-
+#ask-panel.collapsed .panel-title,
 #data-panel.collapsed .panel-title,
 #cctv-panel.collapsed .panel-title,
 #radio-panel.collapsed .panel-title,
 #sst-panel.collapsed .panel-title,
+#ultra-panel.collapsed .panel-title,
 #scene-panel.collapsed .panel-title {
   font-size: 8px;
   letter-spacing: 1.8px;
@@ -433,14 +490,19 @@
 /* A collapsed panel is a one-line label like DATA LAYERS and SCENES, never a
    scroller: the CCTV/SST inner scrolls only while expanded. */
 #cctv-panel.collapsed .cctv-panel-inner,
-#sst-panel.collapsed .sst-panel-inner {
+#sst-panel.collapsed .sst-panel-inner,
+#ultra-panel.collapsed .ultra-panel-inner,
+#social-panel.collapsed .social-panel-inner {
   overflow: hidden;
 }
 
 /* The full SST name is wider than the collapsed column, so the collapsed
    label shows the short form from data-collapsed-title. The element's own
    text stays the full name, which is what panel labels read. */
-#sst-panel.collapsed .panel-title {
+#ask-panel.collapsed .panel-title,
+#ultra-panel.collapsed .panel-title,
+#sst-panel.collapsed .panel-title,
+#social-panel.collapsed .panel-title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -448,17 +510,44 @@
   letter-spacing: 0;
 }
 
-#sst-panel.collapsed .panel-title::after {
+#ask-panel.collapsed .panel-title::after,
+#ultra-panel.collapsed .panel-title::after,
+#sst-panel.collapsed .panel-title::after,
+#social-panel.collapsed .panel-title::after {
   content: attr(data-collapsed-title);
   font-size: 8px;
   letter-spacing: 1.8px;
 }
 
+/* The AI box keeps its full name on the tab: two lines inside the 176px tab,
+   and the button keeps its size instead of being squeezed by the longer title. */
+#ask-panel.collapsed .panel-title,
+#social-panel.collapsed .panel-title {
+  white-space: normal;
+  text-overflow: clip;
+  max-width: calc(100% - 36px);
+}
+
+#ask-panel.collapsed .panel-collapse-btn,
+#social-panel.collapsed .panel-collapse-btn {
+  flex: 0 0 22px;
+}
+
+#ask-panel.collapsed .panel-title::after,
+#social-panel.collapsed .panel-title::after {
+  display: block;
+  line-height: 1.3;
+  letter-spacing: 1.1px;
+}
+
 #control-panel.collapsed .panel-inner,
+#ask-panel.collapsed .ask-panel-inner,
 #data-panel.collapsed .data-panel-inner,
 #cctv-panel.collapsed .cctv-panel-inner,
 #radio-panel.collapsed .radio-panel-inner,
 #sst-panel.collapsed .sst-panel-inner,
+#ultra-panel.collapsed .ultra-panel-inner,
+#social-panel.collapsed .social-panel-inner,
 #scene-panel.collapsed .scene-panel-inner,
 #param-slider-panel.collapsed,
 #location-bar.collapsed .location-inner {
@@ -466,11 +555,14 @@
 }
 
 #control-panel.collapsed .panel-header,
+#ask-panel.collapsed .panel-header,
 #data-panel.collapsed .panel-header,
 #cctv-panel.collapsed .panel-header,
 #radio-panel.collapsed .panel-header,
 #global-context-panel.collapsed .panel-header,
 #sst-panel.collapsed .panel-header,
+#ultra-panel.collapsed .panel-header,
+#social-panel.collapsed .panel-header,
 #scene-panel.collapsed .panel-header,
 #param-slider-panel.collapsed .param-panel-header {
   margin-bottom: 2px;

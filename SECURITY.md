@@ -18,6 +18,7 @@ The golden rule: **secret-bearing API keys stay on the server side.** The dev/pr
 | Key | Where it lives | How the browser uses it |
 |-----|----------------|--------------------------|
 | `OPENAI_API_KEY` | Server only | Browser fetches a short-lived **ephemeral** Realtime session token from `/api/realtime/token`; the real key never ships |
+| `NVIDIA_API_KEY`, `XAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `CUSTOM_LLM_API_KEY` | Server only | Ask and voice both stay on the server. Grok voice receives a short-lived secret from `/api/llm/voice/session`. Claude, NVIDIA, OpenRouter, and a custom endpoint send transcripts and audio through `/api/llm/voice/*`. The browser never receives those keys |
 | `AISSTREAM_API_KEY` | Server only | Server holds the AISStream websocket; browser polls the same-origin `/api/ais-live` cache |
 | OpenSky OAuth (`OPENSKY_CLIENT_ID/SECRET`) | Server only | Server mints + refreshes the token behind `/api/opensky` |
 | `GOOGLE_MAPS_SERVER_API_KEY` (optional, #33) | Server only | Server calls Places (`/api/google/nearby-places`, `/api/google/text-search`) and the Street View fallback with this key; falls back to `GOOGLE_MAPS_API_KEY` when unset |
@@ -221,7 +222,10 @@ the private cameras' rules:
   recording (what the map knew within 50 km of it, and its own track) is a
   folder of daily JSON-lines files under `config/device-recordings/`. It holds
   where someone's tracker or phone has been, so it is treated like the login
-  store: git-ignored, answered `404` by the same guard, and written only by
+  store: git-ignored, answered `404` by the same guard, restricted to your
+  account (with SYSTEM and Administrators on Windows, 0700 elsewhere) the
+  first time a process writes to it, inherited by every file in it, the
+  phone's `last-report.json` included, and written only by
   `POST /api/device-feeds/record/<id>`, which answers this machine and this
   page only, refuses a device whose RECORD switch is off, saves no more often
   than every 10 seconds, and re-checks every record against the position the
@@ -238,7 +242,9 @@ the private cameras' rules:
 
 The dev server is a **key broker**: every server-side key above is spendable by anyone who can send HTTP requests to it. That shapes the defaults:
 
-- **Local-only by default.** `./scripts/dev-fresh.sh` (and the Vite config itself) bind to `localhost`, so only your machine can reach the server — and only local names are accepted (`allowedHosts` stays restricted, which also blunts DNS-rebinding tricks). Vite applies `allowedHosts` only after plugin middleware, so it does not cover the `/api/*` proxy routes by itself. `POST /api/cctv/lookup/:id` and `POST /api/location-switch/release` check the `Host` against the served hosts themselves (`server/providers/common/allowed-hosts.js`); the other key-spending routes do not yet, so a foreign-`Host` request that reaches the port can still spend their quota.
+- **Local-only by default.** `./scripts/dev-fresh.sh` (and the Vite config itself) bind to `localhost`, so only your machine can reach the server — and only local names are accepted (`allowedHosts` stays restricted, which also blunts DNS-rebinding tricks). Vite applies `allowedHosts` only after plugin middleware, so it does not cover the `/api/*` proxy routes by itself. `POST /api/cctv/lookup/:id`, `POST /api/location-switch/release`, the model routes (`/api/llm/ask`, `/api/llm/voice/*`), the bot swarms (`/api/social/swarm`) and the public news lookup (`/api/social/public-news`) check the `Host` against the served hosts themselves (`server/providers/common/allowed-hosts.js`); the other key-spending routes do not yet, so a foreign-`Host` request that reaches the port can still spend their quota. `/api/llm/ask` also takes at most 20 questions a minute from one address without any setting.
+- **Opening Grok Bot starts a program here, so only this machine's own page may ask.** `POST /api/social/grok-bot/open` (GROK BOT SWARM's hand-off when it has no key, and OPEN GROK BOT) uses POWER UP's gate: a loopback socket, a local Host, an exact local Origin, JSON, no proxy headers, never while sharing. It opens only `GROK_BOT_LINK` from `.env` (a `.lnk` or `.exe` on a local drive, never a share or device path) or Grok Bot's own `grokbot://app/v1/open`, never anything the request names, through Explorer under `SystemRoot` (never a program found on `PATH`), at most once every 3 seconds.
+- **The Chief of Staff webhook key goes only to Grok Bot.** `GROK_BOT_WEBHOOK_URL` must be https on a `cursor.sh` or `cursor.com` host with the path `/automations/webhook/<id>` and nothing else; POWER UP refuses any other address, the route checks it again before every send, and a hand edit after a POWER UP save fails its integrity check. A refusal from the webhook is reported without the key, and its answer is never passed on.
 - **LAN exposure is an explicit opt-in**: `HOST=0.0.0.0 ./scripts/dev-fresh.sh`. The launcher prints a prominent warning plus your LAN URL. Understand what opting in means: **every device on that network can drive the proxies and spend your OpenAI / Google / OpenSky / AISStream / TomTom / FIRMS / Road511 quota** for as long as the server runs. Do this only on networks you trust.
 - **App-level throttles (opt-in):** `GEV_RATELIMIT_OPENAI_PER_MIN` and `GEV_RATELIMIT_GOOGLE_PER_MIN` cap the cost-bearing endpoints per client IP per minute (over-limit requests receive a sanitized `429`). They are **per-IP, process-local, in-memory guards** — they reset on restart and are **not billing caps**.
 - **Provider-side budgets are the real backstop.** For hard spend protection, configure limits where the money is: OpenAI platform usage limits, Google Cloud budget alerts + per-API quotas, and equivalent controls for any other keyed provider.

@@ -141,7 +141,7 @@ test('fires frame wider than vessels — a fire is read by its surroundings', ()
 
 test('every framing is a real oblique standoff, not a nadir or an inside-out sphere', () => {
   const kinds = Object.keys(WORLD_FOCUS_FRAMING);
-  assert.deepEqual(kinds.sort(), ['fire', 'vessel']);
+  assert.deepEqual(kinds.sort(), ['fire', 'help', 'vessel']);
   for (const kind of kinds) {
     const framing = WORLD_FOCUS_FRAMING[kind];
     // Looking DOWN at the target, but obliquely — a nadir drop reads as a map.
@@ -158,6 +158,17 @@ test('every framing is a real oblique standoff, not a nadir or an inside-out sph
   // Exact shipped values — a silent retune must show up as a failing test.
   assert.deepEqual({ ...WORLD_FOCUS_FRAMING.vessel }, { radiusM: 150, rangeM: 1200, pitchDeg: -30 });
   assert.deepEqual({ ...WORLD_FOCUS_FRAMING.fire }, { radiusM: 400, rangeM: 3000, pitchDeg: -35 });
+  // A received call for help is framed like a fire: read by its surroundings.
+  assert.deepEqual({ ...WORLD_FOCUS_FRAMING.help }, { radiusM: 400, rangeM: 3000, pitchDeg: -35 });
+});
+
+test('a help target (the network pin) is flyable and takes the fire framing', () => {
+  assert.equal(isValidWorldFocusTarget({ kind: 'help', id: 'ultra-network:n-0123456789abcdef', position: POSITION }), true);
+  const camera = stubCamera();
+  assert.equal(flyToWorldTarget({ camera }, { kind: 'help', id: 'ultra-network:n-0123456789abcdef', position: POSITION }), true);
+  const { sphere, options } = camera.calls.flights[0];
+  assert.equal(sphere.radius, WORLD_FOCUS_FRAMING.help.radiusM);
+  assert.equal(options.offset.range, WORLD_FOCUS_FRAMING.help.rangeM);
 });
 
 test('unknown kinds and missing viewers issue no flight', () => {

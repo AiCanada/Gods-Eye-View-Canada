@@ -2,13 +2,23 @@ import { readStylesheet } from './testSupport/readStylesheet.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-const leftRail = readFileSync(new URL('./ui/leftPanelRail.js', import.meta.url), 'utf8');
-const rightRail = readFileSync(new URL('./ui/rightPanelRail.js', import.meta.url), 'utf8');
+const leftRail = readFileSync(
+  new URL('./ui/leftPanelRail.js', import.meta.url),
+  'utf8',
+);
+const rightRail = readFileSync(
+  new URL('./ui/rightPanelRail.js', import.meta.url),
+  'utf8',
+);
 const rails = leftRail + rightRail;
 import {
+  PANEL_OVERLAP_CASCADE_PX,
+  allocateOverlappingPanelHeights,
   allocatePanelStackHeights,
   panelStackAutoCollapseIndices,
   resolveLeftStackBottomBoundary,
+  resolveOverlapCascadeOrder,
+  resolvePanelRaiseOrder,
   resolvePanelStackCorridor,
 } from './panelStackLayout.js';
 
@@ -26,17 +36,11 @@ const cockpitLane = {
 };
 
 test('every left-lane obstacle shortens the corridor', () => {
-  assert.equal(
-    resolveLeftStackBottomBoundary(cockpitLane),
-    531.7,
-  );
+  assert.equal(resolveLeftStackBottomBoundary(cockpitLane), 531.7);
 });
 
 test('an expanded Cockpit panel remains above the Contact and HUD surfaces', () => {
-  assert.equal(
-    resolveLeftStackBottomBoundary(cockpitLane),
-    531.7,
-  );
+  assert.equal(resolveLeftStackBottomBoundary(cockpitLane), 531.7);
 });
 
 test('the Cesium credit line limits the corridor even in Cockpit', () => {
@@ -61,10 +65,13 @@ test('an empty or malformed obstacle set leaves the viewport inset intact', () =
 });
 
 test('multiple expanded panels retain natural heights when the corridor fits', () => {
-  assert.deepEqual(allocatePanelStackHeights({
-    naturalHeights: [280, 160],
-    availableHeight: 500,
-  }), [280, 160]);
+  assert.deepEqual(
+    allocatePanelStackHeights({
+      naturalHeights: [280, 160],
+      availableHeight: 500,
+    }),
+    [280, 160],
+  );
 });
 
 test('multiple expanded panels share a constrained corridor without overflow', () => {
@@ -72,7 +79,10 @@ test('multiple expanded panels share a constrained corridor without overflow', (
     naturalHeights: [520, 300],
     availableHeight: 600,
   });
-  assert.equal(Math.round(allocated.reduce((sum, height) => sum + height, 0)), 600);
+  assert.equal(
+    Math.round(allocated.reduce((sum, height) => sum + height, 0)),
+    600,
+  );
   assert.ok(allocated.every((height) => height >= 96));
   assert.ok(allocated[0] > allocated[1]);
 });
@@ -82,44 +92,174 @@ test('very short corridors remain bounded with every panel represented', () => {
     naturalHeights: [420, 260, 180],
     availableHeight: 150,
   });
-  assert.equal(Math.round(allocated.reduce((sum, height) => sum + height, 0)), 150);
+  assert.equal(
+    Math.round(allocated.reduce((sum, height) => sum + height, 0)),
+    150,
+  );
   assert.ok(allocated.every((height) => height > 0));
 });
 
+// Owner ruling, 2026-09-28: open boxes overlap instead of halving the lane.
+test('an overlapping box keeps the height its content wants, capped at the corridor', () => {
+  assert.deepEqual(
+    allocateOverlappingPanelHeights({
+      naturalHeights: [900, 300],
+      availableHeight: 600,
+      cascadeStep: 22,
+    }),
+    [
+      { offset: 0, height: 578 },
+      { offset: 22, height: 300 },
+    ],
+  );
+});
+
+test('a single overlapping box is not cascaded and owns the whole corridor', () => {
+  assert.deepEqual(
+    allocateOverlappingPanelHeights({
+      naturalHeights: [900],
+      availableHeight: 600,
+      cascadeStep: 22,
+    }),
+    [{ offset: 0, height: 600 }],
+  );
+});
+
+test('the cascade keeps every overlapping box inside the corridor', () => {
+  const placements = allocateOverlappingPanelHeights({
+    naturalHeights: [900, 900, 900],
+    availableHeight: 600,
+    cascadeStep: 22,
+  });
+  assert.deepEqual(
+    placements.map((placement) => placement.offset),
+    [0, 22, 44],
+  );
+  // The last box still ends inside the lane, which is what leaves a strip of
+  // every earlier box exposed below it.
+  for (const placement of placements)
+    assert.ok(placement.offset + placement.height <= 600);
+});
+
+test('a corridor too short to cascade shrinks the step before the boxes', () => {
+  const placements = allocateOverlappingPanelHeights({
+    naturalHeights: [900, 900],
+    availableHeight: 100,
+    cascadeStep: 22,
+  });
+  assert.deepEqual(placements, [
+    { offset: 0, height: 96 },
+    { offset: 4, height: 96 },
+  ]);
+});
+
+test('untouched boxes keep DOM order and the last clicked box stays on top', () => {
+  const ids = ['ask-panel', 'ultra-panel', 'cctv-panel'];
+  assert.deepEqual(
+    [...resolvePanelRaiseOrder({ panelIds: ids })],
+    [
+      ['ask-panel', 1],
+      ['ultra-panel', 2],
+      ['cctv-panel', 3],
+    ],
+  );
+  const raisedAt = new Map([['cctv-panel', 1]]);
+  assert.equal(
+    resolvePanelRaiseOrder({ panelIds: ids, raisedAt }).get('cctv-panel'),
+    3,
+  );
+  raisedAt.set('ask-panel', 2);
+  const raised = resolvePanelRaiseOrder({ panelIds: ids, raisedAt });
+  assert.equal(raised.get('ask-panel'), 3);
+  assert.equal(raised.get('cctv-panel'), 2);
+  assert.equal(raised.get('ultra-panel'), 1);
+  // Resolving again without a new click must not move anything: a box that is
+  // merely repainted stays where the operator left it.
+  assert.deepEqual(
+    [...resolvePanelRaiseOrder({ panelIds: ids, raisedAt })],
+    [...raised],
+  );
+});
+
+test('the cascade hands out its slots in stacking order, the front box lowest', () => {
+  // The box in front covers whatever starts above it, so it has to be the one
+  // that starts lowest or the box behind it loses the strip it is clicked by.
+  assert.deepEqual(resolveOverlapCascadeOrder([2, 1, 3]), [1, 0, 2]);
+  // Boxes nobody has clicked keep the order they arrived in.
+  assert.deepEqual(resolveOverlapCascadeOrder([0, 0, 0]), [0, 1, 2]);
+  assert.deepEqual(resolveOverlapCascadeOrder([]), []);
+});
+
+test('every overlapping box keeps a strip its own header fits in', () => {
+  // The strip a box is clicked by is one cascade step deep, and the deepest
+  // header in the app puts the bottom of its collapse button 39.7px below the
+  // box's top edge. A shallower step leaves a box that cannot be closed.
+  assert.ok(PANEL_OVERLAP_CASCADE_PX >= 40);
+  const ranks = [3, 1, 2];
+  const naturalHeights = [900, 220, 900];
+  const order = resolveOverlapCascadeOrder(ranks);
+  const placements = allocateOverlappingPanelHeights({
+    naturalHeights: order.map((index) => naturalHeights[index]),
+    availableHeight: 800,
+    cascadeStep: PANEL_OVERLAP_CASCADE_PX,
+  });
+  // Walk the cascade from the back: everything painted in front of a box
+  // starts below it, so the box keeps its own first step to itself.
+  placements.forEach((placement, index) => {
+    for (const inFront of placements.slice(index + 1))
+      assert.ok(
+        inFront.offset >= placement.offset + PANEL_OVERLAP_CASCADE_PX,
+        'a box painted in front must start below the strip behind it',
+      );
+  });
+});
+
 test('later panels below half their natural height auto-collapse while the first is preserved', () => {
-  assert.deepEqual(panelStackAutoCollapseIndices({
-    naturalHeights: [520, 300, 180],
-    allocatedHeights: [180, 149, 120],
-  }), [1]);
+  assert.deepEqual(
+    panelStackAutoCollapseIndices({
+      naturalHeights: [520, 300, 180],
+      allocatedHeights: [180, 149, 120],
+    }),
+    [1],
+  );
 });
 
 test('the half-height boundary remains expanded', () => {
-  assert.deepEqual(panelStackAutoCollapseIndices({
-    naturalHeights: [520, 300],
-    allocatedHeights: [100, 150],
-  }), []);
+  assert.deepEqual(
+    panelStackAutoCollapseIndices({
+      naturalHeights: [520, 300],
+      allocatedHeights: [100, 150],
+    }),
+    [],
+  );
 });
 
 test('Tactical focus preserves the primary panel and collapses later competitors', () => {
-  assert.deepEqual(panelStackAutoCollapseIndices({
-    naturalHeights: [320, 240, 180],
-    allocatedHeights: [220, 180, 140],
-    collapseLaterPanels: true,
-  }), [1, 2]);
+  assert.deepEqual(
+    panelStackAutoCollapseIndices({
+      naturalHeights: [320, 240, 180],
+      allocatedHeights: [220, 180, 140],
+      collapseLaterPanels: true,
+    }),
+    [1, 2],
+  );
 });
 
 test('viewport growth retains the aligned corridor when midpoint centering would cross Cockpit panels', () => {
-  assert.deepEqual(resolvePanelStackCorridor({
-    viewportHeight: 1026,
-    safeTop: 266.76,
-    safeBottom: 515.24,
-    obstacleSafeTop: 41.04,
-    obstacleSafeBottom: 515.24,
-    minimumHeight: 164.16,
-  }), {
-    safeTop: 266.76,
-    safeBottom: 515.24,
-  });
+  assert.deepEqual(
+    resolvePanelStackCorridor({
+      viewportHeight: 1026,
+      safeTop: 266.76,
+      safeBottom: 515.24,
+      obstacleSafeTop: 41.04,
+      obstacleSafeBottom: 515.24,
+      minimumHeight: 164.16,
+    }),
+    {
+      safeTop: 266.76,
+      safeBottom: 515.24,
+    },
+  );
 });
 
 test('minimum panel corridor expands upward without crossing the lower obstacle boundary', () => {
@@ -136,11 +276,32 @@ test('minimum panel corridor expands upward without crossing the lower obstacle 
 });
 
 test('desktop panel lanes use per-panel allocations and presentation-only auto-collapse', () => {
-  const ui = readFileSync(new URL('./ui/applicationShell.js', import.meta.url), 'utf8');
+  const ui = readFileSync(
+    new URL('./ui/applicationShell.js', import.meta.url),
+    'utf8',
+  );
   const css = readStylesheet(new URL('../style.css', import.meta.url));
   assert.doesNotMatch(ui, /_enforce(?:Left|Right)PanelAccordion/);
-  assert.match(rails, /classList\.add\('collapsed', 'layout-auto-collapsed'\)/);
-  assert.match(readFileSync(new URL('./ui/panelLayoutController.js', import.meta.url), 'utf8'), /classList\.remove\('collapsed', 'layout-auto-collapsed'\)/);
+  // Owner ruling, 2026-09-27: every open box stays open on both rails; boxes
+  // share the corridor and scroll inside their share. Neither rail collapses
+  // a panel to make room for a sibling any more; the release path for a
+  // panel collapsed by an earlier version remains.
+  assert.doesNotMatch(
+    rails,
+    /classList\.add\('collapsed', 'layout-auto-collapsed'\)/,
+  );
+  assert.doesNotMatch(rails, /panelStackAutoCollapseIndices/);
+  assert.match(
+    rails,
+    /classList\.remove\('collapsed', 'layout-auto-collapsed'\)/,
+  );
+  assert.match(
+    readFileSync(
+      new URL('./ui/panelLayoutController.js', import.meta.url),
+      'utf8',
+    ),
+    /classList\.remove\('collapsed', 'layout-auto-collapsed'\)/,
+  );
   assert.match(ui, /reconsiderAutoCollapse/);
   assert.match(
     ui,
@@ -150,21 +311,40 @@ test('desktop panel lanes use per-panel allocations and presentation-only auto-c
     ui,
     /_scheduleLeftPanelLayout\(\{[\s\S]*?reconsiderAutoCollapse: this\._leftPanelStack\?\.contains\(panelEl\) === true/,
   );
-  assert.match(rails, /collapseLaterPanels: shouldFocus && hud\.variant === 'tactical'/);
-  assert.match(ui, /this\._panelLayout\._leftStackPreferredPanelId = leftOwnerPanel\.id;/);
+  assert.doesNotMatch(rails, /collapseLaterPanels/);
+  assert.match(
+    ui,
+    /this\._panelLayout\._leftStackPreferredPanelId = leftOwnerPanel\.id;/,
+  );
   assert.match(
     leftRail,
     /preferredExpandedPanel[\s\S]*?\[\s*preferredExpandedPanel,\s*\.\.\.expandedPanelsInDomOrder/,
     'the latest explicitly opened left panel must receive primary allocation',
   );
-  assert.match(ui, /this\._panelLayout\._rightStackPreferredPanelId = rightOwnerPanel\.id;/);
+  assert.match(
+    ui,
+    /this\._panelLayout\._rightStackPreferredPanelId = rightOwnerPanel\.id;/,
+  );
   assert.match(
     rightRail,
     /panel\.id === preferredPanelId[\s\S]*?\[\s*preferredExpandedPanel,\s*\.\.\.expandedPanelsInDomOrder/,
     'the latest explicitly opened right panel must receive primary allocation',
   );
-  assert.match(ui, /panelId === 'radio-panel'[\s\S]*?document\.getElementById\('global-context-panel'\)/);
-  assert.match(rightRail, /focusedExpandedPanel = expandedPanelsInDomOrder\.find\(\s*\(panel\) =>\s*panel\.contains\(documentRef\.activeElement\),?\s*\)/);
+  // Radio is a rail box of its own: it owns its allocation and no longer
+  // borrows Context's.
+  assert.doesNotMatch(
+    ui,
+    /panelId === 'radio-panel'[\s\S]*?document\.getElementById\('global-context-panel'\)/,
+  );
+  assert.doesNotMatch(
+    leftRail,
+    /COEXISTING_PANEL_IDS/,
+    'no per-panel exemption is needed once nothing auto-collapses',
+  );
+  assert.match(
+    rightRail,
+    /focusedExpandedPanel = expandedPanelsInDomOrder\.find\(\s*\(panel\) =>\s*panel\.contains\(documentRef\.activeElement\),?\s*\)/,
+  );
   assert.match(ui, /setAttribute\('aria-expanded', String\(!collapsed\)\)/);
   assert.match(leftRail, /--left-panel-allocated-height/);
   assert.match(rightRail, /--right-panel-allocated-height/);
@@ -180,18 +360,146 @@ test('desktop panel lanes use per-panel allocations and presentation-only auto-c
   );
   assert.match(css, /var\(\s*--left-panel-allocated-height/);
   assert.match(css, /var\(\s*--right-panel-allocated-height/);
+  assert.doesNotMatch(
+    css,
+    /layout-focus > \[data-panel-id\]\.collapsed:not\(\.layout-auto-collapsed\)/,
+  );
+  // Collapsed tabs are never hidden in focus mode any more (owner ruling,
+  // 2026-09-27): they stay in reach so more boxes can be opened beside the
+  // open ones.
+  assert.doesNotMatch(leftRail, /hiddenSibling/);
+  assert.match(
+    leftRail,
+    /for \(const panel of panels\) panel\.removeAttribute\('aria-hidden'\);/,
+  );
+  assert.doesNotMatch(
+    css,
+    /#left-panel-stack\.layout-focus > \[data-panel-id\]\.collapsed \{\s*display: none;/,
+  );
+});
+
+test('an open box floats over the HUD and is raised by clicking it', () => {
+  // Owner ruling, 2026-09-28: a box that is open may use the whole screen,
+  // drawing over the tactical HUD at the top and the bottom, and open boxes
+  // may cover one another with the last one clicked in front.
+  const css = readStylesheet(new URL('../style.css', import.meta.url));
+  const controller = readFileSync(
+    new URL('./ui/panelLayoutController.js', import.meta.url),
+    'utf8',
+  );
+
+  // Both rails switch to the viewport corridor only while something is open.
+  for (const rail of [leftRail, rightRail]) {
+    assert.match(rail, /PANEL_OVERLAP_VIEWPORT_INSET/);
+    assert.match(rail, /allocateOverlappingPanelHeights/);
+    assert.match(rail, /floatingPanels/);
+    assert.match(
+      rail,
+      /const overlapping = [\s\S]{0,120}?floatingPanels\.length > 0/,
+      'a rail with nothing open keeps the obstacle-aware corridor',
+    );
+    assert.match(rail, /classList\.toggle\('layout-overlap', overlapping\)/);
+    assert.match(rail, /'--panel-overlap-top'/);
+  }
+  // The map attribution is the one obstacle an overlapping box still clears.
+  assert.match(rails, /isAttributionObstacle/);
+  assert.match(
+    readFileSync(new URL('./ui/panelRailGeometry.js', import.meta.url), 'utf8'),
+    /closest\?\.\('#cesium-credits'\)/,
+  );
+
+  // Floats leave the flow; the collapsed tabs keep it, so every tab stays
+  // visible and clickable.
   assert.match(
     css,
-    /#left-panel-stack\.layout-focus > \[data-panel-id\]\.collapsed\s*\{\s*display:\s*none;/,
-    'focus mode must hide every collapsed sibling, including presentation-only auto-collapses',
+    /#left-panel-stack\.layout-overlap > #ask-panel:not\(\.collapsed\),[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*var\(--panel-overlap-top, 0px\);[\s\S]*?z-index:\s*var\(--panel-raise-z, 1\);/,
   );
-  assert.doesNotMatch(css, /layout-focus > \[data-panel-id\]\.collapsed:not\(\.layout-auto-collapsed\)/);
-  assert.match(leftRail, /const hiddenSibling =\s*shouldFocus && panel\.classList\.contains\('collapsed'\);/);
+  assert.match(
+    css,
+    /#right-context-rail\.layout-overlap > #pp-toggles:not\(\.collapsed\),[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*var\(--panel-overlap-top, 0px\);[\s\S]*?z-index:\s*var\(--panel-raise-z, 1\);/,
+  );
+  assert.doesNotMatch(
+    css,
+    /\.layout-overlap > \[data-panel-id\]\.collapsed \{\s*display: none;/,
+  );
+  // Radio is not a float: it stays in the flow under the Scenes tab.
+  assert.doesNotMatch(css, /layout-overlap > #radio-panel/);
+  assert.match(rightRail, /panel\.id !== 'radio-panel' &&/);
+
+  // Both rails outrank the tactical HUD's own chrome while a box is open, and
+  // still sit under the command dock (145) and the voice control (150).
+  const overlapZ = (selector) =>
+    Number(
+      new RegExp(
+        `${selector}\\.layout-overlap \\{\\s*z-index:\\s*(\\d+);`,
+      ).exec(css)?.[1],
+    );
+  for (const selector of ['#left-panel-stack', '#right-context-rail']) {
+    const z = overlapZ(selector);
+    assert.ok(z > 105, `${selector} must outrank the scene runtime at 105`);
+    assert.ok(z < 145, `${selector} must stay under the command dock at 145`);
+  }
+
+  // Click-to-raise listens where it cannot swallow the collapse buttons or
+  // the controls inside a box.
+  assert.match(controller, /stack\.addEventListener\(type, handler, true\)/);
+  assert.match(
+    controller,
+    /for \(const type of \['pointerdown', 'keydown'\]\)/,
+  );
+  assert.doesNotMatch(
+    controller.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, ''),
+    /preventDefault|stopPropagation/,
+    'raising must never swallow a click meant for a control inside a box',
+  );
+  assert.match(controller, /resolvePanelRaiseOrder\(\{/);
+  assert.match(controller, /setProperty\('--panel-raise-z', rank\)/);
+  // Raising a box re-measures the rails, because the cascade gives the box in
+  // front the lowest slot; without the re-measure the box that comes forward
+  // keeps a high slot and buries the strip of everything behind it. A press
+  // waits for its own release first, or the control under the cursor slides
+  // away before the click lands on it.
+  assert.match(
+    controller,
+    /raisePanel\(panelId, \{ settle = false \} = \{\}\)/,
+  );
+  assert.match(
+    controller,
+    /if \(settle\) this\._schedulePanelRaiseSettle\(\);\s*else this\._applyPanelRaiseLayout\(\);/,
+  );
+  assert.match(
+    controller,
+    /addEventListener\(type, settle, true\)/,
+    'the re-cascade waits for pointerup',
+  );
+  assert.match(
+    controller,
+    /this\.raisePanel\(panel\.id, \{ settle: event\.type !== 'keydown' \}\)/,
+  );
+  for (const rail of [leftRail, rightRail]) {
+    assert.match(rail, /resolveOverlapCascadeOrder\(/);
+    assert.match(rail, /readPanelStackingRank\(/);
+    assert.match(
+      rail,
+      /naturalHeights: cascadePanels\.map\(/,
+      'the cascade must be allocated in stacking order, not open order',
+    );
+  }
+  assert.match(
+    readFileSync(new URL('./ui/applicationShell.js', import.meta.url), 'utf8'),
+    /if \(!nextCollapsed\) this\._panelLayout\?\.raisePanel\?\.\(panelId\);/,
+  );
 });
 
 test('share-panel state excludes responsive collapse and preserves recipient preferences', () => {
-  const ui = readFileSync(new URL('./ui/applicationShell.js', import.meta.url), 'utf8');
-  const sharelink = readFileSync(new URL('./sharelink.js', import.meta.url), 'utf8');
+  const ui = readFileSync(
+    new URL('./ui/applicationShell.js', import.meta.url),
+    'utf8',
+  );
+  const sharelink = readFileSync(
+    new URL('./sharelink.js', import.meta.url),
+    'utf8',
+  );
 
   assert.match(
     ui,
@@ -209,16 +517,31 @@ test('share-panel state excludes responsive collapse and preserves recipient pre
     'pin and unpin must update the share hash even when collapse state is unchanged',
   );
   assert.match(ui, /\{ id: 'param-slider-panel' \}/);
-  assert.match(sharelink, /\{ id: 'param-slider-panel', token: 'm', pinnable: false \}/);
+  assert.match(
+    sharelink,
+    /\{ id: 'param-slider-panel', token: 'm', pinnable: false \}/,
+  );
 });
 
 test('parameterized Display presets keep one stable scroll owner', () => {
-  const ui = readFileSync(new URL('./ui/applicationShell.js', import.meta.url), 'utf8');
+  const ui = readFileSync(
+    new URL('./ui/applicationShell.js', import.meta.url),
+    'utf8',
+  );
   const css = readStylesheet(new URL('../style.css', import.meta.url));
 
-  assert.match(css, /#pp-toggles:not\(\.collapsed\) > #param-slider-panel\.active\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?max-height:\s*none;[\s\S]*?overflow-y:\s*visible;/);
-  assert.match(ui, /readDisplayScrollTop: \(\) =>\s*this\._displayPortalScrollRestoreOwner === 'standard'[\s\S]*?this\._standardDisplayScrollTop[\s\S]*?this\._ppToggles\?\.scrollTop \|\| 0/);
-  assert.match(rightRail, /displayPanel\.scrollTop = Math\.min\(displayScrollTop, maxScrollTop\);/);
+  assert.match(
+    css,
+    /#pp-toggles:not\(\.collapsed\) > #param-slider-panel\.active\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?max-height:\s*none;[\s\S]*?overflow-y:\s*visible;/,
+  );
+  assert.match(
+    ui,
+    /readDisplayScrollTop: \(\) =>\s*this\._displayPortalScrollRestoreOwner === 'standard'[\s\S]*?this\._standardDisplayScrollTop[\s\S]*?this\._ppToggles\?\.scrollTop \|\| 0/,
+  );
+  assert.match(
+    rightRail,
+    /displayPanel\.scrollTop = Math\.min\(displayScrollTop, maxScrollTop\);/,
+  );
   assert.match(
     ui,
     /this\._sliderPanel\.classList\.remove\('active'\);\s*this\._scheduleRightPanelLayout\(\);/,
@@ -251,9 +574,12 @@ test('expanded Display uses its container shell instead of a nested header card'
 test('expanded left panels integrate their headers with the container shell', () => {
   const css = readStylesheet(new URL('../style.css', import.meta.url));
 
+  // The sticky header carries an opaque backing: a long box's scrolled rows
+  // must not paint through its title (seen with Ultra's help messages and
+  // tokens; at 0.92 the brightest line still read through the letters).
   assert.match(
     css,
-    /#left-panel-stack > \[data-panel-id\]:not\(\.collapsed\) \.panel-header\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?background:\s*transparent;/,
+    /#left-panel-stack > \[data-panel-id\]:not\(\.collapsed\) \.panel-header\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?background:\s*rgb\(12 12 20\);/,
   );
   assert.match(
     css,
@@ -266,7 +592,10 @@ test('Map Source uses five compact tiles in the bottom Visual Presets tray', () 
   const css = readStylesheet(new URL('../style.css', import.meta.url));
 
   assert.doesNotMatch(html, /id="stack-panel"/);
-  assert.match(html, /id="control-panel"[\s\S]*?class="map-source-section"[\s\S]*?id="map-stack-chips"/);
+  assert.match(
+    html,
+    /id="control-panel"[\s\S]*?class="map-source-section"[\s\S]*?id="map-stack-chips"/,
+  );
   assert.match(
     css,
     /\.map-stack-chip-row\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\);/,

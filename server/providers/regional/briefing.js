@@ -1,4 +1,8 @@
 import { makeRateLimiter, clientKey } from '../common/rate-limit.js';
+import {
+  resolvedAllowedHosts,
+  servedRequestOrigin,
+} from '../common/allowed-hosts.js';
 import { fetchRegionalPlace } from './place.js';
 import { fetchRegionalWeather } from './weather.js';
 import {
@@ -6,11 +10,23 @@ import {
   fetchGovCrimeNews,
   fetchRegionalNews,
   fetchRiskNews,
+  fetchSocialPublicNews,
 } from './news.js';
+import {
+  buildSocialPublicSearch,
+  readSocialPublicNewsInput,
+} from '../../../src/socialMedia.js';
 import { fetchCountryGroundTruth } from './country-ground-truth.js';
 import { validRegionalPoint } from './query.js';
 import { coalesceProxyRequest } from '../common/http.js';
 import { locationRegionKey } from '../../../src/data/regionalBrief.js';
+
+/** Every public-news answer, refusals included: JSON, never cached, never sniffed. */
+const SOCIAL_NEWS_HEADERS = Object.freeze({
+  'Content-Type': 'application/json',
+  'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
+});
 
 // ---------------------------------------------------------------------------
 // Regional cockpit briefing proxy
@@ -77,6 +93,16 @@ const _riskNewsRateLimiter = makeRateLimiter({
   globalMax: 60,
 });
 
+const SOCIAL_NEWS_CACHE_MS = 5 * 60_000;
+const SOCIAL_NEWS_MAX_CACHE = 120;
+const _socialNewsCache = new Map();
+const _socialNewsInFlight = new Map();
+const _socialNewsRateLimiter = makeRateLimiter({
+  windowMs: 60_000,
+  max: 20,
+  globalMax: 60,
+});
+
 function trimRegionalBriefCache() {
   while (_regionalBriefCache.size > REGIONAL_BRIEF_MAX_CACHE) {
     const oldest = _regionalBriefCache.keys().next().value;
@@ -90,6 +116,14 @@ function trimRiskNewsCache() {
     const oldest = _riskNewsCache.keys().next().value;
     if (oldest === undefined) break;
     _riskNewsCache.delete(oldest);
+  }
+}
+
+function trimSocialNewsCache() {
+  while (_socialNewsCache.size > SOCIAL_NEWS_MAX_CACHE) {
+    const oldest = _socialNewsCache.keys().next().value;
+    if (oldest === undefined) break;
+    _socialNewsCache.delete(oldest);
   }
 }
 
@@ -170,7 +204,11 @@ function regionalBriefProxy() {
     return payload;
   }
 
-  function install(middlewares) {
+  /** @param {'server' | 'preview'} section - Which Vite server's hosts apply. */
+  function install(server, section) {
+    const { middlewares } = server;
+    // The hosts this server answers, for the route that checks Host itself.
+    const allowedHosts = resolvedAllowedHosts(server.config, section);
     middlewares.use('/api/regional-brief', async (req, res) => {
       if (req.method !== 'GET') {
         res.writeHead(405, { 'Content-Type': 'application/json' });
@@ -333,6 +371,100 @@ function regionalBriefProxy() {
       }
     });
 
+    // Social Media Analysis: public news index only. No platform login.
+    middlewares.use('/api/social/public-news', async (req, res) => {
+      if (req.method !== 'GET') {
+        res.writeHead(405, SOCIAL_NEWS_HEADERS);
+        res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+        return;
+      }
+      // This page only. The lookup goes out from this machine's address and
+      // spends the rate limit every browser tab here shares, so another
+      // site's <img> (Fetch Metadata: cross-site) and a DNS-rebinding page
+      // (a Host this server does not serve) are refused. A typed address
+      // (none) is the operator.
+      const site = String(
+        req.headers?.['sec-fetch-site'] ?? 'same-origin',
+      ).toLowerCase();
+      if (
+        !servedRequestOrigin(req, allowedHosts) ||
+        (site !== 'same-origin' && site !== 'none')
+      ) {
+        res.writeHead(403, SOCIAL_NEWS_HEADERS);
+        res.end(JSON.stringify({ error: 'Same-origin requests only' }));
+        return;
+      }
+      const url = new URL(req.url || '', 'http://localhost');
+      const options = readSocialPublicNewsInput(url.searchParams);
+      const plan = buildSocialPublicSearch(options);
+      if (!plan.ok && !plan.empty) {
+        res.writeHead(400, SOCIAL_NEWS_HEADERS);
+        res.end(JSON.stringify({ error: 'Pick a platform.' }));
+        return;
+      }
+      if (!plan.ok) {
+        res.writeHead(200, SOCIAL_NEWS_HEADERS);
+        res.end(
+          JSON.stringify({
+            status: 'empty',
+            match: null,
+            source: null,
+            lookbackDays: null,
+            platforms: [],
+            articles: [],
+          }),
+        );
+        return;
+      }
+      const key = [plan.siteQuery, plan.mentionQuery, plan.placeQuery, plan.timespan].join('|');
+      const now = Date.now();
+      const cached = _socialNewsCache.get(key);
+      if (cached && now - cached.cachedAt <= SOCIAL_NEWS_CACHE_MS) {
+        res.writeHead(200, {
+          ...SOCIAL_NEWS_HEADERS,
+          'X-Social-Public-News': 'HIT',
+        });
+        res.end(JSON.stringify(cached.payload));
+        return;
+      }
+      if (!_socialNewsRateLimiter(clientKey(req))) {
+        res.writeHead(429, {
+          ...SOCIAL_NEWS_HEADERS,
+          'Retry-After': '10',
+        });
+        res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
+        return;
+      }
+      const request = coalesceProxyRequest(_socialNewsInFlight, key, async () => {
+        const payload = await fetchSocialPublicNews(options);
+        if (payload.status !== 'invalid') {
+          _socialNewsCache.set(key, { payload, cachedAt: Date.now() });
+          trimSocialNewsCache();
+        }
+        return payload;
+      });
+      try {
+        const payload = await request.promise;
+        if (payload.status === 'invalid') {
+          res.writeHead(400, SOCIAL_NEWS_HEADERS);
+          res.end(JSON.stringify({ error: 'Pick a platform.' }));
+          return;
+        }
+        res.writeHead(200, {
+          ...SOCIAL_NEWS_HEADERS,
+          'X-Social-Public-News': request.shared ? 'INFLIGHT' : 'MISS',
+        });
+        res.end(JSON.stringify(payload));
+      } catch {
+        res.writeHead(503, SOCIAL_NEWS_HEADERS);
+        res.end(
+          JSON.stringify({
+            error: 'Public news is temporarily unavailable',
+          }),
+        );
+      }
+    });
+
     // Country Ground Truth Assessment: checks computed from a country's own
     // published statistics table. One upstream sweep a day (the table is
     // annual); every press after that is answered from memory.
@@ -473,10 +605,10 @@ function regionalBriefProxy() {
   return {
     name: 'regional-brief-proxy',
     configureServer(server) {
-      install(server.middlewares);
+      install(server, 'server');
     },
     configurePreviewServer(server) {
-      install(server.middlewares);
+      install(server, 'preview');
     },
   };
 }

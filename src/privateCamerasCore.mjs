@@ -324,6 +324,31 @@ function validPoint(lat, lon) {
   return lat !== null && lon !== null && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
 }
 
+/**
+ * What a camera check covers, in file order: the address and login that
+ * would be sent, the certificate pin, and a paired relay. Where the map
+ * put the camera is left out, so moving it does not look like a new login.
+ */
+export function privateCameraPolicyRecords(config) {
+  const normalized = normalizePrivateCameraConfig(config);
+  return normalized.sites.map((site) => ({
+    id: site.id,
+    kind: site.kind,
+    auth: site.auth,
+    bridgeUrl: site.bridgeUrl || '',
+    token: site.token || '',
+    username: site.username || '',
+    password: site.password || '',
+    tlsFingerprint: site.tlsFingerprint || '',
+    relayExtensionId: site.relayExtensionId || '',
+    relaySecretHash: site.relaySecretHash || '',
+    cameras: site.cameras.map((camera) => ({
+      id: camera.id,
+      source: camera.source || '',
+    })),
+  }));
+}
+
 /** Coerce whatever was read from disk into the current shape, dropping junk. */
 export function normalizePrivateCameraConfig(raw) {
   const config = emptyPrivateCameraConfig();

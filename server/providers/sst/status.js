@@ -1,4 +1,5 @@
 import { readResponseTextCapped } from '../common/http.js';
+import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
 
 /** Layer list and date extents for every GIBS product. */
 export const GIBS_CAPABILITIES_URL =
@@ -201,7 +202,9 @@ export function createSstStatusSource({
   };
 
   return async function sstStatus() {
-    const token = String(env.EARTHDATA_TOKEN || '').trim();
+    const token = localProviderTrusted('earthdata', env)
+      ? String(env.EARTHDATA_TOKEN || '').trim()
+      : '';
     const [dates, file] = await Promise.all([gibsDates(), latestGranule()]);
     const tokenInfo = earthdataTokenInfo(token, now());
     const result =

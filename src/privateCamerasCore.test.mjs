@@ -117,7 +117,7 @@ test('a login is never allowed over plain http beyond the local network', () => 
   const internet = applyPrivateCameraUpdate({ kind: 'business', name: 'Office', username: 'u', password: 'p', cameras: [{ name: 'A', source: 'http://cams.example.com/snap.jpg' }] });
   assert.equal(internet.ok, false);
   assert.match(internet.error, /plain http to cams\.example\.com.*use https/);
-  const bridge = applyPrivateCameraUpdate({ kind: 'home', name: 'Home', bridgeUrl: 'http://my-ha.duckdns.org:8123', token: 't', cameras: [{ name: 'Front', source: 'camera.privatecam_front' }] });
+  const bridge = applyPrivateCameraUpdate({ kind: 'home', name: 'Home', bridgeUrl: 'http://my-ha.example.org:8123', token: 't', cameras: [{ name: 'Front', source: 'camera.privatecam_front' }] });
   assert.equal(bridge.ok, false);
   assert.match(bridge.error, /Bridge URL/);
   const anonymous = applyPrivateCameraUpdate({ kind: 'business', name: 'Public', cameras: [{ name: 'A', source: 'http://cams.example.com/snap.jpg' }] });
@@ -128,7 +128,7 @@ test('private network detection', () => {
   for (const host of ['localhost', '127.0.0.1', '10.1.2.3', '172.20.0.5', '192.168.0.10', '169.254.1.1', '100.101.102.103', 'nvr.local', 'ha.home.arpa', 'cam.lan', 'nvr', '::1', '[fd12::1]', 'fe80::1']) {
     assert.equal(isPrivateNetworkHost(host), true, host);
   }
-  for (const host of ['8.8.8.8', '172.32.0.1', 'example.com', 'my-ha.duckdns.org', '2001:db8::1', '']) {
+  for (const host of ['8.8.8.8', '172.32.0.1', 'example.com', 'my-ha.example.org', '2001:db8::1', '']) {
     assert.equal(isPrivateNetworkHost(host), false, host);
   }
   assert.equal(credentialTransport('https://example.com/x'), 'https');

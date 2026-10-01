@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { createHash, randomBytes } from 'node:crypto';
+import { noteLocalRecordsSaved } from './localIntegrity.mjs';
+import { privateCameraPolicyRecords } from './privateCamerasCore.mjs';
 import {
   RELAY_FRAME_MAX_BYTES,
   RELAY_HEARTBEAT_STALE_MS,
@@ -220,6 +222,11 @@ test('the credential store is never served as a static file, however the URL spe
     '/config/private-cameras.json.',
     '/config/private-cameras.json::$DATA',
     '/config/.private-cameras.json.1234.tmp',
+    '/config/local-integrity.json',
+    '/config/local-integrity.key',
+    '/config/.local-integrity.json.ab12cd34.tmp',
+    '/config/social-accounts.json',
+    '/config/social%2Daccounts.key',
     '/@fs/C:/Projects/gev/config/private-cameras.json',
     '/@fs/c:/Projects%20Local/gev/config/private-cameras.json',
     '/config/private-cameras.json%',
@@ -909,4 +916,143 @@ test('a camera whose Private_CCTV_Feed match name changes loses its picture, so 
   assert.deepEqual((await sendHeartbeat(request)).json(), { missing: ['front', 'ff'], unknown: [] }, 'the relay is asked for both pictures again');
   assert.equal((await sendFrame(request, 'front', { bytes: PNG, type: 'image/png' })).status, 204);
   assert.deepEqual([await shown('front'), await shown('ff')], ['PICTURE ON ITS WAY', PNG], 'the Private_CCTV_Feed camera "front" now fills the camera that names it');
+});
+
+test('a changed camera or relay is not used, and deleting the check uses the file again', async (t) => {
+  const root = relayRoot(t);
+  const asked = [];
+  const request = relayHarness(privateCamerasProxy({
+    sourceRoot: root,
+    fetchImpl: async (url) => {
+      asked.push(String(url));
+      return response(200, { 'content-type': 'image/jpeg' }, 'IMG');
+    },
+  }));
+  const dock = async () => request('/frame/private-shop--dock');
+  const writeCameras = (mutate) => {
+    const file = path.join(root, 'config', 'private-cameras.json');
+    const before = fs.statSync(file).size;
+    const onDisk = readStore(root);
+    mutate(onDisk);
+    let text = JSON.stringify(onDisk);
+    if (Buffer.byteLength(text) === before) text += ' ';
+    fs.writeFileSync(file, text);
+    assert.notEqual(fs.statSync(file).size, before);
+  };
+
+  const first = await dock();
+  assert.equal(first.headers['X-Private-Camera'], 'live');
+  assert.equal(asked.length, 1);
+  assert.equal((await sendHeartbeat(request)).status, 200);
+  assert.equal(fs.existsSync(path.join(root, 'config', 'local-integrity.json')), false);
+  assert.equal(fs.existsSync(path.join(root, 'config', 'local-integrity.key')), false);
+
+  noteLocalRecordsSaved(root, 'cameras', privateCameraPolicyRecords(readStore(root)));
+  const checkPath = path.join(root, 'config', 'local-integrity.json');
+  const checkText = fs.readFileSync(checkPath, 'utf8');
+  assert.match(JSON.parse(checkText).camerasMac, /^[0-9a-f]{64}$/);
+  for (const secret of ['hunter2', '10.0.0.2', 'feed-password', RELAY.hash]) {
+    assert.equal(checkText.includes(secret), false);
+  }
+
+  writeCameras((onDisk) => {
+    const shop = onDisk.sites.find((site) => site.id === 'shop');
+    shop.lat = 46.123456;
+    shop.cameras[0].lat = 46.123456;
+  });
+  asked.length = 0;
+  assert.equal((await dock()).headers['X-Private-Camera'], 'live');
+  assert.equal(asked.length, 1);
+  assert.equal((await sendHeartbeat(request)).status, 200);
+
+  // The relay check is asserted before a source change, which fails the whole camera section.
+  writeCameras((onDisk) => {
+    const home = onDisk.sites.find((site) => site.id === 'home');
+    home.relaySecretHash = 'ab'.repeat(32);
+    home.address = 'pad-for-size';
+  });
+  assert.equal((await sendHeartbeat(request)).status, 401);
+  const pair = await request('/relay/pair-request', {
+    method: 'POST',
+    body: { secretHash: 'c'.repeat(64) },
+    headers: { ...extensionHeaders({ secret: null }), 'content-type': 'application/json' },
+  });
+  assert.equal(pair.status, 202);
+  writeCameras((onDisk) => {
+    const home = onDisk.sites.find((site) => site.id === 'home');
+    home.relaySecretHash = RELAY.hash;
+    home.address = 'pad-for-size-2';
+  });
+  assert.equal((await sendHeartbeat(request)).status, 200);
+
+  writeCameras((onDisk) => {
+    onDisk.sites.find((site) => site.id === 'shop').cameras[0].source = 'http://10.9.9.9/evil.jpg';
+  });
+  asked.length = 0;
+  const changed = await dock();
+  assert.equal(changed.headers['X-Private-Camera'], 'offline');
+  assert.equal(offlineReason(changed), 'THE CAMERA WAS CHANGED');
+  assert.equal(asked.length, 0);
+
+  fs.unlinkSync(checkPath);
+  const again = await dock();
+  assert.equal(again.headers['X-Private-Camera'], 'live');
+  assert.equal(again.body, 'IMG');
+  assert.equal(asked.some((url) => url.includes('10.9.9.9')), true);
+});
+
+test('a changed camera site file is not fetched, and a paired relay still answers', async (t) => {
+  const root = relayRoot(t);
+  const feedFile = path.join(root, 'config', 'private_cctv_feed.local.json');
+  fs.writeFileSync(feedFile, `${JSON.stringify({
+    feedUrl: 'https://cams.vendor.example/#/feed',
+    imageHosts: ['clips.vendor.example'],
+    cloudHostSuffixes: ['vendor.example'],
+  })}\n`);
+  const asked = [];
+  const request = relayHarness(privateCamerasProxy({
+    sourceRoot: root,
+    fetchImpl: async (url) => {
+      asked.push(String(url));
+      return response(200, { 'content-type': 'image/jpeg' }, 'IMG');
+    },
+  }));
+  const saved = await request('/config', {
+    method: 'POST',
+    headers: pageHeaders(),
+    body: {
+      kind: 'business',
+      siteId: 'shop',
+      name: 'Shop',
+      cameras: [{ id: 'dock', name: 'Dock', source: 'http://10.0.0.2/snap.jpg' }],
+    },
+  });
+  assert.equal(saved.status, 200);
+  const checkPath = path.join(root, 'config', 'local-integrity.json');
+  const checkText = fs.readFileSync(checkPath, 'utf8');
+  assert.match(JSON.parse(checkText).vendorFeedMac, /^[0-9a-f]{64}$/);
+  assert.equal(checkText.includes('vendor.example'), false);
+  assert.equal(checkText.includes('hunter2'), false);
+  const dock = async () => request('/frame/private-shop--dock');
+  const live = await dock();
+  assert.equal(live.headers['X-Private-Camera'], 'live');
+  assert.equal(asked.length, 1);
+  assert.equal((await sendHeartbeat(request)).status, 200);
+
+  fs.writeFileSync(feedFile, `${JSON.stringify({
+    feedUrl: 'https://cams.other.example/#/feed',
+    imageHosts: ['clips.other.example'],
+    cloudHostSuffixes: ['other.example'],
+  })}\n`);
+  await new Promise((resolve) => setTimeout(resolve, 2100));
+  const refused = await dock();
+  assert.equal(refused.headers['X-Private-Camera'], 'offline');
+  assert.equal(offlineReason(refused), 'THE CAMERA SITE WAS CHANGED');
+  assert.equal(asked.length, 1);
+  assert.equal((await sendHeartbeat(request)).status, 200);
+
+  fs.unlinkSync(checkPath);
+  const opened = await dock();
+  assert.equal(opened.headers['X-Private-Camera'], 'live');
+  assert.equal(asked.length, 2);
 });

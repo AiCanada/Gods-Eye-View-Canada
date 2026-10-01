@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   hardenCredentialFile,
+  hardenPrivateFolder,
   replaceCredentialStore,
 } from './keySetupHardening.mjs';
 
@@ -158,6 +159,82 @@ test('Windows hardening applies and then verifies the exact restricted DACL', ()
   assert.match(calls[2].args.at(-1), /seen\.ContainsKey/);
   assert.match(calls[2].args.at(-1), /FileSystemRights -ne \$full/);
   assert.match(calls[2].args.at(-1), /seen\.Count -ne 3/);
+});
+
+test('a private folder gets the same three principals, inherited by everything in it, and is checked for that', () => {
+  const answer = (command, verified = 0) => {
+    if (command.endsWith('\\whoami.exe')) {
+      return {
+        status: 0,
+        signal: null,
+        stdout: `"WORKSTATION\\alice","${USER_SID}"\r\n`,
+      };
+    }
+    return {
+      status: command.endsWith('powershell.exe') ? verified : 0,
+      signal: null,
+    };
+  };
+  const run = (harden, target, { environment = {}, verified = 0 } = {}) => {
+    const calls = [];
+    const result = harden(target, {
+      platform: 'win32',
+      environment: { SYSTEMROOT: WINDOWS_ROOT, ...environment },
+      fileSystem: windowsFileSystem(),
+      spawn(command, args, options) {
+        calls.push({ command, args, options });
+        return answer(command, verified);
+      },
+    });
+    return { result, calls };
+  };
+  const folder = 'C:\\GEV App\\config\\device-recordings';
+  const { result, calls } = run(hardenPrivateFolder, folder);
+  assert.equal(result, true);
+  assert.deepEqual(calls[1].args, [
+    folder,
+    '/inheritance:r',
+    '/grant:r',
+    `*${USER_SID}:(OI)(CI)F`,
+    '*S-1-5-18:(OI)(CI)F',
+    '*S-1-5-32-544:(OI)(CI)F',
+  ]);
+  assert.equal(calls[2].options.env.GEV_ACL_FOLDER, '1');
+  assert.match(calls[2].args.at(-1), /InheritanceFlags -ne \$both/);
+  assert.match(calls[2].args.at(-1), /rules\.Count -ne 3/);
+  // A file is never checked as a folder, whatever the parent environment holds.
+  const fileRun = run(hardenCredentialFile, 'C:\\GEV\\ENVIRONMENT.tmp', {
+    environment: { GEV_ACL_FOLDER: '1' },
+  });
+  assert.equal(fileRun.result, true);
+  assert.equal(fileRun.calls[1].args[3], `*${USER_SID}:F`);
+  assert.equal(fileRun.calls[2].options.env.GEV_ACL_FOLDER, '');
+  // A failed check fails the folder closed, as it does a file.
+  assert.equal(
+    run(hardenPrivateFolder, folder, { verified: 10 }).result,
+    false,
+  );
+  // POSIX: the folder is 0700, and only 0700 passes.
+  const goodFs = fileSystemWithMode(0o40700);
+  assert.equal(
+    hardenPrivateFolder('/srv/gev/config/device-recordings', {
+      platform: 'linux',
+      fileSystem: goodFs,
+    }),
+    true,
+  );
+  assert.deepEqual(goodFs.calls[0], [
+    'chmod',
+    '/srv/gev/config/device-recordings',
+    0o700,
+  ]);
+  assert.equal(
+    hardenPrivateFolder('/srv/gev/config/device-recordings', {
+      platform: 'linux',
+      fileSystem: fileSystemWithMode(0o40755),
+    }),
+    false,
+  );
 });
 
 test('Windows hardening isolates the verify PowerShell from a pwsh7-polluted PSModulePath', () => {

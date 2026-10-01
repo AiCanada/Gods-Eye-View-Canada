@@ -224,6 +224,21 @@ export const DATA_CREDITS = [
       'part of NASA’s Earth Observing System Data and Information System (EOSDIS)',
   },
   {
+    key: 'observed-weather',
+    html:
+      'Observed weather: NOAA/NWS nowCOAST radar, infrared, and lightning; ' +
+      'GFS and ECMWF IFS wind; NHC cyclone advisories. ' +
+      '<a href="https://nowcoast.noaa.gov/" target="_blank" rel="noopener">nowcoast.noaa.gov</a>',
+  },
+  {
+    key: 'fire-perimeters',
+    html:
+      'Fire perimeters: NIFC WFIGS — ' +
+      '<a href="https://data-nifc.opendata.arcgis.com/" target="_blank" rel="noopener">National Interagency Fire Center</a> ' +
+      '(public). Incident links: ' +
+      '<a href="https://inciweb.wildfire.gov/" target="_blank" rel="noopener">InciWeb</a>.',
+  },
+  {
     key: 'telegeography',
     html:
       'Submarine cables: © TeleGeography — ' +

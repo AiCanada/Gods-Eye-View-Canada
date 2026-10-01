@@ -1,4 +1,22 @@
 /**
+ * Pixels each overlapping box is stepped below the one before it. That step
+ * is the strip of the box that stays exposed, so it has to be deep enough to
+ * show the box's own header: the collapse button ends 39.7px below the top
+ * edge on the deepest header in the app (Global Context), and a shallower
+ * step leaves a box that can be clicked but not closed.
+ */
+export const PANEL_OVERLAP_CASCADE_PX = 40;
+
+/**
+ * Share of the viewport an overlapping rail keeps clear at the top and the
+ * bottom. Owner ruling, 2026-09-28: an open box draws over the tactical HUD
+ * at both ends rather than being squeezed into the gap between HUD furniture,
+ * so only this inset (and the map attribution, which must stay legible) still
+ * bounds the corridor.
+ */
+export const PANEL_OVERLAP_VIEWPORT_INSET = 0.02;
+
+/**
  * Fits expanded panels into a shared vertical corridor. Natural heights are
  * retained when they fit; constrained panels keep a usable floor and share
  * the remaining room in proportion to their unmet height.
@@ -41,6 +59,108 @@ export function allocatePanelStackHeights({
   return base.map(
     (height, index) => height + remaining * (unmet[index] / unmetTotal),
   );
+}
+
+/**
+ * Places overlapping rail boxes, which is a different problem from sharing a
+ * corridor: every box keeps the height its content asks for, capped at the
+ * corridor rather than divided by the number of open boxes. They are allowed
+ * to cover one another, so each is stepped below its predecessor to leave a
+ * clickable strip, and the cap comes down by the full cascade so the last box
+ * still ends inside the corridor. The step shrinks when the corridor is too
+ * short to cascade and still leave every box its minimum height.
+ *
+ * The strip only survives if the boxes arrive in `resolveOverlapCascadeOrder`,
+ * back box first: a box's strip is covered by whichever sibling starts above
+ * it, so the box in front has to be the one that starts lowest.
+ *
+ * @param {object} input Layout measurements.
+ * @param {number[]} input.naturalHeights Open-box natural heights, back box first.
+ * @param {number} input.availableHeight Corridor height left to the boxes.
+ * @param {number} [input.cascadeStep=0] Preferred step between boxes, in px.
+ * @param {number} [input.minimumHeight=96] Height every box keeps if it can.
+ * @returns {Array<{offset: number, height: number}>} One placement per box.
+ */
+export function allocateOverlappingPanelHeights({
+  naturalHeights,
+  availableHeight,
+  cascadeStep = 0,
+  minimumHeight = 96,
+}) {
+  const natural = naturalHeights.map((height) =>
+    Math.max(0, Number(height) || 0),
+  );
+  if (!natural.length) return [];
+
+  const available = Math.max(0, Number(availableHeight) || 0);
+  const floor = Math.min(Math.max(0, Number(minimumHeight) || 0), available);
+  const requested = Math.max(0, Number(cascadeStep) || 0);
+  const step =
+    natural.length > 1
+      ? Math.max(
+          0,
+          Math.min(requested, (available - floor) / (natural.length - 1)),
+        )
+      : 0;
+  const cap = Math.max(0, available - step * (natural.length - 1));
+  return natural.map((height, index) => ({
+    offset: step * index,
+    height: Math.min(height, cap),
+  }));
+}
+
+/**
+ * Puts overlapping boxes in the order the cascade has to place them: the box
+ * furthest back first, the box in front last.
+ *
+ * Every box in the cascade shares one column and one width, so the only part
+ * of a box no sibling can reach is the strip above where the next box starts.
+ * A sibling that starts higher up covers that strip whenever it is painted in
+ * front, and with the slots handed out in any other order (DOM order, or the
+ * order the boxes were opened) that is the ordinary case, not a corner: open
+ * the AI box and then the Ultra box and the AI box disappears completely,
+ * collapse button and all. Giving the front box the lowest slot removes the
+ * possibility — a box can only be covered by one that starts above it, and
+ * every box that starts above it is behind it.
+ *
+ * @param {number[]} ranks Stacking rank per box, in the caller's own order.
+ * @returns {number[]} The caller's indices, back box first.
+ */
+export function resolveOverlapCascadeOrder(ranks = []) {
+  return ranks
+    .map((rank, index) => ({ rank: Number(rank) || 0, index }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((entry) => entry.index);
+}
+
+/**
+ * Ranks rail boxes for painting from the order they were last clicked, the
+ * way a window manager ranks windows. A box nobody has touched keeps its
+ * place in the given (DOM) order below every box that has been; the box
+ * clicked last ranks highest and stays there until another is clicked. The
+ * ranking reads nothing but the recorded sequence, so a layout pass that
+ * merely repaints the rail cannot make a box jump.
+ *
+ * @param {object} input Current rail state.
+ * @param {string[]} input.panelIds Box ids in their fallback (DOM) order.
+ * @param {Map<string, number>|Record<string, number>} [input.raisedAt] Click sequence per box.
+ * @param {number} [input.base=1] Rank given to the lowest box.
+ * @returns {Map<string, number>} One rank per box id.
+ */
+export function resolvePanelRaiseOrder({ panelIds = [], raisedAt, base = 1 }) {
+  const readSequence = (id) => {
+    const value = raisedAt instanceof Map ? raisedAt.get(id) : raisedAt?.[id];
+    const sequence = Number(value);
+    return Number.isFinite(sequence) ? sequence : 0;
+  };
+  const ranked = [...panelIds]
+    .map((id, index) => ({ id, index, sequence: readSequence(id) }))
+    .sort((a, b) => a.sequence - b.sequence || a.index - b.index);
+  const order = new Map();
+  ranked.forEach((entry, position) => {
+    order.set(entry.id, (Number(base) || 0) + position);
+  });
+  return order;
 }
 
 /**

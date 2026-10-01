@@ -45,7 +45,10 @@
       "server/providers/vessels/ais-live.js",
       "src/data/adsbLolFallback.js",
       "src/data/aisStreamAdapter.js",
-      "src/data/aisWatchdog.js"
+      "src/data/aisWatchdog.js",
+      "src/localIntegrity.mjs",
+      "src/keySetupHardening.mjs",
+      "src/keySetupCore.mjs"
     ],
     "external": ["ws"]
   },
@@ -67,7 +70,10 @@
       "server/providers/common/http.js",
       "scripts/google-server-key.mjs",
       "src/data/placeProviderPayloads.js",
-      "src/data/routeSteps.js"
+      "src/data/routeSteps.js",
+      "src/localIntegrity.mjs",
+      "src/keySetupHardening.mjs",
+      "src/keySetupCore.mjs"
     ],
     "external": []
   },
@@ -84,7 +90,10 @@
       "server/providers/space/celestrak.js",
       "server/providers/space/launch-library.js",
       "server/providers/common/http.js",
-      "src/data/spaceProviderRequests.js"
+      "src/data/spaceProviderRequests.js",
+      "src/localIntegrity.mjs",
+      "src/keySetupHardening.mjs",
+      "src/keySetupCore.mjs"
     ],
     "external": []
   },
@@ -114,7 +123,10 @@
     "modules": [
       "server/providers/common/geo.js",
       "server/providers/traffic.js",
-      "src/data/tomtomTiles.js"
+      "src/data/tomtomTiles.js",
+      "src/localIntegrity.mjs",
+      "src/keySetupHardening.mjs",
+      "src/keySetupCore.mjs"
     ],
     "external": []
   },
@@ -126,7 +138,61 @@
   "firms-provider": {
     "runtime": "node",
     "exports": ["./server/providers/firms"],
-    "modules": ["server/providers/firms.js", "src/data/firmsCsv.js"],
+    "modules": [
+      "server/providers/firms.js",
+      "src/data/firmsCsv.js",
+      "src/localIntegrity.mjs",
+      "src/keySetupHardening.mjs",
+      "src/keySetupCore.mjs"
+    ],
+    "external": []
+  },
+  "fire-perimeters-provider": {
+    "runtime": "node",
+    "exports": ["./server/providers/fire-perimeters"],
+    "modules": [
+      "server/providers/firePerimeters.js",
+      "server/providers/common/http.js",
+      "server/providers/common/rate-limit.js",
+      "src/layers/perimeters/records.js"
+    ],
+    "external": []
+  },
+  "weather-providers": {
+    "runtime": "node",
+    "exports": [
+      "./server/providers/weather",
+      "./server/providers/wind",
+      "./server/providers/cyclones"
+    ],
+    "modules": [
+      "server/providers/weather.js",
+      "server/providers/wind.js",
+      "server/providers/cyclones.js",
+      "server/providers/wind/catalog.js",
+      "server/providers/wind/decode.js",
+      "server/providers/wind/gfs.js",
+      "server/providers/wind/grid.js",
+      "server/providers/wind/ifs.js",
+      "server/providers/common/http.js",
+      "src/sources/windBody.js"
+    ],
+    "external": []
+  },
+  "ultra-help-provider": {
+    "runtime": "node",
+    "exports": ["./server/providers/ultra-help"],
+    "modules": [
+      "server/providers/ultra-help.js",
+      "src/ultraHelp.mjs",
+      "src/ultraTokens.mjs",
+      "src/ultraNetwork.mjs",
+      "src/ultraSmsRelay.mjs",
+      "src/keySetupCore.mjs",
+      "src/keySetupHardening.mjs",
+      "src/localIntegrity.mjs",
+      "src/deviceFeedsCore.mjs"
+    ],
     "external": []
   },
   "gbfs-provider": {
@@ -174,7 +240,10 @@
       "server/providers/common/http.js",
       "server/providers/common/rate-limit.js",
       "server/providers/places/google-key.js",
-      "scripts/google-server-key.mjs"
+      "scripts/google-server-key.mjs",
+      "src/localIntegrity.mjs",
+      "src/keySetupHardening.mjs",
+      "src/keySetupCore.mjs"
     ],
     "external": []
   },
@@ -234,6 +303,7 @@
     "runtime": "node",
     "exports": ["./server/providers/regional"],
     "modules": [
+      "server/providers/common/allowed-hosts.js",
       "server/providers/common/geo.js",
       "server/providers/common/http.js",
       "server/providers/common/query.js",
@@ -254,7 +324,8 @@
       "server/providers/regional/weather-effects.js",
       "server/providers/regional/weather.js",
       "src/data/regionalBrief.js",
-      "src/nominatimGeocode.js"
+      "src/nominatimGeocode.js",
+      "src/socialMedia.js"
     ],
     "external": []
   },
@@ -274,7 +345,10 @@
       "server/providers/openai/realtime.js",
       "server/providers/openai/tools.js",
       "src/hudSummaryResponse.js",
-      "src/voice/voiceCost.js"
+      "src/voice/voiceCost.js",
+      "src/localIntegrity.mjs",
+      "src/keySetupHardening.mjs",
+      "src/keySetupCore.mjs"
     ],
     "external": []
   },
@@ -282,11 +356,18 @@
     "runtime": "node",
     "exports": ["./server/providers/llm"],
     "modules": [
+      "server/providers/common/allowed-hosts.js",
       "server/providers/common/rate-limit.js",
       "server/providers/common/request.js",
       "server/providers/llm.js",
       "server/providers/llm/ask.js",
-      "server/providers/openai/rate-limit.js"
+      "server/providers/llm/voice.js",
+      "server/providers/openai/instructions.js",
+      "server/providers/openai/rate-limit.js",
+      "server/providers/openai/tools.js",
+      "src/localIntegrity.mjs",
+      "src/keySetupHardening.mjs",
+      "src/keySetupCore.mjs"
     ],
     "external": []
   },
@@ -303,7 +384,10 @@
       "server/providers/sst/png.js",
       "server/providers/sst/render.js",
       "server/providers/sst/status.js",
-      "src/data/sstProducts.js"
+      "src/data/sstProducts.js",
+      "src/localIntegrity.mjs",
+      "src/keySetupHardening.mjs",
+      "src/keySetupCore.mjs"
     ],
     "external": []
   },

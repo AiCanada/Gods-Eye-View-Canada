@@ -5,6 +5,7 @@ import {
 } from '../common/http.js';
 import { requiredFiniteQueryNumber } from '../common/query.js';
 import { haversineKm } from '../common/geo.js';
+import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
 // ---------------------------------------------------------------------------
 // OpenSky OAuth2 token + response cache state
 // ---------------------------------------------------------------------------
@@ -127,6 +128,7 @@ export function pruneAdsbLolPointCacheOutside(
  * @returns {Promise<string|null>} Bearer token string, or null if unavailable.
  */
 export async function getOpenSkyToken() {
+  if (!localProviderTrusted('opensky')) return null;
   const now = Date.now();
   // Return cached token if still valid (with 60 s safety margin)
   if (_openskyToken && now < _openskyTokenExpiry - 60000) return _openskyToken;
@@ -471,8 +473,9 @@ export function openSkyProxy() {
           return;
         }
 
-        const basicUser = process.env.OPENSKY_USERNAME || '';
-        const basicPass = process.env.OPENSKY_PASSWORD || '';
+        const openskyBasic = localProviderTrusted('opensky');
+        const basicUser = openskyBasic ? process.env.OPENSKY_USERNAME || '' : '';
+        const basicPass = openskyBasic ? process.env.OPENSKY_PASSWORD || '' : '';
         const hasBasicCreds = Boolean(basicUser && basicPass);
         const headers = { Accept: 'application/json' };
         let usedMode = 'anon';

@@ -464,9 +464,13 @@ body:not(.ui-clean-view):not(.recording-mode):has(
   bottom: calc(2vh + 6.5rem + var(--llm-panel-reserve));
 }
 
+/* The right one sits at the very bottom, just above the POWER UP chip
+   (0.9rem up, about 2rem tall), so the right rail's corridor above it is as
+   tall as it can be: the radio controls under the Scenes tab expand into it
+   (owner ruling, 2026-09-27). */
 #intel-hud[data-variant='tactical'] .hud-bottom-right,
 #intel-hud[data-variant='operator'] .hud-bottom-right {
-  bottom: calc(2vh + 6.5rem);
+  bottom: calc(0.9rem + 2.6rem);
 }
 
 #intel-hud[data-variant='operator'] .hud-bottom-bar {

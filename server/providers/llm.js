@@ -1,3 +1,5 @@
+import { resolvedAllowedHosts } from './common/allowed-hosts.js';
+import { clientKey, makeRateLimiter } from './common/rate-limit.js';
 import { readRequestBody } from './common/request.js';
 import {
   enforceOptInRateLimit,
@@ -5,18 +7,25 @@ import {
 } from './openai/rate-limit.js';
 import {
   LLM_ASK_MAX_BODY_BYTES,
-  admitLlmAskRequest,
+  admitLlmRequestFrom,
   buildLlmAskCall,
   llmAnswerFromUpstream,
   llmAskTimeoutMs,
   llmProviderRoster,
   parseLlmAskRequest,
 } from './llm/ask.js';
+import { installLlmVoiceRoutes } from './llm/voice.js';
 
-const llmJson = (res, statusCode, payload) => {
+/** A press is one question: twenty a minute from one address is far past any operator. */
+export const LLM_ASK_PER_MINUTE = 20;
+
+const llmJson = (res, statusCode, payload, headers = {}) => {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  for (const [name, value] of Object.entries(headers))
+    res.setHeader(name, value);
   res.end(JSON.stringify(payload));
 };
 
@@ -31,13 +40,8 @@ function handleLlmProviders(req, res) {
 }
 
 /** Forward one operator question and the scene JSON to the chosen model. */
-async function handleLlmAsk(req, res) {
-  const admission = admitLlmAskRequest({
-    method: req.method,
-    contentType: req.headers?.['content-type'],
-    origin: req.headers?.origin,
-    host: req.headers?.host,
-  });
+async function handleLlmAsk(req, res, { allowedHosts, allow } = {}) {
+  const admission = admitLlmRequestFrom(req, allowedHosts);
   if (!admission.ok)
     return llmJson(res, admission.status, { error: admission.error });
 
@@ -51,9 +55,20 @@ async function handleLlmAsk(req, res) {
   if (!parsed.ok) return llmJson(res, parsed.status, parsed.payload);
   const { provider, settings, question, context, answerTokens } = parsed;
 
-  // Same opt-in per-IP throttle the other paid LLM route uses. It sits
-  // after validation so a keyless, malformed or unknown-provider request
-  // costs no quota slot, exactly as hud-summary's keyless path does.
+  // Paid from here on: a built-in limit always, and the same opt-in per-IP
+  // throttle the other paid LLM route uses. Both sit after validation so a
+  // keyless, malformed or unknown-provider request costs no quota slot,
+  // exactly as hud-summary's keyless path does.
+  if (allow && !allow(clientKey(req))) {
+    return llmJson(
+      res,
+      429,
+      {
+        error: 'Too many questions this minute. Wait a minute, then ask again.',
+      },
+      { 'Retry-After': '30' },
+    );
+  }
   if (!enforceOptInRateLimit(openAiRateLimiter(), req, res)) return;
 
   const call = buildLlmAskCall(
@@ -99,27 +114,42 @@ async function handleLlmAsk(req, res) {
  * Vite plugin: the Ask panel's language-model routes.
  *
  * On-demand only. Nothing in the client calls these on a timer, on camera
- * movement, or at startup: they run when the operator presses Ask, Overview,
- * or Risk Assessment, and at no other time. That keeps a paid endpoint off the
- * per-frame path and makes the cost of a session equal to the number of
- * questions asked. Keys stay server-side.
+ * movement, or at startup. Ask, Overview, and Risk Assessment call
+ * /api/llm/ask. The mic calls /api/llm/voice/* when a session or a spoken
+ * turn needs a model. Keys stay server-side.
  *
- *   GET  /api/llm/providers — roster of models and the client abort budget
- *   POST /api/llm/ask       — one question with the scene JSON
+ *   GET  /api/llm/providers          — roster of models and the client abort budget
+ *   POST /api/llm/ask                — one question with the scene JSON
+ *   POST /api/llm/voice/session      — Grok's short-lived voice secret
+ *   POST /api/llm/voice/turn         — one spoken turn and its tool results
+ *   POST /api/llm/voice/transcribe   — OpenRouter or custom speech to text
+ *   POST /api/llm/voice/speak        — OpenRouter or custom text to speech
  */
 function llmAskProxy() {
-  function install(middlewares) {
+  const allow = makeRateLimiter({
+    windowMs: 60_000,
+    max: LLM_ASK_PER_MINUTE,
+    globalMax: LLM_ASK_PER_MINUTE * 2,
+  });
+  /** @param {'server' | 'preview'} section - Which Vite server's hosts apply. */
+  function install(server, section) {
+    // The hosts this server answers: the paid routes check Host themselves.
+    const allowedHosts = resolvedAllowedHosts(server.config, section);
+    const { middlewares } = server;
     middlewares.use('/api/llm/providers', handleLlmProviders);
-    middlewares.use('/api/llm/ask', handleLlmAsk);
+    middlewares.use('/api/llm/ask', (req, res) =>
+      handleLlmAsk(req, res, { allowedHosts, allow }),
+    );
+    installLlmVoiceRoutes(middlewares, { allowedHosts });
   }
 
   return {
     name: 'llm-ask-proxy',
     configureServer(server) {
-      install(server.middlewares);
+      install(server, 'server');
     },
     configurePreviewServer(server) {
-      install(server.middlewares);
+      install(server, 'preview');
     },
   };
 }

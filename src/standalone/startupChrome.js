@@ -1,5 +1,6 @@
 import { initFirstRunExperience } from '../firstRunExperience.js';
 import { initKeySetup } from '../keySetup.js';
+import { initUltraHelpPanel } from '../ultraHelpPanel.js';
 
 /** Reveal welcome controls only after restoration and the loading transition. */
 export function startStandaloneChrome({
@@ -35,6 +36,7 @@ export function startStandaloneChrome({
       revealTimer = setTimeout(revealFirstRun, 900);
     });
   const keySetup = initKeySetup({ signal });
+  const ultraHelp = initUltraHelpPanel({ signal });
   // Own the pending initializer too; it must not reveal a dialog after abort.
   void keySetup.catch(() =>
     console.error('Provider settings initialization failed'),
@@ -46,6 +48,7 @@ export function startStandaloneChrome({
     resolveDelay();
     loadingScreen.removeEventListener('transitionend', revealFirstRun);
     firstRun?.destroy();
+    ultraHelp?.destroy();
     (await keySetup.catch(() => null))?.destroy();
   };
 }

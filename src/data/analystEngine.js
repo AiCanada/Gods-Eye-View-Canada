@@ -32,6 +32,7 @@ export const ANALYST_LAYERS = {
   military: { numeric: ['altitudeM', 'speedMps', 'verticalRateMps'], text: ['callsign', 'icao24', 'originCountry', 'operator', 'aircraftClass'], flags: ['military', 'onGround'] },
   'ais-live-vessels': { numeric: ['speedKts', 'courseDeg'], text: ['name', 'mmsi', 'shipType', 'destination', 'navStatus'], flags: [] },
   'local-firms': { numeric: ['frp'], text: ['confidence', 'satellite'], flags: [] },
+  'fire-perimeters': { numeric: ['acres', 'containedPct', 'personnel'], text: ['name', 'state', 'category', 'cause'], flags: [] },
   earthquakes: { numeric: ['magnitude', 'depthKm'], text: ['place'], flags: [] },
 };
 

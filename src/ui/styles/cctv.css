@@ -25,7 +25,9 @@
 }
 
 .cctv-panel-inner,
-.sst-panel-inner {
+.sst-panel-inner,
+.ultra-panel-inner,
+.social-panel-inner {
   position: relative;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);

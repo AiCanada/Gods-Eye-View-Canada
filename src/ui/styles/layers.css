@@ -16,6 +16,16 @@
     bottom var(--transition-fast);
 }
 
+/* Owner ruling, 2026-09-28: with a box open the rail draws over the tactical
+   HUD's own chrome — the title bar and the presets/location controls at 100,
+   the sync chips at 101, the loading notice at 102, the scene runtime at 105.
+   It stops short of the command dock (145) and the voice control (150), which
+   stay reachable over an open box. The rail is pointer-events:none and only
+   its members take clicks, so the map is still live either side of a box. */
+#left-panel-stack.layout-overlap {
+  z-index: 120;
+}
+
 #data-panel {
   --panel-expanded-width: 280px;
   position: fixed;
@@ -143,13 +153,72 @@
     top var(--transition-fast),
     max-height var(--transition-fast);
 }
+/* The right lane's half of the overlap lift documented above #data-panel. */
+#right-context-rail.layout-overlap {
+  z-index: 121;
+}
 #right-context-rail > #pp-toggles,
 #right-context-rail > #cctv-panel,
+#right-context-rail > #data-panel,
+#right-context-rail > #sst-panel,
+#right-context-rail > #scene-panel,
+#right-context-rail > #radio-panel,
 #right-context-rail > #global-context-panel {
   position: relative;
   inset: auto;
   flex: 0 0 auto;
   pointer-events: auto;
+}
+/* Data Layers, Sea Temperature and Scenes live on the right rail. Their base
+   rules place them on the left as fixed boxes (and fade Data Layers in with
+   .active); here they are ordinary rail members. Data Layers stays on top,
+   above the Display panel the layout prepends at runtime. */
+#right-context-rail > #data-panel,
+#right-context-rail > #sst-panel,
+#right-context-rail > #scene-panel {
+  width: 100%;
+  max-height: 100%;
+  z-index: auto;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: none;
+}
+#right-context-rail > #data-panel {
+  order: -1;
+}
+/* Radio, when selected, sits below the last tab; it is never a tab
+   itself (radio.css hides it while collapsed). */
+#right-context-rail > #radio-panel {
+  order: 1;
+  width: 100%;
+  max-height: 100%;
+}
+#right-context-rail > #radio-panel.collapsed {
+  display: none;
+}
+#right-context-rail > #data-panel.collapsed,
+#right-context-rail > #sst-panel.collapsed,
+#right-context-rail > #scene-panel.collapsed {
+  width: var(--right-display-collapsed-width);
+  margin-left: auto;
+}
+#right-context-rail > #data-panel.collapsed .data-panel-inner,
+#right-context-rail > #sst-panel.collapsed .sst-panel-inner,
+#right-context-rail > #scene-panel.collapsed .scene-panel-inner {
+  height: 50px;
+  min-height: 50px;
+  box-sizing: border-box;
+}
+#right-context-rail > #data-panel:not(.collapsed) .data-panel-inner,
+#right-context-rail > #sst-panel:not(.collapsed) .sst-panel-inner,
+#right-context-rail > #scene-panel:not(.collapsed) .scene-panel-inner {
+  max-height: 100%;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+#right-context-rail > #data-panel:not(.collapsed) .data-panel-inner {
+  overflow: hidden;
 }
 #right-context-rail #global-context-panel {
   width: 100%;
@@ -229,6 +298,10 @@
 }
 #right-context-rail.layout-focus > #pp-toggles:not(.collapsed),
 #right-context-rail.layout-focus > #cctv-panel:not(.collapsed),
+#right-context-rail.layout-focus > #data-panel:not(.collapsed),
+#right-context-rail.layout-focus > #sst-panel:not(.collapsed),
+#right-context-rail.layout-focus > #scene-panel:not(.collapsed),
+#right-context-rail.layout-focus > #radio-panel:not(.collapsed),
 #right-context-rail.layout-focus > #global-context-panel:not(.collapsed) {
   flex: 0 1 var(--right-panel-allocated-height);
   height: var(--right-panel-allocated-height);
@@ -246,7 +319,14 @@
   .cctv-panel-inner,
 #right-context-rail.layout-focus
   > #global-context-panel:not(.collapsed)
-  .global-context-panel-inner {
+  .global-context-panel-inner,
+#right-context-rail.layout-focus
+  > #data-panel:not(.collapsed)
+  .data-panel-inner,
+#right-context-rail.layout-focus > #sst-panel:not(.collapsed) .sst-panel-inner,
+#right-context-rail.layout-focus
+  > #scene-panel:not(.collapsed)
+  .scene-panel-inner {
   height: 100%;
   box-sizing: border-box;
 }
@@ -255,12 +335,70 @@
 #right-context-rail .space-mission-roster {
   min-height: 0;
 }
+/*
+ * Overlap mode (owner ruling, 2026-09-28), the right lane's half of the rule
+ * documented in scenes.css: an open box floats out of the rail's flow so it
+ * can use the whole screen over the tactical HUD, the collapsed tabs keep the
+ * flow column above it and stay clickable, `--panel-overlap-top` carries the
+ * layout pass's cascade and `--panel-raise-z` the click order. Radio is not
+ * in this list: it stays in the flow under the last tab.
+ */
+#right-context-rail.layout-overlap > #pp-toggles:not(.collapsed),
+#right-context-rail.layout-overlap > #cctv-panel:not(.collapsed),
+#right-context-rail.layout-overlap > #data-panel:not(.collapsed),
+#right-context-rail.layout-overlap > #sst-panel:not(.collapsed),
+#right-context-rail.layout-overlap > #scene-panel:not(.collapsed),
+#right-context-rail.layout-overlap > #global-context-panel:not(.collapsed) {
+  position: absolute;
+  top: var(--panel-overlap-top, 0px);
+  right: 0;
+  left: auto;
+  bottom: auto;
+  z-index: var(--panel-raise-z, 1);
+  box-sizing: border-box;
+  width: 100%;
+  flex: 0 0 auto;
+  min-height: 0;
+  height: var(--right-panel-allocated-height, auto);
+  max-height: var(--right-panel-allocated-height, none);
+}
+#right-context-rail.layout-overlap > #pp-toggles:not(.collapsed) {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 212, 255, 0.4) transparent;
+}
+#right-context-rail.layout-overlap
+  > #cctv-panel:not(.collapsed)
+  .cctv-panel-inner,
+#right-context-rail.layout-overlap
+  > #global-context-panel:not(.collapsed)
+  .global-context-panel-inner,
+#right-context-rail.layout-overlap
+  > #data-panel:not(.collapsed)
+  .data-panel-inner,
+#right-context-rail.layout-overlap
+  > #sst-panel:not(.collapsed)
+  .sst-panel-inner,
+#right-context-rail.layout-overlap
+  > #scene-panel:not(.collapsed)
+  .scene-panel-inner {
+  height: 100%;
+  box-sizing: border-box;
+}
+#right-context-rail.layout-overlap #context-missions-view:not([hidden]),
+#right-context-rail.layout-overlap #space-mission-panel-host,
+#right-context-rail.layout-overlap .space-mission-roster,
 #right-context-rail.layout-focus #context-missions-view:not([hidden]),
 #right-context-rail.layout-focus #space-mission-panel-host,
 #right-context-rail.layout-focus .space-mission-roster {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
+}
+#right-context-rail.layout-overlap .space-mission-roster-list {
+  flex: 1 1 auto;
+  max-height: none;
 }
 #right-context-rail.layout-focus .space-mission-roster-list {
   flex: 1 1 auto;

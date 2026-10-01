@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  thinTrackPoints,
+  trackFromRecordingLines,
+  DEVICE_RECORD_RADIUS_OPTIONS_KM,
+  buildDeviceRecordingLine,
+  recordRadiusKm,
   DEVICE_FEED_AUTH_MODES,
   DEVICE_FEED_KINDS,
   DEVICE_FEED_METHODS,
@@ -14,7 +19,10 @@ import {
   extractDevicePosition,
   feedTransport,
   maskFeedUrl,
+  newReportKey,
   normalizeDeviceFeedConfig,
+  parseDeviceReport,
+  deviceReportReply,
   parseKmlPosition,
   parseNmeaPosition,
   readJsonPath,
@@ -201,4 +209,131 @@ test('whatever is on disk is coerced, and the malformed dropped', () => {
   });
   assert.deepEqual(config.feeds.map((feed) => feed.id), ['drone-a']);
   assert.deepEqual(normalizeDeviceFeedConfig(null), emptyDeviceFeedConfig());
+});
+
+test('a device that reports to this app: no address, no login, a minted key that survives edits', () => {
+  const fixed = (bytes) => bytes.fill(7);
+  const saved = applyDeviceFeedUpdate({ kind: 'security', name: 'Samsung', method: 'report-in', auth: 'bearer', token: 'ignored', url: 'https://x.example/' }, emptyDeviceFeedConfig(), { randomValues: fixed });
+  assert.equal(saved.ok, true, saved.error);
+  const feed = saved.config.feeds[0];
+  assert.deepEqual([feed.url, feed.auth, feed.token, feed.reportKey.length], ['', 'none', '', 43]);
+  assert.match(feed.reportKey, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(devicePositionUrl(feed), '', 'never asked for its position');
+
+  // An edit keeps the key; asking for a new one replaces it; a real key is random.
+  const edited = applyDeviceFeedUpdate({ kind: 'security', id: feed.id, name: 'Samsung S6', method: 'report-in' }, saved.config);
+  assert.equal(edited.config.feeds[0].reportKey, feed.reportKey);
+  const minted = applyDeviceFeedUpdate({ kind: 'security', id: feed.id, name: 'Samsung S6', method: 'report-in', newReportKey: true }, saved.config);
+  assert.notEqual(minted.config.feeds[0].reportKey, feed.reportKey);
+  assert.notEqual(newReportKey(), newReportKey());
+
+  // Switching to a polled method drops the key; a key on disk without its method is ignored, and a reporting device without a key is dropped.
+  const polled = applyDeviceFeedUpdate({ kind: 'security', id: feed.id, name: 'Samsung', method: 'traccar', url: 'https://gps.example/' }, saved.config);
+  assert.equal(polled.config.feeds[0].reportKey, '');
+  const disk = normalizeDeviceFeedConfig({ feeds: [{ ...feed, method: 'report-in', reportKey: '' }, { ...feed, id: 'security-other', method: 'traccar', url: 'https://gps.example/', reportKey: feed.reportKey }] });
+  assert.deepEqual(disk.feeds.map((item) => [item.id, item.reportKey]), [['security-other', '']]);
+
+  // The card is told the key (the owner types it into the phone) and where this machine listens.
+  const status = deviceFeedStatus(saved.config, { reportAddresses: ['http://10.66.0.1:44173'] });
+  const shown = status.kinds.find((kind) => kind.id === 'security').feeds[0];
+  assert.deepEqual([shown.reportsIn, shown.reportKey, shown.transport, status.reportAddresses], [true, feed.reportKey, 'reports-in', ['http://10.66.0.1:44173']]);
+  assert.equal(status.kinds.find((kind) => kind.id === 'tracker').methods[0].reportsIn, true);
+});
+
+test('positions out of what a phone app sends', () => {
+  // Traccar Client (OsmAnd protocol): knots, unix seconds.
+  const osmand = parseDeviceReport({ params: { id: 'k', lat: '45.27', lon: '-66.06', timestamp: '1700000000', speed: '10', bearing: '90', altitude: '12', batt: '80' } });
+  assert.equal(osmand.protocol, 'osmand');
+  assert.deepEqual([osmand.position.lat, osmand.position.lon, osmand.position.altM, osmand.position.headingDeg, osmand.position.at], [45.27, -66.06, 12, 90, 1700000000000]);
+  assert.ok(Math.abs(osmand.position.speedMps - 5.14444) < 1e-4);
+  // GPSLogger sends m/s; an ISO time reads too.
+  const logger = parseDeviceReport({ params: { lat: '1', lon: '2', speedMps: '3', timestamp: '2026-09-22T10:00:00Z' } });
+  assert.deepEqual([logger.position.speedMps, logger.position.at], [3, Date.parse('2026-09-22T10:00:00Z')]);
+  // OwnTracks: km/h, unix seconds; the app expects an empty array back.
+  const own = parseDeviceReport({ json: { _type: 'location', lat: 45.1, lon: -66.2, tst: 1700000000, vel: 36, cog: 180, alt: 5 } });
+  assert.deepEqual([own.protocol, own.position.speedMps, own.position.headingDeg, own.position.altM, own.position.at], ['owntracks', 10, 180, 5, 1700000000000]);
+  assert.deepEqual(deviceReportReply('owntracks'), { contentType: 'application/json', body: '[]' });
+  // Overland: a batch of GeoJSON features, the last one counts.
+  const overland = parseDeviceReport({ json: { locations: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [-66.3, 45.3] }, properties: { timestamp: '2026-09-22T10:00:00Z', speed: 2 } }, { type: 'Feature', geometry: { type: 'Point', coordinates: [-66.4, 45.4] }, properties: { timestamp: '2026-09-22T10:00:30Z', speed: 4, altitude: 9 } }] } });
+  assert.deepEqual([overland.protocol, overland.position.lat, overland.position.lon, overland.position.speedMps, overland.position.altM], ['overland', 45.4, -66.4, 4, 9]);
+  assert.deepEqual(deviceReportReply('overland'), { contentType: 'application/json', body: '{"result":"ok"}' });
+  // Any other JSON with a point in it; nothing else.
+  assert.equal(parseDeviceReport({ json: { device: { latitude: 45, longitude: -66 } } }).protocol, 'json');
+  assert.equal(parseDeviceReport({ params: { lat: '0', lon: '0' } }), null);
+  assert.equal(parseDeviceReport({ params: { lat: '91', lon: '1' } }), null);
+  assert.equal(parseDeviceReport({ json: { _type: 'lwt' } }), null);
+  assert.equal(parseDeviceReport({}), null);
+});
+
+test('the recording distance is one of twelve choices, 50 km unless the device says otherwise', () => {
+  assert.deepEqual([...DEVICE_RECORD_RADIUS_OPTIONS_KM], [1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 40, 50]);
+  assert.deepEqual([recordRadiusKm(5), recordRadiusKm('25'), recordRadiusKm(7), recordRadiusKm(undefined), recordRadiusKm(null)], [5, 25, 50, 50, 50]);
+  const base = { kind: 'security', name: 'Samsung', method: 'report-in', record: true };
+  const saved = applyDeviceFeedUpdate(base, emptyDeviceFeedConfig());
+  assert.equal(saved.config.feeds[0].recordKm, 50, 'the default is unchanged');
+  const chosen = applyDeviceFeedUpdate({ ...base, id: saved.feedId, recordKm: 3 }, saved.config);
+  assert.equal(chosen.config.feeds[0].recordKm, 3);
+  const kept = applyDeviceFeedUpdate({ ...base, id: saved.feedId }, chosen.config);
+  assert.equal(kept.config.feeds[0].recordKm, 3, 'left out keeps the choice');
+  assert.match(applyDeviceFeedUpdate({ ...base, id: saved.feedId, recordKm: 7 }, chosen.config).error, /one of 1, 2, 3/);
+  assert.equal(normalizeDeviceFeedConfig({ feeds: [{ ...chosen.config.feeds[0], recordKm: 99 }] }).feeds[0].recordKm, 50, 'a stray value on disk falls back');
+  const status = deviceFeedStatus(chosen.config);
+  assert.deepEqual([status.recordRadiusOptionsKm.length, status.kinds.find((kind) => kind.id === 'security').feeds[0].recordKm], [12, 3]);
+  assert.equal(devicePublicRecord(chosen.config.feeds[0], { lat: 1, lon: 2 }).recordKm, 3, 'the recorder is told the distance');
+  // The server keeps only what lies within the chosen distance.
+  const line = buildDeviceRecordingLine({ layers: { cctv: [{ id: 'a', lat: 45.0, lon: -66.0 }, { id: 'b', lat: 45.02, lon: -66.0 }] } }, { lat: 45.0, lon: -66.0 }, { radiusKm: 1 });
+  assert.deepEqual([line.kept, line.line.radiusKm, line.line.layers.cctv.length], [1, 1, 1]);
+});
+
+test('a route out of recording lines: positions only, oldest first, thinned', () => {
+  const line = (at, lat, lon) => JSON.stringify({ at, target: { lat, lon, altM: 3, headingDeg: 90, speedMps: 1 }, layers: {} });
+  const text = [line('2026-09-26T10:00:10Z', 45.001, -66), 'garbage', line('2026-09-26T10:00:00Z', 45, -66), JSON.stringify({ at: 'x', target: { lat: 1, lon: 1 } }), line('2026-09-26T10:00:20Z', 45.001, -66)].join('\n');
+  const points = trackFromRecordingLines(text);
+  assert.deepEqual(points.map((point) => point.lat), [45, 45.001, 45.001], 'sorted by time, bad lines skipped');
+  assert.deepEqual([points[0].altM, points[0].headingDeg, points[0].speedMps], [3, 90, 1]);
+  assert.equal(thinTrackPoints(points).length, 2, 'an unmoved fix is one point');
+  const long = Array.from({ length: 10_001 }, (_, i) => ({ at: i, lat: 45 + i * 0.001, lon: -66 }));
+  const thinned = thinTrackPoints(long, { maxPoints: 1000 });
+  assert.ok(thinned.length <= 1001 && thinned.length >= 900, `kept ${thinned.length}`);
+  assert.equal(thinned[thinned.length - 1], long[long.length - 1], 'the last point is always kept');
+  assert.deepEqual(thinTrackPoints([]), []);
+});
+
+test('NEW KEY keeps a hand-placed position and JSON paths; the card’s own save still clears them', () => {
+  const saved = applyDeviceFeedUpdate({ kind: 'security', name: 'Samsung', method: 'report-in', lat: 45.27, lon: -66.06 }, emptyDeviceFeedConfig());
+  assert.equal(saved.ok, true, saved.error);
+  const feed = saved.config.feeds[0];
+  // What the NEW KEY button sends: the name, the method and the request, nothing else.
+  const minted = applyDeviceFeedUpdate({ kind: 'security', id: feed.id, name: feed.name, method: feed.method, newReportKey: true }, saved.config);
+  assert.equal(minted.ok, true, minted.error);
+  assert.notEqual(minted.config.feeds[0].reportKey, feed.reportKey);
+  assert.deepEqual([minted.config.feeds[0].lat, minted.config.feeds[0].lon], [45.27, -66.06]);
+  // The card's save sends null for an empty box, and that removes the position.
+  const cleared = applyDeviceFeedUpdate({ kind: 'security', id: feed.id, name: feed.name, method: feed.method, lat: null, lon: null }, minted.config);
+  assert.deepEqual([cleared.config.feeds[0].lat, cleared.config.feeds[0].lon], [null, null]);
+  // Half a position is still refused.
+  assert.equal(applyDeviceFeedUpdate({ kind: 'security', id: feed.id, name: feed.name, method: feed.method, lat: 45 }, minted.config).ok, false);
+
+  // A polled tracker's JSON paths survive an update that leaves them out...
+  const polled = applyDeviceFeedUpdate({ kind: 'tracker', name: 'Van GPS', method: 'http-json', url: 'https://gps.example/where', latPath: 'data.lat', lonPath: 'data.lon' }, emptyDeviceFeedConfig());
+  assert.equal(polled.ok, true, polled.error);
+  const tracker = polled.config.feeds[0];
+  const renamed = applyDeviceFeedUpdate({ kind: 'tracker', id: tracker.id, name: 'Van GPS 2', method: 'http-json' }, polled.config);
+  assert.equal(renamed.ok, true, renamed.error);
+  assert.deepEqual([renamed.config.feeds[0].latPath, renamed.config.feeds[0].lonPath], ['data.lat', 'data.lon']);
+  // ...and the card's two empty path boxes clear them.
+  const emptied = applyDeviceFeedUpdate({ kind: 'tracker', id: tracker.id, name: 'Van GPS 2', method: 'http-json', latPath: '', lonPath: '' }, renamed.config);
+  assert.deepEqual([emptied.config.feeds[0].latPath, emptied.config.feeds[0].lonPath], ['', '']);
+});
+
+test('each phone package’s map card shows its own phone’s picture, never the newest reporter’s', () => {
+  const van = { id: 'security-van', kind: 'security', name: 'Van', method: 'report-in', lat: 45.1, lon: -66.1, pictureUrl: '' };
+  const home = { ...van, id: 'security-home', name: 'Home' };
+  assert.equal(devicePublicRecord(van, null).pictureUrl, '/api/ultra-help/picture/device-security-van');
+  assert.equal(devicePublicRecord(home, null).pictureUrl, '/api/ultra-help/picture/device-security-home');
+  // A package with its own picture address still uses its own frame route.
+  assert.equal(
+    devicePublicRecord({ ...van, pictureUrl: 'https://cam.example/shot.jpg' }, null).pictureUrl,
+    '/api/device-feeds/frame/device-security-van',
+  );
 });

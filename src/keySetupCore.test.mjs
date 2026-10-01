@@ -15,6 +15,7 @@ import {
   upsertDotenvValues,
   validateKeySetupUpdates,
 } from './keySetupCore.mjs';
+import { ultraSmsRelayConfig } from './ultraSmsRelay.mjs';
 
 test('provider requirements name the registry env vars and next step', () => {
   assert.equal(
@@ -133,10 +134,19 @@ test('Windows owner SID parsing reads only the structured user-SID CSV field', (
 
 test('validation accepts every registry env var and only those', () => {
   const known = knownKeySetupEnvVars();
+  // The SMS relay's number, gateway address and account id have a shape of
+  // their own; every other name takes a plain key.
+  const shaped = {
+    TWILIO_FROM_NUMBER: '+15065550100',
+    ULTRA_SMS_RELAY_URL: 'https://relay.example/sms',
+    TWILIO_ACCOUNT_SID: 'ACvalid123',
+    GROK_BOT_WEBHOOK_URL: 'https://api2.cursor.sh/automations/webhook/aut_7Hq2',
+  };
   for (const name of known) {
-    const verdict = validateKeySetupUpdates({ [name]: 'valid-value-123' });
+    const value = shaped[name] || 'valid-value-123';
+    const verdict = validateKeySetupUpdates({ [name]: value });
     assert.equal(verdict.ok, true, `${name} should validate`);
-    assert.equal(verdict.updates[name], 'valid-value-123');
+    assert.equal(verdict.updates[name], value);
   }
   assert.equal(validateKeySetupUpdates({ PATH: '/usr/bin' }).ok, false, 'PATH must be refused');
   assert.equal(validateKeySetupUpdates({ NODE_OPTIONS: '--x' }).ok, false, 'NODE_OPTIONS must be refused');
@@ -411,4 +421,253 @@ test('a grouped provider satisfies the group with one key and never inflates the
   assert.equal(one.setCount, none.setCount + 1);
   assert.equal(two.setCount, one.setCount, 'a second provider in the same group adds nothing');
   assert.equal(one.keys.find((key) => key.id === 'xai').group, 'llm');
+});
+
+test('the Ultra SMS relay is one POWER UP slot with two recipes, and every message costs money', () => {
+  const twilio = KEY_SETUP_KEYS.find((candidate) => candidate.id === 'twilio-sms');
+  const gateway = KEY_SETUP_KEYS.find((candidate) => candidate.id === 'ultra-sms-relay');
+  assert.ok(twilio && gateway, 'both recipes are registered');
+  assert.equal(twilio.group, 'ultra-sms');
+  assert.equal(gateway.group, 'ultra-sms');
+  assert.equal(twilio.title, 'SMS RELAY — TWILIO');
+  assert.equal(gateway.title, 'SMS RELAY — YOUR OWN GATEWAY');
+  assert.deepEqual([...twilio.envVars], ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER']);
+  assert.deepEqual([...gateway.envVars], ['ULTRA_SMS_RELAY_URL', 'ULTRA_SMS_RELAY_TOKEN']);
+  assert.equal(twilio.tier, 'metered', 'Twilio bills per message');
+  assert.equal(gateway.tier, 'free');
+  assert.match(twilio.unlocks, /costs money per message/);
+  assert.match(gateway.unlocks, /JSON \{ to, body \} with a bearer token/);
+  assert.equal(Boolean(twilio.hidden) || Boolean(gateway.hidden), false, 'both rows show in the panel');
+  assert.equal(Boolean(twilio.clientExposed) || Boolean(gateway.clientExposed), false, 'relay secrets never reach the browser bundle');
+
+  // The group counts once, and either recipe satisfies it.
+  const none = keySetupStatus({});
+  const viaTwilio = keySetupStatus({ TWILIO_ACCOUNT_SID: 'ACfixture', TWILIO_AUTH_TOKEN: 'auth-fixture', TWILIO_FROM_NUMBER: '+15065550100' });
+  const viaGateway = keySetupStatus({ ULTRA_SMS_RELAY_URL: 'https://relay.example/sms', ULTRA_SMS_RELAY_TOKEN: 'relay-fixture' });
+  const both = keySetupStatus({ TWILIO_ACCOUNT_SID: 'ACfixture', TWILIO_AUTH_TOKEN: 'auth-fixture', TWILIO_FROM_NUMBER: '+15065550100', ULTRA_SMS_RELAY_URL: 'https://relay.example/sms', ULTRA_SMS_RELAY_TOKEN: 'relay-fixture' });
+  assert.equal(viaTwilio.total, none.total, 'the group is one slot, not two');
+  assert.equal(viaTwilio.setCount, none.setCount + 1);
+  assert.equal(viaGateway.setCount, none.setCount + 1);
+  assert.equal(both.setCount, viaTwilio.setCount, 'the second recipe adds nothing');
+  assert.equal(keySetupStatus({ TWILIO_ACCOUNT_SID: 'ACfixture', TWILIO_AUTH_TOKEN: 'auth-fixture' }).keys.find((key) => key.id === 'twilio-sms').set, false, 'Twilio needs all three values');
+  assert.equal(keySetupStatus({ ULTRA_SMS_RELAY_URL: 'https://relay.example/sms' }).keys.find((key) => key.id === 'ultra-sms-relay').set, false, 'the gateway needs its token');
+  const flat = JSON.stringify(both);
+  for (const secret of ['ACfixture', 'auth-fixture', '+15065550100', 'relay.example', 'relay-fixture']) {
+    assert.ok(!flat.includes(secret), `${secret} leaked into status`);
+  }
+});
+
+test('POWER UP refuses SMS relay values the relay would never use, and agrees with the relay on set', () => {
+  const refused = [
+    ['TWILIO_FROM_NUMBER', '15065550100', /country code/],
+    ['TWILIO_FROM_NUMBER', '5065550100', /country code/],
+    ['ULTRA_SMS_RELAY_URL', 'http://192.168.1.20:8080/sms', /https, or http to a 100\.64/],
+    ['ULTRA_SMS_RELAY_URL', 'http://gateway.tail9.ts.net/sms', /https, or http to a 100\.64/],
+    ['ULTRA_SMS_RELAY_URL', 'https://u:p@gw.example/sms', /no user:password/],
+    ['TWILIO_ACCOUNT_SID', 'AC-123', /letters and digits only/],
+    ['TWILIO_ACCOUNT_SID', 'AC_123', /letters and digits only/],
+  ];
+  for (const [name, value, error] of refused) {
+    const verdict = validateKeySetupUpdates({ [name]: value });
+    assert.equal(verdict.ok, false, `${name}=${value} must be refused`);
+    assert.match(verdict.error, error);
+    // The worked example in the number sentence is fixed text, not the value.
+    assert.ok(!verdict.error.replace(/e\.g\. \S+/, '').includes(value), 'the refusal never echoes the value');
+  }
+  for (const [name, value] of [
+    ['TWILIO_FROM_NUMBER', '+1-506-555-0100'],
+    ['TWILIO_FROM_NUMBER', '+15065550100'],
+    ['ULTRA_SMS_RELAY_URL', 'http://100.101.2.3:8080/sms'],
+    ['ULTRA_SMS_RELAY_URL', 'https://gw.example/sms'],
+  ]) {
+    assert.equal(validateKeySetupUpdates({ [name]: value }).ok, true, `${name}=${value} is accepted`);
+  }
+  // Values set by hand in .env: the POWER UP count moves exactly when the
+  // relay itself says it is configured.
+  const twilio = { TWILIO_ACCOUNT_SID: 'ACfixture', TWILIO_AUTH_TOKEN: 'auth-fixture', TWILIO_FROM_NUMBER: '+15065550100' };
+  const gateway = { ULTRA_SMS_RELAY_URL: 'https://gw.example/sms', ULTRA_SMS_RELAY_TOKEN: 'relay-fixture' };
+  const samples = [
+    {},
+    twilio,
+    gateway,
+    { ...twilio, ...gateway },
+    { ...twilio, TWILIO_FROM_NUMBER: '15065550100' },
+    { ...twilio, TWILIO_FROM_NUMBER: '5065550100' },
+    { ...twilio, TWILIO_FROM_NUMBER: '+1 (506) 555-0100' },
+    { ...twilio, TWILIO_ACCOUNT_SID: 'AC-123' },
+    { ...twilio, TWILIO_AUTH_TOKEN: 'a'.repeat(513) },
+    { ...twilio, TWILIO_AUTH_TOKEN: 'two words' },
+    { ...gateway, ULTRA_SMS_RELAY_URL: 'http://192.168.1.20:8080/sms' },
+    { ...gateway, ULTRA_SMS_RELAY_URL: 'http://gateway.tail9.ts.net/sms' },
+    { ...gateway, ULTRA_SMS_RELAY_URL: 'https://u:p@gw.example/sms' },
+    { ...gateway, ULTRA_SMS_RELAY_URL: 'http://100.101.2.3:8080/sms' },
+    { ...gateway, ULTRA_SMS_RELAY_URL: 'http://100.128.0.1/sms' },
+    { ...gateway, ULTRA_SMS_RELAY_URL: `https://gw.example/${'p'.repeat(2048)}` },
+    { ...gateway, ULTRA_SMS_RELAY_URL: 'not a url' },
+    { ...twilio, TWILIO_FROM_NUMBER: '15065550100', ...gateway },
+  ];
+  const base = keySetupStatus({}).setCount;
+  for (const env of samples) {
+    const configured = ultraSmsRelayConfig(env).configured;
+    assert.equal(keySetupStatus(env).setCount - base, configured ? 1 : 0, `POWER UP and the relay disagree on ${JSON.stringify(env).slice(0, 160)}`);
+  }
+  // The case the box showed as NOT CONFIGURED while POWER UP counted it.
+  const bad = keySetupStatus({ ...twilio, TWILIO_FROM_NUMBER: '15065550100' });
+  assert.equal(bad.keys.find((key) => key.id === 'twilio-sms').set, false);
+  assert.ok(!JSON.stringify(bad).includes('15065550100'), 'a refused value is never echoed');
+});
+
+test('a relay value the relay refuses is not set, but still present, and the row names which one', () => {
+  const twilio = { TWILIO_ACCOUNT_SID: 'ACfixture', TWILIO_AUTH_TOKEN: 'auth-fixture', TWILIO_FROM_NUMBER: '+15065550100' };
+  const row = (env) => keySetupStatus(env).keys.find((key) => key.id === 'twilio-sms');
+  // Saved before the rule existed: all three are there, the number cannot work.
+  const old = row({ ...twilio, TWILIO_FROM_NUMBER: '15065550100' });
+  assert.equal(old.set, false);
+  assert.equal(old.present, true);
+  assert.deepEqual(old.unusable, ['TWILIO_FROM_NUMBER']);
+  assert.ok(!JSON.stringify(old).includes('15065550100'), 'a refused value is never echoed');
+  const good = row(twilio);
+  assert.equal(good.set, true);
+  assert.equal(good.present, true);
+  assert.deepEqual(good.unusable, []);
+  // A row with a value missing is neither, as before this rule.
+  const partial = row({ TWILIO_ACCOUNT_SID: 'ACfixture', TWILIO_AUTH_TOKEN: 'auth-fixture' });
+  assert.equal(partial.set, false);
+  assert.equal(partial.present, false);
+  assert.deepEqual(partial.unusable, []);
+  assert.equal(row({}).present, false);
+});
+
+test('the help network directory is registered but hidden: the Ultra box owns its form', () => {
+  const entry = KEY_SETUP_KEYS.find((candidate) => candidate.id === 'ultra-directory');
+  assert.ok(entry, 'the directory entry is registered');
+  assert.equal(entry.hidden, true);
+  assert.equal(entry.title, 'HELP NETWORK DIRECTORY');
+  assert.deepEqual([...entry.envVars], ['ULTRA_DIRECTORY_URL']);
+  assert.equal(entry.optionalEnvVars.length, 1);
+  assert.deepEqual({ ...entry.optionalEnvVars[0], options: [...entry.optionalEnvVars[0].options] }, {
+    name: 'ULTRA_DIRECTORY_WRITE_TOKEN', label: 'GITHUB WRITE TOKEN', placeholder: 'github_pat_…', options: [],
+  });
+  assert.equal(entry.getUrl, 'https://github.com/settings/personal-access-tokens');
+  assert.equal(keySetupRequirement('ultra-directory'), '', 'a hidden entry gates no control');
+  // Absent from the panel's rows and from the POWER UP count, whether set or not.
+  const status = keySetupStatus({ ULTRA_DIRECTORY_URL: 'https://raw.githubusercontent.com/g/r/main/ultra-directory.json', ULTRA_DIRECTORY_WRITE_TOKEN: 'github_pat_fixture' });
+  assert.equal(status.keys.some((key) => key.id === 'ultra-directory'), false);
+  assert.equal(status.total, keySetupStatus({}).total);
+  assert.equal(status.setCount, keySetupStatus({}).setCount);
+  const flat = JSON.stringify(status);
+  assert.ok(!flat.includes('github_pat_fixture'), 'the write token leaked into status');
+  assert.ok(!flat.includes('raw.githubusercontent.com/g/r'), 'the directory address leaked into status');
+});
+
+test('every help network and SMS relay name may be saved, and the values they carry validate', () => {
+  const known = knownKeySetupEnvVars();
+  for (const name of [
+    'ULTRA_DIRECTORY_URL',
+    'ULTRA_DIRECTORY_WRITE_TOKEN',
+    'TWILIO_ACCOUNT_SID',
+    'TWILIO_AUTH_TOKEN',
+    'TWILIO_FROM_NUMBER',
+    'ULTRA_SMS_RELAY_URL',
+    'ULTRA_SMS_RELAY_TOKEN',
+  ]) {
+    assert.ok(known.has(name), `${name} may be saved from the box or POWER UP`);
+  }
+  // What the box and POWER UP actually post: a raw GitHub file address, a
+  // fine-grained GitHub token, an E.164 number, and a gateway address.
+  const raw = 'https://raw.githubusercontent.com/group/repo/main/ultra-directory.json';
+  assert.deepEqual(validateKeySetupUpdates({ ULTRA_DIRECTORY_URL: raw }), { ok: true, updates: { ULTRA_DIRECTORY_URL: raw } });
+  assert.equal(validateKeySetupUpdates({ ULTRA_DIRECTORY_WRITE_TOKEN: 'github_pat_11ABCDEFG_abcdefghijklmnop' }).ok, true);
+  assert.deepEqual(validateKeySetupUpdates({ TWILIO_FROM_NUMBER: '+15065550100' }), { ok: true, updates: { TWILIO_FROM_NUMBER: '+15065550100' } });
+  assert.equal(validateKeySetupUpdates({ ULTRA_SMS_RELAY_URL: 'https://relay.example/sms?team=7' }).ok, true);
+  // A URL with a fragment would be cut at '#' by every dotenv reader, so the
+  // route refuses it with its own sentence, which the box paints verbatim.
+  const fragment = validateKeySetupUpdates({ ULTRA_DIRECTORY_URL: `${raw}#L1` });
+  assert.equal(fragment.ok, false);
+  assert.equal(fragment.error, 'ULTRA_DIRECTORY_URL contains a character that is not valid in a key (#, quotes, $, \\, or backtick)');
+  assert.equal(validateKeySetupUpdates({ ULTRA_DIRECTORY_WRITE_TOKEN: null }).ok, true, 'the write token can be removed');
+});
+
+test('every LLM key carries an optional MODEL box; OpenRouter defaults to NVIDIA Nemotron 3 Ultra (free)', async () => {
+  const { resolveLlmProvider } = await import('../server/providers/llm/ask.js');
+  const known = knownKeySetupEnvVars();
+  const status = keySetupStatus({ OPENROUTER_API_KEY: 'k', OPENROUTER_MODEL: 'openai/gpt-5.2' });
+  for (const id of ['nvidia', 'xai', 'anthropic', 'openrouter']) {
+    const entry = status.keys.find((key) => key.id === id);
+    assert.equal(entry.optionalEnvVars.length, 1, id + ' has one MODEL box');
+    const model = entry.optionalEnvVars[0];
+    assert.equal(model.name, resolveLlmProvider(id).modelEnv, id + ' MODEL box writes the env var the server reads');
+    assert.equal(model.placeholder, resolveLlmProvider(id).modelDefault, id + ' placeholder is the server default');
+    assert.ok(known.has(model.name), id + ' MODEL env var may be saved');
+    assert.ok(!entry.envVars.includes(model.name), id + ' MODEL never decides whether the key is set');
+  }
+  const openrouter = status.keys.find((key) => key.id === 'openrouter');
+  assert.equal(openrouter.set, true, 'the key alone makes the slot set');
+  assert.equal(openrouter.optionalEnvVars[0].value, 'openai/gpt-5.2', 'the model in use is shown; it is not a secret');
+  assert.equal(openrouter.optionalEnvVars[0].placeholder, 'nvidia/nemotron-3-ultra-550b-a55b:free');
+  assert.ok(openrouter.optionalEnvVars[0].options.includes('nvidia/nemotron-3-ultra-550b-a55b:free'));
+  assert.equal(keySetupStatus({}).keys.find((key) => key.id === 'openrouter').optionalEnvVars[0].value, '');
+  const flat = JSON.stringify(keySetupStatus({ OPENROUTER_API_KEY: 'SECRET-KEY-VALUE' }));
+  assert.ok(!flat.includes('SECRET-KEY-VALUE'), 'a key value never appears in the status');
+});
+
+test('the bot swarms have POWER UP cards of their own: GROK BOT, its Chief of Staff webhook, and OPENAI DOTS', () => {
+  const byId = Object.fromEntries(KEY_SETUP_KEYS.map((entry) => [entry.id, entry]));
+  assert.deepEqual([...byId['grok-bot'].envVars], ['GROK_BOT_API_KEY']);
+  assert.equal(byId['grok-bot'].optionalEnvVars[0].name, 'XAI_SWARM_MODEL');
+  assert.deepEqual([...byId['grok-bot-chief-of-staff'].envVars], ['GROK_BOT_WEBHOOK_URL', 'GROK_BOT_WEBHOOK_KEY']);
+  assert.deepEqual([...byId['openai-dots'].envVars], ['OPENAI_DOTS_API_KEY']);
+  assert.equal(byId['openai-dots'].optionalEnvVars[0].name, 'OPENAI_SWARM_MODEL');
+  for (const id of ['grok-bot', 'grok-bot-chief-of-staff', 'openai-dots']) {
+    assert.equal(Boolean(byId[id].hidden), false, `${id} has its own row`);
+    assert.equal(Boolean(byId[id].clientExposed), false, `${id} never reaches the browser bundle`);
+  }
+  // Apart from the Ask panel's xAI key and voice control's OpenAI key.
+  assert.notEqual(byId['grok-bot'].group, byId.xai.group);
+  assert.equal(byId['openai-dots'].group, undefined);
+  // Either Grok Bot card powers the swarm, so the pair counts once.
+  const none = keySetupStatus({});
+  const webhook = 'https://api2.cursor.sh/automations/webhook/aut_7Hq2';
+  assert.equal(keySetupStatus({ GROK_BOT_API_KEY: 'xai-k' }).setCount, none.setCount + 1);
+  assert.equal(keySetupStatus({ GROK_BOT_WEBHOOK_URL: webhook, GROK_BOT_WEBHOOK_KEY: 'gbwh-k' }).setCount, none.setCount + 1);
+  assert.equal(
+    keySetupStatus({ GROK_BOT_API_KEY: 'xai-k', GROK_BOT_WEBHOOK_URL: webhook, GROK_BOT_WEBHOOK_KEY: 'gbwh-k' }).setCount,
+    none.setCount + 1,
+  );
+  assert.equal(keySetupStatus({ OPENAI_DOTS_API_KEY: 'sk-dots' }).setCount, none.setCount + 1);
+  // The webhook address is Grok Bot's own: https, its backend, /automations/webhook/<id>.
+  for (const url of [webhook, 'https://api.origin.cursor.com/automations/webhook/a-1_B.2']) {
+    assert.equal(validateKeySetupUpdates({ GROK_BOT_WEBHOOK_URL: url }).ok, true, url);
+  }
+  for (const url of [
+    'http://api2.cursor.sh/automations/webhook/aut_7Hq2',
+    'https://hooks.evil.example/automations/webhook/aut_7Hq2',
+    'https://api2.cursor.sh.evil.example/automations/webhook/aut_7Hq2',
+    'https://cursor.sh.evil/automations/webhook/aut_7Hq2',
+    'https://api2.cursor.sh:8443/automations/webhook/aut_7Hq2',
+    'https://api2.cursor.sh/automations/webhook/aut_7Hq2?to=x',
+    'https://api2.cursor.sh/automations/webhook/',
+    'https://api2.cursor.sh/automations/webhook/a/b',
+    'https://api2.cursor.sh/v1/responses',
+    'https://me:pw@api2.cursor.sh/automations/webhook/aut_7Hq2',
+  ]) {
+    const verdict = validateKeySetupUpdates({ GROK_BOT_WEBHOOK_URL: url });
+    assert.equal(verdict.ok, false, url);
+    assert.match(verdict.error, /^GROK_BOT_WEBHOOK_URL must be the Webhook URL Grok Bot shows/);
+  }
+  assert.equal(validateKeySetupUpdates({ GROK_BOT_WEBHOOK_KEY: 'k'.repeat(513) }).ok, false);
+  // A hand-edited address that fails the rule is there, but not set.
+  const handEdited = keySetupStatus({ GROK_BOT_WEBHOOK_URL: 'https://hooks.evil.example/x', GROK_BOT_WEBHOOK_KEY: 'gbwh-k' });
+  const row = handEdited.keys.find((key) => key.id === 'grok-bot-chief-of-staff');
+  assert.deepEqual([row.present, row.set, row.unusable], [true, false, ['GROK_BOT_WEBHOOK_URL']]);
+  // No value ever appears in the status.
+  const flat = JSON.stringify(keySetupStatus({
+    GROK_BOT_API_KEY: 'xai-SECRET-1',
+    GROK_BOT_WEBHOOK_URL: webhook,
+    GROK_BOT_WEBHOOK_KEY: 'gbwh-SECRET-2',
+    OPENAI_DOTS_API_KEY: 'sk-SECRET-3',
+  }));
+  for (const secret of ['xai-SECRET-1', 'aut_7Hq2', 'gbwh-SECRET-2', 'sk-SECRET-3']) {
+    assert.equal(flat.includes(secret), false, secret);
+  }
 });

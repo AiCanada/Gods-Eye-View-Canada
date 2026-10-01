@@ -1,30 +1,67 @@
-/* ── Ask panel ─────────────────────────────────────────────────────────────
-   Questions about the current view. Sits with the other collapsible panels
-   and borrows their chrome; only the input, answer box and status line are
-   new. */
-/* Bottom-left, directly above the attribution line. The credit keeps the exact
-   size and position the codebase models and tests for — Esri, Cesium and Google
-   all require it to stay visible — so the ASK box stacks on top of it rather
-   than taking its place. */
+/* ── AI Risk & Truth Assessment panel ───────────────────────────────────────────────
+   Questions about the current view. A member of the left stack: it borrows
+   the shared panel chrome, collapses to the same tab as Data Layers, Sea
+   Temperature, Ultra and Scenes, and takes its height from the stack's
+   corridor, so with several models the rows stack top to bottom and scroll
+   inside the panel instead of overlapping. */
 #ask-panel {
-  position: fixed;
-  left: 36px;
-  /* Clears the attribution line beneath it: the credit line sits at bottom:36px
-     and is 28px tall, plus 8px of air. At rest the panel is one row tall, so
-     it does not reach the panel stack above; the answer grows upward over the
-     globe instead, bounded by #ask-body below. */
-  bottom: calc(36px + 28px + 8px);
-  width: 340px;
-  max-width: calc(100vw - 72px);
-  z-index: 91;
-  /* Explicit because the panel sits over the globe canvas like every other
-     fixed control; the stack's pointer-events:none does not apply to it. */
-  pointer-events: auto;
+  --panel-expanded-width: 360px;
+  width: var(--panel-expanded-width);
+  max-width: 100%;
+  min-height: 0;
+}
+
+/* Above the other layers of the map: the stack itself sits over the globe,
+   and inside the stack the panel draws over its collapsed neighbours' glow. */
+#left-panel-stack > #ask-panel:not(.collapsed) {
+  z-index: 1;
+}
+
+#ask-panel .panel-glow {
+  position: absolute;
+  inset: -18px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 212, 255, 0.16) 0%,
+    transparent 65%
+  );
+  filter: blur(16px);
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.ask-panel-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 14px 12px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--panel-radius);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+    0 1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+
+/* Collapsed: the same 50px tab as the other boxes. */
+#ask-panel.collapsed .ask-panel-inner {
+  height: 50px;
+  min-height: 50px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+#ask-panel.collapsed .ask-body {
+  display: none;
 }
 
 /* The modes whose point is an unobstructed globe hide it, as they hide the
    other panels; cockpit mode hides it because the CONTACT briefing card owns
-   the same band. Narrow viewports give the corner to the credit line. */
+   the same band. */
 body.ui-clean-view #ask-panel,
 body.recording-mode #ask-panel,
 body.scene-playback-mode #ask-panel,
@@ -32,34 +69,26 @@ body.cockpit-mode #ask-panel {
   display: none;
 }
 
-@media (max-width: 720px) {
-  #ask-panel {
-    display: none;
-  }
-}
-
-.ask-panel-inner {
-  padding: 10px 12px 12px;
-}
-
 #ask-body {
-  max-height: 50vh;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-}
-
-#ask-rows {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden;
+}
+
+/* One block per model, top to bottom. Each keeps its own input, buttons and
+   log; the panel scrolls when they do not all fit. */
+#ask-rows {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .ask-row {
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
   min-height: 0;
 }
 
@@ -96,8 +125,6 @@ body.cockpit-mode #ask-panel {
 
 .ask-actions {
   display: flex;
-  gap: 6px;
-  align-items: center;
   margin-top: 6px;
   /* Overview, Risk Assessment and Country Ground Truth Assessment share one
      row: a little smaller than the other buttons, and a long name breaks onto
@@ -138,7 +165,7 @@ body.cockpit-mode #ask-panel {
   margin-top: 6px;
   margin-bottom: 8px;
   max-height: 240px;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   overflow-y: auto;
   padding: 8px;
   font-size: 11px;
@@ -148,10 +175,7 @@ body.cockpit-mode #ask-panel {
   border-left: 2px solid rgba(127, 231, 255, 0.4);
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-/* The log is for reading, selecting and copying. */
-.ask-output {
+  /* The log is for reading, selecting and copying. */
   user-select: text;
   cursor: text;
 }
@@ -241,8 +265,8 @@ body.cockpit-mode #ask-panel {
   cursor: default;
 }
 
-/* One block per model. With a single key this reads as one search box; with
-   several, each row is labelled so the answers can be told apart. */
+/* With a single key this reads as one search box; with several, each block is
+   labelled so the answers can be told apart, and a rule separates them. */
 .ask-row + .ask-row {
   margin-top: 10px;
   padding-top: 10px;
@@ -257,5 +281,3 @@ body.cockpit-mode #ask-panel {
   color: rgba(127, 231, 255, 0.7);
   white-space: nowrap;
 }
-
-

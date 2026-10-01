@@ -9,6 +9,17 @@
  * Every base URL and model id is env-overridable, because model names change
  * far more often than this file does.
  */
+import {
+  LOCAL_PROVIDER_CHANGED_MESSAGE,
+  localLlmSection,
+  localProviderTrusted,
+} from '../../../src/localIntegrity.mjs';
+import {
+  DEFAULT_ALLOWED_HOSTS,
+  originIs,
+  servedRequestOrigin,
+} from '../common/allowed-hosts.js';
+
 const LLM_PROVIDERS = Object.freeze({
   nvidia: Object.freeze({
     id: 'nvidia',
@@ -38,8 +49,10 @@ const LLM_PROVIDERS = Object.freeze({
     baseUrlDefault: 'https://openrouter.ai/api/v1',
     modelEnv: 'OPENROUTER_MODEL',
     // OpenRouter fronts many vendors, so the model id carries its vendor
-    // prefix. Override with OPENROUTER_MODEL.
-    modelDefault: 'openai/gpt-5.2',
+    // prefix. The default is NVIDIA's Nemotron 3 Ultra on OpenRouter's free
+    // tier (owner ruling, 2026-09-27); override with OPENROUTER_MODEL, or pick
+    // another in POWER UP. Kept equal to the POWER UP placeholder by a test.
+    modelDefault: 'nvidia/nemotron-3-ultra-550b-a55b:free',
     // OpenRouter asks callers to identify themselves for its leaderboards.
     extraHeaders: Object.freeze({
       'HTTP-Referer': 'http://localhost:4173',
@@ -148,7 +161,10 @@ export function llmProviderRoster(env = process.env) {
       id: provider.id,
       label: provider.label,
       model,
-      ready: Boolean(apiKey) && complete,
+      ready:
+        Boolean(apiKey) &&
+        complete &&
+        localProviderTrusted(localLlmSection(provider.id), env),
     };
   });
 }
@@ -161,9 +177,23 @@ export function llmProviderRoster(env = process.env) {
  * Absent Origin (curl, same-origin GET-less clients) is allowed: the guard is
  * against browsers acting for another site, not against the operator.
  *
+ * The Host must be one this server serves: Vite checks its allowedHosts only
+ * after plugin routes, and a DNS-rebinding page names its own host in both
+ * Host and Origin, so matching the two alone would let it spend the keys and
+ * read the answers. Fetch Metadata, when the browser sends it, must say
+ * same-origin.
+ *
  * @returns {{ok: true} | {ok: false, status: number, error: string}}
  */
-export function admitLlmAskRequest({ method, contentType, origin, host } = {}) {
+export function admitLlmAskRequest({
+  method,
+  contentType,
+  origin,
+  host,
+  encrypted = false,
+  fetchSite,
+  allowedHosts = DEFAULT_ALLOWED_HOSTS,
+} = {}) {
   if (method !== 'POST')
     return { ok: false, status: 405, error: 'Method not allowed' };
   if (!/^application\/json\b/i.test(String(contentType || '').trim())) {
@@ -173,18 +203,35 @@ export function admitLlmAskRequest({ method, contentType, origin, host } = {}) {
       error: 'Content-Type must be application/json',
     };
   }
-  if (origin) {
-    let originHost = '';
-    try {
-      originHost = new URL(String(origin)).host.toLowerCase();
-    } catch {
-      return { ok: false, status: 403, error: 'Origin not allowed' };
-    }
-    if (!host || originHost !== String(host).trim().toLowerCase()) {
-      return { ok: false, status: 403, error: 'Origin not allowed' };
-    }
+  const served = servedRequestOrigin(
+    { headers: { host }, socket: { encrypted } },
+    allowedHosts,
+  );
+  if (!served) return { ok: false, status: 403, error: 'Host not allowed' };
+  if (origin && !originIs(origin, served.origin)) {
+    return { ok: false, status: 403, error: 'Origin not allowed' };
+  }
+  if (
+    fetchSite !== undefined &&
+    fetchSite !== null &&
+    String(fetchSite).toLowerCase() !== 'same-origin'
+  ) {
+    return { ok: false, status: 403, error: 'Cross-site request refused' };
   }
   return { ok: true };
+}
+
+/** The same admission, read straight from a request. */
+export function admitLlmRequestFrom(req, allowedHosts = DEFAULT_ALLOWED_HOSTS) {
+  return admitLlmAskRequest({
+    method: req?.method,
+    contentType: req?.headers?.['content-type'],
+    origin: req?.headers?.origin,
+    host: req?.headers?.host,
+    encrypted: Boolean(req?.socket?.encrypted),
+    fetchSite: req?.headers?.['sec-fetch-site'],
+    allowedHosts,
+  });
 }
 
 /**
@@ -235,6 +282,13 @@ export function parseLlmAskRequest(rawBody, env = process.env) {
     };
   }
   const settings = llmProviderSettings(provider, env);
+  if (!localProviderTrusted(localLlmSection(provider.id), env)) {
+    return {
+      ok: false,
+      status: 409,
+      payload: { error: LOCAL_PROVIDER_CHANGED_MESSAGE, provider: provider.id },
+    };
+  }
   if (!settings.apiKey) {
     // Distinct from a failure: the panel says "add a key" rather than
     // reporting the provider as broken.

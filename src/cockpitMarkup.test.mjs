@@ -226,7 +226,9 @@ test('Cockpit owns a focused shared Display portal and compact Radio controls', 
   const hiddenRule = css.match(/body\.cockpit-mode\s*:is\(([^)]*)\)\s*\{\s*display:\s*none\s*!important;/);
   assert.ok(hiddenRule, 'Cockpit hidden-chrome rule is missing');
   assert.match(css, /body\.cockpit-mode #right-context-rail\s*\{\s*display:\s*none\s*!important;/);
-  assert.match(css, /body\.cockpit-mode #left-panel-stack > #scene-panel\s*\{\s*display:\s*none\s*!important;/);
+  // Scenes, Sea Temperature and Data Layers live on the right rail, which the
+  // rule above hides whole; the left stack's LLM box and Ultra are hidden here.
+  assert.match(css, /body\.cockpit-mode #left-panel-stack > #ask-panel,\s*body\.cockpit-mode #left-panel-stack > #ultra-panel\s*\{\s*display:\s*none\s*!important;/);
   assert.match(html, /id="cockpit-display-toggle-btn"[^>]*aria-controls="cockpit-display-panel"/);
   assert.match(html, /id="cockpit-display-toggle-btn"[^>]*>◀<\/button>/);
   assert.match(html, /data-cockpit-launcher="display"[\s\S]*?id="cockpit-display-toggle-btn"/);
@@ -632,9 +634,15 @@ test('an expanded Cockpit left panel stays above Contact, HUD, and attribution',
     css,
     /\.data-toggle-list\s*\{[\s\S]*?overflow-y:\s*auto;/,
   );
+  // Data Layers sits on the right rail now: its inner still fills the panel's
+  // allocation and scrolls inside it rather than being clipped away.
   assert.match(
     css,
-    /#left-panel-stack > #data-panel:not\(\.collapsed\) \.data-panel-inner[\s\S]*?\{[\s\S]*?height:\s*100%;[\s\S]*?max-height:\s*100%;/,
+    /#right-context-rail > #data-panel:not\(\.collapsed\) \.data-panel-inner[\s\S]*?\{[\s\S]*?max-height:\s*100%;[\s\S]*?overflow-y:\s*auto;/,
+  );
+  assert.match(
+    css,
+    /#right-context-rail\.layout-focus\s*>\s*#data-panel:not\(\.collapsed\)\s*\.data-panel-inner[\s\S]*?\{[\s\S]*?height:\s*100%;/,
   );
 });
 

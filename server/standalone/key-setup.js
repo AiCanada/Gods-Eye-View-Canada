@@ -76,7 +76,7 @@ const DEV_FRESH_EXTERNAL_KEYS_AT_BOOT = new Set(
  * keys exist. Prod builds never register this middleware (apply: 'serve'), so
  * the panel's status fetch fails and the client removes the whole surface.
  */
-function keySetupEndpoint({ sourceRoot = defaultSourceRoot } = {}) {
+function keySetupEndpoint({ sourceRoot = defaultSourceRoot, onEnvSaved } = {}) {
   const respond = (res, statusCode, payload) => {
     res.statusCode = statusCode;
     res.setHeader('Content-Type', 'application/json');
@@ -172,8 +172,11 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot } = {}) {
     for (const key of status.keys) {
       // 'file' = this panel's own store holds exactly this value (replace/remove
       // offered); 'external' = supplied by env/Keychain/another workflow
-      // (read-only — the panel must never rewrite or delete it).
-      key.managed = key.set
+      // (read-only — the panel must never rewrite or delete it). Both follow
+      // what is there, not whether the provider can use it: a stored value
+      // that fails its format rule keeps its REMOVE, and an exported one its
+      // badge and the 409 that backs it.
+      key.managed = key.present
         ? key.envVars.some((name) => isExternallyManaged(name, inStore))
           ? 'external'
           : 'file'
@@ -270,6 +273,17 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot } = {}) {
           // blank-field semantics.
           for (const [name, value] of Object.entries(verdict.updates)) {
             process.env[name] = value === null ? '' : value;
+          }
+          // The .env is already saved. A check that cannot be written is
+          // said once, by its code only, and the save still answers 200.
+          if (typeof onEnvSaved === 'function') {
+            try {
+              onEnvSaved(Object.keys(verdict.updates), sourceRoot);
+            } catch (error) {
+              console.warn(
+                `[KeySetup] Outbound check was not saved (${String(error?.code || 'error').slice(0, 40)})`,
+              );
+            }
           }
           respond(res, 200, {
             ok: true,

@@ -6,7 +6,8 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { governorRequestRender, holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
-import { DEVICE_FEEDS_CHANGED_EVENT } from '../deviceFeedsCore.mjs';
+import { DEVICE_FEEDS_CHANGED_EVENT, DEVICE_FEEDS_FOCUS_EVENT } from '../deviceFeedsCore.mjs';
+import { requestWorldFocus } from '../worldFocus.js';
 import { applyTrackedCameraFrame } from './trackedCamera.js';
 import { refreshTrackedReadout } from './trackedReadout.js';
 import { createDeviceRecorder } from './deviceRecorder.js';
@@ -27,11 +28,25 @@ import { bindTrackingClickGesture, isTrackingClickGesture } from './trackingClic
  * owner goes somewhere else (a search, a city, another tracked object, a click
  * on open map) or unticks FOLLOW. RECORD: see deviceRecorder.js.
  *
+ * HISTORY: a device with a recording also carries its saved route, read from
+ * the daily files through /api/device-feeds/track/<id> and drawn as a fainter
+ * line under the live trail. It is asked for once, and again only when the
+ * recording has grown (the poll says when it was last written).
+ *
+ * NEEDS HELP: a call for help received through the owner's help network
+ * arrives in the same /positions answer as an amber pin of kind 'help' with
+ * follow off, so it is drawn and trailed like any device but can never take
+ * the camera by itself. The Ultra box's MAP button asks for one flight to it
+ * through DEVICE_FEEDS_FOCUS_EVENT.
+ *
  * Geometry changes only when a poll brings a new position: nothing here is a
  * per-frame callback (see the measurements in earthquakes.js).
  */
 
 const POSITIONS_URL = '/api/device-feeds/positions';
+const TRACK_URL = '/api/device-feeds/track/';
+/** The Ultra box's newest phone, or one phone package's own picture by its public id. */
+const ULTRA_PICTURE_PATH = /^\/api\/ultra-help\/picture(?:\/device-[a-z0-9-]{1,120})?$/;
 
 export const DEVICE_FEEDS_LAYER_ID = 'device-feeds';
 export const DEVICE_FEEDS_OVERLAY_SOURCE_ID = 'device-feeds';
@@ -96,8 +111,13 @@ export function normalizeDevicePositions(payload) {
       error: text(raw.error, 120),
       follow: raw.follow === true,
       record: raw.record === true,
-      // Only the application's own picture route is ever loaded.
-      pictureUrl: pictureUrl.startsWith('/api/device-feeds/frame/') ? pictureUrl : '',
+      // Only this application's own picture routes are ever loaded: a device's
+      // frame, or a phone package's own picture by its public id.
+      pictureUrl: pictureUrl.startsWith('/api/device-feeds/frame/') || ULTRA_PICTURE_PATH.test(pictureUrl)
+        ? pictureUrl
+        : '',
+      // A saved route exists: how many days, and when it was last written.
+      history: num(raw.history?.lastAt) ? { days: num(raw.history.days) || 0, lastAt: num(raw.history.lastAt) } : null,
     });
   }
   return rows;
@@ -185,12 +205,69 @@ export function createDeviceFeedsLayer({
   let _lastUpdate = null;
   let _lastError = null;
   let _onChanged = null;
+  let _onFocus = null;
+  /** A device the Ultra box asked to fly to before the poll brought it. */
+  let _pendingFocusId = null;
   /** The follow: {id, entity, from, to, startedAt, stopFrame, removeChanged, removeClick} or null. */
   let _follow = null;
   /** A device the owner walked away from this session is not grabbed again. */
   let _followReleasedId = null;
-  /** id → {entity, trailEntity, trail, picture:{image, ready, at, url}} */
+  /** id → {entity, trailEntity, trail, picture:{image, ready, at, url}, historyEntity, historyAt, historyPending} */
   const _devices = new Map();
+
+  // ---- history ------------------------------------------------------------
+  const removeHistory = (record) => {
+    if (record.historyEntity) _dataSource?.entities.remove(record.historyEntity);
+    record.historyEntity = null;
+    record.historyAt = null;
+  };
+
+  const drawHistory = (record, device, points) => {
+    const positions = (Array.isArray(points) ? points : [])
+      .filter((point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lon))
+      .map((point) => Cesium.Cartesian3.fromDegrees(point.lon, point.lat));
+    if (positions.length < 2) {
+      removeHistory(record);
+      return;
+    }
+    const color = Cesium.Color.fromCssColorString(device.color);
+    if (!record.historyEntity) {
+      record.historyEntity = _dataSource.entities.add({
+        id: `device-feed-history:${device.id}`,
+        polyline: {
+          positions,
+          width: 3,
+          material: color.withAlpha(0.45),
+          clampToGround: true,
+        },
+      });
+    } else {
+      record.historyEntity.polyline.positions = positions;
+    }
+    governorRequestRender('device-feeds-history');
+  };
+
+  /** Ask for the saved route once, and again only when the recording has grown. */
+  const syncHistory = (record, device) => {
+    const lastAt = device.history?.lastAt ?? null;
+    if (lastAt === null) {
+      removeHistory(record);
+      return;
+    }
+    if (record.historyAt === lastAt || record.historyPending) return;
+    record.historyPending = true;
+    fetchImpl(`${TRACK_URL}${encodeURIComponent(device.id)}`, { cache: 'no-store', credentials: 'same-origin' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        record.historyPending = false;
+        if (!payload || !_dataSource || _devices.get(device.id) !== record) return;
+        record.historyAt = lastAt;
+        drawHistory(record, device, payload.points);
+      })
+      .catch(() => {
+        record.historyPending = false;
+      });
+  };
 
   const pictureFor = (record, device) => {
     if (!device.pictureUrl) {
@@ -203,7 +280,8 @@ export function createDeviceFeedsLayer({
       record.picture = held;
     }
     const time = now();
-    if (!held.next && time - held.at >= DEVICE_FEEDS_PICTURE_REFRESH_MS) {
+    const refreshMs = ULTRA_PICTURE_PATH.test(held.url) ? 120 : DEVICE_FEEDS_PICTURE_REFRESH_MS;
+    if (!held.next && time - held.at >= refreshMs) {
       const next = createImage();
       if (next) {
         held.next = next;
@@ -217,7 +295,7 @@ export function createDeviceFeedsLayer({
         next.onerror = () => {
           if (held.next === next) held.next = null;
         };
-        next.src = `${device.pictureUrl}?t=${Math.floor(time / DEVICE_FEEDS_PICTURE_REFRESH_MS)}`;
+        next.src = `${device.pictureUrl}?t=${Math.floor(time / refreshMs)}`;
       }
     }
     return held.image;
@@ -364,18 +442,35 @@ export function createDeviceFeedsLayer({
     }
   };
 
+  /**
+   * MAP on a received call for help: one flight to that pin through the same
+   * camera policy as fires. Not trackById: syncFollow ends a follow whose row
+   * lacks follow:true at the very next poll, and a pin from someone else's
+   * release must never hold the camera. A device the poll has not brought yet
+   * is flown to when it arrives; asking again replaces the wait.
+   */
+  const tryFocus = () => {
+    if (!_pendingFocusId) return;
+    const record = _devices.get(_pendingFocusId);
+    if (!record?.position) return;
+    const id = _pendingFocusId;
+    _pendingFocusId = null;
+    requestWorldFocus({ kind: 'help', id, position: record.position }, windowRef);
+  };
+
   const removeDevice = (id) => {
     const record = _devices.get(id);
     if (!record) return;
     if (record.entity) _dataSource?.entities.remove(record.entity);
     if (record.trailEntity) _dataSource?.entities.remove(record.trailEntity);
+    removeHistory(record);
     _devices.delete(id);
   };
 
   const applyDevice = (device) => {
     let record = _devices.get(device.id);
     if (!record) {
-      record = { entity: null, trailEntity: null, trail: [], picture: null, position: null };
+      record = { entity: null, trailEntity: null, trail: [], picture: null, position: null, historyEntity: null, historyAt: null, historyPending: false };
       _devices.set(device.id, record);
     }
     const height = device.altM !== null && device.altM > 0 ? device.altM : 0;
@@ -419,6 +514,7 @@ export function createDeviceFeedsLayer({
       }
     }
     pictureFor(record, device);
+    syncHistory(record, device);
   };
 
   const layer = {
@@ -449,6 +545,11 @@ export function createDeviceFeedsLayer({
         else layer.update(_viewer).catch(() => {});
       };
       windowRef.addEventListener(DEVICE_FEEDS_CHANGED_EVENT, _onChanged);
+      _onFocus = (event) => {
+        _pendingFocusId = String(event?.detail?.id || '') || null;
+        tryFocus();
+      };
+      windowRef.addEventListener(DEVICE_FEEDS_FOCUS_EVENT, _onFocus);
     },
 
     init(viewer) {
@@ -494,6 +595,7 @@ export function createDeviceFeedsLayer({
         const keep = new Set(rows.map((row) => row.id));
         for (const id of [..._devices.keys()]) if (!keep.has(id)) removeDevice(id);
         for (const device of rows) applyDevice(device);
+        tryFocus();
         _latest = rows;
         _count = rows.length;
         _lastUpdate = now();
@@ -523,6 +625,11 @@ export function createDeviceFeedsLayer({
         windowRef.removeEventListener(DEVICE_FEEDS_CHANGED_EVENT, _onChanged);
       }
       _onChanged = null;
+      if (_onFocus && windowRef?.removeEventListener) {
+        windowRef.removeEventListener(DEVICE_FEEDS_FOCUS_EVENT, _onFocus);
+      }
+      _onFocus = null;
+      _pendingFocusId = null;
       overlayHost.clearSource(DEVICE_FEEDS_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(DEVICE_FEEDS_OVERLAY_SOURCE_ID, false);
       _devices.clear();

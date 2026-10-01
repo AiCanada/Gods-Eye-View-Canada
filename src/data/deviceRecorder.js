@@ -1,4 +1,4 @@
-import { DEVICE_RECORD_RADIUS_KM, deviceDistanceKm } from '../deviceFeedsCore.mjs';
+import { DEVICE_RECORD_RADIUS_KM, deviceDistanceKm, recordRadiusKm } from '../deviceFeedsCore.mjs';
 
 /**
  * Saving what the map knows around a recording device (an Ultra Security
@@ -9,7 +9,7 @@ import { DEVICE_RECORD_RADIUS_KM, deviceDistanceKm } from '../deviceFeedsCore.mj
  * cameras, the owner's other devices) gives them as they are; any other layer
  * gives the marks it draws (`getDetectableObjects`: satellites, bike share,
  * installations; the device layer leaves out traffic, whose dots are an
- * animation, not observations). What lies within 50 km of the device is sent to the
+ * animation, not observations). What lies within the device's chosen distance (50 km unless it says otherwise) is sent to the
  * server, which checks the distance again against the position IT knows and
  * appends one line to the device's recording.
  *
@@ -132,7 +132,7 @@ export function createDeviceRecorder({ fetchImpl = (...args) => fetch(...args), 
         state.nextAt = time + intervalMs;
         // Judged against a copy: a save that fails is tried again in full.
         const trial = new Map(state.memory);
-        const layers = changedRecordsOnly(collectNearbyRecords(dataManager, device, { toLatLon, skip }), trial);
+        const layers = changedRecordsOnly(collectNearbyRecords(dataManager, device, { km: recordRadiusKm(device.recordKm), toLatLon, skip }), trial);
         try {
           const response = await fetchImpl(`${RECORD_ENDPOINT}${encodeURIComponent(device.id)}`, {
             method: 'POST',

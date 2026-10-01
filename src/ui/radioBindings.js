@@ -380,30 +380,21 @@ export function bindRadioControls() {
     'click',
     () => void toggleRadio(this._cockpitRadioEnableBtn),
   );
+  // The radio icon in the Context header opens the radio controls where they
+  // live: below the last tab of the rail (Scenes), never as a popover under
+  // Context (owner ruling, 2026-09-27). Pressed again, it puts them away.
   this.listen(this._contextRadioToggleBtn, 'click', () => {
-    const contextPanel = document.getElementById('global-context-panel');
-    if (contextPanel && !contextPanel.classList.contains('collapsed')) {
-      setRadioDisclosure(false);
-      this.actions.setPanelCollapsed('radio-panel', false, { explicit: true });
-      void this._revealRadioPanelInsideContext({
-        focusTarget: this._radioPanel?.querySelector(
-          '[data-collapse-target="radio-panel"]',
-        ),
-      });
-      return;
-    }
-    setRadioDisclosure(
-      !this._contextRadioDock?.classList.contains('disclosure-open'),
-    );
+    setRadioDisclosure(false);
+    const open =
+      Boolean(this._radioPanel) &&
+      !this._radioPanel.classList.contains('collapsed');
+    this.actions.setPanelCollapsed('radio-panel', open, { explicit: true });
+    if (!open) this._radioEnableBtn?.focus({ preventScroll: true });
   });
   this.listen(this._contextRadioMiniCloseBtn, 'click', () => {
     setRadioDisclosure(false, { returnFocus: true });
   });
   this.listen(this._contextRadioDetailsBtn, 'click', () => {
-    if (!this.actions.isCockpitActive())
-      this.actions.setPanelCollapsed('global-context-panel', false, {
-        explicit: true,
-      });
     this.actions.setPanelCollapsed('radio-panel', false, { explicit: true });
     setRadioDisclosure(false);
     this._radioEnableBtn?.focus({ preventScroll: true });

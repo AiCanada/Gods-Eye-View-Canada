@@ -18,14 +18,24 @@
 export const DEVICE_FEED_STORE = 'config/device-feeds.json';
 /** Fired on window when a device is saved or removed; detail.count is how many remain. */
 export const DEVICE_FEEDS_CHANGED_EVENT = 'gev:device-feeds-changed';
+/** Asks the Your Devices layer to fly the camera to one device by its public id; detail { id }. */
+export const DEVICE_FEEDS_FOCUS_EVENT = 'gev:device-feeds-focus';
 export const DEVICE_FEED_VALUE_LIMIT = 1024;
 export const DEVICE_FEED_NAME_LIMIT = 60;
 /** How often one device's position may be asked for, at most. */
 export const DEVICE_FEED_MIN_POLL_MS = 5000;
 /** Where a recording device's surroundings are saved, one folder per device. */
 export const DEVICE_RECORDING_DIR = 'config/device-recordings';
-/** Everything the map knows within this distance of a recording device is saved. */
+/** Everything the map knows within this distance of a recording device is saved, unless the device says otherwise. */
 export const DEVICE_RECORD_RADIUS_KM = 50;
+/** The distances a recording device can choose from, in km. */
+export const DEVICE_RECORD_RADIUS_OPTIONS_KM = Object.freeze([1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 40, 50]);
+
+/** A chosen recording distance, or the default for anything that is not one of the options. */
+export function recordRadiusKm(value) {
+  const n = Number(value);
+  return DEVICE_RECORD_RADIUS_OPTIONS_KM.includes(n) ? n : DEVICE_RECORD_RADIUS_KM;
+}
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
@@ -41,6 +51,8 @@ const QUERY_NAME = /^[A-Za-z0-9_.-]{1,64}$/;
  * `carries`: what the method can give: a position, a picture, or both.
  */
 export const DEVICE_FEED_METHODS = Object.freeze({
+  // The phone's app sends positions here; nothing is asked for. See `parseDeviceReport`.
+  'report-in': { label: 'Reports to this app (Traccar Client, OwnTracks, GPSLogger, Overland on the phone; no server of your own)', direct: true, carries: 'position', reportsIn: true, urlHint: '' },
   'http-json': { label: 'HTTP JSON position (any REST endpoint)', direct: true, carries: 'position', urlHint: 'https://device.example/api/position' },
   mavlink2rest: { label: 'MAVLink via mavlink2rest (ArduPilot, PX4, BlueOS)', direct: true, carries: 'position', urlHint: 'http://192.168.2.2:6040' },
   traccar: { label: 'Traccar server (REST API)', direct: true, carries: 'position', urlHint: 'https://traccar.example/api/positions?deviceId=1' },
@@ -62,7 +74,7 @@ export const DEVICE_FEED_METHODS = Object.freeze({
   'dji-cloud': { label: 'DJI Cloud API (Dock, Pilot 2)', direct: false, carries: 'both', bridge: 'A DJI Cloud API server of your own (MQTT + HTTPS): expose the aircraft position as HTTP JSON.' },
   'nmea-tcp': { label: 'NMEA 0183 over TCP / UDP / serial, NMEA 2000', direct: false, carries: 'position', bridge: 'Signal K server reads all of these. Use the Signal K method.' },
   ais: { label: 'AIS transponder (class A/B)', direct: false, carries: 'position', bridge: 'Already on the map through the AIS layer; or a Signal K server with an AIS receiver.' },
-  'phone-app': { label: 'Phone tracking apps that report in (OwnTracks, Traccar Client, GPSLogger, Overland)', direct: false, carries: 'position', bridge: 'The app on the phone reports to a server of yours: point it at your Traccar server, OwnTracks Recorder or Home Assistant, then use that method here. A phone cannot be found by its number.' },
+  'phone-app': { label: 'Phone tracking apps through a server of yours (Traccar, OwnTracks Recorder, Home Assistant)', direct: false, carries: 'position', bridge: 'Simplest is "Reports to this app": the phone app sends straight here. Otherwise point it at your Traccar server, OwnTracks Recorder or Home Assistant, then use that method. A phone cannot be found by its number.' },
   'find-my': { label: 'Apple Find My, Google Find Hub, AirTag, Life360', direct: false, carries: 'position', bridge: 'None has a public API. Home Assistant (iCloud or Life360 integration) shows them as a device tracker: use the Home Assistant method.' },
   'cellular-tracker': { label: 'Cellular and OBD GPS trackers (GT06, TK103, Teltonika, Queclink, Concox and 200 more)', direct: false, carries: 'position', bridge: 'Traccar server speaks their protocols: point the tracker at it, then use the Traccar method.' },
   aprs: { label: 'APRS', direct: false, carries: 'position', bridge: 'aprs.fi API (HTTP JSON with an API key): use HTTP JSON with a query-parameter key.' },
@@ -115,8 +127,8 @@ export const DEVICE_FEED_KINDS = Object.freeze([
     id: 'tracker',
     title: 'GPS TRACKING DEVICES',
     noun: 'TRACKER',
-    unlocks: 'Any GPS tracker you own: vehicles, assets, people who asked to be followed, pets. Through a Traccar server, OwnTracks, a shared satellite feed, or any JSON endpoint.',
-    methods: Object.freeze(['traccar', 'owntracks', 'home-assistant', 'http-json', 'geojson', 'kml', 'nmea-http', 'signalk', 'cellular-tracker', 'phone-app', 'find-my', 'mqtt', 'satellite', 'aprs', 'nmea-tcp', 'vendor-api']),
+    unlocks: 'Any GPS tracker you own: vehicles, assets, people who asked to be followed, pets. A phone app reporting straight here, a Traccar server, OwnTracks, a shared satellite feed, or any JSON endpoint.',
+    methods: Object.freeze(['report-in', 'traccar', 'owntracks', 'home-assistant', 'http-json', 'geojson', 'kml', 'nmea-http', 'signalk', 'cellular-tracker', 'phone-app', 'find-my', 'mqtt', 'satellite', 'aprs', 'nmea-tcp', 'vendor-api']),
     authModes: everyAuth,
     color: '#ff7ad9',
   }),
@@ -124,8 +136,8 @@ export const DEVICE_FEED_KINDS = Object.freeze([
     id: 'security',
     title: 'ULTRA SECURITY PACKAGE',
     noun: 'PACKAGE',
-    unlocks: `A GPS tracker or a phone you are responsible for, followed live: the map keeps it in view wherever it goes, and everything the map knows within ${DEVICE_RECORD_RADIUS_KM} km of it (cameras, aircraft, vessels, traffic, every layer that is on) can be saved as it moves. A phone reports through an app installed on it; it cannot be found by its number.`,
-    methods: Object.freeze(['traccar', 'owntracks', 'home-assistant', 'http-json', 'geojson', 'kml', 'nmea-http', 'signalk', 'cellular-tracker', 'phone-app', 'find-my', 'mqtt', 'satellite', 'aprs', 'nmea-tcp', 'vendor-api']),
+    unlocks: `A GPS tracker or a phone you are responsible for, followed live: the map keeps it in view wherever it goes, and everything the map knows within a distance you choose of it, 1 to ${DEVICE_RECORD_RADIUS_KM} km (cameras, aircraft, vessels, traffic, every layer that is on), can be saved as it moves. A phone reports through an app installed on it (simplest: straight to this app); it cannot be found by its number.`,
+    methods: Object.freeze(['report-in', 'traccar', 'owntracks', 'home-assistant', 'http-json', 'geojson', 'kml', 'nmea-http', 'signalk', 'cellular-tracker', 'phone-app', 'find-my', 'mqtt', 'satellite', 'aprs', 'nmea-tcp', 'vendor-api']),
     authModes: everyAuth,
     color: '#ff4d4d',
     // A new package follows and records unless its owner says otherwise.
@@ -202,8 +214,25 @@ function blankFeed(kindId) {
     id: '', kind: kindId, name: '', method: 'http-json', url: '', pictureUrl: '',
     latPath: '', lonPath: '', auth: 'none', username: '', password: '', token: '', keyName: '',
     lat: null, lon: null,
-    follow: false, record: false,
+    follow: false, record: false, recordKm: DEVICE_RECORD_RADIUS_KM,
+    // "Reports to this app": the secret the phone's app presents with each position.
+    reportKey: '',
   };
+}
+
+/** 32 random bytes as base64url: the key a reporting device presents. */
+export function newReportKey(randomValues = (bytes) => globalThis.crypto.getRandomValues(bytes)) {
+  const bytes = randomValues(new Uint8Array(32));
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+const REPORT_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/** Whether a method takes positions the device sends, instead of asking for them. */
+export function methodReportsIn(method) {
+  return DEVICE_FEED_METHODS[method]?.reportsIn === true;
 }
 
 function coordinate(value, limit) {
@@ -227,12 +256,15 @@ export function normalizeDeviceFeedConfig(raw) {
     const url = cleanFeedUrl(item.url);
     const pictureUrl = cleanFeedUrl(item.pictureUrl);
     if (!method || !name || url === null || pictureUrl === null) continue;
+    // A reporting device is nothing without its key; one without is dropped.
+    const reportKey = methodReportsIn(method) && REPORT_KEY_PATTERN.test(String(item.reportKey || '')) ? String(item.reportKey) : '';
+    if (methodReportsIn(method) && !reportKey) continue;
     const lat = coordinate(item.lat, 90);
     const lon = coordinate(item.lon, 180);
     taken.add(id);
     out.feeds.push({
       ...blankFeed(kind.id),
-      id, name, method, url, pictureUrl,
+      id, name, method, url, pictureUrl, reportKey,
       latPath: text(item.latPath, 120) || '',
       lonPath: text(item.lonPath, 120) || '',
       auth: DEVICE_FEED_AUTH_MODES[item.auth] ? item.auth : 'none',
@@ -245,9 +277,57 @@ export function normalizeDeviceFeedConfig(raw) {
       // The map follows one device at a time: the first that says so.
       follow: item.follow === true && !out.feeds.some((feed) => feed.follow),
       record: item.record === true,
+      recordKm: recordRadiusKm(item.recordKm),
     });
   }
   return out;
+}
+
+/**
+ * The fields a device check covers, in file order. Where the map last put
+ * the device, and follow and record, are left out. `include` chooses the
+ * kinds: a phone package for the Ultra check, everything else for the
+ * device check.
+ */
+function devicePolicyRecords(config, include) {
+  const normalized = normalizeDeviceFeedConfig(config);
+  // Normalize keeps a report key only on a method that reports in. The phone
+  // route admits any security package's key, including one saved on an
+  // http-json package, so that key stays in the check. The same overlay
+  // covers a tracker that reports in.
+  const rawKey = new Map();
+  for (const item of Array.isArray(config?.feeds) ? config.feeds : []) {
+    const key = String(item?.reportKey || '');
+    if (item && typeof item.id === 'string' && REPORT_KEY_PATTERN.test(key))
+      rawKey.set(item.id, key);
+  }
+  return normalized.feeds.filter(include).map((feed) => ({
+    id: feed.id,
+    name: feed.name,
+    method: feed.method,
+    reportKey: feed.reportKey || rawKey.get(feed.id) || '',
+    url: feed.url,
+    pictureUrl: feed.pictureUrl,
+    auth: feed.auth,
+    username: feed.username,
+    password: feed.password,
+    token: feed.token,
+    keyName: feed.keyName,
+  }));
+}
+
+/** Phone packages only. A drone or a tracker is not included. */
+export function securityFeedPolicyRecords(config) {
+  return devicePolicyRecords(config, (feed) => feed.kind === 'security');
+}
+
+/**
+ * Drones, robots, marine drones and trackers, in file order. The same
+ * fields as a phone package. Where the map last put the device is left out.
+ * A phone package is not included: that check lives with the Ultra one.
+ */
+export function trackedDevicePolicyRecords(config) {
+  return devicePolicyRecords(config, (feed) => feed.kind !== 'security');
 }
 
 const fail = (error) => ({ ok: false, error });
@@ -258,7 +338,7 @@ const fail = (error) => ({ ok: false, error });
  * what is saved, `null` clears it, a string replaces it.
  * @returns {{ok: true, config: object, feedId?: string}|{ok: false, error: string}}
  */
-export function applyDeviceFeedUpdate(body, previous) {
+export function applyDeviceFeedUpdate(body, previous, { randomValues } = {}) {
   const config = normalizeDeviceFeedConfig(previous);
   if (!body || typeof body !== 'object' || Array.isArray(body)) return fail('Expected a JSON object');
   if (body.removeFeedId !== undefined) {
@@ -293,24 +373,40 @@ export function applyDeviceFeedUpdate(body, previous) {
   if (pictureUrl === null) return fail('The picture address must be http(s), with no login inside it');
   feed.url = url;
   feed.pictureUrl = pictureUrl;
-  if (spec.carries === 'position' && !url) return fail('This method needs the address it reads the position from');
+  const reportsIn = methodReportsIn(method);
+  if (spec.carries === 'position' && !url && !reportsIn) return fail('This method needs the address it reads the position from');
   if (method === 'snapshot' && !pictureUrl) return fail('A picture-only device needs its picture address');
+  // A reporting device is known by its key: kept across edits, minted on the
+  // first save or when a new one is asked for, and never something the owner types.
+  if (reportsIn) {
+    feed.url = '';
+    if (!feed.reportKey || body.newReportKey === true) feed.reportKey = newReportKey(randomValues);
+  } else {
+    feed.reportKey = '';
+  }
 
+  // The JSON paths and the fixed position: left out keeps what is saved (NEW
+  // KEY sends only the key request), while the card's own save always sends
+  // them, as '' or null when a box is empty, which removes them.
   for (const field of ['latPath', 'lonPath']) {
+    if (body[field] === undefined) continue;
     const value = text(body[field], 120);
     if (value === null || (value && !/^[A-Za-z0-9_$.[\]-]+$/.test(value))) return fail('A JSON path is letters, digits, dots and [index] only, for example data.position.lat');
     feed[field] = value;
   }
   if (Boolean(feed.latPath) !== Boolean(feed.lonPath)) return fail('Give both JSON paths, or neither (they are found automatically)');
 
-  const lat = coordinate(body.lat, 90);
-  const lon = coordinate(body.lon, 180);
-  if (Number.isNaN(lat) || Number.isNaN(lon) || (lat === null) !== (lon === null)) return fail('A fixed position is a latitude (-90 to 90) and a longitude (-180 to 180), both or neither');
-  feed.lat = lat;
-  feed.lon = lon;
-  if (method === 'snapshot' && lat === null) return fail('A picture-only device needs a fixed position to stand at');
+  if (body.lat !== undefined || body.lon !== undefined) {
+    const lat = coordinate(body.lat, 90);
+    const lon = coordinate(body.lon, 180);
+    if (Number.isNaN(lat) || Number.isNaN(lon) || (lat === null) !== (lon === null)) return fail('A fixed position is a latitude (-90 to 90) and a longitude (-180 to 180), both or neither');
+    feed.lat = lat;
+    feed.lon = lon;
+  }
+  if (method === 'snapshot' && (feed.lat === null || feed.lat === undefined)) return fail('A picture-only device needs a fixed position to stand at');
 
-  const auth = String(body.auth || 'none');
+  // The key is the login of a reporting device; there is nothing to log in to.
+  const auth = reportsIn ? 'none' : String(body.auth || 'none');
   if (!DEVICE_FEED_AUTH_MODES[auth] || !kind.authModes.includes(auth)) return fail('Unknown login type');
   feed.auth = auth;
   for (const secret of ['password', 'token']) {
@@ -363,6 +459,11 @@ export function applyDeviceFeedUpdate(body, previous) {
     feed[option] = body[option];
   }
   if (feed.follow) config.feeds = config.feeds.map((item) => (item.follow ? { ...item, follow: false } : item));
+  // How far around the device is saved: one of the offered distances; left out keeps what is saved.
+  if (body.recordKm !== undefined) {
+    if (!DEVICE_RECORD_RADIUS_OPTIONS_KM.includes(Number(body.recordKm))) return fail(`The recording distance is one of ${DEVICE_RECORD_RADIUS_OPTIONS_KM.join(', ')} km`);
+    feed.recordKm = Number(body.recordKm);
+  }
 
   if (!saved) {
     feed.id = uniqueId(`${kind.id}-${slug(name)}`, new Set(config.feeds.map((item) => item.id)));
@@ -385,10 +486,18 @@ export function maskFeedUrl(url) {
   }
 }
 
-/** What the setup card is told: shapes and presence flags, never a secret. */
-export function deviceFeedStatus(config, { live = new Map(), recordings = new Map() } = {}) {
+/**
+ * What the setup card is told: shapes and presence flags, never a login or an
+ * address. The one value shown is a reporting device's key, because the owner
+ * has to type it into the phone; it lets a phone put a position in and read
+ * nothing. `reportAddresses` are the addresses this machine answers on, for the
+ * same card.
+ */
+export function deviceFeedStatus(config, { live = new Map(), recordings = new Map(), reportAddresses = [] } = {}) {
   const clean = normalizeDeviceFeedConfig(config);
   return {
+    reportAddresses: [...reportAddresses],
+    recordRadiusOptionsKm: [...DEVICE_RECORD_RADIUS_OPTIONS_KM],
     authModes: Object.entries(DEVICE_FEED_AUTH_MODES).map(([id, mode]) => ({ id, label: mode.label, fields: mode.fields || [], keyNameDefault: mode.keyNameDefault || '' })),
     kinds: DEVICE_FEED_KINDS.map((kind) => ({
       id: kind.id,
@@ -399,7 +508,7 @@ export function deviceFeedStatus(config, { live = new Map(), recordings = new Ma
       followDefault: kind.followDefault === true,
       recordDefault: kind.recordDefault === true,
       authModes: [...kind.authModes],
-      methods: kind.methods.map((id) => ({ id, label: DEVICE_FEED_METHODS[id].label, direct: DEVICE_FEED_METHODS[id].direct, carries: DEVICE_FEED_METHODS[id].carries, urlHint: DEVICE_FEED_METHODS[id].urlHint || '', bridge: DEVICE_FEED_METHODS[id].bridge || '' })),
+      methods: kind.methods.map((id) => ({ id, label: DEVICE_FEED_METHODS[id].label, direct: DEVICE_FEED_METHODS[id].direct, carries: DEVICE_FEED_METHODS[id].carries, reportsIn: DEVICE_FEED_METHODS[id].reportsIn === true, urlHint: DEVICE_FEED_METHODS[id].urlHint || '', bridge: DEVICE_FEED_METHODS[id].bridge || '' })),
       feeds: clean.feeds.filter((feed) => feed.kind === kind.id).map((feed) => ({
         id: feed.id,
         name: feed.name,
@@ -417,9 +526,12 @@ export function deviceFeedStatus(config, { live = new Map(), recordings = new Ma
         tokenSet: Boolean(feed.token),
         lat: feed.lat,
         lon: feed.lon,
-        transport: feedTransport(feed.url || feed.pictureUrl),
+        transport: methodReportsIn(feed.method) ? 'reports-in' : feedTransport(feed.url || feed.pictureUrl),
+        reportsIn: methodReportsIn(feed.method),
+        reportKey: methodReportsIn(feed.method) ? feed.reportKey : '',
         follow: feed.follow,
         record: feed.record,
+        recordKm: feed.recordKm,
         recording: recordings.get(feed.id) || null,
         state: live.get(feed.id) || null,
       })),
@@ -447,7 +559,8 @@ export function deviceFeedRequest(feed, address) {
 
 /** The address a method actually reads, from the base address the owner gave. */
 export function devicePositionUrl(feed) {
-  if (!feed.url) return '';
+  // A reporting device is never asked; its positions arrive on their own.
+  if (!feed.url || methodReportsIn(feed.method)) return '';
   const base = new URL(feed.url);
   const bare = base.pathname === '/' || base.pathname === '';
   if (feed.method === 'mavlink2rest' && bare) base.pathname = '/mavlink/vehicles/1/components/1/messages/GLOBAL_POSITION_INT';
@@ -604,6 +717,69 @@ export function extractDevicePosition(feed, { json, text: body } = {}) {
   return found ? { lat: found.lat, lon: found.lon, ...extras(found.from) } : null;
 }
 
+/** A report's time as epoch milliseconds: unix seconds, milliseconds, or an ISO string; null when absent or unreadable. */
+function reportTime(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = num(value);
+  if (n !== null) return n > 1e11 ? n : n * 1000;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * One position sent by a device's own app ("Reports to this app"). Read from
+ * whatever the app speaks, in this order:
+ *  - Traccar Client / OsmAnd protocol and GPSLogger: `lat`, `lon`, `timestamp`,
+ *    `speed` (knots), `bearing`, `altitude`, in the query string or a form body;
+ *  - OwnTracks (HTTP mode): `{_type: "location", lat, lon, tst, vel (km/h), cog, alt}`;
+ *  - Overland: `{locations: [GeoJSON Feature, ...]}`, the last one;
+ *  - any other JSON with a point in it.
+ * @param {{params?: object, json?: any}} report
+ * @returns {{protocol: string, position: {lat:number, lon:number, altM:number|null, headingDeg:number|null, speedMps:number|null, at:number|null}}|null}
+ */
+export function parseDeviceReport({ params = {}, json } = {}) {
+  const p = params || {};
+  const qLat = num(p.lat ?? p.latitude);
+  const qLon = num(p.lon ?? p.lng ?? p.longitude);
+  if (validPoint(qLat, qLon)) {
+    // OsmAnd's `speed` is knots; GPSLogger's %SPD is m/s and is sent as `speedMps`.
+    const mps = num(p.speedMps ?? p.speed_mps);
+    const knots = num(p.speed);
+    return {
+      protocol: 'osmand',
+      position: { lat: qLat, lon: qLon, altM: num(p.altitude ?? p.alt), headingDeg: num(p.bearing ?? p.heading ?? p.course), speedMps: mps ?? (knots === null ? null : knots * 0.514444), at: reportTime(p.timestamp ?? p.time) },
+    };
+  }
+  if (json && typeof json === 'object') {
+    if (json._type === 'location') {
+      const lat = num(json.lat);
+      const lon = num(json.lon);
+      if (!validPoint(lat, lon)) return null;
+      const kmh = num(json.vel);
+      return { protocol: 'owntracks', position: { lat, lon, altM: num(json.alt), headingDeg: num(json.cog), speedMps: kmh === null ? null : kmh / 3.6, at: reportTime(json.tst) } };
+    }
+    if (Array.isArray(json.locations)) {
+      const last = json.locations[json.locations.length - 1];
+      const coordinates = last?.geometry?.type === 'Point' ? last.geometry.coordinates : null;
+      const lon = num(coordinates?.[0]);
+      const lat = num(coordinates?.[1]);
+      if (!validPoint(lat, lon)) return null;
+      const props = last.properties || {};
+      return { protocol: 'overland', position: { lat, lon, altM: num(props.altitude), headingDeg: num(props.course), speedMps: num(props.speed), at: reportTime(props.timestamp) } };
+    }
+    const found = findPoint(json);
+    if (found) return { protocol: 'json', position: { altM: null, headingDeg: null, speedMps: null, at: null, lat: found.lat, lon: found.lon, ...extras(found.from) } };
+  }
+  return null;
+}
+
+/** What each protocol's app expects back once a report is taken. */
+export function deviceReportReply(protocol) {
+  if (protocol === 'owntracks') return { contentType: 'application/json', body: '[]' };
+  if (protocol === 'overland') return { contentType: 'application/json', body: '{"result":"ok"}' };
+  return { contentType: 'text/plain', body: 'OK' };
+}
+
 /** What the map layer is told about one device: never an address or a login. */
 export function devicePublicRecord(feed, position, state = {}) {
   const kind = KIND_BY_ID.get(feed.kind);
@@ -626,12 +802,71 @@ export function devicePublicRecord(feed, position, state = {}) {
     at: state.at || null,
     follow: feed.follow === true,
     record: feed.record === true,
-    hasPicture: Boolean(feed.pictureUrl),
-    pictureUrl: feed.pictureUrl ? `/api/device-feeds/frame/${deviceFeedPublicId(feed)}` : null,
+    recordKm: recordRadiusKm(feed.recordKm),
+    hasPicture: Boolean(feed.pictureUrl) || feed.kind === 'security',
+    // A phone package shows its own phone's picture, by its public id: with
+    // two packages, each card is its own camera, never the newest reporter's.
+    pictureUrl: feed.pictureUrl
+      ? `/api/device-feeds/frame/${deviceFeedPublicId(feed)}`
+      : feed.kind === 'security'
+        ? `/api/ultra-help/picture/${deviceFeedPublicId(feed)}`
+        : null,
   };
 }
 
 // ---------------------------------------------------------------- recording
+
+/** How many points a device's saved route is drawn with, at most. */
+export const DEVICE_TRACK_MAX_POINTS = 4000;
+/** Two saved fixes closer than this are one point on the drawn route. */
+export const DEVICE_TRACK_MIN_STEP_M = 3;
+
+/**
+ * The route a recording holds: one point per saved line, from the `target`
+ * the server checked each line against. Lines that are not JSON, or have no
+ * position, are skipped; points come back oldest first.
+ * @param {string} text One or more JSON-lines files, concatenated.
+ * @returns {Array<{at:number, lat:number, lon:number, altM:number|null, headingDeg:number|null, speedMps:number|null}>}
+ */
+export function trackFromRecordingLines(text) {
+  const points = [];
+  for (const line of String(text || '').split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const target = parsed?.target;
+    const lat = num(target?.lat);
+    const lon = num(target?.lon);
+    const at = Date.parse(parsed?.at);
+    if (!validPoint(lat, lon) || !Number.isFinite(at)) continue;
+    points.push({ at, lat, lon, altM: num(target.altM), headingDeg: num(target.headingDeg), speedMps: num(target.speedMps) });
+  }
+  points.sort((a, b) => a.at - b.at);
+  return points;
+}
+
+/**
+ * Fewer points, same route: a fix that did not move from the previous kept one
+ * is dropped, and a route longer than `maxPoints` keeps every n-th point plus
+ * the last. Pure.
+ */
+export function thinTrackPoints(points, { maxPoints = DEVICE_TRACK_MAX_POINTS, minStepM = DEVICE_TRACK_MIN_STEP_M } = {}) {
+  const moved = [];
+  for (const point of points) {
+    const last = moved[moved.length - 1];
+    if (last && deviceDistanceKm(last, point) * 1000 < minStepM) continue;
+    moved.push(point);
+  }
+  if (moved.length <= maxPoints) return moved;
+  const step = Math.ceil(moved.length / maxPoints);
+  const kept = moved.filter((_, index) => index % step === 0);
+  if (kept[kept.length - 1] !== moved[moved.length - 1]) kept.push(moved[moved.length - 1]);
+  return kept;
+}
 
 /** Great-circle kilometres between two lat/lon points. */
 export function deviceDistanceKm(a, b) {
