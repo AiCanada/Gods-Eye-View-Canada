@@ -4,10 +4,11 @@
 
 The left stack has an ULTRA SECURITY PACKAGE panel, collapsed like Data Layers.
 Camera buttons are limited to the cameras of the selected handset and are sent
-as one command to the paired phone. Find Ultra Help refuses a missing, stale,
-unclassified, or just-sent incident. Help is published police and fire stations
-near the fix, plus numbers saved on this machine. Send Ultra Help is a second
-press and only texts numbers that were on that list. CCTV is not part of this path.
+as one command to the paired phone. Find Ultra Help is under development: its
+button is disabled, and the station search, its list, the message box and Send
+Ultra Help are removed for now (`/incident` and `/send` answer 404). The FIND
+HELP incident select stays: SEND HELP sends the incident it shows. CCTV is not
+part of this path.
 
 Share encrypted Ultra tokens. The box has HELP MESSAGES under the status line (unread
 count, read-aloud tick, READ / TEXT BACK / REMOVE, MARK ALL READ) and SHARE
@@ -113,8 +114,8 @@ shown too (a tap with no call on ends nothing and says it stood down). Each
 package has its own call
 (`releases` in `config/ultra-help.json`), so a press or STAND DOWN for one
 never touches another's, and removing a package ends its call. A new press is
-refused (409) when that package's last position is more than 20 minutes old,
-the same rule as Find Ultra Help; EXTEND of a running call never is, and moves
+refused (409) when that package's last position is more than 20 minutes old;
+EXTEND of a running call never is, and moves
 the answer's `at` so no receiver times an extended call out. The SMS line says
 what happened to each helper's text (SENDING, SMS SENT, SMS SENT 2/3 · 1 NOT
 SENT, SMS FAILED: …, SMS NOT SENT: DAILY / HOURLY LIMIT); a failed text can be
@@ -212,8 +213,7 @@ every token now is: its holders get `/network` alone. No holder is ever shown
 the owner's number. The phone's
 cards, the one-slot command, each package's call and the SMS ledger live on
 `globalThis`, so a dev-server restart (POWER UP save, SAVE DIRECTORY) keeps
-them; STAND DOWN takes back an unpopped plea card, and Find Ultra Help's text
-goes in the card queue, not the command slot. When its check still matches, the SMS relay
+them; STAND DOWN takes back an unpopped plea card. When its check still matches, the SMS relay
 (Twilio or an https gateway, `.env`, never printed) is optional and charged per
 message by the provider. POWER UP refuses a value the relay could never use (a
 from-number without + and the country code, a gateway that is neither https
@@ -657,13 +657,17 @@ only when a selected area overlaps their coverage and are cached in memory and
 on disk for 24 h; `area.pending` names packs still downloading, and the browser
 refetches once about 5 s later.
 
-The default `CCTV_SOURCES_FILE` lists three packs: Canada
-(`config/cctv_sources.canada.json`, 4,767 cameras), the US
-(`config/cctv_sources.us.json`, 48,697) and international
+The default `CCTV_SOURCES_FILE` lists four packs: Canada
+(`config/cctv_sources.canada.json`, 9,615 cameras), the US
+(`config/cctv_sources.us.json`, 48,697), international
 (`config/cctv_sources.intl.json`, 103,573 after one camera is kept per
 Windy webcam id; the exact count is in
-`tools/camera-pack/cctv_sources.intl.report.txt`). That is 157,037
-cameras. The server keeps every one of them in its catalogue, offline cameras
+`tools/camera-pack/cctv_sources.intl.report.txt`) and the inventory pack
+(`config/cctv_sources.inventory.json`, 17,345 cameras from the operators' own
+lists that the other packs lack; see
+`tools/camera-pack/cctv_sources.inventory.report.txt`). That is 179,230
+cameras; the catalogue serves 179,138 of them, setting aside 87 that repeat
+another camera's still and 5 school cameras. The server keeps every one of them in its catalogue, offline cameras
 included; the catalogue's size does not change what one request loads.
 
 `POST /api/cctv/lookup/:id` is the only route that calls Road511, and only an

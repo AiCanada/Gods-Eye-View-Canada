@@ -1,6 +1,6 @@
 # Camera packs for God's Eye View
 
-Three CCTV source packs ship with the app:
+Four CCTV source packs ship with the app:
 
 - **Canada** (`config/cctv_sources.canada.json`), built from public Canadian
   web-camera directories and the provinces' own camera lists.
@@ -8,6 +8,8 @@ Three CCTV source packs ship with the app:
   listing of the state DOT and city traffic cameras.
 - **International** (`config/cctv_sources.intl.json`), built from a listing of
   public webcams and road-agency cameras in other countries and territories.
+- **Inventory** (`config/cctv_sources.inventory.json`), the cameras in the
+  operators' own camera lists that the other three packs lack.
 
 The built-in live packs (Austin open data, Caltrans, Transport for London) sit
 beside them and load only for an area that needs them.
@@ -20,10 +22,10 @@ the pack files named in `CCTV_SOURCES_FILE` (a comma-separated list), an inline
 array of cameras or the compact envelope described under
 [US pack](#us-pack-road511-listing).
 
-The file list defaults to all three packs. A typical `.env`:
+The file list defaults to all four packs. A typical `.env`:
 
 ```
-CCTV_SOURCES_FILE=config/cctv_sources.canada.json,config/cctv_sources.us.json,config/cctv_sources.intl.json
+CCTV_SOURCES_FILE=config/cctv_sources.canada.json,config/cctv_sources.us.json,config/cctv_sources.intl.json,config/cctv_sources.inventory.json
 CCTV_COUNTRIES=*
 ```
 
@@ -286,6 +288,76 @@ asks nothing twice).
 The September 2026 listing (7,387 rows) added **4,848 cameras**
 to the Canadian pack, which now holds **9,615**: 4,811 stills and 37 stream-only cameras (Nova Scotia Webcams, City of Kamloops), 4,540 placed by the listing's own point and 308 by address (170 from a street, junction or place name, 138 at their town's centre because the listing gives no address). The largest additions are the City of Toronto (1,017 views), the City of Vancouver (852), the City of Surrey (597), the City of Ottawa (458), York Region (378), Panomax (210), Ontario 511 views the pack did not have (201), the City of Edmonton (190) and the City of Calgary (103). Left out: 2,815 rows the pack already held, 754 with only a web page (Québec 511's 678 are in the pack from Québec's own dataset), 107 listed twice through two hosts, 380 that merge-pack.mjs dropped as copies of cameras in higher-priority packs (the same address, or within 25 m on another host), 38 with no coordinates, no address and no town, 17 school, university and library cameras, 2 billboard monitors, and 1 address the geocoder could not find. No camera the pack held before was lost.
 
+## Inventory pack
+
+`cctv-inventory-<date>.csv` lists camera sites from the operators' own camera
+lists: state DOTs, cities, 511 systems and national road agencies in 17
+countries, one site per row with its views as JSON. It is a raw download and is
+never committed. The pack is built from it with no network access at all,
+after the other three packs:
+
+```bash
+node tools/camera-pack/build-inventory.mjs --input <path>/cctv-inventory-2026-10-01.csv
+```
+
+`build-inventory.mjs` writes `config/cctv_sources.inventory.json` and
+`tools/camera-pack/cctv_sources.inventory.report.txt`; the pure helpers live in
+`inventory-csv.mjs`. Run it again after rebuilding the US or international
+pack.
+
+- **Views.** Every distinct still in a row is a camera: a pole's directions, a
+  weather station's presets, Toronto's direction pictures. A stream belongs to
+  the still it is listed beside, and a stream with no still is a stream-only
+  camera. A thumbnail or reference copy is not a view; it is the still only
+  when the row has no other (VDOT publishes its stills under `/thumbs/`). A
+  motion-JPEG stream is stored as a still: the frame route keeps its first
+  picture.
+- **No duplicates, and nothing left out for standing near another camera.** A
+  camera already held is not written again. It is the same camera when it has
+  the same still or stream address (a site's `www.` name is the site), the
+  same operator camera number (a Road511 id keeps the operator's,
+  `us511-MI-cam-1129`; used only for a site with one view), the same operator
+  code (`FULT-0036`, in the name or in the stream address, zero padding
+  ignored), or the same name in the same state or province within a
+  kilometre. Views that share an address across rows or sources are one
+  camera. One source's views never match one held camera twice, so a site's
+  views that share a name stay separate cameras.
+- **Pictures for cameras that had none.** A Road511 camera with no still that
+  the inventory has a picture for gets it in the US pack, keeping its id, name
+  and place: `feedType: 'image'` with the still in `url` (and the stream in
+  `videoUrl` when listed), or only the stream in `videoUrl`, marked
+  `feedFrom: 'inventory'`.
+- **Left out.** Cameras whose only link expires (a token, UTIC's per-session
+  stream addresses), whose only link is a web page or player, or whose still
+  carries its capture time in its address; school, university, college and
+  library cameras; the City of Austin's cameras, which the Austin live pack
+  serves; points at 0,0 or outside the United States or Canada for a camera
+  listed there; and countries the build does not know.
+- **Georgia's older list.** GDOT lists many cameras twice, under a current
+  number and an older one that names the camera only by its road. The camera
+  code in the older entry's stream address ties many to a current camera;
+  where nothing does, the older entry is written as its own camera. The
+  October 1, 2026 build wrote 2,370 such entries (numbers 7,356 to 10,758, all
+  but one marked Disabled by GDOT), so some stand where a current camera
+  stands.
+
+Every camera id is `inv-` plus the source and its own camera number, with
+`-<n>` for a site's nth view.
+
+The October 1, 2026 export (84,601 rows, 74,879 views) built to
+**17,345 new cameras**: 11,125 in the US, 1,973 in South Korea, 1,559 in
+Canada, 1,453 in Finland, 626 in Taiwan, 400 in Indonesia and 209 elsewhere;
+14,725 with a still and 2,620 stream-only. 57,421 views were already held
+(45,061 by address, 6,448 by name, 4,126 by operator code, 1,081 by operator
+number, 705 by name on the same site), and 3,582 pack cameras got a picture:
+3,531 Road511 cameras (1,523 Minnesota streams; Michigan, Texas, Connecticut,
+New Hampshire, Maine and Vermont stills) and 51 Vigo cameras in the
+international pack. Left out: 12,207 with only an expiring link (11,290 UTIC
+Korea, 917 Streetside Jakarta), 1,504 with only a page or player (Québec 511's
+678 are in the Canadian pack from Québec's own dataset), 1,007 Austin cameras,
+113 school cameras, 49 bad points, 7 timestamped stills and 4 with no usable
+link.
+
 ## On-demand Road511 lookup
 
 A camera with no public still (`feedType: 'none'`, `lookup: 'road511'`) costs
@@ -352,6 +424,12 @@ would refuse; the September 2026 build has none.
 | Source | Origin | Coordinates |
 |---|---|---|
 | `international_webcams.tsv` (not committed) | Public webcams and road-agency cameras outside Canada, the US and Ukraine (Windy, WebcamGalore, WorldCam, Panomax, feratel, OpenStreetMap, SkylineWebcams, DGT, Trafikverket, Digitraffic, Statens vegvesen, TfL, Hong Kong Transport Department, MLIT and others) | mixed; missing, out-of-range and 0,0 points are rejected |
+
+### Inventory
+
+| Source | Origin | Coordinates |
+|---|---|---|
+| `cctv-inventory-<date>.csv` (not committed) | The operators' own camera lists: US state DOTs and 511 systems (ALGO Traffic, GDOT, FL511, UDOT, MnDOT IRIS, Houston TranStar, NYC DOT, Seattle DOT and others), Canadian cities and 511 systems, Korea's UTIC, Taiwan's MOTC, Finland's Digitraffic, Hong Kong, New Zealand, Queensland, Spain's DGT and others | as listed; 0,0, out-of-range points and points outside the US or Canada for a camera listed there are rejected |
 
 ### Notes on individual sources
 
@@ -476,6 +554,7 @@ node build-canada-listing.mjs --input <path>/canada_webcams.tsv  # Canadian webc
 node merge-pack.mjs        # validate, dedupe, order -> ../../config/cctv_sources.canada.json
 node build-road511-us.mjs --input <path>/us_public_webcams.tsv  # -> ../../config/cctv_sources.us.json + cctv_sources.us.report.txt
 node build-intl.mjs --input <path>/international_webcams.tsv  # -> ../../config/cctv_sources.intl.json + cctv_sources.intl.report.txt
+node build-inventory.mjs --input <path>/cctv-inventory-<date>.csv  # -> ../../config/cctv_sources.inventory.json + cctv_sources.inventory.report.txt (after the US and international builds)
 ```
 
 Every script reads and writes inside `sources/` beside itself, so the rebuild
@@ -598,8 +677,8 @@ someone opens it. The server keeps a frame for eight seconds so viewers share
 it, and a camera that fails puts one request on its host per backoff window
 (15 seconds doubling to five minutes) before the synthetic card is served for
 free. The US pack is about 11 MB on disk and 1.4 MB gzipped; the international pack
-is about 25 MB (3.6 MB gzipped). The server reads each once and rereads it only
-when the file changes.
+is about 25 MB (3.6 MB gzipped) and the inventory pack about 4.7 MB (0.4 MB
+gzipped). The server reads each once and rereads it only when the file changes.
 
 ## Attribution
 

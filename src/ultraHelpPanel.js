@@ -40,15 +40,6 @@ const NETWORK_STALE_MS = 2 * 60_000;
 const ENV_SAVED =
   'Saved to your local .env. Restarting — this page reloads itself.';
 
-const REASON = {
-  unclassified: 'Not an incident. Choose threat, fire, medical, or other.',
-  'no-position':
-    'No cell position yet. The paired phone has to report in first.',
-  stale: 'The cell position is older than 20 minutes. Wait for a fresh fix.',
-  cooldown: 'This incident type was just sent. Wait before sending it again.',
-  sent: 'The phone has been asked to send the SMS.',
-};
-
 const TOKEN_NOTE = {
   unreadable:
     'The token store exists but cannot be read: fix the file or RESET TOKENS (every link stops working).',
@@ -1108,9 +1099,6 @@ export function applyUltraHelpStatus(documentRef, status) {
       statusLine.textContent = status.cameraNote;
     } else if (status?.position) {
       statusLine.textContent = `PHONE · ${status.position.lat.toFixed(4)}, ${status.position.lon.toFixed(4)}`;
-    } else if (status?.review && status.review.ok === false) {
-      statusLine.textContent =
-        REASON[status.review.reason] || 'PHONE · WAITING';
     } else {
       statusLine.textContent = 'PHONE · WAITING FOR A REPORT';
     }
@@ -1154,73 +1142,6 @@ export function applyUltraHelpStatus(documentRef, status) {
   paintRelease(documentRef, status);
   paintInbox(documentRef, status);
 
-  const list = byId(documentRef, 'ultra-help-list');
-  /* The list is rebuilt only when the search result itself changes: the
-   * poll repaints every three seconds, and a rebuild would tick again every
-   * number the owner had just unticked, so Send Ultra Help would text them. */
-  const matchesShape = JSON.stringify([
-    status?.searched === true,
-    status?.emergency === true,
-    status?.lookupOk !== false,
-    status?.review?.ok === true,
-    status?.review?.reason || '',
-    status?.message || '',
-    (status?.matches || []).map((match) => [
-      match.number || match.phone || '',
-      match.label || match.name || match.tier || '',
-      match.distanceKm ?? null,
-      match.kind || '',
-    ]),
-  ]);
-  if (list && list.dataset.ultraShape !== matchesShape) {
-    list.dataset.ultraShape = matchesShape;
-    list.replaceChildren();
-    const matches = status?.matches || [];
-    if (status?.searched) {
-      const head = documentRef.createElement('p');
-      head.className = 'ultra-note';
-      const blocked =
-        status?.review?.ok === false
-          ? ` ${REASON[status.review.reason] || ''}`
-          : '';
-      head.textContent = status?.emergency
-        ? `No nearby help number. Press Send Ultra Help to approve the request to ${matches.find((item) => item.kind === 'emergency')?.number || '911'}.${blocked}`
-        : status?.lookupOk === false
-          ? `The help search did not answer.${blocked}`
-          : matches.length
-            ? `${matches.length} found.${blocked || ' Tick a number, then Send Ultra Help.'}`
-            : `No help within 20 km of the phone.${blocked}`;
-      list.appendChild(head);
-    }
-    for (const match of matches) {
-      const number = match.number || match.phone || '';
-      const row = documentRef.createElement('label');
-      row.className = 'ultra-match';
-      if (number) {
-        const box = documentRef.createElement('input');
-        box.type = 'checkbox';
-        box.checked = true;
-        box.value = number;
-        box.dataset.ultraNumber = number;
-        row.appendChild(box);
-      }
-      const text = documentRef.createElement('span');
-      const distance = Number.isFinite(match.distanceKm)
-        ? `${match.distanceKm.toFixed(1)} km · `
-        : '';
-      const who = match.label || match.name || match.tier || 'Help';
-      text.textContent = `${who} · ${distance}${number || 'no published number'}`;
-      row.appendChild(text);
-      list.appendChild(row);
-    }
-  }
-  const message = byId(documentRef, 'ultra-message');
-  if (message && status?.message) message.textContent = status.message;
-  const send = byId(documentRef, 'ultra-send');
-  const chosen = list
-    ? list.querySelectorAll('input[type="checkbox"]:checked').length
-    : 0;
-  if (send) send.disabled = !status?.review?.ok || chosen === 0;
   const helpNote = byId(documentRef, 'ultra-help-store-note');
   if (helpNote) {
     const tampered = status?.helpStore === 'tampered';
@@ -1564,18 +1485,6 @@ export function initUltraHelpPanel({
       return;
     }
     const id = target?.id;
-    if (id === 'ultra-find') {
-      const type = byId(documentRef, 'ultra-incident')?.value || 'threat';
-      void post('incident', { type });
-      return;
-    }
-    if (id === 'ultra-send') {
-      const numbers = [
-        ...panel.querySelectorAll('[data-ultra-number]:checked'),
-      ].map((box) => box.dataset.ultraNumber);
-      void post('send', { numbers });
-      return;
-    }
     if (id === 'ultra-release-send') {
       /* With several packages the press names the one chosen beside the
        * button, so EXTEND HELP renews that call and no other. */
@@ -1818,13 +1727,6 @@ export function initUltraHelpPanel({
         }
       }
       return;
-    }
-    if (event.target?.dataset?.ultraNumber) {
-      const send = byId(documentRef, 'ultra-send');
-      const chosen = panel.querySelectorAll(
-        '[data-ultra-number]:checked',
-      ).length;
-      if (send) send.disabled = !latest?.review?.ok || chosen === 0;
     }
     if (String(event.target?.id || '').startsWith('ultra-skill-custom-'))
       paintCustomSkillPreview(documentRef);

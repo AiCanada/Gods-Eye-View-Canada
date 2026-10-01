@@ -4,21 +4,12 @@ import fs from 'node:fs';
 import {
   ULTRA_PHONE_MODELS,
   classifyUltraIncident,
-  helpLadder,
-  matchUltraHelp,
-  reviewUltraIncident,
   ultraCameraButtons,
   ultraCameraRole,
   ultraPhoneModel,
-  emergencyNumber,
-  ultraCountryGroup,
   ultraHelpMessage,
   normalizeUltraNumber,
 } from './ultraHelp.mjs';
-
-const NOW = Date.parse('2026-09-26T18:00:00Z');
-const FRESH = NOW - 60_000;
-const HERE = { lat: 45.27, lon: -66.06 };
 
 test('each handset offers only its own cameras, and a generic cell stops at four', () => {
   const ids = (modelId) => ultraCameraButtons(modelId).map((role) => role.id);
@@ -59,119 +50,6 @@ test('only a known class is an incident; panic and a bare word are rejected', ()
   assert.equal(classifyUltraIncident('Assault'), 'threat');
   assert.equal(classifyUltraIncident('panic'), null);
   assert.equal(classifyUltraIncident(''), null);
-  const rejected = reviewUltraIncident({
-    type: 'panic',
-    now: NOW,
-    positionAt: FRESH,
-  });
-  assert.deepEqual([rejected.ok, rejected.reason], [false, 'unclassified']);
-});
-
-test('a stale or missing fix, and a repeat inside the cooldown, are false incidents', () => {
-  assert.equal(
-    reviewUltraIncident({ type: 'fire', now: NOW, positionAt: null }).reason,
-    'no-position',
-  );
-  assert.equal(
-    reviewUltraIncident({
-      type: 'fire',
-      now: NOW,
-      positionAt: NOW - 19 * 60_000,
-    }).ok,
-    true,
-  );
-  assert.equal(
-    reviewUltraIncident({
-      type: 'fire',
-      now: NOW,
-      positionAt: NOW - 21 * 60_000,
-    }).reason,
-    'stale',
-  );
-  const repeat = reviewUltraIncident({
-    type: 'threat',
-    now: NOW,
-    positionAt: FRESH,
-    lastSentAt: NOW - 60_000,
-    lastSentType: 'threat',
-  });
-  assert.equal(repeat.reason, 'cooldown');
-  assert.equal(
-    reviewUltraIncident({ type: 'fire', now: NOW, positionAt: FRESH }).ok,
-    true,
-  );
-});
-
-test('an empty help list falls back to 911 in Canada and the USA, and 112 elsewhere', () => {
-  assert.equal(emergencyNumber('canada'), '911');
-  assert.equal(emergencyNumber('usa'), '911');
-  assert.equal(emergencyNumber('international'), '112');
-});
-
-test('Canada, the USA, and everywhere else use different police ladders', () => {
-  assert.deepEqual(helpLadder(ultraCountryGroup('CA'), 'threat'), [
-    'local',
-    'provincial',
-    'rcmp',
-  ]);
-  assert.deepEqual(helpLadder(ultraCountryGroup('US'), 'threat'), [
-    'local',
-    'state',
-    'fbi',
-  ]);
-  assert.deepEqual(helpLadder(ultraCountryGroup('FR'), 'threat'), [
-    'local',
-    'provincial',
-    'federal',
-  ]);
-  assert.deepEqual(helpLadder('canada', 'fire'), ['fire']);
-  assert.deepEqual(helpLadder('usa', 'medical'), ['closer', 'other']);
-});
-
-test('threat prefers the local station before RCMP, and fire uses the fire station', () => {
-  const places = [
-    {
-      name: 'RCMP Saint John',
-      kind: 'police',
-      lat: 45.3,
-      lon: -66.05,
-      phone: '+15065550100',
-    },
-    {
-      name: 'Saint John Police',
-      kind: 'police',
-      lat: 45.273,
-      lon: -66.063,
-      phone: '+15065550101',
-    },
-    {
-      name: 'Station 1',
-      kind: 'fire',
-      lat: 45.28,
-      lon: -66.07,
-      phone: '+15065550102',
-    },
-  ];
-  const threat = matchUltraHelp({
-    group: 'canada',
-    incident: 'threat',
-    places,
-    from: HERE,
-    contacts: [],
-  });
-  assert.equal(threat.matches[0].name, 'Saint John Police');
-  assert.equal(threat.matches[1].tier, 'rcmp');
-  const fire = matchUltraHelp({
-    group: 'canada',
-    incident: 'fire',
-    places,
-    from: HERE,
-    contacts: [],
-  });
-  assert.deepEqual(
-    fire.matches.map((item) => item.name),
-    ['Station 1'],
-  );
 });
 
 test('the SMS sentence names the place and the class', () => {
@@ -198,8 +76,14 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
   assert.match(html, /Activate Rear Cell Cam/);
   assert.match(html, /Activate Inside Fold Cell Cam/);
   assert.doesNotMatch(html, /Activate Ultra /);
-  assert.match(html, /Find Ultra Help/);
-  assert.match(html, /Send Ultra Help/);
+  // Find Ultra Help is under development: one disabled button, and no
+  // search list, message box or Send Ultra Help.
+  assert.match(
+    html,
+    /<button id="ultra-find"[^>]*\bdisabled\b[^>]*>Find Ultra Help \(under development\)<\/button>/,
+  );
+  assert.doesNotMatch(html, /id="ultra-(?:send|message|help-list)"/);
+  assert.doesNotMatch(html, /Send Ultra Help|victim in progress/);
   // Share help tokens live in the same box: the inbox under the status line
   // and the token tools after the predefined helpers.
   const box = html.slice(

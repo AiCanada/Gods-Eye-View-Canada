@@ -254,10 +254,6 @@ function installFakeDocument() {
   make('input', 'ultra-read-aloud', panel, { checked: true });
   make('button', 'ultra-inbox-read-all', panel);
   make('select', 'ultra-incident', panel, { value: 'threat' });
-  /* FIND HELP: the numbers found, and Send Ultra Help. */
-  make('div', 'ultra-help-list', panel);
-  make('div', 'ultra-message', panel);
-  make('button', 'ultra-send', panel);
   /* The saved helpers the plea is texted to. */
   make('p', 'ultra-help-store-note', panel, { hidden: true });
   make('p', 'ultra-outbound-note', panel, { hidden: true });
@@ -1575,72 +1571,6 @@ test('the package choice follows a new call until the owner picks, offers a remo
     });
   } finally {
     restoreConfirm();
-    handle.destroy();
-  }
-});
-
-test('Find Ultra Help: a number the owner unticks stays unticked through the poll, and Send texts only the ticked ones', async () => {
-  const { documentRef, panel, byId } = installFakeDocument();
-  const windowRef = fakeWindow();
-  const found = {
-    unread: 0,
-    inbox: [],
-    tokens: [],
-    network: network(),
-    searched: true,
-    lookupOk: true,
-    emergency: false,
-    review: { ok: true, incident: 'fire' },
-    message: 'Please HELP you are close by, to here, fire thank you.',
-    matches: [
-      { label: 'Fire hall', number: '+15065550111', kind: 'fire' },
-      { label: 'Neighbour', number: '+15065550100', kind: 'other' },
-    ],
-  };
-  let status = found;
-  const calls = [];
-  const fetchImpl = async (url, options = {}) => {
-    calls.push({ url, body: options.body ? JSON.parse(options.body) : null });
-    return { ok: true, json: async () => status };
-  };
-  const handle = initUltraHelpPanel({ documentRef, fetchImpl, windowRef });
-  try {
-    await settle();
-    const boxes = () =>
-      byId('ultra-help-list').querySelectorAll('input[type="checkbox"]');
-    assert.deepEqual(
-      boxes().map((box) => [box.dataset.ultraNumber, box.checked]),
-      [
-        ['+15065550111', true],
-        ['+15065550100', true],
-      ],
-    );
-    /* The owner unticks the neighbour; the next poll paints the same result. */
-    boxes()[1].checked = false;
-    panel.dispatch('change', { target: boxes()[1] });
-    applyUltraHelpStatus(documentRef, status);
-    assert.deepEqual(
-      boxes().map((box) => box.checked),
-      [true, false],
-    );
-    calls.length = 0;
-    panel.dispatch('click', { target: byId('ultra-send') });
-    await settle();
-    assert.deepEqual(calls[0], {
-      url: '/api/ultra-help/send',
-      body: { numbers: ['+15065550111'] },
-    });
-    /* A new search is a new list, ticked afresh. */
-    status = {
-      ...found,
-      matches: [{ label: 'Police', number: '+15065550122', kind: 'police' }],
-    };
-    applyUltraHelpStatus(documentRef, status);
-    assert.deepEqual(
-      boxes().map((box) => [box.dataset.ultraNumber, box.checked]),
-      [['+15065550122', true]],
-    );
-  } finally {
     handle.destroy();
   }
 });
@@ -3227,4 +3157,35 @@ test('paint() strips `revealed` and `published` before storing `latest`, and the
   assert.match(source, /DEVICE_FEEDS_CHANGED_EVENT/);
   assert.match(source, /DEVICE_FEEDS_FOCUS_EVENT/);
   assert.doesNotMatch(source, /trackById/);
+});
+
+test('Find Ultra Help is under development: a press asks the server nothing', async () => {
+  const { documentRef, panel } = installFakeDocument();
+  const urls = [];
+  const fetchImpl = async (url) => {
+    urls.push(String(url));
+    return {
+      ok: true,
+      json: async () => ({
+        unread: 0,
+        inbox: [],
+        tokens: [],
+        network: network(),
+      }),
+    };
+  };
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef: fakeWindow(),
+  });
+  try {
+    await settle();
+    urls.length = 0;
+    panel.dispatch('click', { target: { id: 'ultra-find' } });
+    await settle();
+    assert.deepEqual(urls, []);
+  } finally {
+    handle.destroy();
+  }
 });

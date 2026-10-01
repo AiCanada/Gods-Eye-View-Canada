@@ -45,8 +45,8 @@ test('the catalogue is rebuilt only after a pack file changes, checked at most e
 
 test('CCTV_SOURCES_FILE is a comma list of plain arrays and gev-cctv-pack/1 envelopes', async (t) => {
   const warn = t.mock.method(console, 'warn', () => {});
-  assert.equal(DEFAULT_CCTV_SOURCE_FILES, 'config/cctv_sources.canada.json,config/cctv_sources.us.json,config/cctv_sources.intl.json');
-  assert.deepEqual(cctvSourceFiles({}), ['config/cctv_sources.canada.json', 'config/cctv_sources.us.json', 'config/cctv_sources.intl.json']);
+  assert.equal(DEFAULT_CCTV_SOURCE_FILES, 'config/cctv_sources.canada.json,config/cctv_sources.us.json,config/cctv_sources.intl.json,config/cctv_sources.inventory.json');
+  assert.deepEqual(cctvSourceFiles({}), ['config/cctv_sources.canada.json', 'config/cctv_sources.us.json', 'config/cctv_sources.intl.json', 'config/cctv_sources.inventory.json']);
   assert.deepEqual(cctvSourceFiles({ CCTV_SOURCES_FILE: ' a.json , ,b.json' }), ['a.json', 'b.json']);
 
   const dir = tempRoot(t);

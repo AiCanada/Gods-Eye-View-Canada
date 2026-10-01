@@ -25,18 +25,13 @@ import {
 } from '../../src/deviceFeedsCore.mjs';
 import {
   ULTRA_HELP_CONTACT_LIMIT,
-  ULTRA_HELP_RADIUS_M,
   ULTRA_POSITION_MAX_AGE_MS,
   classifyUltraIncident,
-  matchUltraHelp,
   normalizeUltraNumber,
-  reviewUltraIncident,
   ultraCameraRole,
   ultraCameraButtons,
   ultraContactKind,
-  ultraCountryGroup,
   ultraDistanceKm,
-  emergencyNumber,
   sendableNumber,
   ultraHelpMessage,
   ultraPhoneModel,
@@ -183,7 +178,6 @@ const phoneHosts = new Map();
 const viewers = new Set();
 let reportBases = [];
 const LIVE_BOUNDARY = 'gev-ultra';
-let lastFind = null;
 
 // Every file this provider touches resolves from here. ultraHelpProxy points
 // it at the checkout (server/providers/local.js) or, in a test, at a temp dir.
@@ -432,7 +426,6 @@ function pointAt(root, harden) {
   inboxWarned = false;
   inboxHardened = false;
   reportBases = [];
-  lastFind = null;
   releaseRetryAt = 0;
   helpStoreWarned = false;
   network = null;
@@ -2032,8 +2025,6 @@ function warnGeocode(error, now) {
  * The street address of a position, or the coordinates alone when the
  * lookup is refused or this machine is offline (then `failed` says so, so
  * the help network does not keep the coordinates as that spot's address).
- * Split out of lookupHelp so the help network can reuse exactly the same
- * path and wording.
  */
 async function reverseGeocode(fix, fetchImpl) {
   try {
@@ -2227,9 +2218,9 @@ function ownSmsStatus(call, relay) {
 
 /**
  * Whether a package's last known fix may be published by a new SEND HELP:
- * 'none' with no fix, 'stale' when it is older than the twenty minutes Find
- * Ultra Help also allows (a phone that stopped reporting yesterday must not
- * send helpers to where it was then, stamped as now), else 'ok'. EXTEND
+ * 'none' with no fix, 'stale' when it is older than twenty minutes (a phone
+ * that stopped reporting yesterday must not send helpers to where it was
+ * then, stamped as now), else 'ok'. EXTEND
  * HELP on a running call is never refused: it keeps the call alive at the
  * newest position the call already has.
  */
@@ -3669,41 +3660,6 @@ async function fetchJson(url, timeoutMs, fetchImpl) {
   return JSON.parse(text);
 }
 
-async function lookupHelp(fix, fetchImpl) {
-  const { country, place: placeName } = await reverseGeocode(fix, fetchImpl);
-  const group = ultraCountryGroup(country);
-  let places = [];
-  const query = `[out:json][timeout:12];(node["amenity"="police"](around:${ULTRA_HELP_RADIUS_M},${fix.lat},${fix.lon});node["amenity"="fire_station"](around:${ULTRA_HELP_RADIUS_M},${fix.lat},${fix.lon}););out body 40;`;
-  try {
-    const overpass = await fetchJson(
-      'https://overpass-api.de/api/interpreter',
-      14000,
-      (url, options) =>
-        fetchImpl(url, {
-          ...options,
-          method: 'POST',
-          body: `data=${encodeURIComponent(query)}`,
-          headers: {
-            ...options.headers,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-        }),
-    );
-    places = (overpass?.elements || []).slice(0, 40).map((item) => ({
-      name: item.tags?.name || item.tags?.operator || 'Unnamed station',
-      operator: item.tags?.operator || '',
-      kind: item.tags?.amenity === 'fire_station' ? 'fire' : 'police',
-      lat: item.lat,
-      lon: item.lon,
-      phone: item.tags?.phone || item.tags?.['contact:phone'] || '',
-    }));
-  } catch {
-    places = [];
-    return { group, country, placeName, places, lookupOk: false };
-  }
-  return { group, country, placeName, places, lookupOk: true };
-}
-
 /**
  * What the box polls. Never a plaintext token and never a `revealed` key:
  * those two exist only in the answer to the mint or reveal the owner clicked.
@@ -3712,7 +3668,6 @@ function publicStatus(store, { editable = false } = {}) {
   maybeUpgradeTokenPolicy();
   const feeds = recallSecurityFeeds();
   const fix = latestPosition();
-  const review = lastFind?.review || null;
   const livePicture = feeds.find((feed) => feed.pictureUrl)?.pictureUrl || null;
   const tokens = readTokenStore().tokens;
   const keyRead = readTokenKey();
@@ -3764,12 +3719,6 @@ function publicStatus(store, { editable = false } = {}) {
       ? { name: fix.name, lat: fix.lat, lon: fix.lon, at: fix.at }
       : null,
     contacts: store.contacts,
-    review,
-    matches: lastFind?.matches || [],
-    message: lastFind?.message || '',
-    searched: lastFind?.searched === true,
-    emergency: lastFind?.emergency === true,
-    lookupOk: lastFind?.lookupOk !== false,
     pending: fix && KEY.test(fix.key) ? commands.get(fix.key) || null : null,
     hasPicture: Boolean(livePicture) || (fix ? pictures.has(fix.key) : false),
     livePicture,
@@ -5487,56 +5436,6 @@ export function ultraHelpProxy({
           json(res, 200, answer(store));
           return;
         }
-        if (req.method === 'POST' && pathName === '/incident') {
-          const fix = latestPosition();
-          const review = reviewUltraIncident({
-            type: body.type,
-            now: Date.now(),
-            positionAt: fix?.at,
-            lastSentAt: lastFind?.sentAt,
-            lastSentType: lastFind?.sentType,
-          });
-          if (!fix) {
-            lastFind = { review, matches: [], message: '', searched: false };
-            json(res, 200, answer(store));
-            return;
-          }
-          const incident = review.incident || 'other';
-          const found = await lookupHelp(fix, fetchImpl);
-          const matched = matchUltraHelp({
-            group: found.group,
-            incident,
-            places: found.places,
-            contacts: store.contacts,
-            from: fix,
-          });
-          const sendable = matched.matches.some((item) =>
-            sendableNumber(item.number || item.phone),
-          );
-          const matches =
-            sendable || !found.lookupOk
-              ? matched.matches
-              : [
-                  ...matched.matches,
-                  {
-                    name: 'Emergency services',
-                    number: emergencyNumber(found.group),
-                    kind: 'emergency',
-                    tier: 'emergency',
-                  },
-                ];
-          lastFind = {
-            review,
-            matches,
-            message: ultraHelpMessage(found.placeName, incident),
-            key: fix.key,
-            searched: true,
-            emergency: !sendable && found.lookupOk,
-            lookupOk: found.lookupOk,
-          };
-          json(res, 200, answer(store));
-          return;
-        }
         if (req.method === 'POST' && pathName === '/camera') {
           const role = ultraCameraRole(store.modelId, body.role);
           if (!role) {
@@ -5568,61 +5467,6 @@ export function ultraHelpProxy({
               : 'The report listener is not up yet. Restart the dev server, then open the camera link on the phone.';
           }
           json(res, 200, status);
-          return;
-        }
-        if (req.method === 'POST' && pathName === '/send') {
-          const fix = latestPosition();
-          const review = lastFind?.review;
-          if (
-            !review?.ok ||
-            !fix ||
-            lastFind.key !== fix.key ||
-            !lastFind.message
-          ) {
-            json(res, 409, {
-              error: 'Find Ultra Help has not accepted an incident',
-            });
-            return;
-          }
-          const allowed = new Set(
-            (lastFind.matches || [])
-              .map((item) => sendableNumber(item.number || item.phone))
-              .filter(Boolean),
-          );
-          const numbers = (Array.isArray(body.numbers) ? body.numbers : [])
-            .map(sendableNumber)
-            .filter((number) => number && allowed.has(number));
-          if (!numbers.length) {
-            json(res, 400, {
-              error: 'Tick at least one number from the list',
-            });
-            return;
-          }
-          // The text goes in the card queue, not the one-slot command: a
-          // camera switch pressed before the phone polls must never replace it.
-          // One Find card waits at a time, as when it had its own slot: a
-          // newer Send replaces one the phone has not popped yet.
-          const waiting = notifies.get(fix.key) || [];
-          notifies.set(
-            fix.key,
-            waiting.filter((card) => card?.call !== 'find'),
-          );
-          pushNotify(fix.key, {
-            kind: 'sms',
-            id: ultraMessageId(),
-            text: lastFind.message,
-            numbers,
-            at: Date.now(),
-            // Private, like a plea card's: stripped before the phone gets it.
-            call: 'find',
-          });
-          lastFind = {
-            ...lastFind,
-            sentAt: Date.now(),
-            sentType: review.incident,
-            review: { ...review, ok: false, reason: 'sent' },
-          };
-          json(res, 200, answer(store));
           return;
         }
         if (req.method === 'POST' && pathName === '/tokens') {

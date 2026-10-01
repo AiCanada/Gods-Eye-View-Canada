@@ -5773,43 +5773,6 @@ test('STAND DOWN takes back the plea card the phone has not popped, and EXTEND n
   }
 });
 
-test('Find Ultra Help: its text waits in the card queue, so a camera switch cannot replace it', async () => {
-  const { post } = setup();
-  const clock = withClock(Date.UTC(2026, 8, 28, 18));
-  try {
-    await post('/contacts', {
-      label: 'Fire hall',
-      number: '+15065550111',
-      kind: 'fire',
-    });
-    noteUltraPosition({
-      key: VAN_KEY,
-      name: 'Van 7',
-      lat: 45.27,
-      lon: -66.06,
-      at: Date.now(),
-    });
-    const found = (await post('/incident', { type: 'fire' })).json();
-    assert.deepEqual(
-      found.matches.map((item) => item.number),
-      ['+15065550111'],
-    );
-    const sent = await post('/send', { numbers: ['+15065550111'] });
-    assert.equal(sent.status, 200, sent.text);
-    // The owner switches the phone's camera before the phone polls.
-    await post('/camera', { role: 'front' });
-    const popped = (await phone(`/ultra/${VAN_KEY}`)).json();
-    assert.equal(popped.command.kind, 'camera');
-    const card = popped.notify.find((item) => item.kind === 'sms');
-    assert.deepEqual(
-      [card.numbers, card.text],
-      [['+15065550111'], found.message],
-    );
-  } finally {
-    clock.restore();
-  }
-});
-
 test('another package calling does not open this token', async () => {
   const { post } = setup({ feeds: [VAN, HOME] });
   const clock = withClock(Date.UTC(2026, 8, 28, 18));
@@ -6378,47 +6341,6 @@ test('a directory pull re-links a hand-added link at its own host, never the one
     );
     void post;
   });
-});
-
-test('Find Ultra Help: a newer Send replaces a card the phone has not popped, and a new card is never the one thrown away', async () => {
-  const { post } = setup();
-  const clock = withClock(Date.UTC(2026, 8, 28, 18));
-  try {
-    for (const [label, number, kind] of [
-      ['Fire hall', '+15065550111', 'fire'],
-      ['Police', '+15065550122', 'police'],
-    ])
-      await post('/contacts', { label, number, kind });
-    noteUltraPosition({
-      key: VAN_KEY,
-      name: 'Van 7',
-      lat: 45.27,
-      lon: -66.06,
-      at: Date.now(),
-    });
-    await post('/incident', { type: 'fire' });
-    await post('/send', { numbers: ['+15065550111'] });
-    clock.tick(600_001);
-    noteUltraPosition({
-      key: VAN_KEY,
-      name: 'Van 7',
-      lat: 45.27,
-      lon: -66.06,
-      at: Date.now(),
-    });
-    await post('/incident', { type: 'threat' });
-    await post('/send', { numbers: ['+15065550122'] });
-    const cards = (await phone(`/ultra/${VAN_KEY}`))
-      .json()
-      .notify.filter((card) => card.kind === 'sms');
-    assert.deepEqual(
-      cards.map((card) => card.numbers),
-      [['+15065550122']],
-    );
-    assert.ok(cards.every((card) => !('call' in card)));
-  } finally {
-    clock.restore();
-  }
 });
 
 test('a dev-server restart that loads this module afresh keeps the cards for the phone and the call', async () => {
@@ -7627,4 +7549,33 @@ test('a live viewer that stops reading skips frames, is never sent part of one, 
   assert.equal((await upload('FRAME-6')).status, 200);
   assert.ok(newest.text().includes('FRAME-6'));
   assert.equal(slow.text().includes('FRAME-6'), false);
+});
+
+test('Find Ultra Help is under development: no search, no send, and no search result in the status', async () => {
+  const { post, request, calls } = setup();
+  noteUltraPosition({
+    key: VAN_KEY,
+    name: 'Van 7',
+    lat: 45.27,
+    lon: -66.06,
+    at: Date.now(),
+  });
+  const before = calls.length;
+  assert.equal((await post('/incident', { type: 'fire' })).status, 404);
+  assert.equal(
+    (await post('/send', { numbers: ['+15065550111'] })).status,
+    404,
+  );
+  // Nothing was looked up for it: no geocoder, no station search.
+  assert.equal(calls.length, before);
+  const status = (await request('/status')).json();
+  for (const field of [
+    'review',
+    'matches',
+    'message',
+    'searched',
+    'emergency',
+    'lookupOk',
+  ])
+    assert.equal(field in status, false, field);
 });

@@ -1,13 +1,11 @@
 /**
  * Ultra Security Package help rules.
- * Pure: phone camera roles, incident classify/reject, help matching, SMS text.
+ * Pure: phone camera roles, incident classes, SMS text.
  * A phone is only ever the one the owner paired. Nothing here looks up a
  * person by their number or collects a private phone from the map.
  */
 
 export const ULTRA_POSITION_MAX_AGE_MS = 20 * 60 * 1000;
-export const ULTRA_INCIDENT_COOLDOWN_MS = 10 * 60 * 1000;
-export const ULTRA_HELP_RADIUS_M = 20_000;
 /**
  * How many PREDEFINED HELP # numbers the store keeps. The SMS relay reserves
  * at least this many of the day's texts for the owner's own call, so the
@@ -119,12 +117,6 @@ const INCIDENT_LABEL = Object.freeze({
   other: 'other',
 });
 
-const POLICE_LADDER = Object.freeze({
-  canada: Object.freeze(['local', 'provincial', 'rcmp']),
-  usa: Object.freeze(['local', 'state', 'fbi']),
-  international: Object.freeze(['local', 'provincial', 'federal']),
-});
-
 const E164 = /^\+[1-9]\d{7,14}$/;
 
 const LEGACY_PHONE_IDS = Object.freeze({
@@ -157,82 +149,6 @@ export function classifyUltraIncident(raw) {
   return INCIDENT_WORDS[word] || null;
 }
 
-/**
- * Decide whether this incident may look for help.
- * A position update by itself is not an incident. Confirmation is separate
- * and required before any SMS.
- */
-export function reviewUltraIncident({
-  type,
-  now,
-  positionAt,
-  lastSentAt = null,
-  lastSentType = null,
-} = {}) {
-  const incident = classifyUltraIncident(type);
-  if (!incident) return { ok: false, reason: 'unclassified' };
-  if (positionAt === null || positionAt === undefined || positionAt === '') {
-    return { ok: false, reason: 'no-position', incident };
-  }
-  const fixAt = Number(positionAt);
-  if (!Number.isFinite(fixAt))
-    return { ok: false, reason: 'no-position', incident };
-  const age = Number(now) - fixAt;
-  if (!Number.isFinite(age) || age < 0 || age > ULTRA_POSITION_MAX_AGE_MS) {
-    return { ok: false, reason: 'stale', incident };
-  }
-  if (
-    lastSentType === incident &&
-    Number.isFinite(Number(lastSentAt)) &&
-    Number(now) - Number(lastSentAt) < ULTRA_INCIDENT_COOLDOWN_MS
-  ) {
-    return { ok: false, reason: 'cooldown', incident };
-  }
-  return { ok: true, incident };
-}
-
-export function ultraCountryGroup(code) {
-  const country = String(code || '')
-    .trim()
-    .toUpperCase();
-  if (country === 'CA') return 'canada';
-  if (country === 'US' || country === 'USA') return 'usa';
-  return 'international';
-}
-
-function blob(place) {
-  return `${place?.name || ''} ${place?.operator || ''}`.toUpperCase();
-}
-
-/** Which police tier a published station belongs to. Unknown stations are local. */
-export function policeTier(place, group) {
-  const name = blob(place);
-  if (group === 'canada') {
-    if (/\b(RCMP|GRC)\b/.test(name)) return 'rcmp';
-    if (/\b(OPP|SURETE|SÛRETÉ|PROVINCIAL)\b/.test(name)) return 'provincial';
-    return 'local';
-  }
-  if (group === 'usa') {
-    if (/\bFBI\b/.test(name)) return 'fbi';
-    if (
-      /\bSTATE\b/.test(name) &&
-      /\b(POLICE|TROOPER|PATROL|HIGHWAY)\b/.test(name)
-    )
-      return 'state';
-    return 'local';
-  }
-  if (/\b(FEDERAL|NATIONAL|RCMP|FBI)\b/.test(name)) return 'federal';
-  if (/\b(PROVINCIAL|STATE)\b/.test(name)) return 'provincial';
-  return 'local';
-}
-
-export function helpLadder(group, incident) {
-  if (incident === 'fire') return ['fire'];
-  if (incident === 'threat')
-    return POLICE_LADDER[group] || POLICE_LADDER.international;
-  return ['closer', 'other'];
-}
-
 function finite(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -254,61 +170,6 @@ export function ultraDistanceKm(from, to) {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(p1) * Math.cos(p2) * Math.sin(dLon / 2) ** 2;
   return 2 * r * Math.asin(Math.min(1, Math.sqrt(a)));
-}
-
-function tagged(place, group) {
-  const kind = place?.kind === 'fire' ? 'fire' : 'police';
-  const tier = kind === 'fire' ? 'fire' : policeTier(place, group);
-  return {
-    ...place,
-    kind,
-    tier,
-    distanceKm: ultraDistanceKm(place, place.from),
-  };
-}
-
-/**
- * Order published stations and the owner's saved numbers for this incident.
- * Saved numbers have no map pin, so they sort after located stations unless
- * the incident is medical/other, where they are the list.
- */
-export function matchUltraHelp({
-  group,
-  incident,
-  places = [],
-  contacts = [],
-  from,
-}) {
-  const ladder = helpLadder(group, incident);
-  const located = places
-    .map((place) => tagged({ ...place, from }, group))
-    .filter(
-      (place) =>
-        place.distanceKm !== null &&
-        place.distanceKm <= ULTRA_HELP_RADIUS_M / 1000,
-    );
-  if (incident === 'threat' || incident === 'fire') {
-    const wanted = new Set(ladder);
-    const stations = located
-      .filter((place) => wanted.has(place.tier))
-      .sort(
-        (a, b) =>
-          ladder.indexOf(a.tier) - ladder.indexOf(b.tier) ||
-          a.distanceKm - b.distanceKm,
-      );
-    const saved = contacts.filter((contact) =>
-      incident === 'fire' ? contact.kind === 'fire' : contact.kind === 'police',
-    );
-    return { ladder, matches: [...saved, ...stations] };
-  }
-  const nearer = [...located].sort((a, b) => a.distanceKm - b.distanceKm);
-  const saved = contacts.filter(
-    (contact) =>
-      contact.kind === 'other' ||
-      contact.kind === 'police' ||
-      contact.kind === 'fire',
-  );
-  return { ladder, matches: [...saved, ...nearer.slice(0, 5)] };
 }
 
 export function ultraHelpMessage(place, incident) {
@@ -337,11 +198,6 @@ export function ultraHelpSmsLink(number, text = '') {
   if (raw === '') return 'sms:' + body;
   const e164 = normalizeUltraNumber(raw);
   return e164 ? 'sms:' + e164 + body : '';
-}
-
-/** Canada and the United States use 911. Other countries use 112, the mobile emergency number. */
-export function emergencyNumber(group) {
-  return group === 'canada' || group === 'usa' ? '911' : '112';
 }
 
 /** A helper number, or the emergency numbers the phone is allowed to text. */

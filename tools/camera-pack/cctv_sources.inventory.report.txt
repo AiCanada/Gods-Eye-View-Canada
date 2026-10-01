@@ -1,0 +1,204 @@
+CCTV inventory pack, built from cctv-inventory-2026-10-01.csv
+Rows: 84,601; camera views: 74,879.
+Written: 17,345 new cameras to config/cctv_sources.inventory.json.
+Already in the packs (not written again): 57,421.
+Pack cameras that had no picture and now have the inventory's: 3,582.
+US and Canadian rows with no usable state or province, given the nearest held camera's: 2,013.
+Left out: 14,891.
+No camera is left out for standing near another one.
+
+Already held, by what makes it the same camera:
+  same address: 45,061
+        28,300  us pack
+         9,631  intl pack
+         6,441  canada pack
+           689  inventory (listed twice)
+  same name: 6,448
+         6,120  us pack
+           209  canada pack
+           114  intl pack
+             5  inventory (listed twice)
+  same operator code: 4,126
+         4,092  us pack
+            34  inventory (listed twice)
+  same operator camera number: 1,081
+         1,081  us pack
+  same name on the same site: 705
+           427  canada pack
+           273  us pack
+             5  intl pack
+
+Left out, by reason:
+  only an expiring signed link: 12,207
+        11,290  UTIC-Korea
+           917  Streetside-Jakarta
+  only a web page or player: 1,504
+           678  Quebec511-MTQ
+           552  MDOT-CHART
+           273  UTIC-Korea
+             1  NZTA
+  served by the Austin open-data live pack: 1,007
+         1,007  AustinATD
+  school, university, college or library camera: 113
+            42  HK-TD
+            18  Georgia511
+            16  GDOT-511
+            11  TravelMidwest-Gateway
+             6  City-of-Colorado-Springs
+             3  Caltrans
+             3  DelDOT
+             3  NYSDOT-511NY
+             2  FL511
+             2  York-Region
+             1  Houston-TranStar
+             1  IowaDOT
+             1  MnDOT-IRIS
+             1  MoDOT
+             1  QLDTraffic-ArcGIS
+             1  VDOT
+             1  WYDOT-Cheyenne
+  coordinates at 0,0: 44
+            34  WisDOT-511WI
+             3  NYSDOT-511NY
+             2  MTO-ON511-ArcGIS
+             2  PennDOT-511PA
+             1  GDOT-511
+             1  Georgia511
+             1  Newfoundland511
+  only a still whose address carries its capture time: 7
+             7  data.gov.sg
+  no usable link: 4
+             3  King-County-DOT
+             1  SDOT
+  outside the United States: 3
+             1  Georgia511
+             1  NYSDOT-511NY
+             1  VDOT
+  coordinates out of range: 2
+             1  Horizons-Regional-Council
+             1  ODOT-TripCheck
+
+Pictures given to pack cameras (pack · state/country · kind):
+     1,523  us · MN · stream
+       754  us · MI · still
+       513  us · TX · still
+       347  us · CT · still
+       183  us · NH · still
+       121  us · ME · still
+        87  us · VT · still
+        51  intl · VGO · still
+         2  us · NC · still
+         1  us · NJ · stream
+
+New cameras: 17,345 (14,725 with a still, 2,620 stream-only, 4,722 with an estimated heading).
+By country:
+    11,125  US
+     1,973  KR
+     1,559  CA
+     1,453  FI
+       626  TW
+       400  ID
+        82  AU
+        77  NZ
+        33  ES
+         9  CH
+         6  DE
+         2  EE
+By operator:
+     2,463  US · TravelMidwest-Gateway
+     2,449  US · GDOT-511
+     1,973  KR · UTIC-Korea
+     1,453  FI · Fintraffic-Digitraffic
+       826  US · NYCDOT
+       620  US · NDDOT
+       600  US · ALDOT-ALGO
+       565  US · Houston-TranStar
+       531  CA · Ville-Montreal
+       516  CA · CityOfToronto
+       423  US · SDOT
+       403  US · IowaDOT
+       363  US · NDOT
+       345  US · ADOTPF-511
+       319  CA · MTO-ON511-ArcGIS
+       314  TW · Taichung-City
+       272  US · ITD-511
+       263  US · Arlington-County
+       210  TW · THB
+       165  US · GoAkamai-HDOT
+       164  ID · ATCS-Denpasar
+       134  US · NJTA
+       128  US · SDDOT-511
+       109  US · LADOTD-511
+       104  US · King-County-DOT
+       103  US · City-of-Arlington-TX
+        90  ID · Diskominfo-Gresik-CCTV
+        86  TW · Keelung-City
+        85  US · City-of-Overland-Park
+        82  AU · QLDTraffic-ArcGIS
+        82  US · ODOT-TripCheck
+        69  US · City-of-Lawrence
+        67  US · AviationWX
+        66  US · City-of-Redmond
+        65  ID · Pemkot-Magelang-CCTV
+        49  CA · City-of-Surrey
+        43  US · Beaufort-County
+        42  NZ · Horizons-Regional-Council
+        40  US · NDOT-NVRoads
+        36  ID · Pemkot-Salatiga-CCTV
+        36  US · MDOT-MiDrive
+        35  CA · Alberta511
+        35  NZ · NZTA
+        34  US · Arizona511
+        33  US · City-of-Baton-Rouge
+        32  US · City-of-Colorado-Springs
+        30  ID · ATCS-Banjarmasin
+        27  US · City-of-Kirkland
+        27  US · NCDOT-DriveNC
+        24  US · City-of-Loveland
+        23  US · City-of-Salem
+        20  CA · City-of-Ottawa
+        20  CA · CityOfCalgary
+        20  CA · NL-TI
+        20  ES · Toledo-Turriano
+        19  US · Westchester-County-DPW
+        15  US · KC-Scout
+        15  US · NewEngland511
+        14  CA · Township-of-Langley
+        14  ID · Pemkot-Cirebon-CCTV
+        11  TW · Chiayi-City
+        11  US · WYDOT-Cheyenne
+        10  CA · York-Region
+        10  ES · Concello-de-Vigo
+         9  CA · Manitoba511
+         9  CH · SITG-Geneva
+         8  US · UDOT-Traffic
+         7  US · Caltrans
+         6  DE · Stadt-Ulm
+         6  US · MnDOT-IRIS
+         6  US · VDOT
+         5  CA · Yukon511
+         5  TW · Freeway-Bureau
+         5  US · MoDOT
+         4  CA · DriveBC
+         4  CA · Newfoundland511
+         4  US · FL511
+         3  ES · DGT
+         2  CA · NewBrunswick511
+         2  EE · Tallinn-Liikluskaamerad
+         2  US · KYTC-TRIMARC
+         1  CA · SK-Highway-Hotline
+         1  ID · Pemkot-Yogyakarta-CCTV
+         1  US · ARDOT-iDriveArkansas
+         1  US · ODOT-ITSCameras
+         1  US · WisDOT-511WI
+         1  US · WSDOT
+
+Busiest 50 km areas of the new cameras (the server loads at most 1,000 per area):
+   1,670  around I-90 at Roselle Road (Travel Midwest (IL), US) 42.064, -88.077
+   1,535  around SR 8 (GA, US) 33.850, -84.218
+     972  around 대신R (서울교통정보센터, KR) 37.561, 126.941
+     939  around Flatbush Ave @ Nostrand Ave (Brooklyn, US) 40.633, -73.948
+     621  around NE 85th St & 132nd Ave NE (Kirkland, US) 47.679, -122.164
+     597  around DUNDAS ST W @ THE WEST MALL (Toronto, CA) 43.628, -79.559
+     531  around Rue D'Iberville et boulevard Saint-Joseph (Le Plateau-Mont-Royal, CA) 45.541, -73.574
+     503  around 610 NORTH LOOP @ FULTON (Houston, US) 29.814, -95.370

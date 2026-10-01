@@ -1,5 +1,6 @@
 /** Camera packs read when CCTV_SOURCES_FILE is unset, in priority order: the
- * Canadian pack, the US pack, then the international pack. The order decides
+ * Canadian pack, the US pack, the international pack, then the inventory pack
+ * (cameras from the operators' own lists that the others lack). The order decides
  * which entry stays when two packs list the same still (see catalog.js). A
  * listed file that does not exist yet is skipped quietly, so a fresh download
  * shows whatever packs it ships with. Add a pack by appending its path. */
@@ -7,6 +8,7 @@ export const CCTV_DEFAULT_PACK_FILES = Object.freeze([
   'config/cctv_sources.canada.json',
   'config/cctv_sources.us.json',
   'config/cctv_sources.intl.json',
+  'config/cctv_sources.inventory.json',
 ]);
 /** The same list as the comma string CCTV_SOURCES_FILE takes. */
 export const DEFAULT_CCTV_SOURCE_FILES = CCTV_DEFAULT_PACK_FILES.join(',');

@@ -680,7 +680,7 @@
       </div>
       <div id="ultra-status" class="sst-readout" role="status" aria-live="polite">PHONE · WAITING</div>
       <div id="ultra-cam-link" class="sst-readout"></div>
-      <!-- Send help: one press releases this phone's position to every token marked NETWORK for four hours (STAND DOWN any time) and hands the phone the plea for the saved helpers. The incident comes from the FIND HELP select; police and fire stay under FIND HELP. -->
+      <!-- Send help: one press releases this phone's position to every token marked NETWORK for four hours (STAND DOWN any time) and hands the phone the plea for the saved helpers. The incident comes from the FIND HELP select. -->
       <div class="cctv-summary-label">SEND HELP <span id="ultra-release-state"></span></div>
       <div id="ultra-release" class="cctv-controls ultra-release">
         <!-- Shown only with more than one package saved: each has its own call, and these buttons act on the one chosen here. -->
@@ -730,6 +730,7 @@
         <button id="ultra-cam-tele" class="scene-btn" type="button" data-ultra-camera="rear-tele" hidden>Activate Rear Telephoto Cam</button>
       </div>
       <div class="cctv-summary-label">FIND HELP</div>
+      <!-- The incident select names the incident SEND HELP sends. Find Ultra Help is under development: its button does nothing yet. -->
       <div class="cctv-controls">
         <select id="ultra-incident" aria-label="Classified incident type">
           <option value="threat">THREAT</option>
@@ -737,12 +738,7 @@
           <option value="medical">MEDICAL</option>
           <option value="other">OTHER</option>
         </select>
-        <button id="ultra-find" class="scene-btn" type="button">Find Ultra Help</button>
-      </div>
-      <div id="ultra-help-list" class="ultra-matches"></div>
-      <div id="ultra-message" class="sst-readout">Please HELP you are close by, to *Location* of victim in progress, *classified incident type* thank you.</div>
-      <div class="cctv-controls">
-        <button id="ultra-send" class="scene-btn" type="button">Send Ultra Help</button>
+        <button id="ultra-find" class="scene-btn" type="button" disabled title="Under development">Find Ultra Help (under development)</button>
       </div>
       <div class="cctv-summary-label">PREDEFINED HELP #</div>
       <form id="ultra-contact" class="cctv-controls ultra-contact">
