@@ -1,7 +1,14 @@
+/**
+ * The GRIB decoder, loaded at run time only: an optional package that is not
+ * a dependency, so bundlers (and the package-boundary build) must not try to
+ * resolve it ahead of time. Without it a wind request fails and says so.
+ */
+const ECCODES_PACKAGE = '@meri-imperiumi/eccodes-wasm';
+
 /** Lazy shared ecCodes WASM instance, created only for an active wind request. */
 let eccodesPromise = null;
 function loadEccodes() {
-  eccodesPromise ??= import('@meri-imperiumi/eccodes-wasm')
+  eccodesPromise ??= import(/* @vite-ignore */ ECCODES_PACKAGE)
     .then((module) => module.createEccodes())
     .catch((error) => {
       eccodesPromise = null;

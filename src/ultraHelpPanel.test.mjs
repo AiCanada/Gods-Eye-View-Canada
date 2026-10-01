@@ -2055,10 +2055,7 @@ test('token rows carry the owner controls; revoked rows dim to REMOVE and purge 
     byId('ultra-token-note').textContent,
     /Encrypt hides those skills inside the token string/,
   );
-  assert.equal(
-    byId('ultra-token-note').textContent.includes('ANYTIME'),
-    false,
-  );
+  assert.equal(byId('ultra-token-note').textContent.includes('ANYTIME'), false);
   applyUltraHelpStatus(documentRef, {
     tokens: [token()],
     helpBase: 'http://192.168.1.5:44173/ultra/help/',
@@ -2939,8 +2936,7 @@ test('skill sets are sent with the token and cleared once it is minted', async (
       byId('ultra-skill-custom-preview').textContent,
       /The link will say: Search and Rescue$/,
     );
-    byId('ultra-skill-custom-2').value =
-      'Search and Rescue Specialist Beta';
+    byId('ultra-skill-custom-2').value = 'Search and Rescue Specialist Beta';
     panel.dispatch('input', { target: byId('ultra-skill-custom-2') });
     assert.match(
       byId('ultra-skill-custom-preview').textContent,
@@ -2991,9 +2987,7 @@ test('skill sets are sent with the token and cleared once it is minted', async (
       ],
       inbox: [],
       network: network({
-        entries: [
-          entry({ skills: ['Firefighter'], encrypted: true }),
-        ],
+        entries: [entry({ skills: ['Firefighter'], encrypted: true })],
       }),
     });
     assert.match(

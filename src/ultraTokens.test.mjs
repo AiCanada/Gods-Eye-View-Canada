@@ -310,7 +310,10 @@ test('the policy MAC covers the flags, and a repeated hash keeps every record', 
     ultraTokenPolicyState({ ...stamped, policyMac: 'bad' }, KEY),
     'bad',
   );
-  assert.equal(ultraTokenPolicyState({ ...stamped, policyMac: '' }, KEY), 'legacy');
+  assert.equal(
+    ultraTokenPolicyState({ ...stamped, policyMac: '' }, KEY),
+    'legacy',
+  );
   assert.equal(ultraTokenPolicyState(stamped, OTHER_KEY), 'bad');
   assert.equal(ultraTokenRecordVerdict(stamped, OTHER_KEY), 'unsealed');
   assert.equal(ultraTokenRecordVerdict(stamped, null), 'unsealed');
@@ -429,9 +432,18 @@ test('admission prefers the seal that opens and does not trust a deleted check b
   assert.equal(ultraTokenStoreHasPolicyMac([stripped]), false);
   assert.equal(selectUltraToken([stripped], TOKEN, KEY).tampered, false);
   // A replaced key opens nothing, so neither row is tampered and the link admits.
-  assert.equal(selectUltraToken([good, other], TOKEN, OTHER_KEY).tampered, false);
-  assert.equal(selectUltraToken([good, other], TOKEN, OTHER_KEY).record.id, good.id);
-  assert.deepEqual(ultraTokenTamperFlags([good, other], OTHER_KEY), [false, false]);
+  assert.equal(
+    selectUltraToken([good, other], TOKEN, OTHER_KEY).tampered,
+    false,
+  );
+  assert.equal(
+    selectUltraToken([good, other], TOKEN, OTHER_KEY).record.id,
+    good.id,
+  );
+  assert.deepEqual(ultraTokenTamperFlags([good, other], OTHER_KEY), [
+    false,
+    false,
+  ]);
   assert.equal(selectUltraToken([good], TOKEN, null).tampered, false);
   assert.equal(selectUltraToken([evil, good], TOKEN, null).record.id, evil.id);
   // A revoked copy that still checks out does not hide a live one.
@@ -444,7 +456,10 @@ test('admission prefers the seal that opens and does not trust a deleted check b
   const picked = selectUltraToken([revokedLive, good], TOKEN, KEY);
   assert.equal(picked.tampered, false);
   assert.equal(picked.record.id, good.id);
-  assert.equal(selectUltraToken([revokedLive], TOKEN, KEY).record.revokedAt, NOW);
+  assert.equal(
+    selectUltraToken([revokedLive], TOKEN, KEY).record.revokedAt,
+    NOW,
+  );
 });
 
 test('normalizeUltraTokenStore keeps only well-formed records and never caps the count', () => {
@@ -1322,7 +1337,10 @@ test('skill sets are written into the token string, in the clear or sealed', () 
     composeUltraToken(TOKEN, [{ code: 'rg' }, { code: 'dr' }]),
     `${TOKEN}.s.dr.rg`,
   );
-  assert.equal(composeUltraToken(TOKEN, [{ code: 'dr' }, { code: 'no' }]), null);
+  assert.equal(
+    composeUltraToken(TOKEN, [{ code: 'dr' }, { code: 'no' }]),
+    null,
+  );
   const tooMany = normalizeUltraSkillRequest({
     custom: ['a', 'b', 'c', 'd', 'e', 'f'],
   });
@@ -1334,20 +1352,14 @@ test('skill sets are written into the token string, in the clear or sealed', () 
   );
 
   const clear = composeUltraToken(TOKEN, mixed.skills);
-  assert.equal(
-    clear,
-    `${TOKEN}.s.dr.pm.rg.xcoast-guard.xswift-water`,
-  );
+  assert.equal(clear, `${TOKEN}.s.dr.pm.rg.xcoast-guard.xswift-water`);
   assert.match(clear, ULTRA_TOKEN_PATTERN);
   assert.doesNotMatch(clear, PHONE_KEY);
   assert.ok(!clear.includes('Doctor'));
-  assert.deepEqual(readUltraTokenSkills(clear).skills.map((item) => item.label), [
-    'Doctor',
-    'Paramedic',
-    'Ranger',
-    'Coast Guard',
-    'Swift Water',
-  ]);
+  assert.deepEqual(
+    readUltraTokenSkills(clear).skills.map((item) => item.label),
+    ['Doctor', 'Paramedic', 'Ranger', 'Coast Guard', 'Swift Water'],
+  );
   assert.deepEqual(ultraTokenSkillFields(clear), {
     skills: ['Doctor', 'Paramedic', 'Ranger', 'Coast Guard', 'Swift Water'],
   });

@@ -465,7 +465,9 @@ function policyText(value) {
 
 /** A finite number, or '-' when the field is empty. Null and a missing field encode the same. */
 function policyNum(value) {
-  return typeof value === 'number' && Number.isFinite(value) ? String(value) : '-';
+  return typeof value === 'number' && Number.isFinite(value)
+    ? String(value)
+    : '-';
 }
 
 /**
@@ -667,7 +669,8 @@ export function ultraOutboundPolicyState(stored, expected, key) {
   if (stored === undefined || stored === null || stored === '') return 'legacy';
   if (typeof stored !== 'string' || !HASH_PATTERN.test(stored)) return 'bad';
   if (!Buffer.isBuffer(key) || key.length !== 32) return 'bad';
-  if (typeof expected !== 'string' || !HASH_PATTERN.test(expected)) return 'bad';
+  if (typeof expected !== 'string' || !HASH_PATTERN.test(expected))
+    return 'bad';
   return crypto.timingSafeEqual(
     Buffer.from(stored, 'hex'),
     Buffer.from(expected, 'hex'),
@@ -728,7 +731,8 @@ export function ultraFeedsPolicyMac(feeds, key) {
   const list = Array.isArray(feeds) ? feeds : [];
   const lines = [String(list.length)];
   for (const feed of list) {
-    for (const field of FEED_POLICY_FIELDS) lines.push(policyText(feed?.[field]));
+    for (const field of FEED_POLICY_FIELDS)
+      lines.push(policyText(feed?.[field]));
   }
   return outboundPolicyMac(FEEDS_POLICY_TAG, lines, key);
 }

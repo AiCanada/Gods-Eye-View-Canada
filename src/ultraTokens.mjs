@@ -387,8 +387,7 @@ export function ultraTokenSkillFields(token) {
   const read = readUltraTokenSkills(token);
   if (!read) return {};
   const fields = {};
-  if (read.skills.length)
-    fields.skills = read.skills.map((item) => item.label);
+  if (read.skills.length) fields.skills = read.skills.map((item) => item.label);
   if (read.encrypted) fields.encrypted = true;
   return fields;
 }
@@ -488,7 +487,9 @@ function policyFlag(value) {
 
 /** A finite number, or '-' when the field is empty. Null and a missing field encode the same, so a row written without one still matches. */
 function policyNum(value) {
-  return typeof value === 'number' && Number.isFinite(value) ? String(value) : '-';
+  return typeof value === 'number' && Number.isFinite(value)
+    ? String(value)
+    : '-';
 }
 
 /**
@@ -649,9 +650,7 @@ export function ultraInboxVisibleMessages(
     (record) => ultraInboxPolicyState(record, key) === 'ok',
   );
   if (!someOk && !sealsOpen) return list;
-  return list.filter(
-    (record) => ultraInboxPolicyState(record, key) === 'ok',
-  );
+  return list.filter((record) => ultraInboxPolicyState(record, key) === 'ok');
 }
 
 /**

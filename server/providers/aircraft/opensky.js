@@ -474,8 +474,12 @@ export function openSkyProxy() {
         }
 
         const openskyBasic = localProviderTrusted('opensky');
-        const basicUser = openskyBasic ? process.env.OPENSKY_USERNAME || '' : '';
-        const basicPass = openskyBasic ? process.env.OPENSKY_PASSWORD || '' : '';
+        const basicUser = openskyBasic
+          ? process.env.OPENSKY_USERNAME || ''
+          : '';
+        const basicPass = openskyBasic
+          ? process.env.OPENSKY_PASSWORD || ''
+          : '';
         const hasBasicCreds = Boolean(basicUser && basicPass);
         const headers = { Accept: 'application/json' };
         let usedMode = 'anon';

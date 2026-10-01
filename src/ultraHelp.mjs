@@ -362,8 +362,7 @@ export function ultraContactKind(value) {
  * The slug a custom skill set can occupy inside a token. One source, shared
  * with the token pattern: the dashboard previews this and the minter writes it.
  */
-export const ULTRA_CUSTOM_SLUG_SOURCE =
-  '[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?';
+export const ULTRA_CUSTOM_SLUG_SOURCE = '[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?';
 const CUSTOM_SLUG_PATTERN = new RegExp(`^${ULTRA_CUSTOM_SLUG_SOURCE}$`);
 const CUSTOM_SLUG_LIMIT = 24;
 export const ULTRA_CUSTOM_SKILL_LIMIT = 5;

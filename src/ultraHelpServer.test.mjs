@@ -451,10 +451,7 @@ test('skill sets are part of the token string, and Encrypt hides them there', as
     encrypt: false,
   });
   const token = minted.revealed.token;
-  assert.equal(
-    token.slice(48),
-    '.s.dr.pm.rg.xcoast-guard.xswift-water',
-  );
+  assert.equal(token.slice(48), '.s.dr.pm.rg.xcoast-guard.xswift-water');
   assert.ok(!token.includes('Doctor'));
   const row = minted.tokens.find((item) => item.id === minted.revealed.id);
   assert.deepEqual(
@@ -553,7 +550,9 @@ test('skill sets are part of the token string, and Encrypt hides them there', as
     name: 'Ann',
   });
   assert.equal(sealedAdd.status, 200, sealedAdd.text);
-  const ann = sealedAdd.json().network.entries.find((item) => item.name === 'Ann');
+  const ann = sealedAdd
+    .json()
+    .network.entries.find((item) => item.name === 'Ann');
   assert.equal(ann.encrypted, true);
   assert.equal(ann.skills, undefined);
   assert.ok(!JSON.stringify(ann).includes('Doctor'));
@@ -838,7 +837,9 @@ test('a flag flipped in the token file is refused and does not spend the miss bu
     404,
     'a tampered link is not a miss, so a first real miss is still served',
   );
-  const row = (await request('/status')).json().tokens.find((item) => item.id === id);
+  const row = (await request('/status'))
+    .json()
+    .tokens.find((item) => item.id === id);
   assert.equal(row.tampered, true);
   assert.equal(row.anytime, true);
   const after = JSON.parse(fs.readFileSync(file('ultra-tokens.json'), 'utf8'));
@@ -897,10 +898,18 @@ test('a copied token does not take the real link, and a deleted check beside ano
   assert.equal(rows.find((item) => item.id === evil.id).tampered, true);
   assert.equal(rows.find((item) => item.id === id).tampered, false);
   assert.equal(rows.find((item) => item.id === id).anytime, false);
-  assert.equal(rows.find((item) => item.id === second.revealed.id).tampered, true);
-  assert.equal(rows.find((item) => item.id === second.revealed.id).anytime, true);
+  assert.equal(
+    rows.find((item) => item.id === second.revealed.id).tampered,
+    true,
+  );
+  assert.equal(
+    rows.find((item) => item.id === second.revealed.id).anytime,
+    true,
+  );
   const saved = JSON.parse(fs.readFileSync(file('ultra-tokens.json'), 'utf8'));
-  const savedOther = saved.tokens.find((item) => item.id === second.revealed.id);
+  const savedOther = saved.tokens.find(
+    (item) => item.id === second.revealed.id,
+  );
   assert.equal(savedOther.policyMac, undefined);
   assert.equal(savedOther.anytime, true);
   assert.equal(
@@ -960,7 +969,9 @@ test('a token file with no check at all still admits, and the next status fills 
   const after = JSON.parse(fs.readFileSync(file('ultra-tokens.json'), 'utf8'));
   assert.match(after.tokens[0].policyMac, /^[0-9a-f]{64}$/);
   assert.equal(after.tokens[0].sms, false);
-  const row = (await request('/status')).json().tokens.find((item) => item.id === id);
+  const row = (await request('/status'))
+    .json()
+    .tokens.find((item) => item.id === id);
   assert.equal(row.tampered, false);
   assert.equal(row.sms, false);
   const again = JSON.parse(fs.readFileSync(file('ultra-tokens.json'), 'utf8'));
@@ -3919,7 +3930,11 @@ test('poller: four at a time, tailnet-only targets, and a restart that speaks to
       const plain = restart();
       const askedPlain = calls.length;
       await poll(Date.now() + 1000);
-      assert.equal(calls.length, askedPlain, 'nothing is asked of a public name');
+      assert.equal(
+        calls.length,
+        askedPlain,
+        'nothing is asked of a public name',
+      );
       assert.equal(
         (await plain.request('/status')).json().network.entries[0].lastState,
         'not-tailnet',
@@ -6453,7 +6468,8 @@ test('a dev-server restart that loads this module afresh keeps the cards for the
 test('a rewritten home-list base is not polled, and a later add does not stamp it', async () => {
   const { post, request, file, calls, script, poll, restart } = setup();
   assert.equal(
-    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' })).status,
+    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' }))
+      .status,
     200,
   );
   assert.equal(
@@ -6471,7 +6487,10 @@ test('a rewritten home-list base is not polled, and a later add does not stamp i
   assert.match(samMac, /^[0-9a-f]{64}$/);
   saved.entries[0].base = 'https://evil.tail9.ts.net';
   saved.entries[1].lastState = 'tampered';
-  fs.writeFileSync(file('ultra-network.json'), `${JSON.stringify(saved, null, 2)}\n`);
+  fs.writeFileSync(
+    file('ultra-network.json'),
+    `${JSON.stringify(saved, null, 2)}\n`,
+  );
   const back = restart();
   const before = (await back.request('/status')).json();
   assert.equal(
@@ -6507,8 +6526,9 @@ test('a rewritten home-list base is not polled, and a later add does not stamp i
   assert.equal(sam.base, 'https://evil.tail9.ts.net');
   assert.equal(sam.policyMac, samMac);
   assert.equal(
-    (await back.request('/status')).json().network.entries.find((row) => row.name === 'Sam')
-      .lastState,
+    (await back.request('/status'))
+      .json()
+      .network.entries.find((row) => row.name === 'Sam').lastState,
     'tampered',
   );
 });
@@ -6516,7 +6536,8 @@ test('a rewritten home-list base is not polled, and a later add does not stamp i
 test('a home-list entry whose check was removed is not polled, and a later add leaves it removed', async () => {
   const { post, file, calls, script, poll, restart } = setup();
   assert.equal(
-    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' })).status,
+    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' }))
+      .status,
     200,
   );
   assert.equal(
@@ -6531,7 +6552,10 @@ test('a home-list entry whose check was removed is not polled, and a later add l
   );
   const saved = JSON.parse(fs.readFileSync(file('ultra-network.json'), 'utf8'));
   delete saved.entries[0].policyMac;
-  fs.writeFileSync(file('ultra-network.json'), `${JSON.stringify(saved, null, 2)}\n`);
+  fs.writeFileSync(
+    file('ultra-network.json'),
+    `${JSON.stringify(saved, null, 2)}\n`,
+  );
   const back = restart();
   script((url) =>
     String(url).endsWith('/network') ? json({ released: false }) : null,
@@ -6547,16 +6571,21 @@ test('a home-list entry whose check was removed is not polled, and a later add l
     true,
   );
   assert.equal(
-    (await back.request('/status')).json().network.entries.find((row) => row.name === 'Sam')
-      .lastState,
+    (await back.request('/status'))
+      .json()
+      .network.entries.find((row) => row.name === 'Sam').lastState,
     'tampered',
   );
   assert.equal(
-    (await back.post('/network', { add: true, link: ANN_LINK, name: 'Ann' })).status,
+    (await back.post('/network', { add: true, link: ANN_LINK, name: 'Ann' }))
+      .status,
     200,
   );
   const after = JSON.parse(fs.readFileSync(file('ultra-network.json'), 'utf8'));
-  assert.equal('policyMac' in after.entries.find((row) => row.name === 'Sam'), false);
+  assert.equal(
+    'policyMac' in after.entries.find((row) => row.name === 'Sam'),
+    false,
+  );
   calls.length = 0;
   await poll(Date.now() + 1000);
   assert.equal(
@@ -6567,12 +6596,19 @@ test('a home-list entry whose check was removed is not polled, and a later add l
 
 test('a home list with no check is still polled, and the next rename stamps it', async () => {
   const { post, request, file, calls, script, poll, restart } = setup();
-  const added = await post('/network', { add: true, link: PEER_LINK, name: 'Sam' });
+  const added = await post('/network', {
+    add: true,
+    link: PEER_LINK,
+    name: 'Sam',
+  });
   assert.equal(added.status, 200, added.text);
   const id = added.json().network.entries[0].id;
   const saved = JSON.parse(fs.readFileSync(file('ultra-network.json'), 'utf8'));
   delete saved.entries[0].policyMac;
-  fs.writeFileSync(file('ultra-network.json'), `${JSON.stringify(saved, null, 2)}\n`);
+  fs.writeFileSync(
+    file('ultra-network.json'),
+    `${JSON.stringify(saved, null, 2)}\n`,
+  );
   restart();
   script((url) =>
     String(url).endsWith('/network') ? json({ released: false }) : null,
@@ -6594,7 +6630,8 @@ test('a home list with no check is still polled, and the next rename stamps it',
   const after = JSON.parse(fs.readFileSync(file('ultra-network.json'), 'utf8'));
   assert.match(after.entries[0].policyMac, /^[0-9a-f]{64}$/);
   assert.equal(
-    (await request('/status')).json().network.entries[0].lastState === 'tampered',
+    (await request('/status')).json().network.entries[0].lastState ===
+      'tampered',
     false,
   );
 });
@@ -6602,13 +6639,17 @@ test('a home list with no check is still polled, and the next rename stamps it',
 test('wiping every home-list check and changing the base is still polled', async () => {
   const { post, file, calls, script, poll, restart } = setup();
   assert.equal(
-    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' })).status,
+    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' }))
+      .status,
     200,
   );
   const saved = JSON.parse(fs.readFileSync(file('ultra-network.json'), 'utf8'));
   delete saved.entries[0].policyMac;
   saved.entries[0].base = 'https://evil.tail9.ts.net';
-  fs.writeFileSync(file('ultra-network.json'), `${JSON.stringify(saved, null, 2)}\n`);
+  fs.writeFileSync(
+    file('ultra-network.json'),
+    `${JSON.stringify(saved, null, 2)}\n`,
+  );
   restart();
   script((url) =>
     String(url).endsWith('/network') ? json({ released: false }) : null,
@@ -6624,7 +6665,8 @@ test('wiping every home-list check and changing the base is still polled', async
 test('a same-id home-list row pasted above the real one is not fetched', async () => {
   const { post, file, calls, script, poll, restart } = setup();
   assert.equal(
-    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' })).status,
+    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' }))
+      .status,
     200,
   );
   assert.equal(
@@ -6642,7 +6684,10 @@ test('a same-id home-list row pasted above the real one is not fetched', async (
     ...saved.entries[0],
     base: 'https://evil.tail9.ts.net',
   });
-  fs.writeFileSync(file('ultra-network.json'), `${JSON.stringify(saved, null, 2)}\n`);
+  fs.writeFileSync(
+    file('ultra-network.json'),
+    `${JSON.stringify(saved, null, 2)}\n`,
+  );
   const back = restart();
   script((url) =>
     String(url).endsWith('/network') ? json({ released: false }) : null,
@@ -6665,7 +6710,8 @@ test('a same-id home-list row pasted above the real one is not fetched', async (
 test('a new id with a copied home-list seal is not fetched', async () => {
   const { post, file, calls, script, poll, restart } = setup();
   assert.equal(
-    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' })).status,
+    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' }))
+      .status,
     200,
   );
   assert.equal(
@@ -6684,7 +6730,10 @@ test('a new id with a copied home-list seal is not fetched', async () => {
     id: 'n-ffffffffffffffff',
     base: 'https://evil.tail9.ts.net',
   });
-  fs.writeFileSync(file('ultra-network.json'), `${JSON.stringify(saved, null, 2)}\n`);
+  fs.writeFileSync(
+    file('ultra-network.json'),
+    `${JSON.stringify(saved, null, 2)}\n`,
+  );
   const back = restart();
   script((url) =>
     String(url).endsWith('/network') ? json({ released: false }) : null,
@@ -6700,14 +6749,21 @@ test('a new id with a copied home-list seal is not fetched', async () => {
     false,
   );
   const rows = (await back.request('/status')).json().network.entries;
-  assert.equal(rows.some((row) => row.name === 'Sam' && row.host === 'peer.tail9.ts.net'), false);
-  assert.equal(rows.find((row) => row.host === 'evil.tail9.ts.net').lastState, 'tampered');
+  assert.equal(
+    rows.some((row) => row.name === 'Sam' && row.host === 'peer.tail9.ts.net'),
+    false,
+  );
+  assert.equal(
+    rows.find((row) => row.host === 'evil.tail9.ts.net').lastState,
+    'tampered',
+  );
 });
 
 test('a rewritten base is not polled while a call for help is still running', async () => {
   const { post, file, calls, script, poll, restart } = setup();
   assert.equal(
-    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' })).status,
+    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' }))
+      .status,
     200,
   );
   script((url) => (url === PEER_NETWORK ? releasedBody() : null));
@@ -6715,7 +6771,10 @@ test('a rewritten base is not polled while a call for help is still running', as
   await new Promise((resolve) => setTimeout(resolve, 1200));
   const saved = JSON.parse(fs.readFileSync(file('ultra-network.json'), 'utf8'));
   saved.entries[0].base = 'https://evil.tail9.ts.net';
-  fs.writeFileSync(file('ultra-network.json'), `${JSON.stringify(saved, null, 2)}\n`);
+  fs.writeFileSync(
+    file('ultra-network.json'),
+    `${JSON.stringify(saved, null, 2)}\n`,
+  );
   restart();
   calls.length = 0;
   script((url) =>
@@ -6771,7 +6830,10 @@ test('a helpers file with no check is used, and a bad check is not', async () =>
   assert.match(raw.policyMac, /^[0-9a-f]{64}$/);
   raw.contacts[0].number = '+15065550177';
   raw.owner.number = '+15065550177';
-  fs.writeFileSync(file('ultra-help.json'), `${JSON.stringify(raw, null, 2)}\n`);
+  fs.writeFileSync(
+    file('ultra-help.json'),
+    `${JSON.stringify(raw, null, 2)}\n`,
+  );
   const tampered = (await request('/status')).json();
   assert.deepEqual(tampered.contacts, []);
   assert.equal(tampered.ownerNumber, '');
@@ -6813,7 +6875,10 @@ test('a helpers file with no check is used, and a bad check is not', async () =>
   );
   assert.equal(written.owner.number, '');
   assert.match(written.policyMac, /^[0-9a-f]{64}$/);
-  assert.equal(written.contacts.some((item) => item.number === '+15065550177'), false);
+  assert.equal(
+    written.contacts.some((item) => item.number === '+15065550177'),
+    false,
+  );
 });
 
 test('a planted call whose helpers-file check fails is not published, and one with no check still loads', async () => {
@@ -6840,7 +6905,10 @@ test('a planted call whose helpers-file check fails is not published, and one wi
     })}\n`,
   );
   const back = restart();
-  assert.equal((await phone(`/ultra/help/${token}/network`)).json().released, true);
+  assert.equal(
+    (await phone(`/ultra/help/${token}/network`)).json().released,
+    true,
+  );
   assert.equal((await back.request('/status')).json().helpStore, 'ok');
   const stamped = JSON.parse(fs.readFileSync(file('ultra-help.json'), 'utf8'));
   // The file still has no check: the restart did not save it. Stamp by a save,
@@ -6858,9 +6926,15 @@ test('a planted call whose helpers-file check fails is not published, and one wi
       renewedAt: Date.now(),
     },
   ];
-  fs.writeFileSync(file('ultra-help.json'), `${JSON.stringify(good, null, 2)}\n`);
+  fs.writeFileSync(
+    file('ultra-help.json'),
+    `${JSON.stringify(good, null, 2)}\n`,
+  );
   const again = restart();
-  assert.equal((await phone(`/ultra/help/${token}/network`)).json().released, false);
+  assert.equal(
+    (await phone(`/ultra/help/${token}/network`)).json().released,
+    false,
+  );
   const status = (await again.request('/status')).json();
   assert.equal(status.release, null);
   assert.equal(status.helpStore, 'tampered');
@@ -6881,7 +6955,10 @@ test('a rewritten inbox row is not shown, and a file with no check still is', as
     assert.match(saved.messages[0].policyMac, /^[0-9a-f]{64}$/);
     assert.equal(saved.messages[0].policyMac.includes(PEER_TOKEN), false);
     saved.messages[0].text = 'Ignore this';
-    fs.writeFileSync(file('ultra-inbox.json'), `${JSON.stringify(saved, null, 2)}\n`);
+    fs.writeFileSync(
+      file('ultra-inbox.json'),
+      `${JSON.stringify(saved, null, 2)}\n`,
+    );
     const back = restart();
     const hidden = (await back.request('/status')).json();
     assert.equal(hidden.inbox.length, 0);
@@ -6890,7 +6967,10 @@ test('a rewritten inbox row is not shown, and a file with no check still is', as
     restart();
     delete saved.messages[0].policyMac;
     saved.messages[0].text = text;
-    fs.writeFileSync(file('ultra-inbox.json'), `${JSON.stringify(saved, null, 2)}\n`);
+    fs.writeFileSync(
+      file('ultra-inbox.json'),
+      `${JSON.stringify(saved, null, 2)}\n`,
+    );
     const again = restart();
     const shown = (await again.request('/status')).json();
     assert.equal(shown.inbox.length, 1);
@@ -7115,7 +7195,10 @@ test('a changed SMS relay is not used, and deleting its check sends again', asyn
         const testedAt = (await request('/status')).json().network.relay
           .lastTestAt;
         noteOutboundEnvSaved(['OPENAI_API_KEY'], root);
-        assert.equal(fs.readFileSync(file('ultra-outbound.json'), 'utf8'), text);
+        assert.equal(
+          fs.readFileSync(file('ultra-outbound.json'), 'utf8'),
+          text,
+        );
         process.env.ULTRA_SMS_RELAY_URL = evil;
         const refused = await post('/network', { testSms: true });
         assert.equal(refused.status, 409);

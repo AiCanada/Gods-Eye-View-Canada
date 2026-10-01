@@ -652,8 +652,7 @@ function paintReveal(documentRef, status) {
       .filter(Boolean);
     lines.push(names.length ? names.join(', ') : 'No skill sets');
   }
-  if (revealed.encrypted === true)
-    lines.push('Skills encrypted in the token');
+  if (revealed.encrypted === true) lines.push('Skills encrypted in the token');
   pre.textContent = lines.join('\n');
   box.dataset.ultraToken = token;
   box.dataset.ultraLink = link;

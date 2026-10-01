@@ -310,7 +310,8 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
   assert.ok(
     box.indexOf('id="ultra-help-store-note"') <
       box.indexOf('id="ultra-outbound-note"') &&
-      box.indexOf('id="ultra-outbound-note"') < box.indexOf('id="ultra-contacts"'),
+      box.indexOf('id="ultra-outbound-note"') <
+        box.indexOf('id="ultra-contacts"'),
     'the outbound note sits with the helpers note, ahead of the helpers',
   );
   assert.doesNotMatch(

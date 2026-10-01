@@ -416,7 +416,12 @@ function regionalBriefProxy() {
         );
         return;
       }
-      const key = [plan.siteQuery, plan.mentionQuery, plan.placeQuery, plan.timespan].join('|');
+      const key = [
+        plan.siteQuery,
+        plan.mentionQuery,
+        plan.placeQuery,
+        plan.timespan,
+      ].join('|');
       const now = Date.now();
       const cached = _socialNewsCache.get(key);
       if (cached && now - cached.cachedAt <= SOCIAL_NEWS_CACHE_MS) {
@@ -435,14 +440,18 @@ function regionalBriefProxy() {
         res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
         return;
       }
-      const request = coalesceProxyRequest(_socialNewsInFlight, key, async () => {
-        const payload = await fetchSocialPublicNews(options);
-        if (payload.status !== 'invalid') {
-          _socialNewsCache.set(key, { payload, cachedAt: Date.now() });
-          trimSocialNewsCache();
-        }
-        return payload;
-      });
+      const request = coalesceProxyRequest(
+        _socialNewsInFlight,
+        key,
+        async () => {
+          const payload = await fetchSocialPublicNews(options);
+          if (payload.status !== 'invalid') {
+            _socialNewsCache.set(key, { payload, cachedAt: Date.now() });
+            trimSocialNewsCache();
+          }
+          return payload;
+        },
+      );
       try {
         const payload = await request.promise;
         if (payload.status === 'invalid') {

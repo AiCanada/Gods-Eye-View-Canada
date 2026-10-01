@@ -13,7 +13,9 @@ import { localProviderTrusted } from '../../src/localIntegrity.mjs';
 
 /** The TomTom key when its check still matches. A changed key is treated as unset. */
 function tomtomApiKey() {
-  return localProviderTrusted('tomtom') ? String(process.env.TOMTOM_API_KEY || '') : '';
+  return localProviderTrusted('tomtom')
+    ? String(process.env.TOMTOM_API_KEY || '')
+    : '';
 }
 
 /**

@@ -450,11 +450,11 @@ test('parseUltraHelpLink takes a whole help link apart and refuses anything else
     ultraNetworkPollTarget(link(SAM, skilled)).url,
     `${SAM}/ultra/help/${skilled}/network`,
   );
-  const hidden = composeUltraToken(
-    T2,
-    [{ code: 'dr', label: 'Doctor' }],
-    { encrypt: true, key: KEY, randomBytes: fixedBytes(4) },
-  );
+  const hidden = composeUltraToken(T2, [{ code: 'dr', label: 'Doctor' }], {
+    encrypt: true,
+    key: KEY,
+    randomBytes: fixedBytes(4),
+  });
   const merged = mergeUltraDirectory({
     directory: normalizeUltraDirectory([
       { name: 'Sam', link: link(SAM, skilled) },
@@ -1918,7 +1918,10 @@ test('a home-list check covers the base, and a rewritten base is not polled', ()
   assert.equal(ultraNetworkPollAllowed(bare, [bare], KEY), true);
   assert.equal(ultraNetworkPollAllowed(bare, [bare, ann], KEY), false);
   assert.equal(ultraNetworkPollAllowed(ann, [bare, ann], KEY), true);
-  assert.equal(normalizeUltraNetworkEntry(stamped).policyMac, stamped.policyMac);
+  assert.equal(
+    normalizeUltraNetworkEntry(stamped).policyMac,
+    stamped.policyMac,
+  );
   assert.equal(
     normalizeUltraNetworkEntry({ ...sam, policyMac: 'nope' }).policyMac,
     'bad',
@@ -1929,10 +1932,9 @@ test('a home-list check covers the base, and a rewritten base is not polled', ()
   assert.equal('tampered' in row, false);
   assert.deepEqual(ultraNetworkTamperFlags([moved, ann], KEY), [true, false]);
   assert.deepEqual(ultraNetworkTamperFlags([bare, ann], KEY), [true, false]);
-  assert.deepEqual(
-    ultraNetworkTamperFlags([moved], Buffer.alloc(32, 1)),
-    [false],
-  );
+  assert.deepEqual(ultraNetworkTamperFlags([moved], Buffer.alloc(32, 1)), [
+    false,
+  ]);
 });
 
 test('the helpers-file check covers the number, the helpers and the releases, not the phone model', () => {
@@ -1964,10 +1966,7 @@ test('the helpers-file check covers the number, the helpers and the releases, no
   const policyMac = ultraHelpStorePolicyMac(store, KEY);
   assert.match(policyMac, /^[0-9a-f]{64}$/);
   assert.equal(ultraHelpStorePolicyState(store, KEY), 'legacy');
-  assert.equal(
-    ultraHelpStorePolicyState({ ...store, policyMac }, KEY),
-    'ok',
-  );
+  assert.equal(ultraHelpStorePolicyState({ ...store, policyMac }, KEY), 'ok');
   assert.equal(
     ultraHelpStorePolicyState(
       { ...store, owner: { number: '+15065550100' }, policyMac },
@@ -1990,7 +1989,10 @@ test('the helpers-file check covers the number, the helpers and the releases, no
 
 test('the directory, relay and phone-package checks cover what would be sent', () => {
   const directory = ultraDirectoryPolicyMac(
-    { url: 'https://raw.githubusercontent.com/group/repo/main/d.json', writeToken: 'github_pat_fixture' },
+    {
+      url: 'https://raw.githubusercontent.com/group/repo/main/d.json',
+      writeToken: 'github_pat_fixture',
+    },
     KEY,
   );
   assert.match(directory, /^[0-9a-f]{64}$/);
@@ -2004,7 +2006,10 @@ test('the directory, relay and phone-package checks cover what would be sent', (
   assert.notEqual(
     directory,
     ultraDirectoryPolicyMac(
-      { url: 'https://raw.githubusercontent.com/group/repo/main/d.json', writeToken: 'other' },
+      {
+        url: 'https://raw.githubusercontent.com/group/repo/main/d.json',
+        writeToken: 'other',
+      },
       KEY,
     ),
   );
@@ -2028,7 +2033,10 @@ test('the directory, relay and phone-package checks cover what would be sent', (
     ...relayEnv,
     ULTRA_SMS_RELAY_URL: 'https://evil.example/send',
   });
-  assert.notEqual(ultraRelayPolicyMac(relay, KEY), ultraRelayPolicyMac(movedGateway, KEY));
+  assert.notEqual(
+    ultraRelayPolicyMac(relay, KEY),
+    ultraRelayPolicyMac(movedGateway, KEY),
+  );
   const invalidGateway = ultraSmsRelayMaterial({
     ULTRA_SMS_RELAY_URL: 'http://evil.example/send',
     ULTRA_SMS_RELAY_TOKEN: 'gateway-fixture',
@@ -2063,7 +2071,10 @@ test('the directory, relay and phone-package checks cover what would be sent', (
     method: 'http-json',
     url: 'https://phone.example/home',
   };
-  const records = securityFeedPolicyRecords({ version: 1, feeds: [tracker, van] });
+  const records = securityFeedPolicyRecords({
+    version: 1,
+    feeds: [tracker, van],
+  });
   assert.equal(records.length, 1);
   assert.equal(records[0].reportKey, phoneKey);
   assert.equal(records[0].password, 'secret');
@@ -2073,21 +2084,36 @@ test('the directory, relay and phone-package checks cover what would be sent', (
     version: 1,
     feeds: [{ ...van, lat: 1, follow: false, record: false }, tracker],
   });
-  assert.equal(ultraFeedsPolicyMac(records, KEY), ultraFeedsPolicyMac(samePlace, KEY));
+  assert.equal(
+    ultraFeedsPolicyMac(records, KEY),
+    ultraFeedsPolicyMac(samePlace, KEY),
+  );
   const otherPassword = securityFeedPolicyRecords({
     version: 1,
     feeds: [tracker, { ...van, password: 'other' }],
   });
-  assert.notEqual(ultraFeedsPolicyMac(records, KEY), ultraFeedsPolicyMac(otherPassword, KEY));
+  assert.notEqual(
+    ultraFeedsPolicyMac(records, KEY),
+    ultraFeedsPolicyMac(otherPassword, KEY),
+  );
   const otherKey = securityFeedPolicyRecords({
     version: 1,
     feeds: [tracker, { ...van, reportKey: 'b'.repeat(43) }],
   });
-  assert.notEqual(ultraFeedsPolicyMac(records, KEY), ultraFeedsPolicyMac(otherKey, KEY));
+  assert.notEqual(
+    ultraFeedsPolicyMac(records, KEY),
+    ultraFeedsPolicyMac(otherKey, KEY),
+  );
   const ordered = securityFeedPolicyRecords({ version: 1, feeds: [van, home] });
   const flipped = securityFeedPolicyRecords({ version: 1, feeds: [home, van] });
-  assert.notEqual(ultraFeedsPolicyMac(ordered, KEY), ultraFeedsPolicyMac(flipped, KEY));
-  assert.notEqual(ultraFeedsPolicyMac([], KEY), ultraFeedsPolicyMac(records, KEY));
+  assert.notEqual(
+    ultraFeedsPolicyMac(ordered, KEY),
+    ultraFeedsPolicyMac(flipped, KEY),
+  );
+  assert.notEqual(
+    ultraFeedsPolicyMac([], KEY),
+    ultraFeedsPolicyMac(records, KEY),
+  );
   const mac = ultraFeedsPolicyMac(records, KEY);
   assert.equal(ultraOutboundPolicyState(undefined, mac, KEY), 'legacy');
   assert.equal(ultraOutboundPolicyState('', mac, KEY), 'legacy');

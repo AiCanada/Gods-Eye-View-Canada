@@ -49,7 +49,9 @@ export function firmsProxy() {
   let statusInflight = null;
 
   const mapKey = () =>
-    localProviderTrusted('firms') ? String(process.env.FIRMS_MAP_KEY || '').trim() : '';
+    localProviderTrusted('firms')
+      ? String(process.env.FIRMS_MAP_KEY || '').trim()
+      : '';
 
   async function readDiskOnce() {
     if (diskChecked) return;

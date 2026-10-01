@@ -716,11 +716,17 @@ function writeStore(store) {
 // present is still an older setting, and it is trusted.
 
 const outboundPath = (root) =>
-  path.join(path.resolve(String(root || sourceRoot)), 'config', 'ultra-outbound.json');
+  path.join(
+    path.resolve(String(root || sourceRoot)),
+    'config',
+    'ultra-outbound.json',
+  );
 
 function macField(value) {
   if (value === undefined || value === null || value === '') return undefined;
-  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value) ? value : 'bad';
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
+    ? value
+    : 'bad';
 }
 
 function emptyOutboundView(missing, unreadable) {
@@ -799,7 +805,8 @@ function writeOutbound(root, macs) {
   // Passing harden: undefined would replace the default hardener and throw.
   // Before pointAt (a device-feed test, a key-setup save) there is no
   // injected hardener, and the default one is the right one.
-  const options = typeof hardenImpl === 'function' ? { harden: hardenImpl } : {};
+  const options =
+    typeof hardenImpl === 'function' ? { harden: hardenImpl } : {};
   replaceCredentialStore(file, `${JSON.stringify(body, null, 2)}\n`, options);
   outboundCache = null;
 }
@@ -833,7 +840,8 @@ function sealsOpenInFiles(root, key) {
     const tokens = Array.isArray(parsed?.tokens) ? parsed.tokens : [];
     for (const record of tokens) {
       try {
-        if (openUltraToken(record?.sealed, key, { id: record?.id })) return true;
+        if (openUltraToken(record?.sealed, key, { id: record?.id }))
+          return true;
       } catch {
         /* one bad blob is not the rest of the file */
       }
@@ -848,7 +856,9 @@ function sealsOpenInFiles(root, key) {
     const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
     for (const entry of entries) {
       try {
-        const token = openUltraNetworkToken(entry?.sealed, key, { id: entry?.id });
+        const token = openUltraNetworkToken(entry?.sealed, key, {
+          id: entry?.id,
+        });
         if (token && ultraTokenHash(token) === entry?.hash) return true;
       } catch {
         /* next */
@@ -898,14 +908,17 @@ function outboundSectionStatus(root, macName, expected) {
   const stored = view[macName];
   if (!stored) return 'ok';
   if (!keyOk) return 'ok';
-  if (ultraOutboundPolicyState(stored, expected, read.key) === 'ok') return 'ok';
+  if (ultraOutboundPolicyState(stored, expected, read.key) === 'ok')
+    return 'ok';
   return sealsOpen(root, read.key) ? 'tampered' : 'ok';
 }
 
 function directoryStatus(root = sourceRoot) {
   const read = readTokenKeyAt(root);
   const expected =
-    read.state === 'ok' ? ultraDirectoryPolicyMac(directoryMaterial(), read.key) : '';
+    read.state === 'ok'
+      ? ultraDirectoryPolicyMac(directoryMaterial(), read.key)
+      : '';
   return outboundSectionStatus(root, 'directoryMac', expected);
 }
 
@@ -920,7 +933,10 @@ function relayStatus(root = sourceRoot) {
 
 /** The security packages at a root, or null when the device file cannot be read. A missing file is an empty list. */
 function feedPolicyRecordsAt(root) {
-  const file = path.join(path.resolve(String(root || sourceRoot)), DEVICE_FEED_STORE);
+  const file = path.join(
+    path.resolve(String(root || sourceRoot)),
+    DEVICE_FEED_STORE,
+  );
   let text;
   try {
     text = fs.readFileSync(file, 'utf8');
@@ -997,7 +1013,10 @@ function stampOutbound(root, which) {
   const any = macs.directoryMac || macs.relayMac || macs.feedsMac;
   const hadNone =
     view.missing ||
-    (!view.unreadable && !view.directoryMac && !view.relayMac && !view.feedsMac);
+    (!view.unreadable &&
+      !view.directoryMac &&
+      !view.relayMac &&
+      !view.feedsMac);
   if (!any && hadNone) return;
   writeOutbound(resolved, macs);
 }
@@ -2575,7 +2594,8 @@ async function deliverEpisode(entry, rowId, answer, { notify = true } = {}) {
   // With no relay set up at all there is nothing to report: the row says
   // nothing about SMS rather than 'NO SMS RELAY' on every call for help. A
   // relay with no SAVE MY # says so ('NO SMS: SAVE MY # FIRST').
-  if (attempt.reason === 'no-relay' || attempt.reason === 'relay-changed') return;
+  if (attempt.reason === 'no-relay' || attempt.reason === 'relay-changed')
+    return;
   void attempt.outcome.then((outcome) => {
     if (!outcome) return;
     const current = inboxRow(rowId);
@@ -5112,7 +5132,8 @@ function tokenAction(body, store, now, answer) {
     const changes = {};
     if (body.label !== undefined) {
       changes.label = cleanHelpText(body.label, ULTRA_HELP_NAME_LIMIT);
-      if (!changes.label) return [400, { error: 'Name the Ultra Token holder' }];
+      if (!changes.label)
+        return [400, { error: 'Name the Ultra Token holder' }];
     }
     if (typeof body.sms === 'boolean') changes.sms = body.sms;
     if (typeof body.voice === 'boolean') changes.voice = body.voice;

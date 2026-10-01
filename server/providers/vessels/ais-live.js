@@ -313,7 +313,8 @@ function ensureAisStreamConnection() {
 function aisStreamStatusSnapshot() {
   const snapshot = _aisAdapter ? _aisAdapter.snapshot() : null;
   if (snapshot) return snapshot;
-  const aisReady = Boolean(process.env.AISSTREAM_API_KEY) && localProviderTrusted('ais');
+  const aisReady =
+    Boolean(process.env.AISSTREAM_API_KEY) && localProviderTrusted('ais');
   return {
     status: aisReady ? 'idle' : 'missing-key',
     error: aisReady ? null : 'AISSTREAM_API_KEY is not set',

@@ -1,7 +1,10 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import { createBrowserViteConfig } from '../../build/vite.js';
-import { bindLocalIntegrityRoot, localClientCredential } from '../../src/localIntegrity.mjs';
+import {
+  bindLocalIntegrityRoot,
+  localClientCredential,
+} from '../../src/localIntegrity.mjs';
 import { localProviderPlugins } from '../providers/local.js';
 import { apiNotFoundPlugin } from './api-not-found.js';
 import { routeGuardPlugin } from './route-guard.js';

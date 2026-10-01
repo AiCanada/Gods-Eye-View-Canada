@@ -452,7 +452,8 @@ function publicSocialArticle(article) {
   try {
     const parsed = new URL(String(article?.url || ''));
     if (parsed.username || parsed.password) return null;
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')
+      return null;
     url = parsed.href.slice(0, 300);
   } catch {
     return null;
@@ -463,7 +464,9 @@ function publicSocialArticle(article) {
     .trim()
     .slice(0, 80);
   const publishedAt =
-    typeof article?.publishedAt === 'string' ? article.publishedAt.slice(0, 40) : null;
+    typeof article?.publishedAt === 'string'
+      ? article.publishedAt.slice(0, 40)
+      : null;
   return { title, url, domain, publishedAt };
 }
 
@@ -478,14 +481,20 @@ function emptySocialNews(status) {
   };
 }
 
-async function indexedSocialArticles(url, kind, lookbackDays, readText, readJson) {
+async function indexedSocialArticles(
+  url,
+  kind,
+  lookbackDays,
+  readText,
+  readJson,
+) {
   try {
     if (kind === 'rss') {
       const xml = await readText(url);
-      return filterRiskNewsArticles(normalizeRssArticles(xml, 12), lookbackDays).slice(
-        0,
-        RISK_NEWS_MAX_ARTICLES,
-      );
+      return filterRiskNewsArticles(
+        normalizeRssArticles(xml, 12),
+        lookbackDays,
+      ).slice(0, RISK_NEWS_MAX_ARTICLES);
     }
     const payload = await readJson(url);
     return filterRiskNewsArticles(
@@ -498,10 +507,17 @@ async function indexedSocialArticles(url, kind, lookbackDays, readText, readJson
 }
 
 async function socialNewsPass(rssQuery, gdeltQuery, plan, readText, readJson) {
-  if (!rssQuery && !gdeltQuery) return { articles: [], failed: false, skipped: true };
+  if (!rssQuery && !gdeltQuery)
+    return { articles: [], failed: false, skipped: true };
   const [rss, gdelt] = await Promise.all([
     rssQuery
-      ? indexedSocialArticles(googleNewsUrl(rssQuery), 'rss', plan.lookbackDays, readText, readJson)
+      ? indexedSocialArticles(
+          googleNewsUrl(rssQuery),
+          'rss',
+          plan.lookbackDays,
+          readText,
+          readJson,
+        )
       : [],
     gdeltQuery
       ? indexedSocialArticles(
@@ -513,8 +529,10 @@ async function socialNewsPass(rssQuery, gdeltQuery, plan, readText, readJson) {
         )
       : [],
   ]);
-  if (rss?.length) return { articles: rss, source: 'Google News RSS', failed: false };
-  if (gdelt?.length) return { articles: gdelt, source: 'GDELT fallback', failed: false };
+  if (rss?.length)
+    return { articles: rss, source: 'Google News RSS', failed: false };
+  if (gdelt?.length)
+    return { articles: gdelt, source: 'GDELT fallback', failed: false };
   return { articles: [], source: null, failed: rss === null && gdelt === null };
 }
 
@@ -542,17 +560,49 @@ async function fetchSocialPublicNews(options = {}) {
         headers: { 'User-Agent': 'GodsEyeView/0.1' },
         timeoutMs: 12_000,
       }));
-  const site = await socialNewsPass(plan.siteQuery, plan.gdeltSiteQuery, plan, readText, readJson);
+  const site = await socialNewsPass(
+    plan.siteQuery,
+    plan.gdeltSiteQuery,
+    plan,
+    readText,
+    readJson,
+  );
   const mention = site.articles.length
     ? null
-    : await socialNewsPass(plan.mentionQuery, plan.gdeltMentionQuery, plan, readText, readJson);
+    : await socialNewsPass(
+        plan.mentionQuery,
+        plan.gdeltMentionQuery,
+        plan,
+        readText,
+        readJson,
+      );
   const place =
     site.articles.length || mention?.articles.length
       ? null
-      : await socialNewsPass(plan.placeQuery, plan.gdeltPlaceQuery, plan, readText, readJson);
-  const hit = site.articles.length ? site : mention?.articles.length ? mention : place?.articles.length ? place : null;
-  const match = site.articles.length ? 'site' : mention?.articles.length ? 'mention' : place?.articles.length ? 'place' : null;
-  const articles = (hit?.articles || []).map(publicSocialArticle).filter(Boolean);
+      : await socialNewsPass(
+          plan.placeQuery,
+          plan.gdeltPlaceQuery,
+          plan,
+          readText,
+          readJson,
+        );
+  const hit = site.articles.length
+    ? site
+    : mention?.articles.length
+      ? mention
+      : place?.articles.length
+        ? place
+        : null;
+  const match = site.articles.length
+    ? 'site'
+    : mention?.articles.length
+      ? 'mention'
+      : place?.articles.length
+        ? 'place'
+        : null;
+  const articles = (hit?.articles || [])
+    .map(publicSocialArticle)
+    .filter(Boolean);
   if (articles.length) {
     return {
       status: 'ready',
@@ -563,7 +613,9 @@ async function fetchSocialPublicNews(options = {}) {
       articles,
     };
   }
-  const sawAnswer = [site, mention, place].some((pass) => pass && !pass.failed && !pass.skipped);
+  const sawAnswer = [site, mention, place].some(
+    (pass) => pass && !pass.failed && !pass.skipped,
+  );
   return {
     status: sawAnswer ? 'empty' : 'unavailable',
     match: null,
