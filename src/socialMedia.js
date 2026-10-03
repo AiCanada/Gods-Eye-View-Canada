@@ -152,15 +152,23 @@ export const SOCIAL_LOCATION_OPTIONS = Object.freeze([
 ]);
 
 export const SOCIAL_ACCOUNT_PLATFORMS = Object.freeze([
-  Object.freeze({ id: 'facebook', label: 'Facebook', openUrl: 'https://www.facebook.com/' }),
+  Object.freeze({
+    id: 'facebook',
+    label: 'Facebook',
+    openUrl: 'https://www.facebook.com/',
+    api: 'Graph API (Core)',
+    apiUrl: 'https://developers.facebook.com/',
+  }),
   Object.freeze({
     id: 'instagram',
     label: 'Instagram',
     openUrl: 'https://www.instagram.com/',
+    api: 'Instagram API',
+    apiUrl: 'https://developers.facebook.com/docs/instagram-platform/',
     sharesLocation: true,
   }),
-  Object.freeze({ id: 'threads', label: 'Threads', openUrl: 'https://www.threads.net/' }),
-  Object.freeze({ id: 'x', label: 'X', openUrl: 'https://x.com/' }),
+  Object.freeze({ id: 'threads', label: 'Threads', openUrl: 'https://www.threads.net/', api: 'Threads API', apiUrl: 'https://developers.facebook.com/docs/threads/' }),
+  Object.freeze({ id: 'x', label: 'X', openUrl: 'https://x.com/', api: 'X API v2', apiUrl: 'https://developer.x.com/' }),
   Object.freeze({ id: 'truth', label: 'Truth Social', openUrl: 'https://truthsocial.com/' }),
   Object.freeze({
     id: 'snapchat',
@@ -168,7 +176,7 @@ export const SOCIAL_ACCOUNT_PLATFORMS = Object.freeze([
     openUrl: 'https://www.snapchat.com/',
     sharesLocation: true,
   }),
-  Object.freeze({ id: 'tiktok', label: 'TikTok', openUrl: 'https://www.tiktok.com/' }),
+  Object.freeze({ id: 'tiktok', label: 'TikTok', openUrl: 'https://www.tiktok.com/', api: 'TikTok API', apiUrl: 'https://developers.tiktok.com/' }),
   Object.freeze({
     id: 'find-my',
     label: 'Apple Find My',
@@ -206,10 +214,153 @@ export const SOCIAL_ACCOUNT_PLATFORMS = Object.freeze([
   Object.freeze({ id: 'happn', label: 'Happn', openUrl: 'https://www.happn.com/' }),
   Object.freeze({ id: 'pure', label: 'Pure', openUrl: 'https://pure.app/' }),
   Object.freeze({ id: 'sniffies', label: 'Sniffies', openUrl: 'https://sniffies.com/' }),
+  // The gig economy and on-demand delivery. HELP locations from them, and
+  // sending HELP through them with Find Ultra Help, are under development:
+  // for now each opens its own site and keeps its login like the others.
+  Object.freeze({ id: 'doordash', label: 'DoorDash', openUrl: 'https://www.doordash.com/', gig: true }),
+  Object.freeze({ id: 'uber', label: 'Uber', openUrl: 'https://www.uber.com/', gig: true, api: 'Uber Developers', apiUrl: 'https://developer.uber.com/' }),
+  Object.freeze({ id: 'lyft', label: 'Lyft', openUrl: 'https://www.lyft.com/', gig: true, api: 'Lyft Concierge API', apiUrl: 'https://developer.lyft.com/' }),
+  Object.freeze({
+    id: 'just-eat-takeaway',
+    label: 'Just Eat Takeaway',
+    openUrl: 'https://www.justeattakeaway.com/',
+    gig: true,
+  }),
+  Object.freeze({
+    id: 'delivery-hero',
+    label: 'Delivery Hero',
+    openUrl: 'https://www.deliveryhero.com/',
+    gig: true,
+  }),
+  Object.freeze({ id: 'grubhub', label: 'Grubhub', openUrl: 'https://www.grubhub.com/', gig: true }),
 ]);
+
+/**
+ * Power Ups: one for each platform in the menu with anything saved, a login,
+ * an API key or both (both still count once), out of one per platform.
+ * @param {{platform?: string, passwordSaved?: boolean, apiKeySaved?: boolean}[]} rows
+ */
+export function socialPowerUps(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const total = SOCIAL_ACCOUNT_PLATFORMS.length;
+  let attained = 0;
+  for (const item of SOCIAL_ACCOUNT_PLATFORMS) {
+    const row = list.find((entry) => entry?.platform === item.id);
+    if (row?.passwordSaved === true || (item.api && row?.apiKeySaved === true)) attained += 1;
+  }
+  return { attained, total, label: `${attained}/${total} Power Ups Attained` };
+}
+
+/** OPEN SAVED's name for each choice in its menu. */
+export const SOCIAL_OPEN_SAVED_LABELS = Object.freeze({
+  login: 'OPEN ID & PASS SITES',
+  api: 'OPEN API SITES',
+  all: 'OPEN ALL SAVED SITES',
+});
+
+/**
+ * The sites OPEN SAVED opens: a saved login opens the platform's own site, a
+ * saved API key opens its developer console. 'all' opens both kinds.
+ * @param {{platform?: string, passwordSaved?: boolean, apiKeySaved?: boolean}[]} rows
+ * @param {'login'|'api'|'all'} kind
+ * @returns {{platform: string, label: string, url: string}[]}
+ */
+export function savedSiteUrls(rows, kind = 'login') {
+  const list = Array.isArray(rows) ? rows : [];
+  const urls = [];
+  for (const item of SOCIAL_ACCOUNT_PLATFORMS) {
+    const row = list.find((entry) => entry?.platform === item.id);
+    if (!row) continue;
+    if (kind !== 'api' && row.passwordSaved === true && item.openUrl) {
+      urls.push({ platform: item.id, label: item.label, url: item.openUrl });
+    }
+    if (kind !== 'login' && row.apiKeySaved === true && item.apiUrl) {
+      urls.push({ platform: item.id, label: `${item.label} API`, url: item.apiUrl });
+    }
+  }
+  return urls;
+}
+
+/** Shown under the account menu when a gig-economy or delivery platform is picked. */
+export const SOCIAL_GIG_HELP_NOTE =
+  'HELP locations from this platform, and sending HELP through it with Find Ultra Help: under development. OPEN SITE opens its own site.';
 
 /** Missing means show. The operator's hide choice is stored as '0'. */
 export const SOCIAL_SHOW_LOCATION_KEY = 'godsEyeView.social.showLocation';
+
+/** This computer's default HELP DELIVERY for the gig and delivery platforms. */
+export const SOCIAL_HELP_DELIVERY_KEY = 'godsEyeView.social.helpDelivery';
+
+/**
+ * What help a gig or delivery platform would bring. Transportation names
+ * where to take the person from their current location; every other kind takes
+ * up to two entries of its own.
+ */
+export const SOCIAL_HELP_DELIVERY_KINDS = Object.freeze([
+  Object.freeze({ id: 'medicine', label: 'Medicine', entry: 'Medication', placeholders: ['Medication 1', 'Medication 2'] }),
+  Object.freeze({ id: 'transportation', label: 'Transportation', destinations: Object.freeze(['home', 'hospital']) }),
+  Object.freeze({ id: 'food', label: 'Food', entry: 'Type of food', placeholders: ['Type of food 1', 'Type of food 2'] }),
+  Object.freeze({ id: 'liquid', label: 'Liquid', entry: 'Type of liquid', placeholders: ['Type of liquid 1', 'Type of liquid 2'] }),
+  Object.freeze({ id: 'items', label: 'Items', entry: 'Type of item', placeholders: ['Item 1, e.g. Heart Defib', 'Item 2'] }),
+]);
+
+const HELP_ENTRY_MAX = 80;
+const HELP_DESTINATIONS = Object.freeze({ home: 'Home', hospital: 'Hospital' });
+
+/**
+ * A HELP DELIVERY choice cleaned up: a known kind, and either a destination
+ * (Transportation) or up to two short, single-line entries.
+ * @returns {{ok: true, value: {kind: string, items: string[], destination: string}} | {ok: false, error: string}}
+ */
+export function normalizeHelpDelivery(input) {
+  const kind = SOCIAL_HELP_DELIVERY_KINDS.find((item) => item.id === input?.kind);
+  if (!kind) return { ok: false, error: 'Choose the help to be delivered.' };
+  if (kind.destinations) {
+    const destination = String(input?.destination || '');
+    if (!kind.destinations.includes(destination)) {
+      return { ok: false, error: 'Choose Home or Hospital.' };
+    }
+    return { ok: true, value: { kind: kind.id, items: [], destination } };
+  }
+  const items = (Array.isArray(input?.items) ? input.items : [])
+    .map((value) => String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  if (!items.length) return { ok: false, error: `Enter at least one ${kind.entry.toLowerCase()}.` };
+  if (items.some((value) => value.length > HELP_ENTRY_MAX)) {
+    return { ok: false, error: `Keep each entry under ${HELP_ENTRY_MAX} characters.` };
+  }
+  return { ok: true, value: { kind: kind.id, items, destination: '' } };
+}
+
+/** One line for a saved HELP DELIVERY default, e.g. "Medicine: Insulin, Ventolin". */
+export function helpDeliverySummary(value) {
+  const checked = normalizeHelpDelivery(value);
+  if (!checked.ok) return '';
+  const kind = SOCIAL_HELP_DELIVERY_KINDS.find((item) => item.id === checked.value.kind);
+  if (kind.destinations) {
+    return `${kind.label}: from current location to ${HELP_DESTINATIONS[checked.value.destination]}`;
+  }
+  return `${kind.label}: ${checked.value.items.join(', ')}`;
+}
+
+/** @param {Storage | {getItem: Function} | null | undefined} storage */
+export function readHelpDelivery(storage) {
+  try {
+    const checked = normalizeHelpDelivery(JSON.parse(storage?.getItem(SOCIAL_HELP_DELIVERY_KEY) || 'null'));
+    return checked.ok ? checked.value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** @param {Storage | {setItem: Function} | null | undefined} storage */
+export function writeHelpDelivery(storage, input) {
+  const checked = normalizeHelpDelivery(input);
+  if (!checked.ok) return checked;
+  storage?.setItem(SOCIAL_HELP_DELIVERY_KEY, JSON.stringify(checked.value));
+  return checked;
+}
 
 /**
  * @param {Storage | {getItem: Function} | null | undefined} storage

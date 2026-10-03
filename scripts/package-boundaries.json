@@ -243,7 +243,8 @@
       "scripts/google-server-key.mjs",
       "src/localIntegrity.mjs",
       "src/keySetupHardening.mjs",
-      "src/keySetupCore.mjs"
+      "src/keySetupCore.mjs",
+      "src/roadCctvKeys.mjs"
     ],
     "external": []
   },

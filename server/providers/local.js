@@ -32,6 +32,7 @@ import { noteOutboundEnvSaved, ultraHelpProxy } from './ultra-help.js';
 import { bindLocalIntegrityRoot } from '../../src/localIntegrity.mjs';
 import { locationSwitchReleaseEndpoint } from './location-switch.js';
 import { socialAccountsProxy } from './socialAccounts.js';
+import { roadCctvKeysProxy } from './roadCctvKeys.js';
 import { socialSwarmProxy } from './socialSwarm.js';
 import { grokBotDesktopProxy } from './grokBotDesktop.js';
 
@@ -78,6 +79,8 @@ function localProviderPlugins() {
     locationSwitchReleaseEndpoint(),
     // The operator's own social logins. The password stays in the encrypted store.
     socialAccountsProxy({ sourceRoot: defaultSourceRoot }),
+    // POWER UP → ROAD511: any number of generic road CCTV API keys.
+    roadCctvKeysProxy({ sourceRoot: defaultSourceRoot }),
     // Social Media Analysis bot swarms: one paid search request per bot, on a press.
     socialSwarmProxy(),
     // Opens the Grok Bot desktop app for that swarm when it has no key of its own.

@@ -929,3 +929,34 @@ body.scene-playback-mode #key-setup {
   cursor: default;
   opacity: 0.45;
 }
+
+/* POWER UP → ROAD511 → GENERIC ROAD CCTV API KEYS: one row per saved key and
+   one form per entry. */
+.road-cctv-key {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 0 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.road-cctv-key-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.road-cctv-key-input {
+  min-width: 0;
+  padding: 5px 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+}

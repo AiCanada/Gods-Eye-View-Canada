@@ -857,10 +857,13 @@
           <span class="panel-divider"></span>
           <button class="panel-collapse-btn" data-collapse-target="social-panel" title="Collapse panel">+</button>
         </div>
-        <p class="social-note">Your user id and password stay encrypted on this computer for integrated BOT and LLM Location/Search/Request</p>
-        <div class="cctv-summary-label">ACCOUNTS</div>
+        <!-- The note, the Power Up count and the heading sit flush, with no space between. -->
+        <p class="social-note social-flush">Your API Keys, User Id's and Passwords stay encrypted on this computer for integrating AI Tools</p>
+        <p id="social-powerup" class="social-powerup social-flush">0/0 Power Ups Attained</p>
+        <div class="cctv-summary-label social-flush">Social Media/The Gig Economy/On-Demand Delivery Platforms</div>
         <div class="cctv-controls">
           <select id="social-account-platform" aria-label="Account platform">
+            <optgroup label="Social Media">
             <option value="facebook">Facebook</option>
             <option value="instagram">Instagram</option>
             <option value="threads">Threads</option>
@@ -880,8 +883,42 @@
             <option value="happn">Happn</option>
             <option value="pure">Pure</option>
             <option value="sniffies">Sniffies</option>
+            </optgroup>
+            <!-- HELP locations from these, and sending HELP through them with Find Ultra Help, are under development. -->
+            <optgroup label="The Gig Economy / On-Demand Delivery">
+            <option value="doordash">DoorDash</option>
+            <option value="uber">Uber</option>
+            <option value="lyft">Lyft</option>
+            <option value="just-eat-takeaway">Just Eat Takeaway</option>
+            <option value="delivery-hero">Delivery Hero</option>
+            <option value="grubhub">Grubhub</option>
+            </optgroup>
           </select>
         </div>
+        <p id="social-account-note" class="social-note" hidden></p>
+        <!-- HELP DELIVERY: what the gig and delivery platforms would bring. Each GEVC keeps its own default in this browser; sending it is under development. -->
+        <div class="cctv-summary-label">HELP DELIVERY · On-Demand Delivery / The Gig Economy</div>
+        <div class="cctv-controls">
+          <select id="social-help-kind" aria-label="Help item to be delivered">
+            <option value="medicine">Medicine</option>
+            <option value="transportation">Transportation</option>
+            <option value="food">Food</option>
+            <option value="liquid">Liquid</option>
+            <option value="items">Items</option>
+          </select>
+          <select id="social-help-destination" aria-label="Take from current location to" hidden>
+            <option value="home">From current location to Home</option>
+            <option value="hospital">From current location to Hospital</option>
+          </select>
+        </div>
+        <div class="cctv-controls" id="social-help-entries">
+          <input id="social-help-item-1" class="ask-input" type="text" maxlength="80" autocomplete="off" placeholder="Medication 1" aria-label="Medication 1" />
+          <input id="social-help-item-2" class="ask-input" type="text" maxlength="80" autocomplete="off" placeholder="Medication 2" aria-label="Medication 2" />
+        </div>
+        <div class="cctv-controls">
+          <button id="social-help-save" class="scene-btn" type="button">SAVE MY DEFAULT</button>
+        </div>
+        <p id="social-help-default" class="social-note">No default saved yet. Sending HELP through these platforms is under development.</p>
         <div class="cctv-controls">
           <input id="social-account-handle" class="ask-input" type="text" maxlength="128" autocomplete="off" spellcheck="false" placeholder="User id" aria-label="User id" />
         </div>
@@ -890,7 +927,18 @@
           <button id="social-account-save" class="scene-btn" type="button">SAVE LOGIN</button>
         </div>
         <div class="cctv-controls">
+          <input id="social-account-apikey" class="ask-input" type="password" maxlength="512" autocomplete="off" spellcheck="false" placeholder="API key" aria-label="API key" />
+        </div>
+        <div class="cctv-controls">
           <button id="social-account-open" class="scene-btn" type="button">OPEN SITE</button>
+        </div>
+        <div class="cctv-controls">
+          <select id="social-open-kind" aria-label="Which saved sites to open">
+            <option value="login" selected>ID &amp; Pass</option>
+            <option value="api">API</option>
+            <option value="all">All</option>
+          </select>
+          <button id="social-open-saved" class="scene-btn" type="button">OPEN ID &amp; PASS SITES</button>
         </div>
         <ul id="social-account-list" class="social-account-list" aria-label="Saved accounts"></ul>
         <div class="cctv-controls">
@@ -899,10 +947,9 @@
             SHOW ON MAP
           </label>
         </div>
-        <p id="social-location-note" class="social-note">A hooked-up account that shares location displays live position on the map.</p>
+        <p id="social-location-note" class="social-note">A hooked-up account that shares location displays live position on the map. If allowed by 3rd Party.</p>
         <div class="cctv-summary-label">LLM</div>
         <textarea id="social-query" class="ask-input social-query" rows="3" autocomplete="off" aria-label="Analysis, news question, or help to send" placeholder="Type the analysis, news question, or help to send"></textarea>
-        <p class="social-note">Enter looks up public news for this map place, then sends one question that uses the three menus below. The log shows those public items.</p>
         <div class="cctv-controls">
           <select id="social-model" aria-label="Language model">
             <option value="">No model key yet</option>

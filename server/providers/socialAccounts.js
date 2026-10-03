@@ -118,6 +118,8 @@ export function socialAccountsProxy({ sourceRoot = defaultSourceRoot } = {}) {
             platform: body.value.platform,
             userId: body.value.userId,
             password: body.value.password,
+            apiKey: body.value.apiKey,
+            mode: body.value.mode,
           })
           : removeSocialLogin(sourceRoot, String(body.value.platform || ''));
         if (!result.ok) {
@@ -125,7 +127,13 @@ export function socialAccountsProxy({ sourceRoot = defaultSourceRoot } = {}) {
           send(res, status, { error: result.error });
           return;
         }
-        send(res, 200, { ok: true, platform: result.platform, userId: result.userId });
+        send(res, 200, {
+          ok: true,
+          platform: result.platform,
+          userId: result.userId,
+          passwordSaved: result.passwordSaved === true,
+          apiKeySaved: result.apiKeySaved === true,
+        });
       } catch {
         send(res, 500, { error: 'This computer did not keep that login.' });
       }

@@ -1,3 +1,7 @@
+import {
+  readRoadCctvKeys,
+  withRoadCctvKey,
+} from '../../../src/roadCctvKeys.mjs';
 import dns from 'node:dns';
 import http from 'node:http';
 import https from 'node:https';
@@ -414,6 +418,17 @@ async function readFirstMotionJpeg(upstream, contentType, maxBytes) {
   return frame;
 }
 
+// POWER UP → GENERIC ROAD CCTV API KEYS: the checkout whose config holds them.
+let roadKeysRoot = process.cwd();
+/** Point the camera fetchers at this checkout's saved road CCTV keys. */
+export function setRoadCctvKeysRoot(root) {
+  if (root) roadKeysRoot = root;
+}
+/** A camera address with its site's saved key, if one is saved for that site. */
+export function keyedCctvUrl(url) {
+  return withRoadCctvKey(url, readRoadCctvKeys(roadKeysRoot));
+}
+
 /** Open registered media within a header deadline; leave timely live bodies running. */
 export async function fetchCctvMediaUpstream(
   url,
@@ -432,7 +447,10 @@ export async function fetchCctvMediaUpstream(
   if (downstream?.aborted) controller.abort();
   else downstream?.addEventListener?.('abort', onDownstreamAbort);
   try {
-    return await fetchImpl(url, { headers, signal: controller.signal });
+    return await fetchImpl(keyedCctvUrl(url), {
+      headers,
+      signal: controller.signal,
+    });
   } finally {
     clearTimeout(timeoutId);
     downstream?.removeEventListener?.('abort', onDownstreamAbort);
@@ -753,6 +771,7 @@ export async function fetchCctvImageFromUpstream(
   } = {},
 ) {
   if (!url || !/^https?:\/\//i.test(url)) return null;
+  url = keyedCctvUrl(url);
   const guarded = typeof allowUrl === 'function';
   // The node:https second attempt is for hosts a catalogue vouches for, and only
   // on the real network (or when a test supplies its own requester). Guarded

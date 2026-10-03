@@ -1,6 +1,7 @@
 import { createSurfaceKeyboard } from './ui/surfaceKeyboard.js';
 import { initPrivateCameraSetup } from './privateCamerasSetup.js';
 import { initDeviceFeedSetup } from './deviceFeedsSetup.js';
+import { initRoadCctvKeysSetup } from './roadCctvKeysSetup.js';
 
 /**
  * The POWER UP surface — paste a key, get a power.
@@ -248,6 +249,10 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
   const deviceHost = rowsHost && documentRef.createElement ? documentRef.createElement('div') : null;
   if (deviceHost) deviceHost.className = 'private-cams device-feeds';
   let deviceSetup = null;
+  // GENERIC ROAD CCTV API KEYS: any number, shown right under the ROAD511 key
+  // and kept across re-renders the same way (src/roadCctvKeysSetup.js).
+  const roadHost = rowsHost && documentRef.createElement ? documentRef.createElement('div') : null;
+  if (roadHost) roadHost.className = 'private-cams road-cctv-keys';
   const applyButton = root.querySelector('[data-key-setup-apply]');
   const closeButton = root.querySelector('[data-key-setup-close]');
   const chipLabel = chip.querySelector('[data-key-setup-chip-label]') || chip;
@@ -278,7 +283,10 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
     syncChip();
     if (!rowsHost) return;
     rowsHost.textContent = '';
-    for (const key of status.keys || []) rowsHost.append(buildRow(documentRef, key));
+    for (const key of status.keys || []) {
+      rowsHost.append(buildRow(documentRef, key));
+      if (key.id === 'road511' && roadHost) rowsHost.append(roadHost);
+    }
     if (privateHost) rowsHost.append(privateHost);
     if (deviceHost) rowsHost.append(deviceHost);
   };
@@ -411,6 +419,7 @@ export async function initKeySetup({ documentRef = globalThis.document, fetchImp
 
   render(status);
   if (privateHost) privateSetup = initPrivateCameraSetup({ host: privateHost, documentRef, fetchImpl: doFetch, signal: lifetime.signal, onSections: onSections('cameras') });
+  if (roadHost) void initRoadCctvKeysSetup({ host: roadHost, documentRef, fetchImpl: doFetch });
   if (deviceHost) deviceSetup = initDeviceFeedSetup({ host: deviceHost, documentRef, fetchImpl: doFetch, signal: lifetime.signal, onSections: onSections('devices') });
 
   // Re-entry for a fully-keyed setup, demos, and support: ?setup=1 opens the

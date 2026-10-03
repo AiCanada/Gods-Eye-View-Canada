@@ -119,3 +119,21 @@
   min-width: 0;
   padding: 4px 8px;
 }
+
+/* The Social Media box's Power Up count, in fluorescent green. */
+.social-powerup {
+  margin: 0;
+  color: #39ff14;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 0 6px rgba(57, 255, 20, 0.55);
+}
+
+/* The top note, the Power Up count and the account heading: no space between. */
+.social-flush {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}

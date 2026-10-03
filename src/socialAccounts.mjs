@@ -3,7 +3,8 @@
  *
  * config/social-accounts.key is a 32-byte key (64 hex). config/social-accounts.json
  * holds a canary and one sealed row per platform. A row is AES-256-GCM of the
- * user id and password, bound to that platform, plus an HMAC so a swapped row
+ * user id and password and/or the platform's API key, bound to that platform,
+ * plus an HMAC so a swapped row
  * does not open. The password is not returned by the HTTP API and is not sent
  * to a platform, a model, or a news lookup.
  */
@@ -21,6 +22,7 @@ const CANARY_AAD = Buffer.from('social-accounts-canary');
 const CANARY_PLAIN = Buffer.from('social-accounts-v1');
 const USER_ID_MAX = 128;
 const PASSWORD_MAX = 256;
+const API_KEY_MAX = 512;
 
 export const SOCIAL_LOGIN_LOCKED =
   'The encrypted store on this computer could not be opened.';
@@ -201,9 +203,13 @@ function openAccount(keys, platform, sealed) {
   } catch {
     return null;
   }
-  if (!parsed || typeof parsed.userId !== 'string' || typeof parsed.password !== 'string') return null;
-  if (!parsed.userId || !parsed.password) return null;
-  return { userId: parsed.userId, password: parsed.password };
+  if (!parsed || typeof parsed !== 'object') return null;
+  const userId = typeof parsed.userId === 'string' ? parsed.userId : '';
+  const password = typeof parsed.password === 'string' ? parsed.password : '';
+  const apiKey = typeof parsed.apiKey === 'string' ? parsed.apiKey : '';
+  const login = Boolean(userId && password);
+  if (!login && !apiKey) return null;
+  return { userId: login ? userId : '', password: login ? password : '', apiKey };
 }
 
 function sealCopy(row) {
@@ -213,12 +219,10 @@ function sealCopy(row) {
   return { iv, data, tag, mac };
 }
 
-function sealAccount(keys, platform, userId, password) {
-  const sealed = seal(
-    keys.enc,
-    accountAad(platform),
-    Buffer.from(JSON.stringify({ userId, password }), 'utf8'),
-  );
+function sealAccount(keys, platform, userId, password, apiKey = '') {
+  const row = userId && password ? { userId, password } : {};
+  if (apiKey) row.apiKey = apiKey;
+  const sealed = seal(keys.enc, accountAad(platform), Buffer.from(JSON.stringify(row), 'utf8'));
   sealed.mac = macFor(keys.mac, platform, sealed);
   return sealed;
 }
@@ -269,6 +273,15 @@ function cleanPassword(raw) {
   return { ok: true, password };
 }
 
+function cleanApiKey(raw) {
+  const apiKey = String(raw ?? '').trim();
+  if (!apiKey) return { ok: false, error: 'Paste the API key.' };
+  if (apiKey.length > API_KEY_MAX || CONTROL_CHARS.test(apiKey)) {
+    return { ok: false, error: 'That API key is not valid.' };
+  }
+  return { ok: true, apiKey };
+}
+
 /**
  * Saved logins with the password removed. A store that will not open is locked
  * and returns no rows.
@@ -282,7 +295,12 @@ export function listSocialLogins(root) {
   for (const platform of PLATFORMS) {
     const opened = openAccount(loaded.keys, platform, loaded.parsed.accounts[platform]);
     if (!opened) continue;
-    accounts.push({ platform, userId: opened.userId, passwordSaved: true });
+    accounts.push({
+      platform,
+      userId: opened.userId,
+      passwordSaved: Boolean(opened.password),
+      apiKeySaved: Boolean(opened.apiKey),
+    });
   }
   return { ok: true, locked: false, accounts };
 }
@@ -292,7 +310,7 @@ export function listSocialLogins(root) {
  * does not use this.
  * @param {string} root
  * @param {string} platform
- * @returns {{platform: string, userId: string, password: string}|null}
+ * @returns {{platform: string, userId: string, password: string, apiKey: string}|null}
  */
 export function openSocialLogin(root, platform) {
   if (!PLATFORM_SET.has(platform)) return null;
@@ -300,29 +318,57 @@ export function openSocialLogin(root, platform) {
   if (loaded.state !== 'ok') return null;
   const opened = openAccount(loaded.keys, platform, loaded.parsed.accounts[platform]);
   if (!opened) return null;
-  return { platform, userId: opened.userId, password: opened.password };
+  return { platform, userId: opened.userId, password: opened.password, apiKey: opened.apiKey };
 }
 
 /**
  * @param {string} root
- * @param {{platform?: unknown, userId?: unknown, password?: unknown}} input
+ * Saves a login, an API key, or both (`mode`: 'login', 'api' or 'both', the
+ * default). What is not given this time is kept from the saved row.
+ * @param {{platform?: unknown, userId?: unknown, password?: unknown, apiKey?: unknown, mode?: unknown}} input
  */
 export function saveSocialLogin(root, input) {
   const platform = String(input?.platform || '');
   if (!PLATFORM_SET.has(platform)) return { ok: false, error: 'Pick a platform.' };
-  const userId = cleanUserId(input?.userId);
-  if (!userId.ok) return userId;
-  const password = cleanPassword(input?.password);
-  if (!password.ok) return password;
+  // Without a stated mode, what was sent says: a key alone, a login alone, or both.
+  const sentKey = String(input?.apiKey ?? '').trim() !== '';
+  const sentLogin = String(input?.password ?? '') !== '';
+  const inferred = sentKey && sentLogin ? 'both' : sentKey ? 'api' : 'login';
+  const mode = ['login', 'api', 'both'].includes(input?.mode) ? input.mode : inferred;
+  const offersApi = Boolean(SOCIAL_ACCOUNT_PLATFORMS.find((item) => item.id === platform)?.api);
+  if (mode !== 'login' && !offersApi) return { ok: false, error: 'This platform has no API key to save.' };
+  let userId = null;
+  let password = null;
+  if (mode !== 'api') {
+    userId = cleanUserId(input?.userId);
+    if (!userId.ok) return userId;
+    password = cleanPassword(input?.password);
+    if (!password.ok) return password;
+  }
+  let apiKey = null;
+  if (mode !== 'login') {
+    apiKey = cleanApiKey(input?.apiKey);
+    if (!apiKey.ok) return apiKey;
+  }
   const loaded = load(root);
   if (loaded.state === 'locked') return { ok: false, error: SOCIAL_LOGIN_LOCKED };
   const keyRead = loaded.key ? { key: loaded.key, state: 'ok' } : ensureKey(loaded.root);
   if (keyRead.state !== 'ok' || !keyRead.key) return { ok: false, error: SOCIAL_LOGIN_LOCKED };
   const keys = derivedKeys(keyRead.key);
   const accounts = keptRows(loaded.state === 'ok' ? loaded : { state: 'empty' });
-  accounts[platform] = sealAccount(keys, platform, userId.userId, password.password);
+  const before = loaded.state === 'ok' ? openAccount(loaded.keys, platform, loaded.parsed.accounts[platform]) : null;
+  const nextUser = userId ? userId.userId : before?.userId || '';
+  const nextPass = password ? password.password : before?.password || '';
+  const nextKey = apiKey ? apiKey.apiKey : before?.apiKey || '';
+  accounts[platform] = sealAccount(keys, platform, nextUser, nextPass, nextKey);
   writeBody(loaded.root, keys, accounts);
-  return { ok: true, platform, userId: userId.userId };
+  return {
+    ok: true,
+    platform,
+    userId: nextUser,
+    passwordSaved: Boolean(nextUser && nextPass),
+    apiKeySaved: Boolean(nextKey),
+  };
 }
 
 /**

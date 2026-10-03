@@ -125,7 +125,7 @@ test('a login is sealed at rest and the password is not in the file or the list'
   assert.equal(fs.readFileSync(keyPath(root), 'utf8').includes(SECRET), false);
   const listed = listSocialLogins(root);
   assert.equal(listed.locked, false);
-  assert.deepEqual(listed.accounts, [{ platform: 'x', userId: USER_ID, passwordSaved: true }]);
+  assert.deepEqual(listed.accounts, [{ platform: 'x', userId: USER_ID, passwordSaved: true, apiKeySaved: false }]);
   assert.equal(JSON.stringify(listed).includes(SECRET), false);
   const opened = openSocialLogin(root, 'x');
   assert.equal(opened.userId, USER_ID);
@@ -251,4 +251,37 @@ test('the accounts route takes a save only from this machine and this page', asy
     (await request(handler)).json().accounts.map((row) => row.platform),
     ['x'],
   );
+});
+
+test('an API key is sealed beside the login, saved alone or with it, and never listed', () => {
+  const root = tempRoot();
+  try {
+    const KEY = 'api-key-value-for-the-x-developer-platform';
+    // A key alone.
+    assert.deepEqual(saveSocialLogin(root, { platform: 'x', apiKey: KEY, mode: 'api' }), {
+      ok: true,
+      platform: 'x',
+      userId: '',
+      passwordSaved: false,
+      apiKeySaved: true,
+    });
+    assert.equal(diskText(root).includes(KEY), false);
+    // A login later keeps the key; the list says what is saved, never the values.
+    saveSocialLogin(root, { platform: 'x', userId: USER_ID, password: SECRET, mode: 'login' });
+    assert.deepEqual(listSocialLogins(root).accounts, [
+      { platform: 'x', userId: USER_ID, passwordSaved: true, apiKeySaved: true },
+    ]);
+    assert.equal(JSON.stringify(listSocialLogins(root)).includes(KEY), false);
+    assert.deepEqual(openSocialLogin(root, 'x'), { platform: 'x', userId: USER_ID, password: SECRET, apiKey: KEY });
+    // Both at once, and refusals.
+    assert.equal(
+      saveSocialLogin(root, { platform: 'uber', userId: USER_ID, password: SECRET, apiKey: KEY }).apiKeySaved,
+      true,
+    );
+    assert.equal(saveSocialLogin(root, { platform: 'truth', apiKey: KEY, mode: 'api' }).ok, false);
+    assert.equal(saveSocialLogin(root, { platform: 'x', apiKey: '', mode: 'api' }).ok, false);
+    assert.equal(saveSocialLogin(root, { platform: 'x', apiKey: 'a\u0000b', mode: 'api' }).ok, false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

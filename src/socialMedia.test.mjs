@@ -5,6 +5,15 @@ import {
   SOCIAL_ACCOUNT_PLATFORMS,
   SOCIAL_ACCOUNTS_KEY,
   SOCIAL_ANALYSIS_PLATFORMS,
+  SOCIAL_GIG_HELP_NOTE,
+  SOCIAL_OPEN_SAVED_LABELS,
+  savedSiteUrls,
+  SOCIAL_HELP_DELIVERY_KEY,
+  helpDeliverySummary,
+  normalizeHelpDelivery,
+  readHelpDelivery,
+  writeHelpDelivery,
+  socialPowerUps,
   SOCIAL_LOCATION_OPTIONS,
   SOCIAL_NEWS_PLATFORMS,
   SOCIAL_REQUEST_LIMIT,
@@ -59,28 +68,27 @@ test('the left stack has a collapsed Social Media Analysis box ahead of the righ
   assert.match(panelHtml, /data-collapse-target="social-panel"/);
   assert.match(panelHtml, /id="social-account-password"[^>]*type="password"/);
   assert.match(panelHtml, /id="social-account-password"[^>]*autocomplete="off"/);
-  // The accounts row is the one password box; the bot swarms keep no login.
-  assert.equal((panelHtml.match(/type="password"/gi) || []).length, 1);
-  // The owner's own words for the top note (2026-10-01), exactly.
+  // The accounts rows hold the only masked boxes, the password and the API
+  // key; the bot swarms keep no login.
+  assert.equal((panelHtml.match(/type="password"/gi) || []).length, 2);
+  assert.match(panelHtml, /id="social-account-apikey"[^>]*type="password"/);
+  // The owner's own words for the top note (2026-10-03), exactly.
   assert.ok(
     panelHtml.includes(
-      '<p class="social-note">Your user id and password stay encrypted on this computer for integrated BOT and LLM Location/Search/Request</p>',
+      "<p class=\"social-note social-flush\">Your API Keys, User Id's and Passwords stay encrypted on this computer for integrating AI Tools</p>",
     ),
   );
   assert.equal(panelHtml.includes('This box does not sign in and does not read private messages'), false);
   assert.match(panelHtml, /id="social-show-location"[^>]*type="checkbox"[^>]*checked/);
   assert.match(panelHtml, /id="social-location-note"/);
-  // The owner's own words for the two notes (2026-10-01), exactly.
+  // The owner's own words for the location note (2026-10-03), exactly; the
+  // Enter note is gone.
   assert.ok(
     panelHtml.includes(
-      '<p id="social-location-note" class="social-note">A hooked-up account that shares location displays live position on the map.</p>',
+      '<p id="social-location-note" class="social-note">A hooked-up account that shares location displays live position on the map. If allowed by 3rd Party.</p>',
     ),
   );
-  assert.ok(
-    panelHtml.includes(
-      '<p class="social-note">Enter looks up public news for this map place, then sends one question that uses the three menus below. The log shows those public items.</p>',
-    ),
-  );
+  assert.equal(panelHtml.includes('Enter looks up public news'), false);
   assert.match(panelHtml, /id="social-query"/);
   assert.match(panelHtml, /id="social-analyze"/);
   assert.match(panelHtml, /id="social-news"/);
@@ -828,7 +836,7 @@ function fakeGeolocation() {
   };
 }
 
-function mountLocationPanel({ accounts, storage, geolocation, placeFix, clearFix }) {
+function mountLocationPanel({ accounts, storage, geolocation, placeFix, clearFix, openWindow }) {
   const nodes = {};
   for (const id of [
     'social-panel',
@@ -850,10 +858,26 @@ function mountLocationPanel({ accounts, storage, geolocation, placeFix, clearFix
     'social-help',
     'social-show-location',
     'social-location-note',
+    'social-account-note',
+    'social-account-apikey',
+    'social-open-kind',
+    'social-open-saved',
+    'social-powerup',
+    'social-help-kind',
+    'social-help-destination',
+    'social-help-entries',
+    'social-help-item-1',
+    'social-help-item-2',
+    'social-help-save',
+    'social-help-default',
   ]) {
     nodes[id] = element();
   }
   hookNode(nodes['social-show-location']);
+  hookNode(nodes['social-account-platform']);
+  hookNode(nodes['social-open-kind']);
+  hookNode(nodes['social-help-kind']);
+  nodes['social-help-kind'].value = 'medicine';
   const newsUrls = [];
   const asks = [];
   const posts = [];
@@ -895,6 +919,7 @@ function mountLocationPanel({ accounts, storage, geolocation, placeFix, clearFix
     geolocation,
     placeFix,
     clearFix,
+    openWindow,
     sceneContext: async () => ({ selectedLocation: 'Halifax' }),
   });
   return { panel, nodes, viewer, newsUrls, asks, posts };
@@ -1004,7 +1029,7 @@ test('a hooked-up location share shows this device and stays off the question', 
   assert.equal(cleared.length, 2);
   assert.equal(
     mounted.nodes['social-location-note'].textContent ===
-      'A hooked-up account that shares location displays live position on the map.',
+      'A hooked-up account that shares location displays live position on the map. If allowed by 3rd Party.',
     true,
   );
   geo.push({ coords: { latitude, longitude, accuracy: 4, password: secret } });
@@ -1693,4 +1718,218 @@ test('a place the operator picked is used as it is, with no lookup; with no town
   await settlePlace();
   await sea.press('news');
   assert.match(sea.asked[0].question, /Current map place: -60\.1234, -30\.5678\./);
+});
+
+test('the account menu covers the gig economy and on-demand delivery, whose HELP use is under development', () => {
+  assert.ok(
+    panelHtml.includes('<div class="cctv-summary-label social-flush">Social Media/The Gig Economy/On-Demand Delivery Platforms</div>'),
+  );
+  assert.equal(panelHtml.includes('>ACCOUNTS<'), false);
+  const gig = SOCIAL_ACCOUNT_PLATFORMS.filter((item) => item.gig === true);
+  assert.deepEqual(
+    gig.map((item) => item.label),
+    ['DoorDash', 'Uber', 'Lyft', 'Just Eat Takeaway', 'Delivery Hero', 'Grubhub'],
+  );
+  for (const item of gig) {
+    // A delivery or ride login draws no live marker of its own.
+    assert.notEqual(item.sharesLocation, true, item.id);
+    assert.equal(new URL(officialOpenUrl(item.id)).hostname, new URL(item.openUrl).hostname, item.id);
+  }
+  const start = panelHtml.indexOf('id="social-account-platform"');
+  const menu = panelHtml.slice(start, panelHtml.indexOf('</select>', start));
+  assert.match(menu, /<optgroup label="Social Media">/);
+  assert.match(menu, /<optgroup label="The Gig Economy \/ On-Demand Delivery">/);
+  assert.match(panelHtml, /<p id="social-account-note" class="social-note" hidden><\/p>/);
+  assert.match(SOCIAL_GIG_HELP_NOTE, /Find Ultra Help: under development/);
+});
+
+test('picking a gig or delivery platform says its HELP use is under development', async () => {
+  const { nodes } = mountLocationPanel({
+    accounts: [],
+    storage: memoryStorage(),
+    geolocation: null,
+    placeFix: () => {},
+    clearFix: () => {},
+  });
+  await tick();
+  const menu = nodes['social-account-platform'];
+  const note = nodes['social-account-note'];
+  for (const id of ['doordash', 'uber', 'lyft', 'just-eat-takeaway', 'delivery-hero', 'grubhub']) {
+    menu.value = id;
+    menu.fire('change');
+    assert.equal(note.hidden, false, id);
+    assert.equal(note.textContent, SOCIAL_GIG_HELP_NOTE, id);
+  }
+  menu.value = 'facebook';
+  menu.fire('change');
+  assert.equal(note.hidden, true);
+  assert.equal(note.textContent, '');
+});
+
+test('a platform counts one Power Up however it is saved, and the count sits flush under the note', () => {
+  const withApi = SOCIAL_ACCOUNT_PLATFORMS.filter((item) => item.api).map((item) => item.id);
+  assert.deepEqual(withApi, ['facebook', 'instagram', 'threads', 'x', 'tiktok', 'uber', 'lyft']);
+  // Truth Social publishes no API.
+  assert.equal(SOCIAL_ACCOUNT_PLATFORMS.find((item) => item.id === 'truth').api, undefined);
+  const total = SOCIAL_ACCOUNT_PLATFORMS.length;
+  assert.deepEqual(socialPowerUps([]), { attained: 0, total, label: `0/${total} Power Ups Attained` });
+  const some = socialPowerUps([
+    // A login and a key on one platform: still one Power Up.
+    { platform: 'x', passwordSaved: true, apiKeySaved: true },
+    { platform: 'facebook', passwordSaved: false, apiKeySaved: true },
+    { platform: 'happn', passwordSaved: true },
+    // An API key for a platform with none is not counted.
+    { platform: 'truth', passwordSaved: false, apiKeySaved: true },
+  ]);
+  assert.equal(some.attained, 3);
+  // Note, count and heading in that order, flush.
+  const note = panelHtml.indexOf("Passwords stay encrypted on this computer for integrating AI Tools</p>");
+  const count = panelHtml.indexOf('<p id="social-powerup" class="social-powerup social-flush">');
+  const heading = panelHtml.indexOf('<div class="cctv-summary-label social-flush">Social Media/The Gig Economy/On-Demand Delivery Platforms</div>');
+  assert.ok(note > 0 && count > note && heading > count);
+  assert.equal(panelHtml.indexOf('<div class="cctv-summary-label', 0) >= heading, true);
+  const css = readFileSync(new URL('./ui/styles/social.css', import.meta.url), 'utf8');
+  assert.match(css, /.social-powerup {[^}]*color: #39ff14/);
+  assert.match(css, /.social-flush {[^}]*margin-top: 0;[^}]*margin-bottom: 0;/);
+  // No save menu and no OPEN LOGIN per account any more.
+  assert.equal(panelHtml.includes('social-account-mode'), false);
+});
+
+test('OPEN SAVED opens the saved sites of the kind its menu picks, and is named for it', () => {
+  const start = panelHtml.indexOf('id="social-open-kind"');
+  const menu = panelHtml.slice(start, panelHtml.indexOf('</select>', start));
+  assert.deepEqual([...menu.matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]), ['login', 'api', 'all']);
+  assert.match(menu, /<option value="login" selected>/);
+  assert.match(panelHtml, /id="social-open-saved"[^>]*>OPEN ID &amp; PASS SITES</);
+  assert.deepEqual(SOCIAL_OPEN_SAVED_LABELS, {
+    login: 'OPEN ID & PASS SITES',
+    api: 'OPEN API SITES',
+    all: 'OPEN ALL SAVED SITES',
+  });
+  const rows = [
+    { platform: 'x', passwordSaved: true, apiKeySaved: true },
+    { platform: 'uber', passwordSaved: false, apiKeySaved: true },
+    { platform: 'happn', passwordSaved: true },
+  ];
+  assert.deepEqual(savedSiteUrls(rows, 'login').map((site) => site.url), ['https://x.com/', 'https://www.happn.com/']);
+  assert.deepEqual(savedSiteUrls(rows, 'api').map((site) => site.url), [
+    'https://developer.x.com/',
+    'https://developer.uber.com/',
+  ]);
+  assert.equal(savedSiteUrls(rows, 'all').length, 4);
+  for (const item of SOCIAL_ACCOUNT_PLATFORMS.filter((entry) => entry.apiUrl)) {
+    assert.equal(new URL(item.apiUrl).protocol, 'https:', item.id);
+  }
+});
+
+test('an API key saves on its own, stays out of the status, and raises the Power Ups', async () => {
+  const { nodes, posts } = mountLocationPanel({
+    accounts: [],
+    storage: memoryStorage(),
+    geolocation: null,
+    placeFix: () => {},
+    clearFix: () => {},
+  });
+  await tick();
+  const total = socialPowerUps([]).total;
+  assert.equal(nodes['social-powerup'].textContent, `0/${total} Power Ups Attained`);
+  const key = 'x-developer-key-0123456789abcdef';
+  nodes['social-account-platform'].value = 'x';
+  nodes['social-account-apikey'].value = key;
+  nodes['social-account-save'].click();
+  await tick();
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].mode, 'api');
+  assert.equal(posts[0].apiKey, key);
+  assert.equal(posts[0].password, '');
+  assert.equal('social-account-mode' in posts[0], false);
+  assert.equal(nodes['social-account-apikey'].value, '');
+  assert.equal(nodes['social-status'].textContent.includes(key), false);
+  assert.equal(nodes['social-powerup'].textContent, `1/${total} Power Ups Attained`);
+});
+
+test('the OPEN SAVED button follows its menu and opens each saved site of that kind', async () => {
+  const opened = [];
+  const { nodes } = mountLocationPanel({
+    accounts: [
+      { platform: 'x', userId: 'river.stone', passwordSaved: true, apiKeySaved: true },
+      { platform: 'life360', userId: 'circle.member', passwordSaved: true, apiKeySaved: false },
+    ],
+    storage: memoryStorage(),
+    geolocation: null,
+    placeFix: () => {},
+    clearFix: () => {},
+    openWindow: (url) => opened.push(url),
+  });
+  await tick();
+  assert.equal(nodes['social-open-saved'].textContent, 'OPEN ID & PASS SITES');
+  nodes['social-open-kind'].value = 'api';
+  nodes['social-open-kind'].fire('change');
+  assert.equal(nodes['social-open-saved'].textContent, 'OPEN API SITES');
+  nodes['social-open-saved'].click();
+  assert.deepEqual(opened, ['https://developer.x.com/']);
+  nodes['social-open-kind'].value = 'all';
+  nodes['social-open-kind'].fire('change');
+  assert.equal(nodes['social-open-saved'].textContent, 'OPEN ALL SAVED SITES');
+  opened.length = 0;
+  nodes['social-open-saved'].click();
+  assert.deepEqual(opened, ['https://x.com/', 'https://developer.x.com/', 'https://www.life360.com/']);
+  assert.match(nodes['social-status'].textContent, /Opened 3 saved sites/);
+  assert.equal(nodes['social-powerup'].textContent.startsWith('2/'), true);
+});
+
+test('HELP DELIVERY takes a kind and up to two entries, or a destination for Transportation', () => {
+  assert.deepEqual(normalizeHelpDelivery({ kind: 'medicine', items: [' Insulin ', 'Ventolin', 'Third'] }), {
+    ok: true,
+    value: { kind: 'medicine', items: ['Insulin', 'Ventolin'], destination: '' },
+  });
+  assert.equal(normalizeHelpDelivery({ kind: 'medicine', items: ['', ' '] }).ok, false);
+  assert.equal(normalizeHelpDelivery({ kind: 'food', items: ['x'.repeat(81)] }).ok, false);
+  assert.equal(normalizeHelpDelivery({ kind: 'drone', items: ['Pizza'] }).ok, false);
+  assert.deepEqual(normalizeHelpDelivery({ kind: 'transportation', destination: 'hospital', items: ['ignored'] }).value, {
+    kind: 'transportation',
+    items: [],
+    destination: 'hospital',
+  });
+  assert.equal(normalizeHelpDelivery({ kind: 'transportation', destination: 'airport' }).ok, false);
+  assert.equal(helpDeliverySummary({ kind: 'items', items: ['Heart Defib'] }), 'Items: Heart Defib');
+  assert.equal(
+    helpDeliverySummary({ kind: 'transportation', destination: 'home' }),
+    'Transportation: from current location to Home',
+  );
+  const storage = memoryStorage();
+  assert.equal(readHelpDelivery(storage), null);
+  writeHelpDelivery(storage, { kind: 'liquid', items: ['Water', 'Electrolytes'] });
+  assert.deepEqual(readHelpDelivery(storage), { kind: 'liquid', items: ['Water', 'Electrolytes'], destination: '' });
+  storage.setItem(SOCIAL_HELP_DELIVERY_KEY, '{not json');
+  assert.equal(readHelpDelivery(storage), null);
+  for (const kind of ['medicine', 'transportation', 'food', 'liquid', 'items']) {
+    assert.match(panelHtml, new RegExp(`<option value="${kind}">`));
+  }
+});
+
+test("HELP DELIVERY saves this computer's default and fills the form with it next time", async () => {
+  const storage = memoryStorage();
+  const first = mountLocationPanel({ accounts: [], storage, geolocation: null, placeFix: () => {}, clearFix: () => {} });
+  await tick();
+  assert.match(first.nodes['social-help-default'].textContent, /No default saved yet/);
+  first.nodes['social-help-kind'].value = 'transportation';
+  first.nodes['social-help-kind'].fire('change');
+  assert.equal(first.nodes['social-help-destination'].hidden, false);
+  assert.equal(first.nodes['social-help-entries'].hidden, true);
+  first.nodes['social-help-destination'].value = 'hospital';
+  first.nodes['social-help-save'].click();
+  assert.match(first.nodes['social-help-default'].textContent, /Transportation: from current location to Hospital/);
+  assert.match(first.nodes['social-help-default'].textContent, /under development/);
+  const second = mountLocationPanel({ accounts: [], storage, geolocation: null, placeFix: () => {}, clearFix: () => {} });
+  await tick();
+  assert.equal(second.nodes['social-help-kind'].value, 'transportation');
+  assert.equal(second.nodes['social-help-destination'].value, 'hospital');
+  second.nodes['social-help-kind'].value = 'medicine';
+  second.nodes['social-help-kind'].fire('change');
+  assert.equal(second.nodes['social-help-entries'].hidden, false);
+  assert.equal(second.nodes['social-help-item-1'].placeholder, 'Medication 1');
+  second.nodes['social-help-item-1'].value = 'Insulin';
+  second.nodes['social-help-save'].click();
+  assert.deepEqual(readHelpDelivery(storage), { kind: 'medicine', items: ['Insulin'], destination: '' });
 });

@@ -2,6 +2,14 @@ import { formatAskLogEntry, prependOutputLog } from './askOverview.js';
 import { closestCityForSearch, selectedPlaceLabel } from './locations.js';
 import {
   SOCIAL_ACCOUNT_PLATFORMS,
+  SOCIAL_GIG_HELP_NOTE,
+  SOCIAL_OPEN_SAVED_LABELS,
+  savedSiteUrls,
+  socialPowerUps,
+  SOCIAL_HELP_DELIVERY_KINDS,
+  helpDeliverySummary,
+  readHelpDelivery,
+  writeHelpDelivery,
   SOCIAL_LOCATION_OPTIONS,
   acceptDeviceFix,
   formatSocialSearchBody,
@@ -88,7 +96,17 @@ export class SocialMediaPanel {
     this._accountPlatform = doc.getElementById('social-account-platform');
     this._handle = doc.getElementById('social-account-handle');
     this._password = doc.getElementById('social-account-password');
+    this._apiKey = doc.getElementById('social-account-apikey');
+    this._openKind = doc.getElementById('social-open-kind');
+    this._openSaved = doc.getElementById('social-open-saved');
+    this._powerUp = doc.getElementById('social-powerup');
     this._accountList = doc.getElementById('social-account-list');
+    this._accountNote = doc.getElementById('social-account-note');
+    this._helpKind = doc.getElementById('social-help-kind');
+    this._helpDestination = doc.getElementById('social-help-destination');
+    this._helpEntries = doc.getElementById('social-help-entries');
+    this._helpItems = [doc.getElementById('social-help-item-1'), doc.getElementById('social-help-item-2')];
+    this._helpDefault = doc.getElementById('social-help-default');
     this._query = doc.getElementById('social-query');
     this._model = doc.getElementById('social-model');
     this._analysisPlatform = doc.getElementById('social-analyze-platform');
@@ -123,7 +141,17 @@ export class SocialMediaPanel {
     doc.getElementById('social-account-open')?.addEventListener('click', () => {
       this._open(this._accountPlatform?.value);
     });
-    this._accountPlatform?.addEventListener('change', () => this._showSavedUserId());
+    this._openKind?.addEventListener('change', () => this._paintOpenSaved());
+    this._helpKind?.addEventListener('change', () => this._paintHelpKind());
+    doc.getElementById('social-help-save')?.addEventListener('click', () => this._saveHelpDelivery());
+    this._loadHelpDelivery();
+    this._openSaved?.addEventListener('click', () => this._openSavedSites());
+    this._paintOpenSaved();
+    this._accountPlatform?.addEventListener('change', () => {
+      this._showSavedUserId();
+      this._showAccountNote();
+    });
+    this._showAccountNote();
     const saveOnEnter = (event) => {
       if (event.key !== 'Enter') return;
       event.preventDefault();
@@ -262,7 +290,7 @@ export class SocialMediaPanel {
       this._setLocationNote(
         hidden
           ? 'Live position is hidden.'
-          : 'A hooked-up account that shares location displays live position on the map.',
+          : 'A hooked-up account that shares location displays live position on the map. If allowed by 3rd Party.',
       );
     }
   }
@@ -324,6 +352,7 @@ export class SocialMediaPanel {
         label: platform.label,
         userId: row.userId,
         passwordSaved: row.passwordSaved === true,
+        apiKeySaved: row.apiKeySaved === true,
         vault: true,
       });
     }
@@ -345,6 +374,7 @@ export class SocialMediaPanel {
   _renderAccounts() {
     const list = this._accountList;
     const doc = this._doc;
+    this._paintPowerUps();
     if (!list || !doc) return;
     list.replaceChildren();
     const rows = this._accountRows();
@@ -359,7 +389,7 @@ export class SocialMediaPanel {
       const item = doc.createElement('li');
       const name = doc.createElement('span');
       name.textContent = row.vault
-        ? `${row.label} · ${row.userId}${row.passwordSaved ? ' · password saved' : ''}`
+        ? `${row.label}${row.userId ? ` · ${row.userId}` : ''}${row.passwordSaved ? ' · password saved' : ''}${row.apiKeySaved ? ' · API key saved' : ''}`
         : `${row.label} · @${row.userId}`;
       const remove = doc.createElement('button');
       remove.type = 'button';
@@ -638,10 +668,106 @@ export class SocialMediaPanel {
     );
   }
 
+  /** A gig-economy or delivery platform says its HELP use is still under development. */
+  _showAccountNote() {
+    if (!this._accountNote) return;
+    const platform = SOCIAL_ACCOUNT_PLATFORMS.find((item) => item.id === this._accountPlatform?.value);
+    const gig = platform?.gig === true;
+    this._accountNote.hidden = !gig;
+    this._accountNote.textContent = gig ? SOCIAL_GIG_HELP_NOTE : '';
+  }
+
+  /** One Power Up per saved login and per saved API key, out of every option in the menu. */
+  _paintPowerUps() {
+    if (this._powerUp) this._powerUp.textContent = socialPowerUps(this._vault).label;
+  }
+
+  /** Transportation picks a destination; every other kind takes two entries. */
+  _paintHelpKind() {
+    const kind = SOCIAL_HELP_DELIVERY_KINDS.find((item) => item.id === this._helpKind?.value) || SOCIAL_HELP_DELIVERY_KINDS[0];
+    const transport = Boolean(kind.destinations);
+    if (this._helpDestination) this._helpDestination.hidden = !transport;
+    if (this._helpEntries) this._helpEntries.hidden = transport;
+    this._helpItems.forEach((input, index) => {
+      if (!input || !kind.placeholders) return;
+      input.placeholder = kind.placeholders[index];
+      input.setAttribute?.('aria-label', kind.placeholders[index]);
+    });
+  }
+
+  _paintHelpDefault(value) {
+    if (!this._helpDefault) return;
+    const line = helpDeliverySummary(value);
+    this._helpDefault.textContent = line
+      ? `My default: ${line}. Sending HELP through these platforms is under development.`
+      : 'No default saved yet. Sending HELP through these platforms is under development.';
+  }
+
+  /** The saved default fills the form, so it is what a later send starts from. */
+  _loadHelpDelivery() {
+    const saved = readHelpDelivery(this._browserStorage());
+    if (saved && this._helpKind) {
+      this._helpKind.value = saved.kind;
+      if (this._helpDestination && saved.destination) this._helpDestination.value = saved.destination;
+      this._helpItems.forEach((input, index) => {
+        if (input) input.value = saved.items[index] || '';
+      });
+    }
+    this._paintHelpKind();
+    this._paintHelpDefault(saved);
+  }
+
+  _saveHelpDelivery() {
+    const input = {
+      kind: this._helpKind?.value,
+      destination: this._helpDestination?.value,
+      items: this._helpItems.map((field) => field?.value ?? ''),
+    };
+    let saved;
+    try {
+      saved = writeHelpDelivery(this._browserStorage(), input);
+    } catch {
+      this._setStatus('This browser is not keeping a default.');
+      return;
+    }
+    if (!saved.ok) {
+      this._setStatus(saved.error);
+      return;
+    }
+    this._paintHelpDefault(saved.value);
+    this._setStatus('Saved your HELP DELIVERY default on this computer.');
+  }
+
+  /** OPEN SAVED is named for the sites its menu picks. */
+  _paintOpenSaved() {
+    if (!this._openSaved) return;
+    const kind = this._openKind?.value || 'login';
+    this._openSaved.textContent = SOCIAL_OPEN_SAVED_LABELS[kind] || SOCIAL_OPEN_SAVED_LABELS.login;
+  }
+
+  /** Opens each saved site of the chosen kind in its own tab. */
+  _openSavedSites() {
+    const kind = this._openKind?.value || 'login';
+    const sites = savedSiteUrls(this._vault, kind);
+    if (!sites.length) {
+      this._setStatus('No saved site of that kind yet.');
+      return;
+    }
+    const open = this._openWindow || globalThis.open;
+    for (const site of sites) open?.(site.url, '_blank', 'noopener,noreferrer');
+    const count = `${sites.length} saved ${sites.length === 1 ? 'site' : 'sites'}`;
+    this._setStatus(
+      sites.length === 1
+        ? `Opened ${count}.`
+        : `Opened ${count}. If fewer tabs appeared, allow pop-ups for this page.`,
+    );
+  }
+
   _showSavedUserId() {
     const row = this._vault.find((item) => item.platform === this._accountPlatform?.value);
     if (this._handle) this._handle.value = row?.userId || '';
     if (this._password) this._password.value = '';
+    if (this._apiKey) this._apiKey.value = '';
   }
 
   _publicAccounts() {
@@ -677,6 +803,7 @@ export class SocialMediaPanel {
           platform: row.platform,
           userId: row.userId,
           passwordSaved: row.passwordSaved === true,
+          apiKeySaved: row.apiKeySaved === true,
         });
       }
       this._renderAccounts();
@@ -713,11 +840,14 @@ export class SocialMediaPanel {
   }
 
   async _saveAccount() {
+    // What is typed says what this save is: a login, an API key, or both.
     const password = this._password?.value ?? '';
-    if (!password) {
+    const apiKey = (this._apiKey?.value ?? '').trim();
+    if (!password && !apiKey) {
       this._saveHandle();
       return;
     }
+    const mode = password && apiKey ? 'both' : password ? 'login' : 'api';
     if (this._saving) return;
     this._saving = true;
     const platform = this._accountPlatform?.value;
@@ -728,7 +858,7 @@ export class SocialMediaPanel {
         response = await this._request(ACCOUNTS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ platform, userId, password }),
+          body: JSON.stringify({ platform, userId, password, apiKey, mode }),
         });
       } catch {
         this._setStatus('This computer did not keep that login.');
@@ -737,7 +867,8 @@ export class SocialMediaPanel {
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.ok || typeof data.userId !== 'string') {
         const error = String(data?.error || 'This computer did not keep that login.');
-        this._setStatus(error.includes(password) ? 'This computer did not keep that login.' : error);
+        const leaks = (password && error.includes(password)) || (apiKey && error.includes(apiKey));
+        this._setStatus(leaks ? 'This computer did not keep that login.' : error);
         return;
       }
       const handle = normalizeSocialHandle(data.userId);
@@ -752,12 +883,18 @@ export class SocialMediaPanel {
         }
       }
       this._vault = this._vault.filter((row) => row.platform !== platform);
-      this._vault.push({ platform, userId: data.userId, passwordSaved: true });
+      this._vault.push({
+        platform,
+        userId: data.userId,
+        passwordSaved: typeof data.passwordSaved === 'boolean' ? data.passwordSaved : mode !== 'api',
+        apiKeySaved: typeof data.apiKeySaved === 'boolean' ? data.apiKeySaved : mode !== 'login',
+      });
       if (this._password) this._password.value = '';
+      if (this._apiKey) this._apiKey.value = '';
       if (this._handle) this._handle.value = '';
       this._renderAccounts();
       this._syncLiveLocation();
-      this._setStatus('Saved that login encrypted on this computer.');
+      this._setStatus(mode === 'api' ? 'Saved that API key encrypted on this computer.' : mode === 'both' ? 'Saved that login and API key encrypted on this computer.' : 'Saved that login encrypted on this computer.');
     } finally {
       this._saving = false;
     }

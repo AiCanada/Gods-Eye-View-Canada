@@ -35,6 +35,7 @@ config/.local-integrity.json.*.tmp
 config/local-integrity.key
 config/.local-integrity.key.*.tmp
 config/social-accounts.json
+config/road-cctv-keys.json
 config/.social-accounts.json.*.tmp
 config/social-accounts.key
 config/.social-accounts.key.*.tmp
