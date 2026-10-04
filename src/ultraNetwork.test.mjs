@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import crypto from 'node:crypto';
 import {
   ULTRA_RELEASE_WINDOW_MS,
   ULTRA_CLOCK_MARGIN_MS,
@@ -41,8 +42,9 @@ import {
   ultraTailnetTarget,
   ultraHolderReachable,
   parseUltraHelpLink,
+  parseUltraHandout,
   ultraNetworkPollTarget,
-  ultraHelpLinkFor,
+  ultraHelpHandout,
   ultraTailnetBase,
   ultraDirectoryUrl,
   displayDirectoryUrl,
@@ -74,6 +76,9 @@ import {
   ultraDirectoryPolicyMac,
   ultraRelayPolicyMac,
   ultraFeedsPolicyMac,
+  ultraDirectoryPolicyMacs,
+  ultraRelayPolicyMacs,
+  ultraFeedsPolicyMacs,
   normalizeUltraDirectory,
   mergeUltraDirectory,
   githubDirectoryApi,
@@ -86,12 +91,18 @@ import {
   ultraNeedsGeocode,
 } from '../server/shared/ultraNetwork.mjs';
 import {
+  ULTRA_CUSTOM_SKILL_LIMIT,
+  ULTRA_SKILL_SETS,
   composeUltraToken,
   newUltraToken,
   ultraTokenHash,
   sealUltraToken,
   openUltraToken,
   normalizeUltraInboxRecord,
+  stampUltraInboxPolicy,
+  ultraInboxPolicyState,
+  ultraPolicyMacs,
+  ultraTokenSkillFields,
 } from '../server/shared/ultraTokens.mjs';
 import { ultraHelpMessage } from './ultraHelp.mjs';
 import { securityFeedPolicyRecords } from './deviceFeedsCore.mjs';
@@ -175,6 +186,33 @@ function longLink(total) {
   if (host.endsWith('.')) host = host.slice(0, -1) + 'x';
   return prefix + host + suffix;
 }
+
+/** A length-prefixed field, as every policy canonical writes one. */
+const field = (value) =>
+  `${Buffer.byteLength(String(value ?? ''), 'utf8')}:${value ?? ''}`;
+
+/** A check exactly as the build before key separation wrote it: HMAC under the master key itself. */
+const legacyMac = (lines, key = KEY) =>
+  crypto
+    .createHmac('sha256', key)
+    .update(lines.join('\n'), 'utf8')
+    .digest('hex');
+
+/** A home-list seal from before key separation: v 1, AES-GCM under the master key itself, the network AAD. */
+function legacyNetworkSeal(token, key, id, iv = Buffer.alloc(12, 3)) {
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  cipher.setAAD(Buffer.from(ULTRA_NETWORK_AAD + id, 'utf8'));
+  const data = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
+  return {
+    v: 1,
+    iv: iv.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64'),
+    data: data.toString('base64'),
+  };
+}
+
+/** The hidden characters a row must never carry: zero-width and directional marks, isolates and the byte-order mark. */
+const HIDDEN = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/;
 
 test('the constants are the numbers the design quotes', () => {
   assert.equal(ULTRA_RELEASE_WINDOW_MS, 14_400_000);
@@ -446,10 +484,20 @@ test('parseUltraHelpLink takes a whole help link apart and refuses anything else
     { code: 'xcoast-guard', label: 'Coast Guard' },
   ]);
   assert.equal(parseUltraHelpLink(link(SAM, skilled)).token, skilled);
-  assert.equal(
-    ultraNetworkPollTarget(link(SAM, skilled)).url,
-    `${SAM}/ultra/help/${skilled}/network`,
-  );
+  assert.deepEqual(parseUltraHandout({ address: SAM, token: skilled }), {
+    scheme: 'https',
+    host: 'sam.tail9.ts.net',
+    hostname: 'sam.tail9.ts.net',
+    base: SAM,
+    token: skilled,
+  });
+  // A skilled token rides the header like any other; the URL never changes.
+  assert.deepEqual(ultraNetworkPollTarget({ address: SAM, token: skilled }), {
+    url: `${SAM}/ultra/help/network`,
+    host: 'sam.tail9.ts.net',
+    base: SAM,
+    token: skilled,
+  });
   const hidden = composeUltraToken(T2, [{ code: 'dr', label: 'Doctor' }], {
     encrypt: true,
     key: KEY,
@@ -513,36 +561,122 @@ test('ultraTailnetBase picks the address a help-network link must carry, never a
     assert.equal(ultraTailnetBase(none), '', JSON.stringify(none));
 });
 
-test('ultraNetworkPollTarget and ultraHelpLinkFor build the only URLs a link is used for', () => {
-  assert.deepEqual(ultraNetworkPollTarget(link(SAM, T1)), {
-    url: SAM + '/ultra/help/' + T1 + '/network',
+test('parseUltraHandout takes an address and a token apart and refuses anything joined, bare or short', () => {
+  const parts = {
+    scheme: 'https',
+    host: 'sam.tail9.ts.net',
+    hostname: 'sam.tail9.ts.net',
+    base: SAM,
+    token: T1,
+  };
+  assert.deepEqual(parseUltraHandout({ address: SAM, token: T1 }), parts);
+  assert.deepEqual(parseUltraHandout({ address: SAM + '/', token: T1 }), parts);
+  assert.deepEqual(
+    parseUltraHandout({ address: ' ' + SAM + ' ', token: ' ' + T1 + '\n' }),
+    parts,
+  );
+  // A home-list entry's own field names do too.
+  assert.deepEqual(parseUltraHandout({ base: SAM, token: T1 }), parts);
+  assert.deepEqual(parseUltraHandout({ address: ANN, token: T2 }), {
+    scheme: 'http',
+    host: '100.64.1.2:44173',
+    hostname: '100.64.1.2',
+    base: ANN,
+    token: T2,
+  });
+  // The host is not judged here; the tailnet rule is, separately.
+  const publicHandout = parseUltraHandout({
+    address: 'https://example.com',
+    token: T1,
+  });
+  assert.equal(publicHandout.host, 'example.com');
+  assert.equal(ultraTailnetTarget(publicHandout), false);
+  for (const bad of [
+    { address: link(SAM, T1), token: T1 },
+    { address: link(SAM, T1) },
+    { address: SAM + '/path', token: T1 },
+    { address: SAM + '?x=1', token: T1 },
+    { address: SAM + '#x', token: T1 },
+    { address: 'https://u:p@sam.tail9.ts.net', token: T1 },
+    { address: 'ftp://sam.tail9.ts.net', token: T1 },
+    { address: 'sam.tail9.ts.net', token: T1 },
+    { address: SAM, token: T1.slice(5) },
+    { address: SAM, token: 'uht1.' + 'A'.repeat(42) },
+    { address: SAM, token: T1 + ' ' + T2 },
+    { address: SAM, token: '' },
+    { address: SAM, token: null },
+    { address: SAM, token: [T1] },
+    { address: SAM },
+    { token: T1 },
+    { address: '', token: T1 },
+    { address: null, token: T1 },
+    { address: ['x'], token: T1 },
+    { address: 'x'.repeat(520), token: T1 },
+    {},
+    undefined,
+  ]) {
+    assert.equal(parseUltraHandout(bad), null, JSON.stringify(bad));
+  }
+});
+
+test('ultraNetworkPollTarget names the address and the fixed route; the token comes back beside it, never inside it', () => {
+  assert.deepEqual(ultraNetworkPollTarget({ address: SAM, token: T1 }), {
+    url: SAM + '/ultra/help/network',
     host: 'sam.tail9.ts.net',
     base: SAM,
+    token: T1,
   });
-  assert.deepEqual(ultraNetworkPollTarget(link(ANN, T2) + '/'), {
-    url: ANN + '/ultra/help/' + T2 + '/network',
+  assert.deepEqual(ultraNetworkPollTarget({ base: ANN + '/', token: T2 }), {
+    url: ANN + '/ultra/help/network',
     host: '100.64.1.2:44173',
     base: ANN,
+    token: T2,
   });
+  // Two tokens handed out by one machine poll one URL.
+  assert.equal(
+    ultraNetworkPollTarget({ address: SAM, token: T1 }).url,
+    ultraNetworkPollTarget({ address: SAM, token: T2 }).url,
+  );
+  assert.ok(
+    !ultraNetworkPollTarget({ address: SAM, token: T1 }).url.includes(T1),
+  );
   for (const bad of [
-    link('https://example.com', T1),
-    link('http://sam.tail9.ts.net', T1),
-    link('http://192.168.1.5:44173', T1),
-    link('https://127.0.0.1', T1),
+    { address: 'https://example.com', token: T1 },
+    { address: 'http://sam.tail9.ts.net', token: T1 },
+    { address: 'http://192.168.1.5:44173', token: T1 },
+    { address: 'https://127.0.0.1', token: T1 },
+    { address: SAM, token: T1.slice(5) },
+    { address: link(SAM, T1), token: T1 },
+    // A legacy joined link is not an entry: nothing here reads one.
+    link(SAM, T1),
     T1,
     '',
     null,
+    undefined,
   ]) {
-    assert.equal(ultraNetworkPollTarget(bad), null, String(bad));
+    assert.equal(ultraNetworkPollTarget(bad), null, JSON.stringify(bad));
   }
-  assert.equal(ultraHelpLinkFor(SAM, T1), link(SAM, T1));
-  assert.equal(ultraHelpLinkFor(SAM + '/', T1), link(SAM, T1));
-  assert.equal(ultraHelpLinkFor(ANN, T2), link(ANN, T2));
-  assert.equal(ultraHelpLinkFor(SAM + '/path', T1), '');
-  assert.equal(ultraHelpLinkFor('https://u:p@sam.tail9.ts.net', T1), '');
-  assert.equal(ultraHelpLinkFor(SAM, T1.slice(5)), '');
-  assert.equal(ultraHelpLinkFor('', T1), '');
-  assert.equal(ultraHelpLinkFor(null, null), '');
+});
+
+test('ultraHelpHandout is the address and the token side by side, or null', () => {
+  assert.deepEqual(ultraHelpHandout(SAM, T1), { address: SAM, token: T1 });
+  assert.deepEqual(ultraHelpHandout(SAM + '/', T1), {
+    address: SAM,
+    token: T1,
+  });
+  assert.deepEqual(ultraHelpHandout(ANN, T2), { address: ANN, token: T2 });
+  assert.ok(!JSON.stringify(ultraHelpHandout(SAM, T1)).includes('/ultra/help'));
+  for (const [base, token] of [
+    [SAM + '/path', T1],
+    ['https://u:p@sam.tail9.ts.net', T1],
+    [link(SAM, T1), T1],
+    [SAM, T1.slice(5)],
+    ['', T1],
+    [SAM, ''],
+    [null, null],
+  ]) {
+    assert.equal(ultraHelpHandout(base, token), null, `${base} ${token}`);
+  }
 });
 
 test('ultraDirectoryUrl keeps an https address anywhere public and rewrites a GitHub page to raw', () => {
@@ -1706,6 +1840,17 @@ test('ultraReleaseRowUpdate moves a row with the peer and re-stamps it only past
 test('normalizeUltraNetworkStore keeps well-formed entries, one per token, at most 200', () => {
   const good = entry();
   assert.deepEqual(normalizeUltraNetworkEntry(good), good);
+  assert.equal(good.sealed.v, 2);
+  // A seal from before key separation (v 1, under the master key itself)
+  // is kept as v 1: rewriting the version would make it unopenable, and it
+  // still opens, so the link is still polled.
+  const oldSeal = legacyNetworkSeal(T1, KEY, good.id);
+  const old = { ...good, sealed: oldSeal };
+  assert.deepEqual(normalizeUltraNetworkEntry(old), old);
+  assert.equal(normalizeUltraNetworkEntry(old).sealed.v, 1);
+  assert.equal(openUltraNetworkToken(oldSeal, KEY, { id: good.id }), T1);
+  assert.equal(ultraNetworkPollAllowed(old, [old], KEY), true);
+  assert.deepEqual(ultraNetworkTamperFlags([old, good], KEY), [false, false]);
   const store = normalizeUltraNetworkStore({
     version: 1,
     me: { name: '  Jeff  ' },
@@ -1726,7 +1871,17 @@ test('normalizeUltraNetworkStore keeps well-formed entries, one per token, at mo
     { ...good, hash: good.hash.toUpperCase() },
     { ...good, sealed: null },
     { ...good, sealed: 'text' },
-    { ...good, sealed: { ...good.sealed, v: 2 } },
+    { ...good, sealed: { ...good.sealed, v: 3 } },
+    { ...good, sealed: { ...good.sealed, v: 0 } },
+    { ...good, sealed: { ...good.sealed, v: '2' } },
+    {
+      ...good,
+      sealed: {
+        iv: good.sealed.iv,
+        tag: good.sealed.tag,
+        data: good.sealed.data,
+      },
+    },
     {
       ...good,
       sealed: { ...good.sealed, iv: Buffer.alloc(16).toString('base64') },
@@ -1909,6 +2064,37 @@ test('a home-list check covers the base, and a rewritten base is not polled', ()
   assert.equal(ultraNetworkPolicyState(stamped, KEY), 'ok');
   const moved = { ...stamped, base: 'https://evil.tail9.ts.net' };
   assert.equal(ultraNetworkPolicyState(moved, KEY), 'bad');
+  // The check written now is the one under the HKDF MAC subkey, as
+  // ultraTokens makes it; a check the build before key separation wrote,
+  // under the master key itself, still verifies, fails the same rewritten
+  // base, and stamping again writes the derived one.
+  const canonical = [
+    'ultra-network-policy:v1',
+    field(sam.id),
+    field(sam.base),
+    field(sam.hash),
+  ];
+  assert.equal(
+    stamped.policyMac,
+    ultraPolicyMacs(KEY, canonical.join('\n'))[0],
+  );
+  const oldMac = legacyMac(canonical);
+  assert.notEqual(oldMac, stamped.policyMac);
+  assert.equal(
+    ultraNetworkPolicyState({ ...sam, policyMac: oldMac }, KEY),
+    'ok',
+  );
+  assert.equal(
+    ultraNetworkPolicyState({ ...moved, policyMac: oldMac }, KEY),
+    'bad',
+  );
+  assert.equal(
+    stampUltraNetworkPolicy({ ...sam, policyMac: oldMac }, KEY).policyMac,
+    stamped.policyMac,
+  );
+  assert.equal(ultraNetworkPolicyState(stamped, Buffer.alloc(16)), 'bad');
+  assert.equal(ultraNetworkPolicyState(stamped, null), 'bad');
+  assert.equal(ultraNetworkPolicyMac(stamped, Buffer.alloc(16)), '');
   assert.equal(ultraNetworkPollAllowed(moved, [moved], KEY), false);
   const ann = stampUltraNetworkPolicy(
     entry({ id: 'n-0000000000000002', token: T2, base: ANN }),
@@ -1932,6 +2118,20 @@ test('a home-list check covers the base, and a rewritten base is not polled', ()
   assert.equal('tampered' in row, false);
   assert.deepEqual(ultraNetworkTamperFlags([moved, ann], KEY), [true, false]);
   assert.deepEqual(ultraNetworkTamperFlags([bare, ann], KEY), [true, false]);
+  // A stored hash that is not the opened token's, or not hex at all, is
+  // refused without a throw: the compare is the constant-time one.
+  const wrongHash = { ...bare, hash: ultraTokenHash(T2) };
+  assert.equal(ultraNetworkPollAllowed(wrongHash, [wrongHash], KEY), false);
+  assert.deepEqual(ultraNetworkTamperFlags([wrongHash, ann], KEY), [
+    true,
+    false,
+  ]);
+  const upperHash = { ...bare, hash: bare.hash.toUpperCase() };
+  assert.equal(ultraNetworkPollAllowed(upperHash, [upperHash], KEY), false);
+  assert.deepEqual(ultraNetworkTamperFlags([upperHash, ann], KEY), [
+    true,
+    false,
+  ]);
   assert.deepEqual(ultraNetworkTamperFlags([moved], Buffer.alloc(32, 1)), [
     false,
   ]);
@@ -1985,6 +2185,98 @@ test('the helpers-file check covers the number, the helpers and the releases, no
     ultraHelpStorePolicyState({ ...store, policyMac: 'nope' }, KEY),
     'bad',
   );
+  // The owner's standing needs are covered once the file has them: a
+  // changed item, a changed kind or needs taken out all fail. A file with
+  // no needs, or unusable ones, keeps the check it had, so an older
+  // helpers file still verifies.
+  const needs = { kind: 'medicine', items: ['Insulin'], destination: '' };
+  const withNeeds = { ...store, owner: { ...store.owner, needs } };
+  const needsMac = ultraHelpStorePolicyMac(withNeeds, KEY);
+  assert.notEqual(needsMac, policyMac);
+  assert.equal(
+    ultraHelpStorePolicyMac(
+      { ...store, owner: { ...store.owner, needs: null } },
+      KEY,
+    ),
+    policyMac,
+  );
+  assert.equal(
+    ultraHelpStorePolicyMac(
+      { ...store, owner: { ...store.owner, needs: { kind: 'nope' } } },
+      KEY,
+    ),
+    policyMac,
+  );
+  assert.equal(
+    ultraHelpStorePolicyState({ ...withNeeds, policyMac: needsMac }, KEY),
+    'ok',
+  );
+  assert.equal(
+    ultraHelpStorePolicyState(
+      {
+        ...withNeeds,
+        owner: { ...withNeeds.owner, needs: { ...needs, items: ['Morphine'] } },
+        policyMac: needsMac,
+      },
+      KEY,
+    ),
+    'bad',
+  );
+  assert.equal(
+    ultraHelpStorePolicyState(
+      {
+        ...withNeeds,
+        owner: {
+          ...withNeeds.owner,
+          needs: { kind: 'transportation', destination: 'home' },
+        },
+        policyMac: needsMac,
+      },
+      KEY,
+    ),
+    'bad',
+  );
+  assert.equal(
+    ultraHelpStorePolicyState({ ...store, policyMac: needsMac }, KEY),
+    'bad',
+  );
+  // A check the build before key separation wrote, under the master key
+  // itself, still verifies and still fails a changed number.
+  const oldMac = legacyMac([
+    'ultra-help-policy:v1',
+    field('+15065550199'),
+    '1',
+    field('other-+15065550100'),
+    field('Mum'),
+    field('+15065550100'),
+    field('other'),
+    '1',
+    field('security-van'),
+    String(NOW),
+    String(NOW + 1000),
+    '45.27',
+    '-66.06',
+    String(NOW),
+    String(NOW),
+    field('fire'),
+  ]);
+  assert.notEqual(oldMac, policyMac);
+  assert.equal(
+    ultraHelpStorePolicyState({ ...store, policyMac: oldMac }, KEY),
+    'ok',
+  );
+  assert.equal(
+    ultraHelpStorePolicyState(
+      { ...store, owner: { number: '+15065550100' }, policyMac: oldMac },
+      KEY,
+    ),
+    'bad',
+  );
+  assert.equal(
+    ultraHelpStorePolicyState({ ...store, policyMac }, Buffer.alloc(16)),
+    'bad',
+  );
+  assert.equal(ultraHelpStorePolicyMac(store, Buffer.alloc(16)), '');
 });
 
 test('the directory, relay and phone-package checks cover what would be sent', () => {
@@ -2132,18 +2424,72 @@ test('the directory, relay and phone-package checks cover what would be sent', (
     ),
     'bad',
   );
+  // Each *PolicyMacs list is the derived check (what is written) and then
+  // the one the master key itself wrote before the split. The state takes
+  // the list or the derived check alone; a check from before the split
+  // verifies only through the list, which is what the server passes.
+  const feedMacs = ultraFeedsPolicyMacs(records, KEY);
+  assert.equal(feedMacs.length, 2);
+  assert.equal(feedMacs[0], mac);
+  assert.notEqual(feedMacs[1], mac);
+  assert.equal(ultraOutboundPolicyState(mac, feedMacs, KEY), 'ok');
+  assert.equal(ultraOutboundPolicyState(feedMacs[1], feedMacs, KEY), 'ok');
+  assert.equal(ultraOutboundPolicyState(feedMacs[1], mac, KEY), 'bad');
+  assert.equal(ultraOutboundPolicyState(mac, [], KEY), 'bad');
+  assert.equal(ultraOutboundPolicyState(mac, ['nope', mac], KEY), 'ok');
+  assert.equal(ultraOutboundPolicyState(mac, [7, null], KEY), 'bad');
+  assert.equal(
+    ultraOutboundPolicyState(mac, feedMacs, Buffer.alloc(16)),
+    'bad',
+  );
+  assert.deepEqual(ultraFeedsPolicyMacs(records, Buffer.alloc(16)), []);
+  assert.equal(ultraFeedsPolicyMac(records, Buffer.alloc(16)), '');
+  const directoryMaterial = {
+    url: 'https://raw.githubusercontent.com/group/repo/main/d.json',
+    writeToken: 'github_pat_fixture',
+  };
+  const directoryMacs = ultraDirectoryPolicyMacs(directoryMaterial, KEY);
+  assert.equal(directoryMacs[0], directory);
+  assert.equal(
+    directoryMacs[1],
+    legacyMac([
+      'ultra-directory-policy:v1',
+      field(directoryMaterial.url),
+      field(directoryMaterial.writeToken),
+    ]),
+  );
+  assert.equal(
+    ultraOutboundPolicyState(directoryMacs[1], directoryMacs, KEY),
+    'ok',
+  );
+  const relayMacs = ultraRelayPolicyMacs(relay, KEY);
+  assert.equal(relayMacs[0], ultraRelayPolicyMac(relay, KEY));
+  assert.equal(
+    relayMacs[1],
+    legacyMac([
+      'ultra-relay-policy:v1',
+      field(relay.sid),
+      field(relay.auth),
+      field(relay.from),
+      field(relay.url),
+      field(relay.token),
+    ]),
+  );
+  assert.equal(ultraOutboundPolicyState(relayMacs[1], relayMacs, KEY), 'ok');
 });
 
-test('normalizeUltraDirectory judges every element on its own and keeps the first of a repeated token', () => {
+test('normalizeUltraDirectory judges every element on its own, in either shape, and keeps the first of a repeated token', () => {
   const document = {
     version: 1,
     note: 'ignored',
     entries: [
-      { name: 'Sam', link: link(SAM, T1) },
+      // The shape this feature writes: the address and the token apart.
+      { name: 'Sam', address: SAM, token: T1 },
+      // The legacy shape a hand-kept file may still carry.
       { name: 'Ann', link: link(ANN, T2), extra: 'ignored' },
       7,
-      { name: '   ', link: link('https://kim.tail9.ts.net', T3) },
-      { name: 'Eve', link: link('https://example.com', T4) },
+      { name: '   ', address: 'https://kim.tail9.ts.net', token: T3 },
+      { name: 'Eve', address: 'https://example.com', token: T4 },
       { name: 'Lan', link: link('http://192.168.1.5:44173', T5) },
       { name: 'Sam again', link: link('https://other.tail9.ts.net', T1) },
       'junk',
@@ -2153,36 +2499,74 @@ test('normalizeUltraDirectory judges every element on its own and keeps the firs
   assert.equal(out.unreadable, false);
   assert.equal(out.total, 8);
   assert.equal(out.skipped, 5);
-  assert.deepEqual(out.entries, [
-    {
-      name: 'Sam',
-      link: link(SAM, T1),
-      token: T1,
-      hash: ultraTokenHash(T1),
-      host: 'sam.tail9.ts.net',
-      base: SAM,
-    },
-    {
-      name: 'Ann',
-      link: link(ANN, T2),
-      token: T2,
-      hash: ultraTokenHash(T2),
-      host: '100.64.1.2:44173',
-      base: ANN,
-    },
-  ]);
+  const sam = {
+    name: 'Sam',
+    address: SAM,
+    token: T1,
+    hash: ultraTokenHash(T1),
+    host: 'sam.tail9.ts.net',
+    base: SAM,
+  };
+  const ann = {
+    name: 'Ann',
+    address: ANN,
+    token: T2,
+    hash: ultraTokenHash(T2),
+    host: '100.64.1.2:44173',
+    base: ANN,
+  };
+  assert.deepEqual(out.entries, [sam, ann]);
+  assert.ok(
+    !JSON.stringify(out).includes('/ultra/help/'),
+    'an accepted entry never carries a joined link',
+  );
+  // The same elements in the other shape read the same.
+  assert.deepEqual(
+    normalizeUltraDirectory([
+      { name: 'Sam', link: link(SAM, T1) },
+      { name: 'Ann', address: ANN, token: T2 },
+    ]).entries,
+    [sam, ann],
+  );
   // A bare array is the same document; a trailing slash and whitespace are tolerated.
   assert.deepEqual(normalizeUltraDirectory(document.entries), out);
   assert.equal(
     normalizeUltraDirectory([
       { name: ' Sam ', link: ' ' + link(SAM, T1) + '/ ' },
-    ]).entries[0].link,
-    link(SAM, T1),
+    ]).entries[0].address,
+    SAM,
+  );
+  assert.equal(
+    normalizeUltraDirectory([
+      { name: ' Sam ', address: ' ' + SAM + '/ ', token: ` ${T1} ` },
+    ]).entries[0].address,
+    SAM,
+  );
+  // An element carrying both shapes is read by its address and token; the
+  // link beside them is not consulted, so a stale one cannot redirect it.
+  assert.equal(
+    normalizeUltraDirectory([
+      {
+        name: 'Sam',
+        address: SAM,
+        token: T1,
+        link: link('https://x.ts.net', T2),
+      },
+    ]).entries[0].token,
+    T1,
+  );
+  assert.deepEqual(
+    normalizeUltraDirectory([
+      { name: 'Sam', address: SAM, token: 'nope', link: link(SAM, T1) },
+    ]).entries,
+    [],
+    'a bad address or token is not rescued by a legacy link beside it',
   );
   // Other junk on an element is refused with it: a missing link, a link that is not a string, a name that is not text.
   for (const item of [
     { name: 'Sam' },
     { link: link(SAM, T1) },
+    { address: SAM, token: T1 },
     { name: 'Sam', link: [link(SAM, T1)] },
     { name: { x: 1 }, link: link(SAM, T1) },
     { name: 'Sam', link: link(SAM, T1) + '?x' },
@@ -2191,6 +2575,14 @@ test('normalizeUltraDirectory judges every element on its own and keeps the firs
     { name: 'Sam', link: link('https://10.0.0.7', T1) },
     { name: 'Sam', link: link('https://169.254.1.1', T1) },
     { name: 'Sam', link: T1 },
+    { name: 'Sam', address: link(SAM, T1), token: T1 },
+    { name: 'Sam', address: SAM },
+    { name: 'Sam', token: T1 },
+    { name: 'Sam', address: 'http://sam.tail9.ts.net', token: T1 },
+    { name: 'Sam', address: 'https://example.com', token: T1 },
+    { name: 'Sam', address: 'https://10.0.0.7', token: T1 },
+    { name: 'Sam', address: SAM, token: T1.slice(5) },
+    { name: 'Sam', address: SAM, token: [T1] },
     null,
     [],
     [{ name: 'Sam', link: link(SAM, T1) }],
@@ -2734,47 +3126,70 @@ test('githubDirectoryApi maps a raw or page URL to the contents API and nothing 
   }
 });
 
-test('ultraDirectoryEntry is exactly a name and a link', () => {
+test('ultraDirectoryEntry is exactly a name, an address and a token, never joined', () => {
   const mine = ultraDirectoryEntry({
     name: 'Jeff (Van 7)',
-    link: link(MINE, MY),
+    address: MINE,
+    token: MY,
   });
-  assert.deepEqual(Object.keys(mine), ['name', 'link']);
-  assert.deepEqual(mine, { name: 'Jeff (Van 7)', link: link(MINE, MY) });
+  assert.deepEqual(Object.keys(mine), ['name', 'address', 'token']);
+  assert.deepEqual(mine, { name: 'Jeff (Van 7)', address: MINE, token: MY });
   assert.deepEqual(
     Object.keys(
-      ultraDirectoryEntry({ name: 'x', link: 'y', number: '+1', lat: 1 }),
+      ultraDirectoryEntry({
+        name: 'x',
+        address: 'y',
+        token: 'z',
+        link: 'joined',
+        number: '+1',
+        lat: 1,
+      }),
     ),
-    ['name', 'link'],
+    ['name', 'address', 'token'],
   );
-  assert.equal(ultraDirectoryEntry({ name: '', link: 'y' }).name, 'Ultra');
-  assert.equal(ultraDirectoryEntry({ link: 'y' }).name, 'Ultra');
   assert.equal(
-    ultraDirectoryEntry({ name: 'x'.repeat(80), link: 'y' }).name.length,
+    ultraDirectoryEntry({ name: '', address: 'y', token: 'z' }).name,
+    'Ultra',
+  );
+  assert.equal(ultraDirectoryEntry({ address: 'y' }).name, 'Ultra');
+  assert.equal(
+    ultraDirectoryEntry({ name: 'x'.repeat(80), address: 'y' }).name.length,
     60,
   );
-  assert.equal(
-    ultraDirectoryEntry({ name: 'a\u0000b', link: ' y ' }).link,
-    'y',
+  assert.deepEqual(
+    ultraDirectoryEntry({ name: 'a\u0000b', address: ' y ', token: ' z ' }),
+    { name: 'ab', address: 'y', token: 'z' },
   );
-  assert.deepEqual(ultraDirectoryEntry(), { name: 'Ultra', link: '' });
+  assert.deepEqual(ultraDirectoryEntry(), {
+    name: 'Ultra',
+    address: '',
+    token: '',
+  });
   assert.equal(
     JSON.stringify(mine, null, 2),
-    `{\n  "name": "Jeff (Van 7)",\n  "link": "${link(MINE, MY)}"\n}`,
+    `{\n  "name": "Jeff (Van 7)",\n  "address": "${MINE}",\n  "token": "${MY}"\n}`,
   );
+  assert.ok(!JSON.stringify(mine).includes('/ultra/help'));
 });
 
 test('mergeDirectoryDocument puts my entry in without touching anyone else and refuses a file that is not JSON', () => {
-  const mine = { name: 'Jeff (Van 7)', link: link(MINE, MY) };
+  const mine = { name: 'Jeff (Van 7)', address: MINE, token: MY };
   const sam = {
     name: 'Sam',
     link: link(SAM, T1),
     extra: { nested: [1, 'two', null] },
   };
+  // My old element in the legacy shape: it carries my token, so it is mine
+  // to replace, and the new shape takes its place.
   const old = {
     name: 'Old me',
     link: link('https://old.tail0demo0.ts.net', MY),
     note: 'stale',
+  };
+  const newer = {
+    name: 'Newer me',
+    address: 'https://newer.tail0demo0.ts.net',
+    token: MY,
   };
   const existing = JSON.stringify(
     {
@@ -2811,6 +3226,17 @@ test('mergeDirectoryDocument puts my entry in without touching anyone else and r
     ).entries,
     [mine, sam],
   );
+  // My element already in the new shape is mine too, whatever address it
+  // named; in either shape beside each other, both copies collapse.
+  assert.deepEqual(
+    JSON.parse(
+      mergeDirectoryDocument(
+        JSON.stringify({ entries: [sam, newer, old] }),
+        mine,
+      ).text,
+    ).entries,
+    [sam, mine],
+  );
   // Nothing yet (an empty file or a 404) becomes the canonical document; a bare array stays an array.
   assert.deepEqual(mergeDirectoryDocument('', mine), {
     text: JSON.stringify({ version: 1, entries: [mine] }, null, 2) + '\n',
@@ -2841,9 +3267,26 @@ test('mergeDirectoryDocument puts my entry in without touching anyone else and r
   ]) {
     assert.equal(mergeDirectoryDocument(text, mine), null, text);
   }
-  // My entry must itself be a whole help link.
-  assert.equal(mergeDirectoryDocument('', { name: 'x', link: MY }), null);
-  assert.equal(mergeDirectoryDocument('', { name: 'x', link: '' }), null);
+  // My entry must itself be a bare address and a whole token, kept apart: a
+  // joined link is not written, not even mine.
+  assert.equal(mergeDirectoryDocument('', { name: 'x', token: MY }), null);
+  assert.equal(mergeDirectoryDocument('', { name: 'x', address: MINE }), null);
+  assert.equal(
+    mergeDirectoryDocument('', { name: 'x', address: '', token: '' }),
+    null,
+  );
+  assert.equal(
+    mergeDirectoryDocument('', { name: 'x', link: link(MINE, MY) }),
+    null,
+  );
+  assert.equal(
+    mergeDirectoryDocument('', {
+      name: 'x',
+      address: link(MINE, MY),
+      token: MY,
+    }),
+    null,
+  );
   assert.equal(
     ultraDirectoryMailto('{"name":"x"}'),
     'mailto:?subject=' +
@@ -3057,6 +3500,115 @@ test('ultraNeedsGeocode asks again a minute after a lookup that failed, and not 
   assert.equal(ultraNeedsGeocode(failed, here), false);
 });
 
+test('a plea composed from needs is clean text, and the inbox check survives a reload', () => {
+  const answer = normalizeUltraNetworkAnswer(
+    peerRelease({
+      needs: {
+        kind: 'medicine',
+        items: ['\u202eIns\u200bulin', 'Ventolin\ufeff 2\u2066mg\u2069'],
+      },
+    }),
+    { now: NOW, entryName: 'Sam' },
+  );
+  assert.deepEqual(answer.release.needs, {
+    kind: 'medicine',
+    items: ['Insulin', 'Ventolin 2mg'],
+    destination: '',
+  });
+  const row = ultraReleaseInboxRecord({
+    entry: entry(),
+    answer,
+    now: NOW,
+    ids: () => 'm-0123456789abcdef',
+  });
+  assert.doesNotMatch(row.text, HIDDEN);
+  assert.doesNotMatch(JSON.stringify(row.needs), HIDDEN);
+  assert.match(row.text, /Needed: Medicine: Insulin, Ventolin 2mg\.$/);
+  assert.equal(
+    row.text,
+    ultraHelpMessage('45.2700, -66.0600', 'fire', row.needs),
+  );
+  // Stamped, written out and read back, the row is the same row and the
+  // check still holds: the text the normaliser keeps is the text stamped.
+  const stamped = stampUltraInboxPolicy(row, KEY);
+  assert.match(stamped.policyMac, /^[0-9a-f]{64}$/);
+  const reloaded = normalizeUltraInboxRecord(
+    JSON.parse(JSON.stringify(stamped)),
+  );
+  assert.deepEqual(reloaded, stamped);
+  assert.equal(ultraInboxPolicyState(reloaded, KEY), 'ok');
+  // A given place or plea with hidden characters, or a changed need: the
+  // row stays clean and a fresh check still survives the reload.
+  const moved = ultraReleaseRowUpdate(row, answer, {
+    place: '\u202e12 King St\u200b',
+    now: NOW,
+  });
+  assert.equal(moved.place, '12 King St');
+  assert.doesNotMatch(moved.text, HIDDEN);
+  assert.equal(moved.text, ultraHelpMessage('12 King St', 'fire', row.needs));
+  const given = ultraReleaseRowUpdate(row, answer, {
+    plea: 'Come\u202e quick',
+    now: NOW,
+  });
+  assert.equal(given.text, 'Come quick');
+  const other = ultraReleaseRowUpdate(
+    row,
+    { ...answer.release, needs: { kind: 'food', items: ['\u202eBread'] } },
+    { now: NOW },
+  );
+  assert.deepEqual(other.needs, {
+    kind: 'food',
+    items: ['Bread'],
+    destination: '',
+  });
+  assert.match(other.text, /Needed: Food: Bread\.$/);
+  assert.doesNotMatch(other.text, HIDDEN);
+  for (const item of [moved, given, other]) {
+    const checked = normalizeUltraInboxRecord(
+      JSON.parse(JSON.stringify(stampUltraInboxPolicy(item, KEY))),
+    );
+    assert.equal(ultraInboxPolicyState(checked, KEY), 'ok');
+    assert.deepEqual(checked.needs, item.needs);
+  }
+});
+
+test('a home-list entry keeps every label a full link carries: the catalog and five custom sets', () => {
+  const custom = ['Welder', 'Diver', 'Pilot', 'Nurse', 'Climber'];
+  const labels = [...ULTRA_SKILL_SETS.map((item) => item.label), ...custom];
+  assert.equal(
+    labels.length,
+    ULTRA_SKILL_SETS.length + ULTRA_CUSTOM_SKILL_LIMIT,
+  );
+  assert.equal(labels.length, 20);
+  assert.ok(labels.includes('Mr./Mrs. Nice Guy'));
+  const full = entry({ skills: labels });
+  assert.deepEqual(normalizeUltraNetworkEntry(full), full);
+  assert.deepEqual(normalizeUltraNetworkEntry(full).skills, labels);
+  assert.equal(
+    normalizeUltraNetworkEntry({ ...full, skills: [...labels, 'One more'] })
+      .skills.length,
+    20,
+  );
+  assert.deepEqual(
+    normalizeUltraNetworkStore({ entries: [full] }).entries[0].skills,
+    labels,
+  );
+  // The same through a real 20-skill link, the way a directory pull copies
+  // the labels off a clear token.
+  const codes = [
+    ...ULTRA_SKILL_SETS.map((item) => item.code),
+    ...custom.map((label) => 'x' + label.toLowerCase()),
+  ];
+  const token = `${T1}.s.${codes.join('.')}`;
+  const fields = ultraTokenSkillFields(token);
+  assert.equal(fields.skills.length, 20);
+  assert.ok(fields.skills.includes('Mr./Mrs. Nice Guy'));
+  const linked = entry({ id: 'n-0000000000000002', token, ...fields });
+  assert.deepEqual(normalizeUltraNetworkEntry(linked), linked);
+  assert.deepEqual(normalizeUltraNetworkEntry(linked).skills, fields.skills);
+  assert.equal(ultraNetworkPollAllowed(linked, [linked], KEY), true);
+});
+
 test('the module loads where Buffer and node:crypto are only stubs (the browser bundle)', () => {
   // Nothing here belongs in a browser bundle, but importing the module must
   // still touch neither Buffer nor crypto until a function that needs them
@@ -3138,4 +3690,82 @@ test("the docs' poll, directory and relay figures match the code", () => {
   // A full restart while the disk still refuses the write reloads the call
   // the file holds, so no entry may promise that a restart cannot.
   assert.doesNotMatch(changelog, /so a restart (still )?cannot bring/);
+});
+
+test('a call for help carries its needs to holders, and EXTEND keeps them', async () => {
+  const {
+    newUltraRelease,
+    normalizeUltraRelease,
+    ultraReleaseAnswer,
+    normalizeUltraNetworkAnswer,
+    ultraReleaseInboxRecord,
+    ultraReleaseRowUpdate,
+  } = await import('../server/shared/ultraNetwork.mjs');
+  const { normalizeUltraInboxRecord } =
+    await import('../server/shared/ultraTokens.mjs');
+  const now = Date.UTC(2026, 9, 4, 12);
+  const fix = { lat: 45.27, lon: -66.06, at: now };
+  const needs = { kind: 'transportation', items: [], destination: 'hospital' };
+  const first = newUltraRelease({
+    now,
+    fix,
+    feedId: 'van',
+    incident: 'fire',
+    needs,
+  });
+  assert.deepEqual(first.needs, needs);
+  // EXTEND HELP renews the call as it is, whatever the default says now.
+  const renewed = newUltraRelease({
+    now: now + 1000,
+    fix,
+    feedId: 'van',
+    incident: 'fire',
+    needs: { kind: 'food', items: ['Bread'] },
+    previous: first,
+  });
+  assert.deepEqual(renewed.needs, needs);
+  assert.deepEqual(normalizeUltraRelease(renewed, now).needs, needs);
+  // A call with no needs keeps its old shape.
+  const bare = newUltraRelease({ now, fix, feedId: 'van', incident: 'fire' });
+  assert.equal('needs' in bare, false);
+  assert.equal(
+    'needs' in ultraReleaseAnswer({ release: bare, name: 'Van', now }),
+    false,
+  );
+
+  const answer = ultraReleaseAnswer({ release: first, name: 'Van', now });
+  assert.deepEqual(answer.needs, needs);
+  // The receiver trusts nothing: a hostile needs field is cleaned or dropped.
+  const hostile = normalizeUltraNetworkAnswer(
+    {
+      ...answer,
+      needs: { kind: 'items', items: ['<b>x</b>', 'y'.repeat(500)] },
+    },
+    { now },
+  );
+  assert.equal('needs' in hostile.release, false);
+  const received = normalizeUltraNetworkAnswer(answer, { now });
+  assert.deepEqual(received.release.needs, needs);
+  const row = ultraReleaseInboxRecord({
+    entry: { id: 'n-0123456789abcdef', name: 'Van' },
+    answer: received,
+    now,
+    place: '1 Placeholder Road',
+    ids: () => 'm-0123456789abcdef',
+  });
+  assert.match(
+    row.text,
+    /Skill needed: Transportation: from current location to Hospital\.$/,
+  );
+  assert.deepEqual(row.needs, needs);
+  // The inbox store keeps it across a restart.
+  assert.deepEqual(normalizeUltraInboxRecord(row)?.needs ?? null, needs);
+  // A later answer without needs clears them from the row and its plea.
+  const quietNeeds = ultraReleaseRowUpdate(
+    row,
+    { release: { ...received.release, needs: undefined } },
+    { now },
+  );
+  assert.equal('needs' in quietNeeds, false);
+  assert.doesNotMatch(quietNeeds.text, /needed/);
 });

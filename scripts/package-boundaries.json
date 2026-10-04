@@ -387,7 +387,8 @@
       "server/providers/regional/eurostat-ground-truth.js",
       "server/providers/regional/country-codes.js",
       "src/data/regionalBrief.js",
-      "src/socialMedia.js"
+      "src/socialMedia.js",
+      "src/ultraHelp.mjs"
     ],
     "external": []
   },

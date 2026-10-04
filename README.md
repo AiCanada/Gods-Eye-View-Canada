@@ -442,35 +442,54 @@ snapshot address, use username + password.
 - Share help tokens (Ultra Security Package box → SHARE ENCRYPTED ULTRA TOKENS) are
   256-bit bearer secrets minted on this machine and kept AES-256-GCM sealed
   under the git-ignored, owner-only `config/ultra-tokens.key` in
-  `config/ultra-tokens.json`, never served as files. A token carries one
-  thing: the location poll at `/ultra/help/<token>/network` on the same
-  listener as the phone link (LAN or Tailscale). It works only while its
+  `config/ultra-tokens.json`, never served as files. The key file holds one
+  master key; HKDF-SHA256 derives a separate AES subkey and HMAC subkey from
+  it (v2 seals and checks; v1 records written under the raw key still open),
+  and the token file carries a `keyId` header naming the key it was written
+  under, so a swapped key is noticed without opening a seal, and a `storeMac`
+  check over every row's id, hash, check and revocation in order, so a row
+  removed, copied in, reordered or stripped of its check by hand is told
+  (the box says the store was changed; a mint, revoke or edit accepts the
+  file as it is). The key file's owner-only protection is checked again
+  every time the key is read, not only when it was written: widened rights
+  read `key-exposed` in the box until they are restored or RESET TOKENS
+  mints a fresh key. A token carries
+  one thing: the location poll, `GET /ultra/help/network` with
+  `Authorization: Bearer <token>`, on the same listener as the phone link
+  (LAN or Tailscale). The token is never part of the address (owner ruling,
+  2026-10-04: it is used for authentication only): the old
+  `/ultra/help/<token>/…` form, and a poll with no or a malformed bearer,
+  answer the same 404 as an unknown token and count as a miss. Many tokens
+  are valid at once, one per holder, so REVOKE on one row stops that holder
+  alone. It works only while its
   Network is on and you have pressed SEND HELP for that token's package:
   then the holder's own GEVC receives this phone's position and the incident
   classification, and nothing else. There is no page and no message box.
   Until SEND HELP the poll answers only "not now"; a token with Network off,
-  and every other path under a token, answers the same 404 as an unknown
-  link. A stored flag that used to keep a token open does not open it. A
+  and every other path under `/ultra/help/`, answers the same 404 as an
+  unknown token. A stored flag that used to keep a token open does not open it. A
   token published to the group directory is location only too. Tokens are
   compared in constant time and rate-limited per address. Optional skill sets
   (Doctor, Paramedic, First Responder, Lifeguard, Firefighter, Search and
   Rescue, Brave, Strong, Crisis Counselor, Enforcer, Animal Control, HAZMAT,
-  Ranger, plus up to five custom names, or none) are written into the token
-  string. A long custom name is shortened to the words the link can carry,
-  and two that would share one code are refused. Encrypt seals that list
-  inside the string under the token key so
-  the link does not spell it out. No skills and Encrypt off leaves the short
+  Ranger, Transportation, Mr./Mrs. Nice Guy, plus up to five custom names,
+  or none) are written into the token string; Transportation and Mr./Mrs.
+  Nice Guy are the two newest tick boxes, and Transportation is also what a
+  call's HELP DELIVERY can ask for. A long custom name is shortened to the
+  words the token can carry, and two that would share one code are refused.
+  Encrypt seals that list inside the string under the token key so
+  the token does not spell it out. No skills and Encrypt off leaves the short
   `uht1.` plus 43 characters. While this machine's token key still opens the
   seal, editing a token's flags in the token file and leaving the old check
-  value makes the link answer 404 and marks the row tampered. Skill names are
+  value makes the token answer 404 and marks the row tampered. Skill names are
   taken from the opened token. The token file keeps an empty skill list. At
   most 200 help tokens are kept. Deleting or replacing the key file does not
-  stop existing links while that key opens nothing in the file: they still
+  stop existing tokens while that key opens nothing in the file: they still
   admit by hash. A second copy of the same token stays in the file, and the
-  link follows the one whose seal still opens. Deleting one token's check
+  poll follows the one whose seal still opens. Deleting one token's check
   while another token still has its check answers 404 and marks that row
   tampered; the check is left missing. A file with no checks yet still
-  admits. Minting a token under a replacement key stops the older links.
+  admits. Minting a token under a replacement key stops the older tokens.
   The helpers file has a check over your number, each saved helper, and each
   stored call, not the phone model. Change the number or plant a call and
   leave the old check, while this key opens a seal, and that file is not used
@@ -482,8 +501,8 @@ snapshot address, use username + password.
   so it opens nothing still trusts them.
   Your number (SAVE MY #) is never shown to a token holder: it is where
   calls for help from your home list are texted, when an SMS relay is set
-  up. REVOKE stops a link at its next request. The token travels in the URL
-  like the phone key, so keep the link private; the encryption defends
+  up. REVOKE stops that one holder's token at its next request and no other
+  holder's. The token is a bearer secret, so keep it private; the encryption defends
   against a copied or committed file, not an account that can write to this
   checkout (which could change the code itself), so a shared PC is treated
   as a compromised one. The desktop page never sends an SMS itself: texts go
@@ -493,21 +512,32 @@ snapshot address, use username + password.
 - The help network (Ultra Security Package box → SEND HELP and HELP NETWORK)
   gives a token holder your position only while that token's Network is on
   and you have pressed SEND HELP, and only your name, the coordinates, the two
-  times and one incident word: their GEVC polls `/ultra/help/<token>/network`
-  on your listener every 20 s and gets `{"released":false}` until then. Their
+  times and one incident word: their GEVC polls `GET /ultra/help/network`
+  on your listener every 20 s with `Authorization: Bearer <token>` and gets
+  `{"released":false}` until then. Their
   GEVC texts only its own owner's SAVE MY # number, never yours, and your own
-  link is never in your own home list. Tokens minted before this read NETWORK
-  off.
-  Your home list of other people's links lives in the git-ignored, owner-only
+  token is never in your own home list. Tokens minted before this read NETWORK
+  off. A handout is two things and never one link (owner ruling, 2026-10-04):
+  your tailnet address, `https://<machine>.<tailnet>.ts.net`, and the Ultra
+  Token. The reveal shows them as two lines, "Tailnet address:" and "Ultra
+  Token:", with COPY ADDRESS and COPY TOKEN (no address line for a token with
+  Network off), and the box says "Your tailnet address for holders: <origin>".
+  Your home list of other people's handouts lives in the git-ignored, owner-only
   `config/ultra-network.json`, each of their tokens AES-256-GCM sealed under the
   same `config/ultra-tokens.key`, never served as a file and never painted or
-  logged (rows show a host, never a link); only https `*.ts.net` and
+  logged (rows show a host, never a token). ADD TO HOME LIST takes their name,
+  their tailnet address and their Ultra Token as three fields and posts
+  `{ add, address, token, name }`; a whole legacy link pasted into the address
+  box is split in the panel, and the server refuses a body carrying `link`.
+  Only https `*.ts.net` and
   `100.64.0.0/10` addresses are polled, re-checked immediately before each call,
-  with no cookie, no Referer, no Authorization and no redirect followed, and
+  with no cookie, no Referer and no redirect followed; the only header
+  credential is that entry's bearer, sent to nowhere but a base that passed
+  that check, and
   every answer is treated as hostile. Each home-list entry has a check over
   its id, the address it is polled at, and the token's hash. Change that
   address and leave the old check, and the token is not sent there; the row
-  says TAMPERED, and adding another link does not fill the check in. Deleting
+  says TAMPERED, and adding another entry does not fill the check in. Deleting
   one entry's check while another still has one does the same. A home list
   with no checks yet is still polled, and the next owner write fills them in
   from whatever the file says then. Wiping every home-list check looks like
@@ -529,16 +559,18 @@ snapshot address, use username + password.
   key and then minting a token makes the old checks fail until you save that
   setting again. When its check still matches, the group directory is read
   only when you click UPDATE HOME LIST, over https, and a merge never deletes an entry and
-  never follows a link whose host changed (it says MOVED instead, until the
-  directory agrees again; a link you added by hand is never switched off by
-  it). One pull adds at most eight links to any one machine, so rows a
+  never follows an entry whose address changed (it says MOVED instead, until the
+  directory agrees again; an entry you added by hand is never switched off by
+  it). One pull adds at most eight entries to any one machine, so rows a
   directory invents for someone's machine cannot use up the requests that
   machine allows yours. A call you are receiving ends when it ends on the
   other machine's clock, even if that machine drops off the tailnet first.
   What you publish to the directory is location only: its holders get the
   position poll and nothing else — no page, no message box, no number — even
-  while you are asking for help, and the link carries your tailnet address
-  (PUBLISH refuses without one). No holder is shown your number while a call
+  while you are asking for help, and the directory entry is
+  `{ name, address, token }`, your tailnet address and the token as separate
+  fields (PUBLISH refuses without an address; a hand-kept directory's legacy
+  `link` entries are still read, never written). No holder is shown your number while a call
   for help is on. An SMS relay
   (POWER UP → SMS RELAY: Twilio, or your own https gateway) is optional, costs
   you money per message at your provider's rate, and is the only thing here that

@@ -254,13 +254,21 @@ export async function initRoadCctvKeysSetup({
   function paint(message = '') {
     host.textContent = '';
     pickers = [];
-    host.append(
-      el(documentRef, 'div', {
-        className: 'private-cams-heading',
-        text: 'GENERIC ROAD CCTV API KEYS',
+    // The whole section is one box like the other POWER UP keys, lit once it
+    // holds a key.
+    if (host.dataset) host.dataset.set = String(keys.length > 0);
+    const head = el(documentRef, 'div', { className: 'key-setup-row-head' });
+    head.append(
+      el(documentRef, 'span', {
+        className: 'key-setup-led',
+        attrs: { 'aria-hidden': 'true' },
       }),
+      el(documentRef, 'strong', { text: 'GENERIC ROAD CCTV API KEYS' }),
+    );
+    host.append(
+      head,
       el(documentRef, 'p', {
-        className: 'private-cams-note',
+        className: 'key-setup-unlocks',
         text: 'One API key covers every CCTV camera on its site: pick the site, no addresses needed. Add as many as you need. A key is sent only to its own site, over https.',
       }),
     );

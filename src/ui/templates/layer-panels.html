@@ -170,7 +170,7 @@
       <p id="ultra-help-store-note" class="ultra-note" hidden>The helpers file was changed and is not being used. The next save replaces it.</p>
       <p id="ultra-outbound-note" class="ultra-note" hidden></p>
       <div id="ultra-contacts"></div>
-      <!-- Share help tokens: one link per person; the plaintext only ever lands in the reveal box, which the status poll cannot repaint. -->
+      <!-- Share help tokens: one token per person, handed over beside the tailnet address; the plaintext only ever lands in the reveal box, which the status poll cannot repaint. -->
       <div class="cctv-summary-label">SHARE ENCRYPTED ULTRA TOKENS</div>
       <p id="ultra-token-note" class="ultra-note"></p>
       <form id="ultra-number" class="cctv-controls ultra-contact">
@@ -198,14 +198,16 @@
           <label class="ultra-match"><input id="ultra-skill-ac" type="checkbox" data-ultra-skill="ac"> Animal Control</label>
           <label class="ultra-match ultra-skill-wide"><input id="ultra-skill-hz" type="checkbox" data-ultra-skill="hz"> Hazardous Materials (HAZMAT)</label>
           <label class="ultra-match"><input id="ultra-skill-rg" type="checkbox" data-ultra-skill="rg"> Ranger</label>
+          <label class="ultra-match"><input id="ultra-skill-tr" type="checkbox" data-ultra-skill="tr"> Transportation</label>
+          <label class="ultra-match"><input id="ultra-skill-ng" type="checkbox" data-ultra-skill="ng"> Mr./Mrs. Nice Guy</label>
           <span class="cctv-summary-label">Your Custom Gifts or Skills Encrypted into Token String</span>
-          <input id="ultra-skill-custom-1" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 1" autocomplete="off" title="A long name is shortened to the words the link can carry.">
-          <input id="ultra-skill-custom-2" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 2" autocomplete="off" title="A long name is shortened to the words the link can carry.">
-          <input id="ultra-skill-custom-3" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 3" autocomplete="off" title="A long name is shortened to the words the link can carry.">
-          <input id="ultra-skill-custom-4" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 4" autocomplete="off" title="A long name is shortened to the words the link can carry.">
-          <input id="ultra-skill-custom-5" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 5" autocomplete="off" title="A long name is shortened to the words the link can carry.">
+          <input id="ultra-skill-custom-1" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 1" autocomplete="off" title="A long name is shortened to the words the token can carry.">
+          <input id="ultra-skill-custom-2" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 2" autocomplete="off" title="A long name is shortened to the words the token can carry.">
+          <input id="ultra-skill-custom-3" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 3" autocomplete="off" title="A long name is shortened to the words the token can carry.">
+          <input id="ultra-skill-custom-4" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 4" autocomplete="off" title="A long name is shortened to the words the token can carry.">
+          <input id="ultra-skill-custom-5" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 5" autocomplete="off" title="A long name is shortened to the words the token can carry.">
           <p id="ultra-skill-custom-preview" class="ultra-note" hidden></p>
-          <label class="ultra-match ultra-skill-wide" title="On: the skill list is sealed inside the token string. Off: the skill codes are written in the link. Either way the link still works. No skills and Encrypt off keeps the short token."><input id="ultra-token-encrypt" type="checkbox"> Encrypt</label>
+          <label class="ultra-match ultra-skill-wide" title="On: the skill list is sealed inside the token string. Off: the skill codes are written in the token string in the clear. Either way the token still works. No skills and Encrypt off keeps the short token."><input id="ultra-token-encrypt" type="checkbox"> Encrypt</label>
         </div>
         <select id="ultra-token-package" aria-label="Which package" hidden></select>
         <button id="ultra-token-submit" class="scene-btn" type="submit">GENERATE NEW TOKEN</button>
@@ -213,13 +215,13 @@
       <div id="ultra-token-reveal" class="ultra-reveal" hidden>
         <pre id="ultra-token-link"></pre>
         <div class="cctv-controls">
-          <button id="ultra-token-copy-link" class="scene-btn" type="button">COPY LINK</button>
+          <button id="ultra-token-copy-address" class="scene-btn" type="button">COPY ADDRESS</button>
           <button id="ultra-token-copy" class="scene-btn" type="button">COPY TOKEN</button>
           <button id="ultra-token-hide" class="scene-btn" type="button">HIDE</button>
         </div>
       </div>
       <div id="ultra-tokens"></div>
-      <!-- Help network: the links this machine's server polls, the directory the group shares, my published token and the SMS relay. Links hold other people's tokens and are never shown here; only hosts are. -->
+      <!-- Help network: the handouts (tailnet address + Ultra Token) this machine's server polls, the directory the group shares, my published token and the SMS relay. Other people's tokens are never shown here; only hosts are. -->
       <div class="cctv-summary-label">HELP NETWORK <span id="ultra-network-count"></span></div>
       <p id="ultra-network-note" class="ultra-note"></p>
       <form id="ultra-network-me" class="cctv-controls ultra-contact">
@@ -248,8 +250,10 @@
           <button id="ultra-network-entry-hide" class="scene-btn" type="button">HIDE</button>
         </div>
       </div>
+      <!-- A handout is two boxes: the tailnet address and the Ultra Token. The token is never part of a URL; a legacy whole link pasted into the address box is split before posting. -->
       <form id="ultra-network-add" class="cctv-controls ultra-contact">
-        <input id="ultra-network-link" type="text" placeholder="Paste a help link someone gave you (https://….ts.net/ultra/help/uht1.…)" aria-label="Help link" autocomplete="off" spellcheck="false">
+        <input id="ultra-network-address" type="text" placeholder="Their tailnet address (https://<machine>.<tailnet>.ts.net)" aria-label="Their tailnet address" autocomplete="off" spellcheck="false">
+        <input id="ultra-network-token" type="text" placeholder="Their Ultra Token (uht1.…)" aria-label="Their Ultra Token" autocomplete="off" spellcheck="false">
         <input id="ultra-network-link-name" type="text" maxlength="60" placeholder="Their name" aria-label="Their name" autocomplete="off">
         <button class="scene-btn" type="submit">ADD TO HOME LIST</button>
       </form>

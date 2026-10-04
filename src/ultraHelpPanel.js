@@ -17,6 +17,8 @@ import {
   ultraCameraRole,
   ultraCustomSkillList,
   ultraHelpSmsLink,
+  ultraNeedsSkill,
+  ultraNeedsSummary,
 } from './ultraHelp.mjs';
 import {
   DEVICE_FEEDS_CHANGED_EVENT,
@@ -47,6 +49,12 @@ const TOKEN_NOTE = {
     'The token key file is present but not valid: existing tokens still work but cannot be shown or added to; RESET TOKENS to start again.',
   'no-key':
     'The token key file is missing: existing tokens still work but cannot be shown or added to; revoke them or RESET TOKENS, then mint again',
+  'key-changed':
+    'The token key file was replaced: existing tokens still work but cannot be shown; revoke them and mint again, or RESET TOKENS.',
+  'key-exposed':
+    'The token key file is no longer restricted to your account: another account on this computer could read it. Restore owner-only access to it, or RESET TOKENS and mint again.',
+  'store-changed':
+    'The token store was changed outside this program: a token row was removed, added or reordered. Check the rows below; minting, revoking or editing a token accepts the file as it is, RESET TOKENS starts again.',
   'no-listener':
     'Share links need the report listener: save the package under POWER UP and keep npm run dev running; SHARE shows the bare token until then',
 };
@@ -74,13 +82,13 @@ const NETWORK_STATE = {
   new: 'NOT CHECKED YET',
   released: 'NEEDS HELP',
   off: 'NOT SHARING',
-  dead: 'LINK DEAD (404)',
+  dead: 'TOKEN DEAD (404)',
   unreachable: 'UNREACHABLE (is their machine on the tailnet?)',
   busy: 'BUSY (429)',
-  'not-tailnet': 'NOT A TAILNET LINK',
+  'not-tailnet': 'NOT A TAILNET ADDRESS',
   missing: 'NOT IN DIRECTORY',
   moved: 'MOVED',
-  own: 'YOUR OWN LINK',
+  own: 'YOUR OWN TOKEN',
   'no-key': 'NO KEY',
   tampered: 'TAMPERED',
 };
@@ -102,6 +110,13 @@ const PLACEHOLDER = {
   directoryTokenSaved: 'write token saved — paste to replace, never shown',
 };
 
+/* What a token row and the reveal box say when the skills are sealed under
+ * a key this machine does not hold (missing, invalid or replaced). Distinct
+ * from an encrypted token minted with no skill sets, which the key opens. */
+const SKILLS_HIDDEN_WORD = 'SKILLS HIDDEN (KEY MISSING OR CHANGED)';
+const SKILLS_HIDDEN_LINE =
+  'Skills hidden: the token key is missing or was changed, so the sealed skill sets cannot be shown';
+
 /* How long the last action's sentence survives the status poll. */
 const NOTICE_MS = 15_000;
 /** What the token button says: at rest, while a token is made, and just after. */
@@ -112,9 +127,43 @@ const MINT_LABEL = Object.freeze({
 });
 const MINT_DONE_MS = 2_000;
 
-/* The ADD form's own placeholder, restored when RENAME lets go of it. */
-const ADD_LINK_PLACEHOLDER =
-  'Paste a help link someone gave you (https://….ts.net/ultra/help/uht1.…)';
+/* The ADD form's own placeholders, restored when RENAME lets go of it. A
+ * handout is two things now, an address and a token, never one link. */
+const ADD_ADDRESS_PLACEHOLDER =
+  'Their tailnet address (https://<machine>.<tailnet>.ts.net)';
+const ADD_TOKEN_PLACEHOLDER = 'Their Ultra Token (uht1.…)';
+const ADD_RENAMING_PLACEHOLDER =
+  'Renaming — enter an address and token to add one instead';
+const ADD_INCOMPLETE =
+  'Enter their tailnet address (https://….ts.net) and their Ultra Token (uht1.…)';
+/* The shape of an Ultra Token as the panel needs it: enough to tell a token
+ * from a path segment when a legacy whole link lands in the address box.
+ * The server checks the real pattern; this one only decides where to split. */
+const TOKEN_SHAPE = /^uht1\.[A-Za-z0-9_-]{43}(?:\.[se]\.[A-Za-z0-9_.-]+)?$/;
+
+/**
+ * The owner pasted a legacy whole link (https://host/ultra/help/uht1.…)
+ * into the address box and left the token box empty: split it here, so the
+ * combined string is never posted. Anything else comes back unchanged, and
+ * the server says what is wrong with it.
+ */
+export function splitUltraHandout(address, token) {
+  const given = String(address || '').trim();
+  const held = String(token || '').trim();
+  if (held || !given) return { address: given, token: held };
+  let url;
+  try {
+    url = new URL(given);
+  } catch {
+    return { address: given, token: held };
+  }
+  const parts = url.pathname.replace(/\/+$/, '').split('/');
+  const last = parts[parts.length - 1] || '';
+  if (parts.length < 2 || !TOKEN_SHAPE.test(last)) {
+    return { address: given, token: held };
+  }
+  return { address: url.origin, token: last };
+}
 
 /* Message ids already read aloud (or deliberately skipped). Module-scoped so
  * a panel re-init inside one page load does not repeat them. */
@@ -267,6 +316,24 @@ function networkTokens(status) {
   return tokens.filter(
     (token) => token && !token.revokedAt && !token.orphaned && token.network,
   );
+}
+
+/**
+ * What a call asks to be brought (HELP DELIVERY, saved on the Social Media
+ * tab) and, when that is a skill such as Transportation, how many of the
+ * holders who receive it have that skill on their token. '' when none.
+ */
+export function ultraNeedsLine(needs, holders = []) {
+  const summary = ultraNeedsSummary(needs);
+  if (!summary) return '';
+  const skill = ultraNeedsSkill(needs);
+  if (!skill) return `Asks for ${summary}.`;
+  const skilled = holders.filter(
+    (token) =>
+      Array.isArray(token?.skills) &&
+      token.skills.some((item) => item?.code === skill),
+  ).length;
+  return `Asks for ${summary} · ${plural(skilled, 'holder')} with that skill.`;
 }
 
 /** Received calls for help still running, newest first. */
@@ -427,7 +494,8 @@ function paintRelease(documentRef, status, now = Date.now()) {
         : '';
     if (release) {
       const outcome = String(release.sms?.outcome || '');
-      note.textContent = `HELP SENT ${clockTime(release.at)} · ${plural(holders, 'holder')} · ${watching} watching · until ${clockTime(release.until)} · EXTEND HELP renews four hours${outcome ? ` · ${outcome}` : ''}${also}`;
+      const asks = ultraNeedsLine(release.needs, holdersList);
+      note.textContent = `HELP SENT ${clockTime(release.at)} · ${plural(holders, 'holder')} · ${watching} watching · until ${clockTime(release.until)} · EXTEND HELP renews four hours${outcome ? ` · ${outcome}` : ''}${also}${asks ? ` · ${asks}` : ''}`;
     } else if (also) {
       note.textContent = `Nothing sent for this package${also}`;
     } else if (holdersList.length === 0) {
@@ -441,7 +509,8 @@ function paintRelease(documentRef, status, now = Date.now()) {
       const contacts = Array.isArray(status?.contacts)
         ? status.contacts.length
         : 0;
-      note.textContent = `Sends your phone's position and the incident classification to encrypted Ultra Token holders for four hours, or until STAND DOWN, and hands your phone one tap that texts the Help to ${plural(contacts, 'saved helper')}. ${watching} watching now.`;
+      const asks = ultraNeedsLine(status?.ownerNeeds, holdersList);
+      note.textContent = `Sends your phone's position, the incident classification and any items or skills needed to encrypted Ultra Token holders for four hours, or until STAND DOWN, and hands your phone one tap that texts the Help to ${plural(contacts, 'saved helper')}. ${watching} watching now.${asks ? ` ${asks}` : ''}`;
     }
   }
   const plea = byId(documentRef, 'ultra-release-plea');
@@ -572,12 +641,13 @@ function paintTokenNote(documentRef, status) {
   } else if (!status?.helpBase) {
     note.textContent = TOKEN_NOTE['no-listener'];
   } else {
-    /* A NETWORK link works only over Tailscale: say where it points, or that
-     * there is nowhere yet, rather than promise a LAN address works. */
+    /* A Network token works only over Tailscale: say which address the
+     * holders enter it beside, or that there is none yet, rather than
+     * promise a LAN address works. `networkBase` is the bare origin. */
     const network = status?.networkBase
-      ? `Network links open at ${status.networkBase}… over Tailscale.`
-      : 'This machine has no tailnet address yet, so a Network link cannot reach another GEVC.';
-    note.textContent = `Only when Network is on and SEND HELP is pressed, an encrypted Ultra token creates a link for other GEVC users to receive this phone's location and the incident classification, and nothing else: there is no page or message box. With Network off a token opens nothing. Skills and Gifts are optional: tick the ones this person has, add up to five of your own, or leave them all off. Encrypt hides those skills inside the token string. ${network}`;
+      ? `Your tailnet address for holders: ${status.networkBase}`
+      : 'This machine has no tailnet address yet, so a Network token cannot reach another GEVC.';
+    note.textContent = `Only when Network is on and SEND HELP is pressed, GENERATE NEW TOKEN creates an Ultra Token other GEVC users enter beside your tailnet address to receive this phone's location, the incident classification, any items or skills needed, and nothing else. With Network off a token opens nothing. Skills and Gifts are optional: tick the ones this person has, add up to five of your own, or leave them all off. Encrypt hides those skills inside the token string. ${network}`;
   }
 }
 
@@ -612,7 +682,9 @@ function paintTokenForm(documentRef, status) {
 
 /* The reveal box is the only place the plaintext ever lands. The status
  * poll's payload has no `revealed` key, so it never reaches this branch and
- * can neither wipe a link the owner is copying nor bring one back. */
+ * can neither wipe a token the owner is copying nor bring one back. The
+ * handout is two labelled lines, the tailnet address and the token: the
+ * token is never written into a URL, here or anywhere. */
 function paintReveal(documentRef, status) {
   if (!status || status.revealed === undefined) return;
   const box = byId(documentRef, 'ultra-token-reveal');
@@ -622,31 +694,36 @@ function paintReveal(documentRef, status) {
   if (!revealed || typeof revealed !== 'object') {
     pre.textContent = '';
     delete box.dataset.ultraToken;
-    delete box.dataset.ultraLink;
+    delete box.dataset.ultraAddress;
     box.hidden = true;
     return;
   }
   const token = String(revealed.token || '');
-  const link = String(revealed.link || '');
-  const lines = [`${revealed.label || 'Token'}:`, link || token];
-  if (!link) {
+  const address = String(revealed.address || '');
+  const lines = [`${revealed.label || 'Token'}:`];
+  /* No address with Network off (the token opens nothing) or while the
+   * report listener is down: the token line stands alone and says so. */
+  if (address) lines.push(`Tailnet address: ${address}`);
+  lines.push(`Ultra Token: ${token}`);
+  if (!address) {
     lines.push(
-      'The report listener is not up, so this is the bare token: hand it over with the listener address.',
+      'No tailnet address to show (Network is off, or the report listener is not up): the token is handed over with your tailnet address.',
     );
   }
-  if (Array.isArray(revealed.skills)) {
-    const names = revealed.skills
-      .map((item) =>
-        typeof item === 'string' ? item : String(item?.label || ''),
-      )
-      .map((text) => text.trim())
-      .filter(Boolean);
+  /* A sealed skill list this machine's key cannot open is hidden, not
+   * absent: say which, so a replaced or missing key is not read as a token
+   * minted with no skills. */
+  if (revealed.hidden === true) {
+    lines.push(SKILLS_HIDDEN_LINE);
+  } else if (Array.isArray(revealed.skills)) {
+    const names = skillWords(revealed.skills);
     lines.push(names.length ? names.join(', ') : 'No skill sets');
   }
   if (revealed.encrypted === true) lines.push('Skills encrypted in the token');
   pre.textContent = lines.join('\n');
   box.dataset.ultraToken = token;
-  box.dataset.ultraLink = link;
+  if (address) box.dataset.ultraAddress = address;
+  else delete box.dataset.ultraAddress;
   box.hidden = false;
 }
 
@@ -749,7 +826,7 @@ function paintCustomSkillPreview(documentRef) {
     return;
   }
   note.hidden = false;
-  note.textContent = `The link will say: ${built.skills.map((item) => item.label).join(', ')}`;
+  note.textContent = `The token will say: ${built.skills.map((item) => item.label).join(', ')}`;
 }
 
 function skillWords(skills) {
@@ -778,6 +855,10 @@ function tokenReadout(token) {
   ];
   const skills = skillWords(token.skills);
   if (skills.length) parts.push(skills.join(', '));
+  /* `hidden` is the server's word for a sealed list this key cannot open;
+   * an encrypted token that opens to no skills reads ENCRYPTED alone, as a
+   * token minted that way should. */
+  if (token.hidden === true) parts.push(SKILLS_HIDDEN_WORD);
   if (token.encrypted === true) parts.push('ENCRYPTED');
   if (token.tampered) parts.push('TAMPERED');
   if (token.orphaned) parts.push('PACKAGE REMOVED');
@@ -864,17 +945,19 @@ function paintTokens(documentRef, status) {
 }
 
 /* RENAME borrows the ADD TO HOME LIST form until its next submit, refused
- * or not, or until its row is gone from the home list. The link box stays
- * usable all along: a link pasted while RENAME is armed is an ADD, and ends
- * the rename. */
+ * or not, or until its row is gone from the home list. The address and
+ * token boxes stay usable all along: a handout entered while RENAME is
+ * armed is an ADD, and ends the rename. */
 function endRenaming(documentRef) {
   const form = byId(documentRef, 'ultra-network-add');
   if (!form) return;
   delete form.dataset.ultraRenaming;
   const submit = form.querySelector?.('button');
   if (submit) submit.textContent = 'ADD TO HOME LIST';
-  const linkInput = byId(documentRef, 'ultra-network-link');
-  if (linkInput) linkInput.placeholder = ADD_LINK_PLACEHOLDER;
+  const addressInput = byId(documentRef, 'ultra-network-address');
+  if (addressInput) addressInput.placeholder = ADD_ADDRESS_PLACEHOLDER;
+  const tokenInput = byId(documentRef, 'ultra-network-token');
+  if (tokenInput) tokenInput.placeholder = ADD_TOKEN_PLACEHOLDER;
 }
 
 function networkStateWord(entry, polling, now) {
@@ -925,7 +1008,7 @@ function paintNetwork(documentRef, status, now = Date.now()) {
       needHelp > 0
         ? `· ${needHelp} NEED HELP`
         : entries.length
-          ? `· ${plural(entries.length, 'link')}`
+          ? `· ${plural(entries.length, 'token')}`
           : '';
     setClass(count.parentElement, 'ultra-unread', needHelp > 0);
   }
@@ -1541,8 +1624,8 @@ export function initUltraHelpPanel({
       void post('number', { number: '' });
       return;
     }
-    if (id === 'ultra-token-copy-link') {
-      void copyFrom('ultra-token-reveal', target, 'ultraLink');
+    if (id === 'ultra-token-copy-address') {
+      void copyFrom('ultra-token-reveal', target, 'ultraAddress');
       return;
     }
     if (id === 'ultra-token-copy') {
@@ -1625,10 +1708,15 @@ export function initUltraHelpPanel({
         form.dataset.ultraRenaming = entryId;
         const submit = form.querySelector?.('button');
         if (submit) submit.textContent = 'RENAME';
-        const linkInput = byId(documentRef, 'ultra-network-link');
-        if (linkInput) {
-          linkInput.value = '';
-          linkInput.placeholder = 'Renaming — paste a link to add one instead';
+        const addressInput = byId(documentRef, 'ultra-network-address');
+        if (addressInput) {
+          addressInput.value = '';
+          addressInput.placeholder = ADD_RENAMING_PLACEHOLDER;
+        }
+        const tokenInput = byId(documentRef, 'ultra-network-token');
+        if (tokenInput) {
+          tokenInput.value = '';
+          tokenInput.placeholder = ADD_TOKEN_PLACEHOLDER;
         }
       }
       return;
@@ -1826,18 +1914,32 @@ export function initUltraHelpPanel({
     if (id === 'ultra-network-add') {
       event.preventDefault();
       const form = byId(documentRef, 'ultra-network-add');
-      const linkInput = byId(documentRef, 'ultra-network-link');
+      const addressInput = byId(documentRef, 'ultra-network-address');
+      const tokenInput = byId(documentRef, 'ultra-network-token');
       const nameInput = byId(documentRef, 'ultra-network-link-name');
       const name = String(nameInput?.value || '').trim();
       const renaming = form?.dataset?.ultraRenaming || '';
-      const link = String(linkInput?.value || '').trim();
-      /* A pasted link is always an ADD, even if RENAME was armed and
-       * forgotten: renaming here would drop the link on the floor. */
-      if (renaming && link) endRenaming(documentRef);
+      /* A legacy whole link in the address box is split here; the server
+       * never sees a string that is both an address and a token. */
+      const { address, token } = splitUltraHandout(
+        addressInput?.value,
+        tokenInput?.value,
+      );
+      const handout = Boolean(address || token);
+      /* An entered handout is always an ADD, even if RENAME was armed and
+       * forgotten: renaming here would drop the handout on the floor. */
+      if (renaming && handout) endRenaming(documentRef);
+      if (!renaming || handout) {
+        /* Half a handout is refused here, before anything is posted. */
+        if (!address || !token) {
+          say(ADD_INCOMPLETE);
+          return;
+        }
+      }
       const request =
-        renaming && !link
+        renaming && !handout
           ? post('network', { rename: true, id: renaming, name })
-          : post('network', { add: true, link, name });
+          : post('network', { add: true, address, token, name });
       void request.then((status) => {
         /* RENAME pressed on a row while this was on its way owns the form
          * now: leave it, and the name it filled in, alone. */
@@ -1847,7 +1949,8 @@ export function initUltraHelpPanel({
          * good (a row that is gone can never be renamed). */
         endRenaming(documentRef);
         if (!status) return;
-        if (linkInput) linkInput.value = '';
+        if (addressInput) addressInput.value = '';
+        if (tokenInput) tokenInput.value = '';
         if (nameInput) nameInput.value = '';
       });
       return;

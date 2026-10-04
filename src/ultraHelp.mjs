@@ -119,6 +119,27 @@ const INCIDENT_LABEL = Object.freeze({
 
 const E164 = /^\+[1-9]\d{7,14}$/;
 
+/**
+ * The characters that never belong in text a peer or holder typed, as the
+ * body of one RegExp character class (no brackets, no flags). It is a plain
+ * string, not a RegExp, on purpose: a shared RegExp with the g flag keeps a
+ * lastIndex between calls, so one .test() can make the next one miss. Build
+ * a fresh one with ultraHiddenText() or new RegExp(`[${ULTRA_HIDDEN_TEXT}]`, 'g').
+ * The set: C0 and C1 controls other than the tab and newline, the Arabic
+ * letter mark (U+061C), zero-width characters, the bidi marks, embeddings,
+ * overrides and isolates (U+200E/U+200F, U+202A-U+202E, U+2066-U+2069), the
+ * line and paragraph separators and the byte-order mark. A right-to-left
+ * override in a name would show what follows it reversed, in a relayed SMS
+ * too. ultraTokens.mjs cleans help text with this same set.
+ */
+export const ULTRA_HIDDEN_TEXT =
+  '\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f\\u061c\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2069\\ufeff';
+
+/** A fresh global RegExp over ULTRA_HIDDEN_TEXT, safe to .replace or .test with. */
+export function ultraHiddenText() {
+  return new RegExp(`[${ULTRA_HIDDEN_TEXT}]`, 'g');
+}
+
 const LEGACY_PHONE_IDS = Object.freeze({
   'samsung-s3': 'samsung-z3',
   'samsung-s6': 'generic-cell',
@@ -172,10 +193,145 @@ export function ultraDistanceKm(from, to) {
   return 2 * r * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-export function ultraHelpMessage(place, incident) {
+/**
+ * What a call for help asks to be brought (HELP DELIVERY). Transportation is
+ * a skill: it names where to take the person from their current location and
+ * matches the Transportation skill on a token. Every other kind is items, up
+ * to two short entries each.
+ */
+export const ULTRA_HELP_NEEDS_KINDS = Object.freeze([
+  Object.freeze({
+    id: 'medicine',
+    label: 'Medicine',
+    entry: 'Medication',
+    placeholders: ['Medication 1', 'Medication 2'],
+  }),
+  Object.freeze({
+    id: 'transportation',
+    label: 'Transportation',
+    destinations: Object.freeze(['home', 'hospital']),
+    skill: 'tr',
+  }),
+  Object.freeze({
+    id: 'food',
+    label: 'Food',
+    entry: 'Type of food',
+    placeholders: ['Type of food 1', 'Type of food 2'],
+  }),
+  Object.freeze({
+    id: 'liquid',
+    label: 'Liquid',
+    entry: 'Type of liquid',
+    placeholders: ['Type of liquid 1', 'Type of liquid 2'],
+  }),
+  Object.freeze({
+    id: 'items',
+    label: 'Items',
+    entry: 'Type of item',
+    placeholders: ['Item 1, e.g. Heart Defib', 'Item 2'],
+  }),
+]);
+
+const NEEDS_ENTRY_MAX = 80;
+const NEEDS_DESTINATIONS = Object.freeze({
+  home: 'Home',
+  hospital: 'Hospital',
+});
+
+/**
+ * A HELP DELIVERY choice cleaned up: a known kind, and either a destination
+ * (Transportation) or up to two short, single-line entries. Every byte may
+ * come from a stranger's answer, so nothing else is kept. Only a string is
+ * text: an object that arrived through JSON (even one shaped like
+ * {"toString": null}) is never coerced, so it cannot throw or smuggle a
+ * value in. A non-string destination is refused and a non-string item is an
+ * empty box. C0 controls and DEL become a space, the hidden characters
+ * (ULTRA_HIDDEN_TEXT) are dropped, then runs of whitespace collapse.
+ * @returns {{ok: true, value: {kind: string, items: string[], destination: string}} | {ok: false, error: string}}
+ */
+export function normalizeUltraNeeds(input) {
+  const kind = ULTRA_HELP_NEEDS_KINDS.find((item) => item.id === input?.kind);
+  if (!kind) return { ok: false, error: 'Choose the help to be delivered.' };
+  if (kind.destinations) {
+    const destination = input?.destination;
+    if (
+      typeof destination !== 'string' ||
+      !kind.destinations.includes(destination)
+    ) {
+      return { ok: false, error: 'Choose Home or Hospital.' };
+    }
+    return { ok: true, value: { kind: kind.id, items: [], destination } };
+  }
+  const items = (Array.isArray(input?.items) ? input.items : [])
+    .slice(0, 2)
+    .map((value) =>
+      (typeof value === 'string' ? value : '')
+        .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+        .replace(ultraHiddenText(), '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    .filter(Boolean);
+  if (!items.length)
+    return {
+      ok: false,
+      error: `Enter at least one ${kind.entry.toLowerCase()}.`,
+    };
+  if (items.some((value) => value.length > NEEDS_ENTRY_MAX)) {
+    return {
+      ok: false,
+      error: `Keep each entry under ${NEEDS_ENTRY_MAX} characters.`,
+    };
+  }
+  return { ok: true, value: { kind: kind.id, items, destination: '' } };
+}
+
+/**
+ * The cleaned needs, or null when there are none or they are unusable. It
+ * never throws: whatever a stranger's record holds (a getter, a proxy, a
+ * broken prototype), the worst outcome is "no needs".
+ */
+export function ultraNeeds(input) {
+  try {
+    if (!input) return null;
+    const checked = normalizeUltraNeeds(input);
+    return checked.ok ? checked.value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One line, e.g. "Medicine: Insulin, Ventolin"; '' when there is nothing usable. */
+export function ultraNeedsSummary(value) {
+  const needs = ultraNeeds(value);
+  if (!needs) return '';
+  const kind = ULTRA_HELP_NEEDS_KINDS.find((item) => item.id === needs.kind);
+  if (kind.destinations) {
+    return `${kind.label}: from current location to ${NEEDS_DESTINATIONS[needs.destination]}`;
+  }
+  return `${kind.label}: ${needs.items.join(', ')}`;
+}
+
+/** The token skill code the needs call for ('tr' for Transportation), or ''. */
+export function ultraNeedsSkill(value) {
+  const needs = ultraNeeds(value);
+  if (!needs) return '';
+  return (
+    ULTRA_HELP_NEEDS_KINDS.find((item) => item.id === needs.kind)?.skill || ''
+  );
+}
+
+/**
+ * The plea: where, the incident and, when the call asks for them, the items
+ * or skill needed ("Skill needed: Transportation: …", "Needed: Medicine: …").
+ */
+export function ultraHelpMessage(place, incident, needs = null) {
   const label = INCIDENT_LABEL[incident] || 'other';
   const where = String(place || '').trim() || 'the reported position';
-  return `Please HELP you are close by, to ${where} of victim in progress, ${label} thank you.`;
+  const plea = `Please HELP you are close by, to ${where} of victim in progress, ${label} thank you.`;
+  const summary = ultraNeedsSummary(needs);
+  if (!summary) return plea;
+  return `${plea} ${ultraNeedsSkill(needs) ? 'Skill needed' : 'Needed'}: ${summary}.`;
 }
 
 export function normalizeUltraNumber(value) {

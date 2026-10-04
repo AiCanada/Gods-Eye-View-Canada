@@ -1,21 +1,28 @@
 /**
  * Ultra Security Package help. Loopback for the panel. The paired phone,
  * and only that phone, polls the report listener at /ultra/<key>. A person
- * the owner handed a help token reaches one route on that same listener:
- * /ultra/help/<token>/network, the location poll, and only while the token
- * is marked NETWORK. It says whether the owner has pressed SEND HELP and,
- * while they have, where the phone is: a name, a position, the time, the
- * window end and the incident class, and nothing else. There is no page and
- * no message box. CCTV is not involved. No token, hash or share link is
- * ever logged. This server polls the links in the owner's home list the
- * same way, over the tailnet only, and never sends a credential to any of
- * them.
+ * the owner handed an Ultra Token reaches one route on that same listener:
+ * GET /ultra/help/network, the location poll, with the token as the
+ * Authorization bearer (never in the path: the token authenticates, the
+ * tailnet address locates, and one address hands out many tokens so one
+ * holder can be revoked on their own), and only while the token is marked
+ * NETWORK. It says whether the owner has pressed SEND HELP and, while they
+ * have, where the phone is: a name, a position, the time, the window end,
+ * the incident class and any items or skill needed (HELP DELIVERY), and
+ * nothing else. There is no page and no message box. CCTV is not involved.
+ * No token, hash or Authorization header is ever logged. This server polls
+ * the entries in the owner's home list the same way, over the tailnet only,
+ * and the only credential it ever sends a peer is that peer's own token, as
+ * the bearer, to an address that passes the tailnet rule.
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { admitKeySetupRequest } from '../../src/keySetupCore.mjs';
-import { replaceCredentialStore } from '../shared/keySetupHardening.mjs';
+import {
+  credentialFileRestricted,
+  replaceCredentialStore,
+} from '../shared/keySetupHardening.mjs';
 import { noteLocalProvidersSaved } from '../shared/localIntegrity.mjs';
 import {
   DEVICE_FEED_STORE,
@@ -34,6 +41,8 @@ import {
   ultraDistanceKm,
   sendableNumber,
   ultraHelpMessage,
+  ultraNeeds,
+  ultraNeedsSkill,
   ultraPhoneModel,
   ULTRA_PHONE_MODELS,
 } from '../../src/ultraHelp.mjs';
@@ -63,15 +72,18 @@ import {
   normalizeUltraNetworkStore,
   normalizeUltraRelease,
   openUltraNetworkToken,
-  parseUltraHelpLink,
+  parseUltraHandout,
   sealUltraNetworkToken,
   stampUltraNetworkPolicy,
   ultraDirectoryPolicyMac,
+  ultraDirectoryPolicyMacs,
   ultraFeedsPolicyMac,
+  ultraFeedsPolicyMacs,
   ultraHelpStorePolicyMac,
   ultraHelpStorePolicyState,
   ultraOutboundPolicyState,
   ultraRelayPolicyMac,
+  ultraRelayPolicyMacs,
   ultraNetworkPollAllowed,
   ultraNetworkPolicyState,
   ultraNetworkStoreHasPolicyMac,
@@ -81,7 +93,7 @@ import {
   ultraDirectoryMailto,
   ultraDirectoryUrl,
   ultraEpisodeDecision,
-  ultraHelpLinkFor,
+  ultraHelpHandout,
   ultraHolderReachable,
   ultraNeedsGeocode,
   ultraNetworkEntryId,
@@ -141,6 +153,7 @@ import {
   sealUltraToken,
   selectUltraToken,
   stampUltraTokenPolicy,
+  stampUltraTokenStore,
   ultraClientAddress,
   ultraMessageId,
   ultraNotifyItem,
@@ -149,9 +162,11 @@ import {
   ultraTokenHash,
   ultraTokenHashEqual,
   ultraTokenId,
+  ultraTokenKeyId,
   ultraTokenPolicyState,
   ultraTokenRowTampered,
   ultraTokenStoreHasPolicyMac,
+  ultraTokenStoreState,
   ultraTokenTamperFlags,
   ultraTokenSkillFields,
 } from '../shared/ultraTokens.mjs';
@@ -185,6 +200,25 @@ let sourceRoot = process.cwd();
 // The credential-file hardener replaceCredentialStore should use; undefined
 // means its own. A test injects a spy to prove the ACL path ran.
 let hardenImpl;
+// How a mint builds the bearer string from the secret and the skills;
+// undefined means composeUltraToken. A test injects one that gives nothing
+// back to prove that failure is said by its own code, not as weak random.
+let composeImpl;
+// Whether the key file is still owner-only, read before the key is trusted
+// (credentialFileRestricted). A test that brings its own hardener owns the
+// file's protection too and is answered true unless it brings a check.
+let verifyImpl;
+// The last answer, kept while the key file's stat is unchanged and for at
+// most a few minutes: the Windows check spawns PowerShell.
+let keyGuard = { stamp: '', restricted: true, at: 0 };
+let keyExposedWarned = false;
+const KEY_GUARD_TTL_MS = 300_000;
+// Said once per detection, in the owner's own terminal: the key file holds a
+// different key from the one the token store was last written under, or an
+// exclusive key create had to fall back to a rename on this volume.
+let keyChangedWarned = false;
+let storeChangedWarned = false;
+let keyLinkWarned = false;
 const OWNER_BODY_LIMIT = 16_384;
 const STORE_FAILURE_CODES = new Set([
   'GEV_HARDEN_FAILED',
@@ -348,6 +382,12 @@ const SECURITY_HEADERS = {
   // No other site may embed a picture, a live view or an answer.
   'Cross-Origin-Resource-Policy': 'same-origin',
 };
+/**
+ * The holder route's headers: the phone routes' own, and Vary: Authorization,
+ * since what /ultra/help/network answers depends on the bearer alone and no
+ * cache in between may hand one holder's answer (or 404) to another.
+ */
+const HOLDER_HEADERS = { ...SECURITY_HEADERS, Vary: 'Authorization' };
 
 /** The largest geocoder or map-search answer read. */
 const LOOKUP_MAX_BYTES = 1024 * 1024;
@@ -374,7 +414,7 @@ function emptyStore() {
     version: 1,
     modelId: 'samsung-s22-ultra',
     contacts: [],
-    owner: { number: '' },
+    owner: { number: '', needs: null },
     releases: [],
   };
 }
@@ -395,8 +435,17 @@ function storeFailure(code, message) {
  * again, so its own module-level memory is new either way, but the phone's
  * cards, the calls and the SMS ledger carry over.
  */
-function pointAt(root, harden) {
+function pointAt(root, harden, compose, verify) {
   hardenImpl = harden;
+  composeImpl = compose;
+  verifyImpl =
+    verify !== undefined
+      ? verify
+      : harden === undefined
+        ? credentialFileRestricted
+        : () => true;
+  keyGuard = { stamp: '', restricted: true, at: 0 };
+  keyExposedWarned = false;
   const next = path.resolve(String(root || process.cwd()));
   // The memory on globalThis already belongs to this checkout: a copy of
   // this module evaluated afresh by a dev-server restart keeps it.
@@ -422,6 +471,9 @@ function pointAt(root, harden) {
   feedCache = { stamp: '', feeds: [] };
   outboundCache = null;
   outboundWarned = false;
+  keyChangedWarned = false;
+  storeChangedWarned = false;
+  keyLinkWarned = false;
   inbox = null;
   inboxWarned = false;
   inboxHardened = false;
@@ -468,7 +520,7 @@ function keyOpensSomeSeal(key) {
   if (!entries) return false;
   for (const entry of entries) {
     const token = openUltraNetworkToken(entry.sealed, key, { id: entry.id });
-    if (token && ultraTokenHash(token) === entry.hash) return true;
+    if (token && ultraTokenHashEqual(entry.hash, token)) return true;
   }
   return false;
 }
@@ -561,7 +613,7 @@ function readStore() {
       version: 1,
       modelId,
       contacts: [],
-      owner: { number: '' },
+      owner: { number: '', needs: null },
       releases: heldReleases(),
     };
     untrustedStores.add(safe);
@@ -585,7 +637,12 @@ function readStore() {
       .slice(0, ULTRA_HELP_CONTACT_LIMIT),
     // The owner's own cell, stored plain: calls for help from the home list
     // and TEST SMS are texted to it. No token holder is ever shown it.
-    owner: { number: normalizeUltraNumber(parsed?.owner?.number) || '' },
+    owner: {
+      number: normalizeUltraNumber(parsed?.owner?.number) || '',
+      // What SEND HELP asks to be brought (HELP DELIVERY, set on the Social
+      // Media tab), from the box and from the phone alike.
+      needs: ultraNeeds(parsed?.owner?.needs),
+    },
     releases: heldReleases(),
   };
 }
@@ -852,7 +909,7 @@ function sealsOpenInFiles(root, key) {
         const token = openUltraNetworkToken(entry?.sealed, key, {
           id: entry?.id,
         });
-        if (token && ultraTokenHash(token) === entry?.hash) return true;
+        if (token && ultraTokenHashEqual(entry?.hash, token)) return true;
       } catch {
         /* next */
       }
@@ -906,12 +963,15 @@ function outboundSectionStatus(root, macName, expected) {
   return sealsOpen(root, read.key) ? 'tampered' : 'ok';
 }
 
+// The checks are judged against every form the key can give (the derived
+// subkey first, then the raw key a file from before the key split carries),
+// so an older sidecar still verifies; stamping writes the derived form only.
 function directoryStatus(root = sourceRoot) {
   const read = readTokenKeyAt(root);
   const expected =
     read.state === 'ok'
-      ? ultraDirectoryPolicyMac(directoryMaterial(), read.key)
-      : '';
+      ? ultraDirectoryPolicyMacs(directoryMaterial(), read.key)
+      : [];
   return outboundSectionStatus(root, 'directoryMac', expected);
 }
 
@@ -919,8 +979,8 @@ function relayStatus(root = sourceRoot) {
   const read = readTokenKeyAt(root);
   const expected =
     read.state === 'ok'
-      ? ultraRelayPolicyMac(ultraSmsRelayMaterial(process.env), read.key)
-      : '';
+      ? ultraRelayPolicyMacs(ultraSmsRelayMaterial(process.env), read.key)
+      : [];
   return outboundSectionStatus(root, 'relayMac', expected);
 }
 
@@ -955,7 +1015,7 @@ function feedsStatus(root = sourceRoot) {
   if (!keyOk) return 'ok';
   const records = feedPolicyRecordsAt(root);
   if (records === null) return sealsOpen(root, read.key) ? 'tampered' : 'ok';
-  const expected = ultraFeedsPolicyMac(records, read.key);
+  const expected = ultraFeedsPolicyMacs(records, read.key);
   if (ultraOutboundPolicyState(view.feedsMac, expected, read.key) === 'ok')
     return 'ok';
   return sealsOpen(root, read.key) ? 'tampered' : 'ok';
@@ -1111,14 +1171,14 @@ function ultraHelpBase() {
 }
 
 /**
- * Where a help-network link points: this machine's tailnet address (an
- * https *.ts.net name first), or '' when the listener has none. A LAN
- * address is never used here — every receiver's poller refuses it, so a
- * published or shared NETWORK link on one would be silently dead.
+ * The tailnet address a NETWORK handout carries, as a bare origin: this
+ * machine's https *.ts.net name first, else its 100.64.x literal, or ''
+ * when the listener has none. A LAN address is never used here — every
+ * receiver's poller refuses it, so a published or shared address on one
+ * would be silently dead. Never joined with a token.
  */
 function ultraNetworkHelpBase() {
-  const origin = ultraTailnetBase(reportBases);
-  return origin ? `${origin}/ultra/help/` : '';
+  return ultraTailnetBase(reportBases);
 }
 
 /** The saved package's key, so the phone link exists before the phone has ever reported. */
@@ -1251,11 +1311,13 @@ function readTokenKey() {
 
 /**
  * The key to seal a new token with. The file is made once, on the first mint
- * into an empty store, and only when nothing is there (a present file is
- * never renamed over). It is then read back, so the bytes actually on disk
- * are the ones used even if another process won a race. A missing key with
- * tokens present, or a malformed one, refuses the mint: those tokens still
- * admit by hash, and RESET TOKENS is the way out.
+ * into an empty store, and only when nothing is there: the create is
+ * exclusive (a hard link to the name, refused with EEXIST when the name is
+ * taken), so a present file is never written over, not even by two mints
+ * racing each other. It is then read back, so the bytes actually on disk
+ * are the ones used even if another process won that race. A missing key
+ * with tokens present, or a malformed one, refuses the mint: those tokens
+ * still admit by hash, and RESET TOKENS is the way out.
  */
 function ensureTokenKey(tokens) {
   const file = tokenKeyPath();
@@ -1273,9 +1335,22 @@ function ensureTokenKey(tokens) {
     if (tokens.some((item) => item.revokedAt === null))
       throw storeFailure('GEV_TOKEN_KEY_MISSING', KEY_MISSING_MESSAGE);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    replaceCredentialStore(file, newUltraTokenKeyText(), {
-      harden: hardenImpl,
-    });
+    try {
+      const installed = replaceCredentialStore(file, newUltraTokenKeyText(), {
+        harden: hardenImpl,
+        exclusive: true,
+      });
+      if (installed?.exclusive === false && !keyLinkWarned) {
+        keyLinkWarned = true;
+        console.warn(
+          `[Ultra help] the token key was created by rename, not an exclusive link (${String(installed.linkError || 'error').slice(0, 20)}): this volume cannot make hard links.`,
+        );
+      }
+    } catch (error) {
+      // Another process won: its key is the one on disk, and the read-back
+      // below uses it. Anything else is a real failure.
+      if (error?.code !== 'EEXIST') throw error;
+    }
   }
   const read = readTokenKey();
   if (read.state === 'invalid')
@@ -1351,13 +1426,16 @@ function writeTokenStore(store, { blessIds = [], stampLegacy = false } = {}) {
   const read = readTokenKey();
   const key = read.state === 'ok' ? read.key : null;
   const bless = new Set(blessIds);
-  const incoming = normalizeUltraTokenStore(store).tokens;
+  const normalized = normalizeUltraTokenStore(store);
+  const incoming = normalized.tokens;
   const allowLegacy =
     stampLegacy === true && !ultraTokenStoreHasPolicyMac(incoming);
+  let opensAny = false;
   const tokens = incoming.map((record) => {
     const stripped = { ...record, skills: [] };
     if (!key) return stripped;
     const opened = openUltraToken(stripped.sealed, key, { id: stripped.id });
+    if (opened) opensAny = true;
     if (!opened || !ultraTokenHashEqual(stripped.hash, opened)) return stripped;
     const state = ultraTokenPolicyState(stripped, key);
     if (state === 'bad' && !bless.has(stripped.id)) return stripped;
@@ -1365,13 +1443,42 @@ function writeTokenStore(store, { blessIds = [], stampLegacy = false } = {}) {
       return stripped;
     return stampUltraTokenPolicy(stripped, key);
   });
+  // The header names the key the seals were made under (ultraTokenKeyId,
+  // nothing of the key itself), so a replaced key is told apart from a
+  // file this key never sealed without opening a seal. The current key
+  // earns the header when it opens a seal in the file, or the file holds no
+  // token at all; a key that opens none of them is a replaced key, and the
+  // header keeps naming the old one so the box can say so. A write without
+  // a usable key keeps whatever the file said (the callers rebuild the
+  // store from its records, so the stored header is read back here).
+  const keyId =
+    key && (opensAny || tokens.length === 0)
+      ? ultraTokenKeyId(key)
+      : (normalized.keyId ?? readTokenStore().keyId);
+  let header = keyId ? { version: 1, keyId, tokens } : { version: 1, tokens };
+  // The store-wide check (ultraTokenStoreMac) is stamped under the same
+  // condition as the header: this key opened a seal here, or the file is
+  // empty. A check that no longer matches the records is kept as it is on a
+  // write nobody asked for (a holder's request stamping legacy rows), so the
+  // box goes on saying the file was changed; an owner action on a named
+  // record (mint, revoke, edit, publish) is the owner's say over the file
+  // and stamps it afresh. Without a usable key the stale check is dropped
+  // rather than left to fail: the file is then 'legacy', not 'tampered'.
+  const canStamp = key && (opensAny || tokens.length === 0);
+  // Judged on the file as it is on disk, before this write touched a row:
+  // the callers rebuild the store from its records, so what they pass has
+  // no check of its own to judge.
+  const onDisk = readTokenStore();
+  const wasBad = ultraTokenStoreState(onDisk, key) === 'bad';
+  if (canStamp && (!wasBad || bless.size > 0))
+    header = stampUltraTokenStore(header, key);
+  else if (canStamp && wasBad)
+    header = { ...header, storeMac: onDisk.storeMac, tokens };
   const file = tokenStorePath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  replaceCredentialStore(
-    file,
-    `${JSON.stringify({ version: 1, tokens }, null, 2)}\n`,
-    { harden: hardenImpl },
-  );
+  replaceCredentialStore(file, `${JSON.stringify(header, null, 2)}\n`, {
+    harden: hardenImpl,
+  });
   tokenCache = { stamp: '', store: emptyTokenStore(), unreadable: false };
 }
 
@@ -1403,7 +1510,17 @@ function maybeUpgradeTokenPolicy() {
     const stripSkills = store.tokens.some(
       (record) => Array.isArray(record.skills) && record.skills.length > 0,
     );
-    if (!stampLegacy && !stripSkills) return;
+    // A file from before the store-wide check earns one once this key is
+    // seen to open a seal in it (or it is empty): from then on a record
+    // removed or copied in by hand is told. A check that is present and
+    // wrong is not rewritten here; see writeTokenStore.
+    const needsStoreMac =
+      store.storeMac === undefined &&
+      (store.tokens.length === 0 ||
+        store.tokens.some((record) =>
+          openUltraToken(record.sealed, read.key, { id: record.id }),
+        ));
+    if (!stampLegacy && !stripSkills && !needsStoreMac) return;
     writeTokenStore(store, { stampLegacy });
   } catch (error) {
     console.warn(
@@ -1412,17 +1529,99 @@ function maybeUpgradeTokenPolicy() {
   }
 }
 
-/** What the box says about the store: one word the note is painted from. */
+/**
+ * Whether config/ultra-tokens.key is still restricted to this account. The
+ * hardener proves that when it writes the file; this asks again on read, so
+ * a key whose protection was widened afterwards (a chmod, an inherited ACL
+ * put back, a copy restored from a backup with the folder's rights) is told
+ * instead of trusted. Checked again when the file's stat changes or after
+ * KEY_GUARD_TTL_MS; a missing file is not judged here (readTokenKey says
+ * 'missing'). Any failure to check is counted as exposed.
+ */
+function keyFileRestricted(now = Date.now()) {
+  const file = tokenKeyPath();
+  let stamp;
+  try {
+    const entry = fs.lstatSync(file);
+    stamp = `${entry.ino}:${entry.size}:${entry.mtimeMs}:${entry.ctimeMs}:${entry.mode}`;
+  } catch {
+    return true;
+  }
+  if (
+    stamp === keyGuard.stamp &&
+    now - keyGuard.at < KEY_GUARD_TTL_MS &&
+    now >= keyGuard.at
+  )
+    return keyGuard.restricted;
+  let restricted = false;
+  try {
+    restricted =
+      typeof verifyImpl === 'function' ? verifyImpl(file) === true : false;
+  } catch {
+    restricted = false;
+  }
+  keyGuard = { stamp, restricted, at: now };
+  return restricted;
+}
+
+/**
+ * What the box says about the store: one word the note is painted from.
+ * 'key-changed' is a well-formed key that is not the one the store was last
+ * written under (the header's keyId): its tokens are still admitted by
+ * hash, but none can be shown and a mint seals under the new key. It is
+ * said here once, rather than left for the owner to infer from a reveal
+ * that answers KEY_CHANGED_MESSAGE. A store from before the header, or one
+ * written while the key was missing, has no keyId and is not judged.
+ */
 function tokenStoreState() {
   const store = readTokenStore();
   if (tokenCache.unreadable) return 'unreadable';
-  const { state } = readTokenKey();
+  const { key, state } = readTokenKey();
   if (state === 'invalid') return 'key-invalid';
   if (
     state === 'missing' &&
     store.tokens.some((item) => item.revokedAt === null)
   )
     return 'no-key';
+  if (state === 'ok' && store.keyId && store.keyId !== ultraTokenKeyId(key)) {
+    if (!keyChangedWarned) {
+      keyChangedWarned = true;
+      console.warn(
+        '[Ultra help] config/ultra-tokens.key is not the key the token store was written under: existing tokens still admit by hash but cannot be shown; revoke them and mint again, or RESET TOKENS.',
+      );
+    }
+    return 'key-changed';
+  }
+  keyChangedWarned = false;
+  // The key file's protection, asked again rather than remembered from the
+  // write. The key is still used (nothing here can tell whether anyone read
+  // it), so this is said to the owner: the way out is to restore owner-only
+  // access, or RESET TOKENS for a key nobody else has had sight of.
+  if (state === 'ok' && !keyFileRestricted()) {
+    if (!keyExposedWarned) {
+      keyExposedWarned = true;
+      console.warn(
+        '[Ultra help] config/ultra-tokens.key is no longer restricted to this account: another account on this computer could read it. Restore owner-only access to the file, or RESET TOKENS and mint again.',
+      );
+    }
+    return 'key-exposed';
+  }
+  keyExposedWarned = false;
+  // The store-wide check: a record removed, copied in, reordered, or
+  // stripped of its own check while the file keeps the rest. Admission is
+  // unchanged (each record still answers for itself; a removed record only
+  // denies its own holder), so this is said to the owner rather than acted
+  // on, and stays said until an owner action on the store stamps it again.
+  if (state === 'ok' && ultraTokenStoreState(store, key) === 'bad') {
+    if (!storeChangedWarned) {
+      storeChangedWarned = true;
+      console.warn(
+        '[Ultra help] config/ultra-tokens.json does not match its store check: a token record was removed, added or reordered outside this program. Review the rows, then mint, revoke or edit one to accept the file as it is, or RESET TOKENS.',
+      );
+    }
+    return 'store-changed';
+  }
+  storeChangedWarned = false;
   return 'ok';
 }
 
@@ -1687,6 +1886,7 @@ function publicMessage(message, now, here) {
     text: message.text,
     place: message.place,
     incident: message.incident,
+    needs: message.needs || null,
     lat: message.lat,
     lon: message.lon,
     at: message.at,
@@ -1779,10 +1979,12 @@ function entryMemory(id) {
 }
 
 /**
- * Decrypt the home-list links that may be polled. A seal that will not open,
- * a hash that does not match, or a check that is missing or wrong while
- * another entry still has one, gets no link: the opened token is not sent
- * to a base somebody wrote into the file.
+ * Decrypt the home-list entries that may be polled, each kept in memory as
+ * { base, token }: the address and the opened token side by side, never
+ * joined into a URL. A seal that will not open, a hash that does not match,
+ * or a check that is missing or wrong while another entry still has one,
+ * gets nothing: the opened token is not sent to a base somebody wrote into
+ * the file.
  */
 function openNetworkLinks() {
   links.clear();
@@ -1792,8 +1994,9 @@ function openNetworkLinks() {
   for (const entry of entries) {
     if (!ultraNetworkPollAllowed(entry, entries, key)) continue;
     const token = openUltraNetworkToken(entry.sealed, key, { id: entry.id });
-    const link = token ? ultraHelpLinkFor(entry.base, token) : '';
-    if (link) links.set(entry.id, link);
+    const handout = token ? ultraHelpHandout(entry.base, token) : null;
+    if (handout)
+      links.set(entry.id, { base: handout.address, token: handout.token });
   }
 }
 
@@ -1893,7 +2096,7 @@ function flushNetwork({ blessIds = [] } = {}) {
     const bless = new Set(blessIds);
     entries = folded.map((entry) => {
       const token = openUltraNetworkToken(entry.sealed, key, { id: entry.id });
-      if (!token || ultraTokenHash(token) !== entry.hash) return entry;
+      if (!token || !ultraTokenHashEqual(entry.hash, token)) return entry;
       const state = ultraNetworkPolicyState(entry, key);
       if (state === 'bad' && !bless.has(entry.id)) return entry;
       if (state === 'legacy' && !bless.has(entry.id) && hasMac) return entry;
@@ -1937,8 +2140,8 @@ function pollTarget(entry, now = Date.now()) {
     const until = Number(networkMemory.get(entry.id)?.episodeUntil);
     if (!(Number.isFinite(until) && until > now)) return null;
   }
-  const link = links.get(entry.id);
-  return link ? ultraNetworkPollTarget(link) : null;
+  const handout = links.get(entry.id);
+  return handout ? ultraNetworkPollTarget(handout) : null;
 }
 
 /**
@@ -1951,9 +2154,9 @@ function entryState(entry, memory, tampered = false) {
   if (tampered) return 'tampered';
   if (entry.directoryMissing) return 'missing';
   if (entry.moved) return 'moved';
-  const link = links.get(entry.id);
-  if (!link) return 'no-key';
-  if (!ultraNetworkPollTarget(link)) return 'not-tailnet';
+  const handout = links.get(entry.id);
+  if (!handout) return 'no-key';
+  if (!ultraNetworkPollTarget(handout)) return 'not-tailnet';
   const stored = entry.lastState === 'tampered' ? '' : entry.lastState;
   return memory.lastState || stored || 'new';
 }
@@ -1993,17 +2196,25 @@ async function readCapped(response, limit) {
 }
 
 /**
- * The one request a home-list link is ever used for. The link is re-parsed
- * and re-checked against the tailnet rule here, right before the call, so a
- * stored base that stopped passing it can never be reached; no cookie, no
- * Referer, no Authorization, no redirect, five seconds.
+ * The one request a home-list entry is ever used for: GET
+ * <base>/ultra/help/network. The address is re-checked against the tailnet
+ * rule here, right before the call, so a stored base that stopped passing
+ * it can never be reached. The only credential in the request is the
+ * Authorization bearer, and it is that peer's own Ultra Token, sent only to
+ * the base it was handed out with (the token never rides the URL, so it is
+ * in no log line, Referer or browser history on either side); no cookie, no
+ * Referer, no redirect, five seconds.
  */
-function tailnetFetch(link) {
-  const target = ultraNetworkPollTarget(link);
+function tailnetFetch(handout) {
+  const target = ultraNetworkPollTarget(handout);
   if (!target) return null;
   return fetchTool(target.url, {
     method: 'GET',
-    headers: { Accept: 'application/json', 'User-Agent': ULTRA_USER_AGENT },
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${target.token}`,
+      'User-Agent': ULTRA_USER_AGENT,
+    },
     redirect: 'error',
     signal: AbortSignal.timeout(ULTRA_NETWORK_TIMEOUT_MS),
   });
@@ -2266,13 +2477,21 @@ function staleFixMessage(fix, now, surface) {
  * owner's own saved helpers is composed behind it: this must not make the
  * person in trouble wait for a reverse geocode.
  */
-function releaseAction({ feed, fix, incident, now, source = 'desktop' }) {
+function releaseAction({
+  feed,
+  fix,
+  incident,
+  needs = readStore().owner.needs,
+  now,
+  source = 'desktop',
+}) {
   const previous = currentRelease(feed.id, now);
   const next = newUltraRelease({
     now,
     fix,
     feedId: feed.id,
     incident,
+    needs,
     previous,
   });
   if (!next) return null;
@@ -2378,7 +2597,7 @@ async function deliverOwnPlea(active, feed) {
     currentRelease(feed.id)?.renewedAt !== active.renewedAt;
   if (!call || overtaken()) return;
   const place = found.place || ultraCoordinatesPlace(fix);
-  const plea = ultraHelpMessage(place, active.incident);
+  const plea = ultraHelpMessage(place, active.incident, active.needs);
   call.plea = plea;
   const store = readStore();
   const numbers = store.contacts
@@ -2556,7 +2775,7 @@ async function deliverEpisode(entry, rowId, answer, { notify = true } = {}) {
     {},
     {
       place: where,
-      plea: ultraHelpMessage(where, row.incident),
+      plea: ultraHelpMessage(where, row.incident, row.needs),
     },
   );
   upsertInbox(updated);
@@ -2697,7 +2916,7 @@ function takeOverCall(entry, memory) {
 /** One entry, one poll: the answer judged, the state moved, the episode opened, updated or closed. */
 async function pollEntry(entry, now) {
   const memory = entryMemory(entry.id);
-  const link = links.get(entry.id);
+  const handout = links.get(entry.id);
   memory.inFlight = true;
   let status = 0;
   let answer = null;
@@ -2705,7 +2924,7 @@ async function pollEntry(entry, now) {
   // links to the same call agree on to the millisecond (see followsCall).
   let peerUntil = null;
   try {
-    const response = await tailnetFetch(link);
+    const response = await tailnetFetch(handout);
     if (!response) {
       memory.inFlight = false;
       return;
@@ -2791,7 +3010,11 @@ async function pollEntry(entry, now) {
       answer,
       now,
       place,
-      plea: ultraHelpMessage(place, answer.release.incident),
+      plea: ultraHelpMessage(
+        place,
+        answer.release.incident,
+        answer.release.needs,
+      ),
     });
     if (row) {
       // Kept with the row, so a restart still knows which call it is.
@@ -3699,6 +3922,7 @@ function publicStatus(store, { editable = false } = {}) {
       name: feed ? feed.name || 'Ultra' : item.feedId,
       removed: !feed,
       incident: item.incident,
+      needs: item.needs || null,
       holders: holdersFor(item.feedId),
       watching: watchingFor(item.feedId, now),
       plea: call?.plea || '',
@@ -3733,8 +3957,13 @@ function publicStatus(store, { editable = false } = {}) {
       name: feed.name || 'Ultra',
     })),
     ownerNumber: store.owner.number,
+    // HELP DELIVERY: what SEND HELP asks to be brought, and the token skill
+    // it calls for ('tr' for Transportation, else '').
+    ownerNeeds: store.owner.needs,
+    ownerNeedsSkill: ultraNeedsSkill(store.owner.needs),
     helpBase: ultraHelpBase(),
-    // Where NETWORK links point; '' when this machine has no tailnet address.
+    // The tailnet address holders are given beside a NETWORK token, as a
+    // bare origin; '' when this machine has no tailnet address.
     networkBase: ultraNetworkHelpBase(),
     tokenStore: tokenStoreState(),
     // 'tampered' when the helpers file's check failed and this key opens a
@@ -3775,6 +4004,9 @@ function publicStatus(store, { editable = false } = {}) {
         orphaned: !securityFeed(record.feedId),
         skills: skills.skills,
         encrypted: skills.encrypted,
+        // Encrypted and sealed under a key this machine no longer holds: the
+        // box says the skills are hidden, not that there are none.
+        hidden: skills.hidden === true,
         tampered,
         fingerprint: ultraTokenFingerprint(record.hash),
         messages: own.length,
@@ -4004,10 +4236,29 @@ function admitHolder(token) {
 }
 
 /**
- * The holder's one route, admitted by the token alone: the location poll.
+ * The Ultra Token a holder's request carries, read from the Authorization
+ * header alone: the Bearer scheme in any case, exactly one token after it,
+ * and that token well formed, or '' for anything else — a missing header,
+ * another scheme, two tokens, a token that is not one. Nothing is hashed or
+ * looked up before the pattern passes, and the header's value is never
+ * logged.
+ */
+function bearerToken(req) {
+  const header = req.headers?.authorization;
+  if (typeof header !== 'string') return '';
+  const match = /^\s*Bearer\s+(\S+)\s*$/i.exec(header);
+  const token = match ? match[1] : '';
+  return ULTRA_TOKEN_PATTERN.test(token) ? token : '';
+}
+
+/**
+ * The holder's one route, admitted by the token alone: the location poll,
+ * GET /ultra/help/network with the token as the Authorization bearer.
  * Anything unknown, revoked, malformed or orphaned gets the phone routes'
  * own 404 so nothing tells a guesser apart from a typo; the per-address
- * budgets bound guessing.
+ * budgets bound guessing. The old form, with the token in the path, is a
+ * credential guess at a route that no longer exists: the same 404, and a
+ * miss. Every answer here varies by the header and is never cached.
  */
 async function handleUltraHolder(req, res, parts) {
   // Tailnet only: a LAN neighbour or a rebinding page holding a published
@@ -4038,35 +4289,38 @@ async function handleUltraHolder(req, res, parts) {
     json(res, 429, 'Wait', 'text/plain');
     return;
   }
-  const admitted = admitHolder(parts[2] || '');
+  // The token comes from the header and nowhere else. A path segment that
+  // looks like one is not read: whoever sends the old form is told nothing
+  // and spends a miss like any other unknown credential.
+  const admitted = admitHolder(bearerToken(req));
   // The same 404 as an unknown token. Not a miss, or a holder's own poll
   // would burn the miss budget.
   if (admitted?.tampered) {
-    json(res, 404, 'Not found', 'text/plain');
+    json(res, 404, 'Not found', 'text/plain', HOLDER_HEADERS);
     return;
   }
   if (!admitted) {
     allowUltraRequest(missBuckets, address, now, ULTRA_HOLDER_MISS_LIMIT);
-    json(res, 404, 'Not found', 'text/plain');
+    json(res, 404, 'Not found', 'text/plain', HOLDER_HEADERS);
     return;
   }
   const { record, feed } = admitted;
   // A token carries the location poll and nothing else (owner ruling,
   // 2026-09-30): no page, no status and no message box, during a call too.
-  // Any other route on a live token, and the poll on a token with Network
-  // off, is that same 404, and not a miss: the holder guessed nothing. Both
-  // conditions or nothing: Network on for the token, and its package's SEND
-  // HELP call running, or the poll says only "not now". It has to keep
-  // saying that on its twenty-second cadence, or a subscriber's poller would
-  // read a 404 as a dead link and back off for ten minutes, and miss the
-  // call when it came.
+  // Any other route or method on a live token, and the poll on a token with
+  // Network off, is that same 404, and not a miss: the holder guessed
+  // nothing. Both conditions or nothing: Network on for the token, and its
+  // package's SEND HELP call running, or the poll says only "not now". It
+  // has to keep saying that on its twenty-second cadence, or a subscriber's
+  // poller would read a 404 as a dead address and back off for ten minutes,
+  // and miss the call when it came.
   if (
-    parts.length !== 4 ||
-    parts[3] !== 'network' ||
+    parts.length !== 3 ||
+    parts[2] !== 'network' ||
     req.method !== 'GET' ||
     record.network !== true
   ) {
-    json(res, 404, 'Not found', 'text/plain');
+    json(res, 404, 'Not found', 'text/plain', HOLDER_HEADERS);
     return;
   }
   // Past admission (which re-reads the token and device stores, each file
@@ -4084,6 +4338,8 @@ async function handleUltraHolder(req, res, parts) {
       now,
       feedId: feed.id,
     }),
+    'application/json',
+    HOLDER_HEADERS,
   );
 }
 
@@ -4554,13 +4810,19 @@ async function networkEdit(body, home, store, now, answer) {
     return [200, answer(store)];
   }
   if (body.add) {
-    const parts = parseUltraHelpLink(body.link);
+    // Two fields, kept apart: the address and the token. A body that joins
+    // them into a link is refused whole — the panel splits a pasted legacy
+    // link before it posts, and the server never reads one.
+    const parts =
+      'link' in body
+        ? null
+        : parseUltraHandout({ address: body.address, token: body.token });
     if (!parts)
       return [
         400,
         {
           error:
-            'Paste a whole help link: https://<their machine>.<tailnet>.ts.net/ultra/help/uht1.…',
+            'Enter their tailnet address (https://….ts.net) and their Ultra Token (uht1.…)',
         },
       ];
     if (!ultraTailnetTarget(parts))
@@ -4568,19 +4830,22 @@ async function networkEdit(body, home, store, now, answer) {
         400,
         {
           error:
-            'That link is not an https .ts.net address or a 100.64.x tailnet address, so it will not be polled',
+            'That address is not an https .ts.net address or a 100.64.x tailnet address, so it will not be polled',
         },
       ];
     const hash = ultraTokenHash(parts.token);
     const mine = readTokenStore().tokens.some((item) => item.hash === hash);
     if (mine || reportBases.some((base) => sameBase(base, parts.base)))
-      return [409, { error: 'That is your own help link' }];
+      return [
+        409,
+        { error: 'That is your own tailnet address or Ultra Token' },
+      ];
     if (home.entries.some((entry) => entry.hash === hash))
       return [409, { error: 'Already in your home list' }];
     if (home.entries.length >= ULTRA_NETWORK_ENTRY_LIMIT)
       return [
         409,
-        { error: 'The home list holds 200 links; remove some first' },
+        { error: 'The home list holds 200 entries; remove some first' },
       ];
     const key = ensureTokenKey(readTokenStore({ strict: true }).tokens);
     // Bounded like the token mint: a stuck generator must say so, not spin.
@@ -4615,7 +4880,7 @@ async function networkEdit(body, home, store, now, answer) {
       moved: false,
       ...ultraTokenSkillFields(parts.token),
     });
-    links.set(id, `${parts.base}/ultra/help/${parts.token}`);
+    links.set(id, { base: parts.base, token: parts.token });
     entryMemory(id).nextAt = 0;
     flushNetwork({ blessIds: [id] });
     return [200, answer(store)];
@@ -4757,10 +5022,9 @@ async function updateHomeList(home, store, now, answer) {
     const item = byHash.get(entry.hash);
     if (!item) continue;
     // The same token (the hash matched), but always at the entry's own base:
-    // a link the owner added by hand, or one whose MOVED flag has just
+    // an entry the owner added by hand, or one whose MOVED flag has just
     // cleared, is never polled at a host the directory now names.
-    const link = ultraHelpLinkFor(entry.base, item.token);
-    if (!link) continue;
+    if (!ultraHelpHandout(entry.base, item.token)) continue;
     const policy = ultraNetworkPolicyState(entry, key);
     const opened = openUltraNetworkToken(entry.sealed, key, { id: entry.id });
     if (!opened) {
@@ -4796,8 +5060,9 @@ async function updateHomeList(home, store, now, answer) {
 }
 
 /**
- * PUBLISH MY TOKEN. The entry is exactly { name, link }: the display name
- * and the link the holder would have been handed anyway. Every outcome
+ * PUBLISH MY TOKEN. The entry is exactly { name, address, token }: the
+ * display name, this machine's tailnet address and the token the holder
+ * would have been handed anyway, the last two kept apart. Every outcome
  * answers 200 with the entry, so publishing is never a dead end — a GitHub
  * write that failed becomes something to copy or email.
  */
@@ -4921,13 +5186,15 @@ async function publishToken(home, body, store, now, answer) {
     record = { ...record, locationOnly: true };
   }
   const feed = securityFeed(record.feedId);
-  const link = networkBase + token;
-  // The same rule every receiver applies before it adds or polls a link.
-  if (!ultraNetworkPollTarget(link))
+  const handout = ultraHelpHandout(networkBase, token);
+  // The same rule every receiver applies to the address before it adds or
+  // polls an entry.
+  if (!handout || !ultraNetworkPollTarget(handout))
     return [409, { error: 'This machine has no tailnet address to publish' }];
   const entry = ultraDirectoryEntry({
     name: home.me.name || feed?.name || 'Ultra',
-    link,
+    address: handout.address,
+    token: handout.token,
   });
   const entryText = JSON.stringify(entry, null, 2);
   const url = directoryUrl();
@@ -5030,13 +5297,12 @@ function tokenAction(body, store, now, answer) {
   const tokens = readTokenStore({ strict: true }).tokens;
   const live = (id) =>
     tokens.find((item) => item.id === id && item.revokedAt === null) || null;
-  // A NETWORK token's link carries the tailnet address, the only one a
-  // holder's own GEVC will poll; a token with Network off opens nothing and
-  // keeps the listener's first address. With no tailnet address yet, the
-  // first one still shows.
+  // What the owner hands a person: the token, and beside it, for a NETWORK
+  // token, this machine's tailnet address — the only one a holder's own GEVC
+  // will poll ('' until the listener has one). The two are never joined. A
+  // token with Network off opens nothing, so it is handed out with no
+  // address at all.
   const revealed = (record, token) => {
-    const base =
-      (record.network === true && ultraNetworkHelpBase()) || ultraHelpBase();
     // From the bearer string, not the file: Encrypt is not undone by a
     // skill list someone wrote beside the seal.
     const key = readTokenKey().key;
@@ -5048,9 +5314,12 @@ function tokenAction(body, store, now, answer) {
       id: record.id,
       label: record.label,
       token,
-      link: base ? base + token : '',
+      ...(record.network === true ? { address: ultraNetworkHelpBase() } : {}),
       skills: read.skills,
       encrypted: read.encrypted === true,
+      // The seal opened, but the skill blob inside the string did not: say
+      // the skills are hidden rather than that there are none.
+      ...(read.hidden === true ? { hidden: true } : {}),
     };
   };
   if (body.reveal) {
@@ -5202,12 +5471,17 @@ function mintToken(
   // see it. Draw again rather than mint a token that is already out there.
   // The hash is of the whole string, skills included, so the check runs
   // after they are written in.
+  // A string that cannot be built (a skill code the pattern cannot carry,
+  // or a key the sealer refuses) is not the generator's fault: its own code
+  // is not one the owner is shown, so it takes the generic 500, which logs
+  // the code and never the token.
+  const compose = composeImpl || composeUltraToken;
   let token = newUltraToken();
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const composed = composeUltraToken(token, skills, { encrypt, key });
+    const composed = compose(token, skills, { encrypt, key });
     if (!composed)
       throw storeFailure(
-        'GEV_WEAK_RANDOM',
+        'GEV_TOKEN_COMPOSE',
         'the token could not be built; nothing was minted',
       );
     token = composed;
@@ -5285,8 +5559,10 @@ export function ultraHelpProxy({
   fetchImpl = (...args) => globalThis.fetch(...args),
   sourceRoot: root = process.cwd(),
   harden,
+  compose,
+  verify,
 } = {}) {
-  pointAt(root, harden);
+  pointAt(root, harden, compose, verify);
   // The poller, the directory, the geocode and the SMS relay all go out
   // through the same injected fetch, so a test drives every one of them.
   fetchTool = fetchImpl;
@@ -5321,8 +5597,10 @@ export function ultraHelpProxy({
       }
       const url = new URL(req.url || '/', 'http://localhost');
       const pathName = url.pathname;
-      const store = readStore();
       try {
+        // Inside the try: a helpers file that makes the read throw is a
+        // generic failure here, never an uncaught throw out of the handler.
+        const store = readStore();
         recallSecurityFeeds();
         if (
           req.method === 'GET' &&
@@ -5546,6 +5824,27 @@ export function ultraHelpProxy({
             answer,
           );
           json(res, status, payload);
+          return;
+        }
+        if (req.method === 'POST' && pathName === '/needs') {
+          if (!allowEdit) {
+            json(res, 403, {
+              error: 'Editing is available under the dev server only',
+            });
+            return;
+          }
+          // HELP DELIVERY from the Social Media tab; null clears it. A call
+          // already running keeps what it was sent with.
+          const needs = body.needs === null ? null : ultraNeeds(body.needs);
+          if (body.needs !== null && !needs) {
+            json(res, 400, { error: 'Choose the help to be delivered.' });
+            return;
+          }
+          if (JSON.stringify(store.owner.needs) !== JSON.stringify(needs)) {
+            store.owner.needs = needs;
+            writeStore(store);
+          }
+          json(res, 200, answer(store));
           return;
         }
         if (req.method === 'POST' && pathName === '/number') {

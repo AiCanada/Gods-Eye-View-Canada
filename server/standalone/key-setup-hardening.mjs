@@ -8,6 +8,7 @@
  * server/standalone/. This module is the standalone application's entry to it.
  */
 export {
+  credentialFileRestricted,
   hardenCredentialFile,
   hardenPrivateFolder,
   replaceCredentialStore,

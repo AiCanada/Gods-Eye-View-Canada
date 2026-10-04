@@ -171,13 +171,7 @@ function restrictToOwner(
     // Grant by the CURRENT PROCESS TOKEN'S SID, never a bare username. Parsing
     // the second CSV field structurally prevents an SID-looking account name or
     // a broad group SID from becoming the credential owner.
-    const whoami = spawn(tools.whoami, ['/user', '/fo', 'csv', '/nh'], {
-      encoding: 'utf8',
-      windowsHide: true,
-    });
-    const sid = commandCompletedSuccessfully(whoami)
-      ? parseWindowsUserSid(whoami.stdout)
-      : null;
+    const sid = currentUserSid(tools, spawn);
     if (!sid) return false;
 
     // On a folder each rule is inherited by everything inside it (OI)(CI),
@@ -201,46 +195,136 @@ function restrictToOwner(
     // accept only three explicit FullControl allow principals, with inheritance
     // disabled. Any unexpected rule, right, command error, or missing principal
     // fails closed before the secret reaches disk.
-    //
-    // The verify process must load Microsoft.PowerShell.Security (Get-Acl)
-    // from the Windows PowerShell system module tree ONLY. A side-by-side
-    // PowerShell 7 install prepends its own module trees to PSModulePath at
-    // startup; inherited into a 5.1 process, the incompatible 7.x manifest
-    // cannot be autoloaded and the verify step fails. The script itself sets
-    // the path from $PSHOME; this is the same value computed ahead of time, so
-    // nothing inherited is in force even for the moment before it runs. The
-    // Sysnative spelling is a 32-bit caller's bridge and not a directory the
-    // launched native process can read, so the physical name is used.
-    const powershellModuleDirectory = path.win32.join(
-      path.win32
-        .dirname(tools.powershell)
-        .replace(/\\Sysnative\\/i, '\\System32\\'),
-      'Modules',
-    );
-    // Windows environment names are case-insensitive, and a child can end up
-    // carrying a differently cased alias alongside the value set here. Drop
-    // every spelling before setting the trusted one.
-    const verifyEnvironment = Object.fromEntries(
-      Object.entries(environment).filter(
-        ([name]) => name.toLowerCase() !== 'psmodulepath',
-      ),
-    );
-    const verified = spawn(
-      tools.powershell,
-      ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_ACL_VERIFY_SCRIPT],
-      {
-        env: {
-          ...verifyEnvironment,
-          GEV_ACL_FILE: filepath,
-          GEV_ACL_FOLDER: folder ? '1' : '',
-          GEV_ACL_USER_SID: sid,
-          PSModulePath: powershellModuleDirectory,
-        },
-        stdio: 'ignore',
-        windowsHide: true,
+    return windowsAclVerified({
+      tools,
+      sid,
+      filepath,
+      folder,
+      environment,
+      spawn,
+    });
+  } catch {
+    return false;
+  }
+}
+
+/** The SID of the account this process runs as, from whoami's CSV, or null. */
+function currentUserSid(tools, spawn) {
+  const whoami = spawn(tools.whoami, ['/user', '/fo', 'csv', '/nh'], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  return commandCompletedSuccessfully(whoami)
+    ? parseWindowsUserSid(whoami.stdout)
+    : null;
+}
+
+/**
+ * Whether the DACL on a file or folder is exactly the owner-only one this
+ * module sets: three explicit FullControl allow rules (this account, SYSTEM,
+ * Administrators), inheritance disabled, nothing else.
+ *
+ * The verify process must load Microsoft.PowerShell.Security (Get-Acl)
+ * from the Windows PowerShell system module tree ONLY. A side-by-side
+ * PowerShell 7 install prepends its own module trees to PSModulePath at
+ * startup; inherited into a 5.1 process, the incompatible 7.x manifest
+ * cannot be autoloaded and the verify step fails. The script itself sets
+ * the path from $PSHOME; this is the same value computed ahead of time, so
+ * nothing inherited is in force even for the moment before it runs. The
+ * Sysnative spelling is a 32-bit caller's bridge and not a directory the
+ * launched native process can read, so the physical name is used.
+ */
+function windowsAclVerified({
+  tools,
+  sid,
+  filepath,
+  folder,
+  environment,
+  spawn,
+}) {
+  const powershellModuleDirectory = path.win32.join(
+    path.win32
+      .dirname(tools.powershell)
+      .replace(/\\Sysnative\\/i, '\\System32\\'),
+    'Modules',
+  );
+  // Windows environment names are case-insensitive, and a child can end up
+  // carrying a differently cased alias alongside the value set here. Drop
+  // every spelling before setting the trusted one.
+  const verifyEnvironment = Object.fromEntries(
+    Object.entries(environment).filter(
+      ([name]) => name.toLowerCase() !== 'psmodulepath',
+    ),
+  );
+  const verified = spawn(
+    tools.powershell,
+    ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_ACL_VERIFY_SCRIPT],
+    {
+      env: {
+        ...verifyEnvironment,
+        GEV_ACL_FILE: filepath,
+        GEV_ACL_FOLDER: folder ? '1' : '',
+        GEV_ACL_USER_SID: sid,
+        PSModulePath: powershellModuleDirectory,
       },
-    );
-    return commandCompletedSuccessfully(verified);
+      stdio: 'ignore',
+      windowsHide: true,
+    },
+  );
+  return commandCompletedSuccessfully(verified);
+}
+
+/**
+ * Whether a credential file is still restricted to this account: the check
+ * the hardener runs after it writes, run again on its own, with nothing
+ * changed. On POSIX the file must be a regular file (not a symlink) with
+ * mode exactly 0600; on Windows its DACL must be the exact owner-only one
+ * (see windowsAclVerified). False on any doubt: a missing file, an
+ * unreadable stat, tools that cannot be resolved. A key file whose
+ * protection was widened after it was written is how a key leaks without
+ * the file ever being rewritten, so the store reads this before it trusts
+ * the key, and says so when it fails.
+ */
+export function credentialFileRestricted(
+  filepath,
+  {
+    platform = process.platform,
+    architecture = process.arch,
+    spawn = spawnSync,
+    fileSystem = fs,
+    environment = process.env,
+  } = {},
+) {
+  try {
+    const entry = fileSystem.lstatSync(filepath);
+    if (entry.isSymbolicLink?.() || entry.isDirectory?.()) return false;
+  } catch {
+    return false;
+  }
+  if (platform !== 'win32') {
+    try {
+      return (fileSystem.statSync(filepath).mode & 0o777) === 0o600;
+    } catch {
+      return false;
+    }
+  }
+  const tools = resolveWindowsNativeTools(
+    environment,
+    fileSystem,
+    architecture,
+  );
+  if (!tools) return false;
+  try {
+    const sid = currentUserSid(tools, spawn);
+    if (!sid) return false;
+    return windowsAclVerified({
+      tools,
+      sid,
+      filepath,
+      folder: false,
+      environment,
+      spawn,
+    });
   } catch {
     return false;
   }
@@ -248,6 +332,20 @@ function restrictToOwner(
 
 /** Rename errors Windows raises when the caller lacks DELETE on the target. */
 const REPLACE_REFUSED_CODES = new Set(['EPERM', 'EACCES']);
+/**
+ * Link errors that mean the volume cannot make a hard link at all (FAT and
+ * exFAT on Windows, some network and FUSE mounts), as opposed to a link that
+ * was refused because the name is taken. Only these fall back to a rename.
+ */
+const LINK_UNSUPPORTED_CODES = new Set([
+  'EPERM',
+  'EACCES',
+  'ENOSYS',
+  'ENOTSUP',
+  'EOPNOTSUPP',
+  'EINVAL',
+  'EXDEV',
+]);
 
 function pathExists(fileSystem, filepath) {
   try {
@@ -276,11 +374,28 @@ function pathExists(fileSystem, filepath) {
  * DACL the staged file already has — and the rename is retried once. A second
  * refusal fails closed with its own path-free message.
  *
+ * With `exclusive` the staged file is installed only when nothing is at the
+ * target yet: the temp is hard-linked to the target name, which the file
+ * system refuses with EEXIST when another process got there first, and the
+ * temp is then removed. A hard link is the same file object, so the DACL or
+ * mode the hardener gave the temp is the target's too. The caller sees an
+ * error with code 'EEXIST' and reads the winner's file back instead of
+ * replacing it: a key file made twice would seal two sets of tokens under
+ * two keys. A volume that cannot make hard links (FAT, exFAT, some mounts)
+ * refuses the link with EPERM, ENOSYS or the like; that one case falls back
+ * to the rename above, after a look at the target, and the result says so
+ * (`exclusive: false`) so the caller can log that the guarantee was weaker.
+ *
  * Dependencies are injectable so every fail-closed branch is unit-testable.
  *
  * @param {string} filepath Target store path.
  * @param {string} text Full store content to write, UTF-8.
- * @returns {void}
+ * @param {object} [options]
+ * @param {boolean} [options.exclusive] Create only; never replace a file
+ *   that is already there.
+ * @returns {{ method: 'link' | 'rename', exclusive: boolean, linkError?: string }}
+ *   How the staged file was installed. `linkError` is the code the hard link
+ *   failed with when an exclusive install had to fall back to a rename.
  */
 export function replaceCredentialStore(
   filepath,
@@ -290,6 +405,7 @@ export function replaceCredentialStore(
     platform = process.platform,
     harden = hardenCredentialFile,
     tempSuffix = () => randomUUID().slice(0, 8),
+    exclusive = false,
   } = {},
 ) {
   // Never write THROUGH a symlink into a credential path.
@@ -343,12 +459,53 @@ export function replaceCredentialStore(
     if (!staged) fileSystem.rmSync(tmp, { force: true });
   }
 
+  let linkError;
+  if (exclusive) {
+    try {
+      fileSystem.linkSync(tmp, filepath);
+    } catch (error) {
+      if (error?.code === 'EEXIST') {
+        fileSystem.rmSync(tmp, { force: true });
+        throw targetTaken(error);
+      }
+      if (!LINK_UNSUPPORTED_CODES.has(error?.code)) {
+        fileSystem.rmSync(tmp, { force: true });
+        throw error;
+      }
+      // No hard links on this volume. The rename below is not exclusive, so
+      // the target is looked at first; the window between the look and the
+      // rename is what the caller's read-back covers.
+      if (pathExists(fileSystem, filepath)) {
+        fileSystem.rmSync(tmp, { force: true });
+        throw targetTaken(error);
+      }
+      linkError = String(error?.code || 'error');
+    }
+    if (linkError === undefined) {
+      // Both names are the same hardened file now; a temp name that will
+      // not go is not a failed install, and the caller reads the target back.
+      try {
+        fileSystem.rmSync(tmp, { force: true });
+      } catch {
+        /* the target is in place either way */
+      }
+      return { method: 'link', exclusive: true };
+    }
+  }
+
   let failure;
   try {
     fileSystem.renameSync(tmp, filepath);
-    return;
+    return installedByRename(linkError);
   } catch (error) {
     failure = error;
+  }
+
+  // An exclusive install never repairs and renames over a file that appeared
+  // after the look above: that file is the winner's, and the caller reads it.
+  if (exclusive && pathExists(fileSystem, filepath)) {
+    fileSystem.rmSync(tmp, { force: true });
+    throw targetTaken(failure);
   }
 
   if (
@@ -365,7 +522,7 @@ export function replaceCredentialStore(
     if (repaired) {
       try {
         fileSystem.renameSync(tmp, filepath);
-        return;
+        return installedByRename(linkError);
       } catch (error) {
         failure = error;
       }
@@ -382,4 +539,21 @@ export function replaceCredentialStore(
 
   fileSystem.rmSync(tmp, { force: true });
   throw failure;
+}
+
+/** The result of a rename install; `linkError` is set only after an exclusive install fell back. */
+function installedByRename(linkError) {
+  return linkError === undefined
+    ? { method: 'rename', exclusive: false }
+    : { method: 'rename', exclusive: false, linkError };
+}
+
+/** The refusal an exclusive install raises when the target already exists. */
+function targetTaken(cause) {
+  const taken = new Error(
+    'the credential file was created by another process meanwhile; nothing was replaced',
+  );
+  taken.code = 'EEXIST';
+  taken.cause = cause;
+  return taken;
 }

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  credentialFileRestricted,
   hardenCredentialFile,
   hardenPrivateFolder,
   replaceCredentialStore,
@@ -640,21 +641,33 @@ function stagingPath(filepath, suffix = 'abcdef12', platform = 'win32') {
 /**
  * In-memory stand-in for the fs surface the swap touches. `renameErrors` is
  * consumed one entry per rename attempt; a null entry means that attempt
- * succeeds.
+ * succeeds. `linkError` is what the one hard-link attempt an exclusive
+ * install makes throws; `existsAfterLink` is what the target look after a
+ * refused link finds (the default is `exists`).
  */
 function swapFileSystem({
   exists = true,
   symlink = false,
   renameErrors = [],
   writeChunk = Infinity,
+  linkError = null,
+  existsAfterLink = exists,
 } = {}) {
   const calls = [];
   const renameQueue = [...renameErrors];
+  let linked = false;
   return {
     calls,
+    linkSync(from, to) {
+      calls.push(['link', from, to]);
+      linked = true;
+      if (linkError)
+        throw Object.assign(new Error(linkError), { code: linkError });
+    },
     lstatSync(filepath) {
       calls.push(['lstat', filepath]);
-      if (!exists) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      const there = linked ? existsAfterLink : exists;
+      if (!there) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
       return { isSymbolicLink: () => symlink };
     },
     openSync(filepath, flags, mode) {
@@ -905,4 +918,294 @@ test('a POSIX rename failure is rethrown untouched and never triggers the Window
   assert.deepEqual(hardened, [posixTmp]);
   assert.equal(renames(fileSystem).length, 1);
   assert.deepEqual(removals(fileSystem), [['rm', posixTmp, { force: true }]]);
+});
+
+// ---------------------------------------------------------------------------
+// replaceCredentialStore with `exclusive`: create-only, through a hard link.
+// ---------------------------------------------------------------------------
+
+const links = (fileSystem) => fileSystem.calls.filter(([op]) => op === 'link');
+
+test('a plain swap reports how it installed the file', () => {
+  const fileSystem = swapFileSystem();
+  assert.deepEqual(
+    replaceCredentialStore(STORE, 'X=1', swapOptions(fileSystem)),
+    { method: 'rename', exclusive: false },
+  );
+  assert.deepEqual(links(fileSystem), [], 'no link outside exclusive mode');
+});
+
+test('an exclusive install links the hardened temp to the target and removes the temp, never renaming', () => {
+  const fileSystem = swapFileSystem({ exists: false });
+  const hardened = [];
+  const result = replaceCredentialStore(
+    STORE,
+    'KEY=1\n',
+    swapOptions(fileSystem, {
+      exclusive: true,
+      harden: (filepath) => {
+        hardened.push(filepath);
+        return true;
+      },
+    }),
+  );
+  assert.deepEqual(result, { method: 'link', exclusive: true });
+  assert.deepEqual(
+    hardened,
+    [TMP],
+    'the temp is hardened; the link shares its DACL',
+  );
+  assert.deepEqual(links(fileSystem), [['link', TMP, STORE]]);
+  assert.deepEqual(renames(fileSystem), []);
+  assert.deepEqual(removals(fileSystem), [['rm', TMP, { force: true }]]);
+  const linkIndex = fileSystem.calls.findIndex(([op]) => op === 'link');
+  assert.ok(
+    fileSystem.calls.findIndex(([op]) => op === 'fsync') < linkIndex,
+    'the content is complete and fsynced before the name appears',
+  );
+});
+
+test('an exclusive install that loses the race removes its temp and throws EEXIST without touching the winner', () => {
+  const fileSystem = swapFileSystem({ exists: false, linkError: 'EEXIST' });
+  assert.throws(
+    () =>
+      replaceCredentialStore(
+        STORE,
+        'KEY=1\n',
+        swapOptions(fileSystem, { exclusive: true }),
+      ),
+    (error) =>
+      error.code === 'EEXIST' &&
+      error.cause?.code === 'EEXIST' &&
+      /another process/.test(error.message) &&
+      !error.message.includes(STORE),
+  );
+  assert.deepEqual(renames(fileSystem), []);
+  assert.deepEqual(removals(fileSystem), [['rm', TMP, { force: true }]]);
+});
+
+test('a volume without hard links falls back to a rename and says so', () => {
+  for (const code of ['EPERM', 'ENOSYS', 'ENOTSUP', 'EINVAL']) {
+    const fileSystem = swapFileSystem({ exists: false, linkError: code });
+    const result = replaceCredentialStore(
+      STORE,
+      'KEY=1\n',
+      swapOptions(fileSystem, { exclusive: true }),
+    );
+    assert.deepEqual(
+      result,
+      { method: 'rename', exclusive: false, linkError: code },
+      code,
+    );
+    assert.deepEqual(renames(fileSystem), [['rename', TMP, STORE]], code);
+    assert.deepEqual(removals(fileSystem), [], code);
+  }
+});
+
+test('the rename fallback still refuses a target that appeared meanwhile, before and after the rename', () => {
+  // Found by the look that follows the refused link.
+  const seen = swapFileSystem({
+    exists: false,
+    linkError: 'EPERM',
+    existsAfterLink: true,
+  });
+  assert.throws(
+    () =>
+      replaceCredentialStore(
+        STORE,
+        'KEY=1\n',
+        swapOptions(seen, { exclusive: true }),
+      ),
+    (error) => error.code === 'EEXIST' && error.cause?.code === 'EPERM',
+  );
+  assert.deepEqual(renames(seen), []);
+  assert.deepEqual(removals(seen), [['rm', TMP, { force: true }]]);
+  // Found only when the rename itself is refused: the Windows DACL repair
+  // must not run, since that would rename over the winner's file.
+  const late = swapFileSystem({ exists: false, linkError: 'EPERM' });
+  let looks = 0;
+  const lstat = late.lstatSync;
+  late.lstatSync = (filepath) => {
+    looks += 1;
+    // The symlink check and the post-link look find nothing; the look after
+    // the refused rename finds the winner.
+    if (looks <= 2) return lstat(filepath);
+    late.calls.push(['lstat', filepath]);
+    return { isSymbolicLink: () => false };
+  };
+  late.renameSync = (from, to) => {
+    late.calls.push(['rename', from, to]);
+    throw Object.assign(new Error('EPERM'), { code: 'EPERM' });
+  };
+  const hardened = [];
+  assert.throws(
+    () =>
+      replaceCredentialStore(
+        STORE,
+        'KEY=1\n',
+        swapOptions(late, {
+          exclusive: true,
+          harden: (filepath) => {
+            hardened.push(filepath);
+            return true;
+          },
+        }),
+      ),
+    (error) => error.code === 'EEXIST' && error.cause?.code === 'EPERM',
+  );
+  assert.deepEqual(hardened, [TMP], 'the target is never re-hardened');
+  assert.equal(renames(late).length, 1);
+  assert.deepEqual(removals(late), [['rm', TMP, { force: true }]]);
+});
+
+test('a link refused for any other reason is rethrown untouched with the temp removed', () => {
+  const fileSystem = swapFileSystem({ exists: false, linkError: 'EIO' });
+  assert.throws(
+    () =>
+      replaceCredentialStore(
+        STORE,
+        'KEY=1\n',
+        swapOptions(fileSystem, { exclusive: true }),
+      ),
+    (error) => error.code === 'EIO',
+  );
+  assert.deepEqual(renames(fileSystem), []);
+  assert.deepEqual(removals(fileSystem), [['rm', TMP, { force: true }]]);
+});
+
+test('an exclusive install on the real file system creates once and refuses the second', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-exclusive-'));
+  const target = path.join(directory, 'ultra-tokens.key');
+  try {
+    const first = replaceCredentialStore(target, 'first\n', {
+      harden: () => true,
+      exclusive: true,
+    });
+    assert.ok(['link', 'rename'].includes(first.method));
+    assert.equal(fs.readFileSync(target, 'utf8'), 'first\n');
+    assert.throws(
+      () =>
+        replaceCredentialStore(target, 'second\n', {
+          harden: () => true,
+          exclusive: true,
+        }),
+      (error) => error.code === 'EEXIST',
+    );
+    assert.equal(fs.readFileSync(target, 'utf8'), 'first\n');
+    assert.deepEqual(fs.readdirSync(directory), ['ultra-tokens.key']);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('credentialFileRestricted asks the same question the hardener answers, without changing anything', () => {
+  const posix = (mode, extra = {}) => ({
+    lstatSync: () => ({
+      isSymbolicLink: () => extra.symlink === true,
+      isDirectory: () => false,
+    }),
+    statSync: () => ({ mode }),
+    chmodSync: () => {
+      throw new Error('a check must never chmod');
+    },
+  });
+  assert.equal(
+    credentialFileRestricted(FILE, {
+      platform: 'linux',
+      fileSystem: posix(0o100600),
+    }),
+    true,
+  );
+  for (const mode of [0o100640, 0o100644, 0o100660, 0o100400, 0o100700])
+    assert.equal(
+      credentialFileRestricted(FILE, {
+        platform: 'linux',
+        fileSystem: posix(mode),
+      }),
+      false,
+      mode.toString(8),
+    );
+  assert.equal(
+    credentialFileRestricted(FILE, {
+      platform: 'darwin',
+      fileSystem: posix(0o100600, { symlink: true }),
+    }),
+    false,
+    'a symlink is never a restricted credential file',
+  );
+  assert.equal(
+    credentialFileRestricted(FILE, {
+      platform: 'linux',
+      fileSystem: {
+        lstatSync: () => {
+          throw Object.assign(new Error('gone'), { code: 'ENOENT' });
+        },
+      },
+    }),
+    false,
+  );
+  // Windows: whoami, then the Get-Acl verify script, and no icacls.
+  const commands = [];
+  const windows = (verifyStatus) => ({
+    platform: 'win32',
+    environment: {
+      SYSTEMROOT: WINDOWS_ROOT,
+      PSModulePath: 'C:\\pwsh7\\Modules',
+    },
+    fileSystem: {
+      ...windowsFileSystem(),
+      lstatSync(filepath) {
+        if (filepath === 'C:\\GEV\\ultra-tokens.key')
+          return { isSymbolicLink: () => false, isDirectory: () => false };
+        return windowsFileSystem().lstatSync(filepath);
+      },
+    },
+    spawn(command, args, options) {
+      commands.push([
+        command,
+        args[0],
+        options?.env?.GEV_ACL_FILE,
+        options?.env?.GEV_ACL_FOLDER,
+        options?.env?.PSModulePath,
+      ]);
+      if (command.endsWith('whoami.exe'))
+        return {
+          status: 0,
+          signal: null,
+          stdout: `"host\\user","${USER_SID}"`,
+        };
+      return { status: verifyStatus, signal: null };
+    },
+  });
+  assert.equal(
+    credentialFileRestricted('C:\\GEV\\ultra-tokens.key', windows(0)),
+    true,
+  );
+  assert.deepEqual(
+    commands.map(([command]) => path.win32.basename(command)),
+    ['whoami.exe', 'powershell.exe'],
+  );
+  assert.deepEqual(commands[1].slice(2), [
+    'C:\\GEV\\ultra-tokens.key',
+    '',
+    `${WINDOWS_ROOT}\\System32\\WindowsPowerShell\\v1.0\\Modules`,
+  ]);
+  commands.length = 0;
+  assert.equal(
+    credentialFileRestricted('C:\\GEV\\ultra-tokens.key', windows(7)),
+    false,
+  );
+  assert.equal(
+    commands.length,
+    2,
+    'the verify ran and failed; nothing was applied',
+  );
+  assert.equal(
+    credentialFileRestricted('C:\\GEV\\ultra-tokens.key', {
+      ...windows(0),
+      environment: {},
+    }),
+    false,
+    'no system root, no verdict',
+  );
 });

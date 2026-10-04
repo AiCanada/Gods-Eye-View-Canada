@@ -1,204 +1,896 @@
-CCTV inventory pack, built from cctv-inventory-2026-10-01.csv
-Rows: 84,601; camera views: 74,879.
-Written: 17,345 new cameras to config/cctv_sources.inventory.json.
-Already in the packs (not written again): 57,421.
-Pack cameras that had no picture and now have the inventory's: 3,582.
-US and Canadian rows with no usable state or province, given the nearest held camera's: 2,013.
-Left out: 14,891.
+CCTV inventory pack, built from cctv-inventory-2026-10-01.csv, cctv-inventory-2026-10-03.csv and cctv-api-catalog-2026-10-04.csv (merged)
+Rows: 434,642; camera views: 393,524.
+Written: 37,538 new cameras to config/cctv_sources.inventory.json.
+Already in the packs (not written again): 355,304.
+Pack cameras that had no picture and now have the inventory's: 36.
+US and Canadian rows with no usable state or province, given the nearest held camera's: 79,722.
+Rows naming no known country (Unknown, International, a cruise line), given the nearest held camera's: 3,461.
+Left out: 59,259.
 No camera is left out for standing near another one.
 
 Already held, by what makes it the same camera:
-  same address: 45,061
-        28,300  us pack
-         9,631  intl pack
-         6,441  canada pack
-           689  inventory (listed twice)
-  same name: 6,448
-         6,120  us pack
-           209  canada pack
-           114  intl pack
-             5  inventory (listed twice)
-  same operator code: 4,126
-         4,092  us pack
+  same address: 346,318
+       149,858  intl pack
+       130,601  us pack
+        42,712  inventory (listed twice)
+        23,147  canada pack
+  same operator code: 4,140
+         4,106  us pack
             34  inventory (listed twice)
-  same operator camera number: 1,081
-         1,081  us pack
-  same name on the same site: 705
+  same name: 4,098
+         3,684  us pack
+           210  canada pack
+           170  intl pack
+            34  inventory (listed twice)
+  same name on the same site: 746
            427  canada pack
-           273  us pack
-             5  intl pack
+           290  us pack
+            21  inventory (listed twice)
+             8  intl pack
+  same operator camera number: 2
+             2  us pack
 
 Left out, by reason:
-  only an expiring signed link: 12,207
-        11,290  UTIC-Korea
-           917  Streetside-Jakarta
-  only a web page or player: 1,504
-           678  Quebec511-MTQ
-           552  MDOT-CHART
-           273  UTIC-Korea
-             1  NZTA
-  served by the Austin open-data live pack: 1,007
-         1,007  AustinATD
-  school, university, college or library camera: 113
-            42  HK-TD
-            18  Georgia511
-            16  GDOT-511
-            11  TravelMidwest-Gateway
-             6  City-of-Colorado-Springs
-             3  Caltrans
-             3  DelDOT
+  only an expiring signed link: 36,643
+        33,806  UTIC-Korea
+         2,751  Streetside-Jakarta
+            60  LES:balticlivecam
+            20  LES:ktict
+             4  Live Environment Streams (balticlivecam)
+             2  LES:osm_webcam_pages
+  only a web page or player: 10,930
+         2,335  THB
+         2,034  Quebec511-MTQ
+         1,655  MDOT-CHART
+         1,572  LES:skylinewebcams
+           814  OSM-contact:webcam
+           655  UTIC-Korea
+           489  WYDOT-511
+           464  OpenStreetMap
+           314  Taichung-City
+           198  Thailand DOH Highway Traffic (highwaytraffic.go.th GetSiteInfo)
+           185  QLD-FloodCams
+            86  Keelung-City
+            84  Bali Satu Data balisatudata.baliprov.go.id report-cctv
+            11  Chiayi-City
+             8  WYDOT-Cheyenne
+             4  City of Kingston Webcams
+             4  Sunshine Village Banff
+             3  NZTA
+             3  TravelMidwest-Gateway
+             2  AMOS (webkamera.vegvesen.no)
+             2  ARPA-Lombardia-Webcam-Map
+             2  Ozolio / Mt Washington
+             1  City-of-Surrey
+             1  EmiliaRomagnaTurismo
+             1  hotel-tylosand
+             1  Marmot Basin Roundshot
+             1  nbcams.ca / Biron Engineering
+             1  Road511
+  no coordinates: 4,734
+         1,927  MLIT Road Information Provision System (road-info-prvs.mlit.go.jp)
+           606  WebCamera.pl
+           496  BalticLiveCam
+           338  WorldCam
+           211  Traffic Wales
+           123  Beachcam.meo.pt
+           111  OpenDataHub WebcamInfo/lts still
+           111  TrafficWatchNI
+            95  Surakarta ccroom-dishub.surakarta.go.id /cctv
+            76  WebcamExplore
+            69  Banjarbaru cctv.banjarbarukota.go.id
+            56  OpenDataHub/lts
+            54  Nova Scotia Public Works
+            52  Essex Highways
+            52  SkylineWebcams
+            50  City of Ottawa Traffic
+            43  City of Toronto TMC
+            37  City of Vancouver
+            31  Viewsurf filmssite live media.jpg
+            29  Castanet Scenic Webcams
+            22  MegaCam
+            21  Alberta 511
+            15  Banjar cctv.banjarkab.go.id get_stream.php
+            15  Cirebon nms.cirebonkota.go.id (cctv_list)
+            10  OpenDataHub/idm
+            10  Ozolio
+             8  Macau Marine RealTimeTraffic
+             8  Ontario 511
+             7  City of Calgary Traffic Cameras
+             7  Mount St. Louis Moonstone
+             6  Mont-Sainte-Anne Ski Resort
+             5  Geocam
+             4  Ozolio / City of Kingston
+             4  WebcamGalore
+             3  BC Ferries
+             3  JP opendata-livecamera-jp still scrape
+             3  Mount Washington Alpine Resort
+             3  WebCam.nl images
+             2  Newfoundland and Labrador 511
+             2  Nova Scotia Webcams
+             2  OpenDataHub/dss
+             2  Ozolio / Mount Washington Alpine Resort
+             1  IPCamLive / Castanet
+             1  Saskatchewan 511
+             1  Skaping / Alpine Ski Club
+             1  Skaping / Mount Norquay
+             1  Whatsupcams
+  served by the Austin open-data live pack: 3,016
+         3,016  AustinATD
+  country not recognised ("Unknown") and no usable coordinates: 1,383
+         1,373  AMOS-archive
+            10  LES:youtube_discovery
+  school, university, college or library camera: 682
+           126  HK-TD
+            93  Windy-public-list
+            49  Georgia511
+            44  GDOT-511
+            44  Windy
+            40  WorldCam
+            31  Windy/weather
+            30  TravelMidwest-Gateway
+            30  WebcamGalore
+            18  City-of-Colorado-Springs
+            15  CalOES-ALERTCalifornia
+            13  AMOS-archive
+             9  Caltrans
+             9  foto-webcam.eu
+             9  NYSDOT-511NY
+             9  Windy/ski
+             8  DelDOT
+             8  York-Region
+             6  FL511
+             6  Panomax
+             6  Whatsupcams
+             6  Windy/harbor
+             5  OSM-contact:webcam
+             4  FAA-WeatherCams
+             4  iTIC-DoH-Highway
+             4  MTO-511on
+             4  ODH OpenDataHub WebcamInfo
+             4  Roundshot
+             4  USGS-HIVIS
+             3  CDOT-CoTrip-CARS
+             3  IowaDOT
+             3  MnDOT-IRIS
+             3  MoDOT
+             3  OpenDataHub/feratel
+             3  Road511
+             3  VDOT
+             2  Bizkaia-BizkaiMove
+             2  BusinessWebcam
+             2  cbstarrynights.com
+             2  Houston-TranStar
+             2  OpenStreetMap
+             2  QLD-FloodCams
+             2  QLDTraffic-ArcGIS
+             2  Trafikverket
+             2  WYDOT-Cheyenne
+             1  Athabasca University AUGSO AuroraCam
+             1  HKO weather photo
+             1  Medellín SIMM CCTV (medellin.gov.co/SIMM/camaras-cctv)
+             1  nbcams.ca
+             1  NordAPI Estonian public webcams (nordapi.ee)
+  only a YouTube/Vimeo embed: 493
+           132  LES:skyline-youtube
+           125  OSM-contact:webcam
+            74  LES:youtube
+            49  LES:worldviewstream
+            23  LES:opencctv
+            21  LES:camguide
+            19  LES:jazbaz
+            10  LES:europe_rainy
+             5  AtSea
+             4  LES:youtube_scenic
+             4  LES:youtube-live-search-3
+             4  LES:youtube-ph-edge-babor
+             3  LES:openwebcamdb-youtube
+             3  LES:sitemap_webcam_pool
+             3  LES:worldviewstream-youtube
+             3  LES:youtube-ph-maria-deseo
+             2  LES:livecam_asia_youtube
+             2  OpenStreetMap
+             1  LES-youtube
+             1  LES:japan_discovery
+             1  LES:youtube-kominfo-gunungkidul
+             1  LES:youtube-live-search-2
+             1  LES:youtube-live-search-4
+             1  LES:youtube-ph-benjie
+             1  LES:youtube-showme-caribbean
+  only a still whose address carries its capture time: 285
+           158  AlertWest
+            52  Nova Scotia Webcams
+            29  data.gov.sg
+            16  LTA-data.gov.sg
+             9  JP opendata-livecamera-jp still scrape
+             8  Singapore data.gov.sg transport/traffic-images
+             4  Skaping / Sommet Saint-Sauveur
+             2  OpenStreetMap
+             1  Mariner's Cove Marina Healey Lake
+             1  Skaping / Cypress Mountain
+             1  Skaping / Golden Skybridge
+             1  Skaping / Mont Rigaud
+             1  Skaping / Montreal Grand Port
+             1  Skaping / Ski Saint-Bruno
+             1  Skaping / Tremblant
+  only a video clip: 255
+           229  Skaping
+             9  LES:autobahn_nrw
+             7  Bali Satu Data balisatudata.baliprov.go.id report-cctv
+             7  OSM-contact:webcam
+             3  OpenStreetMap
+  country not recognised ("Unknown / multi") and no usable coordinates: 239
+           239  Roundshot
+  coordinates at 0,0: 217
+           102  WisDOT-511WI
+            85  OpenDataHub/idm
+             9  NYSDOT-511NY
+             6  MTO-ON511-ArcGIS
+             6  PennDOT-511PA
+             3  GDOT-511
+             3  Newfoundland511
+             2  Georgia511
+             1  OpenDataHub WebcamInfo/idm still
+  country not recognised ("International") and no usable coordinates: 148
+           137  BalticLiveCam
+             8  Geocam
+             2  WebcamExplore
+             1  Whatsupcams
+  coordinates out of range: 105
+            99  Whatsupcams
+             3  Horizons-Regional-Council
+             3  ODOT-TripCheck
+  country not recognised ("Costa Crociere") and no usable coordinates: 22
+            22  WebcamGalore
+  country not recognised ("MSC Cruises") and no usable coordinates: 19
+            19  WebcamGalore
+  outside the United States: 18
+             4  USGS-HIVIS
+             3  Georgia511
              3  NYSDOT-511NY
-             2  FL511
-             2  York-Region
-             1  Houston-TranStar
-             1  IowaDOT
-             1  MnDOT-IRIS
-             1  MoDOT
-             1  QLDTraffic-ArcGIS
-             1  VDOT
-             1  WYDOT-Cheyenne
-  coordinates at 0,0: 44
-            34  WisDOT-511WI
-             3  NYSDOT-511NY
-             2  MTO-ON511-ArcGIS
-             2  PennDOT-511PA
-             1  GDOT-511
-             1  Georgia511
-             1  Newfoundland511
-  only a still whose address carries its capture time: 7
-             7  data.gov.sg
-  no usable link: 4
-             3  King-County-DOT
-             1  SDOT
-  outside the United States: 3
-             1  Georgia511
-             1  NYSDOT-511NY
-             1  VDOT
-  coordinates out of range: 2
-             1  Horizons-Regional-Council
-             1  ODOT-TripCheck
+             3  Road511
+             3  VDOT
+             2  INDOT-CARS
+  no usable link: 17
+             9  King-County-DOT
+             3  OSM-contact:webcam
+             3  SDOT
+             1  LES:autobahn_nrw
+             1  OpenStreetMap
+  country not recognised ("Compagnie du Ponant") and no usable coordinates: 10
+            10  WebcamGalore
+  country not recognised ("Bonaire") and no usable coordinates: 7
+             7  WorldCam
+  country not recognised ("P and O Cruises") and no usable coordinates: 5
+             5  WebcamGalore
+  country not recognised ("Royal Arctic Line") and no usable coordinates: 5
+             5  WebcamGalore
+  outside Canada: 4
+             4  SkylineWebcams
+  country not recognised ("Cunard Line") and no usable coordinates: 3
+             3  WebcamGalore
+  country not recognised ("Princess Cruises") and no usable coordinates: 3
+             3  WebcamGalore
+  country not recognised ("Earth Orbit") and no usable coordinates: 2
+             2  WebcamGalore
+  country not recognised ("Greenpeace") and no usable coordinates: 2
+             2  WebcamGalore
+  country not recognised ("Hurtigruten") and no usable coordinates: 2
+             2  WebcamGalore
+  country not recognised ("Royal Caribbean") and no usable coordinates: 2
+             2  WebcamGalore
+  country not recognised ("Saint Pierre and Miquelon") and no usable coordinates: 2
+             2  WorldCam
+  country not recognised ("Alfred Wegener Institut") and no usable coordinates: 1
+             1  WebcamGalore
+  country not recognised ("Arctic Ocean") and no usable coordinates: 1
+             1  WebcamGalore
+  country not recognised ("Carnival Cruise Lines") and no usable coordinates: 1
+             1  WebcamGalore
+  country not recognised ("Hapag Lloyd Kreuzfahrten") and no usable coordinates: 1
+             1  WebcamGalore
+  country not recognised ("Helmut Rueffer Binnenfrachtschifffahrt") and no usable coordinates: 1
+             1  WebcamGalore
+  country not recognised ("TUI Cruises") and no usable coordinates: 1
+             1  WebcamGalore
 
 Pictures given to pack cameras (pack · state/country · kind):
-     1,523  us · MN · stream
-       754  us · MI · still
-       513  us · TX · still
-       347  us · CT · still
-       183  us · NH · still
-       121  us · ME · still
-        87  us · VT · still
-        51  intl · VGO · still
-         2  us · NC · still
-         1  us · NJ · stream
+        12  intl · FR · still
+        11  intl · IT · still
+         5  intl · ES · still
+         2  intl · JP · still
+         1  intl · BB · still
+         1  intl · CH · still
+         1  intl · DE · still
+         1  intl · DO · still
+         1  intl · GR · still
+         1  intl · MT · still
 
-New cameras: 17,345 (14,725 with a still, 2,620 stream-only, 4,722 with an estimated heading).
+New cameras: 37,538 (34,788 with a still, 2,750 stream-only, 9,173 with an estimated heading).
 By country:
-    11,125  US
+    19,524  US
+     6,781  JP
+     2,357  CA
      1,973  KR
-     1,559  CA
-     1,453  FI
+     1,469  FI
+     1,303  AU
        626  TW
-       400  ID
-        82  AU
-        77  NZ
-        33  ES
-         9  CH
-         6  DE
-         2  EE
+       607  IT
+       420  ID
+       330  ES
+       285  HR
+       253  DE
+       241  FR
+       229  AT
+       186  NZ
+       164  SI
+       121  CH
+       103  NO
+        96  LU
+        87  IS
+        68  GB
+        61  IE
+        39  CZ
+        28  NL
+        23  HK
+        23  PG
+        15  EE
+        14  RE
+        12  GR
+         9  MT
+         8  PL
+         6  MX
+         6  PE
+         6  SE
+         4  FJ
+         4  RU
+         3  BE
+         3  DK
+         3  DO
+         3  EG
+         3  KY
+         3  NC
+         3  PT
+         3  ZA
+         2  AL
+         2  CK
+         2  CW
+         2  GG
+         2  RO
+         2  SG
+         2  ZZ
+         1  AR
+         1  AW
+         1  BA
+         1  BR
+         1  BS
+         1  CL
+         1  CN
+         1  GD
+         1  GF
+         1  HU
+         1  MC
+         1  MK
+         1  MU
+         1  NP
+         1  TH
+         1  TN
+         1  TR
+         1  TZ
+         1  VI
 By operator:
-     2,463  US · TravelMidwest-Gateway
+     6,557  JP · MLIT-Kawabou-RiverCams
+     2,694  US · FAA-WeatherCams
+     2,468  US · TravelMidwest-Gateway
      2,449  US · GDOT-511
      1,973  KR · UTIC-Korea
+     1,573  US · CalOES-ALERTCalifornia
      1,453  FI · Fintraffic-Digitraffic
+     1,276  US · USGS-HIVIS
        826  US · NYCDOT
        620  US · NDDOT
        600  US · ALDOT-ALGO
+       592  CA · FAA-WeatherCams
        565  US · Houston-TranStar
+       563  US · ALERTWest
+       559  AU · QLD-FloodCams
+       556  US · ALDOT
        531  CA · Ville-Montreal
        516  CA · CityOfToronto
+       494  US · WYDOT-511
+       435  AU · AusWebCams-MyAirportCams
        423  US · SDOT
-       403  US · IowaDOT
+       407  US · IowaDOT
        363  US · NDOT
+       351  US · OpenTrafficCamMap
        345  US · ADOTPF-511
        319  CA · MTO-ON511-ArcGIS
        314  TW · Taichung-City
-       272  US · ITD-511
-       263  US · Arlington-County
+       301  US · ITD-511
+       284  HR · Whatsupcams
+       262  US · Arlington-County
        210  TW · THB
+       203  IT · Whatsupcams
+       169  JP · JP opendata-livecamera-jp still scrape
        165  US · GoAkamai-HDOT
        164  ID · ATCS-Denpasar
+       164  SI · Whatsupcams
+       159  FR · OpenStreetMap
+       146  AT · foto-webcam.eu
+       141  AU · Airservices-Australia-WeatherCams
        134  US · NJTA
+       131  ES · Ayuntamiento-Malaga
+       128  IT · ARPA-Lombardia-Webcam-Map
        128  US · SDDOT-511
+       116  US · houstontranstar.org
        109  US · LADOTD-511
        104  US · King-County-DOT
        103  US · City-of-Arlington-TX
+        96  LU · CITA-Luxembourg
         90  ID · Diskominfo-Gresik-CCTV
+        89  ES · Bizkaia-BizkaiMove
         86  TW · Keelung-City
         85  US · City-of-Overland-Park
         82  AU · QLDTraffic-ArcGIS
         82  US · ODOT-TripCheck
+        79  NZ · trafficnz.info
+        76  IT · Lombardy SalaOP ArcGIS Webcam (portalgis.lispa.it)
+        74  IT · SkylineWebcams
         69  US · City-of-Lawrence
         67  US · AviationWX
+        66  AT · Panomax
         66  US · City-of-Redmond
+        65  DE · foto-webcam.eu
         65  ID · Pemkot-Magelang-CCTV
+        61  US · OSM-contact-webcam
+        56  US · NCDOT-CF-snapshots
+        55  CA · City of Edmonton Traffic Cameras
+        55  CH · Roundshot
+        52  US · Panomax
         49  CA · City-of-Surrey
+        49  IE · MTCC-Dublin
+        49  IS · Vegagerdin vefmyndavelar2014_1
+        43  ES · SkylineWebcams
+        43  IT · Panomax
         43  US · Beaufort-County
         42  NZ · Horizons-Regional-Council
+        41  AU · cameras.qldtraffic.qld.gov.au
+        41  US · FDOT-FL511
         40  US · NDOT-NVRoads
+        39  CA · Skaping
+        38  DE · Panomax
+        38  NO · jpg-image
+        36  CZ · LAVDIS Czech waterways (geoportal.plavebniurad.cz kamery)
         36  ID · Pemkot-Salatiga-CCTV
+        36  IS · Vegagerdin/IS
         36  US · MDOT-MiDrive
+        36  US · NPS-IMPROVE-HazeCam
         35  CA · Alberta511
         35  NZ · NZTA
+        35  US · USGS-Volcano
+        34  IT · foto-webcam.eu
         34  US · Arizona511
+        33  CH · OSM-contact-webcam
         33  US · City-of-Baton-Rouge
         32  US · City-of-Colorado-Springs
+        31  GB · Durham CC open data (datamillnorth Traffic Web Cameras → dcc.ussgroup.co.uk)
+        31  US · Surfline
+        30  FR · Skaping
         30  ID · ATCS-Banjarmasin
+        30  US · StLouis-STLT
+        29  US · Alaska-511
+        28  US · CDOT-CoTrip-CARS
         27  US · City-of-Kirkland
         27  US · NCDOT-DriveNC
+        26  DE · OSM-contact-webcam
+        26  US · PennDOT-511
+        25  NO · axis-cgi
+        24  AU · TfNSW-LiveTraffic
+        24  DE · Stadt-Koeln
         24  US · City-of-Loveland
-        23  US · City-of-Salem
+        23  HK · HKO weather photo
+        23  PG · AusWebCams-MyAirportCams
+        22  US · SCDOT
+        21  NZ · AusWebCams-MyAirportCams
+        21  US · CityOfSalem-OR
         20  CA · City-of-Ottawa
         20  CA · CityOfCalgary
         20  CA · NL-TI
+        20  CA · OSM-contact-webcam
         20  ES · Toledo-Turriano
+        20  ID · Serang-Diskominfo
+        20  US · LES
+        19  US · IDOT-Gateway
+        19  US · ResortCams-Business
         19  US · Westchester-County-DPW
+        18  CA · MTO-511on
+        18  NO · resort-still
+        18  US · MyBeachCams
+        17  US · HDOnTap
+        16  US · cocam.carsprogram.org
+        16  US · NPS-Webcams
         15  US · KC-Scout
         15  US · NewEngland511
         14  CA · Township-of-Langley
+        14  DE · WSV pss.wsv.de public lock/harbour still JPEGs
+        14  FR · GrandLyon-Criter
         14  ID · Pemkot-Cirebon-CCTV
+        13  FR · Serwis-FR
+        13  US · PortsAmerica-TerminalGates
+        13  US · snapshot.vdotcameras.com
+        13  US · Toledo
+        12  DE · Talsperrenleitzentrale Ruhr (talsperrenleitzentrale-ruhr.de webcam JPEGs)
+        12  US · NPS-webcams-layer
+        12  US · SkylineWebcams
+        11  DE · OpenStreetMap
+        11  EE · NordAPI Estonian public webcams (nordapi.ee)
+        11  GR · SkylineWebcams
         11  TW · Chiayi-City
+        11  US · USGS-NIMS
         11  US · WYDOT-Cheyenne
         10  CA · York-Region
         10  ES · Concello-de-Vigo
+        10  ES · Whatsupcams
+        10  IE · TII-Kapsch
+        10  IT · EmiliaRomagnaTurismo
+        10  NL · OSM-contact-webcam
          9  CA · Manitoba511
+         9  CA · SFU Campus Webcams
+         9  CH · OpenStreetMap
          9  CH · SITG-Geneva
+         9  IT · OpenDataHub WebcamInfo/feratel still
+         9  NL · NetcamViewer
+         9  RE · OVPF IPGP Piton de la Fournaise volcano cameras
+         9  US · BusinessWebcam
+         9  US · MoDOT
+         9  US · SSA-TerminalGateCams
+         8  FR · Roundshot
+         8  GB · aspects-holidays-ozolio
+         8  JP · Tannowa Yacht Harbor Axis public still (boating-japan.jp)
+         8  MT · SkylineWebcams
          8  US · UDOT-Traffic
-         7  US · Caltrans
+         7  ES · Ajuntament-Terrassa
+         7  IT · OpenStreetMap
+         7  JP · Nozawa Onsen Ski (nozawaski.sakura.ne.jp/livecam)
+         7  US · ElPaso-International-Bridges
+         7  US · Everport-GateCams
+         6  AU · charlottepass-resort
+         6  CA · Alberta 511
          6  DE · Stadt-Ulm
+         6  ES · Roundshot
+         6  FR · OSM-contact-webcam
+         6  FR · SkylineWebcams
+         6  GB · SkylineWebcams
+         6  JP · hotel-still
+         6  PE · Panomax
+         6  US · Caltrans
+         6  US · itscameras.dot.state.oh.us
          6  US · MnDOT-IRIS
          6  US · VDOT
+         5  CA · BC-Ferries
+         5  CA · City of Vancouver
          5  CA · Yukon511
+         5  GB · classic-cottages-ozolio
+         5  JP · camping-still
+         5  RE · OpenStreetMap
          5  TW · Freeway-Bureau
-         5  US · MoDOT
+         5  US · APM-GateCams
+         5  US · images.wsdot.wa.gov
+         5  US · Road511
+         5  US · Seattle-SDOT
+         5  US · Skaping
+         4  AT · franz-senn-huette
+         4  AU · Kuring-gai Motor Yacht Club public webcam stills
          4  CA · DriveBC
+         4  CA · Fairmont Hot Springs / RadishWeb
          4  CA · Newfoundland511
+         4  CA · Prince George SPD Billboard Webcam
+         4  ES · OpenStreetMap
+         4  FI · Panomax
+         4  FI · weathercam.digitraffic.fi
+         4  FJ · IPCamLive
+         4  IT · Lignano Sabbiadoro tourism (lignanosabbiadoro.com/webcam)
+         4  NL · OpenStreetMap
          4  US · FL511
+         4  US · NDOT-CARS
+         3  AT · OpenStreetMap
+         3  CA · nbcams.ca
+         3  CA · Whistler Resort Webcams
+         3  DE · berwangerhof-tramino
+         3  DE · johannesbad-therme-cams
          3  ES · DGT
+         3  FI · Roundshot
+         3  MX · WebcamsDeMexico (webcammx CPT)
+         3  NC · OSM-contact-webcam
+         3  NO · Strand Marina & Båtforening (strandmarina.no)
+         3  NO · vivotek-viewer
+         3  PL · OSM-contact-webcam
+         3  PL · WebCamera.pl
+         3  RU · OSM-contact-webcam
+         3  US · cwwp2.dot.ca.gov
+         3  US · KDOT-CARS
+         3  US · OHGO-ODOT-OHGO
+         3  US · WebcamGalore
+         2  AL · Whatsupcams
+         2  AT · OSM-contact-webcam
+         2  AT · Whatsupcams
+         2  AU · Roundshot
+         2  AU · SkylineWebcams
+         2  AU · splashinternet-shortpoint
+         2  BE · OSM-contact-webcam
+         2  CA · bccams.ca / ESIS
+         2  CA · CityOfMississauga
          2  CA · NewBrunswick511
+         2  CA · Parks Canada Ivvavik Operational Weather Cameras
+         2  CH · badus-huette
+         2  CH · foto-webcam.eu
+         2  CH · Ratzi ski area (ratzi.ch) business still
+         2  CH · salina-maris-breiten
+         2  CK · tamanu-bungeebranding
+         2  CW · NetcamViewer
+         2  DE · Camping Hopfensee (camping-hopfensee.de/service/webcams)
+         2  DE · Feratel.com public webcam directory still
+         2  DE · Marina Eldenburg (marina-eldenburg.de) harbour still
+         2  DE · Marina Eldenburg Stadthafen still
+         2  DE · marina-huelsen-web167
+         2  DE · OSM still (live-image.panomax.com)
+         2  DE · riedel-ferien
+         2  DE · Roundshot
+         2  DE · SkylineWebcams
+         2  DE · WebcamGalore
+         2  DO · IPCamLive
+         2  EE · nelijarve-opentopia
          2  EE · Tallinn-Liikluskaamerad
+         2  EG · james-mac-diving
+         2  ES · BusinessWebcam
+         2  ES · IPCamLive
+         2  FI · ruissalo-marina
+         2  FR · Axis CGI coastal (Roscoff FR)
+         2  GB · kirkwall-hotel-webcam
+         2  GB · OSM-contact-webcam
+         2  GB · rcyc-falmouth-ozolio
+         2  IS · SkylineWebcams
+         2  IT · axis-cgi
+         2  IT · ODH OpenDataHub WebcamInfo
+         2  IT · OSM-contact-webcam
+         2  IT · Ristorante da Aurelio (valfiorentinadolomiti.it)
+         2  JP · Kure City live cameras (SnapshotJPEG)
+         2  JP · listel-hotels-live
+         2  JP · Minakami Kogen Hotel 200 live camera
+         2  JP · rainbowcc-fromtv
+         2  KY · Cayman Port Authority
+         2  NL · OSM still (images.webcam.nl)
+         2  NL · Whatsupcams
+         2  NO · aspevagen-marina
+         2  NO · hotel-nordkyn-webcam
+         2  NO · stotvig-hotel-webcam
+         2  NZ · OpenStreetMap
+         2  NZ · OSM-contact-webcam
+         2  NZ · remotecameras-nz
+         2  SE · lysekil-hamn-webcamio
+         2  SE · vastanviksbadet-camping
+         2  SG · SkylineWebcams
+         2  US · City-of-Salem
          2  US · KYTC-TRIMARC
+         2  US · LA-DOTD-ITS
+         2  US · MassDOT-CARS
+         2  ZA · CathedralPeakHotel
+         2  ZZ · WebcamGalore
+         1  AR · vines-prismcam-00114
+         1  AT · Camping Lichtenfels / Thurnforst (thurnforst.at/webcam)
+         1  AT · Camping Nova (campingnova.at/webcams.html + customer.js)
+         1  AT · Schloss Seefels (seefels.at/livecam)
+         1  AT · Seecamping Berghof (seecamping-berghof.at/webcam)
+         1  AT · Tourismusgemeinde Greifenburg (greifenburg2.it-wms.com)
+         1  AT · veldener-traumschiff
+         1  AU · Panomax
+         1  AU · splashinternet-pbsc
+         1  AU · splashinternet-tbha
+         1  AU · splashinternet-wharf
+         1  AU · Whatsupcams
+         1  AW · CostaLinda-secure
+         1  BA · Whatsupcams
+         1  BE · Whatsupcams
+         1  BR · Panomax
+         1  BS · Green Turtle Club Axis
+         1  CA · balticlivecam.com Canada
+         1  CA · Banff Jasper Collection Webcam
+         1  CA · bccams.ca / Hakai Institute
+         1  CA · bccams.ca / Mill Bay Marina
+         1  CA · bccams.ca / Revelstoke Mountain Resort
+         1  CA · Cap au Leste MeteoChicoutimi Webcam
+         1  CA · CBC Calgary Webcam
+         1  CA · CBC Prince Edward Island Webcam
+         1  CA · City of Kingston Confederation Basin Webcam
+         1  CA · City of Kingston Portsmouth Olympic Harbour Webcam
+         1  CA · Club Nautique Sept-Îles Webcam
+         1  CA · Devil's Glen Country Club Webcam
+         1  CA · Dore Lake Lodge SaskLakes Webcam
+         1  CA · Fernie Golf & Country Club Webcam
+         1  CA · Green Lake Lodge SaskLakes Webcam
+         1  CA · Halifax Emera Oval Webcam
+         1  CA · Hummingbird Lodge Webcam
+         1  CA · Juniper Hotel
+         1  CA · Lakeview Park Marina Windsor Webcam
+         1  CA · Manitou Springs Resort SaskLakes Webcam
+         1  CA · Mont Farlagne / Républik Nature Webcam
+         1  CA · Moose Horn Lodge SaskLakes Webcam
          1  CA · SK-Highway-Hotline
+         1  CA · streamer6.brownrice.com
+         1  CA · Sunshine Coast Resort Webcam
+         1  CA · UVic AstroWeatherCam
+         1  CA · Victoria Weather Network
+         1  CA · WebcamGalore
+         1  CA · Wintergreen Golf Webcam
+         1  CA · Wye Heritage Marina Axis Webcam
+         1  CH · Ascona-Locarno tourism Lavertezzo webcam
+         1  CH · axis-cgi
+         1  CH · camping-still
+         1  CH · Hafengenossenschaft Wädenswil / Yacht Club Au Rietliau still
+         1  CH · Hotel Seehof Valbella (seehof-valbella.ch/news/web-cam)
+         1  CH · ulula-ferien
+         1  CH · WebcamGalore
+         1  CL · OpenStreetMap
+         1  CN · Whatsupcams
+         1  CZ · OpenStreetMap
+         1  CZ · Panomax
+         1  CZ · SkylineWebcams
+         1  DE · Alpen Caravanpark Tennsee campsite still
+         1  DE · Bayerischer Yacht-Club Starnberg still
+         1  DE · berggasthof-gerstreit-mobotix
+         1  DE · BusinessWebcam
+         1  DE · Camping Klausdorfer Strand Fehmarn still
+         1  DE · Camping Schlei live still
+         1  DE · camping-still
+         1  DE · Campingpark Gitzenweiler Hof (gitzenweiler-hof.de webcam iframe → it-wms)
+         1  DE · Deutscher Touring Yacht-Club Starnberg still
+         1  DE · europa-therme-livecam
+         1  DE · ferienhaus-otterndorf
+         1  DE · ferienpark-geyersberg
+         1  DE · Hafen Hamburg Teufelsbrück / Blankenese still (blkknt)
+         1  DE · haus-orchidee
+         1  DE · hoechsten-hotel
+         1  DE · Marina Baltica / Ferienwohnungen Travemünde marina still
+         1  DE · Marina Baltica commercial marina still
+         1  DE · Münchner Yacht-Club Starnberg still
+         1  DE · NetcamViewer
+         1  DE · Nordbad Starnberg waterfront business still
+         1  DE · opel-zoo
+         1  DE · OSM still (images.webcam.nl)
+         1  DE · OSM still (stream02.blickfix.com)
+         1  DE · OSM still (www.talsperrenleitzentrale-ruhr.de)
+         1  DE · Rambeck Yachthafen Starnberg business still
+         1  DE · Schleuse Herbrum public current_vga.jpg
+         1  DE · Simmerding Starnberger See harbour still
+         1  DE · Simmerding Starnberger See waterfront still
+         1  DE · strandhotel-seerose
+         1  DE · Sylter Yacht Club e.V. marina still
+         1  DE · weingut-mosbacher
+         1  DK · port-of-hirtshals
+         1  DK · roenne-havn
+         1  DK · Whatsupcams
+         1  DO · Panomax
+         1  EG · Whatsupcams
+         1  ES · Feratel.com public webcam directory still
+         1  ES · OSM-contact-webcam
+         1  ES · Skaping
+         1  FI · BusinessWebcam
+         1  FI · Port-of-Kokkola
+         1  FI · Whatsupcams
+         1  FR · AMOS-archive
+         1  FR · BusinessWebcam
+         1  FR · OSM still (images.webcam.nl)
+         1  GB · carbis-bay-holidays-ozolio
+         1  GB · classic-cottages-stives-ozolio
+         1  GB · holidaypark-still
+         1  GB · Neyland Yacht Haven Lower Basin (ipcamlive snapshot)
+         1  GB · Neyland Yacht Haven Upper Basin (ipcamlive snapshot)
+         1  GB · Neyland Yacht Haven Upper Basin cill (ipcamlive snapshot)
+         1  GB · OSM still (public.highwaystrafficcameras.co.uk)
+         1  GB · ozolio-mumbles-airbnb
+         1  GB · ozolio-porthmeor
+         1  GB · ozolio-stives-harbour
+         1  GB · Panomax
+         1  GB · Shanklin Sailing Club public still
+         1  GD · Whatsupcams
+         1  GF · OpenStreetMap
+         1  GG · SkylineWebcams
+         1  GG · WebcamGalore
+         1  GR · Whatsupcams
+         1  HR · SkylineWebcams
+         1  HU · OpenStreetMap
          1  ID · Pemkot-Yogyakarta-CCTV
+         1  IE · TII-IBI
+         1  IE · Whatsupcams
+         1  IT · BusinessWebcam
+         1  IT · Camping Bellavista Torbole (camping-bellavista.it)
+         1  IT · Camping Tallinucci (campingtallinucci.it / elbalink)
+         1  IT · Hotel La Scogliera Capoliveri (lascogliera.com)
+         1  IT · Hotel Le Balze / Garda Hotels Italia
+         1  IT · Hotel Lido Blu / Garda Hotels Italia
+         1  IT · Hotel Sole Riva / Garda Hotels Italia
+         1  IT · hotel-still
+         1  IT · Meran2000 webcams
+         1  IT · resort-axis
+         1  IT · Terme Merano (termemerano.it outdoorcam)
+         1  JP · alpico-tokan-tateshina
+         1  JP · City Marina Verasis SnapshotJPEG (boating-japan.jp)
+         1  JP · hotel-miemasu
+         1  JP · Inuyama Country Club Canon WV HTTP still
+         1  JP · jigokudani-yaenkoen-still
+         1  JP · Kodama Golf Club Hole.13 still
+         1  JP · Marinetopia Marina Miyazu SnapshotJPEG (miemasu)
+         1  JP · mbc.co.jp
+         1  JP · Nippon Country Club public course still
+         1  JP · Ome Golf Club course still
+         1  JP · Otaru Port Marina SnapshotJPEG (boating-japan.jp / miemasu)
+         1  JP · Owani Onsen Ski (camesan09.from.tv live.jpg)
+         1  JP · Panomax
+         1  JP · sendaiya-livecam
+         1  JP · SkylineWebcams
+         1  JP · snapshotjpeg
+         1  JP · Tachikawa Kokusai Country Club still
+         1  JP · tadenohana-lake-cam
+         1  JP · Tokyo Golf Club course still
+         1  JP · Tsukuiko Golf Club CH rooftop Shirayuri No.1
+         1  JP · Tsukuiko Golf Club restaurant Yamabuki No.9
+         1  KY · IPCamLive
+         1  MC · OpenStreetMap
+         1  MK · Whatsupcams
+         1  MT · Whatsupcams
+         1  MU · AMOS-archive
+         1  MX · tafer-mousai-gbpvcam01
+         1  MX · Tafer-VPCN
+         1  MX · VillaGroup-VDPPV
+         1  NL · WebcamGalore
+         1  NO · bessaker-marina
+         1  NO · grindafjell
+         1  NO · gronolen-fjellgard
+         1  NO · hesthagan-marina
+         1  NO · OSM-contact-webcam
+         1  NO · Panomax
+         1  NO · skjeberg-marinesenter
+         1  NO · Skolten harbour still JPEG
+         1  NO · storefjell-resort
+         1  NO · VegvesenPublic
+         1  NP · Panomax
+         1  NZ · lodge-still
+         1  NZ · millbrook-axis
+         1  NZ · taylorsurf
+         1  PL · WebcamGalore
+         1  PL · Whatsupcams
+         1  PT · Martinhal Sagres / portugal-webcams.com
+         1  PT · resort-still
+         1  PT · SkylineWebcams
+         1  RO · OpenStreetMap
+         1  RO · Panomax
+         1  RU · BusinessWebcam
+         1  SE · stromstad-marina-webcamio
+         1  SE · Trafikverket
+         1  TH · Skolten Hua Hin still JPEG
+         1  TN · AMOS-archive
+         1  TR · SkylineWebcams
+         1  TZ · SkylineWebcams
          1  US · ARDOT-iDriveArkansas
+         1  US · Fenix-GateCams
+         1  US · INDOT-CARS
+         1  US · Iowa-DOT
+         1  US · ITS-LongBeach-GateCams
+         1  US · keweenawmountainlodge.com
          1  US · ODOT-ITSCameras
+         1  US · strmr5.sha.maryland.gov
+         1  US · Teton-County-WY
          1  US · WisDOT-511WI
          1  US · WSDOT
+         1  VI · SkylineWebcams
+         1  ZA · SkylineWebcams
 
 Busiest 50 km areas of the new cameras (the server loads at most 1,000 per area):
-   1,670  around I-90 at Roselle Road (Travel Midwest (IL), US) 42.064, -88.077
-   1,535  around SR 8 (GA, US) 33.850, -84.218
+   1,695  around I-90 at Roselle Road (Travel Midwest (IL), US) 42.064, -88.077
+   1,542  around SR 8 (GA, US) 33.850, -84.218
+   1,010  around MM 5.9 north Toll Plaza (Jersey City) (newark, US) 40.707, -74.061
      972  around 대신R (서울교통정보센터, KR) 37.561, 126.941
-     939  around Flatbush Ave @ Nostrand Ave (Brooklyn, US) 40.633, -73.948
-     621  around NE 85th St & 132nd Ave NE (Kirkland, US) 47.679, -122.164
-     597  around DUNDAS ST W @ THE WEST MALL (Toronto, CA) 43.628, -79.559
-     531  around Rue D'Iberville et boulevard Saint-Joseph (Le Plateau-Mont-Royal, CA) 45.541, -73.574
-     503  around 610 NORTH LOOP @ FULTON (Houston, US) 29.814, -95.370
+     701  around MLK Jr Way S & S Orcas St (Seattle, US) 47.551, -122.288
+     616  around 610 NORTH LOOP @ HTR (Houston, US) 29.814, -95.356
+     609  around DUNDAS ST W @ THE WEST MALL (Toronto, CA) 43.628, -79.559
+     540  around Boulevard Gouin et boulevard Jacques-Bizard (L’Île-Bizard–Sainte-Geneviève, CA) 45.485, -73.865

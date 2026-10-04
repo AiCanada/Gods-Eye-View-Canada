@@ -936,6 +936,11 @@ body.scene-playback-mode #key-setup {
   margin: 6px 0;
 }
 
+/* Keys inside the section box sit one shade deeper than the box. */
+.road-cctv-keys .road-cctv-key-row {
+  background: rgba(4, 14, 20, 0.38);
+}
+
 .road-cctv-key-row select {
   width: 100%;
   padding: 0.42rem 0.55rem;

@@ -305,7 +305,7 @@ export async function initKeySetup({
     rowsHost && documentRef.createElement
       ? documentRef.createElement('div')
       : null;
-  if (roadHost) roadHost.className = 'private-cams road-cctv-keys';
+  if (roadHost) roadHost.className = 'key-setup-row road-cctv-keys';
   disposePlacement = bindKeySetupPlacement(documentRef, chip, root);
   const applyButton = root.querySelector('[data-key-setup-apply]');
   const closeButton = root.querySelector('[data-key-setup-close]');

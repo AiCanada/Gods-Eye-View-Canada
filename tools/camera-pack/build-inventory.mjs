@@ -33,6 +33,7 @@ import {
   PACK_DEFAULTS,
   REQUIRED_COLUMNS,
   countryCode,
+  EXCLUDED_COUNTRIES,
   distanceKm,
   expandPack,
   feedKeysOf,
@@ -64,8 +65,12 @@ function arg(name) {
 
 const inputArg = arg('--input');
 const input = inputArg ? path.resolve(inputArg) : '';
-const outPath = path.resolve(arg('--out') || path.join(ROOT, 'config', 'cctv_sources.inventory.json'));
-const reportPath = path.resolve(arg('--report') || path.join(HERE, 'cctv_sources.inventory.report.txt'));
+const outPath = path.resolve(
+  arg('--out') || path.join(ROOT, 'config', 'cctv_sources.inventory.json'),
+);
+const reportPath = path.resolve(
+  arg('--report') || path.join(HERE, 'cctv_sources.inventory.report.txt'),
+);
 const packDir = path.resolve(arg('--packs') || path.join(ROOT, 'config'));
 const dryRun = process.argv.includes('--dry-run');
 const dumpPath = arg('--dump') ? path.resolve(arg('--dump')) : '';
@@ -73,7 +78,9 @@ const auditPath = arg('--audit') ? path.resolve(arg('--audit')) : '';
 const audit = [];
 if (!input || !fs.existsSync(input)) {
   console.error(`CCTV inventory not found: ${input || '(no --input)'}`);
-  console.error('usage: node tools/camera-pack/build-inventory.mjs --input <cctv-inventory-YYYY-MM-DD.csv>');
+  console.error(
+    'usage: node tools/camera-pack/build-inventory.mjs --input <cctv-inventory-YYYY-MM-DD.csv>',
+  );
   process.exit(1);
 }
 
@@ -82,20 +89,43 @@ const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 const rel = (file) => path.relative(ROOT, file).split(path.sep).join('/');
 const bump = (map, key, by = 1) => map.set(key, (map.get(key) || 0) + by);
 const collator = new Intl.Collator('en', { numeric: true });
-const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+const clean = (value) =>
+  String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 // ---------------------------------------------------------------------------
 // The packs that already hold cameras, highest priority first.
 
 const PACKS = [
-  { name: 'canada', file: path.join(packDir, 'cctv_sources.canada.json'), editable: false },
-  { name: 'us', file: path.join(packDir, 'cctv_sources.us.json'), editable: true },
-  { name: 'intl', file: path.join(packDir, 'cctv_sources.intl.json'), editable: true },
+  {
+    name: 'canada',
+    file: path.join(packDir, 'cctv_sources.canada.json'),
+    editable: false,
+  },
+  {
+    name: 'us',
+    file: path.join(packDir, 'cctv_sources.us.json'),
+    editable: true,
+  },
+  {
+    name: 'intl',
+    file: path.join(packDir, 'cctv_sources.intl.json'),
+    editable: true,
+  },
 ];
 for (const pack of PACKS) {
-  pack.raw = fs.existsSync(pack.file) ? JSON.parse(fs.readFileSync(pack.file, 'utf8')) : [];
-  const rawCameras = Array.isArray(pack.raw) ? pack.raw : pack.raw.cameras || [];
-  pack.entries = expandPack(pack.raw).map((entry, index) => ({ ...entry, pack: pack.name, raw: rawCameras[index] }));
+  pack.raw = fs.existsSync(pack.file)
+    ? JSON.parse(fs.readFileSync(pack.file, 'utf8'))
+    : [];
+  const rawCameras = Array.isArray(pack.raw)
+    ? pack.raw
+    : pack.raw.cameras || [];
+  pack.entries = expandPack(pack.raw).map((entry, index) => ({
+    ...entry,
+    pack: pack.name,
+    raw: rawCameras[index],
+  }));
 }
 
 const feedIndex = new Map(); // key -> entry
@@ -108,18 +138,22 @@ const claim = (entry, source) => {
   if (!claimed.has(entry)) claimed.set(entry, new Set());
   claimed.get(entry).add(source);
 };
-const regionOf = (entry) => cctvRegionKey(entry) || canonicalCountryCode(entry.country) || '';
+const regionOf = (entry) =>
+  cctvRegionKey(entry) || canonicalCountryCode(entry.country) || '';
 
 function indexEntry(entry, region) {
-  for (const key of feedKeysOf(entry)) if (!feedIndex.has(key)) feedIndex.set(key, entry);
+  for (const key of feedKeysOf(entry))
+    if (!feedIndex.has(key)) feedIndex.set(key, entry);
   const keys = [...packOperatorIds(entry), ...nameKeysOf(entry, region)];
-  if (entry.pack !== 'inventory' && lacksStill(entry)) keys.push(...trimmedNameKeys(entry, region));
+  if (entry.pack !== 'inventory' && lacksStill(entry))
+    keys.push(...trimmedNameKeys(entry, region));
   for (const key of keys) {
     if (!keyIndex.has(key)) keyIndex.set(key, []);
     keyIndex.get(key).push(entry);
   }
 }
-for (const pack of PACKS) for (const entry of pack.entries) indexEntry(entry, regionOf(entry));
+for (const pack of PACKS)
+  for (const entry of pack.entries) indexEntry(entry, regionOf(entry));
 
 // A US or Canadian row whose province is blank or not a state ("Los Angeles"
 // is an airport camera's time zone) takes the state of the nearest held
@@ -130,10 +164,22 @@ const cellOf = (lat, lon) => `${Math.floor(lat * 2)}|${Math.floor(lon * 2)}`;
 for (const pack of PACKS) {
   for (const entry of pack.entries) {
     const key = regionOf(entry);
-    if (!/^(?:US|CA)-[A-Z]{2}$/.test(key) || !Number.isFinite(entry.lat) || !Number.isFinite(entry.lon)) continue;
+    if (
+      !/^(?:US|CA)-[A-Z]{2}$/.test(key) ||
+      !Number.isFinite(entry.lat) ||
+      !Number.isFinite(entry.lon)
+    )
+      continue;
     const cell = cellOf(entry.lat, entry.lon);
     if (!stateGrid.has(cell)) stateGrid.set(cell, []);
-    stateGrid.get(cell).push({ lat: entry.lat, lon: entry.lon, country: key.slice(0, 2), state: key.slice(3) });
+    stateGrid
+      .get(cell)
+      .push({
+        lat: entry.lat,
+        lon: entry.lon,
+        country: key.slice(0, 2),
+        state: key.slice(3),
+      });
   }
 }
 function nearestState(country, lat, lon) {
@@ -156,8 +202,58 @@ function nearestState(country, lat, lon) {
 }
 let statesInferred = 0;
 
+// A row that names no country we know ("Unknown", "International", a cruise
+// line) takes the country of the nearest held camera, searched outward one
+// degree at a time up to about 1,000 km; farther out (at sea) it is 'ZZ'. It
+// only labels the camera; nothing is left out for its country name.
+const COUNTRY_RINGS = 10;
+const countryGrid = new Map();
+const degCell = (lat, lon) => `${Math.floor(lat)}|${Math.floor(lon)}`;
+for (const pack of PACKS) {
+  for (const entry of pack.entries) {
+    const code = canonicalCountryCode(entry.country);
+    if (
+      !/^[A-Z]{2}$/.test(code) ||
+      code === 'ZZ' ||
+      !Number.isFinite(entry.lat) ||
+      !Number.isFinite(entry.lon)
+    )
+      continue;
+    const cell = degCell(entry.lat, entry.lon);
+    if (!countryGrid.has(cell)) countryGrid.set(cell, []);
+    countryGrid
+      .get(cell)
+      .push({ lat: entry.lat, lon: entry.lon, country: code });
+  }
+}
+function nearestCountry(lat, lon) {
+  const ci = Math.floor(lat);
+  const cj = Math.floor(lon);
+  let best = '';
+  let bestKm = Infinity;
+  for (let ring = 0; ring <= COUNTRY_RINGS; ring++) {
+    for (let di = -ring; di <= ring; di++) {
+      for (let dj = -ring; dj <= ring; dj++) {
+        if (Math.max(Math.abs(di), Math.abs(dj)) !== ring) continue;
+        for (const held of countryGrid.get(`${ci + di}|${cj + dj}`) || []) {
+          const km = distanceKm({ lat, lon }, held);
+          if (km < bestKm) {
+            bestKm = km;
+            best = held.country;
+          }
+        }
+      }
+    }
+    // Anything in a farther ring is at least `ring` degrees away.
+    if (best && bestKm <= ring * 111) break;
+  }
+  return best || 'ZZ';
+}
+let countriesInferred = 0;
+
 const genericPackName = (name) => /^camera\s+\S+$/i.test(clean(name));
-const distinctiveId = (id) => /[a-z]/i.test(id) && /\d/.test(id) && id.length >= 6;
+const distinctiveId = (id) =>
+  /[a-z]/i.test(id) && /\d/.test(id) && id.length >= 6;
 
 /** The entry this camera already is, and the rule that says so; null if it is new. */
 function findHeld(entry, row, country, region, regionKey, singleView) {
@@ -170,11 +266,21 @@ function findHeld(entry, row, country, region, regionKey, singleView) {
   // match it; a name can be shared by a site's views, so each of a source's
   // views takes a different camera of that name.
   const take = (key, accept, shared = false) =>
-    (keyIndex.get(key) || []).find((held) => (shared || !claimedBy(held, entry.p)) && accept(held));
+    (keyIndex.get(key) || []).find(
+      (held) => (shared || !claimedBy(held, entry.p)) && accept(held),
+    );
   if (singleView) {
     for (const key of rowOperatorIds(row, country, region)) {
       const sourceId = clean(row.sourceId);
-      const held = take(key, (h) => near(h, OPID_GUARD_KM) && (namesAgree(entry.name, h.name) || genericPackName(h.name) || distinctiveId(sourceId)), true);
+      const held = take(
+        key,
+        (h) =>
+          near(h, OPID_GUARD_KM) &&
+          (namesAgree(entry.name, h.name) ||
+            genericPackName(h.name) ||
+            distinctiveId(sourceId)),
+        true,
+      );
       if (held) return { held, rule: 'same operator camera number' };
     }
   }
@@ -200,7 +306,8 @@ function findHeld(entry, row, country, region, regionKey, singleView) {
 const { header, rows, badRows } = parseCsv(fs.readFileSync(input, 'utf8'));
 // A site's views, across every row that lists it: an operator number names
 // the site, so it identifies a camera only when the site has one view.
-const siteKey = (row) => `${providerKey(clean(row.provider))}|${clean(row.sourceId).toLowerCase()}`;
+const siteKey = (row) =>
+  `${providerKey(clean(row.provider))}|${clean(row.sourceId).toLowerCase()}`;
 const viewsPerSite = new Map();
 const rowCameras = rows.map((row) => {
   const result = rowToCameras(row);
@@ -235,15 +342,56 @@ function uniqueId(base) {
   usedIds.add(id);
   return id;
 }
-const slugId = (text) => clean(text).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+/** The hosts a row's view links point at. */
+function hostsOf(row) {
+  try {
+    return JSON.parse(row.views_json || '[]').map((view) => {
+      try {
+        return new URL(String(view?.url)).hostname.toLowerCase();
+      } catch {
+        return '';
+      }
+    });
+  } catch {
+    return [];
+  }
+}
+const slugId = (text) =>
+  clean(text)
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 
 // Every camera view the inventory lists that could be stored.
 const candidates = [];
 for (const [rowIndex, row] of rows.entries()) {
   const provider = clean(row.provider) || 'Unknown';
-  const country = countryCode(row.country);
+  let country = countryCode(row.country);
   if (!country) {
-    exclude(`country not recognised ("${clean(row.country)}")`, provider);
+    const lat0 = Number(row.lat);
+    const lon0 = Number(row.lon);
+    const placed =
+      String(row.lat ?? '').trim() !== '' &&
+      String(row.lon ?? '').trim() !== '' &&
+      Number.isFinite(lat0) &&
+      Number.isFinite(lon0) &&
+      Math.abs(lat0) <= 90 &&
+      Math.abs(lon0) <= 180 &&
+      !(lat0 === 0 && lon0 === 0);
+    if (!placed) {
+      exclude(
+        `country not recognised ("${clean(row.country)}") and no usable coordinates`,
+        provider,
+      );
+      continue;
+    }
+    country = nearestCountry(lat0, lon0);
+    countriesInferred += 1;
+  }
+  if (
+    EXCLUDED_COUNTRIES.has(country) ||
+    hostsOf(row).some((host) => /\.ua$/.test(host))
+  ) {
+    exclude('Ukraine', provider);
     continue;
   }
   const key = providerKey(provider);
@@ -253,7 +401,10 @@ for (const [rowIndex, row] of rows.entries()) {
   }
   const lat = Number(row.lat);
   const lon = Number(row.lon);
-  const problem = String(row.lat ?? '').trim() === '' || String(row.lon ?? '').trim() === '' ? 'no coordinates' : pointProblem(country, lat, lon);
+  const problem =
+    String(row.lat ?? '').trim() === '' || String(row.lon ?? '').trim() === ''
+      ? 'no coordinates'
+      : pointProblem(country, lat, lon);
   if (problem) {
     exclude(problem, provider);
     continue;
@@ -268,9 +419,17 @@ for (const [rowIndex, row] of rows.entries()) {
     region = nearestState(country, lat, lon);
     if (region) statesInferred += 1;
   }
-  const regionKey = country === 'US' || country === 'CA' ? (region ? `${country}-${region}` : country) : country;
+  const regionKey =
+    country === 'US' || country === 'CA'
+      ? region
+        ? `${country}-${region}`
+        : country
+      : country;
   const town = clean(row.region);
-  const city = town && town.toLowerCase() !== clean(row.province).toLowerCase() ? town : clean(row.province) || town || country;
+  const city =
+    town && town.toLowerCase() !== clean(row.province).toLowerCase()
+      ? town
+      : clean(row.province) || town || country;
   const baseId = `${ID_PREFIX}${key}-${slugId(row.sourceId) || 'cam'}`;
   const singleView = viewsPerSite.get(siteKey(row)) === 1;
   for (const camera of cameras) {
@@ -291,7 +450,15 @@ for (const [rowIndex, row] of rows.entries()) {
       exclude('school, university, college or library camera', provider);
       continue;
     }
-    candidates.push({ entry, row, provider, country, region, regionKey, singleView });
+    candidates.push({
+      entry,
+      row,
+      provider,
+      country,
+      region,
+      regionKey,
+      singleView,
+    });
   }
 }
 
@@ -325,25 +492,66 @@ candidates.forEach((candidate, i) => {
 });
 
 // Each camera once: already held, or new.
-const order = ['id', 'name', 'city', 'region', 'country', 'lat', 'lon', 'p', 'feedType', 'url', 'videoUrl', 'headingDeg', 'headingConfidence'];
+const order = [
+  'id',
+  'name',
+  'city',
+  'region',
+  'country',
+  'lat',
+  'lon',
+  'p',
+  'feedType',
+  'url',
+  'videoUrl',
+  'headingDeg',
+  'headingConfidence',
+];
 
 /** Count a group of copies as the camera `held` already is. */
 function heldAs(members, matched, held, rule) {
-  const where = held.pack === 'inventory' ? 'inventory (listed twice)' : `${held.pack} pack`;
+  const where =
+    held.pack === 'inventory'
+      ? 'inventory (listed twice)'
+      : `${held.pack} pack`;
   if (auditPath) {
-    const pick = ({ id, name, url, videoUrl, lat, lon, pack }) => ({ id, name, url, videoUrl, lat, lon, pack });
-    audit.push(JSON.stringify({ rule, km: Math.round(distanceKm(matched.entry, held) * 1000) / 1000, inventory: pick(matched.entry), held: pick(held) }));
+    const pick = ({ id, name, url, videoUrl, lat, lon, pack }) => ({
+      id,
+      name,
+      url,
+      videoUrl,
+      lat,
+      lon,
+      pack,
+    });
+    audit.push(
+      JSON.stringify({
+        rule,
+        km: Math.round(distanceKm(matched.entry, held) * 1000) / 1000,
+        inventory: pick(matched.entry),
+        held: pick(held),
+      }),
+    );
   }
   for (const member of members) {
     claim(held, member.entry.p);
-    for (const alias of feedKeysOf(member.entry)) if (!feedIndex.has(alias)) feedIndex.set(alias, held);
+    for (const alias of feedKeysOf(member.entry))
+      if (!feedIndex.has(alias)) feedIndex.set(alias, held);
     duplicate(member === matched ? rule : 'same address', where);
   }
   const still = members.find((member) => member.entry.url);
   const stream = members.find((member) => member.entry.videoUrl);
   const pack = PACKS.find((p) => p.name === held.pack);
-  if (pack?.editable && lacksStill(held) && !upgrades.has(held) && (still || (stream && !held.videoUrl)))
-    upgrades.set(held, { url: still?.entry.url || '', videoUrl: still?.entry.videoUrl || stream?.entry.videoUrl || '' });
+  if (
+    pack?.editable &&
+    lacksStill(held) &&
+    !upgrades.has(held) &&
+    (still || (stream && !held.videoUrl))
+  )
+    upgrades.set(held, {
+      url: still?.entry.url || '',
+      videoUrl: still?.entry.videoUrl || stream?.entry.videoUrl || '',
+    });
 }
 
 // First every camera whose address a pack already holds, across the whole
@@ -368,7 +576,14 @@ for (const members of open) {
   let found = null;
   let matched = null;
   for (const member of members) {
-    found = findHeld(member.entry, member.row, member.country, member.region, member.regionKey, member.singleView);
+    found = findHeld(
+      member.entry,
+      member.row,
+      member.country,
+      member.region,
+      member.regionKey,
+      member.singleView,
+    );
     if (found) {
       matched = member;
       break;
@@ -384,16 +599,26 @@ for (const members of open) {
   const lead = still || members[0];
   const entry = { ...lead.entry, id: uniqueId(lead.entry.id) };
   if (!entry.videoUrl && stream) entry.videoUrl = stream.entry.videoUrl;
-  for (const member of members) if (member !== lead) duplicate('same address', 'inventory (listed twice)');
-  const compact = Object.fromEntries(order.filter((field) => entry[field] !== undefined).map((field) => [field, entry[field]]));
+  for (const member of members)
+    if (member !== lead) duplicate('same address', 'inventory (listed twice)');
+  const compact = Object.fromEntries(
+    order
+      .filter((field) => entry[field] !== undefined)
+      .map((field) => [field, entry[field]]),
+  );
   added.push(compact);
-  if (!providers.has(entry.p)) providers.set(entry.p, { provider: lead.provider, license: `${lead.provider} public camera (listing: ${LISTING})` });
+  if (!providers.has(entry.p))
+    providers.set(entry.p, {
+      provider: lead.provider,
+      license: `${lead.provider} public camera (listing: ${LISTING})`,
+    });
   const stored = { ...compact, pack: 'inventory' };
   indexEntry(stored, lead.regionKey);
   for (const member of members) {
     // The source's other views are other cameras, never this one.
     claim(stored, member.entry.p);
-    for (const alias of feedKeysOf(member.entry)) if (!feedIndex.has(alias)) feedIndex.set(alias, stored);
+    for (const alias of feedKeysOf(member.entry))
+      if (!feedIndex.has(alias)) feedIndex.set(alias, stored);
   }
 }
 
@@ -412,7 +637,10 @@ for (const [held, entry] of upgrades) {
     raw.videoUrl = entry.videoUrl;
   }
   raw.feedFrom = 'inventory';
-  bump(upgradeCounts, `${held.pack} · ${held.region || canonicalCountryCode(held.country) || '?'} · ${entry.url ? 'still' : 'stream'}`);
+  bump(
+    upgradeCounts,
+    `${held.pack} · ${held.region || canonicalCountryCode(held.country) || '?'} · ${entry.url ? 'still' : 'stream'}`,
+  );
 }
 
 added.sort(
@@ -422,8 +650,14 @@ added.sort(
     collator.compare(a.p, b.p) ||
     collator.compare(a.id, b.id),
 );
-const providerBlock = Object.fromEntries([...providers].sort((a, b) => collator.compare(a[0], b[0])));
-const packText = formatPack({ providers: providerBlock, cameras: added, defaults: PACK_DEFAULTS });
+const providerBlock = Object.fromEntries(
+  [...providers].sort((a, b) => collator.compare(a[0], b[0])),
+);
+const packText = formatPack({
+  providers: providerBlock,
+  cameras: added,
+  defaults: PACK_DEFAULTS,
+});
 
 // ---------------------------------------------------------------------------
 // Report.
@@ -431,28 +665,47 @@ const packText = formatPack({ providers: providerBlock, cameras: added, defaults
 const lines = [];
 const out = (text = '') => lines.push(text);
 const table = (map, indent = '  ') => {
-  for (const [label, count] of [...map].sort((a, b) => b[1] - a[1] || collator.compare(a[0], b[0])))
+  for (const [label, count] of [...map].sort(
+    (a, b) => b[1] - a[1] || collator.compare(a[0], b[0]),
+  ))
     out(`${indent}${fmt(count).padStart(8)}  ${label}`);
 };
-const total = (map) => [...map.values()].reduce((sum, n) => sum + (n instanceof Map ? total(n) : n), 0);
+const total = (map) =>
+  [...map.values()].reduce(
+    (sum, n) => sum + (n instanceof Map ? total(n) : n),
+    0,
+  );
 
 out(`CCTV inventory pack, built from ${path.basename(input)}`);
-out(`Rows: ${fmt(rows.length)}${badRows ? ` (${fmt(badRows)} malformed rows skipped)` : ''}; camera views: ${fmt(views)}.`);
+out(
+  `Rows: ${fmt(rows.length)}${badRows ? ` (${fmt(badRows)} malformed rows skipped)` : ''}; camera views: ${fmt(views)}.`,
+);
 out(`Written: ${fmt(added.length)} new cameras to ${rel(outPath)}.`);
 out(`Already in the packs (not written again): ${fmt(total(duplicates))}.`);
-out(`Pack cameras that had no picture and now have the inventory's: ${fmt(upgrades.size)}.`);
-out(`US and Canadian rows with no usable state or province, given the nearest held camera's: ${fmt(statesInferred)}.`);
+out(
+  `Pack cameras that had no picture and now have the inventory's: ${fmt(upgrades.size)}.`,
+);
+out(
+  `US and Canadian rows with no usable state or province, given the nearest held camera's: ${fmt(statesInferred)}.`,
+);
+out(
+  `Rows naming no known country (Unknown, International, a cruise line), given the nearest held camera's: ${fmt(countriesInferred)}.`,
+);
 out(`Left out: ${fmt(total(excluded))}.`);
 out('No camera is left out for standing near another one.');
 out();
 out('Already held, by what makes it the same camera:');
-for (const [rule, where] of [...duplicates].sort((a, b) => total(b[1]) - total(a[1]))) {
+for (const [rule, where] of [...duplicates].sort(
+  (a, b) => total(b[1]) - total(a[1]),
+)) {
   out(`  ${rule}: ${fmt(total(where))}`);
   table(where, '      ');
 }
 out();
 out('Left out, by reason:');
-for (const [reason, byProvider] of [...excluded].sort((a, b) => total(b[1]) - total(a[1]))) {
+for (const [reason, byProvider] of [...excluded].sort(
+  (a, b) => total(b[1]) - total(a[1]),
+)) {
   out(`  ${reason}: ${fmt(total(byProvider))}`);
   table(byProvider, '      ');
 }
@@ -472,15 +725,24 @@ for (const camera of added) {
   else streamOnly += 1;
   if (Number.isFinite(camera.headingDeg)) headed += 1;
 }
-out(`New cameras: ${fmt(added.length)} (${fmt(stills)} with a still, ${fmt(streamOnly)} stream-only, ${fmt(headed)} with an estimated heading).`);
+out(
+  `New cameras: ${fmt(added.length)} (${fmt(stills)} with a still, ${fmt(streamOnly)} stream-only, ${fmt(headed)} with an estimated heading).`,
+);
 out('By country:');
 table(byCountry);
 out('By operator:');
 table(byProvider);
 out();
-out('Busiest 50 km areas of the new cameras (the server loads at most 1,000 per area):');
-for (const { point, count } of densestCircles(added, { radiusKm: 50, count: 8 }))
-  out(`  ${fmt(count).padStart(6)}  around ${point.name} (${point.city}, ${point.country}) ${point.lat.toFixed(3)}, ${point.lon.toFixed(3)}`);
+out(
+  'Busiest 50 km areas of the new cameras (the server loads at most 1,000 per area):',
+);
+for (const { point, count } of densestCircles(added, {
+  radiusKm: 50,
+  count: 8,
+}))
+  out(
+    `  ${fmt(count).padStart(6)}  around ${point.name} (${point.city}, ${point.country}) ${point.lat.toFixed(3)}, ${point.lon.toFixed(3)}`,
+  );
 const report = `${lines.join('\n')}\n`;
 
 if (dumpPath) fs.writeFileSync(dumpPath, packText);
@@ -491,10 +753,25 @@ if (dryRun) {
 }
 fs.writeFileSync(outPath, packText);
 for (const pack of PACKS) {
-  if (!pack.editable || ![...upgrades.keys()].some((held) => held.pack === pack.name)) continue;
-  fs.writeFileSync(pack.file, formatPack({ providers: pack.raw.providers, cameras: pack.raw.cameras, defaults: pack.raw.defaults }));
+  if (
+    !pack.editable ||
+    ![...upgrades.keys()].some((held) => held.pack === pack.name)
+  )
+    continue;
+  fs.writeFileSync(
+    pack.file,
+    formatPack({
+      providers: pack.raw.providers,
+      cameras: pack.raw.cameras,
+      defaults: pack.raw.defaults,
+    }),
+  );
 }
 fs.writeFileSync(reportPath, report);
 const gz = zlib.gzipSync(packText).length;
-console.log(`${rel(outPath)}: ${fmt(added.length)} cameras, ${mb(Buffer.byteLength(packText))} (${mb(gz)} gzipped)`);
-console.log(`pictures given to ${fmt(upgrades.size)} pack cameras; report: ${rel(reportPath)}`);
+console.log(
+  `${rel(outPath)}: ${fmt(added.length)} cameras, ${mb(Buffer.byteLength(packText))} (${mb(gz)} gzipped)`,
+);
+console.log(
+  `pictures given to ${fmt(upgrades.size)} pack cameras; report: ${rel(reportPath)}`,
+);

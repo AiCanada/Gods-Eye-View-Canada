@@ -2,12 +2,16 @@
  * Ultra Security Package help network: the pure rules.
  * Subscription model: whoever holds one of the owner's tokens marked NETWORK
  * receives the owner's location only while the owner has pressed SEND HELP,
- * and only that: a name, a position, the time, the window end and the
- * incident class. No message, camera, picture, contact, number or history
+ * and only that: a name, a position, the time, the window end, the
+ * incident class and any items or skill needed (HELP DELIVERY). No message, camera, picture, contact, number or history
  * ever rides the network route, and the victim's phone is never texted.
- * The receiver's own server polls the links in its home list with a plain
- * GET over the tailnet only (https *.ts.net names or 100.64.0.0/10
- * literals; never loopback, a LAN, a public name or a credential), treats
+ * The receiver's own server polls each entry in its home list with a plain
+ * GET of <address>/ultra/help/network over the tailnet only (https *.ts.net
+ * names or 100.64.0.0/10 literals; never loopback, a LAN or a public name),
+ * the peer's Ultra Token riding as the Authorization bearer and never in the
+ * URL (owner ruling, 2026-10-04: the token authenticates, the address
+ * locates, and one address may hand out many tokens so one holder can be
+ * revoked without the others noticing), treats
  * every byte of an answer as untrusted, composes the plea locally from the
  * incident class and its own reverse geocode, and keeps other people's
  * tokens sealed under the machine-local key with a per-entry AAD so a
@@ -17,8 +21,10 @@
  */
 import crypto from 'node:crypto';
 import {
+  ULTRA_CUSTOM_SKILL_LIMIT,
   ULTRA_HELP_NAME_LIMIT,
   ULTRA_HELP_TEXT_LIMIT,
+  ULTRA_SKILL_SETS,
   ULTRA_TOKEN_PATTERN,
   ULTRA_TOKEN_SOURCE,
   cleanHelpText,
@@ -27,9 +33,16 @@ import {
   openUltraToken,
   sealUltraToken,
   ultraMessageId,
+  ultraPolicyMacs,
+  ultraPolicyMacVerify,
   ultraTokenHash,
+  ultraTokenHashEqual,
 } from './ultraTokens.mjs';
-import { ultraDistanceKm, ultraHelpMessage } from '../../src/ultraHelp.mjs';
+import {
+  ultraDistanceKm,
+  ultraHelpMessage,
+  ultraNeeds,
+} from '../../src/ultraHelp.mjs';
 
 export const ULTRA_RELEASE_WINDOW_MS = 14_400_000;
 export const ULTRA_CLOCK_MARGIN_MS = 120_000;
@@ -82,9 +95,11 @@ export const ULTRA_INCIDENTS = Object.freeze([
   'other',
 ]);
 /**
- * A whole help link: http(s), a host with no userinfo, query or hash, the
- * fixed /ultra/help/ path and one token, optionally a trailing slash. The
- * host part is checked separately by ultraTailnetTarget.
+ * The legacy whole help link, as a hand-kept directory file may still carry
+ * it: http(s), a host with no userinfo, query or hash, the fixed
+ * /ultra/help/ path and one token, optionally a trailing slash. The host
+ * part is checked separately by ultraTailnetTarget. Nothing writes this
+ * shape any more; a handout is an address and a token, kept apart.
  */
 export const ULTRA_HELP_LINK_PATTERN = new RegExp(
   `^https?:\\/\\/[^\\s/?#@]+\\/ultra\\/help\\/${ULTRA_TOKEN_SOURCE}\\/?$`,
@@ -114,6 +129,11 @@ export const ULTRA_NETWORK_PIN_COLOR = '#ffb000';
 const FEED_ID_LIMIT = 80;
 const PIN_NAME_LIMIT = 80;
 const PIN_LABEL_LIMIT = 30;
+/**
+ * The most skill labels a home-list entry keeps: every catalog set and the
+ * five custom sets a token can carry, so a full link loses no label here.
+ */
+const SKILL_LABEL_LIMIT = ULTRA_SKILL_SETS.length + ULTRA_CUSTOM_SKILL_LIMIT;
 const DIRECTORY_URL_LIMIT = 2048;
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const TOKEN_ID_PATTERN = /^t-[0-9a-f]{16}$/;
@@ -274,10 +294,13 @@ function parseBase(value) {
 }
 
 /**
- * The parts of a whole help link, or null when it is anything else: a bare
- * token, a query, a hash, userinfo, a trailing /network or /status, a
- * short token, more than 512 characters. `base` is the origin the poller
- * uses, `host` what the owner sees, `token` the peer's bearer secret.
+ * The parts of a legacy whole help link, or null when it is anything else:
+ * a bare token, a query, a hash, userinfo, a trailing /network or /status,
+ * a short token, more than 512 characters. `base` is the origin the poller
+ * uses, `host` what the owner sees, `token` the peer's bearer secret. Read
+ * only: the two directory readers accept this shape from a hand-kept file,
+ * and the panel splits a pasted one into an address and a token. Nothing on
+ * the server builds or stores it.
  */
 export function parseUltraHelpLink(link) {
   if (typeof link !== 'string') return null;
@@ -308,23 +331,54 @@ export function parseUltraHelpLink(link) {
 }
 
 /**
- * The only URL a home-list link is ever used for, re-checked against the
- * tailnet rule right before the call, or null when the link no longer
- * passes (the entry then reads NOT A TAILNET LINK and is not polled).
+ * A handout taken apart: the peer's tailnet address (a bare http(s) origin,
+ * a trailing slash tolerated) and their Ultra Token, as the same parts a
+ * legacy link yields, or null when either is not what it should be. `base`
+ * also stands in for `address`, so a home-list entry's own fields do. The
+ * host is not judged here; the tailnet rule does that, separately.
  */
-export function ultraNetworkPollTarget(link) {
-  const parts = parseUltraHelpLink(link);
-  if (!parts || !ultraTailnetTarget(parts)) return null;
+export function parseUltraHandout({ address, base, token } = {}) {
+  const origin = parseBase(
+    typeof address === 'string'
+      ? address
+      : typeof base === 'string'
+        ? base
+        : '',
+  );
+  if (!origin) return null;
+  const secret = typeof token === 'string' ? token.trim() : '';
+  if (!ULTRA_TOKEN_PATTERN.test(secret)) return null;
   return {
-    url: `${parts.base}/ultra/help/${parts.token}/network`,
-    host: parts.host,
-    base: parts.base,
+    scheme: origin.scheme,
+    host: origin.host,
+    hostname: origin.hostname,
+    base: origin.origin,
+    token: secret,
   };
 }
 
 /**
- * The origin a help-network link must carry, chosen from the addresses the
- * report listener answers on: the first https *.ts.net name, else the first
+ * The only request a home-list entry is ever used for, re-checked against
+ * the tailnet rule right before the call, or null when the address no
+ * longer passes (the entry then reads NOT A TAILNET ADDRESS and is not
+ * polled). The URL names the address and the fixed route alone; the token
+ * comes back beside it for the Authorization header and goes nowhere else.
+ */
+export function ultraNetworkPollTarget(handout) {
+  const parts =
+    handout && typeof handout === 'object' ? parseUltraHandout(handout) : null;
+  if (!parts || !ultraTailnetTarget(parts)) return null;
+  return {
+    url: `${parts.base}/ultra/help/network`,
+    host: parts.host,
+    base: parts.base,
+    token: parts.token,
+  };
+}
+
+/**
+ * The tailnet address a NETWORK handout carries, chosen from the addresses
+ * the report listener answers on: the first https *.ts.net name, else the first
  * plain-http 100.64.0.0/10 literal, else '' — never a LAN or public address,
  * which every receiver's poller refuses, and never https to a bare address,
  * which no certificate can name (`tailscale cert` issues only for the
@@ -346,11 +400,15 @@ export function ultraTailnetBase(bases) {
   return (named || literal)?.origin || '';
 }
 
-/** The link a home-list entry was made from, rebuilt from its base and the opened token. */
-export function ultraHelpLinkFor(base, token) {
-  const origin = parseBase(base);
-  if (!origin || !ULTRA_TOKEN_PATTERN.test(String(token ?? ''))) return '';
-  return `${origin.origin}/ultra/help/${token}`;
+/**
+ * What a person is handed, or a home-list entry rebuilt from its base and
+ * the opened token: the tailnet address (a bare origin) and the Ultra Token,
+ * two values that are never joined into one string. Null when the base is
+ * not a bare http(s) origin or the token is not one.
+ */
+export function ultraHelpHandout(base, token) {
+  const parts = parseUltraHandout({ address: base, token });
+  return parts ? { address: parts.base, token: parts.token } : null;
 }
 
 /** Whether a directory host is somewhere on the public internet (or a tailnet), never this machine or its LAN. */
@@ -486,30 +544,26 @@ function networkPolicyCanonical(entry) {
   ].join('\n');
 }
 
-/** HMAC-SHA256 of where this home-list entry points, or '' when the key cannot make one. */
+/** HMAC-SHA256 of where this home-list entry points, under the key's MAC subkey, or '' when the key cannot make one. */
 export function ultraNetworkPolicyMac(entry, key) {
   if (!entry || typeof entry !== 'object') return '';
-  if (!Buffer.isBuffer(key) || key.length !== 32) return '';
-  return crypto
-    .createHmac('sha256', key)
-    .update(networkPolicyCanonical(entry), 'utf8')
-    .digest('hex');
+  return ultraPolicyMacs(key, [networkPolicyCanonical(entry)])[0] ?? '';
 }
 
-/** 'legacy' with no check, 'ok' when it matches, 'bad' when a check is present and does not. */
+/**
+ * 'legacy' with no check, 'ok' when it matches under the derived key or
+ * under the master key itself (how a check was written before the key was
+ * split; both are compared, in constant time), 'bad' when a check is
+ * present and does not, or the key cannot check it.
+ */
 export function ultraNetworkPolicyState(entry, key) {
   const mac = entry?.policyMac;
   if (mac === undefined || mac === null || mac === '') return 'legacy';
   if (typeof mac !== 'string' || !HASH_PATTERN.test(mac)) return 'bad';
-  if (!Buffer.isBuffer(key) || key.length !== 32) return 'bad';
-  const expected = ultraNetworkPolicyMac(entry, key);
-  if (!HASH_PATTERN.test(expected)) return 'bad';
-  return crypto.timingSafeEqual(
-    Buffer.from(mac, 'hex'),
-    Buffer.from(expected, 'hex'),
-  )
-    ? 'ok'
-    : 'bad';
+  if (!entry || typeof entry !== 'object') return 'bad';
+  const expected = ultraPolicyMacs(key, [networkPolicyCanonical(entry)]);
+  if (expected.length === 0) return 'bad';
+  return ultraPolicyMacVerify(mac, expected) ? 'ok' : 'bad';
 }
 
 /** The entry with a fresh check. Unchanged when the key cannot make one. Skills and the seal are kept. */
@@ -544,7 +598,7 @@ function networkEntryToken(entry, key) {
  */
 export function ultraNetworkPollAllowed(entry, entries, key) {
   const token = networkEntryToken(entry, key);
-  if (!token || ultraTokenHash(token) !== entry?.hash) return false;
+  if (!token || !ultraTokenHashEqual(entry?.hash, token)) return false;
   const state = ultraNetworkPolicyState(entry, key);
   if (state === 'ok') return true;
   const hasMac = ultraNetworkStoreHasPolicyMac(entries);
@@ -568,7 +622,7 @@ export function ultraNetworkTamperFlags(entries, key) {
   const hasMac = ultraNetworkStoreHasPolicyMac(list);
   for (let i = 0; i < list.length; i += 1) {
     const token = tokens[i];
-    if (!token || ultraTokenHash(token) !== list[i]?.hash) {
+    if (!token || !ultraTokenHashEqual(list[i]?.hash, token)) {
       flags[i] = true;
       continue;
     }
@@ -579,17 +633,21 @@ export function ultraNetworkTamperFlags(entries, key) {
 }
 
 /**
- * The bytes the helpers-file check covers: the owner's number, each saved
- * helper, and each release as stored. Not the phone model. A changed
- * number, an added helper or a planted call fails it. The check itself is
- * not covered.
+ * The bytes the helpers-file check covers: the owner's number and standing
+ * needs, each saved helper, and each release as stored. Not the phone
+ * model. A changed number, a changed need, an added helper or a planted
+ * call fails it. The check itself is not covered. The needs line is there
+ * only when the file has needs, so a helpers file written before needs
+ * existed still matches the check it was given.
  */
 function helpPolicyCanonical(store) {
   const contacts = Array.isArray(store?.contacts) ? store.contacts : [];
   const releases = Array.isArray(store?.releases) ? store.releases : [];
+  const ownerNeeds = ultraNeeds(store?.owner?.needs);
   const lines = [
     HELP_POLICY_TAG,
     policyText(store?.owner?.number),
+    ...(ownerNeeds ? [`owner-needs:${JSON.stringify(ownerNeeds)}`] : []),
     String(contacts.length),
   ];
   for (const item of contacts) {
@@ -612,34 +670,31 @@ function helpPolicyCanonical(store) {
       policyNum(item?.renewedAt),
       policyText(item?.incident),
     );
+    const needs = ultraNeeds(item?.needs);
+    if (needs) lines.push(`needs:${JSON.stringify(needs)}`);
   }
   return lines.join('\n');
 }
 
-/** HMAC-SHA256 of the helpers file's number, contacts and releases, or '' when the key cannot make one. */
+/** HMAC-SHA256 of the helpers file's number, needs, contacts and releases under the key's MAC subkey, or '' when the key cannot make one. */
 export function ultraHelpStorePolicyMac(store, key) {
   if (!store || typeof store !== 'object') return '';
-  if (!Buffer.isBuffer(key) || key.length !== 32) return '';
-  return crypto
-    .createHmac('sha256', key)
-    .update(helpPolicyCanonical(store), 'utf8')
-    .digest('hex');
+  return ultraPolicyMacs(key, [helpPolicyCanonical(store)])[0] ?? '';
 }
 
-/** 'legacy' with no check, 'ok' when it matches, 'bad' when a check is present and does not. */
+/**
+ * 'legacy' with no check, 'ok' when it matches under the derived key or
+ * the master key a check was written with before the split (both compared,
+ * in constant time), 'bad' when a check is present and does not.
+ */
 export function ultraHelpStorePolicyState(store, key) {
   const mac = store?.policyMac;
   if (mac === undefined || mac === null || mac === '') return 'legacy';
   if (typeof mac !== 'string' || !HASH_PATTERN.test(mac)) return 'bad';
-  if (!Buffer.isBuffer(key) || key.length !== 32) return 'bad';
-  const expected = ultraHelpStorePolicyMac(store, key);
-  if (!HASH_PATTERN.test(expected)) return 'bad';
-  return crypto.timingSafeEqual(
-    Buffer.from(mac, 'hex'),
-    Buffer.from(expected, 'hex'),
-  )
-    ? 'ok'
-    : 'bad';
+  if (!store || typeof store !== 'object') return 'bad';
+  const expected = ultraPolicyMacs(key, [helpPolicyCanonical(store)]);
+  if (expected.length === 0) return 'bad';
+  return ultraPolicyMacVerify(mac, expected) ? 'ok' : 'bad';
 }
 
 const DIRECTORY_POLICY_TAG = 'ultra-directory-policy:v1';
@@ -661,30 +716,33 @@ const FEED_POLICY_FIELDS = [
 
 /**
  * 'legacy' when no check was stored, 'ok' when it matches the expected
- * bytes, 'bad' when a check is present and does not. A key that cannot
- * make a check is 'bad' once a check is stored: the caller trusts that
- * only when this key opens nothing.
+ * bytes, 'bad' when a check is present and does not. `expected` is the
+ * derived check a *PolicyMac function returns, or the whole list the
+ * matching *PolicyMacs function returns: the derived check first, then the
+ * one the master key itself wrote before the key was split. Every
+ * candidate is compared in constant time, so a check from before the split
+ * still verifies when the caller passes the list. A key that cannot make a
+ * check is 'bad' once a check is stored: the caller trusts that only when
+ * this key opens nothing.
  */
 export function ultraOutboundPolicyState(stored, expected, key) {
   if (stored === undefined || stored === null || stored === '') return 'legacy';
   if (typeof stored !== 'string' || !HASH_PATTERN.test(stored)) return 'bad';
   if (!Buffer.isBuffer(key) || key.length !== 32) return 'bad';
-  if (typeof expected !== 'string' || !HASH_PATTERN.test(expected))
-    return 'bad';
-  return crypto.timingSafeEqual(
-    Buffer.from(stored, 'hex'),
-    Buffer.from(expected, 'hex'),
-  )
-    ? 'ok'
-    : 'bad';
+  const candidates = (Array.isArray(expected) ? expected : [expected]).filter(
+    (value) => typeof value === 'string' && HASH_PATTERN.test(value),
+  );
+  if (candidates.length === 0) return 'bad';
+  return ultraPolicyMacVerify(stored, candidates) ? 'ok' : 'bad';
 }
 
-function outboundPolicyMac(tag, lines, key) {
-  if (!Buffer.isBuffer(key) || key.length !== 32) return '';
-  return crypto
-    .createHmac('sha256', key)
-    .update([tag, ...lines].join('\n'), 'utf8')
-    .digest('hex');
+/**
+ * Every check these outbound bytes may legitimately equal: under the key's
+ * MAC subkey first (what is written now), then under the master key itself.
+ * [] when the key cannot make one.
+ */
+function outboundPolicyMacs(tag, lines, key) {
+  return ultraPolicyMacs(key, [[tag, ...lines].join('\n')]);
 }
 
 /**
@@ -692,12 +750,22 @@ function outboundPolicyMac(tag, lines, key) {
  * from, and the write token that would be sent with a publish. Both empty
  * when they are not set. The check is not the address itself.
  */
-export function ultraDirectoryPolicyMac(material, key) {
-  return outboundPolicyMac(
+function directoryPolicyLines(material) {
+  return [policyText(material?.url), policyText(material?.writeToken)];
+}
+
+/** Every check the directory section may carry, derived first; pass this list to ultraOutboundPolicyState. */
+export function ultraDirectoryPolicyMacs(material, key) {
+  return outboundPolicyMacs(
     DIRECTORY_POLICY_TAG,
-    [policyText(material?.url), policyText(material?.writeToken)],
+    directoryPolicyLines(material),
     key,
   );
+}
+
+/** The directory check to write, under the key's MAC subkey, or '' when the key cannot make one. */
+export function ultraDirectoryPolicyMac(material, key) {
+  return ultraDirectoryPolicyMacs(material, key)[0] ?? '';
 }
 
 /**
@@ -707,18 +775,24 @@ export function ultraDirectoryPolicyMac(material, key) {
  * the Twilio values are taken out. An empty field is one the relay would
  * not use.
  */
+function relayPolicyLines(material) {
+  return [
+    policyText(material?.sid),
+    policyText(material?.auth),
+    policyText(material?.from),
+    policyText(material?.url),
+    policyText(material?.token),
+  ];
+}
+
+/** Every check the relay section may carry, derived first; pass this list to ultraOutboundPolicyState. */
+export function ultraRelayPolicyMacs(material, key) {
+  return outboundPolicyMacs(RELAY_POLICY_TAG, relayPolicyLines(material), key);
+}
+
+/** The relay check to write, under the key's MAC subkey, or '' when the key cannot make one. */
 export function ultraRelayPolicyMac(material, key) {
-  return outboundPolicyMac(
-    RELAY_POLICY_TAG,
-    [
-      policyText(material?.sid),
-      policyText(material?.auth),
-      policyText(material?.from),
-      policyText(material?.url),
-      policyText(material?.token),
-    ],
-    key,
-  );
+  return ultraRelayPolicyMacs(material, key)[0] ?? '';
 }
 
 /**
@@ -727,14 +801,24 @@ export function ultraRelayPolicyMac(material, key) {
  * admitted and where a position or a picture is fetched. Not where the map
  * last put the phone, and not follow or record.
  */
-export function ultraFeedsPolicyMac(feeds, key) {
+function feedsPolicyLines(feeds) {
   const list = Array.isArray(feeds) ? feeds : [];
   const lines = [String(list.length)];
   for (const feed of list) {
     for (const field of FEED_POLICY_FIELDS)
       lines.push(policyText(feed?.[field]));
   }
-  return outboundPolicyMac(FEEDS_POLICY_TAG, lines, key);
+  return lines;
+}
+
+/** Every check the phone-package section may carry, derived first; pass this list to ultraOutboundPolicyState. */
+export function ultraFeedsPolicyMacs(feeds, key) {
+  return outboundPolicyMacs(FEEDS_POLICY_TAG, feedsPolicyLines(feeds), key);
+}
+
+/** The phone-package check to write, under the key's MAC subkey, or '' when the key cannot make one. */
+export function ultraFeedsPolicyMac(feeds, key) {
+  return ultraFeedsPolicyMacs(feeds, key)[0] ?? '';
 }
 
 /** One of the four incident classes; anything else, including a missing value, is 'other'. */
@@ -793,6 +877,7 @@ export function normalizeUltraRelease(item, now) {
       .trim()
       .slice(0, FEED_ID_LIMIT),
     incident: ultraIncident(item.incident),
+    ...(ultraNeeds(item.needs) ? { needs: ultraNeeds(item.needs) } : {}),
   };
 }
 
@@ -808,6 +893,7 @@ export function newUltraRelease({
   fix,
   feedId,
   incident,
+  needs = null,
   previous = null,
 } = {}) {
   const at = Number(now);
@@ -836,14 +922,19 @@ export function newUltraRelease({
     renewedAt: at,
     feedId: id,
     incident: ultraIncident(incident),
+    // EXTEND HELP renews the call as it is, needs included.
+    ...((active ? ultraNeeds(previous.needs) : ultraNeeds(needs))
+      ? { needs: active ? ultraNeeds(previous.needs) : ultraNeeds(needs) }
+      : {}),
   };
 }
 
 /**
- * Exactly what a NETWORK token holder is answered at
- * /ultra/help/<token>/network, one of two shapes and never another key:
+ * Exactly what a NETWORK token holder is answered at /ultra/help/network
+ * (the token as the Authorization bearer), one of two shapes and never
+ * another key:
  * { released: false } until the owner presses SEND HELP, or
- * { released: true, name, lat, lon, at, until, incident } while the
+ * { released: true, name, lat, lon, at, until, incident[, needs] } while the
  * release for that feed is inside its window. The served position is the
  * phone's latest fix when it is newer than the fix recorded at the press,
  * else that fix; `at` is when this release last changed — the press, the
@@ -875,6 +966,7 @@ export function ultraReleaseAnswer({
   const { lat, lon } = cleanPosition(served.lat, served.lon);
   if (lat === null) return quiet;
   const renewedAt = finiteOrNull(release.renewedAt) ?? pressAt;
+  const needs = ultraNeeds(release.needs);
   return {
     released: true,
     name: cleanHelpText(name, ULTRA_HELP_NAME_LIMIT) || 'Ultra',
@@ -883,6 +975,9 @@ export function ultraReleaseAnswer({
     at: Math.max(pressAt, renewedAt, served.at),
     until: Number(release.until),
     incident: ultraIncident(release.incident),
+    // Only when the call asks for something: HELP DELIVERY's kind and its
+    // one or two entries, or Transportation's destination.
+    ...(needs ? { needs } : {}),
   };
 }
 
@@ -937,6 +1032,7 @@ export function normalizeUltraNetworkAnswer(
       at: theirAt,
       until,
       incident: ultraIncident(body.incident),
+      ...(ultraNeeds(body.needs) ? { needs: ultraNeeds(body.needs) } : {}),
     },
   };
 }
@@ -1024,6 +1120,18 @@ function messageIdFrom(ids) {
 }
 
 /**
+ * The plea composed here from the place, the incident and the needs,
+ * cleaned like every other text a row carries: whatever those parts held,
+ * row.text never carries a hidden character or runs past the text limit.
+ */
+function composedPlea(where, incident, needs) {
+  return cleanHelpText(
+    ultraHelpMessage(where, incident, needs),
+    ULTRA_HELP_TEXT_LIMIT,
+  );
+}
+
+/**
  * The HELP MESSAGES row a new episode opens: kind 'release', the home-list
  * entry it came through, the peer's cleaned name, the place (coordinates
  * alone until the reverse geocode lands), the plea composed here from the
@@ -1045,13 +1153,14 @@ export function ultraReleaseInboxRecord({
   const at = Number(now);
   if (!Number.isFinite(at)) return null;
   const incident = ultraIncident(release.incident);
+  const needs = ultraNeeds(release.needs);
   const label = cleanHelpText(entry?.name, ULTRA_HELP_NAME_LIMIT);
   const where =
     cleanHelpText(place, ULTRA_NETWORK_PLACE_LIMIT) ||
     ultraCoordinatesPlace({ lat, lon });
   const text =
     cleanHelpText(plea, ULTRA_HELP_TEXT_LIMIT) ||
-    ultraHelpMessage(where, incident);
+    composedPlea(where, incident, needs);
   return {
     id: messageIdFrom(ids),
     tokenId: '',
@@ -1063,6 +1172,7 @@ export function ultraReleaseInboxRecord({
     text,
     place: where,
     incident,
+    ...(needs ? { needs } : {}),
     lat,
     lon,
     at,
@@ -1088,6 +1198,10 @@ export function ultraReleaseRowUpdate(row, answer, { place, plea, now } = {}) {
   const moved = movedKm !== null && movedKm * 1000 > ULTRA_GEOCODE_MOVE_M;
   const incident =
     'incident' in release ? ultraIncident(release.incident) : row.incident;
+  const rowNeeds = ultraNeeds(row.needs);
+  // A full answer (it always has an incident) says what the call needs now.
+  const needs = 'incident' in release ? ultraNeeds(release.needs) : rowNeeds;
+  const needsChanged = JSON.stringify(needs) !== JSON.stringify(rowNeeds);
   const where =
     place === undefined
       ? row.place
@@ -1097,18 +1211,20 @@ export function ultraReleaseRowUpdate(row, answer, { place, plea, now } = {}) {
   if (plea !== undefined) {
     text =
       cleanHelpText(plea, ULTRA_HELP_TEXT_LIMIT) ||
-      ultraHelpMessage(where, incident);
-  } else if (where !== row.place || incident !== row.incident) {
-    text = ultraHelpMessage(where, incident);
+      composedPlea(where, incident, needs);
+  } else if (where !== row.place || incident !== row.incident || needsChanged) {
+    text = composedPlea(where, incident, needs);
   } else {
     text = row.text;
   }
   const clock = finiteOrNull(now);
+  const { needs: _previousNeeds, ...kept } = row;
   return {
-    ...row,
+    ...kept,
     from: cleanHelpText(release.name, ULTRA_HELP_NAME_LIMIT) || row.from,
     ...position,
     incident,
+    ...(needs ? { needs } : {}),
     place: where,
     text,
     at: moved && clock !== null ? clock : row.at,
@@ -1124,11 +1240,12 @@ function base64Length(value) {
   return Math.floor((body.length * 3) / 4);
 }
 
+/** A blob this module could have written: v 1 (sealed under the master key itself) or v 2 (under the derived key), with the GCM field lengths. */
 function sealedShape(sealed) {
   return (
     !!sealed &&
     typeof sealed === 'object' &&
-    sealed.v === 1 &&
+    (sealed.v === 1 || sealed.v === 2) &&
     base64Length(sealed.iv) === 12 &&
     base64Length(sealed.tag) === 16 &&
     base64Length(sealed.data) >= 1
@@ -1172,8 +1289,9 @@ export function normalizeUltraNetworkEntry(item) {
     base: base.origin,
     host: base.host,
     hash,
+    // The version is kept as stored: a v 1 blob only opens as v 1.
     sealed: {
-      v: 1,
+      v: item.sealed.v,
       iv: item.sealed.iv,
       tag: item.sealed.tag,
       data: item.sealed.data,
@@ -1201,7 +1319,7 @@ function skillEntryFields(item) {
       const label = cleanHelpText(raw, 40);
       if (!label || skills.includes(label)) continue;
       skills.push(label);
-      if (skills.length >= 18) break;
+      if (skills.length >= SKILL_LABEL_LIMIT) break;
     }
   }
   return {
@@ -1285,12 +1403,27 @@ export function ultraNetworkPublicEntry(entry, memory = {}, now = null) {
 
 /**
  * The group directory as fetched, each element judged on its own: an
- * object with a whole help link that passes the tailnet rule and a name
- * that cleans to something, or it is skipped and counted. At most 500
+ * object with a tailnet address and an Ultra Token ({ address, token }, the
+ * shape this feature writes) or a legacy whole help link ({ link }, which
+ * a hand-kept file may still carry), passing the tailnet rule, with a name
+ * that cleans to something, or it is skipped and counted. An element that
+ * carries both shapes is read by its address and token. At most 500
  * elements are considered (the rest count as skipped); a repeated token
  * keeps its first entry; a body that is neither { entries: [...] } nor an
- * array is unreadable and the home list is left alone.
+ * array is unreadable and the home list is left alone. An accepted entry
+ * never carries a joined link: its `address` is the bare origin.
  */
+/**
+ * One directory element's parts, whichever shape it has: { address, token }
+ * first, else the legacy { link }; null for anything that is not an object
+ * carrying one of them whole.
+ */
+function directoryElementParts(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  if ('address' in item || 'token' in item) return parseUltraHandout(item);
+  return parseUltraHelpLink(item.link);
+}
+
 export function normalizeUltraDirectory(
   parsed,
   { hash = ultraTokenHash } = {},
@@ -1306,8 +1439,7 @@ export function normalizeUltraDirectory(
   const seen = new Set();
   const entries = [];
   for (const item of list.slice(0, ULTRA_DIRECTORY_LIMIT)) {
-    const usable = !!item && typeof item === 'object' && !Array.isArray(item);
-    const parts = usable ? parseUltraHelpLink(item.link) : null;
+    const parts = directoryElementParts(item);
     const name = parts ? cleanHelpText(item.name, ULTRA_HELP_NAME_LIMIT) : '';
     if (!parts || !ultraTailnetTarget(parts) || !name) {
       skipped += 1;
@@ -1318,7 +1450,7 @@ export function normalizeUltraDirectory(
     seen.add(digest);
     entries.push({
       name,
-      link: `${parts.base}/ultra/help/${parts.token}`,
+      address: parts.base,
       token: parts.token,
       hash: digest,
       host: parts.host,
@@ -1550,21 +1682,27 @@ export function githubDirectoryApi(url) {
   };
 }
 
-/** The one shape a directory entry has: a display name and the link, nothing about the number, position, time or machine. */
-export function ultraDirectoryEntry({ name, link } = {}) {
+/**
+ * The one shape a directory entry has: a display name, the tailnet address
+ * (a bare origin) and the Ultra Token, kept apart — nothing about the
+ * number, position, time or machine, and never the two joined into a link.
+ */
+export function ultraDirectoryEntry({ name, address, token } = {}) {
   return {
     name: cleanHelpText(name, ULTRA_HELP_NAME_LIMIT) || 'Ultra',
-    link: String(link ?? '').trim(),
+    address: String(address ?? '').trim(),
+    token: String(token ?? '').trim(),
   };
 }
 
 /**
  * The directory file with my entry in it: every other element is kept as
  * it is (a malformed one included, so a hand-kept file is never tidied
- * away), the element whose link carries my token is replaced, else mine is
- * appended; an empty or missing file becomes { version: 1, entries: [mine] }.
- * Null when the text is not JSON or is neither { entries: [...] } nor an
- * array: such a file is never clobbered.
+ * away), the element carrying my token — in either shape, a legacy link
+ * too — is replaced by mine in the { name, address, token } shape, else
+ * mine is appended; an empty or missing file becomes
+ * { version: 1, entries: [mine] }. Null when the text is not JSON or is
+ * neither { entries: [...] } nor an array: such a file is never clobbered.
  */
 export function mergeDirectoryDocument(
   existingText,
@@ -1572,7 +1710,7 @@ export function mergeDirectoryDocument(
   { hash = ultraTokenHash } = {},
 ) {
   const mine = ultraDirectoryEntry(entry);
-  const parts = parseUltraHelpLink(mine.link);
+  const parts = parseUltraHandout(mine);
   if (!parts) return null;
   const myHash = hash(parts.token);
   const text = String(existingText ?? '').trim();
@@ -1595,10 +1733,7 @@ export function mergeDirectoryDocument(
   let replaced = false;
   const entries = [];
   for (const item of list) {
-    const theirs =
-      item && typeof item === 'object' && !Array.isArray(item)
-        ? parseUltraHelpLink(item.link)
-        : null;
+    const theirs = directoryElementParts(item);
     if (!theirs || hash(theirs.token) !== myHash) {
       entries.push(item);
       continue;

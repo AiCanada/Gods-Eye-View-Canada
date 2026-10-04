@@ -125,7 +125,7 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
     'ultra-token-package',
     'ultra-token-reveal',
     'ultra-token-link',
-    'ultra-token-copy-link',
+    'ultra-token-copy-address',
     'ultra-token-copy',
     'ultra-token-hide',
     'ultra-tokens',
@@ -154,7 +154,8 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
     'ultra-network-entry-mail',
     'ultra-network-entry-hide',
     'ultra-network-add',
-    'ultra-network-link',
+    'ultra-network-address',
+    'ultra-network-token',
     'ultra-network-link-name',
     'ultra-network-list',
     'ultra-sms-relay',
@@ -219,4 +220,133 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
     const source = fs.readFileSync(new URL(file, import.meta.url), 'utf8');
     assert.doesNotMatch(source, /cctv/i, `${file} does not import CCTV`);
   }
+});
+
+test('the plea names the items or the skill a call needs', async () => {
+  const { ultraHelpMessage, ultraNeeds, ultraNeedsSkill, ultraNeedsSummary } =
+    await import('./ultraHelp.mjs');
+  const plain = ultraHelpMessage('1 Placeholder Road', 'fire');
+  assert.equal(
+    ultraHelpMessage('1 Placeholder Road', 'fire', null),
+    plain,
+    'no needs: the plea is unchanged',
+  );
+  assert.equal(
+    ultraHelpMessage('1 Placeholder Road', 'fire', {
+      kind: 'medicine',
+      items: ['Insulin', 'Ventolin'],
+    }),
+    `${plain} Needed: Medicine: Insulin, Ventolin.`,
+  );
+  // Transportation is a skill, not an item.
+  const ride = { kind: 'transportation', destination: 'hospital' };
+  assert.equal(ultraNeedsSkill(ride), 'tr');
+  assert.equal(ultraNeedsSkill({ kind: 'food', items: ['Bread'] }), '');
+  assert.equal(
+    ultraHelpMessage('1 Placeholder Road', 'fire', ride),
+    `${plain} Skill needed: Transportation: from current location to Hospital.`,
+  );
+  // Anything else a stranger could send is dropped.
+  assert.equal(ultraNeeds({ kind: 'weapons', items: ['x'] }), null);
+  assert.equal(
+    ultraNeeds({ kind: 'transportation', destination: 'mars' }),
+    null,
+  );
+  assert.equal(ultraNeeds({ kind: 'items', items: ['x'.repeat(81)] }), null);
+  assert.deepEqual(
+    ultraNeeds({
+      kind: 'items',
+      items: ['Heart\nDefib', ' ', 'Spare', 'Third'],
+      extra: 1,
+    }),
+    { kind: 'items', items: ['Heart Defib'], destination: '' },
+  );
+  assert.equal(ultraNeedsSummary(null), '');
+});
+
+test('needs never coerce a JSON object, and hidden characters are dropped from items', async () => {
+  const {
+    ULTRA_HIDDEN_TEXT,
+    ultraHiddenText,
+    normalizeUltraNeeds,
+    ultraNeeds,
+  } = await import('./ultraHelp.mjs');
+  // {"toString": null} is reachable from JSON; String() on it would throw.
+  const hostile = JSON.parse('{"toString":null}');
+  assert.equal(
+    normalizeUltraNeeds({ kind: 'transportation', destination: hostile }).ok,
+    false,
+  );
+  assert.equal(
+    ultraNeeds({ kind: 'transportation', destination: hostile }),
+    null,
+  );
+  assert.equal(
+    normalizeUltraNeeds({ kind: 'food', items: [hostile] }).ok,
+    false,
+  );
+  assert.equal(ultraNeeds({ kind: 'food', items: [hostile] }), null);
+  assert.equal(normalizeUltraNeeds({ kind: 'food', items: hostile }).ok, false);
+  assert.equal(ultraNeeds({ kind: 'food', items: hostile }), null);
+  // A non-string item is an empty box; a string beside it still counts.
+  assert.deepEqual(ultraNeeds({ kind: 'food', items: [hostile, 'Bread'] }), {
+    kind: 'food',
+    items: ['Bread'],
+    destination: '',
+  });
+  assert.deepEqual(ultraNeeds({ kind: 'food', items: [12, 'Bread'] }), {
+    kind: 'food',
+    items: ['Bread'],
+    destination: '',
+  });
+  // Nothing hostile throws out of ultraNeeds.
+  const trap = new Proxy(
+    {},
+    {
+      get() {
+        throw new Error('trap');
+      },
+    },
+  );
+  assert.equal(ultraNeeds(trap), null);
+  assert.equal(ultraNeeds({ kind: 'food', items: trap }), null);
+  // Bidi override, zero-width space, isolates and the byte-order mark go.
+  assert.deepEqual(
+    ultraNeeds({
+      kind: 'medicine',
+      items: ['\u202eIns\u200bulin\u2066 2\u2069 mg\ufeff', '\u202e\u200b'],
+    }),
+    { kind: 'medicine', items: ['Insulin 2 mg'], destination: '' },
+  );
+  // The exported class is a plain string; the factory is a fresh global RegExp.
+  assert.equal(typeof ULTRA_HIDDEN_TEXT, 'string');
+  const first = ultraHiddenText();
+  assert.notEqual(first, ultraHiddenText());
+  assert.ok(first.global);
+  for (const hidden of ['\u202e', '\u200b', '\u2066', '\u2069', '\ufeff']) {
+    assert.ok(
+      ultraHiddenText().test(hidden),
+      `hides U+${hidden.codePointAt(0).toString(16)}`,
+    );
+  }
+  assert.ok(!ultraHiddenText().test('a\tb\n'));
+  // The same set ultraTokens.mjs strips from help text.
+  const tokens = fs.readFileSync(
+    new URL('../server/shared/ultraTokens.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.ok(
+    tokens.includes('[' + ULTRA_HIDDEN_TEXT + ']') ||
+      tokens.includes('ULTRA_HIDDEN_TEXT'),
+    'ultraTokens.mjs uses the same hidden-character set',
+  );
+  // Sanity: the Mr./Mrs. Nice Guy skill label has nothing to strip.
+  const niceGuy = 'Mr./Mrs. Nice Guy';
+  assert.equal(niceGuy.replace(ultraHiddenText(), ''), niceGuy);
+  assert.deepEqual(ultraNeeds({ kind: 'items', items: [niceGuy] }), {
+    kind: 'items',
+    items: [niceGuy],
+    destination: '',
+  });
+  assert.match(tokens, /code: 'ng', label: 'Mr\.\/Mrs\. Nice Guy'/);
 });

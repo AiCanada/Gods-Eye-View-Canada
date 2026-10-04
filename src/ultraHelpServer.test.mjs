@@ -8,11 +8,14 @@ import { Readable } from 'node:stream';
 import { DEVICE_FEED_STORE, DEVICE_RECORDING_DIR } from './deviceFeedsCore.mjs';
 import { ULTRA_NETWORK_TICK_MS } from '../server/shared/ultraNetwork.mjs';
 import {
+  ULTRA_SKILL_SETS,
   ULTRA_TOKEN_PATTERN,
   composeUltraToken,
   newUltraToken,
+  openUltraToken,
   parseUltraTokenKey,
   readUltraTokenSkills,
+  ultraTokenKeyId,
 } from '../server/shared/ultraTokens.mjs';
 import {
   handleUltraPhone,
@@ -52,6 +55,9 @@ const HOME = {
 const HOLDER = '100.80.30.40';
 const UNKNOWN = `/ultra/help/uht1.${'0'.repeat(43)}`;
 const JPEG_START = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+/** A well-formed replacement key: 32 counting bytes from `from`, never one byte repeated. */
+const otherKeyText = (from) =>
+  `${Buffer.from(Array.from({ length: 32 }, (_, i) => (from + i) & 0xff)).toString('hex')}\n`;
 
 // ---- harness --------------------------------------------------------------
 
@@ -126,6 +132,16 @@ function phoneWith(req, url) {
         new URL(url, 'http://localhost'),
       ),
     ).catch(reject);
+  });
+}
+
+/** The holder's one route as a holder's GEVC polls it: the fixed path, the token as the bearer and never in it. */
+const NETWORK_ROUTE = '/ultra/help/network';
+const bearer = (token) => ({ authorization: `Bearer ${token}` });
+function net(token, options = {}) {
+  return phone(NETWORK_ROUTE, {
+    ...options,
+    headers: { ...bearer(token), ...(options.headers || {}) },
   });
 }
 
@@ -261,11 +277,17 @@ const SAINT_JOHN = json({
 });
 const PLACE = '10 Example St, Saint John, New Brunswick (45.2700, -66.0600)';
 const PEER_TOKEN = `uht1.${'Pp7'.repeat(14)}A`;
-const PEER_LINK = `https://peer.tail9.ts.net/ultra/help/${PEER_TOKEN}`;
-const PEER_NETWORK = `${PEER_LINK}/network`;
+const PEER_ADDRESS = 'https://peer.tail9.ts.net';
+/** The legacy joined shape, as a hand-kept directory file may still carry it. */
+const PEER_LINK = `${PEER_ADDRESS}/ultra/help/${PEER_TOKEN}`;
+/** Every token one machine handed out polls this one URL; the token rides the header. */
+const PEER_NETWORK = `${PEER_ADDRESS}/ultra/help/network`;
 const ANN_TOKEN = `uht1.${'An4'.repeat(14)}B`;
-const ANN_LINK = `https://ann.tail9.ts.net/ultra/help/${ANN_TOKEN}`;
+const ANN_ADDRESS = 'https://ann.tail9.ts.net';
+const ANN_LINK = `${ANN_ADDRESS}/ultra/help/${ANN_TOKEN}`;
 const OTHER_TOKEN = `uht1.${'Ot8'.repeat(14)}C`;
+/** The bearer a poller sends, as the fetch fixture records it. */
+const bearerOf = (call) => String(call.headers?.Authorization || '');
 
 /**
  * A token for the tests, with Network on as the box mints one: the page
@@ -325,7 +347,8 @@ test('mint: a sealed token, a write-once key, and a status that never carries th
   const before = await mint(post);
   assert.match(before.revealed.token, ULTRA_TOKEN_PATTERN);
   assert.doesNotMatch(before.revealed.token, /^[A-Za-z0-9_-]{43}$/);
-  assert.equal(before.revealed.link, '', 'no listener address yet');
+  assert.equal(before.revealed.address, '', 'no tailnet address yet');
+  assert.ok(!('link' in before.revealed), 'the handout is never a joined link');
   assert.equal(before.revealed.label, 'Neighbour');
   noteUltraEndpoint(['http://192.168.1.5:44173']);
   const minted = await mint(post, {
@@ -334,10 +357,10 @@ test('mint: a sealed token, a write-once key, and a status that never carries th
     voice: false,
   });
   const { token } = minted.revealed;
-  assert.equal(
-    minted.revealed.link,
-    `http://192.168.1.5:44173/ultra/help/${token}`,
-  );
+  // Network off: the token opens nothing, so no address is handed out with
+  // it (and a LAN address never is).
+  assert.ok(!('address' in minted.revealed));
+  assert.ok(!('link' in minted.revealed));
   assert.notEqual(token, before.revealed.token);
   assert.match(
     fs.readFileSync(file('ultra-tokens.key'), 'utf8'),
@@ -469,11 +492,8 @@ test('skill sets are part of the token string, and Encrypt hides them there', as
   assert.equal(savedNeighbour.encrypted, false);
   assert.match(savedNeighbour.policyMac, /^[0-9a-f]{64}$/);
   await askForHelp(post);
-  assert.equal((await phone(`/ultra/help/${token}/network`)).status, 200);
-  assert.equal(
-    (await phone(`/ultra/help/${token.slice(0, 48)}/network`)).status,
-    404,
-  );
+  assert.equal((await net(token)).status, 200);
+  assert.equal((await net(token.slice(0, 48))).status, 404);
   const hidden = await mint(post, {
     label: 'Medic',
     network: true,
@@ -506,7 +526,7 @@ test('skill sets are part of the token string, and Encrypt hides them there', as
     ['Doctor'],
   );
   assert.deepEqual(readUltraTokenSkills(hiddenToken).skills, []);
-  assert.equal((await phone(`/ultra/help/${hiddenToken}/network`)).status, 200);
+  assert.equal((await net(hiddenToken)).status, 200);
   const plain = await mint(post, {
     label: 'Plain',
     network: true,
@@ -515,10 +535,7 @@ test('skill sets are part of the token string, and Encrypt hides them there', as
     encrypt: false,
   });
   assert.equal(plain.revealed.token.length, 48);
-  assert.equal(
-    (await phone(`/ultra/help/${plain.revealed.token}/network`)).status,
-    200,
-  );
+  assert.equal((await net(plain.revealed.token)).status, 200);
   const quiet = await mint(post, { label: 'Quiet', encrypt: true });
   assert.match(quiet.revealed.token, /\.e\./);
   assert.deepEqual(
@@ -530,7 +547,8 @@ test('skill sets are part of the token string, and Encrypt hides them there', as
   ]);
   const added = await post('/network', {
     add: true,
-    link: `https://peer.tail9.ts.net/ultra/help/${skilled}`,
+    address: PEER_ADDRESS,
+    token: skilled,
     name: 'Pat',
   });
   assert.equal(added.status, 200, added.text);
@@ -546,7 +564,8 @@ test('skill sets are part of the token string, and Encrypt hides them there', as
   );
   const sealedAdd = await post('/network', {
     add: true,
-    link: `https://ann.tail9.ts.net/ultra/help/${sealed}`,
+    address: ANN_ADDRESS,
+    token: sealed,
     name: 'Ann',
   });
   assert.equal(sealedAdd.status, 200, sealedAdd.text);
@@ -611,22 +630,19 @@ test('reveal, edit, revoke, remove, purge, and the owner number', async () => {
     404,
   );
   // Revoke: the next holder request and a reveal both 404; the row stays.
-  assert.equal((await phone(`/ultra/help/${token}/network`)).status, 200);
+  assert.equal((await net(token)).status, 200);
   const revoked = await post('/tokens', { revoke: true, id });
   assert.equal(revoked.status, 200, revoked.text);
   assert.equal(typeof revoked.json().tokens[0].revokedAt, 'number');
   assert.equal(revoked.json().tokens[0].label, 'Next door');
-  assert.equal((await phone(`/ultra/help/${token}/network`)).status, 404);
+  assert.equal((await net(token)).status, 404);
   const gone = await post('/tokens', { reveal: true, id });
   assert.equal(gone.status, 404);
   assert.equal(gone.json().error, 'No such token');
   // Purge removes only revoked records; remove takes any.
   const second = await mint(post, { label: 'Courier', network: true });
   assert.equal(second.tokens.length, 2);
-  assert.equal(
-    (await phone(`/ultra/help/${second.revealed.token}/network`)).status,
-    200,
-  );
+  assert.equal((await net(second.revealed.token)).status, 200);
   const purged = await post('/tokens', { purge: true });
   assert.deepEqual(
     purged.json().tokens.map((row) => row.id),
@@ -641,10 +657,7 @@ test('reveal, edit, revoke, remove, purge, and the owner number', async () => {
     (await post('/tokens', { remove: true, id: second.revealed.id })).status,
     404,
   );
-  assert.equal(
-    (await phone(`/ultra/help/${second.revealed.token}/network`)).status,
-    404,
-  );
+  assert.equal((await net(second.revealed.token)).status, 404);
   // '' and null clear the number; anything that is not E.164 is refused.
   assert.equal((await post('/number', { number: '' })).json().ownerNumber, '');
   await post('/number', { number: '+15065550199' });
@@ -685,16 +698,13 @@ test('mint with two packages needs a choice; with none it refuses; an orphaned t
   );
   const { token } = chosen.revealed;
   await askForHelp(post, 'security-home');
-  assert.equal(
-    (await phone(`/ultra/help/${token}/network`)).json().name,
-    'Home',
-  );
+  assert.equal((await net(token)).json().name, 'Home');
   writeFeeds(root, []);
   const none = await post('/tokens', { label: 'Courier' });
   assert.equal(none.status, 400);
   assert.equal(none.json().error, 'No Ultra Security Package is saved yet');
-  assert.equal((await phone(`/ultra/help/${token}/network`)).status, 404);
-  assert.equal((await phone(`/ultra/help/${token}/network`)).text, 'Not found');
+  assert.equal((await net(token)).status, 404);
+  assert.equal((await net(token)).text, 'Not found');
   // The box is told, and SHARE will not hand out a link that only 404s.
   const orphan = (await request('/status')).json().tokens[0];
   assert.equal(orphan.orphaned, true);
@@ -708,6 +718,104 @@ test('mint with two packages needs a choice; with none it refuses; an orphaned t
     (await post('/tokens', { reveal: true, id: orphan.id })).status,
     200,
   );
+});
+
+test('the key file protection is asked again on read: widened access is said, restored access clears it', async () => {
+  const { root, post, request, harden, file } = setup();
+  const { id, token } = (await mint(post, { label: 'Keeper', network: true }))
+    .revealed;
+  assert.equal((await request('/status')).json().tokenStore, 'ok');
+  // The same files, with a check that answers for the key file's rights.
+  let restricted = true;
+  ultraHelpProxy({ sourceRoot: root, harden, verify: () => restricted });
+  assert.equal((await request('/status')).json().tokenStore, 'ok');
+  restricted = false;
+  // The answer is kept while the file's stat is unchanged, so the widened
+  // rights are seen once the file is touched (as a chmod or icacls does).
+  fs.utimesSync(
+    file('ultra-tokens.key'),
+    new Date(1_700_000_000_000),
+    new Date(1_700_000_000_000),
+  );
+  assert.equal((await request('/status')).json().tokenStore, 'key-exposed');
+  // The key is still the key: admission, reveal and a mint all work.
+  assert.equal((await net(token)).status, 200);
+  const shown = await post('/tokens', { reveal: true, id });
+  assert.equal(shown.status, 200, shown.text);
+  assert.equal(shown.json().revealed.token, token);
+  assert.equal(shown.json().tokenStore, 'key-exposed');
+  assert.equal(
+    (await mint(post, { label: 'Second' })).tokenStore,
+    'key-exposed',
+  );
+  // Restored rights are seen the same way; a check that throws is exposed.
+  restricted = true;
+  fs.utimesSync(
+    file('ultra-tokens.key'),
+    new Date(1_700_000_100_000),
+    new Date(1_700_000_100_000),
+  );
+  assert.equal((await request('/status')).json().tokenStore, 'ok');
+  ultraHelpProxy({
+    sourceRoot: root,
+    harden,
+    verify: () => {
+      throw new Error('no tools');
+    },
+  });
+  assert.equal((await request('/status')).json().tokenStore, 'key-exposed');
+  // A test's own hardener stands for the file's protection unless it brings a check.
+  ultraHelpProxy({ sourceRoot: root, harden });
+  assert.equal((await request('/status')).json().tokenStore, 'ok');
+});
+
+test('the store-wide check tells a row removed, reordered or stripped by hand, and an owner action accepts the file', async () => {
+  const { post, request, file } = setup();
+  const first = (await mint(post, { label: 'First', network: true })).revealed;
+  const second = (await mint(post, { label: 'Second', network: true }))
+    .revealed;
+  const read = () =>
+    JSON.parse(fs.readFileSync(file('ultra-tokens.json'), 'utf8'));
+  const write = (doc) =>
+    fs.writeFileSync(file('ultra-tokens.json'), JSON.stringify(doc, null, 2));
+  const stamped = read();
+  assert.match(stamped.storeMac, /^[0-9a-f]{64}$/);
+  assert.equal((await request('/status')).json().tokenStore, 'ok');
+  // A row removed by hand: said, and the row that is left still admits its
+  // holder (each record answers for itself), while the removed one is gone.
+  write({
+    ...stamped,
+    tokens: stamped.tokens.filter((t) => t.id !== first.id),
+  });
+  assert.equal((await request('/status')).json().tokenStore, 'store-changed');
+  assert.equal((await net(second.token)).status, 200);
+  assert.equal((await net(first.token)).status, 404);
+  // A holder's request does not launder it: the check stays as it was.
+  assert.equal(read().storeMac, stamped.storeMac);
+  assert.equal((await request('/status')).json().tokenStore, 'store-changed');
+  // Reordered rows, and a row stripped of its own check, are told the same.
+  write({ ...stamped, tokens: [...stamped.tokens].reverse() });
+  assert.equal((await request('/status')).json().tokenStore, 'store-changed');
+  const [a, b] = stamped.tokens;
+  const { policyMac: _dropped, ...bare } = b;
+  write({ ...stamped, tokens: [a, bare] });
+  assert.equal((await request('/status')).json().tokenStore, 'store-changed');
+  // The owner's own action on a named record accepts the file as it is.
+  write({
+    ...stamped,
+    tokens: stamped.tokens.filter((t) => t.id !== first.id),
+  });
+  const revoked = await post('/tokens', { revoke: true, id: second.id });
+  assert.equal(revoked.status, 200, revoked.text);
+  assert.equal(revoked.json().tokenStore, 'ok');
+  assert.notEqual(read().storeMac, stamped.storeMac);
+  assert.equal((await request('/status')).json().tokenStore, 'ok');
+  // A file from before the check earns one once a seal in it opens.
+  const { storeMac: _old, ...legacy } = read();
+  write(legacy);
+  assert.equal((await request('/status')).json().tokenStore, 'ok');
+  assert.match(read().storeMac ?? '', /^[0-9a-f]{64}$/);
+  assert.equal((await request('/status')).json().tokenStore, 'ok');
 });
 
 test('key file semantics: no-key, key-invalid, a changed key, an unreadable store, reset', async () => {
@@ -729,9 +837,9 @@ test('key file semantics: no-key, key-invalid, a changed key, an unreadable stor
     'a mint never recreates the key beside existing tokens',
   );
   // Holders are still admitted by hash; revoke still works.
-  assert.equal((await phone(`/ultra/help/${token}/network`)).status, 200);
+  assert.equal((await net(token)).status, 200);
   assert.equal((await post('/tokens', { revoke: true, id })).status, 200);
-  assert.equal((await phone(`/ultra/help/${token}/network`)).status, 404);
+  assert.equal((await net(token)).status, 404);
   // With no live token left the missing key blocks nothing: the refusal's
   // own advice (revoke, then mint again) works, and the next mint makes a
   // fresh key beside the revoked record.
@@ -767,13 +875,70 @@ test('key file semantics: no-key, key-invalid, a changed key, an unreadable stor
     /^[0-9a-f]{64}\n$/,
   );
   assert.notEqual(fresh.revealed.token, token);
-  // A key that changed under a sealed token: admission works, reveal refuses.
-  fs.writeFileSync(file('ultra-tokens.key'), `${'f'.repeat(64)}\n`);
-  assert.equal((await request('/status')).json().tokenStore, 'ok');
-  assert.equal(
-    (await phone(`/ultra/help/${fresh.revealed.token}/network`)).status,
-    200,
+  // A key that changed under a sealed token: admission works, reveal refuses,
+  // and the box says the key changed (the store names the key it was written
+  // under), instead of leaving the owner to infer it from the reveal.
+  const freshKey = parseUltraTokenKey(
+    fs.readFileSync(file('ultra-tokens.key'), 'utf8'),
   );
+  assert.equal(
+    JSON.parse(fs.readFileSync(file('ultra-tokens.json'), 'utf8')).keyId,
+    ultraTokenKeyId(freshKey),
+  );
+  fs.writeFileSync(file('ultra-tokens.key'), otherKeyText(100));
+  assert.equal((await request('/status')).json().tokenStore, 'key-changed');
+  // Not tampered: a replaced key opens nothing, and the row stays usable.
+  assert.equal(
+    (await request('/status'))
+      .json()
+      .tokens.find((item) => item.id === fresh.revealed.id).tampered,
+    false,
+  );
+  assert.equal((await net(fresh.revealed.token)).status, 200);
+  // The header's keyId is under the store-wide check: taking it out by hand
+  // while the check stays is a changed file, said as such.
+  const headed = JSON.parse(fs.readFileSync(file('ultra-tokens.json'), 'utf8'));
+  assert.match(headed.storeMac, /^[0-9a-f]{64}$/);
+  delete headed.keyId;
+  fs.writeFileSync(file('ultra-tokens.json'), JSON.stringify(headed));
+  assert.equal((await request('/status')).json().tokenStore, 'store-changed');
+  // A store from before the header and the check is not judged: no keyId,
+  // no storeMac, no verdict.
+  const { storeMac: _preCheck, ...unchecked } = headed;
+  fs.writeFileSync(file('ultra-tokens.json'), JSON.stringify(unchecked));
+  assert.equal((await request('/status')).json().tokenStore, 'ok');
+  fs.writeFileSync(
+    file('ultra-tokens.json'),
+    JSON.stringify({ ...headed, keyId: ultraTokenKeyId(freshKey) }),
+  );
+  assert.equal((await request('/status')).json().tokenStore, 'key-changed');
+  // A revoke under the replaced key keeps naming the key the seals were made
+  // under: the new key has opened nothing yet, so the box still says so.
+  const revokedUnderNew = await post('/tokens', {
+    revoke: true,
+    id: fresh.revealed.id,
+  });
+  assert.equal(revokedUnderNew.status, 200, revokedUnderNew.text);
+  assert.equal(revokedUnderNew.json().tokenStore, 'key-changed');
+  assert.equal(
+    JSON.parse(fs.readFileSync(file('ultra-tokens.json'), 'utf8')).keyId,
+    ultraTokenKeyId(freshKey),
+  );
+  // A mint under the new key seals something it opens, and the header moves.
+  const underNew = await mint(post, { label: 'Under new key' });
+  assert.equal(underNew.tokenStore, 'ok');
+  assert.equal(
+    JSON.parse(fs.readFileSync(file('ultra-tokens.json'), 'utf8')).keyId,
+    ultraTokenKeyId(
+      parseUltraTokenKey(fs.readFileSync(file('ultra-tokens.key'), 'utf8')),
+    ),
+  );
+  // Back to the single replaced-key row for the rest of this test.
+  fs.writeFileSync(
+    file('ultra-tokens.json'),
+    JSON.stringify({ ...headed, keyId: ultraTokenKeyId(freshKey) }),
+  );
+  assert.equal((await request('/status')).json().tokenStore, 'key-changed');
   const changed = await post('/tokens', {
     reveal: true,
     id: fresh.revealed.id,
@@ -787,10 +952,7 @@ test('key file semantics: no-key, key-invalid, a changed key, an unreadable stor
   fs.writeFileSync(file('ultra-tokens.json'), '{not json');
   assert.equal((await request('/status')).json().tokenStore, 'unreadable');
   assert.deepEqual((await request('/status')).json().tokens, []);
-  assert.equal(
-    (await phone(`/ultra/help/${fresh.revealed.token}/network`)).status,
-    404,
-  );
+  assert.equal((await net(fresh.revealed.token)).status, 404);
   for (const body of [
     { label: 'Courier' },
     { revoke: true, id: fresh.revealed.id },
@@ -820,7 +982,7 @@ test('a flag flipped in the token file is refused and does not spend the miss bu
   store.tokens[0].anytime = true;
   fs.writeFileSync(file('ultra-tokens.json'), JSON.stringify(store));
   for (let i = 0; i < 20; i += 1) {
-    const answer = await phone(`/ultra/help/${token}/network`, {
+    const answer = await net(token, {
       remoteAddress: '100.88.8.8',
     });
     assert.equal(answer.status, 404, `tampered ${i + 1}`);
@@ -874,11 +1036,11 @@ test('a copied token does not take the real link, and a deleted check beside ano
   other.anytime = true;
   fs.writeFileSync(file('ultra-tokens.json'), JSON.stringify(store));
   // The link follows the seal that still opens, not the copy placed above it.
-  const admitted = await phone(`/ultra/help/${token}/network`);
+  const admitted = await net(token);
   assert.equal(admitted.status, 200, admitted.text);
   assert.equal(admitted.json().released, true);
   for (let i = 0; i < 20; i += 1) {
-    const answer = await phone(`/ultra/help/${second.revealed.token}/network`, {
+    const answer = await net(second.revealed.token, {
       remoteAddress: '100.77.7.7',
     });
     assert.equal(answer.status, 404, `deleted check ${i + 1}`);
@@ -947,10 +1109,7 @@ test('a copied token does not take the real link, and a deleted check beside ano
     id: second.revealed.id,
   });
   assert.equal(revoked.status, 200, revoked.text);
-  assert.equal(
-    (await phone(`/ultra/help/${second.revealed.token}/network`)).status,
-    404,
-  );
+  assert.equal((await net(second.revealed.token)).status, 404);
 });
 
 test('a token file with no check at all still admits, and the next status fills that check in', async () => {
@@ -963,7 +1122,7 @@ test('a token file with no check at all still admits, and the next status fills 
   await askForHelp(post);
   // Wiping the only check looks the same as a file from before checks: the
   // link admits, and the flags now in the file are what get checked.
-  const admitted = await phone(`/ultra/help/${token}/network`);
+  const admitted = await net(token);
   assert.equal(admitted.status, 200, admitted.text);
   assert.equal(admitted.json().released, true);
   const after = JSON.parse(fs.readFileSync(file('ultra-tokens.json'), 'utf8'));
@@ -1003,18 +1162,12 @@ test('mint refuses a 201st token and keeps the ones already stored', async () =>
   );
   const after = JSON.parse(fs.readFileSync(file('ultra-tokens.json'), 'utf8'));
   assert.equal(after.tokens.length, 200);
-  assert.equal(
-    (await phone(`/ultra/help/${first.revealed.token}/network`)).status,
-    200,
-  );
+  assert.equal((await net(first.revealed.token)).status, 200);
   const removed = await post('/tokens', { remove: true, id: extras[0].id });
   assert.equal(removed.status, 200, removed.text);
   const again = await mint(post, { label: 'After', network: true });
   assert.equal(again.tokens.length, 200);
-  assert.equal(
-    (await phone(`/ultra/help/${again.revealed.token}/network`)).status,
-    200,
-  );
+  assert.equal((await net(again.revealed.token)).status, 200);
 });
 
 test('owner routes: loopback, local Host, same-origin JSON only; preview is read-only', async () => {
@@ -1090,64 +1243,189 @@ test('holder routes: the location poll is all a token has, and one 404 for every
   const { post, root } = setup();
   const { token } = (await mint(post)).revealed;
   await askForHelp(post);
-  // The poll: JSON under the phone routes' own strict headers.
-  const poll = await phone(`/ultra/help/${token}/network`);
+  // The poll: GET /ultra/help/network with the token as the bearer, JSON
+  // under the phone routes' own strict headers, varying by that header and
+  // never cached.
+  const poll = await net(token);
   assert.equal(poll.status, 200);
   assert.equal(poll.headers['Content-Type'], 'application/json');
   assert.equal(poll.headers['Content-Security-Policy'], "default-src 'none'");
   assert.equal(poll.headers['X-Frame-Options'], 'DENY');
   assert.equal(poll.headers['Referrer-Policy'], 'no-referrer');
   assert.equal(poll.headers['Cache-Control'], 'no-store, private');
+  assert.equal(poll.headers.Vary, 'Authorization');
   assert.equal(poll.json().released, true);
   assert.equal(
-    (await phone(`/ultra/help/${token}/network/`)).status,
+    (await phone(`${NETWORK_ROUTE}/`, { headers: bearer(token) })).status,
     200,
     'a trailing slash is the same route',
   );
-  // No page, no status and no message box, during a call too: the uniform
-  // 404, with the body and headers of the phone routes.
-  const mangled = token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A');
-  for (const url of [
-    `/ultra/help/${token}`,
-    `/ultra/help/${token}/`,
-    `/ultra/help/${token}/status`,
-    `/ultra/help/${token}/message`,
-    `/ultra/help/${mangled}/network`,
-    UNKNOWN,
-    `/ultra/help/${VAN_KEY}`,
-    `/ultra/${token}`,
-    `/ultra/${token}/cam`,
-    `/ultra/help/${token}/cam`,
-    `/ultra/help/${token}/picture`,
-    `/ultra/help/${token}/network/x`,
-    '/ultra/help',
-    `/ultra/help/${token.toUpperCase()}/network`,
+  // The scheme word in any case; the surrounding blanks forgiven.
+  for (const header of [
+    `bearer ${token}`,
+    `BEARER ${token}`,
+    `  Bearer   ${token}  `,
   ]) {
-    const answer = await phone(url);
-    assert.equal(answer.status, 404, url);
-    assert.equal(answer.text, 'Not found', url);
-    assert.equal(answer.headers['Content-Type'], 'text/plain', url);
+    assert.equal(
+      (await phone(NETWORK_ROUTE, { headers: { authorization: header } }))
+        .status,
+      200,
+      JSON.stringify(header),
+    );
+  }
+  // No page, no status and no message box, during a call too: the uniform
+  // 404, with the body and headers of the phone routes. The old form, with
+  // the token in the path, is one of them: a credential never comes from
+  // the URL, and sending one there tells the sender nothing.
+  const mangled = token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A');
+  for (const [i, [url, options]] of [
+    [`/ultra/help/${token}`],
+    [`/ultra/help/${token}/`],
+    [`/ultra/help/${token}/status`],
+    [`/ultra/help/${token}/message`],
+    [`/ultra/help/${token}/network`],
+    [`/ultra/help/${mangled}/network`],
+    [UNKNOWN],
+    [`/ultra/help/${VAN_KEY}`],
+    [`/ultra/${token}`],
+    [`/ultra/${token}/cam`],
+    [`/ultra/help/${token}/cam`],
+    [`/ultra/help/${token}/picture`],
+    [`/ultra/help/${token}/network/x`],
+    ['/ultra/help'],
+    [`/ultra/help/${token.toUpperCase()}/network`],
+    // The right route, the wrong header: missing, another scheme, two
+    // tokens, a mangled or short or upper-cased token, a token with the
+    // path's old shape around it.
+    [NETWORK_ROUTE],
+    [NETWORK_ROUTE, { headers: { authorization: token } }],
+    [NETWORK_ROUTE, { headers: { authorization: `Basic ${token}` } }],
+    [NETWORK_ROUTE, { headers: { authorization: `Token ${token}` } }],
+    [NETWORK_ROUTE, { headers: { authorization: `Bearer ${token} ${token}` } }],
+    [NETWORK_ROUTE, { headers: { authorization: 'Bearer' } }],
+    [NETWORK_ROUTE, { headers: { authorization: 'Bearer ' } }],
+    [NETWORK_ROUTE, { headers: bearer(mangled) }],
+    [NETWORK_ROUTE, { headers: bearer(token.slice(0, 48 - 1)) }],
+    [NETWORK_ROUTE, { headers: bearer(token.toUpperCase()) }],
+    [NETWORK_ROUTE, { headers: bearer(`/ultra/help/${token}`) }],
+    [NETWORK_ROUTE, { headers: bearer(VAN_KEY) }],
+    // A good bearer on another route opens nothing either.
+    [`/ultra/help/${token}/network`, { headers: bearer(token) }],
+    ['/ultra/help/status', { headers: bearer(token) }],
+    ['/ultra/help/network/x', { headers: bearer(token) }],
+    ['/ultra/help', { headers: bearer(token) }],
+    [`/ultra/${token}`, { headers: bearer(token) }],
+  ].entries()) {
+    // Each from its own address: most of these are misses, and twenty from
+    // one address in a minute would be refused outright (tested below).
+    const answer = await phone(url, {
+      ...options,
+      remoteAddress: `100.70.${i}.1`,
+    });
+    const why = `${url} ${JSON.stringify(options || {})}`;
+    assert.equal(answer.status, 404, why);
+    assert.equal(answer.text, 'Not found', why);
+    assert.equal(answer.headers['Content-Type'], 'text/plain', why);
     assert.equal(
       answer.headers['Content-Security-Policy'],
       "default-src 'none'",
-      url,
+      why,
     );
-    assert.equal(answer.headers['X-Frame-Options'], 'DENY', url);
+    assert.equal(answer.headers['X-Frame-Options'], 'DENY', why);
+    assert.ok(!answer.text.includes(token), why);
   }
   for (const route of ['message', 'status', 'network']) {
-    const posted = await phone(`/ultra/help/${token}/${route}`, {
+    const posted = await phone(`/ultra/help/${route}`, {
       method: 'POST',
-      headers: JSON_BODY,
+      headers: { ...JSON_BODY, ...bearer(token) },
       body: { text: 'hello' },
     });
     assert.equal(posted.status, 404, `POST ${route}`);
   }
+  // The holder's own poll still gets through: a known token on the right
+  // route spends no miss budget.
+  assert.equal((await net(token)).status, 200);
   // The package removed: the same token is orphaned until it is back.
   writeFeeds(root, []);
-  assert.equal((await phone(`/ultra/help/${token}/network`)).status, 404);
+  assert.equal((await net(token)).status, 404);
   writeFeeds(root, [VAN]);
   await askForHelp(post);
-  assert.equal((await phone(`/ultra/help/${token}/network`)).status, 200);
+  assert.equal((await net(token)).status, 200);
+});
+
+test('holder routes: the old token-in-path form and a bad bearer are misses; many tokens on one address are each their own', async () => {
+  const { post } = setup();
+  const clock = withClock(Date.UTC(2026, 8, 28, 18));
+  try {
+    const first = (await mint(post, { label: 'Sam', network: true })).revealed;
+    const second = (await mint(post, { label: 'Ann', network: true })).revealed;
+    const FROM = { remoteAddress: '100.88.8.8' };
+    // Twenty old-form requests with a live token in the path: each is the
+    // uniform 404 and a miss, so the twenty-first guess from that address
+    // is refused outright, as every unknown credential is.
+    for (let i = 0; i < 20; i += 1) {
+      const answer = await phone(`/ultra/help/${first.token}/network`, FROM);
+      assert.deepEqual(
+        [answer.status, answer.text],
+        [404, 'Not found'],
+        `old form ${i + 1}`,
+      );
+    }
+    assert.equal(
+      (await phone(UNKNOWN, FROM)).status,
+      429,
+      'the budget is spent',
+    );
+    // A minute on, the same token sent the right way is served, and spends
+    // nothing.
+    clock.tick(60_001);
+    for (let i = 0; i < 25; i += 1)
+      assert.equal((await net(first.token, FROM)).status, 200, `poll ${i}`);
+    assert.equal((await phone(UNKNOWN, FROM)).status, 404, 'no miss spent');
+    clock.tick(60_001);
+    // A missing or malformed Authorization on the right route is a miss too.
+    for (const headers of [
+      {},
+      { authorization: first.token },
+      { authorization: `Basic ${first.token}` },
+      { authorization: `Bearer ${first.token} extra` },
+      { authorization: 'Bearer nope' },
+    ]) {
+      for (let i = 0; i < 4; i += 1)
+        assert.equal(
+          (await phone(NETWORK_ROUTE, { ...FROM, headers })).status,
+          404,
+          JSON.stringify(headers),
+        );
+    }
+    assert.equal((await phone(UNKNOWN, FROM)).status, 429, 'twenty misses');
+    clock.tick(60_001);
+    assert.equal((await net(first.token, FROM)).status, 200);
+    // Two tokens valid at once on one machine: both poll, each by its own
+    // bearer. Revoking one leaves the other polling, and the revoked one
+    // is a miss from then on (the per-holder revocation this shape is for).
+    assert.deepEqual((await net(first.token)).json(), { released: false });
+    assert.deepEqual((await net(second.token)).json(), { released: false });
+    await askForHelp(post);
+    assert.equal((await net(first.token)).json().released, true);
+    assert.equal((await net(second.token)).json().released, true);
+    const revoked = await post('/tokens', { revoke: true, id: first.id });
+    assert.equal(revoked.status, 200, revoked.text);
+    assert.equal((await net(first.token)).status, 404);
+    assert.equal((await net(second.token)).json().released, true);
+    assert.equal((await net(second.token, FROM)).status, 200);
+    for (let i = 0; i < 20; i += 1)
+      assert.equal((await net(first.token, FROM)).status, 404, `revoked ${i}`);
+    assert.equal(
+      (await phone(UNKNOWN, FROM)).status,
+      429,
+      'a revoked token is a miss',
+    );
+    // The other holder, from an address that guessed nothing, polls on.
+    assert.equal((await net(second.token)).json().released, true);
+  } finally {
+    clock.restore();
+  }
 });
 
 test('a token has no message box, and a call received is written behind to a secret-free inbox', async () => {
@@ -1263,7 +1541,7 @@ test('the location poll answers the tailnet only: a LAN neighbour, a Funnel visi
   const { token } = (await mint(post)).revealed;
   await askForHelp(post);
   const ask = (remoteAddress, headers = {}) =>
-    phone(`/ultra/help/${token}/network`, { remoteAddress, headers });
+    net(token, { remoteAddress, headers });
   const warned = [];
   const warn = console.warn;
   console.warn = (...args) => warned.push(args.map(String).join(' '));
@@ -1348,7 +1626,7 @@ test('budgets: 60 requests and 20 misses a minute per address', async () => {
   const clock = withClock(Date.UTC(2026, 8, 27, 12));
   await askForHelp(post);
   const status = (remoteAddress, headers = {}) =>
-    phone(`/ultra/help/${token}/network`, { remoteAddress, headers });
+    net(token, { remoteAddress, headers });
   try {
     // 60 requests a minute from one address, whatever they ask for.
     for (let i = 0; i < 60; i += 1)
@@ -1466,8 +1744,7 @@ test('a token shares nothing until SEND HELP, and a stored anytime flag changes 
       assert.equal(answer.text, 'Not found', `${what}: ${name}`);
     }
   };
-  const poll = async (token) =>
-    (await phone(`/ultra/help/${token}/network`)).json();
+  const poll = async (token) => (await net(token)).json();
 
   // Quiet: the poll says "not now" and nothing else opens.
   await shut(dark, 'quiet');
@@ -1508,7 +1785,7 @@ test('a token with Network off opens nothing, even while SEND HELP is pressed', 
     .revealed;
   await askForHelp(post);
   const FROM = { remoteAddress: '100.88.8.8' };
-  const poll = () => phone(`/ultra/help/${off.token}/network`, FROM);
+  const poll = () => net(off.token, FROM);
   for (let i = 0; i < 20; i += 1) {
     const answer = await poll();
     assert.deepEqual(
@@ -1577,11 +1854,12 @@ test('phone poll: { command, notify } popped together, the command slot untouche
   await withPeer(async ({ post, request, script, poll, clock }) => {
     const added = await post('/network', {
       add: true,
-      link: ANN_LINK,
+      address: ANN_ADDRESS,
+      token: ANN_TOKEN,
       name: 'Ann',
     });
     assert.equal(added.status, 200, added.text);
-    const annNetwork = `${ANN_LINK}/network`;
+    const annNetwork = `${ANN_ADDRESS}/ultra/help/network`;
     // The phone has reported in, so the map can send it a camera command.
     noteUltraPosition({
       key: VAN_KEY,
@@ -1930,8 +2208,7 @@ test('holder /network: two shapes only, and NETWORK off is a 404 that is not a m
   try {
     const on = (await mint(post, { label: 'Sam', network: true })).revealed;
     const off = (await mint(post, { label: 'Courier' })).revealed;
-    const ask = (token, options = {}) =>
-      phone(`/ultra/help/${token}/network`, options);
+    const ask = (token, options = {}) => net(token, options);
     const quiet = await ask(on.token);
     assert.equal(quiet.status, 200);
     assert.equal(
@@ -2037,7 +2314,7 @@ test('holder /network: two shapes only, and NETWORK off is a 404 that is not a m
     // POST on the path is the uniform 404.
     assert.equal(
       (
-        await phone(`/ultra/help/${on.token}/network`, {
+        await net(on.token, {
           method: 'POST',
           headers: JSON_BODY,
           body: {},
@@ -2223,7 +2500,6 @@ test('each package has its own call: a second package pressing SEND HELP never e
   const clock = withClock(Date.UTC(2026, 8, 28, 18));
   const help = (key, body) =>
     phone(`/ultra/${key}/help`, { method: 'POST', headers: JSON_BODY, body });
-  const net = (token) => phone(`/ultra/help/${token}/network`);
   try {
     const van = (
       await mint(post, {
@@ -2336,7 +2612,7 @@ test('removing a package ends its call; a store that cannot be read ends nothing
     );
     // Saved again under the same id, it does not bring the old call back.
     writeFeeds(root, [VAN, HOME]);
-    assert.deepEqual((await phone(`/ultra/help/${van}/network`)).json(), {
+    assert.deepEqual((await net(van)).json(), {
       released: false,
     });
     assert.equal((await phone(`/ultra/${VAN_KEY}`)).json().release, null);
@@ -2621,7 +2897,7 @@ test('SEND HELP never publishes an old position as current, and EXTEND keeps a r
     assert.match(old.text, /25 minutes old/);
     assert.equal((await request('/status')).json().release, null);
     assert.deepEqual(
-      (await phone(`/ultra/help/${holder}/network`)).json(),
+      (await net(holder)).json(),
       { released: false },
       'nothing was published',
     );
@@ -2644,7 +2920,7 @@ test('SEND HELP never publishes an old position as current, and EXTEND keeps a r
     const extended = await post('/release', { incident: 'threat' });
     assert.equal(extended.status, 200, extended.text);
     assert.equal(extended.json().release.renewedAt, Date.now());
-    const served = (await phone(`/ultra/help/${holder}/network`)).json();
+    const served = (await net(holder)).json();
     assert.deepEqual(
       [served.released, served.lat, served.at],
       [true, 45.3, Date.now()],
@@ -3290,7 +3566,8 @@ test('home list: only tailnet links, sealed, deduplicated, and never in an answe
   noteUltraEndpoint(['https://me.tail9.ts.net']);
   const added = await post('/network', {
     add: true,
-    link: PEER_LINK,
+    address: PEER_ADDRESS,
+    token: PEER_TOKEN,
     name: 'Sam',
   });
   assert.equal(added.status, 200, added.text);
@@ -3327,42 +3604,80 @@ test('home list: only tailnet links, sealed, deduplicated, and never in an answe
     ),
     'the home list goes through the credential-store path',
   );
-  const refuse = async (link, status, message) => {
-    const answer = await post('/network', { add: true, link });
+  const refuse = async (body, status, message) => {
+    const answer = await post('/network', { add: true, ...body });
     assert.equal(answer.status, status, answer.text);
     assert.equal(answer.json().error, message);
   };
   const NOT_TAILNET =
-    'That link is not an https .ts.net address or a 100.64.x tailnet address, so it will not be polled';
-  await refuse(`https://box.local/ultra/help/${PEER_TOKEN}`, 400, NOT_TAILNET);
-  await refuse(`http://192.168.1.9/ultra/help/${PEER_TOKEN}`, 400, NOT_TAILNET);
-  await refuse(
-    `http://127.0.0.1:44173/ultra/help/${PEER_TOKEN}`,
-    400,
-    NOT_TAILNET,
+    'That address is not an https .ts.net address or a 100.64.x tailnet address, so it will not be polled';
+  const ENTER_BOTH =
+    'Enter their tailnet address (https://….ts.net) and their Ultra Token (uht1.…)';
+  for (const address of [
+    'https://box.local',
+    'http://192.168.1.9',
+    'http://127.0.0.1:44173',
+    'https://evil.example',
+    'http://peer.tail9.ts.net',
+  ])
+    await refuse({ address, token: PEER_TOKEN }, 400, NOT_TAILNET);
+  // Both fields, each whole: a token alone, an address alone, a short token,
+  // an address with a path, and the old joined link in the address box.
+  for (const body of [
+    { token: PEER_TOKEN },
+    { address: PEER_ADDRESS },
+    { address: PEER_ADDRESS, token: PEER_TOKEN.slice(0, -1) },
+    { address: PEER_ADDRESS, token: PEER_TOKEN + ' ' + OTHER_TOKEN },
+    { address: `${PEER_ADDRESS}/ultra/help/`, token: PEER_TOKEN },
+    { address: PEER_LINK, token: PEER_TOKEN },
+    { address: PEER_LINK },
+    { address: PEER_LINK, token: '' },
+    { address: 'peer.tail9.ts.net', token: PEER_TOKEN },
+    {},
+  ])
+    await refuse(body, 400, ENTER_BOTH);
+  // A body that joins the two into a link is refused whole, whatever else
+  // it carries: the server never reads a joined link.
+  for (const body of [
+    { link: PEER_LINK },
+    { link: PEER_LINK, name: 'Sam' },
+    { link: PEER_LINK, address: ANN_ADDRESS, token: ANN_TOKEN },
+    { link: '', address: ANN_ADDRESS, token: ANN_TOKEN },
+    { link: null, address: ANN_ADDRESS, token: ANN_TOKEN },
+  ])
+    await refuse(body, 400, ENTER_BOTH);
+  assert.equal(
+    (await request('/status')).json().network.entries.length,
+    1,
+    'nothing was added by any refused body',
   );
   await refuse(
-    `https://evil.example/ultra/help/${PEER_TOKEN}`,
-    400,
-    NOT_TAILNET,
-  );
-  await refuse(
-    PEER_TOKEN,
-    400,
-    'Paste a whole help link: https://<their machine>.<tailnet>.ts.net/ultra/help/uht1.…',
-  );
-  await refuse(PEER_LINK, 409, 'Already in your home list');
-  const mine = (await mint(post, { label: 'Me', network: true })).revealed;
-  await refuse(mine.link, 409, 'That is your own help link');
-  await refuse(
-    `https://me.tail9.ts.net/ultra/help/${PEER_TOKEN.slice(0, -1)}B`,
+    { address: PEER_ADDRESS, token: PEER_TOKEN },
     409,
-    'That is your own help link',
+    'Already in your home list',
   );
-  // An http link to a 100.64.x literal is the other reachable shape.
+  await refuse(
+    { address: 'https://other.tail9.ts.net', token: PEER_TOKEN },
+    409,
+    'Already in your home list',
+  );
+  const mine = (await mint(post, { label: 'Me', network: true })).revealed;
+  const OWN = 'That is your own tailnet address or Ultra Token';
+  await refuse({ address: mine.address, token: mine.token }, 409, OWN);
+  await refuse({ address: ANN_ADDRESS, token: mine.token }, 409, OWN);
+  await refuse(
+    {
+      address: 'https://me.tail9.ts.net',
+      token: `${PEER_TOKEN.slice(0, -1)}B`,
+    },
+    409,
+    OWN,
+  );
+  // An http address to a 100.64.x literal is the other reachable shape.
   const literal = await post('/network', {
     add: true,
-    link: `http://100.100.1.9/ultra/help/${OTHER_TOKEN}`,
+    address: 'http://100.100.1.9',
+    token: OTHER_TOKEN,
   });
   assert.equal(literal.status, 200, literal.text);
   assert.equal(literal.json().network.entries[1].name, '100.100.1.9');
@@ -3423,7 +3738,7 @@ test('the home list is read-only under a preview build, and never polled there',
   const preview = harness(plugin, { preview: true });
   for (const body of [
     { me: true, name: 'Jeff' },
-    { add: true, link: PEER_LINK },
+    { add: true, address: PEER_ADDRESS, token: PEER_TOKEN },
     { remove: true, id: 'n-0000000000000000' },
     { rename: true, id: 'n-0000000000000000', name: 'X' },
     { update: true },
@@ -3455,7 +3770,8 @@ async function withPeer(run, { feeds = [VAN] } = {}) {
     noteUltraEndpoint(['https://me.tail9.ts.net']);
     const added = await world.post('/network', {
       add: true,
-      link: PEER_LINK,
+      address: PEER_ADDRESS,
+      token: PEER_TOKEN,
       name: 'Sam',
     });
     assert.equal(added.status, 200, added.text);
@@ -3476,6 +3792,64 @@ const releasedBody = (over = {}) =>
     incident: 'fire',
     ...over,
   });
+
+test('poller: two tokens from one address poll one URL by their own bearers, and a revoked one leaves the other polling', async () => {
+  await withPeer(async ({ post, request, script, calls, poll, clock }) => {
+    // Sam handed out a second token for the same machine (another phone of
+    // his, or a replacement for the first): same address, another token.
+    const added = await post('/network', {
+      add: true,
+      address: PEER_ADDRESS,
+      token: OTHER_TOKEN,
+      name: 'Sam (second)',
+    });
+    assert.equal(added.status, 200, added.text);
+    let revoked = false;
+    script((url, asked) => {
+      if (url !== PEER_NETWORK) return null;
+      const sent = bearerOf(asked);
+      if (sent === `Bearer ${PEER_TOKEN}`)
+        return revoked
+          ? { status: 404, body: 'Not found' }
+          : json({ released: false });
+      if (sent === `Bearer ${OTHER_TOKEN}`) return json({ released: false });
+      return { status: 404, body: 'Not found' };
+    });
+    const states = async () =>
+      Object.fromEntries(
+        (await request('/status'))
+          .json()
+          .network.entries.map((row) => [row.name, row.lastState]),
+      );
+    await poll(Date.now());
+    const polls = calls.filter((call) => call.url === PEER_NETWORK);
+    assert.equal(polls.length, 2, 'both entries polled');
+    assert.deepEqual(
+      polls.map(bearerOf).sort(),
+      [`Bearer ${OTHER_TOKEN}`, `Bearer ${PEER_TOKEN}`].sort(),
+      'each by its own bearer',
+    );
+    assert.ok(
+      polls.every((call) => call.url === `${PEER_ADDRESS}/ultra/help/network`),
+      'one URL for both, with no token in it',
+    );
+    assert.deepEqual(await states(), { Sam: 'quiet', 'Sam (second)': 'quiet' });
+    // Sam revokes the first token: that entry alone goes dead; the second
+    // polls on, on its twenty-second cadence.
+    revoked = true;
+    clock.tick(20_001);
+    await poll(Date.now());
+    assert.deepEqual(await states(), { Sam: 'dead', 'Sam (second)': 'quiet' });
+    const before = calls.filter((call) => call.url === PEER_NETWORK).length;
+    clock.tick(20_001);
+    await poll(Date.now());
+    const since = calls
+      .filter((call) => call.url === PEER_NETWORK)
+      .slice(before);
+    assert.deepEqual(since.map(bearerOf), [`Bearer ${OTHER_TOKEN}`]);
+    assert.deepEqual(await states(), { Sam: 'dead', 'Sam (second)': 'quiet' });
+  });
+});
 
 test('poller: one episode per call for help, geocoded once, pinned, never duplicated', async () => {
   await withPeer(
@@ -3507,10 +3881,12 @@ test('poller: one episode per call for help, geocoded once, pinned, never duplic
         [asked.method, asked.redirect, typeof asked.signal],
         ['GET', 'error', 'object'],
       );
-      assert.ok(
-        !('Authorization' in asked.headers) && !('Cookie' in asked.headers),
-        'no credential ever reaches a peer',
-      );
+      // The peer's own token rides the Authorization header, and nothing
+      // else does; the URL names the address and the fixed route alone.
+      assert.equal(bearerOf(asked), `Bearer ${PEER_TOKEN}`);
+      assert.ok(!('Cookie' in asked.headers), 'no cookie ever reaches a peer');
+      assert.equal(asked.url, `${PEER_ADDRESS}/ultra/help/network`);
+      assert.ok(!asked.url.includes('uht1.'), 'the token is never in the URL');
       const status = (await request('/status')).json();
       assert.deepEqual(
         [status.network.entries[0].lastState, status.network.entries[0].active],
@@ -3762,7 +4138,8 @@ test('poller: a street lookup still waiting its turn when the server moves to an
   await withPeer(async ({ post, script, calls, poll }) => {
     const added = await post('/network', {
       add: true,
-      link: ANN_LINK,
+      address: ANN_ADDRESS,
+      token: ANN_TOKEN,
       name: 'Ann',
     });
     assert.equal(added.status, 200, added.text);
@@ -3871,12 +4248,13 @@ test('poller: four at a time, tailnet-only targets, and a restart that speaks to
       );
       // Twelve due entries, four requests.
       for (let i = 0; i < 11; i += 1) {
-        const link = `https://peer${i}.tail9.ts.net/ultra/help/uht1.${String(i).padStart(43, 'q')}`;
-        assert.equal(
-          (await post('/network', { add: true, link, name: `Peer ${i}` }))
-            .status,
-          200,
-        );
+        const added = await post('/network', {
+          add: true,
+          address: `https://peer${i}.tail9.ts.net`,
+          token: `uht1.${String(i).padStart(43, 'q')}`,
+          name: `Peer ${i}`,
+        });
+        assert.equal(added.status, 200, added.text);
       }
       const polls = () =>
         calls.filter((call) => call.url.endsWith('/network')).length;
@@ -4065,9 +4443,10 @@ test('poller: two links to one person’s call raise one row; another package on
   const clock = withClock(Date.UTC(2026, 8, 28, 18));
   try {
     noteUltraEndpoint(['https://me.tail9.ts.net']);
-    // Alice's machine, reached three ways: her link handed over by hand, the
-    // directory's token for the same package, and a token for her van.
-    const ALICE = 'https://alice.tail9.ts.net/ultra/help/';
+    // Alice's machine, reached three ways: her token handed over by hand,
+    // the directory's token for the same package, and a token for her van.
+    // All three poll one URL; the bearer tells them apart.
+    const ALICE = 'https://alice.tail9.ts.net';
     const byHand = `uht1.${'Al1'.repeat(14)}A`;
     const listed = `uht1.${'Al2'.repeat(14)}B`;
     const van = `uht1.${'Al3'.repeat(14)}C`;
@@ -4078,23 +4457,25 @@ test('poller: two links to one person’s call raise one row; another package on
     ]) {
       const added = await post('/network', {
         add: true,
-        link: ALICE + token,
+        address: ALICE,
+        token,
         name,
       });
       assert.equal(added.status, 200, added.text);
     }
     let call = { at: Date.now() - 5000, until: Date.now() + 14_395_000 };
     let vanCall = null;
-    script((url) => {
-      if (
-        url === `${ALICE}${byHand}/network` ||
-        url === `${ALICE}${listed}/network`
-      )
-        return releasedBody(call);
-      if (url === `${ALICE}${van}/network`)
-        return vanCall
-          ? releasedBody({ ...vanCall, name: 'Van 9', lat: 45.3 })
-          : json({ released: false });
+    script((url, asked) => {
+      if (url === `${ALICE}/ultra/help/network`) {
+        const sent = bearerOf(asked);
+        if (sent === `Bearer ${byHand}` || sent === `Bearer ${listed}`)
+          return releasedBody(call);
+        if (sent === `Bearer ${van}`)
+          return vanCall
+            ? releasedBody({ ...vanCall, name: 'Van 9', lat: 45.3 })
+            : json({ released: false });
+        return { status: 404, body: 'Not found' };
+      }
       return url.startsWith('https://nominatim') ? SAINT_JOHN : null;
     });
     const running = async () =>
@@ -4131,26 +4512,38 @@ test('poller: two links to one person’s call raise one row; another package on
   }
 });
 
-/** Alice's machine reached by two links to the same package: by hand, and from the directory. */
+/**
+ * Alice's machine reached by two tokens to the same package: by hand, and
+ * from the directory. Both poll one URL; `byHand(call)` and `listed(call)`
+ * say which token a recorded fetch carried as its bearer.
+ */
 async function twoLinksToAlice(post) {
   noteUltraEndpoint(['https://me.tail9.ts.net']);
-  const ALICE = 'https://alice.tail9.ts.net/ultra/help/';
-  const links = {
-    byHand: `${ALICE}uht1.${'Al1'.repeat(14)}A/network`,
-    listed: `${ALICE}uht1.${'Al2'.repeat(14)}B/network`,
+  const ALICE = 'https://alice.tail9.ts.net';
+  const tokens = {
+    byHand: `uht1.${'Al1'.repeat(14)}A`,
+    listed: `uht1.${'Al2'.repeat(14)}B`,
   };
-  for (const [name, url] of [
-    ['Alice', links.byHand],
-    ['Alice (directory)', links.listed],
+  for (const [name, token] of [
+    ['Alice', tokens.byHand],
+    ['Alice (directory)', tokens.listed],
   ]) {
     const added = await post('/network', {
       add: true,
-      link: url.replace(/\/network$/, ''),
+      address: ALICE,
+      token,
       name,
     });
     assert.equal(added.status, 200, added.text);
   }
-  return links;
+  const at = (token) => (url, call) =>
+    url === `${ALICE}/ultra/help/network` &&
+    bearerOf(call) === `Bearer ${token}`;
+  return {
+    url: `${ALICE}/ultra/help/network`,
+    byHand: at(tokens.byHand),
+    listed: at(tokens.listed),
+  };
 }
 
 test('poller: after a restart mid-call, the second link to that call raises nothing, whichever link answers first', async () => {
@@ -4166,11 +4559,11 @@ test('poller: after a restart mid-call, the second link to that call raises noth
     // restart; its answer can be held back so the other link is judged first.
     let gate = null;
     let revoked = false;
-    world.script(async (url) => {
-      if (url === links.byHand && revoked)
-        return { status: 404, body: 'Not found' };
-      if (url === links.byHand || url === links.listed) {
-        if (url === links.byHand && gate) await gate.promise;
+    world.script(async (url, asked) => {
+      const byHand = links.byHand(url, asked);
+      if (byHand && revoked) return { status: 404, body: 'Not found' };
+      if (byHand || links.listed(url, asked)) {
+        if (byHand && gate) await gate.promise;
         return releasedBody(call);
       }
       return url.startsWith('https://nominatim') ? SAINT_JOHN : null;
@@ -4258,10 +4651,10 @@ test('poller: a link that stops hearing a call hands its row to the link that st
     let lat = 45.27;
     let revoked = false;
     let stoodDown = false;
-    world.script((url) => {
-      if (url === links.byHand && revoked)
-        return { status: 404, body: 'Not found' };
-      if (url === links.byHand || url === links.listed)
+    world.script((url, asked) => {
+      const byHand = links.byHand(url, asked);
+      if (byHand && revoked) return { status: 404, body: 'Not found' };
+      if (byHand || links.listed(url, asked))
         return stoodDown
           ? json({ released: false })
           : releasedBody({ ...call, lat });
@@ -4463,15 +4856,15 @@ test('directory: UPDATE HOME LIST merges, never removes, and flags MOVED', async
         let document = {
           version: 1,
           entries: [
-            { name: 'Sam', link: PEER_LINK },
+            { name: 'Sam', address: PEER_ADDRESS, token: PEER_TOKEN },
             { name: 'Ann', link: ANN_LINK },
             {
               name: 'Lan',
               link: `https://box.local/ultra/help/${OTHER_TOKEN}`,
             },
             'junk',
-            { name: 'Me', link: mine.link },
-            { name: 'Sam again', link: PEER_LINK },
+            { name: 'Me', address: mine.address, token: mine.token },
+            { name: 'Sam again', address: PEER_ADDRESS, token: PEER_TOKEN },
           ],
         };
         let answer = () => json(document);
@@ -4643,7 +5036,9 @@ test('directory: a link flagged NOT IN DIRECTORY or MOVED mid-call is followed a
         async () => {
           let document = {
             version: 1,
-            entries: [{ name: 'Sam', link: PEER_LINK }],
+            entries: [
+              { name: 'Sam', address: PEER_ADDRESS, token: PEER_TOKEN },
+            ],
           };
           let peer = () => releasedBody();
           script((url) => {
@@ -4712,7 +5107,7 @@ test('directory: what another owner action saves while UPDATE HOME LIST waits on
   const document = {
     version: 1,
     entries: [
-      { name: 'Sam', link: PEER_LINK },
+      { name: 'Sam', address: PEER_ADDRESS, token: PEER_TOKEN },
       { name: 'Bob', link: BOB_LINK },
     ],
   };
@@ -4746,7 +5141,8 @@ test('directory: what another owner action saves while UPDATE HOME LIST waits on
         const answer = await read();
         const added = await post('/network', {
           add: true,
-          link: ANN_LINK,
+          address: ANN_ADDRESS,
+          token: ANN_TOKEN,
           name: 'Ann',
         });
         assert.equal(added.status, 200, added.text);
@@ -4785,7 +5181,8 @@ test('directory: what another owner action saves while UPDATE HOME LIST waits on
         const answer = await read();
         const added = await post('/network', {
           add: true,
-          link: ANN_LINK,
+          address: ANN_ADDRESS,
+          token: ANN_TOKEN,
           name: 'Ann',
         });
         assert.equal(added.status, 200, added.text);
@@ -4826,11 +5223,17 @@ test('PUBLISH MY TOKEN: GitHub when it can, an entry to copy when it cannot', as
     assert.equal(clipboard.status, 200, clipboard.text);
     const published = clipboard.json().published;
     assert.equal(published.how, 'clipboard');
-    assert.deepEqual(Object.keys(published.entry), ['name', 'link']);
+    assert.deepEqual(Object.keys(published.entry), [
+      'name',
+      'address',
+      'token',
+    ]);
     assert.equal(published.entry.name, 'Jeff (Van 7)');
-    assert.match(
-      published.entry.link,
-      /^https:\/\/me\.tail9\.ts\.net\/ultra\/help\/uht1\./,
+    assert.equal(published.entry.address, 'https://me.tail9.ts.net');
+    assert.match(published.entry.token, ULTRA_TOKEN_PATTERN);
+    assert.ok(
+      !published.entryText.includes('/ultra/help/'),
+      'the entry is never a joined link',
     );
     assert.equal(published.entryText, JSON.stringify(published.entry, null, 2));
     assert.ok(published.mailto.startsWith('mailto:?subject='));
@@ -4957,9 +5360,15 @@ test('PUBLISH MY TOKEN: GitHub when it can, an entry to copy when it cannot', as
           Buffer.from(sent.content, 'base64').toString('utf8'),
         );
         assert.equal(written.note, 'kept');
+        // A legacy element somebody else keeps is left exactly as it is.
         assert.deepEqual(written.entries[0], { name: 'Ann', link: ANN_LINK });
         assert.deepEqual(written.entries[1], { broken: true });
-        assert.deepEqual(Object.keys(written.entries[2]), ['name', 'link']);
+        assert.deepEqual(Object.keys(written.entries[2]), [
+          'name',
+          'address',
+          'token',
+        ]);
+        assert.equal(written.entries[2].address, 'https://me.tail9.ts.net');
         for (const call of calls)
           if (call.headers && call.headers.Authorization)
             assert.equal(
@@ -5001,7 +5410,8 @@ test('PUBLISH MY TOKEN: GitHub when it can, an entry to copy when it cannot', as
           denied.json().published.error,
           'GitHub refused the write token (401): it needs Contents read and write on that repository',
         );
-        assert.ok(denied.json().published.entryText.includes('"link"'));
+        assert.ok(denied.json().published.entryText.includes('"address"'));
+        assert.ok(denied.json().published.entryText.includes('"token"'));
         getAnswer = () =>
           json({
             sha: 'abc123',
@@ -5564,7 +5974,7 @@ test('every token answers the position poll alone, the directory token too, duri
     await post('/number', { number: '+15065550199' });
     const published = await post('/network', { publish: true });
     assert.equal(published.status, 200, published.text);
-    const directory = published.json().published.entry.link.split('/').pop();
+    const directory = published.json().published.entry.token;
     // A friend the owner handed a token by hand, SMS ticked as it once was.
     const friend = (
       await mint(post, {
@@ -5578,7 +5988,7 @@ test('every token answers the position poll alone, the directory token too, duri
     for (const token of [friend, directory]) {
       for (const tail of ['', '/status'])
         assert.equal((await phone(`/ultra/help/${token}${tail}`)).status, 404);
-      assert.deepEqual((await phone(`/ultra/help/${token}/network`)).json(), {
+      assert.deepEqual((await net(token)).json(), {
         released: false,
       });
     }
@@ -5591,14 +6001,8 @@ test('every token answers the position poll alone, the directory token too, duri
       at: Date.now(),
     });
     assert.equal((await post('/release', { incident: 'threat' })).status, 200);
-    assert.equal(
-      (await phone(`/ultra/help/${directory}/network`)).json().released,
-      true,
-    );
-    assert.equal(
-      (await phone(`/ultra/help/${friend}/network`)).json().released,
-      true,
-    );
+    assert.equal((await net(directory)).json().released, true);
+    assert.equal((await net(friend)).json().released, true);
     for (const token of [friend, directory]) {
       for (const tail of ['', '/status'])
         assert.equal(
@@ -5622,7 +6026,7 @@ test('every token answers the position poll alone, the directory token too, duri
     );
     // After STAND DOWN the poll says "not now" again.
     await post('/release', { standDown: true });
-    assert.deepEqual((await phone(`/ultra/help/${friend}/network`)).json(), {
+    assert.deepEqual((await net(friend)).json(), {
       released: false,
     });
     // A token published by id becomes location only for good: ANYTIME
@@ -5648,10 +6052,7 @@ test('every token answers the position poll alone, the directory token too, duri
       false,
     );
     assert.equal((await phone(`/ultra/help/${chosen.token}`)).status, 404);
-    assert.deepEqual(
-      (await phone(`/ultra/help/${chosen.token}/network`)).json(),
-      { released: false },
-    );
+    assert.deepEqual((await net(chosen.token)).json(), { released: false });
   } finally {
     clock.restore();
   }
@@ -5674,19 +6075,21 @@ test('PUBLISH and NETWORK links carry the tailnet address, never a LAN one', asy
   ]);
   const published = await post('/network', { publish: true });
   assert.equal(published.status, 200, published.text);
-  assert.match(
-    published.json().published.entry.link,
-    /^https:\/\/me\.tail9\.ts\.net\/ultra\/help\/uht1\./,
+  assert.equal(
+    published.json().published.entry.address,
+    'https://me.tail9.ts.net',
   );
-  // NEW TOKEN: a NETWORK token's link is the tailnet one; a message-only
-  // token keeps the listener's first address.
-  const net = (await mint(post, { label: 'Sam', network: true })).revealed;
-  assert.match(net.link, /^https:\/\/me\.tail9\.ts\.net\/ultra\/help\//);
+  // NEW TOKEN: a NETWORK token is handed out beside the tailnet address, a
+  // bare origin; a message-only token opens nothing and gets no address.
+  const networked = (await mint(post, { label: 'Sam', network: true }))
+    .revealed;
+  assert.equal(networked.address, 'https://me.tail9.ts.net');
+  assert.ok(!('link' in networked));
   const plain = (await mint(post, { label: 'Courier' })).revealed;
-  assert.match(plain.link, /^http:\/\/192\.168\.1\.5:44173\/ultra\/help\//);
+  assert.ok(!('address' in plain) && !('link' in plain));
   assert.equal(
     (await request('/status')).json().networkBase,
-    'https://me.tail9.ts.net/ultra/help/',
+    'https://me.tail9.ts.net',
   );
   // A 100.64.0.0/10 literal serves when there is no .ts.net name.
   noteUltraEndpoint([
@@ -5695,7 +6098,11 @@ test('PUBLISH and NETWORK links carry the tailnet address, never a LAN one', asy
   ]);
   assert.equal(
     (await request('/status')).json().networkBase,
-    'http://100.101.102.103:44173/ultra/help/',
+    'http://100.101.102.103:44173',
+  );
+  assert.equal(
+    (await mint(post, { label: 'Kim', network: true })).revealed.address,
+    'http://100.101.102.103:44173',
   );
 });
 
@@ -5784,8 +6191,7 @@ test('another package calling does not open this token', async () => {
         feedId: 'security-home',
       })
     ).revealed.token;
-    const poll = async () =>
-      (await phone(`/ultra/help/${sitter}/network`)).json();
+    const poll = async () => (await net(sitter)).json();
     assert.deepEqual(await poll(), { released: false });
     // The call is on the van. The Home token's poll says "not now".
     noteUltraPosition({
@@ -5894,10 +6300,7 @@ test('a refused save neither refuses nor loses SEND HELP or STAND DOWN', async (
     const sent = await post('/release', { incident: 'threat' });
     assert.equal(sent.status, 200, sent.text);
     assert.equal(sent.json().release.incident, 'threat');
-    assert.equal(
-      (await phone(`/ultra/help/${sam}/network`)).json().released,
-      true,
-    );
+    assert.equal((await net(sam)).json().released, true);
     await poll(Date.now());
     assert.equal(
       (await phone(`/ultra/${VAN_KEY}`)).json().notify[0].kind,
@@ -5928,7 +6331,7 @@ test('a refused save neither refuses nor loses SEND HELP or STAND DOWN', async (
     });
     assert.equal(phoneDown.status, 200, phoneDown.text);
     assert.deepEqual(
-      (await phone(`/ultra/help/${sam}/network`)).json(),
+      (await net(sam)).json(),
       { released: false },
       'the call has ended for the holders at once',
     );
@@ -5942,7 +6345,7 @@ test('a refused save neither refuses nor loses SEND HELP or STAND DOWN', async (
     // A restart cannot bring the call back.
     const back = restart();
     assert.equal((await back.request('/status')).json().release, null);
-    assert.deepEqual((await phone(`/ultra/help/${sam}/network`)).json(), {
+    assert.deepEqual((await net(sam)).json(), {
       released: false,
     });
   } finally {
@@ -5992,18 +6395,21 @@ test('a STAND DOWN the disk refused stays down when a dev-server restart loads t
         },
       }),
     );
-    const holder = (url) =>
+    const holder = (token) =>
       new Promise((resolve, reject) => {
         Promise.resolve(
           fresh.handleUltraPhone(
-            fakeRequest(url, { remoteAddress: HOLDER }),
+            fakeRequest(NETWORK_ROUTE, {
+              remoteAddress: HOLDER,
+              headers: bearer(token),
+            }),
             fakeResponse(resolve),
-            new URL(url, 'http://localhost'),
+            new URL(NETWORK_ROUTE, 'http://localhost'),
           ),
         ).catch(reject);
       });
     assert.equal((await again('/status')).json().release, null);
-    assert.deepEqual((await holder(`/ultra/help/${sam}/network`)).json(), {
+    assert.deepEqual((await holder(sam)).json(), {
       released: false,
     });
     // The disk takes writes again: what the retry writes is the STAND DOWN.
@@ -6011,7 +6417,7 @@ test('a STAND DOWN the disk refused stays down when a dev-server restart loads t
     clock.tick(15_001);
     await again('/status');
     assert.deepEqual(saved(), []);
-    assert.deepEqual((await holder(`/ultra/help/${sam}/network`)).json(), {
+    assert.deepEqual((await holder(sam)).json(), {
       released: false,
     });
   } finally {
@@ -6061,7 +6467,7 @@ test('a STAND DOWN the disk refused on the phone is written with no GEV tab open
     // So a full restart inside the four hours brings nothing back.
     const back = restart();
     assert.equal((await back.request('/status')).json().release, null);
-    assert.deepEqual((await phone(`/ultra/help/${sam}/network`)).json(), {
+    assert.deepEqual((await net(sam)).json(), {
       released: false,
     });
   } finally {
@@ -6107,8 +6513,7 @@ test('a helpers file unreadable at start gives its call back once it is fixed, b
     // A hand edit leaves a stray comma, and `npm run dev` restarts.
     fs.writeFileSync(file('ultra-help.json'), good.replace(/\}\s*$/, '},'));
     const back = restart();
-    const network = async () =>
-      (await phone(`/ultra/help/${sam}/network`)).json().released;
+    const network = async () => (await net(sam)).json().released;
     assert.equal(await network(), false, 'nothing can be known from it yet');
     // Home stands down from its phone meanwhile; the file cannot take it.
     const down = await phone(`/ultra/${HOME_KEY}/help`, {
@@ -6390,15 +6795,22 @@ test('a dev-server restart that loads this module afresh keeps the cards for the
 test('a rewritten home-list base is not polled, and a later add does not stamp it', async () => {
   const { post, request, file, calls, script, poll, restart } = setup();
   assert.equal(
-    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' }))
-      .status,
+    (
+      await post('/network', {
+        add: true,
+        address: PEER_ADDRESS,
+        token: PEER_TOKEN,
+        name: 'Sam',
+      })
+    ).status,
     200,
   );
   assert.equal(
     (
       await post('/network', {
         add: true,
-        link: `http://100.100.1.9/ultra/help/${OTHER_TOKEN}`,
+        address: 'http://100.100.1.9',
+        token: OTHER_TOKEN,
         name: 'Other',
       })
     ).status,
@@ -6439,7 +6851,8 @@ test('a rewritten home-list base is not polled, and a later add does not stamp i
   );
   const added = await back.post('/network', {
     add: true,
-    link: ANN_LINK,
+    address: ANN_ADDRESS,
+    token: ANN_TOKEN,
     name: 'Ann',
   });
   assert.equal(added.status, 200, added.text);
@@ -6458,15 +6871,22 @@ test('a rewritten home-list base is not polled, and a later add does not stamp i
 test('a home-list entry whose check was removed is not polled, and a later add leaves it removed', async () => {
   const { post, file, calls, script, poll, restart } = setup();
   assert.equal(
-    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' }))
-      .status,
+    (
+      await post('/network', {
+        add: true,
+        address: PEER_ADDRESS,
+        token: PEER_TOKEN,
+        name: 'Sam',
+      })
+    ).status,
     200,
   );
   assert.equal(
     (
       await post('/network', {
         add: true,
-        link: `http://100.100.1.9/ultra/help/${OTHER_TOKEN}`,
+        address: 'http://100.100.1.9',
+        token: OTHER_TOKEN,
         name: 'Other',
       })
     ).status,
@@ -6499,8 +6919,14 @@ test('a home-list entry whose check was removed is not polled, and a later add l
     'tampered',
   );
   assert.equal(
-    (await back.post('/network', { add: true, link: ANN_LINK, name: 'Ann' }))
-      .status,
+    (
+      await back.post('/network', {
+        add: true,
+        address: ANN_ADDRESS,
+        token: ANN_TOKEN,
+        name: 'Ann',
+      })
+    ).status,
     200,
   );
   const after = JSON.parse(fs.readFileSync(file('ultra-network.json'), 'utf8'));
@@ -6520,7 +6946,8 @@ test('a home list with no check is still polled, and the next rename stamps it',
   const { post, request, file, calls, script, poll, restart } = setup();
   const added = await post('/network', {
     add: true,
-    link: PEER_LINK,
+    address: PEER_ADDRESS,
+    token: PEER_TOKEN,
     name: 'Sam',
   });
   assert.equal(added.status, 200, added.text);
@@ -6561,8 +6988,14 @@ test('a home list with no check is still polled, and the next rename stamps it',
 test('wiping every home-list check and changing the base is still polled', async () => {
   const { post, file, calls, script, poll, restart } = setup();
   assert.equal(
-    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' }))
-      .status,
+    (
+      await post('/network', {
+        add: true,
+        address: PEER_ADDRESS,
+        token: PEER_TOKEN,
+        name: 'Sam',
+      })
+    ).status,
     200,
   );
   const saved = JSON.parse(fs.readFileSync(file('ultra-network.json'), 'utf8'));
@@ -6587,15 +7020,22 @@ test('wiping every home-list check and changing the base is still polled', async
 test('a same-id home-list row pasted above the real one is not fetched', async () => {
   const { post, file, calls, script, poll, restart } = setup();
   assert.equal(
-    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' }))
-      .status,
+    (
+      await post('/network', {
+        add: true,
+        address: PEER_ADDRESS,
+        token: PEER_TOKEN,
+        name: 'Sam',
+      })
+    ).status,
     200,
   );
   assert.equal(
     (
       await post('/network', {
         add: true,
-        link: `http://100.100.1.9/ultra/help/${OTHER_TOKEN}`,
+        address: 'http://100.100.1.9',
+        token: OTHER_TOKEN,
         name: 'Other',
       })
     ).status,
@@ -6632,15 +7072,22 @@ test('a same-id home-list row pasted above the real one is not fetched', async (
 test('a new id with a copied home-list seal is not fetched', async () => {
   const { post, file, calls, script, poll, restart } = setup();
   assert.equal(
-    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' }))
-      .status,
+    (
+      await post('/network', {
+        add: true,
+        address: PEER_ADDRESS,
+        token: PEER_TOKEN,
+        name: 'Sam',
+      })
+    ).status,
     200,
   );
   assert.equal(
     (
       await post('/network', {
         add: true,
-        link: `http://100.100.1.9/ultra/help/${OTHER_TOKEN}`,
+        address: 'http://100.100.1.9',
+        token: OTHER_TOKEN,
         name: 'Other',
       })
     ).status,
@@ -6684,8 +7131,14 @@ test('a new id with a copied home-list seal is not fetched', async () => {
 test('a rewritten base is not polled while a call for help is still running', async () => {
   const { post, file, calls, script, poll, restart } = setup();
   assert.equal(
-    (await post('/network', { add: true, link: PEER_LINK, name: 'Sam' }))
-      .status,
+    (
+      await post('/network', {
+        add: true,
+        address: PEER_ADDRESS,
+        token: PEER_TOKEN,
+        name: 'Sam',
+      })
+    ).status,
     200,
   );
   script((url) => (url === PEER_NETWORK ? releasedBody() : null));
@@ -6742,7 +7195,7 @@ test('a helpers file with no check is used, and a bad check is not', async () =>
   await askForHelp(post);
   // A holder is never shown the number or the file's state: the poll
   // carries the call and nothing else.
-  const holder = (await phone(`/ultra/help/${token}/network`)).json();
+  const holder = (await net(token)).json();
   assert.equal(holder.released, true);
   assert.equal(JSON.stringify(holder).includes('+15065550199'), false);
   assert.equal('helpStore' in holder, false);
@@ -6761,9 +7214,7 @@ test('a helpers file with no check is used, and a bad check is not', async () =>
   assert.equal(tampered.ownerNumber, '');
   assert.equal(tampered.helpStore, 'tampered');
   assert.equal(
-    JSON.stringify(
-      (await phone(`/ultra/help/${token}/network`)).json(),
-    ).includes('+15065550177'),
+    JSON.stringify((await net(token)).json()).includes('+15065550177'),
     false,
   );
   await withEnv(
@@ -6827,10 +7278,7 @@ test('a planted call whose helpers-file check fails is not published, and one wi
     })}\n`,
   );
   const back = restart();
-  assert.equal(
-    (await phone(`/ultra/help/${token}/network`)).json().released,
-    true,
-  );
+  assert.equal((await net(token)).json().released, true);
   assert.equal((await back.request('/status')).json().helpStore, 'ok');
   const stamped = JSON.parse(fs.readFileSync(file('ultra-help.json'), 'utf8'));
   // The file still has no check: the restart did not save it. Stamp by a save,
@@ -6853,10 +7301,7 @@ test('a planted call whose helpers-file check fails is not published, and one wi
     `${JSON.stringify(good, null, 2)}\n`,
   );
   const again = restart();
-  assert.equal(
-    (await phone(`/ultra/help/${token}/network`)).json().released,
-    false,
-  );
+  assert.equal((await net(token)).json().released, false);
   const status = (await again.request('/status')).json();
   assert.equal(status.release, null);
   assert.equal(status.helpStore, 'tampered');
@@ -6927,7 +7372,12 @@ test('a status poll does not write the outbound checks, and a changed directory 
       assert.equal(stores.feedsStore, 'ok');
       script((url) =>
         url === RAW_URL || url === EVIL_DIRECTORY
-          ? json({ version: 1, entries: [{ name: 'Sam', link: PEER_LINK }] })
+          ? json({
+              version: 1,
+              entries: [
+                { name: 'Sam', address: PEER_ADDRESS, token: PEER_TOKEN },
+              ],
+            })
           : null,
       );
       const pulled = await post('/network', { update: true });
@@ -7035,7 +7485,12 @@ test('a missing or unusable token key does not write an outbound check', async (
     assert.equal('directoryMac' in saved, false);
     minted.script((url) =>
       url === RAW_URL
-        ? json({ version: 1, entries: [{ name: 'Sam', link: PEER_LINK }] })
+        ? json({
+            version: 1,
+            entries: [
+              { name: 'Sam', address: PEER_ADDRESS, token: PEER_TOKEN },
+            ],
+          })
         : null,
     );
     const pulled = await minted.post('/network', { update: true });
@@ -7169,11 +7624,9 @@ test('a replaced token key still sends until a token is minted under it', async 
         calls.some((call) => call.url === TWILIO_URL),
         true,
       );
-      fs.writeFileSync(
-        file('ultra-tokens.key'),
-        `${Buffer.alloc(32, 7).toString('hex')}\n`,
-      );
+      fs.writeFileSync(file('ultra-tokens.key'), otherKeyText(7));
       assert.equal((await request('/status')).json().relayStore, 'ok');
+      assert.equal((await request('/status')).json().tokenStore, 'key-changed');
       clock.tick(600_000);
       calls.length = 0;
       const still = await post('/network', { testSms: true });
@@ -7269,7 +7722,7 @@ test('a changed phone package is not admitted, and a place-only edit still is', 
       const owner = (await request('/status')).json();
       assert.equal(owner.directoryStore, 'tampered');
       assert.equal(owner.feedsStore, 'ok');
-      const holder = await phone(`/ultra/help/${token}/network`);
+      const holder = await net(token);
       assert.equal(holder.status, 200, holder.text);
       const keys = Object.keys(holder.json());
       assert.equal(keys.includes('directoryStore'), false);
@@ -7578,4 +8031,222 @@ test('Find Ultra Help is under development: no search, no send, and no search re
     'lookupOk',
   ])
     assert.equal(field in status, false, field);
+});
+
+test('HELP DELIVERY: SEND HELP asks for the saved needs, and holders receive them', async () => {
+  const { post } = setup();
+  const clock = withClock(Date.UTC(2026, 9, 4, 18));
+  try {
+    assert.equal(
+      (await post('/needs', { needs: { kind: 'spaceship' } })).status,
+      400,
+    );
+    const saved = await post('/needs', {
+      needs: { kind: 'transportation', destination: 'hospital' },
+    });
+    assert.equal(saved.status, 200, saved.text);
+    assert.deepEqual(saved.json().ownerNeeds, {
+      kind: 'transportation',
+      items: [],
+      destination: 'hospital',
+    });
+    assert.equal(saved.json().ownerNeedsSkill, 'tr');
+    const holder = (
+      await mint(post, { label: 'Driver', network: true, skills: ['tr'] })
+    ).revealed;
+    noteUltraPosition({
+      key: VAN_KEY,
+      name: 'Van 7',
+      lat: 45.27,
+      lon: -66.06,
+      at: Date.now(),
+    });
+    const sent = await post('/release', { incident: 'fire' });
+    assert.equal(sent.status, 200, sent.text);
+    const running = sent.json().releases[0];
+    assert.deepEqual(running.needs, saved.json().ownerNeeds);
+    const answer = (await net(holder.token)).json();
+    assert.deepEqual(answer.needs, saved.json().ownerNeeds);
+    // The token the owner gave out in advance says this holder can drive.
+    const token = sent.json().tokens.find((item) => item.label === 'Driver');
+    assert.ok(token.skills.some((item) => item.code === 'tr'));
+    // Clearing the default changes nothing for the call already running.
+    await post('/needs', { needs: null });
+    assert.deepEqual(
+      (await net(holder.token)).json().needs,
+      saved.json().ownerNeeds,
+    );
+  } finally {
+    clock.restore();
+  }
+});
+
+test('HELP DELIVERY: null clears, an absent or non-object needs is refused, and a hostile helpers file loads clean', async () => {
+  const { post, request, file, restart } = setup();
+  assert.equal((await request('/status')).json().ownerNeeds, null);
+  const cleared = await post('/needs', { needs: null });
+  assert.equal(cleared.status, 200, cleared.text);
+  assert.equal(cleared.json().ownerNeeds, null);
+  for (const body of [{}, { needs: 'items' }, { needs: 7 }, { needs: [] }]) {
+    const refused = await post('/needs', body);
+    assert.equal(refused.status, 400, JSON.stringify(body));
+    assert.equal(refused.json().error, 'Choose the help to be delivered.');
+  }
+  assert.equal((await request('/status')).json().ownerNeeds, null);
+  // A helpers file whose needs are a JSON object where a string belongs
+  // (toString: null would make String() throw) reads as a clean store: the
+  // status answers, the needs are gone, and the next save writes them so.
+  fs.writeFileSync(
+    file('ultra-help.json'),
+    JSON.stringify({
+      version: 1,
+      contacts: [],
+      owner: {
+        number: '+15065550123',
+        needs: { kind: 'items', items: [{ toString: null }] },
+      },
+    }),
+  );
+  const fresh = restart();
+  const status = await fresh.request('/status');
+  assert.equal(status.status, 200, status.text);
+  assert.equal(status.json().ownerNeeds, null);
+  assert.equal(status.json().ownerNumber, '+15065550123');
+  assert.equal(status.json().helpStore, 'ok');
+  const saved = await fresh.post('/needs', {
+    needs: { kind: 'items', items: ['Insulin'] },
+  });
+  assert.equal(saved.status, 200, saved.text);
+  assert.deepEqual(saved.json().ownerNeeds, {
+    kind: 'items',
+    items: ['Insulin'],
+    destination: '',
+  });
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(file('ultra-help.json'), 'utf8')).owner.needs,
+    { kind: 'items', items: ['Insulin'], destination: '' },
+  );
+});
+
+test('every catalog skill mints and reveals, Mr./Mrs. Nice Guy among them', async () => {
+  const { post, file } = setup();
+  assert.equal(ULTRA_SKILL_SETS.length, 15);
+  const codes = ULTRA_SKILL_SETS.map((item) => item.code);
+  assert.ok(codes.includes('ng'));
+  const nice = await mint(post, {
+    label: 'Neighbour',
+    network: true,
+    skills: ['ng'],
+  });
+  assert.equal(nice.revealed.token.slice(48), '.s.ng');
+  assert.deepEqual(
+    nice.revealed.skills.map((item) => item.label),
+    ['Mr./Mrs. Nice Guy'],
+  );
+  const row = nice.tokens.find((item) => item.id === nice.revealed.id);
+  assert.deepEqual(row.skills, [{ code: 'ng', label: 'Mr./Mrs. Nice Guy' }]);
+  const all = await mint(post, {
+    label: 'Everything',
+    network: true,
+    skills: codes,
+    custom: ['Coast Guard', 'Swift Water', 'Drone Pilot', 'Nurse', 'Welder'],
+    encrypt: true,
+  });
+  assert.equal(all.revealed.skills.length, 20);
+  assert.ok(ULTRA_TOKEN_PATTERN.test(all.revealed.token));
+  assert.ok(
+    all.revealed.skills.some((item) => item.label === 'Mr./Mrs. Nice Guy'),
+  );
+  const shown = await post('/tokens', { reveal: true, id: all.revealed.id });
+  assert.equal(shown.status, 200, shown.text);
+  assert.equal(shown.json().revealed.token, all.revealed.token);
+  assert.ok(
+    shown
+      .json()
+      .revealed.skills.some((item) => item.label === 'Mr./Mrs. Nice Guy'),
+  );
+  assert.ok(
+    !fs.readFileSync(file('ultra-tokens.json'), 'utf8').includes('Nice'),
+  );
+});
+
+test('a token string that cannot be built is a generic failure with its own code, never weak random', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-uht-'));
+  fs.mkdirSync(path.join(root, 'config'));
+  writeFeeds(root, [VAN]);
+  let composed = 0;
+  const plugin = ultraHelpProxy({
+    sourceRoot: root,
+    harden: () => true,
+    compose: () => {
+      composed += 1;
+      return null;
+    },
+  });
+  const request = harness(plugin);
+  const post = (url, body) =>
+    request(url, { method: 'POST', headers: PAGE, body });
+  const warned = [];
+  const warn = console.warn;
+  console.warn = (...args) => warned.push(args.map(String).join(' '));
+  try {
+    const answer = await post('/tokens', { label: 'Neighbour' });
+    assert.equal(answer.status, 500);
+    assert.deepEqual(answer.json(), { error: 'Ultra help failed' });
+    assert.equal(composed, 1, 'no redraw: a compose failure is not a repeat');
+    assert.equal(warned.length, 1);
+    assert.match(warned[0], /GEV_TOKEN_COMPOSE/);
+    assert.doesNotMatch(warned[0], /GEV_WEAK_RANDOM|uht1\./);
+    assert.ok(!fs.existsSync(path.join(root, 'config', 'ultra-tokens.json')));
+  } finally {
+    console.warn = warn;
+    ultraHelpProxy({
+      sourceRoot: fs.mkdtempSync(path.join(os.tmpdir(), 'gev-uht-')),
+    });
+  }
+});
+
+test('a key file another process made first is read back, never written over', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-uht-'));
+  fs.mkdirSync(path.join(root, 'config'));
+  writeFeeds(root, [VAN]);
+  const keyFile = path.join(root, 'config', 'ultra-tokens.key');
+  const winner = otherKeyText(40);
+  // The hardener runs on the staged temp before the exclusive install; a
+  // key file appearing meanwhile is what a second mint racing this one does.
+  const plugin = ultraHelpProxy({
+    sourceRoot: root,
+    harden: (file) => {
+      if (/ultra-tokens\.key\./.test(path.basename(file)))
+        fs.writeFileSync(keyFile, winner);
+      return true;
+    },
+  });
+  const request = harness(plugin);
+  const post = (url, body) =>
+    request(url, { method: 'POST', headers: PAGE, body });
+  try {
+    const minted = await mint(post);
+    assert.equal(fs.readFileSync(keyFile, 'utf8'), winner);
+    const key = parseUltraTokenKey(winner);
+    const record = JSON.parse(
+      fs.readFileSync(path.join(root, 'config', 'ultra-tokens.json'), 'utf8'),
+    );
+    assert.equal(record.keyId, ultraTokenKeyId(key));
+    assert.equal(
+      openUltraToken(record.tokens[0].sealed, key, { id: record.tokens[0].id }),
+      minted.revealed.token,
+    );
+    assert.deepEqual(
+      fs
+        .readdirSync(path.join(root, 'config'))
+        .filter((name) => /\.tmp$/.test(name)),
+      [],
+      'no staged temp is left beside the key',
+    );
+  } finally {
+    ultraHelpProxy({
+      sourceRoot: fs.mkdtempSync(path.join(os.tmpdir(), 'gev-uht-')),
+    });
+  }
 });

@@ -17,7 +17,9 @@ import {
   ULTRA_CUSTOM_SLUG_SOURCE,
   ultraCustomSkill,
   ultraCustomSkillList,
+  ultraHiddenText,
   ultraSkillLabel,
+  ultraNeeds,
 } from '../../src/ultraHelp.mjs';
 
 export { ULTRA_CUSTOM_SKILL_LIMIT };
@@ -47,9 +49,11 @@ export const ULTRA_SKILL_SETS = Object.freeze([
   Object.freeze({ code: 'ac', label: 'Animal Control' }),
   Object.freeze({ code: 'hz', label: 'Hazardous Materials (HAZMAT)' }),
   Object.freeze({ code: 'rg', label: 'Ranger' }),
+  Object.freeze({ code: 'tr', label: 'Transportation' }),
+  Object.freeze({ code: 'ng', label: 'Mr./Mrs. Nice Guy' }),
 ]);
 const SKILL_CODE_SOURCE =
-  '(?:dr|pm|fr|lg|ff|sr|br|st|cc|en|ac|hz|rg|x' +
+  '(?:dr|pm|fr|lg|ff|sr|br|st|cc|en|ac|hz|rg|tr|ng|x' +
   ULTRA_CUSTOM_SLUG_SOURCE +
   ')';
 const SKILL_CODE_PATTERN = new RegExp(`^${SKILL_CODE_SOURCE}$`);
@@ -63,13 +67,21 @@ const CLASSIC_TOKEN_PATTERN = /^uht1\.[A-Za-z0-9_-]{43}$/;
  * with AES-256-GCM under the machine key, so the link does not spell them
  * out. No skills and Encrypt left off is the original 48-character token.
  * The dot keeps either shape out of the 43-character phone key class.
+ *
+ * The `.e.` blob bounds: a legacy blob is iv (12) + tag (16) + data, so at
+ * least 28 bytes, which base64url writes as 38 characters; that lower bound
+ * stays so every link already handed out keeps matching. A v2 blob adds one
+ * version byte in front. The longest payload is every catalog code and five
+ * 25-character custom codes with the dots between them, 174 bytes, so the
+ * longest blob is 1 + 28 + 174 = 203 bytes, 271 characters.
  */
 export const ULTRA_TOKEN_SOURCE =
   'uht1\\.[A-Za-z0-9_-]{43}(?:\\.s\\.' +
   SKILL_CODE_SOURCE +
   '(?:\\.' +
   SKILL_CODE_SOURCE +
-  '){0,17}|\\.e\\.[A-Za-z0-9_-]{38,360})?';
+  '){0,19}|\\.e\\.[A-Za-z0-9_-]{38,271})?';
+const SKILL_BLOB_PATTERN = /^[A-Za-z0-9_-]{38,271}$/;
 export const ULTRA_TOKEN_PATTERN = new RegExp(`^${ULTRA_TOKEN_SOURCE}$`);
 export const ULTRA_HELP_TEXT_LIMIT = 500;
 export const ULTRA_HELP_NAME_LIMIT = 60;
@@ -105,10 +117,32 @@ const PLACE_LIMIT = 160;
 const SMS_OUTCOME_LIMIT = 40;
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const KEY_PATTERN = /^[0-9a-f]{64}$/;
+const KEY_ID_PATTERN = /^[0-9a-f]{16}$/;
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 const LOOPBACK = /^(127\.|::1$)/;
 const AAD_PREFIX = 'ultra-token:';
 const SKILL_AAD = 'ultra-token-skills:';
+/**
+ * The key file holds one master key. Nothing is sealed or checked under it
+ * directly any more: HKDF-SHA256 derives one subkey for AES-256-GCM and
+ * another for the HMAC checks, so a flaw found in one use can never be
+ * turned against the other. The salt names this scheme and the info string
+ * names the use. Records written before the split (sealed v 1, blobs with
+ * no version byte, checks under the raw key) still open: every reader here
+ * tries the derived key and then the raw one.
+ */
+const KDF_SALT = 'ultra-tokens:v2';
+const KDF_ENC_INFO = 'ultra-token:aes-256-gcm';
+const KDF_MAC_INFO = 'ultra-token:hmac-sha256';
+const KEY_ID_TAG = 'ultra-tokens:key-id:v1';
+/** The optional prefix of a key file: 'ultra-key:v1:' and then the 64 hex. */
+const KEY_TEXT_TAG = 'ultra-key:v1:';
+/** The first byte of a `.e.` blob sealed under the derived key. A legacy blob starts with a random iv byte instead. */
+const SKILL_BLOB_V2 = 0x02;
+// HKDF is cheap but the key is used on every request; the subkeys of the
+// few masters a process ever sees are kept, least recently used out first.
+const SUBKEY_CACHE_LIMIT = 16;
+const subkeyCache = new Map();
 // Nothing here touches Buffer or node:crypto at import time: the dashboard
 // no longer bundles this module, but a browser build that ever pulls it in
 // again must not fail while loading (the test pins it).
@@ -137,9 +171,30 @@ export function newUltraToken(randomBytes = crypto.randomBytes) {
 }
 
 /**
+ * The fewest distinct byte values a real draw of this length has. Uniform
+ * bytes almost never crowd into so few values: for 8 bytes the chance of at
+ * most 2 values is about 1 in 10¹²; for 12 bytes at most 3 values about 1 in
+ * 10¹⁶; for 32 bytes at most 7 values about 1 in 10³⁶. A false refusal only
+ * costs a redraw, and a generator that fails three in a row is broken.
+ */
+const DISTINCT_FLOOR = new Map([
+  [8, 3],
+  [12, 4],
+  [32, 8],
+]);
+/** The last draw this process accepted, by length: a generator that repeats itself is not random. */
+const lastDraws = new Map();
+
+function distinctFloor(length) {
+  return DISTINCT_FLOOR.get(length) ?? Math.max(2, Math.floor(length / 4));
+}
+
+/**
  * Random bytes the generator is willing to stand behind. A CSPRNG never
- * returns a run of one repeated byte in practice, so treat it as a fault and
- * try again; giving up loudly beats minting a token that is not a secret.
+ * returns a run of one repeated byte in practice, nor a draw crowded into a
+ * handful of values, nor the same draw twice running, so each is treated as
+ * a fault and tried again; giving up loudly beats minting a token that is
+ * not a secret.
  */
 function drawBytes(randomBytes, length, attempts = 3) {
   // Only the system generator is policed. A caller that injected its own is
@@ -150,7 +205,12 @@ function drawBytes(randomBytes, length, attempts = 3) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const bytes = Buffer.from(randomBytes(length));
     if (bytes.length !== length) continue;
-    if (!bytes.every((byte) => byte === bytes[0])) return bytes;
+    if (bytes.every((byte) => byte === bytes[0])) continue;
+    if (new Set(bytes).size < distinctFloor(length)) continue;
+    const previous = lastDraws.get(length);
+    if (previous && previous.equals(bytes)) continue;
+    lastDraws.set(length, Buffer.from(bytes));
+    return bytes;
   }
   throw Object.assign(
     new Error('the random generator is not returning usable bytes'),
@@ -158,15 +218,68 @@ function drawBytes(randomBytes, length, attempts = 3) {
   );
 }
 
-/** The text of config/ultra-tokens.key: 32 random bytes as 64 hex and a newline. */
+/**
+ * The text of config/ultra-tokens.key: 32 random bytes as 64 hex and a
+ * newline. Still the bare form, not the tagged 'ultra-key:v1:' one that
+ * parseUltraTokenKey also accepts: a key this build writes must still be
+ * read by the build before it, which knows only the bare hex.
+ */
 export function newUltraTokenKeyText(randomBytes = crypto.randomBytes) {
   return drawBytes(randomBytes, 32).toString('hex') + '\n';
 }
 
-/** The 32-byte key a key file holds, or null when the file is not one. */
+/**
+ * The 32-byte key a key file holds, or null when the file is not one. Both
+ * the bare 64 hex and 'ultra-key:v1:' followed by it are accepted. A key
+ * whose bytes are all one value is not a key (a zeroed file, a stub) and is
+ * refused rather than used to seal anything.
+ */
 export function parseUltraTokenKey(text) {
-  const hex = String(text ?? '').trim();
-  return KEY_PATTERN.test(hex) ? Buffer.from(hex, 'hex') : null;
+  let hex = String(text ?? '').trim();
+  if (hex.startsWith(KEY_TEXT_TAG)) hex = hex.slice(KEY_TEXT_TAG.length).trim();
+  if (!KEY_PATTERN.test(hex)) return null;
+  const key = Buffer.from(hex, 'hex');
+  return key.every((byte) => byte === key[0]) ? null : key;
+}
+
+/**
+ * The AES and HMAC subkeys of a master key, derived with HKDF-SHA256 and
+ * kept for the next call; null when the master is not a 32-byte Buffer.
+ * The Buffers returned are copies, so a caller cannot change what is kept.
+ */
+export function ultraSubkeys(master) {
+  if (!Buffer.isBuffer(master) || master.length !== 32) return null;
+  const hex = master.toString('hex');
+  let keys = subkeyCache.get(hex);
+  if (!keys) {
+    const salt = Buffer.from(KDF_SALT, 'utf8');
+    const derive = (info) =>
+      Buffer.from(
+        crypto.hkdfSync('sha256', master, salt, Buffer.from(info, 'utf8'), 32),
+      );
+    keys = { enc: derive(KDF_ENC_INFO), mac: derive(KDF_MAC_INFO) };
+  } else {
+    subkeyCache.delete(hex);
+  }
+  subkeyCache.set(hex, keys);
+  while (subkeyCache.size > SUBKEY_CACHE_LIMIT)
+    subkeyCache.delete(subkeyCache.keys().next().value);
+  return { enc: Buffer.from(keys.enc), mac: Buffer.from(keys.mac) };
+}
+
+/**
+ * A short name for a key that gives nothing of the key away: the first 16
+ * hex of HMAC-SHA256 under the key over a fixed tag. The store writes it so
+ * a file sealed under one key can be told from one sealed under another
+ * without opening a seal. '' when the key is not a 32-byte Buffer.
+ */
+export function ultraTokenKeyId(key) {
+  if (!Buffer.isBuffer(key) || key.length !== 32) return '';
+  return crypto
+    .createHmac('sha256', key)
+    .update(KEY_ID_TAG, 'utf8')
+    .digest('hex')
+    .slice(0, 16);
 }
 
 /** The lookup key of a token: SHA-256 of its UTF-8 text as lowercase hex. */
@@ -207,13 +320,15 @@ export function ultraTokenHashEqual(hash, token) {
 }
 
 /**
- * AES-256-GCM under the machine-local key. The record id is the additional
- * authenticated data, so a blob cannot be moved between records and the tag
- * checks that blob. The flags beside it have their own per-record policy MAC;
- * there is still no store-wide MAC. The `aad`
+ * AES-256-GCM under the machine-local key's encryption subkey. The record id
+ * is the additional authenticated data, so a blob cannot be moved between
+ * records and the tag checks that blob. The flags beside it have their own
+ * per-record policy MAC; there is still no store-wide MAC. The `aad`
  * prefix names the store a blob belongs to ('ultra-token:' for the owner's
  * own tokens, 'ultra-network:' for the home list), so a blob cannot be moved
  * between stores either; the default keeps every existing record opening.
+ * A seal written now is v 2 (the derived key); openUltraToken still opens a
+ * v 1 seal, which was made under the master key itself.
  */
 export function sealUltraToken(
   token,
@@ -221,14 +336,19 @@ export function sealUltraToken(
   { id, randomBytes = crypto.randomBytes, aad = AAD_PREFIX } = {},
 ) {
   const iv = drawBytes(randomBytes, 12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  // Only a 32-byte Buffer is a key here. createCipheriv would take a
+  // 32-character string as raw key bytes, and a blob made that way would
+  // carry v 2 while no derived key opens it, so it is refused outright.
+  const sub = ultraSubkeys(key);
+  if (!sub) throw new TypeError('the token key must be 32 bytes');
+  const cipher = crypto.createCipheriv('aes-256-gcm', sub.enc, iv);
   cipher.setAAD(Buffer.from(String(aad) + String(id), 'utf8'));
   const data = Buffer.concat([
     cipher.update(String(token), 'utf8'),
     cipher.final(),
   ]);
   return {
-    v: 1,
+    v: 2,
     iv: iv.toString('base64'),
     tag: cipher.getAuthTag().toString('base64'),
     data: data.toString('base64'),
@@ -265,26 +385,37 @@ function skillsFromPayload(payload) {
   return skills;
 }
 
+/**
+ * The `.e.` blob: one version byte (0x02), the iv, the tag and the sealed
+ * codes, under the encryption subkey and bound to the secret beside it. A
+ * blob made before the version byte existed is iv, tag and data under the
+ * master key itself; openSkillBlob still opens those.
+ */
 function sealSkillBlob(payload, key, secretBody, randomBytes) {
   const iv = drawBytes(randomBytes, 12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const sub = ultraSubkeys(key);
+  if (!sub) throw new TypeError('the token key must be 32 bytes');
+  const cipher = crypto.createCipheriv('aes-256-gcm', sub.enc, iv);
   cipher.setAAD(Buffer.from(SKILL_AAD + secretBody, 'utf8'));
   const data = Buffer.concat([
     cipher.update(String(payload), 'utf8'),
     cipher.final(),
   ]);
-  return Buffer.concat([iv, cipher.getAuthTag(), data]).toString('base64url');
+  return Buffer.concat([
+    Buffer.from([SKILL_BLOB_V2]),
+    iv,
+    cipher.getAuthTag(),
+    data,
+  ]).toString('base64url');
 }
 
-function openSkillBlob(blob, key, secretBody) {
+/** iv (12), tag (16) and data from `offset` on, opened under `key`; null when the tag does not check. */
+function openSkillBytes(bytes, offset, key, secretBody) {
   try {
-    if (!/^[A-Za-z0-9_-]{38,360}$/.test(blob)) return null;
-    if (!Buffer.isBuffer(key) || key.length !== 32) return null;
-    const bytes = Buffer.from(blob, 'base64url');
-    if (bytes.length < 28) return null;
-    const iv = bytes.subarray(0, 12);
-    const tag = bytes.subarray(12, 28);
-    const data = bytes.subarray(28);
+    if (bytes.length < offset + 28) return null;
+    const iv = bytes.subarray(offset, offset + 12);
+    const tag = bytes.subarray(offset + 12, offset + 28);
+    const data = bytes.subarray(offset + 28);
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
     decipher.setAAD(Buffer.from(SKILL_AAD + secretBody, 'utf8'));
     decipher.setAuthTag(tag);
@@ -297,10 +428,31 @@ function openSkillBlob(blob, key, secretBody) {
 }
 
 /**
+ * The codes a `.e.` blob seals, or null. A blob whose first byte is the v2
+ * marker is tried under the derived key first; a legacy blob starts with a
+ * random iv byte, which can be 0x02 as well, so when that fails the whole
+ * blob is tried as a legacy one under the master key. GCM makes the wrong
+ * guess fail cleanly: a tag never checks under the wrong key or layout.
+ */
+function openSkillBlob(blob, key, secretBody) {
+  if (!SKILL_BLOB_PATTERN.test(blob)) return null;
+  const sub = ultraSubkeys(key);
+  if (!sub) return null;
+  const bytes = Buffer.from(blob, 'base64url');
+  if (bytes[0] === SKILL_BLOB_V2) {
+    const opened = openSkillBytes(bytes, 1, sub.enc, secretBody);
+    if (opened !== null) return opened;
+  }
+  return openSkillBytes(bytes, 0, key, secretBody);
+}
+
+/**
  * The skill sets on a presented token. A clear suffix is read by anyone
  * holding the link. An encrypted suffix opens only with this machine's
  * token key; without it the caller learns that the skills are hidden and
- * nothing else. A classic token has none.
+ * nothing else, and `hidden: true` says so. An encrypted suffix that opens
+ * to no skills at all has no `hidden` field: that is a token sealed with
+ * none, not one this key cannot read. A classic token has none.
  */
 export function readUltraTokenSkills(token, key = null) {
   if (typeof token !== 'string' || !ULTRA_TOKEN_PATTERN.test(token))
@@ -318,9 +470,9 @@ export function readUltraTokenSkills(token, key = null) {
     return skills ? { encrypted: false, skills } : null;
   }
   if (mark !== '.e.') return null;
-  if (!key) return { encrypted: true, skills: [] };
+  if (!key) return { encrypted: true, skills: [], hidden: true };
   const payload = openSkillBlob(rest, key, secretBody);
-  if (payload === null) return { encrypted: true, skills: [] };
+  if (payload === null) return { encrypted: true, skills: [], hidden: true };
   const skills = skillsFromPayload(payload);
   return { encrypted: true, skills: skills || [] };
 }
@@ -443,16 +595,29 @@ function normalizeStoredSkills(value) {
   return skills;
 }
 
-/** The token a sealed blob holds, or null for any failure: wrong key, wrong id or store prefix, a changed byte, a bad shape. */
+/** A seal version this module can open: 1 (under the master key) or 2 (under its encryption subkey). */
+function sealVersionKnown(v) {
+  return v === 1 || v === 2;
+}
+
+/**
+ * The token a sealed blob holds, or null for any failure: wrong key, wrong
+ * id or store prefix, a changed byte, a bad shape. A v 2 seal opens under
+ * the derived key, a v 1 seal under the master key it was made with; any
+ * other version is nothing this module wrote.
+ */
 export function openUltraToken(sealed, key, { id, aad = AAD_PREFIX } = {}) {
   try {
-    if (!sealed || typeof sealed !== 'object' || sealed.v !== 1) return null;
-    if (!Buffer.isBuffer(key) || key.length !== 32) return null;
+    if (!sealed || typeof sealed !== 'object' || !sealVersionKnown(sealed.v))
+      return null;
+    const sub = ultraSubkeys(key);
+    if (!sub) return null;
     const iv = base64Bytes(sealed.iv, 12);
     const tag = base64Bytes(sealed.tag, 16);
     const data = base64Bytes(sealed.data);
     if (!iv || !tag || !data) return null;
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    const opener = sealed.v === 2 ? sub.enc : key;
+    const decipher = crypto.createDecipheriv('aes-256-gcm', opener, iv);
     decipher.setAAD(Buffer.from(String(aad) + String(id), 'utf8'));
     decipher.setAuthTag(tag);
     const text = Buffer.concat([
@@ -474,6 +639,52 @@ function base64Bytes(value, length = null) {
 }
 
 const POLICY_TAG = 'ultra-token-policy:v1';
+/** v2 also covers createdAt, so a record's age cannot be rewritten under its check. */
+const POLICY_TAG_V2 = 'ultra-token-policy:v2';
+
+/**
+ * Every HMAC-SHA256 hex a stored check may legitimately equal, one per
+ * canonical form, first under the derived MAC subkey and then under the
+ * master key itself (how checks were written before the split). The first
+ * is what stamping writes; verification accepts any. [] when the key is not
+ * a 32-byte Buffer. Shared with the help network, whose own check families
+ * follow the same pattern: compute with `[0]`, verify with the whole list.
+ */
+export function ultraPolicyMacs(key, canonicals) {
+  const sub = ultraSubkeys(key);
+  if (!sub) return [];
+  const texts = (Array.isArray(canonicals) ? canonicals : [canonicals]).map(
+    (text) => String(text ?? ''),
+  );
+  const under = (hmacKey) =>
+    texts.map((text) =>
+      crypto.createHmac('sha256', hmacKey).update(text, 'utf8').digest('hex'),
+    );
+  return [...under(sub.mac), ...under(key)];
+}
+
+/**
+ * Whether a stored check is one of the expected ones, in constant time:
+ * every candidate is compared with timingSafeEqual and none is skipped, so
+ * neither the match nor its position shows in the timing. A stored value or
+ * a candidate that is not 64 hex is compared against a zero digest and never
+ * matches.
+ */
+export function ultraPolicyMacVerify(stored, expected) {
+  const list = Array.isArray(expected) ? expected : [expected];
+  const isHex = (value) =>
+    typeof value === 'string' && HASH_PATTERN.test(value);
+  const given = isHex(stored) ? Buffer.from(stored, 'hex') : zeroDigest();
+  let ok = false;
+  for (const candidate of list) {
+    const want = isHex(candidate)
+      ? Buffer.from(candidate, 'hex')
+      : zeroDigest();
+    const same = crypto.timingSafeEqual(given, want);
+    if (same && isHex(stored) && isHex(candidate)) ok = true;
+  }
+  return ok;
+}
 
 /** A length-prefixed field, so a label that contains a newline cannot slide into the next flag. */
 function policyText(value) {
@@ -495,15 +706,17 @@ function policyNum(value) {
 /**
  * The bytes the policy MAC covers. Fixed order, and not the MAC itself or
  * the stored skill list: the skills are already inside the bearer hash, and
- * an encrypted token stores no skill names.
+ * an encrypted token stores no skill names. The v2 form adds createdAt after
+ * the revocation time; the v1 form is kept so a check written before it is
+ * still recognised.
  */
-function policyCanonical(record) {
+function policyCanonical(record, tag = POLICY_TAG_V2) {
   const revoked =
     typeof record?.revokedAt === 'number' && Number.isFinite(record.revokedAt)
       ? String(record.revokedAt)
       : '-';
   return [
-    POLICY_TAG,
+    tag,
     policyText(record?.id),
     policyText(record?.feedId),
     policyText(record?.label),
@@ -514,39 +727,36 @@ function policyCanonical(record) {
     policyFlag(record?.locationOnly),
     policyFlag(record?.encrypted),
     revoked,
+    ...(tag === POLICY_TAG_V2 ? [policyNum(record?.createdAt)] : []),
     policyText(record?.hash),
   ].join('\n');
 }
 
-/** HMAC-SHA256 of the flags under the token key, or '' when the key cannot make one. */
+/** HMAC-SHA256 of the flags (the v2 form) under the token key's MAC subkey, or '' when the key cannot make one. */
 export function ultraTokenPolicyMac(record, key) {
   if (!record || typeof record !== 'object') return '';
-  if (!Buffer.isBuffer(key) || key.length !== 32) return '';
-  return crypto
-    .createHmac('sha256', key)
-    .update(policyCanonical(record), 'utf8')
-    .digest('hex');
+  return ultraPolicyMacs(key, [policyCanonical(record)])[0] ?? '';
 }
 
 /**
  * 'legacy' when this record has never had a policy MAC (a file from before
- * the check, or a MAC that was cleared). 'ok' when the MAC matches. 'bad'
- * when a MAC is present but is not 64 hex, the key cannot check it, or it
- * does not match. A present MAC is never treated as legacy.
+ * the check, or a MAC that was cleared). 'ok' when the MAC matches: the v2
+ * or the v1 form, under the derived key or the master key, four compares in
+ * constant time. 'bad' when a MAC is present but is not 64 hex, the key
+ * cannot check it, or it does not match. A present MAC is never treated as
+ * legacy.
  */
 export function ultraTokenPolicyState(record, key) {
   const mac = record?.policyMac;
   if (mac === undefined || mac === null || mac === '') return 'legacy';
   if (typeof mac !== 'string' || !HASH_PATTERN.test(mac)) return 'bad';
-  if (!Buffer.isBuffer(key) || key.length !== 32) return 'bad';
-  const expected = ultraTokenPolicyMac(record, key);
-  if (!HASH_PATTERN.test(expected)) return 'bad';
-  return crypto.timingSafeEqual(
-    Buffer.from(mac, 'hex'),
-    Buffer.from(expected, 'hex'),
-  )
-    ? 'ok'
-    : 'bad';
+  if (!record || typeof record !== 'object') return 'bad';
+  const expected = ultraPolicyMacs(key, [
+    policyCanonical(record, POLICY_TAG_V2),
+    policyCanonical(record, POLICY_TAG),
+  ]);
+  if (expected.length === 0) return 'bad';
+  return ultraPolicyMacVerify(mac, expected) ? 'ok' : 'bad';
 }
 
 /**
@@ -558,6 +768,65 @@ export function stampUltraTokenPolicy(record, key) {
   const policyMac = ultraTokenPolicyMac(record, key);
   if (!policyMac) return record;
   return { ...record, skills: [], policyMac };
+}
+
+const STORE_TAG = 'ultra-token-store:v1';
+
+/**
+ * The bytes the store-wide check covers: the key the file names, how many
+ * records it holds and, for each one in file order, its id, its hash, its
+ * own check and its revocation time. Each record's check already covers its
+ * flags, so chaining the checks covers every flag too; what this adds is
+ * what no per-record check can see: a record removed, a record copied in
+ * from another file, the order changed, or a check wiped from one row while
+ * the file keeps the rest. Not the seals: a seal is bound to its id by its
+ * AAD already.
+ */
+function storeCanonical(store) {
+  const tokens = Array.isArray(store?.tokens) ? store.tokens : [];
+  const lines = [STORE_TAG, policyText(store?.keyId), String(tokens.length)];
+  for (const record of tokens) {
+    lines.push(
+      policyText(record?.id),
+      policyText(record?.hash),
+      policyText(record?.policyMac),
+      policyNum(record?.revokedAt),
+    );
+  }
+  return lines.join('\n');
+}
+
+/** HMAC-SHA256 of the whole store (see storeCanonical) under the MAC subkey, or '' when the key cannot make one. */
+export function ultraTokenStoreMac(store, key) {
+  if (!store || typeof store !== 'object') return '';
+  return ultraPolicyMacs(key, [storeCanonical(store)])[0] ?? '';
+}
+
+/**
+ * 'legacy' when the file carries no store check (a file from before it, or
+ * one written while the key could not make it), 'ok' when the check matches
+ * the records as they are now, 'bad' when a check is present and is not 64
+ * hex, the key cannot check it, or it does not match. A record deleted,
+ * reordered, copied in or stripped of its own check is 'bad'; a replayed
+ * older copy of the whole file is not (its check was true when written),
+ * which is why the key file and this file are kept owner-only together.
+ */
+export function ultraTokenStoreState(store, key) {
+  const mac = store?.storeMac;
+  if (mac === undefined || mac === null || mac === '') return 'legacy';
+  if (typeof mac !== 'string' || !HASH_PATTERN.test(mac)) return 'bad';
+  if (!store || typeof store !== 'object') return 'bad';
+  const expected = ultraPolicyMacs(key, [storeCanonical(store)]);
+  if (expected.length === 0) return 'bad';
+  return ultraPolicyMacVerify(mac, expected) ? 'ok' : 'bad';
+}
+
+/** The store with a fresh store-wide check over its records as given; unchanged when the key cannot make one. */
+export function stampUltraTokenStore(store, key) {
+  const storeMac = ultraTokenStoreMac(store, key);
+  if (!storeMac) return store;
+  const { storeMac: _previous, tokens, ...head } = store;
+  return { ...head, storeMac, tokens };
 }
 
 const INBOX_POLICY_TAG = 'ultra-inbox-policy:v1';
@@ -589,33 +858,33 @@ function inboxPolicyCanonical(record) {
     policyNum(record?.deliveredAt),
     policyNum(record?.readAt),
     policyNum(record?.peerUntil),
+    // A call's needs are covered when the row has them, so a row written
+    // before needs existed still matches its check.
+    ...(ultraNeeds(record?.needs)
+      ? [`needs:${JSON.stringify(ultraNeeds(record.needs))}`]
+      : []),
   ].join('\n');
 }
 
-/** HMAC-SHA256 of one inbox row under the token key, or '' when the key cannot make one. */
+/** HMAC-SHA256 of one inbox row under the token key's MAC subkey, or '' when the key cannot make one. */
 export function ultraInboxPolicyMac(record, key) {
   if (!record || typeof record !== 'object') return '';
-  if (!Buffer.isBuffer(key) || key.length !== 32) return '';
-  return crypto
-    .createHmac('sha256', key)
-    .update(inboxPolicyCanonical(record), 'utf8')
-    .digest('hex');
+  return ultraPolicyMacs(key, [inboxPolicyCanonical(record)])[0] ?? '';
 }
 
-/** 'legacy' with no check, 'ok' when it matches, 'bad' when a check is present and does not. */
+/**
+ * 'legacy' with no check, 'ok' when it matches (under the derived key, or
+ * the master key a row was checked with before the split), 'bad' when a
+ * check is present and does not.
+ */
 export function ultraInboxPolicyState(record, key) {
   const mac = record?.policyMac;
   if (mac === undefined || mac === null || mac === '') return 'legacy';
   if (typeof mac !== 'string' || !HASH_PATTERN.test(mac)) return 'bad';
-  if (!Buffer.isBuffer(key) || key.length !== 32) return 'bad';
-  const expected = ultraInboxPolicyMac(record, key);
-  if (!HASH_PATTERN.test(expected)) return 'bad';
-  return crypto.timingSafeEqual(
-    Buffer.from(mac, 'hex'),
-    Buffer.from(expected, 'hex'),
-  )
-    ? 'ok'
-    : 'bad';
+  if (!record || typeof record !== 'object') return 'bad';
+  const expected = ultraPolicyMacs(key, [inboxPolicyCanonical(record)]);
+  if (expected.length === 0) return 'bad';
+  return ultraPolicyMacVerify(mac, expected) ? 'ok' : 'bad';
 }
 
 /** The row with a fresh check. Unchanged when the key cannot make one. */
@@ -678,7 +947,9 @@ export function ultraTokenRecordVerdict(record, key) {
  * opens the seal and the hash matches, so the file's skill list is not a
  * second source of truth. When the seal will not open, an encrypted record
  * shows nothing (the file is not trusted) and a clear record may still show
- * the labels it stored before they were stripped.
+ * the labels it stored before they were stripped. `hidden: true` marks an
+ * encrypted token whose skills this key could not read, as distinct from
+ * one that opened and was sealed with no skills at all.
  */
 export function ultraTokenDisplayedSkills(record, key) {
   const keyOk = Buffer.isBuffer(key) && key.length === 32;
@@ -690,9 +961,14 @@ export function ultraTokenDisplayedSkills(record, key) {
       return { skills: [], encrypted: record?.encrypted === true };
     const read = readUltraTokenSkills(opened, key);
     if (read)
-      return { skills: read.skills, encrypted: read.encrypted === true };
+      return {
+        skills: read.skills,
+        encrypted: read.encrypted === true,
+        ...(read.hidden === true ? { hidden: true } : {}),
+      };
   }
-  if (record?.encrypted === true) return { skills: [], encrypted: true };
+  if (record?.encrypted === true)
+    return { skills: [], encrypted: true, hidden: true };
   return {
     skills: Array.isArray(record?.skills) ? record.skills : [],
     encrypted: false,
@@ -868,9 +1144,9 @@ function finiteOrNull(value) {
  * present that is not 64 hex is kept as 'bad': dropping it would look like
  * a record that was never checked.
  */
-function storedPolicyMac(item) {
-  if (!Object.hasOwn(item, 'policyMac')) return undefined;
-  const mac = item.policyMac;
+function storedPolicyMac(item, field = 'policyMac') {
+  if (!Object.hasOwn(item, field)) return undefined;
+  const mac = item[field];
   if (mac === undefined || mac === null || mac === '') return undefined;
   return typeof mac === 'string' && HASH_PATTERN.test(mac) ? mac : 'bad';
 }
@@ -887,7 +1163,7 @@ export function normalizeUltraTokenRecord(item) {
   if (
     !sealed ||
     typeof sealed !== 'object' ||
-    sealed.v !== 1 ||
+    !sealVersionKnown(sealed.v) ||
     !base64Bytes(sealed.iv, 12) ||
     !base64Bytes(sealed.tag, 16) ||
     !base64Bytes(sealed.data)
@@ -925,7 +1201,14 @@ export function normalizeUltraTokenRecord(item) {
     createdAt: finiteOrNull(item.createdAt),
     revokedAt: finiteOrNull(item.revokedAt),
     hash,
-    sealed: { v: 1, iv: sealed.iv, tag: sealed.tag, data: sealed.data },
+    // The seal keeps the version it was written with: a v 1 seal is not
+    // re-labelled, since only the master key opens it.
+    sealed: {
+      v: sealed.v,
+      iv: sealed.iv,
+      tag: sealed.tag,
+      data: sealed.data,
+    },
     ...(policyMac === undefined ? {} : { policyMac }),
   };
 }
@@ -935,7 +1218,9 @@ export function normalizeUltraTokenRecord(item) {
  * records are dropped. A repeated id keeps the first record. A repeated
  * hash is kept: a copy inserted above the real record must not erase the
  * one whose seal still opens. Reading never drops a token for the count:
- * minting refuses once ULTRA_TOKEN_LIMIT are kept.
+ * minting refuses once ULTRA_TOKEN_LIMIT are kept. A top-level `keyId` (see
+ * ultraTokenKeyId) is kept when it has the shape and left out otherwise, so
+ * a file from before it existed still deep-equals.
  */
 export function normalizeUltraTokenStore(parsed) {
   const items = Array.isArray(parsed?.tokens) ? parsed.tokens : [];
@@ -947,7 +1232,23 @@ export function normalizeUltraTokenStore(parsed) {
     takenIds.add(record.id);
     tokens.push(record);
   }
-  return { version: 1, tokens };
+  const keyId =
+    typeof parsed?.keyId === 'string' && KEY_ID_PATTERN.test(parsed.keyId)
+      ? parsed.keyId
+      : undefined;
+  // The store-wide check is kept as the rows keep theirs: absent, null or ''
+  // is a file never checked and is left out; anything else that is not 64
+  // hex is kept as 'bad', since dropping it would look like never checked.
+  const storeMac =
+    parsed && typeof parsed === 'object'
+      ? storedPolicyMac(parsed, 'storeMac')
+      : undefined;
+  return {
+    version: 1,
+    ...(keyId === undefined ? {} : { keyId }),
+    ...(storeMac === undefined ? {} : { storeMac }),
+    tokens,
+  };
 }
 
 /**
@@ -993,6 +1294,8 @@ export function normalizeUltraInboxRecord(item) {
   // after a restart it is what tells a second link to the same call that
   // this row is already that call. Only a row that has one carries it.
   const peerUntil = release ? finiteOrNull(item.peerUntil) : null;
+  // The items or skill a call for help asked for (HELP DELIVERY).
+  const needs = release ? ultraNeeds(item.needs) : null;
   const policyMac = storedPolicyMac(item);
   return {
     id,
@@ -1012,6 +1315,7 @@ export function normalizeUltraInboxRecord(item) {
     deliveredAt: finiteOrNull(item.deliveredAt),
     readAt: finiteOrNull(item.readAt),
     ...(peerUntil === null ? {} : { peerUntil }),
+    ...(needs ? { needs } : {}),
     // Absent when the row has never had a check, so an older inbox still
     // deep-equals. A present value that is not 64 hex is kept as 'bad'.
     ...(policyMac === undefined ? {} : { policyMac }),
@@ -1034,23 +1338,14 @@ export function normalizeUltraInbox(parsed) {
 }
 
 /**
- * Characters that change how the text around them is shown, never what it
- * says: C0 and C1 controls other than the tab and newline, zero-width
- * characters, the bidi marks, embeddings, overrides and isolates (U+061C,
- * U+200E/U+200F, U+202A-U+202E, U+2066-U+2069), the line and paragraph
- * separators and the byte-order mark. A right-to-left override in a peer's
- * name would show what follows it reversed, in the relayed SMS too.
- */
-const HIDDEN_TEXT =
-  /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g;
-
-/**
  * Peer- or holder-supplied text made safe to store, paint, speak and text
- * on: only a string (or a number) counts as text, the hidden characters
- * above go, and so does every line break unless `lines` keeps them (a
- * message, never a name, label or place); runs of spaces and tabs become
- * one space, the ends are trimmed and the rest is cut at the limit (in code
- * units).
+ * on: only a string (or a number) counts as text, the hidden characters go
+ * (ULTRA_HIDDEN_TEXT in src/ultraHelp.mjs, the one set both modules strip:
+ * the controls, zero-width characters, bidi marks, overrides and isolates,
+ * the line and paragraph separators and the byte-order mark), and so does
+ * every line break unless `lines` keeps them (a message, never a name,
+ * label or place); runs of spaces and tabs become one space, the ends are
+ * trimmed and the rest is cut at the limit (in code units).
  */
 export function cleanHelpText(
   raw,
@@ -1059,7 +1354,7 @@ export function cleanHelpText(
 ) {
   const text =
     typeof raw === 'string' || typeof raw === 'number' ? String(raw) : '';
-  const shown = text.replace(HIDDEN_TEXT, '');
+  const shown = text.replace(ultraHiddenText(), '');
   return (lines ? shown : shown.replace(/\n/g, ' '))
     .replace(/[ \t]+/g, ' ')
     .trim()
@@ -1122,6 +1417,7 @@ export function ultraNotifyItem(message) {
       text: message.text,
       place: message.place,
       incident: message.incident,
+      ...(message.needs ? { needs: message.needs } : {}),
       at: message.at,
       until: message.until,
       networkId: message.networkId,

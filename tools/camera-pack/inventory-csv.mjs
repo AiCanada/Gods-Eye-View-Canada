@@ -32,22 +32,77 @@ export const PACK_DEFAULTS = Object.freeze({
   headingConfidence: 'unknown',
 });
 
-export const REQUIRED_COLUMNS = Object.freeze(['country', 'provider', 'sourceId', 'location', 'lat', 'lon', 'views_json']);
+export const REQUIRED_COLUMNS = Object.freeze([
+  'country',
+  'provider',
+  'sourceId',
+  'location',
+  'lat',
+  'lon',
+  'views_json',
+]);
 
 /** Country names the inventory spells out, as ISO codes. A two-letter code passes as is. */
 export const COUNTRY_CODES = Object.freeze({
-  'united states': 'US', usa: 'US', 'united states of america': 'US', canada: 'CA',
-  'south korea': 'KR', korea: 'KR', 'republic of korea': 'KR', taiwan: 'TW', japan: 'JP',
-  'hong kong': 'HK', singapore: 'SG', indonesia: 'ID', malaysia: 'MY', thailand: 'TH',
-  philippines: 'PH', vietnam: 'VN', india: 'IN', china: 'CN', australia: 'AU',
-  'new zealand': 'NZ', 'united kingdom': 'GB', uk: 'GB', ireland: 'IE', spain: 'ES',
-  portugal: 'PT', france: 'FR', germany: 'DE', switzerland: 'CH', austria: 'AT',
-  italy: 'IT', netherlands: 'NL', belgium: 'BE', luxembourg: 'LU', denmark: 'DK',
-  norway: 'NO', sweden: 'SE', finland: 'FI', estonia: 'EE', latvia: 'LV', lithuania: 'LT',
-  poland: 'PL', czechia: 'CZ', 'czech republic': 'CZ', slovakia: 'SK', slovenia: 'SI',
-  croatia: 'HR', hungary: 'HU', romania: 'RO', bulgaria: 'BG', greece: 'GR', turkey: 'TR',
-  iceland: 'IS', mexico: 'MX', brazil: 'BR', argentina: 'AR', chile: 'CL', colombia: 'CO',
-  peru: 'PE', 'south africa': 'ZA',
+  'united states': 'US',
+  usa: 'US',
+  'united states of america': 'US',
+  canada: 'CA',
+  'south korea': 'KR',
+  korea: 'KR',
+  'republic of korea': 'KR',
+  taiwan: 'TW',
+  japan: 'JP',
+  'hong kong': 'HK',
+  singapore: 'SG',
+  indonesia: 'ID',
+  malaysia: 'MY',
+  thailand: 'TH',
+  philippines: 'PH',
+  vietnam: 'VN',
+  india: 'IN',
+  china: 'CN',
+  australia: 'AU',
+  'new zealand': 'NZ',
+  'united kingdom': 'GB',
+  uk: 'GB',
+  ireland: 'IE',
+  spain: 'ES',
+  portugal: 'PT',
+  france: 'FR',
+  germany: 'DE',
+  switzerland: 'CH',
+  austria: 'AT',
+  italy: 'IT',
+  netherlands: 'NL',
+  belgium: 'BE',
+  luxembourg: 'LU',
+  denmark: 'DK',
+  norway: 'NO',
+  sweden: 'SE',
+  finland: 'FI',
+  estonia: 'EE',
+  latvia: 'LV',
+  lithuania: 'LT',
+  poland: 'PL',
+  czechia: 'CZ',
+  'czech republic': 'CZ',
+  slovakia: 'SK',
+  slovenia: 'SI',
+  croatia: 'HR',
+  hungary: 'HU',
+  romania: 'RO',
+  bulgaria: 'BG',
+  greece: 'GR',
+  turkey: 'TR',
+  iceland: 'IS',
+  mexico: 'MX',
+  brazil: 'BR',
+  argentina: 'AR',
+  chile: 'CL',
+  colombia: 'CO',
+  peru: 'PE',
+  'south africa': 'ZA',
 });
 
 /** The City of Austin's cameras come from the Austin open-data live pack, which
@@ -55,7 +110,10 @@ export const COUNTRY_CODES = Object.freeze({
  * duplicate it. */
 export const LIVE_PACK_PROVIDERS = Object.freeze(new Set(['austinatd']));
 
-const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+const clean = (value) =>
+  String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 /**
  * RFC 4180 CSV: quoted fields may hold commas, doubled quotes and line breaks.
@@ -105,11 +163,108 @@ export function parseCsv(text) {
   return { header, rows, badRows };
 }
 
+/** A country name folded for lookup: no accents, "&" as "and", "_" as a space. */
+const foldCountry = (text) =>
+  clean(String(text ?? '').replace(/_/g, ' '))
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, 'and')
+    .toLowerCase();
+
+/** Names the inventories use that are not the English country name. */
+const COUNTRY_ALIASES = Object.freeze({
+  // Australian states, territories and cities written where the country goes.
+  victoria: 'AU',
+  queensland: 'AU',
+  'new south wales': 'AU',
+  'western australia': 'AU',
+  'south australia': 'AU',
+  tasmania: 'AU',
+  'northern territory': 'AU',
+  'australian capital territory': 'AU',
+  sydney: 'AU',
+  'canary islands': 'ES',
+  macedonia: 'MK',
+  'north macedonia': 'MK',
+  kosovo: 'XK',
+  'gaza strip': 'PS',
+  'west bank': 'PS',
+  palestine: 'PS',
+  macau: 'MO',
+  macao: 'MO',
+  'us virgin islands': 'VI',
+  'u.s. virgin islands': 'VI',
+  'british virgin islands': 'VG',
+  'turks and caicos': 'TC',
+  'turks and caicos islands': 'TC',
+  'r union fr': 'RE',
+  'cura ao': 'CW',
+  curacao: 'CW',
+  'netherlands antilles': 'CW',
+  'saint barthelemy': 'BL',
+  'saint vincent grenadines': 'VC',
+  'democratic republic of the congo': 'CD',
+  'democratic republic of congo': 'CD',
+  'cape verde': 'CV',
+  'south georgia': 'GS',
+  'the gambia': 'GM',
+  gambia: 'GM',
+  'isle of man': 'IM',
+  'ivory coast': 'CI',
+  'east timor': 'TL',
+  burma: 'MM',
+  'czech republic': 'CZ',
+  russia: 'RU',
+  'saint martin': 'MF',
+  norfolk: 'NF',
+  'christmas island': 'CX',
+});
+
+/** Every English region name Intl knows, folded, as its ISO code. Built once. */
+let ISO_NAMES = null;
+function isoNames() {
+  if (ISO_NAMES) return ISO_NAMES;
+  ISO_NAMES = new Map();
+  let names = null;
+  try {
+    names = new Intl.DisplayNames(['en'], { type: 'region' });
+  } catch {
+    return ISO_NAMES;
+  }
+  const A = 'A'.charCodeAt(0);
+  for (let i = 0; i < 26; i++) {
+    for (let j = 0; j < 26; j++) {
+      const code = String.fromCharCode(A + i, A + j);
+      let name = '';
+      try {
+        name = names.of(code);
+      } catch {
+        continue;
+      }
+      if (!name || name === code) continue;
+      ISO_NAMES.set(foldCountry(name), code);
+      // "Congo - Kinshasa", "Hong Kong SAR China": the part before the qualifier too.
+      const short = foldCountry(name.replace(/\s+(?:-\s.*|SAR China)$/, ''));
+      if (!ISO_NAMES.has(short)) ISO_NAMES.set(short, code);
+    }
+  }
+  return ISO_NAMES;
+}
+
 export function countryCode(name) {
   const text = clean(name);
   if (/^[A-Za-z]{2}$/.test(text)) return text.toUpperCase();
-  return COUNTRY_CODES[text.toLowerCase()] || '';
+  const folded = foldCountry(text);
+  return (
+    COUNTRY_CODES[text.toLowerCase()] ||
+    COUNTRY_ALIASES[folded] ||
+    isoNames().get(folded) ||
+    ''
+  );
 }
+
+/** Countries whose cameras are never stored. */
+export const EXCLUDED_COUNTRIES = Object.freeze(new Set(['UA']));
 
 /** The two-letter state or province of a US or Canadian row; '' elsewhere. */
 export function regionCode(country, province) {
@@ -121,19 +276,24 @@ export function regionCode(country, province) {
 /** Why a point cannot be stored, or ''. */
 export function pointProblem(country, lat, lon) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return 'no coordinates';
-  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return 'coordinates out of range';
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180)
+    return 'coordinates out of range';
   if (lat === 0 && lon === 0) return 'coordinates at 0,0';
-  const inside = (b) => lat >= b.latMin && lat <= b.latMax && lon >= b.lonMin && lon <= b.lonMax;
-  if (country === 'US' && !inside(US_BOUNDS)) return 'outside the United States';
+  const inside = (b) =>
+    lat >= b.latMin && lat <= b.latMax && lon >= b.lonMin && lon <= b.lonMax;
+  if (country === 'US' && !inside(US_BOUNDS))
+    return 'outside the United States';
   if (country === 'CA' && !inside(CANADA_BOUNDS)) return 'outside Canada';
   return '';
 }
 
-const SIGNED_PARAM = /^(?:token|signature|sig|expires?|expiry|x-amz-signature|x-amz-credential|hdnts|hmac|wowzatokenhash|policy|key-pair-id)$/i;
+const SIGNED_PARAM =
+  /^(?:token|signature|sig|expires?|expiry|x-amz-signature|x-amz-credential|hdnts|hmac|wowzatokenhash|policy|key-pair-id)$/i;
 // A per-session encrypted path (UTIC's cctvsec streams): a long run of base64
 // with its '+' or '=' in it, not just a long ordinary path.
 const LONG_TOKEN_RUN = /[A-Za-z0-9+/=]{40,}/g;
-const hasLongToken = (path) => (path.match(LONG_TOKEN_RUN) || []).some((run) => /[+=]/.test(run));
+const hasLongToken = (path) =>
+  (path.match(LONG_TOKEN_RUN) || []).some((run) => /[+=]/.test(run));
 const SESSION_STREAM_HOST = /(^|\.)cctvsec\.ktict\.co\.kr$/i;
 const EMBED_HOST = /(^|\.)(?:youtube\.com|youtu\.be|ytimg\.com|vimeo\.com)$/i;
 const THUMB_PATH = /\/(?:thumbs?|tn)\//i;
@@ -141,9 +301,11 @@ const ALT_LABEL = /^(?:thumb(?:nail)?|reference|reference image|small)$/i;
 const IMAGE_FILE = /\.(?:jpe?g|png|gif|webp|bmp)$/i;
 const VIDEO_FILE = /\.(?:mp4|webm|flv|mpd|ts)$/i;
 const PAGE_FILE = /\.(?:html?|aspx?|jsp|cfm|do)$/i;
-const PAGE_HINT = /showcamera|fenetrevideo|cameraplayer|videodetail|cctvpopup|cctvview|rtmpview|\/getvideo\/|[?&]format=mp4/i;
+const PAGE_HINT =
+  /showcamera|fenetrevideo|cameraplayer|videodetail|cctvpopup|cctvview|rtmpview|\/getvideo\/|[?&]format=mp4/i;
 const MJPEG_HINT = /mjpe?g|bmjpg|video\.cgi/i;
-const STILL_HINT = /snap|still|image|img|jpe?g|png|latest|current|webcam|camera/i;
+const STILL_HINT =
+  /snap|still|image|img|jpe?g|png|latest|current|webcam|camera/i;
 const STILL_LABEL = /snapshot|jpe?g|^image$|still|current image|mjpe?g/i;
 
 /**
@@ -166,7 +328,11 @@ export function classifyView(view) {
   } catch {
     return { kind: 'invalid', href: raw, host: '', label };
   }
-  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password)
+  if (
+    (url.protocol !== 'https:' && url.protocol !== 'http:') ||
+    url.username ||
+    url.password
+  )
     return { kind: 'invalid', href: raw, host: '', label };
   const href = url.href;
   const host = url.hostname.toLowerCase();
@@ -178,7 +344,11 @@ export function classifyView(view) {
   } catch {
     /* keep the encoded path */
   }
-  if (SESSION_STREAM_HOST.test(host) || [...url.searchParams.keys()].some((k) => SIGNED_PARAM.test(k)) || hasLongToken(path))
+  if (
+    SESSION_STREAM_HOST.test(host) ||
+    [...url.searchParams.keys()].some((k) => SIGNED_PARAM.test(k)) ||
+    hasLongToken(path)
+  )
     return out('signed');
   if (/\.m3u8?$/i.test(url.pathname)) {
     const playlist = safeHlsPlaylistUrl(href);
@@ -190,13 +360,17 @@ export function classifyView(view) {
   if (PAGE_HINT.test(href) || PAGE_FILE.test(url.pathname)) return out('page');
   if (VIDEO_FILE.test(url.pathname)) return out('video');
   if (IMAGE_FILE.test(url.pathname)) return out('still');
-  if (MJPEG_HINT.test(url.pathname + url.search) || /mjpe?g/i.test(label)) return out('still');
-  if (STILL_LABEL.test(label) || STILL_HINT.test(url.pathname + url.search)) return out('still');
+  if (MJPEG_HINT.test(url.pathname + url.search) || /mjpe?g/i.test(label))
+    return out('still');
+  if (STILL_LABEL.test(label) || STILL_HINT.test(url.pathname + url.search))
+    return out('still');
   return out('page');
 }
 
-const PLACEHOLDER_NAME = /^(?:english location|french location|unknown|n\/?a|none|null|undefined|-+)$/i;
-const GENERIC_LABEL = /^(?:n\/?a|na|none|unknown|snapshot|jpe?g|image|still|stream|hls|camera|video|current image|public video|mjpe?g|-+)$/i;
+const PLACEHOLDER_NAME =
+  /^(?:english location|french location|unknown|n\/?a|none|null|undefined|-+)$/i;
+const GENERIC_LABEL =
+  /^(?:n\/?a|na|none|unknown|snapshot|jpe?g|image|still|stream|hls|camera|video|current image|public video|mjpe?g|-+)$/i;
 
 /** The site's name: its location, else its road and direction, else the operator's number. */
 export function siteName(row) {
@@ -205,15 +379,22 @@ export function siteName(row) {
   const road = clean(row.roadway);
   const direction = clean(row.direction);
   if (road && !PLACEHOLDER_NAME.test(road))
-    return direction && !/^(?:unknown|none)$/i.test(direction) ? `${road} ${direction}` : road;
+    return direction && !/^(?:unknown|none)$/i.test(direction)
+      ? `${road} ${direction}`
+      : road;
   return `${clean(row.provider)} camera ${clean(row.sourceId)}`;
 }
 
 function viewName(base, label, index, count) {
   if (count <= 1) return base;
-  if (!label || GENERIC_LABEL.test(label) || label.toLowerCase() === base.toLowerCase())
+  if (
+    !label ||
+    GENERIC_LABEL.test(label) ||
+    label.toLowerCase() === base.toLowerCase()
+  )
     return index === 0 ? base : `${base} (view ${index + 1})`;
-  if (label.length > 25 || label.toLowerCase().includes(base.toLowerCase())) return label;
+  if (label.length > 25 || label.toLowerCase().includes(base.toLowerCase()))
+    return label;
   return `${base} (${label})`;
 }
 
@@ -223,10 +404,15 @@ function viewHeading(label, row, count) {
   return count === 1 ? headingFrom(clean(row.direction)) : null;
 }
 
-const slug = (text) => String(text || '').trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+const slug = (text) =>
+  String(text || '')
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 
 /** The pack's provider key for an inventory provider: lower-case, dash-separated. */
-export const providerKey = (provider) => slug(provider).toLowerCase() || 'unknown';
+export const providerKey = (provider) =>
+  slug(provider).toLowerCase() || 'unknown';
 
 /**
  * One row's cameras. Every distinct still is its own view (a pole looking
@@ -246,18 +432,32 @@ export function rowToCameras(row) {
   const links = views.map(classifyView);
   const unique = (kind) => {
     const seen = new Set();
-    return links.filter((link) => link.kind === kind && !seen.has(link.href) && seen.add(link.href));
+    return links.filter(
+      (link) =>
+        link.kind === kind && !seen.has(link.href) && seen.add(link.href),
+    );
   };
   // A thumbnail is the row's still when it has no other (VDOT publishes its
   // stills under /thumbs/), else another address of the one still.
   const alternates = unique('alt');
   const stills = unique('still').length ? unique('still') : alternates;
-  const aliases = stills === alternates ? [] : alternates.map((link) => link.href);
+  const aliases =
+    stills === alternates ? [] : alternates.map((link) => link.href);
   const streams = unique('hls');
   const pairs = [];
-  if (stills.length === 1 || (stills.length > 1 && stills.length === streams.length)) {
-    stills.forEach((still, i) => pairs.push({ still, stream: streams[stills.length === 1 ? 0 : i] || null }));
-    if (stills.length === 1) for (const stream of streams.slice(1)) pairs.push({ still: null, stream });
+  if (
+    stills.length === 1 ||
+    (stills.length > 1 && stills.length === streams.length)
+  ) {
+    stills.forEach((still, i) =>
+      pairs.push({
+        still,
+        stream: streams[stills.length === 1 ? 0 : i] || null,
+      }),
+    );
+    if (stills.length === 1)
+      for (const stream of streams.slice(1))
+        pairs.push({ still: null, stream });
   } else {
     for (const still of stills) pairs.push({ still, stream: null });
     for (const stream of streams) pairs.push({ still: null, stream });
@@ -271,7 +471,9 @@ export function rowToCameras(row) {
       feedType: still ? 'image' : 'none',
       ...(still ? { url: still.href } : {}),
       ...(stream ? { videoUrl: stream.href } : {}),
-      ...(heading !== null ? { headingDeg: heading, headingConfidence: 'estimated' } : {}),
+      ...(heading !== null
+        ? { headingDeg: heading, headingConfidence: 'estimated' }
+        : {}),
       // Only a one-camera row can say whose thumbnail is whose.
       ...(pairs.length === 1 && aliases.length ? { aliases } : {}),
       viewIndex: index,
@@ -286,7 +488,8 @@ export function noFeedReason(kinds) {
   const has = (kind) => kinds.includes(kind);
   if (!kinds.length) return 'no link';
   if (has('signed')) return 'only an expiring signed link';
-  if (has('timestamped')) return 'only a still whose address carries its capture time';
+  if (has('timestamped'))
+    return 'only a still whose address carries its capture time';
   if (has('embed')) return 'only a YouTube/Vimeo embed';
   if (has('video')) return 'only a video clip';
   if (has('page')) return 'only a web page or player';
@@ -298,7 +501,11 @@ export function noFeedReason(kinds) {
 export function schoolCamera(row, camera) {
   return (
     isSchoolText(clean(row.location)) ||
-    isSchoolCamera({ id: camera.id, name: camera.name, url: camera.url || camera.videoUrl || '' })
+    isSchoolCamera({
+      id: camera.id,
+      name: camera.name,
+      url: camera.url || camera.videoUrl || '',
+    })
   );
 }
 
@@ -306,12 +513,39 @@ export function schoolCamera(row, camera) {
 // Identity: what makes two entries the same camera.
 
 const NAME_WORDS = Object.freeze({
-  avenue: 'ave', av: 'ave', street: 'st', road: 'rd', drive: 'dr', boulevard: 'blvd', boul: 'blvd',
-  parkway: 'pkwy', pky: 'pkwy', highway: 'hwy', expressway: 'expy', freeway: 'fwy', lane: 'ln',
-  place: 'pl', court: 'ct', circle: 'cir', terrace: 'ter', crescent: 'cres', square: 'sq',
-  north: 'n', south: 's', east: 'e', west: 'w', northbound: 'nb', southbound: 'sb',
-  eastbound: 'eb', westbound: 'wb', interstate: 'i', ih: 'i', mile: 'mi', route: 'rt',
-  saint: 'st', mount: 'mt',
+  avenue: 'ave',
+  av: 'ave',
+  street: 'st',
+  road: 'rd',
+  drive: 'dr',
+  boulevard: 'blvd',
+  boul: 'blvd',
+  parkway: 'pkwy',
+  pky: 'pkwy',
+  highway: 'hwy',
+  expressway: 'expy',
+  freeway: 'fwy',
+  lane: 'ln',
+  place: 'pl',
+  court: 'ct',
+  circle: 'cir',
+  terrace: 'ter',
+  crescent: 'cres',
+  square: 'sq',
+  north: 'n',
+  south: 's',
+  east: 'e',
+  west: 'w',
+  northbound: 'nb',
+  southbound: 'sb',
+  eastbound: 'eb',
+  westbound: 'wb',
+  interstate: 'i',
+  ih: 'i',
+  mile: 'mi',
+  route: 'rt',
+  saint: 'st',
+  mount: 'mt',
 });
 const NAME_STOP = new Set(['at', 'and', 'the', 'of', 'on', 'near', 'by']);
 
@@ -328,10 +562,31 @@ export function nameTokens(text) {
 }
 
 /** The name without a trailing view label in brackets: "X (Looking South)" is X. */
-export const baseName = (text) => String(text || '').replace(/\s*\([^()]*\)\s*$/, '').trim();
+export const baseName = (text) =>
+  String(text || '')
+    .replace(/\s*\([^()]*\)\s*$/, '')
+    .trim();
 
 // Words that open a road or a mile marker, not an operator's camera code.
-const NOT_A_CODE = new Set(['CAM', 'CCTV', 'CAMERA', 'TV', 'VIDEO', 'LIVE', 'MM', 'MP', 'EXIT', 'SR', 'US', 'IH', 'HWY', 'RT', 'CR', 'FM', 'KM']);
+const NOT_A_CODE = new Set([
+  'CAM',
+  'CCTV',
+  'CAMERA',
+  'TV',
+  'VIDEO',
+  'LIVE',
+  'MM',
+  'MP',
+  'EXIT',
+  'SR',
+  'US',
+  'IH',
+  'HWY',
+  'RT',
+  'CR',
+  'FM',
+  'KM',
+]);
 
 const code = (prefix, letters, digits, suffix) =>
   `${prefix.toUpperCase()}-${letters.toUpperCase()}${Number(digits)}${suffix.toUpperCase()}`;
@@ -341,7 +596,9 @@ const code = (prefix, letters, digits, suffix) =>
  * "FULT-0036: SR 70 at …" → FULT-36, "SAV-C067: SR 307 …" → SAV-C67.
  */
 export function operatorCode(name) {
-  const m = String(name || '').trim().match(/^([A-Z]{2,10})-([A-Z]{0,2})(\d{2,5})([A-Z]?)\s*[:\-–]/);
+  const m = String(name || '')
+    .trim()
+    .match(/^([A-Z]{2,10})-([A-Z]{0,2})(\d{2,5})([A-Z]?)\s*[:\-–]/);
   return m && !NOT_A_CODE.has(m[1]) ? code(m[1], m[2], m[3], m[4]) : '';
 }
 
@@ -359,8 +616,12 @@ export function linkCode(href) {
   } catch {
     return '';
   }
-  const m = pathname.match(/\/([a-z]{2,10})-(?:cctv|cam)-([a-z]{0,2})(\d{2,5})([a-z]?)(?=\.stream(?:\/|$)|\/|$)/i);
-  return m && !NOT_A_CODE.has(m[1].toUpperCase()) ? code(m[1], m[2], m[3], m[4]) : '';
+  const m = pathname.match(
+    /\/([a-z]{2,10})-(?:cctv|cam)-([a-z]{0,2})(\d{2,5})([a-z]?)(?=\.stream(?:\/|$)|\/|$)/i,
+  );
+  return m && !NOT_A_CODE.has(m[1].toUpperCase())
+    ? code(m[1], m[2], m[3], m[4])
+    : '';
 }
 
 export const hostOf = (href) => {
@@ -382,7 +643,9 @@ const feedKey = (href) => {
  */
 export function feedKeysOf(entry) {
   const keys = new Set();
-  const values = ['url', 'videoUrl', 'viewerUrl', 'snapshotUrl'].map((field) => entry?.[field]);
+  const values = ['url', 'videoUrl', 'viewerUrl', 'snapshotUrl'].map(
+    (field) => entry?.[field],
+  );
   if (Array.isArray(entry?.aliases)) values.push(...entry.aliases);
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) {
@@ -427,9 +690,17 @@ export function rowOperatorIds(row, country, region) {
 export function nameKeysOf(entry, regionKey) {
   const keys = [];
   const words = nameTokens(entry.name);
-  if (words.length >= 3 && regionKey) keys.push(`name:${regionKey}|${words.join(' ')}`);
-  const codes = new Set([operatorCode(entry.name), linkCode(entry.url), linkCode(entry.videoUrl)].filter(Boolean));
-  if (regionKey) for (const code of codes) keys.push(`code:${regionKey}|${code}`);
+  if (words.length >= 3 && regionKey)
+    keys.push(`name:${regionKey}|${words.join(' ')}`);
+  const codes = new Set(
+    [
+      operatorCode(entry.name),
+      linkCode(entry.url),
+      linkCode(entry.videoUrl),
+    ].filter(Boolean),
+  );
+  if (regionKey)
+    for (const code of codes) keys.push(`code:${regionKey}|${code}`);
   const host = hostOf(entry.url || entry.videoUrl || '');
   const base = nameTokens(baseName(entry.name));
   if (host && base.length >= 3) keys.push(`base:${host}|${base.join(' ')}`);
@@ -459,7 +730,9 @@ export function distanceKm(a, b) {
   const r = Math.PI / 180;
   const dLat = (b.lat - a.lat) * r;
   const dLon = (b.lon - a.lon) * r;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2;
   return 2 * 6371.0088 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
@@ -474,4 +747,5 @@ export function namesAgree(a, b) {
 }
 
 /** A pack entry still waiting for a picture: no still of its own. */
-export const lacksStill = (entry) => !entry?.url && String(entry?.feedType || '') === 'none';
+export const lacksStill = (entry) =>
+  !entry?.url && String(entry?.feedType || '') === 'none';

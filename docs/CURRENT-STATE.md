@@ -14,17 +14,28 @@ Share encrypted Ultra tokens. The box has HELP MESSAGES under the status line (u
 count, read-aloud tick, READ / TEXT BACK / REMOVE, MARK ALL READ) and SHARE
 ENCRYPTED ULTRA TOKENS at the bottom (SAVE MY #, GENERATE NEW TOKEN with Network,
 the holder name field "Name of Ultra Token Holder", optional skill sets under
-"Your Gifts or Skills Encrypted into Token String" — the thirteen named ones, up to five custom
-names under "Your Custom Gifts or Skills Encrypted into Token String", shortened to the words the link can carry, or none — and Encrypt,
+"Your Gifts or Skills Encrypted into Token String" — the fifteen named ones, Transportation
+and Mr./Mrs. Nice Guy the two newest tick boxes, up to five custom
+names under "Your Custom Gifts or Skills Encrypted into Token String", shortened to the words the token can carry, or none — and Encrypt,
 which seals those skills inside the token string; a token
 with neither skills nor Encrypt stays `uht1.` plus 43 characters, a reveal
-box with COPY LINK / COPY TOKEN / HIDE that only the SHARE click paints,
+box that only the SHARE click paints with two labelled lines, "Tailnet
+address:" (`https://<machine>.<tailnet>.ts.net`, left out for a token with
+Network off) and "Ultra Token:", and COPY ADDRESS / COPY TOKEN / HIDE — a
+handout is those two fields and never one link,
 per-token SHARE / NETWORK / REVOKE, revoked rows dimmed
 with REMOVE, RESET
 TOKENS when the store or key is unusable). A token carries one route on the
-report listener: the location poll `/ultra/help/<token>/network`. There is no
+report listener: the location poll `GET /ultra/help/network` with
+`Authorization: Bearer <token>`. The token is never in the address (owner
+ruling, 2026-10-04: it is used for authentication only, and many tokens are
+valid at once so each holder is revoked on their own row): the old
+`/ultra/help/<token>/…` form, and a poll with a missing or malformed bearer,
+answer the uniform 404 and spend a miss; the poll's answer carries `Vary:
+Authorization` and `Cache-Control: no-store`, and the header is never
+logged. There is no
 holder page, no `/status` and no `/message` (owner ruling, 2026-10-01): those
-paths, any other path under a token, and the poll on a token with Network
+paths, any other path under `/ultra/help/`, and the poll on a token with Network
 off, answer the uniform 404 without spending a miss. With Network on the
 poll answers `{"released":false}` until SEND HELP, then exactly name, lat,
 lon, at, until and incident until STAND DOWN; that poll is how another GEVC
@@ -50,16 +61,26 @@ refused report once a minute per address, with forwarding headers shown only
 from a loopback socket and cut to 64 characters.
 While the token key still opens the seal, a flag change in the token file is
 that same 404 and does not spend a miss; the row says tampered and offers only
-revoke and remove. A second copy of a hash stays in the file, and the link
+revoke and remove. A second copy of a hash stays in the file, and the poll
 follows the record whose seal opens. A deleted check beside a token that still
 has one is that same 404 and is left missing. A file with no checks yet still
 admits. Skill names are read from the opened token. The token file
 keeps an empty skill list. At most 200 tokens are kept. A missing or replaced
 key still admits by hash while it opens nothing in the file; minting under
-that key stops the older links.
-Tokens live sealed in `config/ultra-tokens.json` under `config/ultra-tokens.key`,
-the inbox (calls received from the home list, and any help messages kept
-from before the message box went) in `config/ultra-inbox.json`, the owner's
+that key stops the older tokens.
+Tokens live sealed in `config/ultra-tokens.json` under `config/ultra-tokens.key`:
+that file holds one master key, and HKDF-SHA256 derives a separate AES
+subkey and HMAC subkey from it (v2 seals and checks; v1 records written
+under the raw key still open), while the token file carries a `keyId`
+header naming the key it was written under, so a swapped key is noticed
+without opening a seal, and a `storeMac` check over every row's id, hash,
+check and revocation in file order, so a row removed, copied in, reordered
+or stripped of its check by hand reads `store-changed` in the box until an
+owner action (mint, revoke, edit) accepts the file as it is. The key file's
+owner-only rights are verified again on every read (0600 on POSIX, the exact
+three-principal DACL on Windows), so rights widened after the write read
+`key-exposed` until restored or RESET TOKENS. The inbox (calls received from the home list, and any help messages kept
+from before the message box went) lives in `config/ultra-inbox.json`, the owner's
 number in `config/ultra-help.json`. An inbox row whose check fails is not shown or
 read aloud when another row still has a check, or when a seal on this
 machine opens; a file with no row checks yet is still shown. The phone link page's 1 s poll now receives
@@ -143,7 +164,8 @@ the helpers file was changed and is not being used, and the next save
 replaces it with what the box is showing. A file with no such check is still
 used. The check covers the number, the helpers and the stored calls, not the
 phone model. A holder's own GEVC polls
-`/ultra/help/<token>/network` every 20 s and gets `{"released":false}` until
+`GET /ultra/help/network` with `Authorization: Bearer <token>` every 20 s and
+gets `{"released":false}` until
 then, else exactly name, lat, lon, at, until and incident; a token with the
 flag off gets the uniform 404 without spending a miss. What is left of a call
 is measured on the peer's clock (the HTTP Date header on its answer), so the
@@ -162,8 +184,13 @@ with RECORD on can still capture it among the surroundings it saves under
 `config/device-recordings/`). The home list is
 `config/ultra-network.json`, peers' tokens sealed under
 `config/ultra-tokens.key`, written only by owner actions, never by the poller,
-and never served; poll targets are only https `*.ts.net` or `100.64.0.0/10`,
-five seconds, 4 KiB, no redirect, no credential, four a tick, rising to sixteen
+and never served; ADD TO HOME LIST takes their name, their tailnet address
+and their Ultra Token as three fields and posts `{ add, address, token, name }`
+(a whole legacy link pasted into the address box is split in the panel into
+address and token, and the server refuses a body carrying `link`); poll
+targets are only https `*.ts.net` or `100.64.0.0/10`, re-checked right
+before each call, five seconds, 4 KiB, no redirect, no cookie, the entry's
+bearer the one header credential, four a tick, rising to sixteen
 in flight on a long list, oldest-due first, backing off to
 ten minutes. Each home-list entry's check covers its id, the address it is
 polled at, and the token's hash. A rewritten address whose old check is left
@@ -199,7 +226,7 @@ a merge adds and renames but never removes, and flags a directory entry MOVED
 (cleared when the directory agrees again; a manual entry is never switched
 off, the disagreement only counted); a call running through an entry flagged
 MOVED or NOT IN DIRECTORY is followed at its old base until it ends, and a
-pull adds at most eight links to any one machine
+pull adds at most eight entries to any one machine
 (`ULTRA_NETWORK_HOST_ENTRY_LIMIT`), so invented rows cannot spend that
 machine's per-address budget. A failed reverse geocode is asked again a
 minute later, and a street that lands after the peer has moved on sets only
@@ -209,7 +236,10 @@ tailnet address (an https `*.ts.net` name, else a `100.64.0.0/10` literal) and
 refuses without one (a second click while GitHub answers makes no second
 token or entry); it takes only a token with SMS and ANYTIME off, and makes
 it location only for good (`locationOnly` in `config/ultra-tokens.json`), as
-every token now is: its holders get `/network` alone. No holder is ever shown
+every token now is: its holders get `/network` alone. The directory entry is
+`{ name, address, token }`, the tailnet address and the token as separate
+fields (owner ruling, 2026-10-04); a legacy `{ link }` entry in a hand-kept
+directory is still read and merged, never written. No holder is ever shown
 the owner's number. The phone's
 cards, the one-slot command, each package's call and the SMS ledger live on
 `globalThis`, so a dev-server restart (POWER UP save, SAVE DIRECTORY) keeps

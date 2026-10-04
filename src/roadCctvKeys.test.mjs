@@ -386,6 +386,8 @@ test('POWER UP adds as many generic road CCTV keys as wanted from its + ADD butt
   });
   assert.equal(rows.length, 3);
   assert.ok(rows.every((row) => row.dataset.set === 'true'));
+  // The section box itself lights up like the other POWER UP keys.
+  assert.equal(host.dataset.set, 'true');
   assert.match(
     host.textContent,
     /Added to every 511ga\.org camera picture as \?key=…/,

@@ -12,6 +12,7 @@ import {
   socialPowerUps,
   SOCIAL_HELP_DELIVERY_KINDS,
   helpDeliverySummary,
+  normalizeHelpDelivery,
   readHelpDelivery,
   writeHelpDelivery,
   SOCIAL_LOCATION_OPTIONS,
@@ -782,26 +783,86 @@ export class SocialMediaPanel {
     if (!this._helpDefault) return;
     const line = helpDeliverySummary(value);
     this._helpDefault.textContent = line
-      ? `My default: ${line}. Sending HELP through these platforms is under development.`
+      ? `My default: ${line}. SEND HELP on the Ultra tab asks for it too. Sending HELP through these platforms is under development.`
       : 'No default saved yet. Sending HELP through these platforms is under development.';
   }
 
-  /** The saved default fills the form, so it is what a later send starts from. */
-  _loadHelpDelivery() {
-    const saved = readHelpDelivery(this._browserStorage());
-    if (saved && this._helpKind) {
-      this._helpKind.value = saved.kind;
-      if (this._helpDestination && saved.destination)
-        this._helpDestination.value = saved.destination;
-      this._helpItems.forEach((input, index) => {
-        if (input) input.value = saved.items[index] || '';
+  /**
+   * Hands the default to the Ultra help server, so SEND HELP (from this box
+   * or the phone) asks for it. Loopback only; a build without the server
+   * simply keeps it in this browser. Resolves true when the server has it.
+   */
+  async _shareHelpDelivery(value) {
+    try {
+      const response = await this._request('/api/ultra-help/needs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ needs: value || null }),
       });
+      return Boolean(response?.ok);
+    } catch {
+      return false;
     }
-    this._paintHelpKind();
-    this._paintHelpDefault(saved);
   }
 
-  _saveHelpDelivery() {
+  /** Puts a default into the form, so it is what a later send starts from. */
+  _fillHelpDelivery(value) {
+    if (!value || !this._helpKind) return;
+    this._helpKind.value = value.kind;
+    if (this._helpDestination && value.destination)
+      this._helpDestination.value = value.destination;
+    this._helpItems.forEach((input, index) => {
+      if (input) input.value = value.items[index] || '';
+    });
+  }
+
+  /**
+   * The saved default fills the form. Nothing is posted on load: the
+   * server's copy is written by SAVE alone, so opening the page cannot
+   * overwrite a default saved from another browser or on the phone. The
+   * one exception is the first server that has no default at all: a
+   * default saved here before SEND HELP carried it is handed over once.
+   */
+  _loadHelpDelivery() {
+    const saved = readHelpDelivery(this._browserStorage());
+    this._fillHelpDelivery(saved);
+    this._paintHelpKind();
+    this._paintHelpDefault(saved);
+    void this._syncHelpDelivery(saved);
+  }
+
+  /**
+   * Reads what SEND HELP currently asks for from the status answer. With no
+   * default in this browser the server's fills the form; with one here and
+   * none on the server, this one is pushed. Any other pairing is left
+   * alone. Resolves true when the server has a default afterwards.
+   */
+  async _syncHelpDelivery(saved) {
+    let status;
+    try {
+      const response = await this._request('/api/ultra-help/status', {
+        cache: 'no-store',
+      });
+      if (!response?.ok) return false;
+      status = await response.json();
+    } catch {
+      return false;
+    }
+    if (!status || typeof status !== 'object') return false;
+    if (status.ownerNeeds === null) {
+      if (!saved) return false;
+      return this._shareHelpDelivery(saved);
+    }
+    if (saved) return true;
+    const server = normalizeHelpDelivery(status.ownerNeeds);
+    if (!server.ok) return false;
+    this._fillHelpDelivery(server.value);
+    this._paintHelpKind();
+    this._paintHelpDefault(server.value);
+    return true;
+  }
+
+  async _saveHelpDelivery() {
     const input = {
       kind: this._helpKind?.value,
       destination: this._helpDestination?.value,
@@ -819,7 +880,12 @@ export class SocialMediaPanel {
       return;
     }
     this._paintHelpDefault(saved.value);
-    this._setStatus('Saved your HELP DELIVERY default on this computer.');
+    const shared = await this._shareHelpDelivery(saved.value);
+    this._setStatus(
+      shared
+        ? 'Saved your HELP DELIVERY default on this computer. SEND HELP asks for it.'
+        : 'Saved your HELP DELIVERY default on this computer.',
+    );
   }
 
   /** OPEN SAVED is named for the sites its menu picks. */

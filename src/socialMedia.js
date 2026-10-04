@@ -5,6 +5,12 @@
  * that position.
  */
 
+import {
+  ULTRA_HELP_NEEDS_KINDS,
+  normalizeUltraNeeds,
+  ultraNeedsSummary,
+} from './ultraHelp.mjs';
+
 export const SOCIAL_ACCOUNTS_KEY = 'godsEyeView.social.accounts';
 
 /** Included in every question, before and after the operator's note. */
@@ -367,97 +373,15 @@ export const SOCIAL_SHOW_LOCATION_KEY = 'godsEyeView.social.showLocation';
 export const SOCIAL_HELP_DELIVERY_KEY = 'godsEyeView.social.helpDelivery';
 
 /**
- * What help a gig or delivery platform would bring. Transportation names
- * where to take the person from their current location; every other kind takes
- * up to two entries of its own.
+ * What help a gig or delivery platform would bring, and what SEND HELP asks
+ * for: the same rules as the Ultra call for help (src/ultraHelp.mjs), so a
+ * saved default means the same thing on both. Transportation names where to
+ * take the person from their current location; every other kind takes up to
+ * two entries of its own.
  */
-export const SOCIAL_HELP_DELIVERY_KINDS = Object.freeze([
-  Object.freeze({
-    id: 'medicine',
-    label: 'Medicine',
-    entry: 'Medication',
-    placeholders: ['Medication 1', 'Medication 2'],
-  }),
-  Object.freeze({
-    id: 'transportation',
-    label: 'Transportation',
-    destinations: Object.freeze(['home', 'hospital']),
-  }),
-  Object.freeze({
-    id: 'food',
-    label: 'Food',
-    entry: 'Type of food',
-    placeholders: ['Type of food 1', 'Type of food 2'],
-  }),
-  Object.freeze({
-    id: 'liquid',
-    label: 'Liquid',
-    entry: 'Type of liquid',
-    placeholders: ['Type of liquid 1', 'Type of liquid 2'],
-  }),
-  Object.freeze({
-    id: 'items',
-    label: 'Items',
-    entry: 'Type of item',
-    placeholders: ['Item 1, e.g. Heart Defib', 'Item 2'],
-  }),
-]);
-
-const HELP_ENTRY_MAX = 80;
-const HELP_DESTINATIONS = Object.freeze({ home: 'Home', hospital: 'Hospital' });
-
-/**
- * A HELP DELIVERY choice cleaned up: a known kind, and either a destination
- * (Transportation) or up to two short, single-line entries.
- * @returns {{ok: true, value: {kind: string, items: string[], destination: string}} | {ok: false, error: string}}
- */
-export function normalizeHelpDelivery(input) {
-  const kind = SOCIAL_HELP_DELIVERY_KINDS.find(
-    (item) => item.id === input?.kind,
-  );
-  if (!kind) return { ok: false, error: 'Choose the help to be delivered.' };
-  if (kind.destinations) {
-    const destination = String(input?.destination || '');
-    if (!kind.destinations.includes(destination)) {
-      return { ok: false, error: 'Choose Home or Hospital.' };
-    }
-    return { ok: true, value: { kind: kind.id, items: [], destination } };
-  }
-  const items = (Array.isArray(input?.items) ? input.items : [])
-    .map((value) =>
-      String(value ?? '')
-        .replace(/[\u0000-\u001f\u007f]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim(),
-    )
-    .filter(Boolean)
-    .slice(0, 2);
-  if (!items.length)
-    return {
-      ok: false,
-      error: `Enter at least one ${kind.entry.toLowerCase()}.`,
-    };
-  if (items.some((value) => value.length > HELP_ENTRY_MAX)) {
-    return {
-      ok: false,
-      error: `Keep each entry under ${HELP_ENTRY_MAX} characters.`,
-    };
-  }
-  return { ok: true, value: { kind: kind.id, items, destination: '' } };
-}
-
-/** One line for a saved HELP DELIVERY default, e.g. "Medicine: Insulin, Ventolin". */
-export function helpDeliverySummary(value) {
-  const checked = normalizeHelpDelivery(value);
-  if (!checked.ok) return '';
-  const kind = SOCIAL_HELP_DELIVERY_KINDS.find(
-    (item) => item.id === checked.value.kind,
-  );
-  if (kind.destinations) {
-    return `${kind.label}: from current location to ${HELP_DESTINATIONS[checked.value.destination]}`;
-  }
-  return `${kind.label}: ${checked.value.items.join(', ')}`;
-}
+export const SOCIAL_HELP_DELIVERY_KINDS = ULTRA_HELP_NEEDS_KINDS;
+export const normalizeHelpDelivery = normalizeUltraNeeds;
+export const helpDeliverySummary = ultraNeedsSummary;
 
 /** @param {Storage | {getItem: Function} | null | undefined} storage */
 export function readHelpDelivery(storage) {

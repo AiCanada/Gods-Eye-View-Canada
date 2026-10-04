@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { applyUltraHelpStatus, initUltraHelpPanel } from './ultraHelpPanel.js';
+import {
+  applyUltraHelpStatus,
+  initUltraHelpPanel,
+  splitUltraHandout,
+  ultraNeedsLine,
+} from './ultraHelpPanel.js';
 import {
   DEVICE_FEEDS_CHANGED_EVENT,
   DEVICE_FEEDS_FOCUS_EVENT,
@@ -279,7 +284,9 @@ function installFakeDocument() {
   });
   const reveal = make('div', 'ultra-token-reveal', panel, { hidden: true });
   make('pre', 'ultra-token-link', reveal);
-  make('button', 'ultra-token-copy-link', reveal, { textContent: 'COPY LINK' });
+  make('button', 'ultra-token-copy-address', reveal, {
+    textContent: 'COPY ADDRESS',
+  });
   make('button', 'ultra-token-copy', reveal, { textContent: 'COPY TOKEN' });
   make('button', 'ultra-token-hide', reveal, { textContent: 'HIDE' });
   make('div', 'ultra-tokens', panel);
@@ -308,7 +315,8 @@ function installFakeDocument() {
   make('a', 'ultra-network-entry-mail', entryBox, { hidden: true });
   make('button', 'ultra-network-entry-hide', entryBox, { textContent: 'HIDE' });
   const addForm = make('form', 'ultra-network-add', panel);
-  make('input', 'ultra-network-link', addForm);
+  make('input', 'ultra-network-address', addForm);
+  make('input', 'ultra-network-token', addForm);
   make('input', 'ultra-network-link-name', addForm);
   make('button', 'ultra-network-add-submit', addForm, {
     textContent: 'ADD TO HOME LIST',
@@ -538,7 +546,12 @@ test('read-aloud speaks only fresh unread messages and calls for help, once, thr
         ok: true,
         json: async () => ({
           ...status,
-          revealed: { id: 't-1', label: 'Neighbour', token: TOKEN, link: '' },
+          revealed: {
+            id: 't-1',
+            label: 'Neighbour',
+            token: TOKEN,
+            address: '',
+          },
         }),
       };
     }
@@ -806,7 +819,8 @@ test('SEND HELP, the home list and SAVE DIRECTORY post what the design names', a
             how: 'clipboard',
             entry: {
               name: 'Jeff',
-              link: `https://van.tail9.ts.net/ultra/help/${TOKEN}`,
+              address: 'https://van.tail9.ts.net',
+              token: TOKEN,
             },
             entryText: '{\n  "name": "Jeff"\n}',
             mailto: 'mailto:?subject=x&body=y',
@@ -947,17 +961,19 @@ test('SEND HELP, the home list and SAVE DIRECTORY post what the design names', a
       body: { me: true, name: 'Jeff' },
     });
     assert.equal(byId('ultra-network-me-name').value, '');
-    const link = `https://peer.tail9.ts.net/ultra/help/${TOKEN}`;
-    byId('ultra-network-link').value = ` ${link} `;
+    const address = 'https://peer.tail9.ts.net';
+    byId('ultra-network-address').value = ` ${address} `;
+    byId('ultra-network-token').value = ` ${TOKEN} `;
     byId('ultra-network-link-name').value = 'Sam';
     calls.length = 0;
     panel.dispatch('submit', { target: byId('ultra-network-add') });
     await settle();
     assert.deepEqual(calls[0], {
       url: '/api/ultra-help/network',
-      body: { add: true, link, name: 'Sam' },
+      body: { add: true, address, token: TOKEN, name: 'Sam' },
     });
-    assert.equal(byId('ultra-network-link').value, '');
+    assert.equal(byId('ultra-network-address').value, '');
+    assert.equal(byId('ultra-network-token').value, '');
     assert.equal(byId('ultra-network-link-name').value, '');
 
     /* RENAME borrows the add form: the name box fills, the button reads
@@ -1064,26 +1080,34 @@ test('the reveal box is touched only when the status carries `revealed`', () => 
       id: 't-1',
       label: 'Neighbour',
       token: TOKEN,
-      link: `http://192.168.1.5:44173/ultra/help/${TOKEN}`,
+      address: 'https://van.tail9.ts.net',
     },
   });
   assert.equal(box.hidden, false);
   assert.equal(
     pre.textContent,
-    `Neighbour:\nhttp://192.168.1.5:44173/ultra/help/${TOKEN}`,
+    `Neighbour:\nTailnet address: https://van.tail9.ts.net\nUltra Token: ${TOKEN}`,
   );
   assert.equal(box.dataset.ultraToken, TOKEN);
+  assert.equal(box.dataset.ultraAddress, 'https://van.tail9.ts.net');
+  assert.equal(box.dataset.ultraLink, undefined);
+  /* The token is never written into a URL, not even in the reveal. */
+  assert.doesNotMatch(pre.textContent, /\/ultra\/help\//);
 
   applyUltraHelpStatus(documentRef, {
-    revealed: { id: 't-1', label: 'Neighbour', token: TOKEN, link: '' },
+    revealed: { id: 't-1', label: 'Neighbour', token: TOKEN, address: '' },
   });
-  assert.match(pre.textContent, /^Neighbour:\n/);
+  assert.match(pre.textContent, /^Neighbour:\nUltra Token: /);
+  assert.doesNotMatch(pre.textContent, /Tailnet address:/);
   assert.match(pre.textContent, /listener is not up/);
+  assert.match(pre.textContent, /handed over with your tailnet address/);
+  assert.equal(box.dataset.ultraAddress, undefined);
 
   applyUltraHelpStatus(documentRef, { revealed: null });
   assert.equal(box.hidden, true);
   assert.equal(pre.textContent, '');
   assert.equal(box.dataset.ultraToken, undefined);
+  assert.equal(box.dataset.ultraAddress, undefined);
 });
 
 test('the published entry follows the same contract: only `published` paints it', () => {
@@ -1101,11 +1125,11 @@ test('the published entry follows the same contract: only `published` paints it'
   assert.equal(pre.textContent, 'keep me');
 
   const entryText =
-    '{\n  "name": "Jeff",\n  "link": "https://x.ts.net/ultra/help/x"\n}';
+    '{\n  "name": "Jeff",\n  "address": "https://x.ts.net",\n  "token": "uht1.x"\n}';
   applyUltraHelpStatus(documentRef, {
     published: {
       how: 'github',
-      entry: { name: 'Jeff', link: 'https://x.ts.net/ultra/help/x' },
+      entry: { name: 'Jeff', address: 'https://x.ts.net', token: 'uht1.x' },
       entryText,
       mailto: 'mailto:?subject=x&body=y',
       directory:
@@ -1210,7 +1234,7 @@ test('the SEND HELP block says who receives it, needs a position, and reports a 
   });
   assert.equal(
     note.textContent,
-    "Sends your phone's position and the incident classification to encrypted Ultra Token holders for four hours, or until STAND DOWN, and hands your phone one tap that texts the Help to 2 saved helpers. 1 watching now.",
+    "Sends your phone's position, the incident classification and any items or skills needed to encrypted Ultra Token holders for four hours, or until STAND DOWN, and hands your phone one tap that texts the Help to 2 saved helpers. 1 watching now.",
   );
 
   /* A running release: EXTEND HELP, STAND DOWN, the state, the plea and the
@@ -1394,7 +1418,7 @@ test('with two packages the SEND HELP block shows and acts on the chosen package
     applyUltraHelpStatus(documentRef, status);
     assert.equal(
       byId('ultra-release-note').textContent,
-      "Sends your phone's position and the incident classification to encrypted Ultra Token holders for four hours, or until STAND DOWN, and hands your phone one tap that texts the Help to 0 saved helpers. 0 watching now.",
+      "Sends your phone's position, the incident classification and any items or skills needed to encrypted Ultra Token holders for four hours, or until STAND DOWN, and hands your phone one tap that texts the Help to 0 saved helpers. 0 watching now.",
     );
   } finally {
     restoreConfirm();
@@ -1971,7 +1995,7 @@ test('token rows carry the owner controls; revoked rows dim to REMOVE and purge 
   assert.doesNotMatch(byId('ultra-token-note').textContent, /LAN/);
   assert.match(
     byId('ultra-token-note').textContent,
-    /no tailnet address yet, so a Network link cannot reach another GEVC\.$/,
+    /no tailnet address yet, so a Network token cannot reach another GEVC\.$/,
   );
   assert.match(
     byId('ultra-token-note').textContent,
@@ -1989,13 +2013,13 @@ test('token rows carry the owner controls; revoked rows dim to REMOVE and purge 
   applyUltraHelpStatus(documentRef, {
     tokens: [token()],
     helpBase: 'http://192.168.1.5:44173/ultra/help/',
-    networkBase: 'https://van.tail9.ts.net/ultra/help/',
+    networkBase: 'https://van.tail9.ts.net',
     ownerNumber: '+15065550100',
     inbox: [],
   });
   assert.match(
     byId('ultra-token-note').textContent,
-    /Network links open at https:\/\/van\.tail9\.ts\.net\/ultra\/help\/… over Tailscale\.$/,
+    /Your tailnet address for holders: https:\/\/van\.tail9\.ts\.net$/,
   );
   /* Back to the status the rest of this case checks. */
   applyUltraHelpStatus(documentRef, {
@@ -2063,7 +2087,6 @@ test('token rows carry the owner controls; revoked rows dim to REMOVE and purge 
 
 test('home-list rows show host, source and state, never a link; the note and relay line follow the status', () => {
   const { documentRef, byId } = installFakeDocument();
-  const link = `https://peer.tail9.ts.net/ultra/help/${TOKEN}`;
   const entries = [
     entry({
       id: 'n-0000000000000001',
@@ -2123,7 +2146,8 @@ test('home-list rows show host, source and state, never a link; the note and rel
       directoryMissing: true,
       moved: true,
       source: 'directory',
-      link,
+      address: 'https://peer.tail9.ts.net',
+      token: TOKEN,
     }),
     entry({
       id: 'n-000000000000000f',
@@ -2239,13 +2263,13 @@ test('home-list rows show host, source and state, never a link; the note and rel
     'Bea · peer.tail9.ts.net · MANUAL · NOT CHECKED YET',
   );
   assert.match(readouts.Cal, / · NOT SHARING · /);
-  assert.match(readouts.Dee, / · LINK DEAD \(404\) · /);
+  assert.match(readouts.Dee, / · TOKEN DEAD \(404\) · /);
   assert.match(
     readouts.Eve,
     / · UNREACHABLE \(is their machine on the tailnet\?\) · /,
   );
   assert.match(readouts.Fay, / · BUSY \(429\) · /);
-  assert.match(readouts.Gus, / · NOT A TAILNET LINK · /);
+  assert.match(readouts.Gus, / · NOT A TAILNET ADDRESS · /);
   assert.match(
     readouts.Hal,
     /^Hal · peer\.tail9\.ts\.net · DIRECTORY · NOT IN DIRECTORY · /,
@@ -2254,7 +2278,7 @@ test('home-list rows show host, source and state, never a link; the note and rel
     readouts.Ida,
     /^Ida · peer\.tail9\.ts\.net · DIRECTORY · MOVED · /,
   );
-  assert.match(readouts.Jon, / · YOUR OWN LINK · /);
+  assert.match(readouts.Jon, / · YOUR OWN TOKEN · /);
   assert.match(readouts.Kim, / · NO KEY · /);
   assert.match(
     readouts.Lou,
@@ -2333,7 +2357,7 @@ test('home-list rows show host, source and state, never a link; the note and rel
     byId('ultra-network-note').textContent,
     /^The token key file is missing or not valid/,
   );
-  assert.equal(byId('ultra-network-count').textContent, '· 1 link');
+  assert.equal(byId('ultra-network-count').textContent, '· 1 token');
 
   /* No directory yet, nothing configured, no owner number: TEST SMS is off. */
   applyUltraHelpStatus(documentRef, {
@@ -2499,17 +2523,21 @@ test('RENAME leaves the link box usable and lets go of the form when the rename 
       byId('ultra-network-add-submit').textContent,
       'ADD TO HOME LIST',
     );
-    assert.match(byId('ultra-network-link').placeholder, /^Paste a help link/);
+    assert.match(
+      byId('ultra-network-address').placeholder,
+      /^Their tailnet address/,
+    );
+    assert.match(byId('ultra-network-token').placeholder, /^Their Ultra Token/);
   };
   try {
     await settle();
     /* Armed, the link box stays usable and says a paste is an ADD. */
     arm(entry().id);
     assert.equal(form().dataset.ultraRenaming, entry().id);
-    assert.equal(byId('ultra-network-link').disabled, false);
+    assert.equal(byId('ultra-network-address').disabled, false);
     assert.equal(
-      byId('ultra-network-link').placeholder,
-      'Renaming — paste a link to add one instead',
+      byId('ultra-network-address').placeholder,
+      'Renaming — enter an address and token to add one instead',
     );
     /* A refused rename says why and lets go of the form. */
     await submit();
@@ -2539,13 +2567,18 @@ test('RENAME leaves the link box usable and lets go of the form when the rename 
       network: network({ entries: [bob] }),
     });
     assertLetGo();
-    /* A link pasted while RENAME is armed is an ADD. */
+    /* A handout entered while RENAME is armed is an ADD. */
     applyUltraHelpStatus(documentRef, status);
     arm(entry().id);
-    const link = `https://peer.tail9.ts.net/ultra/help/${TOKEN}`;
-    byId('ultra-network-link').value = link;
+    byId('ultra-network-address').value = 'https://peer.tail9.ts.net';
+    byId('ultra-network-token').value = TOKEN;
     await submit();
-    assert.deepEqual(calls.at(-1).body, { add: true, link, name: 'Sam' });
+    assert.deepEqual(calls.at(-1).body, {
+      add: true,
+      address: 'https://peer.tail9.ts.net',
+      token: TOKEN,
+      name: 'Sam',
+    });
     assertLetGo();
     /* RENAME pressed on another row while a rename is on its way keeps the
      * form, and the name it filled in, when that answer lands. */
@@ -2864,7 +2897,7 @@ test('skill sets are sent with the token and cleared once it is minted', async (
     assert.equal(byId('ultra-skill-custom-preview').hidden, false);
     assert.match(
       byId('ultra-skill-custom-preview').textContent,
-      /The link will say: Search and Rescue$/,
+      /The token will say: Search and Rescue$/,
     );
     byId('ultra-skill-custom-2').value = 'Search and Rescue Specialist Beta';
     panel.dispatch('input', { target: byId('ultra-skill-custom-2') });
@@ -2933,7 +2966,7 @@ test('skill sets are sent with the token and cleared once it is minted', async (
         id: 't-1',
         label: 'Medic',
         token: 'uht1.' + 'A'.repeat(43) + '.e.sealed',
-        link: '',
+        address: '',
         skills: [{ code: 'dr', label: 'Doctor' }],
         encrypted: true,
       },
@@ -3188,4 +3221,396 @@ test('Find Ultra Help is under development: a press asks the server nothing', as
   } finally {
     handle.destroy();
   }
+});
+
+test('ultraNeedsLine counts the holders whose token carries the skill a call asks for', () => {
+  const transport = { kind: 'transportation', destination: 'hospital' };
+  const holders = [
+    token({ skills: [{ code: 'tr', label: 'Transportation' }] }),
+    token({ id: 't-2', skills: [] }),
+  ];
+  assert.equal(
+    ultraNeedsLine(transport, holders),
+    'Asks for Transportation: from current location to Hospital · 1 holder with that skill.',
+  );
+  assert.equal(
+    ultraNeedsLine(transport, []),
+    'Asks for Transportation: from current location to Hospital · 0 holders with that skill.',
+  );
+  assert.equal(
+    ultraNeedsLine(transport, [
+      ...holders,
+      token({ id: 't-3', skills: ['Transportation'] }),
+      token({ id: 't-4', skills: null }),
+      null,
+    ]),
+    'Asks for Transportation: from current location to Hospital · 1 holder with that skill.',
+  );
+  /* Items name no skill: no holder count, whatever the holders carry. */
+  assert.equal(
+    ultraNeedsLine({ kind: 'items', items: ['Heart Defib'] }, holders),
+    'Asks for Items: Heart Defib.',
+  );
+  assert.equal(ultraNeedsLine(null, holders), '');
+  assert.equal(ultraNeedsLine({ kind: 'drone', items: ['x'] }, holders), '');
+
+  /* The SEND HELP note carries the same line for the owner's default. */
+  const { documentRef, byId } = installFakeDocument();
+  applyUltraHelpStatus(documentRef, {
+    tokens: [
+      token({
+        network: true,
+        skills: [{ code: 'tr', label: 'Transportation' }],
+      }),
+      token({ id: 't-2', network: true, skills: [] }),
+    ],
+    position: { lat: 45.27, lon: -66.06 },
+    contacts: [],
+    ownerNeeds: transport,
+    inbox: [],
+  });
+  assert.match(
+    byId('ultra-release-note').textContent,
+    / Asks for Transportation: from current location to Hospital · 1 holder with that skill\.$/,
+  );
+});
+
+test('a sealed skill list this key cannot open reads as hidden, not as a token with no skill sets', () => {
+  const { documentRef, byId } = installFakeDocument();
+  const base = {
+    helpBase: 'http://192.168.1.5:44173/ultra/help/',
+    packages: [{ id: 'security-van', name: 'Van' }],
+    inbox: [],
+  };
+  /* The key was replaced: the server says `hidden`, the store says so too,
+   * and the rows still paint. */
+  applyUltraHelpStatus(documentRef, {
+    ...base,
+    tokenStore: 'key-changed',
+    tokens: [
+      token({ encrypted: true, skills: [], hidden: true }),
+      token({ id: 't-2', encrypted: true, skills: [], hidden: false }),
+      token({ id: 't-3', encrypted: true, skills: [] }),
+      token({
+        id: 't-4',
+        encrypted: true,
+        skills: [{ code: 'dr', label: 'Doctor' }],
+        hidden: false,
+      }),
+    ],
+  });
+  /* Four token rows, then RESET TOKENS: a replaced key is a store state. */
+  const rows = byId('ultra-tokens').children;
+  assert.equal(rows.length, 5);
+  assert.equal(rows[4].children[0].textContent, 'RESET TOKENS');
+  assert.match(
+    rows[0].children[0].textContent,
+    /· SKILLS HIDDEN \(KEY MISSING OR CHANGED\) · ENCRYPTED$/,
+  );
+  for (const row of rows.slice(1, 4)) {
+    assert.doesNotMatch(row.children[0].textContent, /HIDDEN/);
+  }
+  assert.match(rows[1].children[0].textContent, /\d · ENCRYPTED$/);
+  assert.match(rows[2].children[0].textContent, /\d · ENCRYPTED$/);
+  assert.match(rows[3].children[0].textContent, /· Doctor · ENCRYPTED$/);
+  assert.match(
+    byId('ultra-token-note').textContent,
+    /^The token key file was replaced: existing tokens still work but cannot be shown/,
+  );
+
+  /* An encrypted token minted with no skill sets, under a key that opens it,
+   * says so without the hidden word. */
+  applyUltraHelpStatus(documentRef, {
+    ...base,
+    tokenStore: 'ok',
+    tokens: [token({ encrypted: true, skills: [] })],
+  });
+  const only = byId('ultra-tokens').children[0].children[0].textContent;
+  assert.match(only, /· ENCRYPTED$/);
+  assert.doesNotMatch(only, /HIDDEN/);
+
+  /* The reveal box makes the same distinction. */
+  const pre = byId('ultra-token-link');
+  const sealed = 'uht1.' + 'A'.repeat(43) + '.e.sealed';
+  applyUltraHelpStatus(documentRef, {
+    revealed: {
+      id: 't-1',
+      label: 'Medic',
+      token: sealed,
+      address: 'https://van.tail9.ts.net',
+      skills: [],
+      encrypted: true,
+      hidden: true,
+    },
+  });
+  assert.match(
+    pre.textContent,
+    /\nSkills hidden: the token key is missing or was changed, so the sealed skill sets cannot be shown\nSkills encrypted in the token$/,
+  );
+  assert.doesNotMatch(pre.textContent, /No skill sets/);
+  applyUltraHelpStatus(documentRef, {
+    revealed: {
+      id: 't-1',
+      label: 'Medic',
+      token: sealed,
+      address: 'https://van.tail9.ts.net',
+      skills: [],
+      encrypted: true,
+    },
+  });
+  assert.match(
+    pre.textContent,
+    /\nNo skill sets\nSkills encrypted in the token$/,
+  );
+  assert.doesNotMatch(pre.textContent, /hidden/);
+  /* A hidden list never shows a skill name beside it. */
+  applyUltraHelpStatus(documentRef, {
+    revealed: {
+      id: 't-1',
+      label: 'Medic',
+      token: sealed,
+      address: '',
+      skills: [{ code: 'dr', label: 'Doctor' }],
+      encrypted: true,
+      hidden: true,
+    },
+  });
+  assert.doesNotMatch(pre.textContent, /Doctor/);
+  assert.match(pre.textContent, /Skills hidden: the token key/);
+});
+
+/* The handout is two things, an address and a token: the token never sits
+ * inside a URL, in the reveal, on the clipboard or in a request body. */
+test('the reveal is a handout: labelled address and token lines, never a link', () => {
+  const { documentRef, byId } = installFakeDocument();
+  const box = byId('ultra-token-reveal');
+  const pre = byId('ultra-token-link');
+  applyUltraHelpStatus(documentRef, {
+    revealed: {
+      id: 't-1',
+      label: 'Neighbour',
+      token: TOKEN,
+      address: 'https://van.tail9.ts.net',
+      skills: [{ code: 'dr', label: 'Doctor' }],
+    },
+  });
+  assert.equal(box.hidden, false);
+  assert.equal(
+    pre.textContent,
+    `Neighbour:\nTailnet address: https://van.tail9.ts.net\nUltra Token: ${TOKEN}\nDoctor`,
+  );
+  assert.doesNotMatch(pre.textContent, /\/ultra\/help\//);
+  assert.equal(box.dataset.ultraAddress, 'https://van.tail9.ts.net');
+  assert.equal(box.dataset.ultraToken, TOKEN);
+  assert.equal(box.dataset.ultraLink, undefined);
+  /* A legacy answer that still carries `link` paints nothing of it. */
+  applyUltraHelpStatus(documentRef, {
+    revealed: {
+      id: 't-1',
+      label: 'Neighbour',
+      token: TOKEN,
+      address: '',
+      link: `https://van.tail9.ts.net/ultra/help/${TOKEN}`,
+    },
+  });
+  assert.doesNotMatch(pre.textContent, /\/ultra\/help\//);
+  assert.doesNotMatch(pre.textContent, /Tailnet address:/);
+  assert.match(pre.textContent, /^Neighbour:\nUltra Token: /);
+  assert.equal(box.dataset.ultraAddress, undefined);
+  assert.equal(box.dataset.ultraLink, undefined);
+});
+
+test('COPY ADDRESS copies only the address and COPY TOKEN only the token', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+  const { documentRef, panel, byId } = installFakeDocument();
+  const status = { unread: 0, inbox: [], tokens: [token()], packages: [] };
+  const fetchImpl = async () => ({ ok: true, json: async () => status });
+  const written = [];
+  const navigatorBefore = Object.getOwnPropertyDescriptor(
+    globalThis,
+    'navigator',
+  );
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: {
+      clipboard: {
+        writeText: async (text) => {
+          written.push(text);
+        },
+      },
+    },
+  });
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef: fakeWindow(),
+  });
+  try {
+    applyUltraHelpStatus(documentRef, {
+      revealed: {
+        id: 't-1',
+        label: 'Neighbour',
+        token: TOKEN,
+        address: 'https://van.tail9.ts.net',
+      },
+    });
+    const copyAddress = byId('ultra-token-copy-address');
+    panel.dispatch('click', { target: copyAddress });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(written, ['https://van.tail9.ts.net']);
+    assert.equal(copyAddress.textContent, 'COPIED');
+    const copyToken = byId('ultra-token-copy');
+    panel.dispatch('click', { target: copyToken });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(written, ['https://van.tail9.ts.net', TOKEN]);
+    assert.equal(copyToken.textContent, 'COPIED');
+    /* No address (Network off, or the listener down): nothing to copy. */
+    applyUltraHelpStatus(documentRef, {
+      revealed: { id: 't-1', label: 'Neighbour', token: TOKEN, address: '' },
+    });
+    panel.dispatch('click', { target: copyAddress });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(written.length, 2);
+  } finally {
+    handle.destroy();
+    if (navigatorBefore) {
+      Object.defineProperty(globalThis, 'navigator', navigatorBefore);
+    } else {
+      delete globalThis.navigator;
+    }
+  }
+});
+
+test('ADD TO HOME LIST posts address + token, refuses half a handout, and splits a legacy link locally', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const { documentRef, panel, byId } = installFakeDocument();
+  const status = {
+    unread: 0,
+    inbox: [],
+    tokens: [],
+    packages: [],
+    contacts: [],
+    network: network({ entries: [] }),
+  };
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url, body: options.body ? JSON.parse(options.body) : null });
+    return { ok: true, json: async () => status };
+  };
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef: fakeWindow(),
+  });
+  const submit = async () => {
+    panel.dispatch('submit', { target: byId('ultra-network-add') });
+    await settle();
+  };
+  try {
+    await settle();
+    /* Both boxes filled: the body is { add, address, token, name }. */
+    byId('ultra-network-address').value = ' https://peer.tail9.ts.net/ ';
+    byId('ultra-network-token').value = TOKEN;
+    byId('ultra-network-link-name').value = 'Sam';
+    calls.length = 0;
+    await submit();
+    assert.deepEqual(calls, [
+      {
+        url: '/api/ultra-help/network',
+        body: {
+          add: true,
+          address: 'https://peer.tail9.ts.net/',
+          token: TOKEN,
+          name: 'Sam',
+        },
+      },
+    ]);
+    assert.equal(byId('ultra-network-address').value, '');
+    assert.equal(byId('ultra-network-token').value, '');
+    /* Half a handout is refused on the status line and never posted. */
+    for (const [address, tokenValue] of [
+      ['https://peer.tail9.ts.net', ''],
+      ['', TOKEN],
+      ['', ''],
+    ]) {
+      byId('ultra-network-address').value = address;
+      byId('ultra-network-token').value = tokenValue;
+      calls.length = 0;
+      await submit();
+      assert.deepEqual(calls, []);
+      assert.equal(
+        byId('ultra-status').textContent,
+        'Enter their tailnet address (https://….ts.net) and their Ultra Token (uht1.…)',
+      );
+    }
+    /* A legacy whole link in the address box with the token box empty is
+     * split here: the server never sees the joined string. */
+    byId('ultra-network-address').value =
+      `https://peer.tail9.ts.net/ultra/help/${TOKEN}`;
+    byId('ultra-network-token').value = '';
+    byId('ultra-network-link-name').value = 'Sam';
+    calls.length = 0;
+    await submit();
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].body, {
+      add: true,
+      address: 'https://peer.tail9.ts.net',
+      token: TOKEN,
+      name: 'Sam',
+    });
+    assert.equal('link' in calls[0].body, false);
+    assert.doesNotMatch(JSON.stringify(calls[0].body), /\/ultra\/help\//);
+    /* A sealed token in a legacy link splits the same way. */
+    const sealed = 'uht1.' + 'A'.repeat(43) + '.e.' + 'B'.repeat(40);
+    byId('ultra-network-address').value =
+      `http://100.64.3.9:44173/ultra/help/${sealed}/`;
+    calls.length = 0;
+    await submit();
+    assert.deepEqual(calls[0].body, {
+      add: true,
+      address: 'http://100.64.3.9:44173',
+      token: sealed,
+      name: '',
+    });
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('splitUltraHandout() only ever splits a legacy link with the token box empty', () => {
+  const link = `https://peer.tail9.ts.net/ultra/help/${TOKEN}`;
+  assert.deepEqual(splitUltraHandout(link, ''), {
+    address: 'https://peer.tail9.ts.net',
+    token: TOKEN,
+  });
+  assert.deepEqual(splitUltraHandout(` ${link}/ `, '  '), {
+    address: 'https://peer.tail9.ts.net',
+    token: TOKEN,
+  });
+  /* A token box already filled is left alone, whatever the address says. */
+  assert.deepEqual(splitUltraHandout(link, TOKEN), {
+    address: link,
+    token: TOKEN,
+  });
+  /* A bare address, a path that is not a token, or no URL at all pass
+   * through untouched for the server to judge. */
+  assert.deepEqual(splitUltraHandout('https://peer.tail9.ts.net', ''), {
+    address: 'https://peer.tail9.ts.net',
+    token: '',
+  });
+  assert.deepEqual(
+    splitUltraHandout('https://peer.tail9.ts.net/ultra/help/nope', ''),
+    { address: 'https://peer.tail9.ts.net/ultra/help/nope', token: '' },
+  );
+  assert.deepEqual(splitUltraHandout('not a url', ''), {
+    address: 'not a url',
+    token: '',
+  });
+  assert.deepEqual(splitUltraHandout(undefined, null), {
+    address: '',
+    token: '',
+  });
 });
