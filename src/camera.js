@@ -103,9 +103,12 @@ export function flyToStartupLocation(viewer, poi) {
   const headingRad = Cesium.Math.toRadians(poi.heading);
   const standBackM = poi.alt / Math.tan(Math.abs(pitchRad));
   const metresPerDegLat = 111320;
-  const cameraLat = poi.lat - (standBackM * Math.cos(headingRad)) / metresPerDegLat;
-  const cameraLon = poi.lon
-    - (standBackM * Math.sin(headingRad)) / (metresPerDegLat * Math.cos(Cesium.Math.toRadians(poi.lat)));
+  const cameraLat =
+    poi.lat - (standBackM * Math.cos(headingRad)) / metresPerDegLat;
+  const cameraLon =
+    poi.lon -
+    (standBackM * Math.sin(headingRad)) /
+      (metresPerDegLat * Math.cos(Cesium.Math.toRadians(poi.lat)));
 
   const timer = setTimeout(() => {
     if (viewer.isDestroyed()) return;

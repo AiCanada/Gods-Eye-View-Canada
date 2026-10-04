@@ -2,20 +2,13 @@ import {
   OVERPASS_MAX_RESPONSE_BYTES,
   OVERPASS_MIRROR_BACKOFF_BASE_MS,
   OVERPASS_MIRROR_BACKOFF_MAX_MS,
-  OVERPASS_UPSTREAMS,
+  OVERPASS_PUBLIC_MIRRORS,
+  resolveOverpassUpstreams,
   OVERPASS_USER_AGENT,
   OVERPASS_TIMEOUT_MS,
 } from './constants.js';
 import { readResponseTextCapped } from '../common/http.js';
 import { simplifyOverpassPayloadBody } from './geometry.js';
-
-/**
- * Per-mirror circuit breaker state shared by every Overpass caller in this
- * process: endpoint -> {failures, openUntil, probing}. A mirror with no entry is
- * healthy. Bounded by the mirror list.
- * @type {Map<string, {failures:number, openUntil:number, probing:boolean}>}
- */
-const _overpassMirrorHealth = new Map();
 
 /**
  * Statuses that describe the query rather than the mirror. A parse error or an
@@ -77,10 +70,52 @@ function overpassPayloadIsData(payload) {
   );
 }
 
+const cooldowns = new Map();
+
+/** A stable, non-retryable capability response shared by every Overpass route. */
+export function overpassNotConfigured() {
+  return {
+    status: 503,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      error: 'Detailed OpenStreetMap queries are not configured',
+      code: 'OVERPASS_NOT_CONFIGURED',
+      retryable: false,
+    }),
+  };
+}
+
+/** Honor Retry-After dates/seconds; absent values use bounded exponential backoff. */
+function retryDelay(value, failures, now) {
+  const seconds = Number(value);
+  const explicit =
+    value && Number.isFinite(seconds)
+      ? seconds * 1000
+      : Date.parse(value) - now;
+  return Number.isFinite(explicit)
+    ? Math.max(1000, explicit)
+    : Math.min(300_000, 30_000 * 2 ** Math.min(failures, 4));
+}
+
+function refusal(status, retryAfterMs) {
+  return {
+    status,
+    contentType: 'application/json',
+    rateLimited: status === 429 || status === 406,
+    retryAfterMs,
+    body: JSON.stringify({
+      error: 'Configured Overpass upstream unavailable',
+      code: 'OVERPASS_UNAVAILABLE',
+      retryable: true,
+      retryAfterMs,
+    }),
+  };
+}
+
 /**
- * Whether a mirror may be asked now. A mirror inside its skip window is not.
- * Once the window passes, exactly one caller probes it (half-open); others keep
- * skipping it until that probe settles, so a still-dead mirror costs one
+ * Whether an endpoint may be asked now. One inside its cooldown is not. Once
+ * the cooldown passes, exactly one caller probes it (half-open); others keep
+ * skipping it until that probe settles, so a still-dead endpoint costs one
  * timeout per window instead of one per concurrent query.
  * @param {Map<string, object>} health
  * @param {string} endpoint
@@ -90,190 +125,218 @@ function overpassPayloadIsData(payload) {
 function overpassMirrorAdmits(health, endpoint, now) {
   const entry = health.get(endpoint);
   if (!entry) return true;
-  if (now < entry.openUntil || entry.probing) return false;
+  if (now < entry.until || entry.probing) return false;
   entry.probing = true;
   return true;
 }
 
 /**
- * Take a mirror out of rotation for a window that starts at `baseMs` and
- * doubles per consecutive failure up to `maxMs`.
- * @returns {number} The skip window in ms.
+ * Put an endpoint in cooldown. Retry-After (seconds or HTTP date) is honoured;
+ * otherwise the window grows per consecutive failure: operator-configured
+ * instances use the bounded 30 s to 5 min backoff, public mirrors the measured
+ * OVERPASS_MIRROR_BACKOFF_BASE_MS to OVERPASS_MIRROR_BACKOFF_MAX_MS one.
+ * Concurrent queries that fail on the same outage step the backoff once.
+ * @returns {number} The cooldown in ms.
  */
-function tripOverpassMirror(health, endpoint, now, baseMs, maxMs, reason) {
+function coolDown(
+  health,
+  endpoint,
+  now,
+  { retryAfter = null, status, backoff },
+) {
   const current = health.get(endpoint);
-  // Concurrent queries admitted before the first failure landed report the
-  // same outage; one outage is one step of the backoff, not several.
-  if (current && now < current.openUntil) return current.openUntil - now;
+  if (current && now < current.until) return current.until - now;
   const failures = (current?.failures || 0) + 1;
-  const windowMs = Math.min(maxMs, baseMs * 2 ** (failures - 1));
-  health.set(endpoint, { failures, openUntil: now + windowMs, probing: false });
+  const delay =
+    OVERPASS_PUBLIC_MIRRORS.includes(endpoint) && !retryAfter
+      ? Math.min(
+          backoff.maxMs,
+          backoff.baseMs * 2 ** Math.min(failures - 1, 30),
+        )
+      : retryDelay(retryAfter, failures - 1, now);
+  health.set(endpoint, {
+    until: now + delay,
+    failures,
+    status,
+    probing: false,
+  });
+  while (health.size > 64) health.delete(health.keys().next().value);
+  // Host only: a configured endpoint may carry credentials or a token.
+  let host = 'a configured endpoint';
+  try {
+    host = new URL(endpoint).host;
+  } catch {
+    // keep the generic label
+  }
   console.warn(
-    `[Overpass Proxy] skipping ${endpoint} for ${Math.round(windowMs / 1000)} s after ${reason}`,
+    `[Overpass Proxy] skipping ${host} for ${Math.round(delay / 1000)} s after HTTP ${status}`,
   );
-  return windowMs;
+  return delay;
 }
 
-/** Forget every mirror's failures (tests, and a manual recovery hook). */
-function resetOverpassMirrorHealth(health = _overpassMirrorHealth) {
+/** Forget every endpoint's failures (tests, and a manual recovery hook). */
+function resetOverpassMirrorHealth(health = cooldowns) {
   health.clear();
 }
 
 /**
- * Current skip windows by endpoint, for diagnostics and tests.
+ * Current cooldowns by endpoint, for diagnostics and tests.
  * @returns {Object<string, {failures:number, openUntil:number}>}
  */
-function overpassMirrorHealthSnapshot(health = _overpassMirrorHealth) {
+function overpassMirrorHealthSnapshot(health = cooldowns) {
   return Object.fromEntries(
-    [...health].map(([endpoint, { failures, openUntil }]) => [
+    [...health].map(([endpoint, { failures, until }]) => [
       endpoint,
-      { failures, openUntil },
+      { failures, openUntil: until },
     ]),
   );
 }
 
+/** A query every endpoint refused as malformed or too large; not retryable. */
+function queryRefusal(status) {
+  return {
+    status,
+    contentType: 'application/json',
+    rateLimited: false,
+    body: JSON.stringify({
+      error: 'Overpass refused this query',
+      code: 'OVERPASS_QUERY_REFUSED',
+      retryable: false,
+    }),
+  };
+}
+
 /**
- * Try each admitted mirror once, retaining response-size and per-mirror timeout
- * caps. Refusals and body-level failures rotate; total failure returns the last
- * rate-limit payload, otherwise the first refusal, or throws a network error.
+ * Query only the configured chain with capped reads, timeouts and per-endpoint
+ * cooldowns (a circuit breaker with a single half-open probe). Explicit
+ * endpoint/I/O/breaker overrides are server-only test seams. Empty data is valid.
  *
- * Circuit breaker: a mirror that times out, cannot be reached, refuses the
- * proxy (any non-2xx other than a query-level 400/413/414) or rate-limits it
- * is skipped for OVERPASS_MIRROR_BACKOFF_BASE_MS, doubling per consecutive
- * failure up to OVERPASS_MIRROR_BACKOFF_MAX_MS. Any real answer resets it.
- * When every mirror is inside its window the call throws at once
- * (code OVERPASS_MIRRORS_BACKING_OFF) instead of waiting out four timeouts.
+ * An endpoint that times out, cannot be reached, refuses the proxy or
+ * rate-limits it is skipped for its cooldown. Answers about the query itself
+ * (a 400/413/414, a runtime-error remark or an oversized body) move on to the
+ * next endpoint but leave this one in rotation. Every failure returns a
+ * sanitized refusal (never an endpoint URL); this never throws.
  * @param {string} body URL-encoded Overpass QL query body.
  * @param {number} [maxResponseBytes] Endpoint-specific response cap.
- * @param {object} [options] Server-only endpoint, breaker and I/O overrides for tests.
- * @returns {Promise<{status:number,body:string,contentType:string,endpoint:string,rateLimited:boolean}>}
+ * @param {object} [options]
+ * @returns {Promise<{status:number,body:string,contentType:string,endpoint?:string,rateLimited:boolean,retryAfterMs?:number}>}
  */
 async function fetchOverpassPayload(
   body,
   maxResponseBytes = OVERPASS_MAX_RESPONSE_BYTES,
   {
-    endpoints = OVERPASS_UPSTREAMS,
+    endpoints = resolveOverpassUpstreams(),
     fetchImpl = fetch,
     readBody = readResponseTextCapped,
     simplify = simplifyOverpassPayloadBody,
-    mirrorHealth = _overpassMirrorHealth,
     now = Date.now,
+    mirrorHealth = cooldowns,
     backoffBaseMs = OVERPASS_MIRROR_BACKOFF_BASE_MS,
     backoffMaxMs = OVERPASS_MIRROR_BACKOFF_MAX_MS,
   } = {},
 ) {
-  let lastError = null;
-  let lastRateLimitPayload = null;
-  let lastRefusalPayload = null;
-  let skipped = 0;
-
+  if (!endpoints.length) return overpassNotConfigured();
+  const backoff = { baseMs: backoffBaseMs, maxMs: backoffMaxMs };
+  let failure = refusal(502, 30_000);
+  let queryRefused = null;
   for (const endpoint of endpoints) {
     if (!overpassMirrorAdmits(mirrorHealth, endpoint, now())) {
-      skipped += 1;
+      const previous = mirrorHealth.get(endpoint);
+      failure = refusal(
+        previous?.status || 502,
+        Math.max(1000, (previous?.until || 0) - now()),
+      );
       continue;
     }
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), OVERPASS_TIMEOUT_MS);
-    const trip = (reason) =>
-      tripOverpassMirror(
-        mirrorHealth,
-        endpoint,
-        now(),
-        backoffBaseMs,
-        backoffMaxMs,
-        reason,
-      );
-
     try {
-      const upstream = await fetchImpl(endpoint, {
+      const requestUrl = new URL(endpoint);
+      const authorization =
+        requestUrl.username || requestUrl.password
+          ? 'Basic ' +
+            Buffer.from(
+              `${decodeURIComponent(requestUrl.username)}:${decodeURIComponent(requestUrl.password)}`,
+            ).toString('base64')
+          : null;
+      requestUrl.username = '';
+      requestUrl.password = '';
+      const upstream = await fetchImpl(requestUrl.href, {
         method: 'POST',
+        redirect: 'error',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'User-Agent': OVERPASS_USER_AGENT,
+          ...(authorization ? { Authorization: authorization } : {}),
         },
         body,
         signal: controller.signal,
       });
-
       const responseBody = await readBody(upstream, maxResponseBytes);
-      const contentType =
-        upstream.headers.get('content-type') || 'application/json';
-      const status = upstream.status;
-      const rateLimited =
-        status === 429 || overpassLooksRateLimited(responseBody);
-      const runtimeError = overpassLooksRuntimeError(responseBody);
-      const payload = {
-        status,
-        body: responseBody,
-        contentType,
-        endpoint,
-        rateLimited,
-        runtimeError,
-      };
-
-      if (rateLimited) {
-        trip(`rate limiting (HTTP ${status})`);
-        lastRateLimitPayload = payload;
-        continue;
-      }
-      // A 200 body carrying a runtime error / timeout is a transient upstream
-      // failure — skip to the next mirror rather than returning or caching it.
-      // The mirror did answer, so it stays in rotation.
-      if (runtimeError) {
+      // The endpoint answered about this query, not about itself: try the
+      // next one, but keep this one in rotation.
+      if (OVERPASS_QUERY_REFUSAL_STATUSES.has(upstream.status)) {
         mirrorHealth.delete(endpoint);
-        lastError = new Error(`Overpass runtime error (${endpoint})`);
+        if (!queryRefused) queryRefused = queryRefusal(upstream.status);
         continue;
       }
-      // Anything but 2xx is this mirror declining, not an answer. Only 5xx used
-      // to rotate, so a 4xx ended the fan-out and was returned — and cached —
-      // as data: a mirror refusing this client answers 406 while the others
-      // answer 200 to the very same request, so every Overpass-backed layer
-      // failed on an error page with healthy mirrors untried. The first
-      // refusal is kept so a genuinely bad query still reports what upstream
-      // said, but only after every mirror has had the chance to answer it.
-      if (status < 200 || status >= 300) {
-        if (OVERPASS_QUERY_REFUSAL_STATUSES.has(status))
-          mirrorHealth.delete(endpoint);
-        else trip(`HTTP ${status}`);
-        if (!lastRefusalPayload) lastRefusalPayload = payload;
-        lastError = new Error(
-          `Overpass upstream returned ${status} (${endpoint})`,
-        );
+      const rateLimited =
+        upstream.status === 429 ||
+        upstream.status === 406 ||
+        overpassLooksRateLimited(responseBody);
+      const answered = upstream.status >= 200 && upstream.status < 300;
+      if (!rateLimited && answered && overpassLooksRuntimeError(responseBody)) {
+        // A 200 carrying a runtime error / timeout is transient for this
+        // query; the endpoint did answer, so it stays in rotation.
+        mirrorHealth.delete(endpoint);
         continue;
       }
-
-      // Success: decimate giant boundary geometry before it reaches the cache,
-      // the disk, or the client (what makes the 32 MB read cap safe to hold).
+      if (rateLimited || !answered) {
+        const status = rateLimited
+          ? upstream.status === 406
+            ? 406
+            : 429
+          : 502;
+        const delay = coolDown(mirrorHealth, endpoint, now(), {
+          retryAfter: upstream.headers?.get?.('retry-after') ?? null,
+          status,
+          backoff,
+        });
+        failure = refusal(status, delay);
+        continue;
+      }
+      const parsed = JSON.parse(responseBody);
+      if (!Array.isArray(parsed?.elements) || parsed.remark)
+        throw new Error('Malformed Overpass response');
       mirrorHealth.delete(endpoint);
-      payload.body = simplify(payload.body);
-      return payload;
+      return {
+        status: upstream.status,
+        body: simplify(responseBody),
+        contentType: 'application/json',
+        // Never retain a secret-bearing endpoint in cache or response metadata.
+        endpoint: 'configured',
+        rateLimited: false,
+      };
     } catch (error) {
-      lastError = error;
-      // An oversized body is about this query; the mirror itself answered.
-      if (error?.code === 'RESPONSE_TOO_LARGE') mirrorHealth.delete(endpoint);
-      else
-        trip(
-          controller.signal.aborted
-            ? `a ${OVERPASS_TIMEOUT_MS} ms timeout`
-            : error?.code || error?.name || 'a network error',
-        );
+      // An oversized body is about this query; the endpoint itself answered.
+      if (error?.code === 'RESPONSE_TOO_LARGE') {
+        mirrorHealth.delete(endpoint);
+        if (!queryRefused) queryRefused = queryRefusal(413);
+        continue;
+      }
+      const delay = coolDown(mirrorHealth, endpoint, now(), {
+        status: 502,
+        backoff,
+      });
+      failure = refusal(502, delay);
     } finally {
       clearTimeout(timeoutId);
       const entry = mirrorHealth.get(endpoint);
       if (entry) entry.probing = false;
     }
   }
-
-  if (lastRateLimitPayload) return lastRateLimitPayload;
-  if (lastRefusalPayload) return lastRefusalPayload;
-  if (lastError) throw lastError;
-  if (skipped > 0) {
-    throw Object.assign(
-      new Error('All Overpass mirrors are backing off after recent failures'),
-      { code: 'OVERPASS_MIRRORS_BACKING_OFF' },
-    );
-  }
-  throw new Error('All Overpass upstreams failed');
+  if (failure.rateLimited) return failure;
+  return queryRefused || failure;
 }
 
 export {

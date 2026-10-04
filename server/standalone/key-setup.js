@@ -11,7 +11,7 @@ import path from 'node:path';
 import { readEnvironmentSource as readPinokioEnvironmentSource } from '../../scripts/pinokio-environment.mjs';
 import fs from 'node:fs';
 import { parseEnv as parseDotenvText } from 'node:util';
-import { replaceCredentialStore } from '../../src/keySetupHardening.mjs';
+import { replaceCredentialStore } from './key-setup-hardening.mjs';
 
 /** Store-write failures whose messages are path-free and worth relaying. */
 const KEY_SETUP_HONEST_FAILURE_CODES = new Set([

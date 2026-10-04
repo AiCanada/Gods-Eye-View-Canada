@@ -1,3 +1,5 @@
+import { readShellSource } from './testSupport/readShellSource.mjs';
+import { expandApplicationHtml } from '../build/application-html.js';
 import { readStylesheet } from './testSupport/readStylesheet.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -276,10 +278,7 @@ test('minimum panel corridor expands upward without crossing the lower obstacle 
 });
 
 test('desktop panel lanes use per-panel allocations and presentation-only auto-collapse', () => {
-  const ui = readFileSync(
-    new URL('./ui/applicationShell.js', import.meta.url),
-    'utf8',
-  );
+  const ui = readShellSource();
   const css = readStylesheet(new URL('../style.css', import.meta.url));
   assert.doesNotMatch(ui, /_enforce(?:Left|Right)PanelAccordion/);
   // Owner ruling, 2026-09-27: every open box stays open on both rails; boxes
@@ -355,8 +354,8 @@ test('desktop panel lanes use per-panel allocations and presentation-only auto-c
   );
   assert.match(
     rightRail,
-    /panel !== displayPanel[\s\S]*?removeProperty\('--right-panel-allocated-height'\)[\s\S]*?const naturalHeight/,
-    'right intrinsic measurement must retain Display allocation while clearing other panel allocations',
+    /setAttribute\('data-rail-measuring', ''\)[\s\S]*?getBoundingClientRect\(\)\.height[\s\S]*?finally[\s\S]*?removeAttribute\('data-rail-measuring'\)/,
+    'right intrinsic measurement must neutralize allocations and always restore presentation',
   );
   assert.match(css, /var\(\s*--left-panel-allocated-height/);
   assert.match(css, /var\(\s*--right-panel-allocated-height/);
@@ -486,24 +485,18 @@ test('an open box floats over the HUD and is raised by clicking it', () => {
     );
   }
   assert.match(
-    readFileSync(new URL('./ui/applicationShell.js', import.meta.url), 'utf8'),
+    readShellSource(),
     /if \(!nextCollapsed\) this\._panelLayout\?\.raisePanel\?\.\(panelId\);/,
   );
 });
 
 test('share-panel state excludes responsive collapse and preserves recipient preferences', () => {
-  const ui = readFileSync(
-    new URL('./ui/applicationShell.js', import.meta.url),
-    'utf8',
-  );
-  const sharelink = readFileSync(
-    new URL('./sharelink.js', import.meta.url),
-    'utf8',
-  );
+  const ui = readShellSource();
+  const sharelink = readFileSync(new URL('./sharelink.js', import.meta.url), 'utf8');
 
   assert.match(
     ui,
-    /const collapsed = panelEl\.classList\.contains\('layout-auto-collapsed'\)\s*\? false\s*: panelEl\.classList\.contains\('collapsed'\);/,
+    /const collapsed =[\s\S]*?panelEl\.classList\.contains\('layout-auto-collapsed'\)[\s\S]*?panelEl\.classList\.contains\('cyber-accordion-collapsed'\)[\s\S]*?\? false\s*: panelEl\.classList\.contains\('collapsed'\);/,
     'responsive auto-collapse must serialize the explicit expanded preference',
   );
   assert.match(
@@ -524,24 +517,12 @@ test('share-panel state excludes responsive collapse and preserves recipient pre
 });
 
 test('parameterized Display presets keep one stable scroll owner', () => {
-  const ui = readFileSync(
-    new URL('./ui/applicationShell.js', import.meta.url),
-    'utf8',
-  );
+  const ui = readShellSource();
   const css = readStylesheet(new URL('../style.css', import.meta.url));
 
-  assert.match(
-    css,
-    /#pp-toggles:not\(\.collapsed\) > #param-slider-panel\.active\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?max-height:\s*none;[\s\S]*?overflow-y:\s*visible;/,
-  );
-  assert.match(
-    ui,
-    /readDisplayScrollTop: \(\) =>\s*this\._displayPortalScrollRestoreOwner === 'standard'[\s\S]*?this\._standardDisplayScrollTop[\s\S]*?this\._ppToggles\?\.scrollTop \|\| 0/,
-  );
-  assert.match(
-    rightRail,
-    /displayPanel\.scrollTop = Math\.min\(displayScrollTop, maxScrollTop\);/,
-  );
+  assert.match(css, /#pp-toggles:not\(\.collapsed\) > \.pp-panel-body > #param-slider-panel\.active\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?max-height:\s*none;[\s\S]*?overflow-y:\s*visible;/);
+  assert.match(ui, /readDisplayScrollTop: \(\) =>\s*this\._displayPortalScrollRestoreOwner === 'standard'[\s\S]*?this\._standardDisplayScrollTop[\s\S]*?displayPanelScroller\(this\._ppToggles\)\?\.scrollTop \|\| 0/);
+  assert.match(rightRail, /scroller\.scrollTop = Math\.min\(displayScrollTop, maxScrollTop\);/);
   assert.match(
     ui,
     /this\._sliderPanel\.classList\.remove\('active'\);\s*this\._scheduleRightPanelLayout\(\);/,
@@ -588,7 +569,7 @@ test('expanded left panels integrate their headers with the container shell', ()
 });
 
 test('Map Source uses five compact tiles in the bottom Visual Presets tray', () => {
-  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const html = expandApplicationHtml(readFileSync(new URL('../index.html', import.meta.url), 'utf8'));
   const css = readStylesheet(new URL('../style.css', import.meta.url));
 
   assert.doesNotMatch(html, /id="stack-panel"/);
@@ -604,7 +585,7 @@ test('Map Source uses five compact tiles in the bottom Visual Presets tray', () 
 });
 
 test('expanded right panels highlight the title divider without changing collapsed launchers', () => {
-  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const html = expandApplicationHtml(readFileSync(new URL('../index.html', import.meta.url), 'utf8'));
   const css = readStylesheet(new URL('../style.css', import.meta.url));
 
   assert.match(

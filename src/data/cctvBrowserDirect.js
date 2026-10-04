@@ -16,7 +16,10 @@ export const BROWSER_DIRECT_MIN_REFRESH_MS = 60 * 1000;
 
 /** Whether this camera's still must be loaded by the browser itself. */
 export function isBrowserDirect(camera) {
-  return typeof camera?.browserImageUrl === 'string' && /^https:\/\//i.test(camera.browserImageUrl);
+  return (
+    typeof camera?.browserImageUrl === 'string' &&
+    /^https:\/\//i.test(camera.browserImageUrl)
+  );
 }
 
 /**
@@ -30,7 +33,10 @@ export function isBrowserDirect(camera) {
  * @returns {string}
  */
 export function browserDirectFrameUrl(camera, refreshMs, now = Date.now()) {
-  const cadenceMs = Math.max(BROWSER_DIRECT_MIN_REFRESH_MS, Number(refreshMs) || 0);
+  const cadenceMs = Math.max(
+    BROWSER_DIRECT_MIN_REFRESH_MS,
+    Number(refreshMs) || 0,
+  );
   const tick = Math.floor(now / cadenceMs);
   const url = new URL(camera.browserImageUrl);
   url.searchParams.set('gev', String(tick));

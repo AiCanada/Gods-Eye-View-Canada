@@ -3,9 +3,14 @@ import path from 'node:path';
 import https from 'node:https';
 import net from 'node:net';
 import tls from 'node:tls';
-import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import {
+  createHash,
+  randomBytes,
+  randomInt,
+  timingSafeEqual,
+} from 'node:crypto';
 import { admitKeySetupRequest } from '../../src/keySetupCore.mjs';
-import { replaceCredentialStore } from '../../src/keySetupHardening.mjs';
+import { replaceCredentialStore } from '../shared/keySetupHardening.mjs';
 import {
   applyPrivateCameraUpdate,
   applyRelayPairing,
@@ -26,9 +31,16 @@ import {
   privateFrameTarget,
   relayMatchName,
 } from '../../src/privateCamerasCore.mjs';
-import { localRecordsTrusted, noteLocalCamerasSaved, vendorFeedPolicyParts } from '../../src/localIntegrity.mjs';
+import {
+  localRecordsTrusted,
+  noteLocalCamerasSaved,
+  vendorFeedPolicyParts,
+} from '../shared/localIntegrity.mjs';
 import { defaultSourceRoot } from './common/source-root.js';
-import { PRIVATE_CCTV_FEED_LOCAL_CONFIG, parsePrivateCctvFeedConfig } from '../../src/privateCctvFeedConfig.mjs';
+import {
+  PRIVATE_CCTV_FEED_LOCAL_CONFIG,
+  parsePrivateCctvFeedConfig,
+} from '../../src/privateCctvFeedConfig.mjs';
 
 /**
  * Private home and business security cameras — kept separate from the public
@@ -100,7 +112,11 @@ const BACKOFF_BASE_MS = 15000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
 /** Raster stills only: an SVG from a camera could carry script. */
 const RELAYED_IMAGE = /^image\/(jpeg|pjpeg|png|webp|gif)\b/i;
-const STORE_FAILURE_CODES = new Set(['GEV_HARDEN_FAILED', 'GEV_STORE_UNREADABLE', 'GEV_STORE_REPLACE_REFUSED']);
+const STORE_FAILURE_CODES = new Set([
+  'GEV_HARDEN_FAILED',
+  'GEV_STORE_UNREADABLE',
+  'GEV_STORE_REPLACE_REFUSED',
+]);
 /** Pairing requests one extension may make per minute. */
 const RELAY_PAIR_RATE_LIMIT = 10;
 const RELAY_PAIR_RATE_WINDOW_MS = 60 * 1000;
@@ -115,7 +131,12 @@ const RELAY_UNKNOWN_NAMES_MAX = 5;
  * long. A tab's own worse report (its page just signed out) counts at once.
  */
 const RELAY_HEARTBEAT_HOLD_MS = 150 * 1000;
-const RELAY_STATE_RANK = Object.freeze({ feed: 3, 'no-cards': 2, 'signed-out': 1, 'layout-unknown': 0 });
+const RELAY_STATE_RANK = Object.freeze({
+  feed: 3,
+  'no-cards': 2,
+  'signed-out': 1,
+  'layout-unknown': 0,
+});
 /** The opaque tag a heartbeat carries for the tab that sent it (never the tab itself). */
 const RELAY_REPORTER = /^[0-9a-f]{16}$/;
 const RELAY_EXTENSION_ORIGIN = /^chrome-extension:\/\/([a-p]{32})$/;
@@ -124,10 +145,17 @@ const RELAY_SECRET_HASH = /^[0-9a-f]{64}$/;
 /** Letters of a pairing code: no I, O, 0 or 1 to misread. */
 export const RELAY_PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const RELAY_PAIRING_CODE_LENGTH = 6;
-const RELAY_STATES = new Set(['feed', 'signed-out', 'no-cards', 'layout-unknown']);
+const RELAY_STATES = new Set([
+  'feed',
+  'signed-out',
+  'no-cards',
+  'layout-unknown',
+]);
 const RELAY_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const RELAY_CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PNG_SIGNATURE = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
 /** The relay extension's own routes, each with the one method it answers. */
 const RELAY_EXTENSION_ROUTES = new Map([
   ['/relay/pair-request', 'POST'],
@@ -147,8 +175,11 @@ export function parseDigestChallenge(header) {
     .slice(6)
     .split(/,\s*(?=(?:basic|bearer|negotiate|ntlm)\b)/i)[0];
   const fields = {};
-  for (const match of challenge.matchAll(/([a-z0-9_-]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^\s,]+))/gi)) {
-    fields[match[1].toLowerCase()] = match[2] !== undefined ? match[2].replace(/\\(.)/g, '$1') : match[3];
+  for (const match of challenge.matchAll(
+    /([a-z0-9_-]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^\s,]+))/gi,
+  )) {
+    fields[match[1].toLowerCase()] =
+      match[2] !== undefined ? match[2].replace(/\\(.)/g, '$1') : match[3];
   }
   return fields.nonce && fields.realm !== undefined ? fields : null;
 }
@@ -157,8 +188,18 @@ export function parseDigestChallenge(header) {
  * RFC 7616 / 2617 Digest `Authorization` header for a GET. MD5 unless the
  * camera asks for SHA-256; qop=auth when offered.
  */
-export function digestAuthorization({ method = 'GET', uri, username, password, challenge, cnonce, nc = '00000001' }) {
-  const algorithm = /sha-256/i.test(challenge.algorithm || '') ? 'SHA-256' : 'MD5';
+export function digestAuthorization({
+  method = 'GET',
+  uri,
+  username,
+  password,
+  challenge,
+  cnonce,
+  nc = '00000001',
+}) {
+  const algorithm = /sha-256/i.test(challenge.algorithm || '')
+    ? 'SHA-256'
+    : 'MD5';
   const hash = (value) =>
     createHash(algorithm === 'SHA-256' ? 'sha256' : 'md5')
       .update(value)
@@ -171,10 +212,20 @@ export function digestAuthorization({ method = 'GET', uri, username, password, c
     : '';
   const ha1 = hash(`${username}:${challenge.realm}:${password}`);
   const ha2 = hash(`${method}:${uri}`);
-  const response = qop ? hash(`${ha1}:${challenge.nonce}:${nc}:${cnonce}:${qop}:${ha2}`) : hash(`${ha1}:${challenge.nonce}:${ha2}`);
+  const response = qop
+    ? hash(`${ha1}:${challenge.nonce}:${nc}:${cnonce}:${qop}:${ha2}`)
+    : hash(`${ha1}:${challenge.nonce}:${ha2}`);
   const quote = (value) => `"${String(value).replace(/(["\\])/g, '\\$1')}"`;
-  const parts = [`username=${quote(username)}`, `realm=${quote(challenge.realm)}`, `nonce=${quote(challenge.nonce)}`, `uri=${quote(uri)}`, `response=${quote(response)}`, `algorithm=${algorithm}`];
-  if (challenge.opaque !== undefined) parts.push(`opaque=${quote(challenge.opaque)}`);
+  const parts = [
+    `username=${quote(username)}`,
+    `realm=${quote(challenge.realm)}`,
+    `nonce=${quote(challenge.nonce)}`,
+    `uri=${quote(uri)}`,
+    `response=${quote(response)}`,
+    `algorithm=${algorithm}`,
+  ];
+  if (challenge.opaque !== undefined)
+    parts.push(`opaque=${quote(challenge.opaque)}`);
   if (qop) parts.push(`qop=${qop}`, `nc=${nc}`, `cnonce=${quote(cnonce)}`);
   return `Digest ${parts.join(', ')}`;
 }
@@ -185,7 +236,15 @@ export function digestAuthorization({ method = 'GET', uri, username, password, c
  * is written. Works for self-signed bridge and NVR certificates, which is
  * exactly when pinning matters. Redirects are not followed.
  */
-export function pinnedFetch(url, { headers = {}, signal, fingerprint, maxBytes = PRIVATE_FRAME_MAX_BYTES } = {}) {
+export function pinnedFetch(
+  url,
+  {
+    headers = {},
+    signal,
+    fingerprint,
+    maxBytes = PRIVATE_FRAME_MAX_BYTES,
+  } = {},
+) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const expected = normalizeFingerprint(fingerprint);
@@ -205,12 +264,23 @@ export function pinnedFetch(url, { headers = {}, signal, fingerprint, maxBytes =
       socket.destroy();
       reject(error);
     };
-    signal?.addEventListener('abort', () => fail(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+    signal?.addEventListener(
+      'abort',
+      () => fail(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+      { once: true },
+    );
     socket.once('error', fail);
     socket.once('secureConnect', () => {
-      const presented = normalizeFingerprint(socket.getPeerCertificate()?.fingerprint256);
+      const presented = normalizeFingerprint(
+        socket.getPeerCertificate()?.fingerprint256,
+      );
       if (!expected || presented !== expected) {
-        fail(Object.assign(new Error('certificate does not match the pinned fingerprint'), { code: 'GEV_PIN_MISMATCH' }));
+        fail(
+          Object.assign(
+            new Error('certificate does not match the pinned fingerprint'),
+            { code: 'GEV_PIN_MISMATCH' },
+          ),
+        );
         return;
       }
       const request = https.request({
@@ -247,7 +317,9 @@ export function pinnedFetch(url, { headers = {}, signal, fingerprint, maxBytes =
             headers: {
               get: (name) => {
                 const value = response.headers[String(name).toLowerCase()];
-                return Array.isArray(value) ? value.join(', ') : (value ?? null);
+                return Array.isArray(value)
+                  ? value.join(', ')
+                  : (value ?? null);
               },
             },
             arrayBuffer: async () => body,
@@ -272,28 +344,50 @@ async function readCappedBytes(response, maxBytes) {
  */
 export async function fetchPrivateFrame(
   target,
-  { fetchImpl = fetch, pinnedFetchImpl = pinnedFetch, timeoutMs = PRIVATE_FRAME_TIMEOUT_MS, maxBytes = PRIVATE_FRAME_MAX_BYTES } = {},
+  {
+    fetchImpl = fetch,
+    pinnedFetchImpl = pinnedFetch,
+    timeoutMs = PRIVATE_FRAME_TIMEOUT_MS,
+    maxBytes = PRIVATE_FRAME_MAX_BYTES,
+  } = {},
 ) {
   if (!target?.url) return { ok: false, reason: 'not configured' };
   // Private_CCTV_Feed's website is a sign-in page, not a picture: it is never contacted or sent a login.
-  if (isPrivateCctvFeedCloudUrl(target.url)) return { ok: false, reason: 'private_cctv_feed needs a local bridge' };
+  if (isPrivateCctvFeedCloudUrl(target.url))
+    return { ok: false, reason: 'private_cctv_feed needs a local bridge' };
   const auth = target.auth || { type: 'none' };
   const transport = credentialTransport(target.url);
   if (transport === 'invalid') return { ok: false, reason: 'invalid address' };
-  if (auth.type !== 'none' && transport === 'insecure') return { ok: false, reason: 'plain http login refused' };
+  if (auth.type !== 'none' && transport === 'insecure')
+    return { ok: false, reason: 'plain http login refused' };
   const pinned = Boolean(target.tlsFingerprint) && transport === 'https';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const request = (authorization) => {
-    const headers = { 'User-Agent': USER_AGENT, Accept: 'image/jpeg, image/png, image/webp, image/gif', ...(authorization ? { Authorization: authorization } : {}) };
+    const headers = {
+      'User-Agent': USER_AGENT,
+      Accept: 'image/jpeg, image/png, image/webp, image/gif',
+      ...(authorization ? { Authorization: authorization } : {}),
+    };
     return pinned
-      ? pinnedFetchImpl(target.url, { headers, signal: controller.signal, fingerprint: target.tlsFingerprint, maxBytes })
-      : fetchImpl(target.url, { redirect: 'manual', signal: controller.signal, headers });
+      ? pinnedFetchImpl(target.url, {
+          headers,
+          signal: controller.signal,
+          fingerprint: target.tlsFingerprint,
+          maxBytes,
+        })
+      : fetchImpl(target.url, {
+          redirect: 'manual',
+          signal: controller.signal,
+          headers,
+        });
   };
   try {
     // A bearer token is the bridge's API credential and goes on the first
     // request; a password is sent only in answer to the camera's challenge.
-    let response = await request(auth.type === 'bearer' ? `Bearer ${auth.token}` : '');
+    let response = await request(
+      auth.type === 'bearer' ? `Bearer ${auth.token}` : '',
+    );
     if (response.status === 401 && auth.type === 'basic') {
       const header = response.headers.get('www-authenticate') || '';
       const digest = parseDigestChallenge(header);
@@ -309,19 +403,34 @@ export async function fetchPrivateFrame(
           }),
         );
       } else if (/(^|,\s*)basic\b/i.test(header)) {
-        response = await request(`Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString('base64')}`);
+        response = await request(
+          `Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString('base64')}`,
+        );
       }
     }
-    if (response.status === 401 || response.status === 403) return { ok: false, reason: 'login refused' };
-    if (response.status >= 300 && response.status < 400) return { ok: false, reason: 'redirect refused' };
-    if (!response.ok) return { ok: false, reason: `camera answered ${response.status}` };
+    if (response.status === 401 || response.status === 403)
+      return { ok: false, reason: 'login refused' };
+    if (response.status >= 300 && response.status < 400)
+      return { ok: false, reason: 'redirect refused' };
+    if (!response.ok)
+      return { ok: false, reason: `camera answered ${response.status}` };
     const contentType = response.headers.get('content-type') || '';
-    if (!RELAYED_IMAGE.test(contentType)) return { ok: false, reason: 'not a still image' };
+    if (!RELAYED_IMAGE.test(contentType))
+      return { ok: false, reason: 'not a still image' };
     const body = await readCappedBytes(response, maxBytes);
-    return body ? { ok: true, body, contentType } : { ok: false, reason: 'image too large' };
+    return body
+      ? { ok: true, body, contentType }
+      : { ok: false, reason: 'image too large' };
   } catch (error) {
-    if (error?.code === 'GEV_PIN_MISMATCH') return { ok: false, reason: 'certificate pin mismatch' };
-    return { ok: false, reason: error?.name === 'AbortError' ? 'camera timed out' : 'camera unreachable' };
+    if (error?.code === 'GEV_PIN_MISMATCH')
+      return { ok: false, reason: 'certificate pin mismatch' };
+    return {
+      ok: false,
+      reason:
+        error?.name === 'AbortError'
+          ? 'camera timed out'
+          : 'camera unreachable',
+    };
   } finally {
     clearTimeout(timer);
     controller.abort();
@@ -357,17 +466,34 @@ export function admitRelayRequest(req) {
     proxyHeaders: headers,
     env: process.env,
   });
-  if (!locality.ok) return { ok: false, status: locality.status, error: locality.error.replace('Provider Settings', 'The Private_CCTV_Feed relay') };
-  const refused = { ok: false, status: 403, error: 'The Private_CCTV_Feed relay answers only its browser extension' };
+  if (!locality.ok)
+    return {
+      ok: false,
+      status: locality.status,
+      error: locality.error.replace(
+        'Provider Settings',
+        'The Private_CCTV_Feed relay',
+      ),
+    };
+  const refused = {
+    ok: false,
+    status: 403,
+    error: 'The Private_CCTV_Feed relay answers only its browser extension',
+  };
   if (headers['sec-fetch-site'] !== 'none') return refused;
   const origin = headers.origin;
-  const match = typeof origin === 'string' ? RELAY_EXTENSION_ORIGIN.exec(origin) : null;
+  const match =
+    typeof origin === 'string' ? RELAY_EXTENSION_ORIGIN.exec(origin) : null;
   if (req.method === 'POST') {
     if (!match) return refused;
   } else if (req.method === 'GET') {
     if (origin !== undefined && !match) return refused;
   } else {
-    return { ok: false, status: 403, error: 'The Private_CCTV_Feed relay answers only GET and POST' };
+    return {
+      ok: false,
+      status: 403,
+      error: 'The Private_CCTV_Feed relay answers only GET and POST',
+    };
   }
   return { ok: true, extensionId: match ? match[1] : null };
 }
@@ -386,10 +512,14 @@ export function relayPairingCode(taken = [], random = randomInt) {
   const used = new Set(taken);
   for (let attempt = 0; attempt < 100; attempt += 1) {
     let code = '';
-    for (let index = 0; index < RELAY_PAIRING_CODE_LENGTH; index += 1) code += RELAY_PAIRING_CODE_ALPHABET[random(RELAY_PAIRING_CODE_ALPHABET.length)];
+    for (let index = 0; index < RELAY_PAIRING_CODE_LENGTH; index += 1)
+      code +=
+        RELAY_PAIRING_CODE_ALPHABET[random(RELAY_PAIRING_CODE_ALPHABET.length)];
     if (!used.has(code)) return code;
   }
-  throw Object.assign(new Error('no free pairing code'), { code: 'GEV_PAIRING_CODE' });
+  throw Object.assign(new Error('no free pairing code'), {
+    code: 'GEV_PAIRING_CODE',
+  });
 }
 
 /** The relay's pairing secret from `Authorization: Bearer …`, or ''. */
@@ -406,8 +536,12 @@ function sha256Digest(text) {
 
 /** Constant-time comparison of a presented SHA-256 digest with a stored hex hash. */
 function digestMatches(presented, storedHex) {
-  const valid = typeof storedHex === 'string' && RELAY_SECRET_HASH.test(storedHex);
-  const equal = timingSafeEqual(presented, valid ? Buffer.from(storedHex, 'hex') : Buffer.alloc(presented.length));
+  const valid =
+    typeof storedHex === 'string' && RELAY_SECRET_HASH.test(storedHex);
+  const equal = timingSafeEqual(
+    presented,
+    valid ? Buffer.from(storedHex, 'hex') : Buffer.alloc(presented.length),
+  );
   return valid && equal;
 }
 
@@ -420,14 +554,28 @@ function relayHeaderText(value, maxLength) {
   } catch {
     return null;
   }
-  return text.length > maxLength || RELAY_CONTROL_CHARS.test(text) ? null : text;
+  return text.length > maxLength || RELAY_CONTROL_CHARS.test(text)
+    ? null
+    : text;
 }
 
 /** The picture type a relay body really is, by its first bytes. */
 function sniffRelayImage(bytes) {
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
-  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(PNG_SIGNATURE)) return 'image/png';
-  if (bytes.length >= 12 && bytes.toString('latin1', 0, 4) === 'RIFF' && bytes.toString('latin1', 8, 12) === 'WEBP') return 'image/webp';
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  )
+    return 'image/jpeg';
+  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(PNG_SIGNATURE))
+    return 'image/png';
+  if (
+    bytes.length >= 12 &&
+    bytes.toString('latin1', 0, 4) === 'RIFF' &&
+    bytes.toString('latin1', 8, 12) === 'WEBP'
+  )
+    return 'image/webp';
   return '';
 }
 
@@ -444,7 +592,11 @@ function readCappedBody(req, limit) {
     const finish = (overflowed, complete) => {
       if (settled) return;
       settled = true;
-      resolve({ overflowed, complete, body: overflowed ? Buffer.alloc(0) : Buffer.concat(chunks) });
+      resolve({
+        overflowed,
+        complete,
+        body: overflowed ? Buffer.alloc(0) : Buffer.concat(chunks),
+      });
     };
     req.on('data', (chunk) => {
       if (settled) return;
@@ -483,14 +635,17 @@ const SECURITY_HEADERS = Object.freeze({
 
 /** One line under the reason saying what to do about it. */
 const OFFLINE_HINTS = Object.freeze({
-  'private_cctv_feed needs a local bridge': 'Choose Browser feed relay, or set up a local bridge, in POWER UP',
-  'feed relay not connected': 'Open your camera site feed with the GEV Private_CCTV_Feed Relay',
+  'private_cctv_feed needs a local bridge':
+    'Choose Browser feed relay, or set up a local bridge, in POWER UP',
+  'feed relay not connected':
+    'Open your camera site feed with the GEV Private_CCTV_Feed Relay',
   'feed relay not paired': 'Pair the GEV Private_CCTV_Feed Relay in POWER UP',
   'feed signed out': 'Sign in at your camera site to refresh pictures',
   'login refused': 'Check this site login in POWER UP',
   'not a still image': 'Use a JPEG snapshot address, not a web page',
   'not configured': 'Add this camera in POWER UP',
-  'picture on its way': 'The Private_CCTV_Feed feed shows a clip from this camera',
+  'picture on its way':
+    'The Private_CCTV_Feed feed shows a clip from this camera',
   'waiting for a clip': 'Shows the next motion clip from this camera',
 });
 
@@ -503,13 +658,15 @@ function clockTime(ms) {
 /** The placeholder still: camera name, reason, what to do about it and an optional detail line. */
 function offlineSvg(label, reason, detail = '') {
   const hint = OFFLINE_HINTS[reason] || '';
-  const escape = (value) => String(value).replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+  const escape = (value) =>
+    String(value).replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540"><rect width="960" height="540" fill="#071118"/><rect x="24" y="24" width="912" height="492" fill="none" stroke="#1f6f86" stroke-width="2"/><text x="480" y="250" fill="#8fe9ff" font-family="monospace" font-size="34" text-anchor="middle">${escape(label)}</text><text x="480" y="300" fill="#5f8f9c" font-family="monospace" font-size="22" text-anchor="middle">PRIVATE CAMERA · ${escape(String(reason).toUpperCase())}</text>${hint ? `<text x="480" y="345" fill="#d6ad62" font-family="monospace" font-size="18" text-anchor="middle">${escape(hint)}</text>` : ''}${detail ? `<text x="480" y="380" fill="#5f8f9c" font-family="monospace" font-size="18" text-anchor="middle">${escape(detail)}</text>` : ''}</svg>`;
 }
 
 /** Vite plugin for the private camera routes. */
 /** The credential store and its temporary files, however a URL spells or encodes the name. */
-const STORE_NAME_PATTERN = /private-cameras\.json|local-integrity\.(?:json|key)|social-accounts\.(?:json|key)/i;
+const STORE_NAME_PATTERN =
+  /private-cameras\.json|local-integrity\.(?:json|key)|social-accounts\.(?:json|key)/i;
 
 /**
  * Whether a request could reach the private camera store through the server's
@@ -521,7 +678,13 @@ const STORE_NAME_PATTERN = /private-cameras\.json|local-integrity\.(?:json|key)|
  * @param {string} rawUrl request URL (path and query)
  * @returns {boolean}
  */
-export function isPrivateStoreRequest(rawUrl, { sourceRoot = defaultSourceRoot, realpath = (file) => fs.realpathSync.native(file) } = {}) {
+export function isPrivateStoreRequest(
+  rawUrl,
+  {
+    sourceRoot = defaultSourceRoot,
+    realpath = (file) => fs.realpathSync.native(file),
+  } = {},
+) {
   const raw = String(rawUrl || '');
   let decoded = raw;
   try {
@@ -529,10 +692,13 @@ export function isPrivateStoreRequest(rawUrl, { sourceRoot = defaultSourceRoot, 
   } catch {
     // A malformed escape is checked as written.
   }
-  if (STORE_NAME_PATTERN.test(raw) || STORE_NAME_PATTERN.test(decoded)) return true;
+  if (STORE_NAME_PATTERN.test(raw) || STORE_NAME_PATTERN.test(decoded))
+    return true;
   const pathname = decoded.split(/[?#]/)[0].replace(/\\/g, '/');
   if (!pathname.includes('~')) return false;
-  const candidate = pathname.startsWith('/@fs/') ? pathname.slice('/@fs/'.length) : path.join(sourceRoot, pathname);
+  const candidate = pathname.startsWith('/@fs/')
+    ? pathname.slice('/@fs/'.length)
+    : path.join(sourceRoot, pathname);
   try {
     return STORE_NAME_PATTERN.test(path.basename(realpath(candidate)));
   } catch {
@@ -540,7 +706,11 @@ export function isPrivateStoreRequest(rawUrl, { sourceRoot = defaultSourceRoot, 
   }
 }
 
-export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl, pinnedFetchImpl } = {}) {
+export function privateCamerasProxy({
+  sourceRoot = defaultSourceRoot,
+  fetchImpl,
+  pinnedFetchImpl,
+} = {}) {
   // Which site the owner's feed lives on is local, untracked configuration.
   // It decides which hosts are never sent a saved login, so it is re-read when
   // the file changes (no restart needed) and a broken file is said out loud:
@@ -567,12 +737,16 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
       try {
         feedRaw = JSON.parse(fs.readFileSync(feedConfigPath, 'utf8'));
       } catch (error) {
-        console.warn(`[Private cameras] ${PRIVATE_CCTV_FEED_LOCAL_CONFIG} could not be read (${error?.message || error}). The vendor site is NOT recognised until it is fixed.`);
+        console.warn(
+          `[Private cameras] ${PRIVATE_CCTV_FEED_LOCAL_CONFIG} could not be read (${error?.message || error}). The vendor site is NOT recognised until it is fixed.`,
+        );
       }
     }
     const parsed = parsePrivateCctvFeedConfig(feedRaw);
     for (const problem of parsed.problems) {
-      console.warn(`[Private cameras] ${PRIVATE_CCTV_FEED_LOCAL_CONFIG}: ${problem}`);
+      console.warn(
+        `[Private cameras] ${PRIVATE_CCTV_FEED_LOCAL_CONFIG}: ${problem}`,
+      );
     }
     feedPolicy = vendorFeedPolicyParts(parsed);
     configurePrivateCctvFeed(parsed);
@@ -582,7 +756,10 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
   let cache = { mtimeMs: -1, size: -1, config: emptyPrivateCameraConfig() };
   const failures = new Map();
   const inflight = new Map();
-  const fetchOptions = { ...(fetchImpl ? { fetchImpl } : {}), ...(pinnedFetchImpl ? { pinnedFetchImpl } : {}) };
+  const fetchOptions = {
+    ...(fetchImpl ? { fetchImpl } : {}),
+    ...(pinnedFetchImpl ? { pinnedFetchImpl } : {}),
+  };
 
   // GEV Private_CCTV_Feed Relay state. Memory only: it is gone when the server stops.
   /** public camera id → { body, contentType, receivedAt, clip } */
@@ -608,13 +785,21 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     try {
       const { mtimeMs, size } = fs.statSync(storePath);
       if (mtimeMs !== cache.mtimeMs || size !== cache.size) {
-        cache = { mtimeMs, size, config: normalizePrivateCameraConfig(JSON.parse(fs.readFileSync(storePath, 'utf8'))) };
+        cache = {
+          mtimeMs,
+          size,
+          config: normalizePrivateCameraConfig(
+            JSON.parse(fs.readFileSync(storePath, 'utf8')),
+          ),
+        };
       }
       return cache.config;
     } catch (error) {
       if (error?.code === 'ENOENT') return emptyPrivateCameraConfig();
       if (strict) {
-        const unreadable = new Error('the saved camera configuration could not be read, so nothing was changed');
+        const unreadable = new Error(
+          'the saved camera configuration could not be read, so nothing was changed',
+        );
         unreadable.code = 'GEV_STORE_UNREADABLE';
         throw unreadable;
       }
@@ -629,15 +814,25 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     cache = { mtimeMs: -1, size: -1, config: emptyPrivateCameraConfig() };
     try {
       refreshFeedConfig();
-      noteLocalCamerasSaved(sourceRoot, privateCameraPolicyRecords(config), feedPolicy);
+      noteLocalCamerasSaved(
+        sourceRoot,
+        privateCameraPolicyRecords(config),
+        feedPolicy,
+      );
     } catch (error) {
-      console.warn(`[Private cameras] Camera check was not saved (${String(error?.code || 'error').slice(0, 40)})`);
+      console.warn(
+        `[Private cameras] Camera check was not saved (${String(error?.code || 'error').slice(0, 40)})`,
+      );
     }
   };
 
   const camerasTrusted = (config) => {
     try {
-      return localRecordsTrusted(sourceRoot, 'cameras', privateCameraPolicyRecords(config));
+      return localRecordsTrusted(
+        sourceRoot,
+        'cameras',
+        privateCameraPolicyRecords(config),
+      );
     } catch {
       return false;
     }
@@ -667,14 +862,16 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
   const relayRefuse = (req, res, status, payload) => {
     respondJson(res, status, payload, { Connection: 'close' });
     const drop = () => req.destroy?.();
-    if (typeof res.once === 'function' && !res.writableFinished) res.once('finish', drop);
+    if (typeof res.once === 'function' && !res.writableFinished)
+      res.once('finish', drop);
     else drop();
   };
 
   /** The unexpired pairing requests, newest first. */
   const pendingPairings = () => {
     const now = Date.now();
-    for (const [extensionId, pending] of relayPending) if (now >= pending.expiresAt) relayPending.delete(extensionId);
+    for (const [extensionId, pending] of relayPending)
+      if (now >= pending.expiresAt) relayPending.delete(extensionId);
     return [...relayPending.values()].sort((a, b) => b.expiresAt - a.expiresAt);
   };
 
@@ -686,7 +883,8 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     let found = null;
     for (const site of config.sites) {
       if (!isRelaySite(site) || !site.relayExtensionId) continue;
-      if (digestMatches(presented, site.relaySecretHash) && !found) found = site;
+      if (digestMatches(presented, site.relaySecretHash) && !found)
+        found = site;
     }
     return found;
   };
@@ -695,7 +893,8 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     relayHeartbeats.delete(siteId);
     relayUnknownNames.delete(siteId);
     const prefix = privateCameraPublicId(siteId, '');
-    for (const publicId of [...relayFrames.keys()]) if (publicId.startsWith(prefix)) relayFrames.delete(publicId);
+    for (const publicId of [...relayFrames.keys()])
+      if (publicId.startsWith(prefix)) relayFrames.delete(publicId);
   };
 
   /**
@@ -712,24 +911,35 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
         forgetRelaySite(site.id);
         continue;
       }
-      const matchNames = new Map(next.cameras.map((camera) => [camera.id, relayMatchName(camera)]));
+      const matchNames = new Map(
+        next.cameras.map((camera) => [camera.id, relayMatchName(camera)]),
+      );
       for (const camera of site.cameras) {
-        if (matchNames.get(camera.id) !== relayMatchName(camera)) relayFrames.delete(privateCameraPublicId(site.id, camera.id));
+        if (matchNames.get(camera.id) !== relayMatchName(camera))
+          relayFrames.delete(privateCameraPublicId(site.id, camera.id));
       }
     }
   };
 
   /** A site's Private_CCTV_Feed feed names that still match none of its cameras. */
   const unknownNamesFor = (site) => {
-    const matchNames = new Set(site.cameras.map((camera) => relayMatchName(camera)));
-    return (relayUnknownNames.get(site.id) || []).filter((name) => !matchNames.has(name));
+    const matchNames = new Set(
+      site.cameras.map((camera) => relayMatchName(camera)),
+    );
+    return (relayUnknownNames.get(site.id) || []).filter(
+      (name) => !matchNames.has(name),
+    );
   };
 
   /** Remember an unmatched Private_CCTV_Feed feed name: names that match a camera by now are dropped, and the newest five are kept. */
   const rememberUnknownName = (site, name) => {
     if (!name) return;
     const names = unknownNamesFor(site);
-    if (!names.includes(name) && !site.cameras.some((camera) => relayMatchName(camera) === name)) names.push(name);
+    if (
+      !names.includes(name) &&
+      !site.cameras.some((camera) => relayMatchName(camera) === name)
+    )
+      names.push(name);
     relayUnknownNames.set(site.id, names.slice(-RELAY_UNKNOWN_NAMES_MAX));
   };
 
@@ -739,25 +949,38 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     const now = Date.now();
     for (const kind of status.kinds) {
       for (const site of kind.sites) {
-        const saved = config.sites.find((candidate) => candidate.id === site.id);
+        const saved = config.sites.find(
+          (candidate) => candidate.id === site.id,
+        );
         if (!isRelaySite(saved) || !site.relay) continue;
         const heartbeat = relayHeartbeats.get(site.id);
         site.relay = {
           ...site.relay,
           state: heartbeat?.state ?? null,
           lastHeartbeatAt: heartbeat?.at ?? null,
-          connected: Boolean(heartbeat && now - heartbeat.at <= RELAY_HEARTBEAT_STALE_MS),
+          connected: Boolean(
+            heartbeat && now - heartbeat.at <= RELAY_HEARTBEAT_STALE_MS,
+          ),
           unknownNames: unknownNamesFor(saved),
         };
         for (const camera of site.cameras) {
-          const frame = relayFrames.get(privateCameraPublicId(site.id, camera.id));
+          const frame = relayFrames.get(
+            privateCameraPublicId(site.id, camera.id),
+          );
           camera.lastFrameAt = frame ? frame.receivedAt : null;
           camera.lastClip = frame ? frame.clip : '';
         }
       }
     }
     // Every waiting request, each with the extension that sent it: POWER UP approves one by code and extension id.
-    const relayPendingList = pendingPairings().map((pending) => ({ extensionId: pending.extensionId, code: pending.code, expiresInSeconds: Math.max(1, Math.ceil((pending.expiresAt - now) / 1000)) }));
+    const relayPendingList = pendingPairings().map((pending) => ({
+      extensionId: pending.extensionId,
+      code: pending.code,
+      expiresInSeconds: Math.max(
+        1,
+        Math.ceil((pending.expiresAt - now) / 1000),
+      ),
+    }));
     return { ...status, relayPending: relayPendingList };
   };
 
@@ -769,33 +992,84 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
    */
   const relayFrameFor = (publicId, target, site) => {
     const name = target.name;
-    if (!site?.relayExtensionId || !site.relaySecretHash) return { ok: false, reason: 'feed relay not paired', name };
+    if (!site?.relayExtensionId || !site.relaySecretHash)
+      return { ok: false, reason: 'feed relay not paired', name };
     const frame = relayFrames.get(publicId);
     const heartbeat = relayHeartbeats.get(target.siteId);
-    const lastHeard = Math.max(heartbeat ? heartbeat.at : -Infinity, frame ? frame.receivedAt : -Infinity);
+    const lastHeard = Math.max(
+      heartbeat ? heartbeat.at : -Infinity,
+      frame ? frame.receivedAt : -Infinity,
+    );
     const quiet = Date.now() - lastHeard > RELAY_HEARTBEAT_STALE_MS;
     const signedOut = heartbeat?.state === 'signed-out';
-    if (frame && !quiet && !signedOut) return { ok: true, body: frame.body, contentType: frame.contentType, name, relay: true };
-    const lastPicture = frame ? `Last clip picture arrived ${clockTime(frame.receivedAt)}` : '';
+    if (frame && !quiet && !signedOut)
+      return {
+        ok: true,
+        body: frame.body,
+        contentType: frame.contentType,
+        name,
+        relay: true,
+      };
+    const lastPicture = frame
+      ? `Last clip picture arrived ${clockTime(frame.receivedAt)}`
+      : '';
     // A signed-out report wins even once the relay goes quiet: signing in is what brings pictures back.
-    if (signedOut) return { ok: false, reason: 'feed signed out', name, detail: lastPicture };
-    if (quiet) return { ok: false, reason: 'feed relay not connected', name, detail: lastPicture };
-    if (heartbeat?.seen?.includes(target.matchName)) return { ok: false, reason: 'picture on its way', name };
-    const detail = unknownNamesFor(site).length ? 'Or set its Private_CCTV_Feed name in POWER UP if the feed calls it something else' : '';
+    if (signedOut)
+      return {
+        ok: false,
+        reason: 'feed signed out',
+        name,
+        detail: lastPicture,
+      };
+    if (quiet)
+      return {
+        ok: false,
+        reason: 'feed relay not connected',
+        name,
+        detail: lastPicture,
+      };
+    if (heartbeat?.seen?.includes(target.matchName))
+      return { ok: false, reason: 'picture on its way', name };
+    const detail = unknownNamesFor(site).length
+      ? 'Or set its Private_CCTV_Feed name in POWER UP if the feed calls it something else'
+      : '';
     return { ok: false, reason: 'waiting for a clip', name, detail };
   };
 
   const frameFor = (publicId) => {
     const config = readConfig();
     const target = privateFrameTarget(config, publicId);
-    if (!target) return Promise.resolve({ ok: false, reason: 'not configured', name: '' });
-    if (!camerasTrusted(config)) return Promise.resolve({ ok: false, reason: 'the camera was changed', name: target.name });
-    if (target.relay) return Promise.resolve(relayFrameFor(publicId, target, config.sites.find((site) => site.id === target.siteId)));
+    if (!target)
+      return Promise.resolve({ ok: false, reason: 'not configured', name: '' });
+    if (!camerasTrusted(config))
+      return Promise.resolve({
+        ok: false,
+        reason: 'the camera was changed',
+        name: target.name,
+      });
+    if (target.relay)
+      return Promise.resolve(
+        relayFrameFor(
+          publicId,
+          target,
+          config.sites.find((site) => site.id === target.siteId),
+        ),
+      );
     // The site file decides which hosts are never sent a login. A hand edit
     // stops the fetch; a paired relay does not use that file.
-    if (!vendorFeedTrusted()) return Promise.resolve({ ok: false, reason: 'the camera site was changed', name: target.name });
+    if (!vendorFeedTrusted())
+      return Promise.resolve({
+        ok: false,
+        reason: 'the camera site was changed',
+        name: target.name,
+      });
     const failure = failures.get(publicId);
-    if (failure && Date.now() < failure.until) return Promise.resolve({ ok: false, reason: failure.reason, name: target.name });
+    if (failure && Date.now() < failure.until)
+      return Promise.resolve({
+        ok: false,
+        reason: failure.reason,
+        name: target.name,
+      });
     // The panel, the projection and the map card can all ask at once: they
     // share one upstream fetch rather than hitting the camera three times.
     if (inflight.has(publicId)) return inflight.get(publicId);
@@ -805,7 +1079,13 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
           failures.delete(publicId);
         } else {
           const count = (failures.get(publicId)?.count || 0) + 1;
-          failures.set(publicId, { count, reason: result.reason, until: Date.now() + Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** (count - 1)) });
+          failures.set(publicId, {
+            count,
+            reason: result.reason,
+            until:
+              Date.now() +
+              Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** (count - 1)),
+          });
         }
         return { ...result, name: target.name };
       })
@@ -818,13 +1098,18 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
   const relayExtensionRoute = async (req, res, pathname) => {
     const refuse = (status, payload) => relayRefuse(req, res, status, payload);
     const admission = admitRelayRequest(req);
-    if (!admission.ok) return refuse(admission.status, { error: admission.error });
-    if (req.method !== RELAY_EXTENSION_ROUTES.get(pathname)) return refuse(405, { error: 'Method not allowed' });
+    if (!admission.ok)
+      return refuse(admission.status, { error: admission.error });
+    if (req.method !== RELAY_EXTENSION_ROUTES.get(pathname))
+      return refuse(405, { error: 'Method not allowed' });
     const headers = req.headers || {};
 
     const readRelayJson = async () => {
       const declared = headers['content-length'];
-      if (declared !== undefined && !(/^\d+$/.test(declared) && Number(declared) <= RELAY_JSON_MAX_BYTES)) {
+      if (
+        declared !== undefined &&
+        !(/^\d+$/.test(declared) && Number(declared) <= RELAY_JSON_MAX_BYTES)
+      ) {
         refuse(413, { error: 'Request too large' });
         return null;
       }
@@ -833,7 +1118,11 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
         respondJson(res, read.status, { error: read.error });
         return null;
       }
-      return read.value && typeof read.value === 'object' && !Array.isArray(read.value) ? read.value : {};
+      return read.value &&
+        typeof read.value === 'object' &&
+        !Array.isArray(read.value)
+        ? read.value
+        : {};
     };
 
     if (pathname === '/relay/pair-request') {
@@ -841,29 +1130,56 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
       const { extensionId } = admission;
       const now = Date.now();
       for (const [caller, times] of relayPairTimes) {
-        const recent = times.filter((at) => now - at < RELAY_PAIR_RATE_WINDOW_MS);
+        const recent = times.filter(
+          (at) => now - at < RELAY_PAIR_RATE_WINDOW_MS,
+        );
         if (recent.length) relayPairTimes.set(caller, recent);
         else relayPairTimes.delete(caller);
       }
       const times = relayPairTimes.get(extensionId) || [];
-      if (times.length >= RELAY_PAIR_RATE_LIMIT || (!times.length && relayPairTimes.size >= RELAY_PAIR_CALLERS_MAX)) {
-        return refuse(429, { error: 'Too many pairing requests — wait a minute and try again' });
+      if (
+        times.length >= RELAY_PAIR_RATE_LIMIT ||
+        (!times.length && relayPairTimes.size >= RELAY_PAIR_CALLERS_MAX)
+      ) {
+        return refuse(429, {
+          error: 'Too many pairing requests — wait a minute and try again',
+        });
       }
       relayPairTimes.set(extensionId, [...times, now]);
       const body = await readRelayJson();
       if (!body) return undefined;
-      if (typeof body.secretHash !== 'string' || !RELAY_SECRET_HASH.test(body.secretHash)) {
-        return respondJson(res, 400, { error: 'A pairing request needs a secretHash' });
+      if (
+        typeof body.secretHash !== 'string' ||
+        !RELAY_SECRET_HASH.test(body.secretHash)
+      ) {
+        return respondJson(res, 400, {
+          error: 'A pairing request needs a secretHash',
+        });
       }
       const waiting = pendingPairings();
-      if (!relayPending.has(extensionId) && waiting.length >= RELAY_PENDING_MAX) {
-        return respondJson(res, 429, { error: 'Too many pairing requests are waiting — approve one in POWER UP or wait two minutes' });
+      if (
+        !relayPending.has(extensionId) &&
+        waiting.length >= RELAY_PENDING_MAX
+      ) {
+        return respondJson(res, 429, {
+          error:
+            'Too many pairing requests are waiting — approve one in POWER UP or wait two minutes',
+        });
       }
       // The code is issued here, whatever the body says, and differs from every waiting
       // request's code (this extension's earlier one too), so no two requests ever show one code.
       const code = relayPairingCode(waiting.map((pending) => pending.code));
-      relayPending.set(extensionId, { extensionId, secretHash: body.secretHash, code, expiresAt: Date.now() + RELAY_PAIR_TTL_MS });
-      return respondJson(res, 202, { pending: true, code, expiresInSeconds: RELAY_PAIR_TTL_MS / 1000 });
+      relayPending.set(extensionId, {
+        extensionId,
+        secretHash: body.secretHash,
+        code,
+        expiresAt: Date.now() + RELAY_PAIR_TTL_MS,
+      });
+      return respondJson(res, 202, {
+        pending: true,
+        code,
+        expiresInSeconds: RELAY_PAIR_TTL_MS / 1000,
+      });
     }
 
     const secret = relayBearerSecret(headers);
@@ -874,46 +1190,81 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
       if (secret) {
         // Every waiting request is compared, with no early exit.
         const presented = sha256Digest(secret);
-        for (const pending of pendingPairings()) if (digestMatches(presented, pending.secretHash)) pendingMatch = true;
+        for (const pending of pendingPairings())
+          if (digestMatches(presented, pending.secretHash)) pendingMatch = true;
       }
-      if (site) return respondJson(res, 200, { paired: true, siteName: site.name, cameras: site.cameras.map((camera) => camera.name) });
-      if (pendingMatch) return respondJson(res, 200, { paired: false, pending: true });
+      if (site)
+        return respondJson(res, 200, {
+          paired: true,
+          siteName: site.name,
+          cameras: site.cameras.map((camera) => camera.name),
+        });
+      if (pendingMatch)
+        return respondJson(res, 200, { paired: false, pending: true });
       return respondJson(res, 401, { paired: false });
     }
 
     // Pictures and heartbeats: the paired secret, from the very extension that was approved.
     const site = pairedRelaySite(readConfig(), secret);
-    if (!site) return refuse(401, { error: 'The relay is not paired — pair it in POWER UP' });
-    if (admission.extensionId !== site.relayExtensionId) return refuse(403, { error: 'This extension is not the relay paired with this site' });
+    if (!site)
+      return refuse(401, {
+        error: 'The relay is not paired — pair it in POWER UP',
+      });
+    if (admission.extensionId !== site.relayExtensionId)
+      return refuse(403, {
+        error: 'This extension is not the relay paired with this site',
+      });
 
     if (pathname === '/relay/heartbeat') {
       const body = await readRelayJson();
       if (!body) return undefined;
       const { state, seen, reporter = '' } = body;
-      if (!RELAY_STATES.has(state) || !Array.isArray(seen) || seen.length > 20 || seen.some((name) => typeof name !== 'string' || name.length > 200)) {
+      if (
+        !RELAY_STATES.has(state) ||
+        !Array.isArray(seen) ||
+        seen.length > 20 ||
+        seen.some((name) => typeof name !== 'string' || name.length > 200)
+      ) {
         return respondJson(res, 400, { error: 'Heartbeat is not valid' });
       }
-      if (reporter !== '' && (typeof reporter !== 'string' || !RELAY_REPORTER.test(reporter))) return respondJson(res, 400, { error: 'Heartbeat is not valid' });
+      if (
+        reporter !== '' &&
+        (typeof reporter !== 'string' || !RELAY_REPORTER.test(reporter))
+      )
+        return respondJson(res, 400, { error: 'Heartbeat is not valid' });
       const now = Date.now();
-      const names = [...new Set(seen.map((name) => normalizeRelayCameraName(name)).filter(Boolean))];
+      const names = [
+        ...new Set(
+          seen.map((name) => normalizeRelayCameraName(name)).filter(Boolean),
+        ),
+      ];
       const previous = relayHeartbeats.get(site.id);
       // A leftover sign-in tab does not override another tab that is reading the feed, but the
       // tab that sent the better report is believed at once when its own page gets worse (Private_CCTV_Feed
       // signed it out): only a report from the very same tab tag replaces it inside the hold.
       const sameReporter = Boolean(reporter) && previous?.reporter === reporter;
-      const outranked = previous && !sameReporter && now - previous.at < RELAY_HEARTBEAT_HOLD_MS && RELAY_STATE_RANK[previous.state] > RELAY_STATE_RANK[state];
-      if (!outranked) relayHeartbeats.set(site.id, { state, seen: names, at: now, reporter });
+      const outranked =
+        previous &&
+        !sameReporter &&
+        now - previous.at < RELAY_HEARTBEAT_HOLD_MS &&
+        RELAY_STATE_RANK[previous.state] > RELAY_STATE_RANK[state];
+      if (!outranked)
+        relayHeartbeats.set(site.id, { state, seen: names, at: now, reporter });
       // Tell the relay which of the cameras it sees have no picture here (after a restart,
       // an approval or a config change) and which feed names match no camera, so it
       // downloads a thumbnail only when this server will take it.
       const missing = [];
       const unknown = [];
       for (const name of names) {
-        const camera = site.cameras.find((candidate) => relayMatchName(candidate) === name);
+        const camera = site.cameras.find(
+          (candidate) => relayMatchName(candidate) === name,
+        );
         if (!camera) {
           unknown.push(name);
           rememberUnknownName(site, name);
-        } else if (!relayFrames.has(privateCameraPublicId(site.id, camera.id))) {
+        } else if (
+          !relayFrames.has(privateCameraPublicId(site.id, camera.id))
+        ) {
           missing.push(name);
         }
       }
@@ -922,22 +1273,42 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
 
     // POST /relay/frame — every header is checked before a single body byte is read.
     const camera = relayHeaderText(headers['x-private-cctv-feed-camera'], 200);
-    if (camera === null || !normalizeRelayCameraName(camera)) return refuse(400, { error: 'X-Private-Cctv-Feed-Camera must name the camera' });
-    const clip = headers['x-private-cctv-feed-clip'] === undefined ? '' : relayHeaderText(headers['x-private-cctv-feed-clip'], 80);
-    if (clip === null) return refuse(400, { error: 'X-Private-Cctv-Feed-Clip is not valid' });
+    if (camera === null || !normalizeRelayCameraName(camera))
+      return refuse(400, {
+        error: 'X-Private-Cctv-Feed-Camera must name the camera',
+      });
+    const clip =
+      headers['x-private-cctv-feed-clip'] === undefined
+        ? ''
+        : relayHeaderText(headers['x-private-cctv-feed-clip'], 80);
+    if (clip === null)
+      return refuse(400, { error: 'X-Private-Cctv-Feed-Clip is not valid' });
     const contentType = headers['content-type'];
-    if (!RELAY_IMAGE_TYPES.has(contentType)) return refuse(415, { error: 'Only JPEG, PNG or WebP pictures are accepted' });
+    if (!RELAY_IMAGE_TYPES.has(contentType))
+      return refuse(415, {
+        error: 'Only JPEG, PNG or WebP pictures are accepted',
+      });
     const length = headers['content-length'];
-    if (length === undefined || headers['transfer-encoding'] !== undefined) return refuse(411, { error: 'Content-Length is required' });
-    if (!/^\d+$/.test(length)) return refuse(400, { error: 'Content-Length is not valid' });
+    if (length === undefined || headers['transfer-encoding'] !== undefined)
+      return refuse(411, { error: 'Content-Length is required' });
+    if (!/^\d+$/.test(length))
+      return refuse(400, { error: 'Content-Length is not valid' });
     const declared = Number(length);
-    if (declared > RELAY_FRAME_MAX_BYTES) return refuse(413, { error: 'Picture too large' });
+    if (declared > RELAY_FRAME_MAX_BYTES)
+      return refuse(413, { error: 'Picture too large' });
     const read = await readCappedBody(req, RELAY_FRAME_MAX_BYTES);
-    if (read.overflowed) return respondJson(res, 413, { error: 'Picture too large' });
-    if (!read.complete || read.body.length !== declared) return respondJson(res, 400, { error: 'Picture was cut short' });
-    if (sniffRelayImage(read.body) !== contentType) return respondJson(res, 415, { error: 'Picture bytes do not match its Content-Type' });
+    if (read.overflowed)
+      return respondJson(res, 413, { error: 'Picture too large' });
+    if (!read.complete || read.body.length !== declared)
+      return respondJson(res, 400, { error: 'Picture was cut short' });
+    if (sniffRelayImage(read.body) !== contentType)
+      return respondJson(res, 415, {
+        error: 'Picture bytes do not match its Content-Type',
+      });
     const name = normalizeRelayCameraName(camera);
-    const match = site.cameras.find((candidate) => relayMatchName(candidate) === name);
+    const match = site.cameras.find(
+      (candidate) => relayMatchName(candidate) === name,
+    );
     if (!match) {
       rememberUnknownName(site, name);
       return respondJson(res, 404, { error: 'Unknown camera name' });
@@ -945,8 +1316,16 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     const publicId = privateCameraPublicId(site.id, match.id);
     const now = Date.now();
     const previous = relayFrames.get(publicId);
-    if (previous && now - previous.receivedAt < RELAY_MIN_FRAME_INTERVAL_MS) return respondJson(res, 429, { error: 'Pictures of one camera are accepted at most every 2 seconds' });
-    relayFrames.set(publicId, { body: read.body, contentType, receivedAt: now, clip });
+    if (previous && now - previous.receivedAt < RELAY_MIN_FRAME_INTERVAL_MS)
+      return respondJson(res, 429, {
+        error: 'Pictures of one camera are accepted at most every 2 seconds',
+      });
+    relayFrames.set(publicId, {
+      body: read.body,
+      contentType,
+      receivedAt: now,
+      clip,
+    });
     res.writeHead(204, { ...SECURITY_HEADERS });
     return res.end();
   };
@@ -956,7 +1335,10 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
     // file this server hands out, whatever the spelling of the request.
     server.middlewares.use((req, res, next) => {
       if (!isPrivateStoreRequest(req.url, { sourceRoot })) return next();
-      res.writeHead(404, { ...SECURITY_HEADERS, 'Content-Type': 'text/plain; charset=utf-8' });
+      res.writeHead(404, {
+        ...SECURITY_HEADERS,
+        'Content-Type': 'text/plain; charset=utf-8',
+      });
       return res.end('Not found');
     });
     server.middlewares.use('/api/private-cams', async (req, res) => {
@@ -967,12 +1349,19 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
         return respondJson(res, 400, { error: 'Bad request' });
       }
       // No relay route answers a CORS preflight, and no route ever sends CORS headers.
-      if (url.pathname.startsWith('/relay/') && req.method === 'OPTIONS') return relayRefuse(req, res, 403, { error: 'The Private_CCTV_Feed relay does not answer preflight requests' });
+      if (url.pathname.startsWith('/relay/') && req.method === 'OPTIONS')
+        return relayRefuse(req, res, 403, {
+          error:
+            'The Private_CCTV_Feed relay does not answer preflight requests',
+        });
       if (RELAY_EXTENSION_ROUTES.has(url.pathname)) {
         try {
           return await relayExtensionRoute(req, res, url.pathname);
         } catch (error) {
-          console.warn('[PrivateCameras] relay request failed:', error?.code || error?.name || 'error');
+          console.warn(
+            '[PrivateCameras] relay request failed:',
+            error?.code || error?.name || 'error',
+          );
           return respondJson(res, 500, { error: 'Private camera error' });
         }
       }
@@ -986,65 +1375,137 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
         proxyHeaders: req.headers || {},
         env: process.env,
       });
-      if (!admission.ok) return respondJson(res, admission.status, { error: admission.error.replace('Provider Settings', 'Private cameras') });
-      if (!privateFetchSiteAllowed(req.headers)) return respondJson(res, 403, { error: 'Private cameras refuse cross-site requests' });
+      if (!admission.ok)
+        return respondJson(res, admission.status, {
+          error: admission.error.replace(
+            'Provider Settings',
+            'Private cameras',
+          ),
+        });
+      if (!privateFetchSiteAllowed(req.headers))
+        return respondJson(res, 403, {
+          error: 'Private cameras refuse cross-site requests',
+        });
       try {
         if (url.pathname === '/status' && req.method === 'GET') {
-          return respondJson(res, 200, { ...statusFor(readConfig()), editable: allowEdit });
+          return respondJson(res, 200, {
+            ...statusFor(readConfig()),
+            editable: allowEdit,
+          });
         }
         if (url.pathname === '/sources' && req.method === 'GET') {
-          return respondJson(res, 200, { sources: privateCameraSources(readConfig()) });
+          return respondJson(res, 200, {
+            sources: privateCameraSources(readConfig()),
+          });
         }
         if (url.pathname === '/config' && req.method === 'POST') {
-          if (!allowEdit) return respondJson(res, 403, { error: 'Private cameras can only be edited under the dev server' });
+          if (!allowEdit)
+            return respondJson(res, 403, {
+              error: 'Private cameras can only be edited under the dev server',
+            });
           const read = await readJsonBody(req, CONFIG_BODY_LIMIT);
-          if (!read.ok) return respondJson(res, read.status, { error: read.error });
+          if (!read.ok)
+            return respondJson(res, read.status, { error: read.error });
           const previous = readConfig({ strict: true });
           const verdict = applyPrivateCameraUpdate(read.value, previous);
-          if (!verdict.ok) return respondJson(res, 400, { error: verdict.error });
+          if (!verdict.ok)
+            return respondJson(res, 400, { error: verdict.error });
           saveConfig(verdict.config);
           failures.clear();
           forgetRelayChanges(previous, verdict.config);
-          return respondJson(res, 200, { ok: true, siteId: verdict.siteId, status: statusFor(verdict.config) });
+          return respondJson(res, 200, {
+            ok: true,
+            siteId: verdict.siteId,
+            status: statusFor(verdict.config),
+          });
         }
         if (url.pathname === '/position' && req.method === 'POST') {
           // Dragging a camera icon on the map pins that one camera to the new spot.
-          if (!allowEdit) return respondJson(res, 403, { error: 'Private cameras can only be moved under the dev server' });
+          if (!allowEdit)
+            return respondJson(res, 403, {
+              error: 'Private cameras can only be moved under the dev server',
+            });
           const read = await readJsonBody(req, 4096);
-          if (!read.ok) return respondJson(res, read.status, { error: read.error });
+          if (!read.ok)
+            return respondJson(res, read.status, { error: read.error });
           const parsed = read.value;
-          const verdict = movePrivateCamera(readConfig({ strict: true }), parsed?.id, parsed?.lat, parsed?.lon);
-          if (!verdict.ok) return respondJson(res, 400, { error: verdict.error });
+          const verdict = movePrivateCamera(
+            readConfig({ strict: true }),
+            parsed?.id,
+            parsed?.lat,
+            parsed?.lon,
+          );
+          if (!verdict.ok)
+            return respondJson(res, 400, { error: verdict.error });
           saveConfig(verdict.config);
           return respondJson(res, 200, { ok: true });
         }
         if (url.pathname === '/relay/approve' && req.method === 'POST') {
           // POWER UP approves one waiting pairing request for one relay site: the one
           // from the extension id and with the code the user compared, and no other.
-          if (!allowEdit) return respondJson(res, 403, { error: 'The Private_CCTV_Feed relay can only be paired under the dev server' });
+          if (!allowEdit)
+            return respondJson(res, 403, {
+              error:
+                'The Private_CCTV_Feed relay can only be paired under the dev server',
+            });
           const read = await readJsonBody(req, RELAY_JSON_MAX_BYTES);
-          if (!read.ok) return respondJson(res, read.status, { error: read.error });
-          const again = 'press PAIR WITH GODS EYE VIEW on the relay options page again';
-          if (!pendingPairings().length) return respondJson(res, 409, { error: `No pairing request is waiting — ${again}` });
-          const { siteId, code, extensionId } = read.value && typeof read.value === 'object' ? read.value : {};
-          const pending = typeof extensionId === 'string' ? relayPending.get(extensionId) : undefined;
-          if (!pending) return respondJson(res, 409, { error: `No pairing request from that extension is waiting — ${again}` });
-          if (typeof code !== 'string' || code !== pending.code) return respondJson(res, 409, { error: 'That code does not match the waiting pairing request' });
-          const verdict = applyRelayPairing(readConfig({ strict: true }), siteId, { extensionId: pending.extensionId, secretHash: pending.secretHash });
-          if (!verdict.ok) return respondJson(res, 400, { error: verdict.error });
+          if (!read.ok)
+            return respondJson(res, read.status, { error: read.error });
+          const again =
+            'press PAIR WITH GODS EYE VIEW on the relay options page again';
+          if (!pendingPairings().length)
+            return respondJson(res, 409, {
+              error: `No pairing request is waiting — ${again}`,
+            });
+          const { siteId, code, extensionId } =
+            read.value && typeof read.value === 'object' ? read.value : {};
+          const pending =
+            typeof extensionId === 'string'
+              ? relayPending.get(extensionId)
+              : undefined;
+          if (!pending)
+            return respondJson(res, 409, {
+              error: `No pairing request from that extension is waiting — ${again}`,
+            });
+          if (typeof code !== 'string' || code !== pending.code)
+            return respondJson(res, 409, {
+              error: 'That code does not match the waiting pairing request',
+            });
+          const verdict = applyRelayPairing(
+            readConfig({ strict: true }),
+            siteId,
+            {
+              extensionId: pending.extensionId,
+              secretHash: pending.secretHash,
+            },
+          );
+          if (!verdict.ok)
+            return respondJson(res, 400, { error: verdict.error });
           saveConfig(verdict.config);
           // Anything else still waiting has to ask again.
           relayPending.clear();
           forgetRelaySite(siteId);
-          return respondJson(res, 200, { ok: true, extensionId: pending.extensionId });
+          return respondJson(res, 200, {
+            ok: true,
+            extensionId: pending.extensionId,
+          });
         }
         if (url.pathname === '/relay/unpair' && req.method === 'POST') {
-          if (!allowEdit) return respondJson(res, 403, { error: 'The Private_CCTV_Feed relay can only be unpaired under the dev server' });
+          if (!allowEdit)
+            return respondJson(res, 403, {
+              error:
+                'The Private_CCTV_Feed relay can only be unpaired under the dev server',
+            });
           const read = await readJsonBody(req, RELAY_JSON_MAX_BYTES);
-          if (!read.ok) return respondJson(res, read.status, { error: read.error });
+          if (!read.ok)
+            return respondJson(res, read.status, { error: read.error });
           const siteId = read.value?.siteId;
-          const verdict = clearRelayPairing(readConfig({ strict: true }), siteId);
-          if (!verdict.ok) return respondJson(res, 400, { error: verdict.error });
+          const verdict = clearRelayPairing(
+            readConfig({ strict: true }),
+            siteId,
+          );
+          if (!verdict.ok)
+            return respondJson(res, 400, { error: verdict.error });
           saveConfig(verdict.config);
           forgetRelaySite(siteId);
           return respondJson(res, 200, { ok: true });
@@ -1058,21 +1519,39 @@ export function privateCamerasProxy({ sourceRoot = defaultSourceRoot, fetchImpl,
           }
           const result = await frameFor(publicId);
           if (result.ok) {
-            res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': result.contentType, 'X-Private-Camera': result.relay ? 'relay' : 'live' });
+            res.writeHead(200, {
+              ...SECURITY_HEADERS,
+              'Content-Type': result.contentType,
+              'X-Private-Camera': result.relay ? 'relay' : 'live',
+            });
             return res.end(result.body);
           }
           res.writeHead(200, {
             ...SECURITY_HEADERS,
             'Content-Type': 'image/svg+xml',
-            'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+            'Content-Security-Policy':
+              "default-src 'none'; style-src 'unsafe-inline'",
             'X-Private-Camera': 'offline',
           });
-          return res.end(offlineSvg(result.name || 'PRIVATE CAMERA', result.reason, result.detail));
+          return res.end(
+            offlineSvg(
+              result.name || 'PRIVATE CAMERA',
+              result.reason,
+              result.detail,
+            ),
+          );
         }
         return respondJson(res, 404, { error: 'not found' });
       } catch (error) {
-        console.warn('[PrivateCameras] request failed:', error?.code || error?.name || 'error');
-        return respondJson(res, 500, { error: STORE_FAILURE_CODES.has(error?.code) ? `Not saved: ${error.message}` : 'Private camera error' });
+        console.warn(
+          '[PrivateCameras] request failed:',
+          error?.code || error?.name || 'error',
+        );
+        return respondJson(res, 500, {
+          error: STORE_FAILURE_CODES.has(error?.code)
+            ? `Not saved: ${error.message}`
+            : 'Private camera error',
+        });
       }
     });
   };

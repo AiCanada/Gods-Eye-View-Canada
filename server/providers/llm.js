@@ -1,10 +1,7 @@
 import { resolvedAllowedHosts } from './common/allowed-hosts.js';
 import { clientKey, makeRateLimiter } from './common/rate-limit.js';
 import { readRequestBody } from './common/request.js';
-import {
-  enforceOptInRateLimit,
-  openAiRateLimiter,
-} from './openai/rate-limit.js';
+import { enforceRateLimit, openAiRateLimiter } from './openai/rate-limit.js';
 import {
   LLM_ASK_MAX_BODY_BYTES,
   admitLlmRequestFrom,
@@ -69,7 +66,7 @@ async function handleLlmAsk(req, res, { allowedHosts, allow } = {}) {
       { 'Retry-After': '30' },
     );
   }
-  if (!enforceOptInRateLimit(openAiRateLimiter(), req, res)) return;
+  if (!enforceRateLimit(openAiRateLimiter(), req, res)) return;
 
   const call = buildLlmAskCall(
     provider,

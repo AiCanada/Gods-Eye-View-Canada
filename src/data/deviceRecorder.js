@@ -1,4 +1,8 @@
-import { DEVICE_RECORD_RADIUS_KM, deviceDistanceKm, recordRadiusKm } from '../deviceFeedsCore.mjs';
+import {
+  DEVICE_RECORD_RADIUS_KM,
+  deviceDistanceKm,
+  recordRadiusKm,
+} from '../deviceFeedsCore.mjs';
 
 /**
  * Saving what the map knows around a recording device (an Ultra Security
@@ -36,14 +40,21 @@ const finite = (value) => typeof value === 'number' && Number.isFinite(value);
  * @param {string[]} [options.skip] Layer ids left out (the device's own layer is the target, not its surroundings).
  * @returns {Record<string, object[]>}
  */
-export function collectNearbyRecords(dataManager, center, { km = DEVICE_RECORD_RADIUS_KM, toLatLon = null, skip = [] } = {}) {
+export function collectNearbyRecords(
+  dataManager,
+  center,
+  { km = DEVICE_RECORD_RADIUS_KM, toLatLon = null, skip = [] } = {},
+) {
   const out = {};
-  if (!dataManager?.layers || !finite(center?.lat) || !finite(center?.lon)) return out;
+  if (!dataManager?.layers || !finite(center?.lat) || !finite(center?.lon))
+    return out;
   for (const [layerId, entry] of dataManager.layers) {
     if (skip.includes(layerId)) continue;
     let enabled = false;
     try {
-      enabled = dataManager.isEnabled ? dataManager.isEnabled(layerId) : entry?.enabled === true;
+      enabled = dataManager.isEnabled
+        ? dataManager.isEnabled(layerId)
+        : entry?.enabled === true;
     } catch {
       enabled = false;
     }
@@ -53,11 +64,19 @@ export function collectNearbyRecords(dataManager, center, { km = DEVICE_RECORD_R
     try {
       if (typeof module?.getAnalystRecords === 'function') {
         records = module.getAnalystRecords(Number.MAX_SAFE_INTEGER) || [];
-      } else if (typeof module?.getDetectableObjects === 'function' && toLatLon) {
+      } else if (
+        typeof module?.getDetectableObjects === 'function' &&
+        toLatLon
+      ) {
         records = (module.getDetectableObjects({}) || []).map((mark) => {
           const point = toLatLon(mark?.position);
           if (!point) return null;
-          return { id: String(mark.sourceId ?? mark.id ?? ''), type: mark.type ?? null, label: mark.label ?? mark.name ?? null, ...point };
+          return {
+            id: String(mark.sourceId ?? mark.id ?? ''),
+            type: mark.type ?? null,
+            label: mark.label ?? mark.name ?? null,
+            ...point,
+          };
         });
       }
     } catch {
@@ -97,7 +116,8 @@ export function changedRecordsOnly(layers, memory) {
     });
     if (changed.length) out[layerId] = changed;
   }
-  for (const key of [...memory.keys()]) if (!present.has(key)) memory.delete(key);
+  for (const key of [...memory.keys()])
+    if (!present.has(key)) memory.delete(key);
   return out;
 }
 
@@ -105,14 +125,25 @@ export function changedRecordsOnly(layers, memory) {
  * The recorder the device layer drives once per poll.
  * @returns {{tick: (devices: object[], dataManager: object, options?: object) => Promise<object[]>, forget: (id?: string) => void, stats: () => object}}
  */
-export function createDeviceRecorder({ fetchImpl = (...args) => fetch(...args), now = () => Date.now(), intervalMs = DEVICE_RECORD_INTERVAL_MS } = {}) {
+export function createDeviceRecorder({
+  fetchImpl = (...args) => fetch(...args),
+  now = () => Date.now(),
+  intervalMs = DEVICE_RECORD_INTERVAL_MS,
+} = {}) {
   /** device id -> {memory, nextAt, pending, saved, lastAt, error} */
   const states = new Map();
 
   const stateOf = (id) => {
     let state = states.get(id);
     if (!state) {
-      state = { memory: new Map(), nextAt: 0, pending: false, saved: 0, lastAt: null, error: '' };
+      state = {
+        memory: new Map(),
+        nextAt: 0,
+        pending: false,
+        saved: 0,
+        lastAt: null,
+        error: '',
+      };
       states.set(id, state);
     }
     return state;
@@ -120,9 +151,13 @@ export function createDeviceRecorder({ fetchImpl = (...args) => fetch(...args), 
 
   return {
     async tick(devices, dataManager, { toLatLon = null, skip = [] } = {}) {
-      const recording = (devices || []).filter((device) => device?.record === true && finite(device.lat) && finite(device.lon));
+      const recording = (devices || []).filter(
+        (device) =>
+          device?.record === true && finite(device.lat) && finite(device.lon),
+      );
       const wanted = new Set(recording.map((device) => device.id));
-      for (const id of [...states.keys()]) if (!wanted.has(id)) states.delete(id);
+      for (const id of [...states.keys()])
+        if (!wanted.has(id)) states.delete(id);
       const results = [];
       for (const device of recording) {
         const state = stateOf(device.id);
@@ -132,14 +167,24 @@ export function createDeviceRecorder({ fetchImpl = (...args) => fetch(...args), 
         state.nextAt = time + intervalMs;
         // Judged against a copy: a save that fails is tried again in full.
         const trial = new Map(state.memory);
-        const layers = changedRecordsOnly(collectNearbyRecords(dataManager, device, { km: recordRadiusKm(device.recordKm), toLatLon, skip }), trial);
+        const layers = changedRecordsOnly(
+          collectNearbyRecords(dataManager, device, {
+            km: recordRadiusKm(device.recordKm),
+            toLatLon,
+            skip,
+          }),
+          trial,
+        );
         try {
-          const response = await fetchImpl(`${RECORD_ENDPOINT}${encodeURIComponent(device.id)}`, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ layers }),
-          });
+          const response = await fetchImpl(
+            `${RECORD_ENDPOINT}${encodeURIComponent(device.id)}`,
+            {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ layers }),
+            },
+          );
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const payload = await response.json().catch(() => ({}));
           state.memory = trial;

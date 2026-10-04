@@ -39,13 +39,16 @@ test('the browser still refreshes at most once a minute, whatever the app asks f
 });
 
 test('a browser-direct camera gets a map thumbnail: its card loads the operator still, without asking for CORS', () => {
-  const source = readFileSync(new URL('./cctv.js', import.meta.url), 'utf8');
+  // The CCTV layer's cards component fetches card stills; its frames
+  // component says where a card's still comes from.
+  const source = readFileSync(new URL('../layers/cctv/cards.js', import.meta.url), 'utf8');
+  const frames = readFileSync(new URL('../layers/cctv/frames.js', import.meta.url), 'utf8');
   const start = source.indexOf('function fetchCardFrame(');
   const end = source.indexOf('/** Starts the card-frame pacer');
   assert.ok(start > 0 && end > start);
   const body = source.slice(start, end);
-  assert.match(body, /image\.src = cardFrameUrl\(record\.camera, refreshMs\)/);
-  assert.match(body, /isBrowserDirect\(camera\)\s*\?\s*browserDirectFrameUrl\(camera, refreshMs\)\s*:\s*frameUrlFor\(camera, refreshMs\)/);
+  assert.match(body, /image\.src = parts\.frames\.cardFrameUrl\(record\.camera, refreshMs\)/);
+  assert.match(frames, /isBrowserDirect\(camera\)\s*\?\s*browserDirectFrameUrl\(camera, refreshMs\)\s*:\s*frameUrlFor\(camera, refreshMs\)/);
   // The old gate parked these cards on a placeholder.
   assert.doesNotMatch(body, /if \(isBrowserDirect\(record\.camera\)/);
   // Asking for CORS would make the operator's header-less answer fail to load.

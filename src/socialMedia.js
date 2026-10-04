@@ -167,16 +167,38 @@ export const SOCIAL_ACCOUNT_PLATFORMS = Object.freeze([
     apiUrl: 'https://developers.facebook.com/docs/instagram-platform/',
     sharesLocation: true,
   }),
-  Object.freeze({ id: 'threads', label: 'Threads', openUrl: 'https://www.threads.net/', api: 'Threads API', apiUrl: 'https://developers.facebook.com/docs/threads/' }),
-  Object.freeze({ id: 'x', label: 'X', openUrl: 'https://x.com/', api: 'X API v2', apiUrl: 'https://developer.x.com/' }),
-  Object.freeze({ id: 'truth', label: 'Truth Social', openUrl: 'https://truthsocial.com/' }),
+  Object.freeze({
+    id: 'threads',
+    label: 'Threads',
+    openUrl: 'https://www.threads.net/',
+    api: 'Threads API',
+    apiUrl: 'https://developers.facebook.com/docs/threads/',
+  }),
+  Object.freeze({
+    id: 'x',
+    label: 'X',
+    openUrl: 'https://x.com/',
+    api: 'X API v2',
+    apiUrl: 'https://developer.x.com/',
+  }),
+  Object.freeze({
+    id: 'truth',
+    label: 'Truth Social',
+    openUrl: 'https://truthsocial.com/',
+  }),
   Object.freeze({
     id: 'snapchat',
     label: 'Snapchat',
     openUrl: 'https://www.snapchat.com/',
     sharesLocation: true,
   }),
-  Object.freeze({ id: 'tiktok', label: 'TikTok', openUrl: 'https://www.tiktok.com/', api: 'TikTok API', apiUrl: 'https://developers.tiktok.com/' }),
+  Object.freeze({
+    id: 'tiktok',
+    label: 'TikTok',
+    openUrl: 'https://www.tiktok.com/',
+    api: 'TikTok API',
+    apiUrl: 'https://developers.tiktok.com/',
+  }),
   Object.freeze({
     id: 'find-my',
     label: 'Apple Find My',
@@ -207,19 +229,62 @@ export const SOCIAL_ACCOUNT_PLATFORMS = Object.freeze([
     openUrl: 'https://www.life360.com/',
     sharesLocation: true,
   }),
-  Object.freeze({ id: 'radarly', label: 'Radarly', openUrl: 'https://apps.apple.com/app/id6451498749' }),
-  Object.freeze({ id: 'buzzly', label: 'Buzzly', openUrl: 'https://www.buzzlyapp.com/' }),
-  Object.freeze({ id: 'vicinity', label: 'Vicinity', openUrl: 'https://thevicinityapp.com/' }),
-  Object.freeze({ id: 'nearjoy', label: 'NearJoy', openUrl: 'https://nearjoy.app/' }),
-  Object.freeze({ id: 'happn', label: 'Happn', openUrl: 'https://www.happn.com/' }),
+  Object.freeze({
+    id: 'radarly',
+    label: 'Radarly',
+    openUrl: 'https://apps.apple.com/app/id6451498749',
+  }),
+  Object.freeze({
+    id: 'buzzly',
+    label: 'Buzzly',
+    openUrl: 'https://www.buzzlyapp.com/',
+  }),
+  Object.freeze({
+    id: 'vicinity',
+    label: 'Vicinity',
+    openUrl: 'https://thevicinityapp.com/',
+  }),
+  Object.freeze({
+    id: 'nearjoy',
+    label: 'NearJoy',
+    openUrl: 'https://nearjoy.app/',
+  }),
+  Object.freeze({
+    id: 'happn',
+    label: 'Happn',
+    openUrl: 'https://www.happn.com/',
+  }),
   Object.freeze({ id: 'pure', label: 'Pure', openUrl: 'https://pure.app/' }),
-  Object.freeze({ id: 'sniffies', label: 'Sniffies', openUrl: 'https://sniffies.com/' }),
+  Object.freeze({
+    id: 'sniffies',
+    label: 'Sniffies',
+    openUrl: 'https://sniffies.com/',
+  }),
   // The gig economy and on-demand delivery. HELP locations from them, and
   // sending HELP through them with Find Ultra Help, are under development:
   // for now each opens its own site and keeps its login like the others.
-  Object.freeze({ id: 'doordash', label: 'DoorDash', openUrl: 'https://www.doordash.com/', gig: true }),
-  Object.freeze({ id: 'uber', label: 'Uber', openUrl: 'https://www.uber.com/', gig: true, api: 'Uber Developers', apiUrl: 'https://developer.uber.com/' }),
-  Object.freeze({ id: 'lyft', label: 'Lyft', openUrl: 'https://www.lyft.com/', gig: true, api: 'Lyft Concierge API', apiUrl: 'https://developer.lyft.com/' }),
+  Object.freeze({
+    id: 'doordash',
+    label: 'DoorDash',
+    openUrl: 'https://www.doordash.com/',
+    gig: true,
+  }),
+  Object.freeze({
+    id: 'uber',
+    label: 'Uber',
+    openUrl: 'https://www.uber.com/',
+    gig: true,
+    api: 'Uber Developers',
+    apiUrl: 'https://developer.uber.com/',
+  }),
+  Object.freeze({
+    id: 'lyft',
+    label: 'Lyft',
+    openUrl: 'https://www.lyft.com/',
+    gig: true,
+    api: 'Lyft Concierge API',
+    apiUrl: 'https://developer.lyft.com/',
+  }),
   Object.freeze({
     id: 'just-eat-takeaway',
     label: 'Just Eat Takeaway',
@@ -232,7 +297,12 @@ export const SOCIAL_ACCOUNT_PLATFORMS = Object.freeze([
     openUrl: 'https://www.deliveryhero.com/',
     gig: true,
   }),
-  Object.freeze({ id: 'grubhub', label: 'Grubhub', openUrl: 'https://www.grubhub.com/', gig: true }),
+  Object.freeze({
+    id: 'grubhub',
+    label: 'Grubhub',
+    openUrl: 'https://www.grubhub.com/',
+    gig: true,
+  }),
 ]);
 
 /**
@@ -246,7 +316,8 @@ export function socialPowerUps(rows) {
   let attained = 0;
   for (const item of SOCIAL_ACCOUNT_PLATFORMS) {
     const row = list.find((entry) => entry?.platform === item.id);
-    if (row?.passwordSaved === true || (item.api && row?.apiKeySaved === true)) attained += 1;
+    if (row?.passwordSaved === true || (item.api && row?.apiKeySaved === true))
+      attained += 1;
   }
   return { attained, total, label: `${attained}/${total} Power Ups Attained` };
 }
@@ -275,7 +346,11 @@ export function savedSiteUrls(rows, kind = 'login') {
       urls.push({ platform: item.id, label: item.label, url: item.openUrl });
     }
     if (kind !== 'login' && row.apiKeySaved === true && item.apiUrl) {
-      urls.push({ platform: item.id, label: `${item.label} API`, url: item.apiUrl });
+      urls.push({
+        platform: item.id,
+        label: `${item.label} API`,
+        url: item.apiUrl,
+      });
     }
   }
   return urls;
@@ -297,11 +372,35 @@ export const SOCIAL_HELP_DELIVERY_KEY = 'godsEyeView.social.helpDelivery';
  * up to two entries of its own.
  */
 export const SOCIAL_HELP_DELIVERY_KINDS = Object.freeze([
-  Object.freeze({ id: 'medicine', label: 'Medicine', entry: 'Medication', placeholders: ['Medication 1', 'Medication 2'] }),
-  Object.freeze({ id: 'transportation', label: 'Transportation', destinations: Object.freeze(['home', 'hospital']) }),
-  Object.freeze({ id: 'food', label: 'Food', entry: 'Type of food', placeholders: ['Type of food 1', 'Type of food 2'] }),
-  Object.freeze({ id: 'liquid', label: 'Liquid', entry: 'Type of liquid', placeholders: ['Type of liquid 1', 'Type of liquid 2'] }),
-  Object.freeze({ id: 'items', label: 'Items', entry: 'Type of item', placeholders: ['Item 1, e.g. Heart Defib', 'Item 2'] }),
+  Object.freeze({
+    id: 'medicine',
+    label: 'Medicine',
+    entry: 'Medication',
+    placeholders: ['Medication 1', 'Medication 2'],
+  }),
+  Object.freeze({
+    id: 'transportation',
+    label: 'Transportation',
+    destinations: Object.freeze(['home', 'hospital']),
+  }),
+  Object.freeze({
+    id: 'food',
+    label: 'Food',
+    entry: 'Type of food',
+    placeholders: ['Type of food 1', 'Type of food 2'],
+  }),
+  Object.freeze({
+    id: 'liquid',
+    label: 'Liquid',
+    entry: 'Type of liquid',
+    placeholders: ['Type of liquid 1', 'Type of liquid 2'],
+  }),
+  Object.freeze({
+    id: 'items',
+    label: 'Items',
+    entry: 'Type of item',
+    placeholders: ['Item 1, e.g. Heart Defib', 'Item 2'],
+  }),
 ]);
 
 const HELP_ENTRY_MAX = 80;
@@ -313,7 +412,9 @@ const HELP_DESTINATIONS = Object.freeze({ home: 'Home', hospital: 'Hospital' });
  * @returns {{ok: true, value: {kind: string, items: string[], destination: string}} | {ok: false, error: string}}
  */
 export function normalizeHelpDelivery(input) {
-  const kind = SOCIAL_HELP_DELIVERY_KINDS.find((item) => item.id === input?.kind);
+  const kind = SOCIAL_HELP_DELIVERY_KINDS.find(
+    (item) => item.id === input?.kind,
+  );
   if (!kind) return { ok: false, error: 'Choose the help to be delivered.' };
   if (kind.destinations) {
     const destination = String(input?.destination || '');
@@ -323,12 +424,24 @@ export function normalizeHelpDelivery(input) {
     return { ok: true, value: { kind: kind.id, items: [], destination } };
   }
   const items = (Array.isArray(input?.items) ? input.items : [])
-    .map((value) => String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .map((value) =>
+      String(value ?? '')
+        .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
     .filter(Boolean)
     .slice(0, 2);
-  if (!items.length) return { ok: false, error: `Enter at least one ${kind.entry.toLowerCase()}.` };
+  if (!items.length)
+    return {
+      ok: false,
+      error: `Enter at least one ${kind.entry.toLowerCase()}.`,
+    };
   if (items.some((value) => value.length > HELP_ENTRY_MAX)) {
-    return { ok: false, error: `Keep each entry under ${HELP_ENTRY_MAX} characters.` };
+    return {
+      ok: false,
+      error: `Keep each entry under ${HELP_ENTRY_MAX} characters.`,
+    };
   }
   return { ok: true, value: { kind: kind.id, items, destination: '' } };
 }
@@ -337,7 +450,9 @@ export function normalizeHelpDelivery(input) {
 export function helpDeliverySummary(value) {
   const checked = normalizeHelpDelivery(value);
   if (!checked.ok) return '';
-  const kind = SOCIAL_HELP_DELIVERY_KINDS.find((item) => item.id === checked.value.kind);
+  const kind = SOCIAL_HELP_DELIVERY_KINDS.find(
+    (item) => item.id === checked.value.kind,
+  );
   if (kind.destinations) {
     return `${kind.label}: from current location to ${HELP_DESTINATIONS[checked.value.destination]}`;
   }
@@ -347,7 +462,9 @@ export function helpDeliverySummary(value) {
 /** @param {Storage | {getItem: Function} | null | undefined} storage */
 export function readHelpDelivery(storage) {
   try {
-    const checked = normalizeHelpDelivery(JSON.parse(storage?.getItem(SOCIAL_HELP_DELIVERY_KEY) || 'null'));
+    const checked = normalizeHelpDelivery(
+      JSON.parse(storage?.getItem(SOCIAL_HELP_DELIVERY_KEY) || 'null'),
+    );
     return checked.ok ? checked.value : null;
   } catch {
     return null;
@@ -416,8 +533,10 @@ export function acceptDeviceFix(position) {
   const coords = position?.coords || position;
   const latitude = Number(coords?.latitude);
   const longitude = Number(coords?.longitude);
-  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null;
-  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)
+    return null;
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180)
+    return null;
   const accuracy = Number(coords?.accuracy);
   return {
     latitude,
@@ -502,13 +621,17 @@ function findOpenOption(id) {
 }
 
 function labelsFor(catalog, id) {
-  if (id === 'all') return catalog.filter((item) => item.id !== 'all').map((item) => item.label);
+  if (id === 'all')
+    return catalog
+      .filter((item) => item.id !== 'all')
+      .map((item) => item.label);
   const one = catalog.find((item) => item.id === id);
   return one ? [one.label] : [];
 }
 
 function idsFor(catalog, id) {
-  if (id === 'all') return catalog.filter((item) => item.id !== 'all').map((item) => item.id);
+  if (id === 'all')
+    return catalog.filter((item) => item.id !== 'all').map((item) => item.id);
   return catalog.some((item) => item.id === id) ? [id] : [];
 }
 
@@ -547,7 +670,10 @@ function allowHttps(url) {
   if (parsed.protocol !== 'https:') return null;
   if (parsed.username || parsed.password) return null;
   if (!OPEN_HOSTS.has(parsed.hostname)) return null;
-  if (parsed.hostname === 'apps.apple.com' && !/^\/app\/id\d+\/?$/.test(parsed.pathname)) {
+  if (
+    parsed.hostname === 'apps.apple.com' &&
+    !/^\/app\/id\d+\/?$/.test(parsed.pathname)
+  ) {
     return null;
   }
   return parsed.toString();
@@ -596,15 +722,24 @@ export function normalizeSocialHandle(raw) {
       return { ok: false, error: 'That link is not a public profile.' };
     }
     if (url.username || url.password) {
-      return { ok: false, error: 'Save a public handle. This box does not take a login.' };
+      return {
+        ok: false,
+        error: 'Save a public handle. This box does not take a login.',
+      };
     }
     if (/token|key|password|code=/i.test(url.search)) {
-      return { ok: false, error: 'That link carries a key. Paste the public handle only.' };
+      return {
+        ok: false,
+        error: 'That link carries a key. Paste the public handle only.',
+      };
     }
     const parts = url.pathname.split('/').filter(Boolean);
     text = String(parts[parts.length - 1] || '').replace(/^@/u, '');
     if (/\.php$/i.test(text) || text === 'share' || text === 'search') {
-      return { ok: false, error: 'Paste the public handle, not a search page.' };
+      return {
+        ok: false,
+        error: 'Paste the public handle, not a search page.',
+      };
     }
   } else {
     text = text.replace(/^@/u, '');
@@ -612,13 +747,23 @@ export function normalizeSocialHandle(raw) {
   // A phone number is a login, never a public handle: kept as one it would go
   // to the news lookup and the model on every press.
   if (PHONE_SHAPE.test(text)) {
-    return { ok: false, error: 'That looks like a phone number. Save a public handle.' };
+    return {
+      ok: false,
+      error: 'That looks like a phone number. Save a public handle.',
+    };
   }
   if (SECRET_PATTERN.test(text) || SECRET_PREFIX.test(text)) {
-    return { ok: false, error: 'Save a public handle. This box does not take passwords or keys.' };
+    return {
+      ok: false,
+      error: 'Save a public handle. This box does not take passwords or keys.',
+    };
   }
   if (!HANDLE_PATTERN.test(text)) {
-    return { ok: false, error: 'Use a public handle: letters, numbers, dot, underscore, or hyphen.' };
+    return {
+      ok: false,
+      error:
+        'Use a public handle: letters, numbers, dot, underscore, or hyphen.',
+    };
   }
   return { ok: true, handle: text };
 }
@@ -629,7 +774,9 @@ function readStorage(storage) {
     if (!Array.isArray(parsed)) return [];
     const accounts = [];
     for (const row of parsed) {
-      const platform = SOCIAL_ACCOUNT_PLATFORMS.find((item) => item.id === row?.platform);
+      const platform = SOCIAL_ACCOUNT_PLATFORMS.find(
+        (item) => item.id === row?.platform,
+      );
       const handle = normalizeSocialHandle(row?.handle);
       if (!platform || !handle.ok) continue;
       if (accounts.some((item) => item.platform === platform.id)) continue;
@@ -657,11 +804,15 @@ export function readSocialAccounts(storage) {
  * @param {unknown} rawHandle
  */
 export function saveSocialAccount(storage, platformId, rawHandle) {
-  const platform = SOCIAL_ACCOUNT_PLATFORMS.find((item) => item.id === platformId);
+  const platform = SOCIAL_ACCOUNT_PLATFORMS.find(
+    (item) => item.id === platformId,
+  );
   if (!platform) return { ok: false, error: 'Pick a platform.' };
   const handle = normalizeSocialHandle(rawHandle);
   if (!handle.ok) return handle;
-  const accounts = readStorage(storage).filter((row) => row.platform !== platform.id);
+  const accounts = readStorage(storage).filter(
+    (row) => row.platform !== platform.id,
+  );
   accounts.push({ platform: platform.id, handle: handle.handle });
   storage.setItem(SOCIAL_ACCOUNTS_KEY, JSON.stringify(accounts));
   return { ok: true, accounts };
@@ -672,7 +823,9 @@ export function saveSocialAccount(storage, platformId, rawHandle) {
  * @param {string} platformId
  */
 export function removeSocialAccount(storage, platformId) {
-  const accounts = readStorage(storage).filter((row) => row.platform !== platformId);
+  const accounts = readStorage(storage).filter(
+    (row) => row.platform !== platformId,
+  );
   storage.setItem(SOCIAL_ACCOUNTS_KEY, JSON.stringify(accounts));
   return accounts;
 }
@@ -680,7 +833,9 @@ export function removeSocialAccount(storage, platformId) {
 function accountLine(accounts) {
   const parts = [];
   for (const row of Array.isArray(accounts) ? accounts : []) {
-    const platform = SOCIAL_ACCOUNT_PLATFORMS.find((item) => item.id === row?.platform);
+    const platform = SOCIAL_ACCOUNT_PLATFORMS.find(
+      (item) => item.id === row?.platform,
+    );
     const handle = normalizeSocialHandle(row?.handle);
     if (!platform || !handle.ok) continue;
     parts.push(`${platform.label} @${handle.handle}`);
@@ -696,7 +851,8 @@ function accountLine(accounts) {
  * @returns {string[]}
  */
 export function socialSearchPlatforms(action, analysisId, newsId) {
-  if (action === 'analyze') return idsFor(SOCIAL_ANALYSIS_PLATFORMS, analysisId);
+  if (action === 'analyze')
+    return idsFor(SOCIAL_ANALYSIS_PLATFORMS, analysisId);
   if (action === 'news') return idsFor(SOCIAL_NEWS_PLATFORMS, newsId);
   if (action === 'search') {
     const ids = [];
@@ -723,7 +879,11 @@ export function scrubSocialLookupText(value) {
     .replace(/\s+/g, ' ')
     .trim();
   if (!text) return '';
-  if (SECRET_PATTERN.test(text) || /(?:sk-|xox[baprs]-|ghp_|ya29\.)/i.test(text) || /\beyJ[\w-]{8,}/.test(text)) {
+  if (
+    SECRET_PATTERN.test(text) ||
+    /(?:sk-|xox[baprs]-|ghp_|ya29\.)/i.test(text) ||
+    /\beyJ[\w-]{8,}/.test(text)
+  ) {
     return '';
   }
   return text
@@ -741,7 +901,9 @@ export function scrubSocialLookupText(value) {
  */
 export function parseSocialHandleParam(value) {
   const accounts = [];
-  for (const part of String(value || '').split(',').slice(0, 12)) {
+  for (const part of String(value || '')
+    .split(',')
+    .slice(0, 12)) {
     const split = part.indexOf(':');
     if (split <= 0) continue;
     accounts.push({
@@ -794,17 +956,36 @@ function quotePlace(place) {
 export function buildSocialPublicSearch(input = {}) {
   const action = input.action;
   const ids = socialSearchPlatforms(action, input.analysisId, input.newsId);
-  const lookbackDays = action === 'analyze' ? SOCIAL_ANALYSIS_LOOKBACK_DAYS : SOCIAL_NEWS_LOOKBACK_DAYS;
+  const lookbackDays =
+    action === 'analyze'
+      ? SOCIAL_ANALYSIS_LOOKBACK_DAYS
+      : SOCIAL_NEWS_LOOKBACK_DAYS;
   if (ids.length === 0) {
-    return { ok: false, empty: false, error: 'Pick a platform.', labels: [], lookbackDays: null };
+    return {
+      ok: false,
+      empty: false,
+      error: 'Pick a platform.',
+      labels: [],
+      lookbackDays: null,
+    };
   }
-  const place = cleanPlace(input.place).replace(/["\\]/g, '').replace(/\s+/g, ' ').trim();
+  const place = cleanPlace(input.place)
+    .replace(/["\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   const note = scrubSocialLookupText(input.text);
   const handles = lookupHandles(input.accounts, ids);
   if (!place && !note && handles.length === 0) {
-    return { ok: false, empty: true, error: 'Name a place or type what to look up.', labels: [], lookbackDays: null };
+    return {
+      ok: false,
+      empty: true,
+      error: 'Name a place or type what to look up.',
+      labels: [],
+      lookbackDays: null,
+    };
   }
-  const topic = note || (action === 'news' || action === 'search' ? 'breaking news' : '');
+  const topic =
+    note || (action === 'news' || action === 'search' ? 'breaking news' : '');
   const sites = [];
   const mention = [];
   const labels = [];
@@ -834,10 +1015,24 @@ export function buildSocialPublicSearch(input = {}) {
     lookbackDays,
     timespan: lookbackDays <= SOCIAL_NEWS_LOOKBACK_DAYS ? '168h' : '1month',
     labels,
-    siteQuery: assembleQuery(siteClause, [placePart, topic, whenPart, handlePart]),
+    siteQuery: assembleQuery(siteClause, [
+      placePart,
+      topic,
+      whenPart,
+      handlePart,
+    ]),
     gdeltSiteQuery: assembleQuery(domainClause, [placePart, topic, handlePart]),
-    mentionQuery: assembleQuery(mentionClause, [placePart, topic, whenPart, handlePart]),
-    gdeltMentionQuery: assembleQuery(mentionClause, [placePart, topic, handlePart]),
+    mentionQuery: assembleQuery(mentionClause, [
+      placePart,
+      topic,
+      whenPart,
+      handlePart,
+    ]),
+    gdeltMentionQuery: assembleQuery(mentionClause, [
+      placePart,
+      topic,
+      handlePart,
+    ]),
     placeQuery: place ? assembleQuery(placePart, [topic, whenPart]) : '',
     gdeltPlaceQuery: place ? assembleQuery(placePart, [topic]) : '',
   };
@@ -857,7 +1052,11 @@ export function buildSocialPublicSearch(input = {}) {
  * @returns {string}
  */
 export function socialPublicNewsPath(input = {}) {
-  const ids = socialSearchPlatforms(input.action, input.analysisId, input.newsId);
+  const ids = socialSearchPlatforms(
+    input.action,
+    input.analysisId,
+    input.newsId,
+  );
   const pairs = [];
   for (const row of Array.isArray(input.accounts) ? input.accounts : []) {
     if (!ids.includes(row?.platform)) continue;
@@ -918,7 +1117,9 @@ export function normalizePublicNewsReport(data) {
   };
   if (!data || typeof data !== 'object') return empty;
   const articles = [];
-  for (const row of Array.isArray(data.articles) ? data.articles.slice(0, 8) : []) {
+  for (const row of Array.isArray(data.articles)
+    ? data.articles.slice(0, 8)
+    : []) {
     const title = cleanNote(row?.title).slice(0, 180);
     const domain = cleanNote(row?.domain).slice(0, 80);
     const url = safeArticleUrl(row?.url);
@@ -931,15 +1132,25 @@ export function normalizePublicNewsReport(data) {
     });
   }
   const platforms = [];
-  for (const name of Array.isArray(data.platforms) ? data.platforms.slice(0, 8) : []) {
+  for (const name of Array.isArray(data.platforms)
+    ? data.platforms.slice(0, 8)
+    : []) {
     const label = cleanNote(name).slice(0, 40);
     if (label) platforms.push(label);
   }
-  const status = data.status === 'ready' || data.status === 'empty' ? data.status : 'unavailable';
+  const status =
+    data.status === 'ready' || data.status === 'empty'
+      ? data.status
+      : 'unavailable';
   const lookback = Number(data.lookbackDays);
   return {
     status: articles.length ? status : status === 'ready' ? 'empty' : status,
-    match: data.match === 'site' || data.match === 'mention' || data.match === 'place' ? data.match : null,
+    match:
+      data.match === 'site' ||
+      data.match === 'mention' ||
+      data.match === 'place'
+        ? data.match
+        : null,
     source: cleanNote(data.source).slice(0, 80) || null,
     lookbackDays: Number.isFinite(lookback) ? lookback : null,
     platforms,
@@ -961,15 +1172,22 @@ export function formatSocialSearchBody(report) {
     return 'Public news lookup returned nothing. No public item was returned.';
   }
   const via = normalized.source ? ` via ${normalized.source}` : '';
-  const days = normalized.lookbackDays ? `, past ${normalized.lookbackDays} days` : '';
-  const kind = normalized.match === 'site'
-    ? 'Public pages already in the news index'
-    : normalized.match === 'mention'
-      ? 'Public news that mentions these platforms'
-      : 'Public news about this place, not from a platform account';
+  const days = normalized.lookbackDays
+    ? `, past ${normalized.lookbackDays} days`
+    : '';
+  const kind =
+    normalized.match === 'site'
+      ? 'Public pages already in the news index'
+      : normalized.match === 'mention'
+        ? 'Public news that mentions these platforms'
+        : 'Public news about this place, not from a platform account';
   const lines = [`${kind}${via}${days} (${normalized.articles.length}):`];
   for (const article of normalized.articles) {
-    lines.push(article.domain ? `- ${article.title} (${article.domain})` : `- ${article.title}`);
+    lines.push(
+      article.domain
+        ? `- ${article.title} (${article.domain})`
+        : `- ${article.title}`,
+    );
   }
   return lines.join('\n');
 }
@@ -990,15 +1208,21 @@ function publicNewsBlock(action, report) {
   }
   let lead;
   if (normalized.match === 'site') {
-    lead = 'These items are public pages the news index already lists on the named platform sites. They are not a private feed.';
+    lead =
+      'These items are public pages the news index already lists on the named platform sites. They are not a private feed.';
   } else if (normalized.match === 'mention') {
-    lead = 'These items are public news articles that mention the named platforms. They are not posts read from an account.';
+    lead =
+      'These items are public news articles that mention the named platforms. They are not posts read from an account.';
   } else {
-    const names = normalized.platforms.length ? ` Do not describe them as posts on ${normalized.platforms.join(', ')}.` : '';
+    const names = normalized.platforms.length
+      ? ` Do not describe them as posts on ${normalized.platforms.join(', ')}.`
+      : '';
     lead = `These items are public news about the map place. They are not posts from the selected platforms.${names}`;
   }
   const lines = normalized.articles.map((article) => {
-    const head = article.domain ? `${article.title} (${article.domain})` : article.title;
+    const head = article.domain
+      ? `${article.title} (${article.domain})`
+      : article.title;
     return `- ${head} ${article.url}`;
   });
   return `${lead}\n${lines.join('\n')}\nUse only these items. Do not invent posts, names, or locations.`;
@@ -1025,20 +1249,27 @@ export function planSocialRequest(input = {}) {
   const kind = KIND[action];
   if (!kind) return { ok: false, error: 'Pick an action.' };
   const provider = String(input.providerId || '').trim();
-  if (!provider) return { ok: false, error: 'No model key yet. Add one in POWER UP.' };
+  if (!provider)
+    return { ok: false, error: 'No model key yet. Add one in POWER UP.' };
   const typed = cleanNote(input.text);
-  if (typed.length > NOTE_MAX) return { ok: false, error: 'That note is too long.' };
+  if (typed.length > NOTE_MAX)
+    return { ok: false, error: 'That note is too long.' };
   if ((action === 'analyze' || action === 'search') && !typed) {
     return {
       ok: false,
-      error: action === 'analyze' ? 'Type the kind of analysis first.' : 'Type what you want searched.',
+      error:
+        action === 'analyze'
+          ? 'Type the kind of analysis first.'
+          : 'Type what you want searched.',
     };
   }
   const analysis = labelsFor(SOCIAL_ANALYSIS_PLATFORMS, input.analysisId);
   const news = labelsFor(SOCIAL_NEWS_PLATFORMS, input.newsId);
   const help = labelsFor(SOCIAL_LOCATION_OPTIONS, input.helpId);
-  if (action === 'analyze' && analysis.length === 0) return { ok: false, error: 'Pick a platform.' };
-  if (action === 'news' && news.length === 0) return { ok: false, error: 'Pick a platform.' };
+  if (action === 'analyze' && analysis.length === 0)
+    return { ok: false, error: 'Pick a platform.' };
+  if (action === 'news' && news.length === 0)
+    return { ok: false, error: 'Pick a platform.' };
   if ((action === 'help' || action === 'search') && help.length === 0) {
     return { ok: false, error: 'Pick a location option.' };
   }

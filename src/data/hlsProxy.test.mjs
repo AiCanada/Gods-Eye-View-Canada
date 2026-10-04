@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import {
   decodeHlsTarget,
   encodeHlsTarget,
@@ -9,6 +9,26 @@ import {
   rewriteHlsPlaylist,
   safeHlsPlaylistUrl,
 } from '../../server/providers/cctv/hls-proxy.js';
+
+/**
+ * The CCTV layer's client source (src/layers/cctv/; src/data/cctv.js is its
+ * facade) as one text, with component qualification (`layerState.`,
+ * `parts.<component>.`) and formatter wrapping removed.
+ */
+function cctvLayerSource() {
+  const dir = new URL('../layers/cctv/', import.meta.url);
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.js'))
+    .sort()
+    .map((name) => readFileSync(new URL(name, dir), 'utf8'))
+    .join('\n')
+    .replace(/\blayerState\./g, '')
+    .replace(/\bparts\.\w+\./g, '')
+    .replace(/,\s*(?=\))/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')');
+}
 
 const STREAM = 'https://video.example.org/live/CAM1.stream/playlist.m3u8';
 
@@ -85,7 +105,11 @@ test('one rule for every pack: a video-only camera is an HLS camera, its stream 
   // Certificate checking is never relaxed; a broken chain only lets the BROWSER play the stream itself.
   assert.equal(/rejectUnauthorized\s*:\s*false/.test(server), false);
   assert.ok(server.includes('unverifiableStreamHosts.has(upstreamHostOf(stream))'));
-  const client = readFileSync(new URL('./cctv.js', import.meta.url), 'utf8');
+  const client = cctvLayerSource();
   assert.ok(client.includes("return normalizeFeedType(camera?.feedType) === 'hls';"));
-  assert.ok(client.includes('return isStreamCamera(camera) && nativeHlsSupported() ? `${base}&hls=1` : base;'));
+  // A stream the server relays through its own HLS proxy plays the live
+  // playlist where the browser can; a pack HLS feed uses the leased puller.
+  assert.ok(client.includes("return isStreamCamera(camera) && camera?.hlsVia === 'proxy';"));
+  assert.ok(client.includes('if (!isProxyStreamCamera(camera) || !nativeHlsSupported()) return base;'));
+  assert.ok(client.includes("return `${base}${base.includes('?') ? '&' : '?'}hls=1`;"));
 });

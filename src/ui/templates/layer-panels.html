@@ -1,0 +1,445 @@
+  <div id="left-panel-stack">
+  <!-- AI Risk & Truth Assessment: operator-driven questions about the current view.
+       A member of the left stack like the others, so it collapses to the same
+       tab. Rows are built at runtime, one per model that holds a key, each with
+       its own input, buttons and log, stacked top to bottom; the stack gives
+       the panel its height and the rows scroll inside it, so several models
+       never overlap. -->
+  <div id="ask-panel" class="panel-collapsible" data-panel-id="ask-panel">
+    <div class="panel-glow"></div>
+    <div class="ask-panel-inner">
+      <div class="panel-header">
+        <span class="panel-title" data-collapsed-title="AI RISK &amp; TRUTH ASSESSMENT">AI RISK &amp; TRUTH ASSESSMENT</span>
+        <span class="panel-divider"></span>
+        <button class="panel-collapse-btn" data-collapse-target="ask-panel" title="Collapse panel">−</button>
+      </div>
+      <div id="ask-body" class="ask-body">
+        <div id="ask-empty" class="ask-status" aria-live="polite" hidden></div>
+        <div id="ask-rows"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CCTV Coverage Panel -->
+  <div id="cctv-panel" class="panel-collapsible collapsed" data-panel-id="cctv-panel">
+    <div class="panel-glow"></div>
+    <div class="cctv-panel-inner" data-rail-scroller>
+      <div class="panel-header">
+        <span class="panel-title">CCTV</span>
+        <span class="panel-divider"></span>
+        <button class="panel-collapse-btn" data-collapse-target="cctv-panel" title="Collapse panel">+</button>
+      </div>
+      <div class="cyber-panel-body" data-rail-scroller>
+      <div id="cctv-frame-wrap" class="cctv-frame-wrap">
+        <img id="cctv-frame" alt="CCTV feed frame" />
+        <canvas id="cctv-video" class="cctv-frame" hidden></canvas>
+      </div>
+      <div id="cctv-source-badge" role="status" aria-live="polite">SOURCE · UNKNOWN</div>
+      <div id="cctv-meta">Enable CCTV to load camera intersections</div>
+      <div class="cctv-controls">
+        <button id="cctv-enable-btn" class="scene-btn">CCTV OFF</button>
+        <button id="cctv-nearest-btn" class="scene-btn">NEAREST</button>
+      </div>
+      <div class="cctv-controls">
+        <button id="cctv-prev-btn" class="scene-btn">PREV</button>
+        <select id="cctv-camera-select" aria-label="CCTV camera"></select>
+        <button id="cctv-next-btn" class="scene-btn">NEXT</button>
+      </div>
+      <div class="cctv-controls">
+        <button id="cctv-focus-btn" class="scene-btn">FOCUS</button>
+        <button id="cctv-coverage-btn" class="scene-btn">COVERAGE OFF</button>
+        <button id="cctv-auto-hop-btn" class="scene-btn">AUTO HOP OFF</button>
+      </div>
+      <div class="cctv-controls">
+        <span id="cctv-region-cap-chip" tabindex="0" role="note" title="No camera area loaded yet. Cameras load for the selected place: at most 1,000 within 50 km." aria-label="No camera area loaded yet. Cameras load for the selected place: at most 1,000 within 50 km.">AREA --</span>
+      </div>
+      <div class="cctv-controls">
+        <button id="cctv-projection-btn" class="scene-btn">PROJECTION ON</button>
+        <span id="cctv-quality-chip">CAL · --</span>
+      </div>
+      <div class="cctv-calibration-block">
+        <div class="cctv-calibration-header">
+          <div class="cctv-summary-label">CALIBRATION</div>
+          <button id="cctv-adjust-btn" class="scene-btn" title="Drag the camera in the world: rings rotate, arrows move, handles set range/FOV">ADJUST</button>
+        </div>
+        <div id="cctv-cal-readout" class="cctv-cal-readout" aria-label="Camera pose — click a value to type">
+          <button class="cctv-cal-value" data-cal-field="heading" title="Heading (compass °) — click to type">HDG --</button>
+          <button class="cctv-cal-value" data-cal-field="pitch" title="Pitch (° up/down) — click to type">PITCH --</button>
+          <button class="cctv-cal-value" data-cal-field="fov" title="Horizontal FOV (°) — click to type">FOV --</button>
+          <button class="cctv-cal-value" data-cal-field="range" title="Range / monitor-plane distance (m) — click to type">RANGE --</button>
+          <button class="cctv-cal-value" data-cal-field="height" title="Mount height above ground (m) — click to type">HGT --</button>
+          <button class="cctv-cal-value" data-cal-field="north" title="North offset from catalog position (m) — click to type">ΔN --</button>
+          <button class="cctv-cal-value" data-cal-field="east" title="East offset from catalog position (m) — click to type">ΔE --</button>
+        </div>
+        <div class="cctv-controls cctv-calibration-actions">
+          <button id="cctv-calib-save-btn" class="scene-btn">SAVE CAL</button>
+          <button id="cctv-calib-reset-btn" class="scene-btn">RESET CAL</button>
+        </div>
+      </div>
+      <div class="cctv-summary-label">SCENE SUMMARY</div>
+      <div id="cctv-summary">Enable CCTV to start camera-linked intelligence summaries.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ultra Security Package: the owner's paired phone, not the CCTV catalogues. -->
+  <div id="ultra-panel" class="panel-collapsible collapsed" data-panel-id="ultra-panel">
+    <div class="panel-glow"></div>
+    <div class="ultra-panel-inner">
+      <div class="panel-header">
+        <span class="panel-title" data-collapsed-title="ULTRA">ULTRA SECURITY PACKAGE</span>
+        <span class="panel-divider"></span>
+        <button class="panel-collapse-btn" data-collapse-target="ultra-panel" title="Collapse panel">+</button>
+      </div>
+      <div id="ultra-frame-wrap" class="cctv-frame-wrap" hidden>
+        <img id="ultra-frame" alt="Ultra cell camera still" />
+      </div>
+      <div id="ultra-status" class="sst-readout" role="status" aria-live="polite">PHONE · WAITING</div>
+      <div id="ultra-cam-link" class="sst-readout"></div>
+      <!-- Send help: one press releases this phone's position to every token marked NETWORK for four hours (STAND DOWN any time) and hands the phone the plea for the saved helpers. The incident comes from the FIND HELP select. -->
+      <div class="cctv-summary-label">SEND HELP <span id="ultra-release-state"></span></div>
+      <div id="ultra-release" class="cctv-controls ultra-release">
+        <!-- Shown only with more than one package saved: each has its own call, and these buttons act on the one chosen here. -->
+        <select id="ultra-release-package" aria-label="Which package is asking for help" hidden></select>
+        <button id="ultra-release-send" class="scene-btn ultra-danger" type="button">SEND HELP</button>
+        <!-- Always beside SEND HELP: with no call on, a press ends nothing and says so. -->
+        <button id="ultra-release-stand-down" class="scene-btn" type="button">STAND DOWN</button>
+      </div>
+      <p id="ultra-release-note" class="ultra-note"></p>
+      <div id="ultra-release-plea" class="sst-readout" hidden></div>
+      <!-- Help messages from token holders sit first under the status line: an incoming plea outranks the camera controls. -->
+      <div class="cctv-summary-label">HELP MESSAGES <span id="ultra-inbox-count"></span></div>
+      <div id="ultra-inbox" class="ultra-inbox"></div>
+      <div class="cctv-controls">
+        <label class="ultra-match"><input id="ultra-read-aloud" type="checkbox" checked> Read new help messages aloud</label>
+        <button id="ultra-inbox-read-all" class="scene-btn" type="button">MARK ALL READ</button>
+      </div>
+      <div class="cctv-controls">
+        <select id="ultra-model" aria-label="Ultra phone model">
+          <option value="generic-cell">Generic cell</option>
+          <option value="apple-iphone-17">Apple iPhone 17</option>
+          <option value="apple-iphone-16">Apple iPhone 16</option>
+          <option value="apple-iphone-15">Apple iPhone 15</option>
+          <option value="google-pixel">Google Pixel</option>
+          <option value="motorola">Motorola</option>
+          <option value="oppo">Oppo</option>
+          <option value="vivo">Vivo</option>
+          <option value="xiaomi">Xiaomi</option>
+          <option value="samsung-s26">Samsung Galaxy S26</option>
+          <option value="samsung-s22-ultra" selected>Samsung Galaxy S22 Ultra</option>
+          <option value="samsung-z8">Samsung Galaxy Z8</option>
+          <option value="samsung-z3">Samsung Galaxy Z3</option>
+          <option value="samsung-z-fold">Samsung Galaxy Z Fold</option>
+        </select>
+      </div>
+      <div class="cctv-controls">
+        <button id="ultra-cam-front" class="scene-btn" type="button" data-ultra-camera="front">Activate Front Cell Cam</button>
+      </div>
+      <div class="cctv-controls">
+        <button id="ultra-cam-rear" class="scene-btn" type="button" data-ultra-camera="rear">Activate Rear Cell Cam</button>
+      </div>
+      <div class="cctv-controls">
+        <button id="ultra-cam-inner" class="scene-btn" type="button" data-ultra-camera="inner">Activate Inside Fold Cell Cam</button>
+      </div>
+      <div class="cctv-controls" id="ultra-extra-cameras">
+        <button id="ultra-cam-ultrawide" class="scene-btn" type="button" data-ultra-camera="rear-ultrawide" hidden>Activate Rear Ultrawide Cam</button>
+        <button id="ultra-cam-tele" class="scene-btn" type="button" data-ultra-camera="rear-tele" hidden>Activate Rear Telephoto Cam</button>
+      </div>
+      <div class="cctv-summary-label">FIND HELP</div>
+      <!-- The incident select names the incident SEND HELP sends. Find Ultra Help is under development: its button does nothing yet. -->
+      <div class="cctv-controls">
+        <select id="ultra-incident" aria-label="Classified incident type">
+          <option value="threat">THREAT</option>
+          <option value="fire">FIRE</option>
+          <option value="medical">MEDICAL</option>
+          <option value="other">OTHER</option>
+        </select>
+        <button id="ultra-find" class="scene-btn" type="button" disabled title="Under development">Find Ultra Help (under development)</button>
+      </div>
+      <div class="cctv-summary-label">PREDEFINED HELP #</div>
+      <form id="ultra-contact" class="cctv-controls ultra-contact">
+        <input id="ultra-contact-label" type="text" placeholder="Helper name" aria-label="Helper name" autocomplete="off" />
+        <input id="ultra-contact-number" type="tel" placeholder="+15065550100" aria-label="Helper phone number" autocomplete="off" />
+        <select id="ultra-contact-kind" aria-label="Helper kind">
+          <option value="police">POLICE</option>
+          <option value="fire">FIRE</option>
+          <option value="other">OTHER</option>
+        </select>
+        <button class="scene-btn" type="submit">SAVE #</button>
+      </form>
+      <p id="ultra-help-store-note" class="ultra-note" hidden>The helpers file was changed and is not being used. The next save replaces it.</p>
+      <p id="ultra-outbound-note" class="ultra-note" hidden></p>
+      <div id="ultra-contacts"></div>
+      <!-- Share help tokens: one link per person; the plaintext only ever lands in the reveal box, which the status poll cannot repaint. -->
+      <div class="cctv-summary-label">SHARE ENCRYPTED ULTRA TOKENS</div>
+      <p id="ultra-token-note" class="ultra-note"></p>
+      <form id="ultra-number" class="cctv-controls ultra-contact">
+        <input id="ultra-number-input" type="tel" placeholder="+15065550100 your cell: calls for help you receive are texted here" aria-label="Your number for SMS help" autocomplete="off">
+        <button class="scene-btn" type="submit">SAVE MY #</button>
+        <button id="ultra-number-clear" class="scene-btn" type="button" hidden>CLEAR MY #</button>
+      </form>
+      <form id="ultra-token" class="cctv-controls ultra-contact">
+        <input id="ultra-token-label" type="text" placeholder="Name of Ultra Token Holder" aria-label="Name of Ultra Token Holder" autocomplete="off">
+        <!-- A token carries the location poll alone: Network is its only switch. -->
+        <label class="ultra-match"><input id="ultra-token-network" type="checkbox" checked> Network</label>
+        <!-- Skill codes are written into the token string. Encrypt seals that list inside the string; leaving every box off mints the short token. -->
+        <div id="ultra-token-skills" class="ultra-skills">
+          <span class="cctv-summary-label">Your Gifts or Skills Encrypted into Token String</span>
+          <label class="ultra-match"><input id="ultra-skill-dr" type="checkbox" data-ultra-skill="dr"> Doctor</label>
+          <label class="ultra-match"><input id="ultra-skill-pm" type="checkbox" data-ultra-skill="pm"> Paramedic</label>
+          <label class="ultra-match"><input id="ultra-skill-fr" type="checkbox" data-ultra-skill="fr"> First Responder</label>
+          <label class="ultra-match"><input id="ultra-skill-lg" type="checkbox" data-ultra-skill="lg"> Lifeguard</label>
+          <label class="ultra-match"><input id="ultra-skill-ff" type="checkbox" data-ultra-skill="ff"> Firefighter</label>
+          <label class="ultra-match ultra-skill-wide"><input id="ultra-skill-sr" type="checkbox" data-ultra-skill="sr"> Search and Rescue (SAR) Specialist</label>
+          <label class="ultra-match"><input id="ultra-skill-br" type="checkbox" data-ultra-skill="br"> Brave</label>
+          <label class="ultra-match"><input id="ultra-skill-st" type="checkbox" data-ultra-skill="st"> Strong</label>
+          <label class="ultra-match"><input id="ultra-skill-cc" type="checkbox" data-ultra-skill="cc"> Crisis Counselor</label>
+          <label class="ultra-match"><input id="ultra-skill-en" type="checkbox" data-ultra-skill="en"> Enforcer</label>
+          <label class="ultra-match"><input id="ultra-skill-ac" type="checkbox" data-ultra-skill="ac"> Animal Control</label>
+          <label class="ultra-match ultra-skill-wide"><input id="ultra-skill-hz" type="checkbox" data-ultra-skill="hz"> Hazardous Materials (HAZMAT)</label>
+          <label class="ultra-match"><input id="ultra-skill-rg" type="checkbox" data-ultra-skill="rg"> Ranger</label>
+          <span class="cctv-summary-label">Your Custom Gifts or Skills Encrypted into Token String</span>
+          <input id="ultra-skill-custom-1" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 1" autocomplete="off" title="A long name is shortened to the words the link can carry.">
+          <input id="ultra-skill-custom-2" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 2" autocomplete="off" title="A long name is shortened to the words the link can carry.">
+          <input id="ultra-skill-custom-3" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 3" autocomplete="off" title="A long name is shortened to the words the link can carry.">
+          <input id="ultra-skill-custom-4" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 4" autocomplete="off" title="A long name is shortened to the words the link can carry.">
+          <input id="ultra-skill-custom-5" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 5" autocomplete="off" title="A long name is shortened to the words the link can carry.">
+          <p id="ultra-skill-custom-preview" class="ultra-note" hidden></p>
+          <label class="ultra-match ultra-skill-wide" title="On: the skill list is sealed inside the token string. Off: the skill codes are written in the link. Either way the link still works. No skills and Encrypt off keeps the short token."><input id="ultra-token-encrypt" type="checkbox"> Encrypt</label>
+        </div>
+        <select id="ultra-token-package" aria-label="Which package" hidden></select>
+        <button id="ultra-token-submit" class="scene-btn" type="submit">GENERATE NEW TOKEN</button>
+      </form>
+      <div id="ultra-token-reveal" class="ultra-reveal" hidden>
+        <pre id="ultra-token-link"></pre>
+        <div class="cctv-controls">
+          <button id="ultra-token-copy-link" class="scene-btn" type="button">COPY LINK</button>
+          <button id="ultra-token-copy" class="scene-btn" type="button">COPY TOKEN</button>
+          <button id="ultra-token-hide" class="scene-btn" type="button">HIDE</button>
+        </div>
+      </div>
+      <div id="ultra-tokens"></div>
+      <!-- Help network: the links this machine's server polls, the directory the group shares, my published token and the SMS relay. Links hold other people's tokens and are never shown here; only hosts are. -->
+      <div class="cctv-summary-label">HELP NETWORK <span id="ultra-network-count"></span></div>
+      <p id="ultra-network-note" class="ultra-note"></p>
+      <form id="ultra-network-me" class="cctv-controls ultra-contact">
+        <input id="ultra-network-me-name" type="text" maxlength="60" placeholder="Your name, as your holders see it" aria-label="Your network name" autocomplete="off">
+        <button class="scene-btn" type="submit">SAVE MY NAME</button>
+      </form>
+      <form id="ultra-directory" class="cctv-controls ultra-contact">
+        <input id="ultra-directory-url" type="url" placeholder="https://raw.githubusercontent.com/<group>/<repo>/main/ultra-directory.json" aria-label="Directory address" autocomplete="off" spellcheck="false">
+        <input id="ultra-directory-token" type="password" placeholder="GitHub write token (optional, never shown)" aria-label="Directory write token" autocomplete="off">
+        <button class="scene-btn" type="submit">SAVE DIRECTORY</button>
+      </form>
+      <div class="cctv-controls">
+        <select id="ultra-publish-token" aria-label="Which token to publish" hidden></select>
+        <!-- Shown only with more than one package saved and DIRECTORY TOKEN chosen: which package's position the new directory token follows. -->
+        <select id="ultra-publish-package" aria-label="Which package to publish" hidden></select>
+        <button id="ultra-network-publish" class="scene-btn" type="button">PUBLISH MY TOKEN</button>
+        <button id="ultra-network-update" class="scene-btn" type="button">UPDATE HOME LIST</button>
+        <button id="ultra-network-poll" class="scene-btn" type="button">CHECK NOW</button>
+      </div>
+      <div id="ultra-network-entry" class="ultra-reveal" hidden>
+        <pre id="ultra-network-entry-text"></pre>
+        <p id="ultra-network-entry-note" class="ultra-note"></p>
+        <div class="cctv-controls">
+          <button id="ultra-network-entry-copy" class="scene-btn" type="button">COPY ENTRY</button>
+          <a id="ultra-network-entry-mail" class="scene-btn" rel="noopener" hidden>EMAIL ENTRY</a>
+          <button id="ultra-network-entry-hide" class="scene-btn" type="button">HIDE</button>
+        </div>
+      </div>
+      <form id="ultra-network-add" class="cctv-controls ultra-contact">
+        <input id="ultra-network-link" type="text" placeholder="Paste a help link someone gave you (https://….ts.net/ultra/help/uht1.…)" aria-label="Help link" autocomplete="off" spellcheck="false">
+        <input id="ultra-network-link-name" type="text" maxlength="60" placeholder="Their name" aria-label="Their name" autocomplete="off">
+        <button class="scene-btn" type="submit">ADD TO HOME LIST</button>
+      </form>
+      <div id="ultra-network-list"></div>
+      <div class="cctv-controls">
+        <span id="ultra-sms-relay" class="sst-readout"></span>
+        <button id="ultra-sms-test" class="scene-btn" type="button">TEST SMS</button>
+      </div>
+    </div>
+  </div>
+
+
+    <!-- Social Media Analysis: a left-stack box under CCTV. The user id and
+         password stay encrypted on this computer. Analyze, Breaking News, and
+         Search look up public news for the map place, then send one question. -->
+    <div id="social-panel" class="panel-collapsible collapsed" data-panel-id="social-panel">
+      <div class="panel-glow"></div>
+      <div class="social-panel-inner">
+        <div class="panel-header">
+          <span class="panel-title" data-collapsed-title="SOCIAL MEDIA ANALYSIS">SOCIAL MEDIA ANALYSIS</span>
+          <span class="panel-divider"></span>
+          <button class="panel-collapse-btn" data-collapse-target="social-panel" title="Collapse panel">+</button>
+        </div>
+        <!-- The note, the Power Up count and the heading sit flush, with no space between. -->
+        <p class="social-note social-flush">Your API Keys, User Id's and Passwords stay encrypted on this computer for integrating AI Tools</p>
+        <p id="social-powerup" class="social-powerup social-flush">0/0 Power Ups Attained</p>
+        <div class="cctv-summary-label social-flush">Social Media/The Gig Economy/On-Demand Delivery Platforms</div>
+        <div class="cctv-controls">
+          <select id="social-account-platform" aria-label="Account platform">
+            <optgroup label="Social Media">
+            <option value="facebook">Facebook</option>
+            <option value="instagram">Instagram</option>
+            <option value="threads">Threads</option>
+            <option value="x">X</option>
+            <option value="truth">Truth Social</option>
+            <option value="snapchat">Snapchat</option>
+            <option value="tiktok">TikTok</option>
+            <option value="find-my">Apple Find My</option>
+            <option value="google-maps">Google Maps</option>
+            <option value="bump">Bump</option>
+            <option value="blink">Blink</option>
+            <option value="life360">Life360</option>
+            <option value="radarly">Radarly</option>
+            <option value="buzzly">Buzzly</option>
+            <option value="vicinity">Vicinity</option>
+            <option value="nearjoy">NearJoy</option>
+            <option value="happn">Happn</option>
+            <option value="pure">Pure</option>
+            <option value="sniffies">Sniffies</option>
+            </optgroup>
+            <!-- HELP locations from these, and sending HELP through them with Find Ultra Help, are under development. -->
+            <optgroup label="The Gig Economy / On-Demand Delivery">
+            <option value="doordash">DoorDash</option>
+            <option value="uber">Uber</option>
+            <option value="lyft">Lyft</option>
+            <option value="just-eat-takeaway">Just Eat Takeaway</option>
+            <option value="delivery-hero">Delivery Hero</option>
+            <option value="grubhub">Grubhub</option>
+            </optgroup>
+          </select>
+        </div>
+        <p id="social-account-note" class="social-note" hidden></p>
+        <!-- HELP DELIVERY: what the gig and delivery platforms would bring. Each GEVC keeps its own default in this browser; sending it is under development. -->
+        <div class="cctv-summary-label">HELP DELIVERY · On-Demand Delivery / The Gig Economy</div>
+        <div class="cctv-controls">
+          <select id="social-help-kind" aria-label="Help item to be delivered">
+            <option value="medicine">Medicine</option>
+            <option value="transportation">Transportation</option>
+            <option value="food">Food</option>
+            <option value="liquid">Liquid</option>
+            <option value="items">Items</option>
+          </select>
+          <select id="social-help-destination" aria-label="Take from current location to" hidden>
+            <option value="home">From current location to Home</option>
+            <option value="hospital">From current location to Hospital</option>
+          </select>
+        </div>
+        <div class="cctv-controls" id="social-help-entries">
+          <input id="social-help-item-1" class="ask-input" type="text" maxlength="80" autocomplete="off" placeholder="Medication 1" aria-label="Medication 1" />
+          <input id="social-help-item-2" class="ask-input" type="text" maxlength="80" autocomplete="off" placeholder="Medication 2" aria-label="Medication 2" />
+        </div>
+        <div class="cctv-controls">
+          <button id="social-help-save" class="scene-btn" type="button">SAVE MY DEFAULT</button>
+        </div>
+        <p id="social-help-default" class="social-note">No default saved yet. Sending HELP through these platforms is under development.</p>
+        <div class="cctv-controls">
+          <input id="social-account-handle" class="ask-input" type="text" maxlength="128" autocomplete="off" spellcheck="false" placeholder="User id" aria-label="User id" />
+        </div>
+        <div class="cctv-controls">
+          <input id="social-account-password" class="ask-input" type="password" maxlength="256" autocomplete="off" spellcheck="false" placeholder="Password" aria-label="Password" />
+          <button id="social-account-save" class="scene-btn" type="button">SAVE LOGIN</button>
+        </div>
+        <div class="cctv-controls">
+          <input id="social-account-apikey" class="ask-input" type="password" maxlength="512" autocomplete="off" spellcheck="false" placeholder="API key" aria-label="API key" />
+        </div>
+        <div class="cctv-controls">
+          <button id="social-account-open" class="scene-btn" type="button">OPEN SITE</button>
+        </div>
+        <div class="cctv-controls">
+          <select id="social-open-kind" aria-label="Which saved sites to open">
+            <option value="login" selected>ID &amp; Pass</option>
+            <option value="api">API</option>
+            <option value="all">All</option>
+          </select>
+          <button id="social-open-saved" class="scene-btn" type="button">OPEN ID &amp; PASS SITES</button>
+        </div>
+        <ul id="social-account-list" class="social-account-list" aria-label="Saved accounts"></ul>
+        <div class="cctv-controls">
+          <label class="social-show-location" for="social-show-location">
+            <input id="social-show-location" type="checkbox" checked aria-label="Show live location on the map" />
+            SHOW ON MAP
+          </label>
+        </div>
+        <p id="social-location-note" class="social-note">A hooked-up account that shares location displays live position on the map. If allowed by 3rd Party.</p>
+        <div class="cctv-summary-label">LLM</div>
+        <textarea id="social-query" class="ask-input social-query" rows="3" autocomplete="off" aria-label="Analysis, news question, or help to send" placeholder="Type the analysis, news question, or help to send"></textarea>
+        <div class="cctv-controls">
+          <select id="social-model" aria-label="Language model">
+            <option value="">No model key yet</option>
+          </select>
+        </div>
+        <div class="cctv-controls">
+          <button id="social-analyze" class="scene-btn" type="button">ANALYZE</button>
+          <select id="social-analyze-platform" aria-label="Platform to analyze">
+            <option value="all">All platforms</option>
+            <option value="facebook">Facebook</option>
+            <option value="instagram">Instagram</option>
+            <option value="threads">Threads</option>
+            <option value="x">X</option>
+            <option value="truth">Truth Social</option>
+            <option value="snapchat">Snapchat</option>
+            <option value="tiktok">TikTok</option>
+          </select>
+        </div>
+        <div class="cctv-controls">
+          <button id="social-news" class="scene-btn" type="button">BREAKING NEWS</button>
+          <select id="social-news-platform" aria-label="Platform for breaking news">
+            <option value="all">All</option>
+            <option value="facebook">Facebook</option>
+            <option value="instagram">Instagram</option>
+            <option value="threads">Threads</option>
+            <option value="x">X</option>
+            <option value="truth">Truth Social</option>
+            <option value="tiktok">TikTok</option>
+          </select>
+        </div>
+        <div class="cctv-controls">
+          <button id="social-search" class="scene-btn" type="button">SEARCH</button>
+        </div>
+        <div class="cctv-summary-label">FIND HELP TO SEND</div>
+        <div class="cctv-controls">
+          <button id="social-help" class="scene-btn" type="button">FIND HELP</button>
+          <select id="social-help-platform" aria-label="Location option for finding help">
+            <option value="all">All location options</option>
+            <option value="find-my">Apple Find My</option>
+            <option value="google-maps">Google Maps</option>
+            <option value="snap-map">Snapchat Snap Map</option>
+            <option value="bump">Bump</option>
+            <option value="blink">Blink</option>
+            <option value="life360">Life360</option>
+            <option value="radarly">Radarly</option>
+            <option value="buzzly">Buzzly</option>
+            <option value="vicinity">Vicinity</option>
+            <option value="nearjoy">NearJoy</option>
+            <option value="happn">Happn</option>
+            <option value="pure">Pure</option>
+            <option value="sniffies">Sniffies</option>
+            <option value="instagram-map">Instagram Map</option>
+            <option value="facebook-checkin">Facebook check-ins</option>
+            <option value="instagram-checkin">Instagram check-ins</option>
+            <option value="x-checkin">X check-ins</option>
+          </select>
+        </div>
+        <!-- Bot swarms: one bot per platform, each a single request with the provider's own search, all sent at once on the swarm's own key in POWER UP (GROK BOT, OPENAI DOTS). With no Grok Bot key, GROK BOT SWARM hands its task to the Chief of Staff bot in the Grok Bot desktop app. No login is kept here. -->
+        <div class="cctv-summary-label">GROK BOT SWARM</div>
+        <textarea id="social-swarm-xai-instructions" class="ask-input social-query" rows="3" maxlength="1000" autocomplete="off" aria-label="Grok bot instructions" placeholder="Grok bot instructions. Leave empty for the default: threat incidents near this map place."></textarea>
+        <div class="cctv-controls">
+          <button id="social-swarm-xai-run" class="scene-btn" type="button">GROK BOT SWARM</button>
+          <button id="social-swarm-xai-open" class="scene-btn" type="button">OPEN GROK BOT</button>
+        </div>
+        <div id="social-swarm-xai-status" class="ask-status" role="status" aria-live="polite"></div>
+        <div class="cctv-summary-label">OPENAI BOT SWARM</div>
+        <textarea id="social-swarm-openai-instructions" class="ask-input social-query" rows="3" maxlength="1000" autocomplete="off" aria-label="OpenAI bot instructions" placeholder="OpenAI bot instructions. Leave empty for the default: threat incidents near this map place."></textarea>
+        <div class="cctv-controls">
+          <button id="social-swarm-openai-run" class="scene-btn" type="button">OPENAI BOT SWARM</button>
+          <button id="social-swarm-openai-open" class="scene-btn" type="button">OPEN CHATGPT</button>
+        </div>
+        <div id="social-swarm-openai-status" class="ask-status" role="status" aria-live="polite"></div>
+        <div id="social-status" class="ask-status" role="status" aria-live="polite"></div>
+        <div id="social-output" class="ask-output" role="status" aria-live="polite" tabindex="0"></div>
+      </div>
+    </div>
+  </div>

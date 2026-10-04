@@ -5,7 +5,7 @@ import {
   coalesceProxyRequest,
 } from '../common/http.js';
 import { launchLibraryRecentUrl } from '../../../src/data/spaceProviderRequests.js';
-import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
+import { localProviderTrusted } from '../../shared/localIntegrity.mjs';
 
 export const LL2_CACHE_TTL_MS = 15 * 60_000;
 

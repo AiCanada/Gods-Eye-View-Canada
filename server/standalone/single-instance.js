@@ -38,10 +38,18 @@ async function commandLineOf(pid) {
   try {
     if (process.platform === 'win32') {
       const script = `$p = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}"; if ($p) { $p.CommandLine }`;
-      const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 10_000 });
+      const { stdout } = await execFileAsync(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', script],
+        { windowsHide: true, timeout: 10_000 },
+      );
       return stdout.trim() || null;
     }
-    const { stdout } = await execFileAsync('ps', ['-o', 'args=', '-p', String(pid)], { timeout: 10_000 });
+    const { stdout } = await execFileAsync(
+      'ps',
+      ['-o', 'args=', '-p', String(pid)],
+      { timeout: 10_000 },
+    );
     return stdout.trim() || null;
   } catch {
     return null;
@@ -52,11 +60,19 @@ async function commandLineOf(pid) {
 async function processTable() {
   try {
     if (process.platform === 'win32') {
-      const script = 'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.Name)" }';
-      const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout: 15_000, maxBuffer: 8 * 1024 * 1024 });
+      const script =
+        'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.Name)" }';
+      const { stdout } = await execFileAsync(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', script],
+        { windowsHide: true, timeout: 15_000, maxBuffer: 8 * 1024 * 1024 },
+      );
       return parseProcessTable(stdout);
     }
-    const { stdout } = await execFileAsync('ps', ['-eo', 'pid=,ppid=,comm='], { timeout: 15_000, maxBuffer: 8 * 1024 * 1024 });
+    const { stdout } = await execFileAsync('ps', ['-eo', 'pid=,ppid=,comm='], {
+      timeout: 15_000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
     return parseProcessTable(stdout);
   } catch {
     return [];
@@ -67,13 +83,19 @@ export function parseProcessTable(text) {
   const rows = [];
   for (const line of String(text).split(/\r?\n/)) {
     const match = /^\s*(\d+)\s+(\d+)\s*(.*)$/.exec(line);
-    if (match) rows.push({ pid: Number(match[1]), ppid: Number(match[2]), name: match[3].trim() });
+    if (match)
+      rows.push({
+        pid: Number(match[1]),
+        ppid: Number(match[2]),
+        name: match[3].trim(),
+      });
   }
   return rows;
 }
 
 /** Where a launch chain ends: the session's root processes, which outlive any command. */
-const CHAIN_ROOTS = /^(explorer\.exe|services\.exe|wininit\.exe|winlogon\.exe|svchost\.exe|csrss\.exe|smss\.exe|system|launchd|systemd|init)$/i;
+const CHAIN_ROOTS =
+  /^(explorer\.exe|services\.exe|wininit\.exe|winlogon\.exe|svchost\.exe|csrss\.exe|smss\.exe|system|launchd|systemd|init)$/i;
 
 /**
  * The processes above this one, nearest first, stopping before a session root
@@ -85,7 +107,13 @@ export function ancestorChain(selfPid, table, { limit = 8 } = {}) {
   let current = byPid.get(selfPid);
   while (current && chain.length < limit) {
     const parent = byPid.get(current.ppid);
-    if (!parent || parent.pid === current.pid || parent.pid <= 1 || CHAIN_ROOTS.test(parent.name)) break;
+    if (
+      !parent ||
+      parent.pid === current.pid ||
+      parent.pid <= 1 ||
+      CHAIN_ROOTS.test(parent.name)
+    )
+      break;
     chain.push(parent.pid);
     current = parent;
   }
@@ -101,7 +129,8 @@ export function previousToStop({ record, selfPid, alive, commandLine }) {
   const pid = Number.parseInt(record?.pid, 10);
   if (!Number.isInteger(pid) || pid <= 0 || pid === selfPid) return null;
   if (!alive) return null;
-  if (typeof commandLine !== 'string' || !/vite/i.test(commandLine)) return null;
+  if (typeof commandLine !== 'string' || !/vite/i.test(commandLine))
+    return null;
   return pid;
 }
 
@@ -112,7 +141,12 @@ export function previousToStop({ record, selfPid, alive, commandLine }) {
  * any link of that chain (the shell, npm, or cmd) and leave the rest running,
  * so every link counts.
  */
-export function launcherGone({ parentPid, currentParentPid, chain = [], alive }) {
+export function launcherGone({
+  parentPid,
+  currentParentPid,
+  chain = [],
+  alive,
+}) {
   if (currentParentPid !== parentPid) return true;
   if (!alive(parentPid)) return true;
   return chain.some((pid) => !alive(pid));
@@ -148,7 +182,8 @@ async function stopPrevious(file, log) {
   const record = readRecord(file);
   if (!record) return;
   const pid = Number.parseInt(record.pid, 10);
-  const commandLine = isAlive(pid) && pid !== process.pid ? await commandLineOf(pid) : null;
+  const commandLine =
+    isAlive(pid) && pid !== process.pid ? await commandLineOf(pid) : null;
   const target = previousToStop({
     record,
     selfPid: process.pid,
@@ -163,9 +198,11 @@ async function stopPrevious(file, log) {
   }
   const deadline = Date.now() + STOP_WAIT_MS;
   while (isAlive(target) && Date.now() < deadline) await sleep(50);
-  log(isAlive(target)
-    ? `[dev] Previous dev server (pid ${target}) did not stop; the port may still be held`
-    : `[dev] Stopped the previous dev server (pid ${target})`);
+  log(
+    isAlive(target)
+      ? `[dev] Previous dev server (pid ${target}) did not stop; the port may still be held`
+      : `[dev] Stopped the previous dev server (pid ${target})`,
+  );
 }
 
 /**
@@ -193,7 +230,10 @@ function watchStdout(onGone) {
 async function watchLauncher(currentServer, log) {
   const parentPid = process.ppid;
   const chain = ancestorChain(process.pid, await processTable());
-  if (process.env.GEV_DEV_WATCH_DEBUG) log(`[dev] Watching launcher chain: parent ${parentPid}, above it ${chain.join(' <- ') || 'nothing'}`);
+  if (process.env.GEV_DEV_WATCH_DEBUG)
+    log(
+      `[dev] Watching launcher chain: parent ${parentPid}, above it ${chain.join(' <- ') || 'nothing'}`,
+    );
   let leaving = false;
   const leave = (why) => {
     if (leaving) return;
@@ -201,7 +241,9 @@ async function watchLauncher(currentServer, log) {
     clearInterval(timer);
     // The launcher's pipes may be closed already: a failed log must not stop the exit.
     try {
-      log(`[dev] The process that started this dev server is gone (${why}); stopping`);
+      log(
+        `[dev] The process that started this dev server is gone (${why}); stopping`,
+      );
     } catch {
       /* nowhere to write */
     }
@@ -255,7 +297,11 @@ const STATE = (globalThis.__GEV_DEV_SINGLE_INSTANCE ??= {
  * one, and exit when the launcher goes away. `vite build` never runs it.
  * `watch` is there for the tests, which must not scan real processes.
  */
-export function singleInstancePlugin({ root = process.cwd(), log = console.log, watch = watchLauncher } = {}) {
+export function singleInstancePlugin({
+  root = process.cwd(),
+  log = console.log,
+  watch = watchLauncher,
+} = {}) {
   const file = path.join(root, PID_FILE);
   return {
     name: 'dev-single-instance',
@@ -265,7 +311,12 @@ export function singleInstancePlugin({ root = process.cwd(), log = console.log, 
       // The watch closes whichever server is live when the launcher goes.
       STATE.server = server;
       STATE.file = file;
-      server.httpServer?.once('listening', () => writeRecord(file, { pid: process.pid, startedAt: new Date().toISOString() }));
+      server.httpServer?.once('listening', () =>
+        writeRecord(file, {
+          pid: process.pid,
+          startedAt: new Date().toISOString(),
+        }),
+      );
       // Vite handles the signals and exits; a process killed outright leaves
       // the record behind, and the next start sees its pid is dead.
       if (!STATE.cleanupInstalled) {

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { createHash, randomBytes } from 'node:crypto';
-import { noteLocalRecordsSaved } from './localIntegrity.mjs';
+import { noteLocalRecordsSaved } from '../server/shared/localIntegrity.mjs';
 import { privateCameraPolicyRecords } from './privateCamerasCore.mjs';
 import {
   RELAY_FRAME_MAX_BYTES,

@@ -28,7 +28,7 @@ import {
   ultraSmsRelayForget,
   ultraOwnSmsOutcome,
   ULTRA_SMS_RETRY_MS,
-} from './ultraSmsRelay.mjs';
+} from '../server/shared/ultraSmsRelay.mjs';
 import { ULTRA_HELP_CONTACT_LIMIT, ultraHelpMessage } from './ultraHelp.mjs';
 
 const NOW = Date.parse('2026-09-28T18:00:00Z');
@@ -926,7 +926,10 @@ test('the module loads where Buffer is only a stub and reads nothing from the en
   // The relay module is server-side, but importing it must touch neither
   // Buffer, crypto nor process.env until a function runs: a child process
   // with the Buffer global removed stands in for a bundle.
-  const moduleUrl = new URL('./ultraSmsRelay.mjs', import.meta.url).href;
+  const moduleUrl = new URL(
+    '../server/shared/ultraSmsRelay.mjs',
+    import.meta.url,
+  ).href;
   const script = [
     'delete globalThis.Buffer;',
     `const m = await import(${JSON.stringify(moduleUrl)});`,

@@ -45,7 +45,13 @@ export function bindPrivateCameraMove({
   onPressEnd,
 } = {}) {
   const container = canvas?.parentElement;
-  if (!canvas || !container || typeof pickCameraId !== 'function' || typeof globePoint !== 'function') return () => {};
+  if (
+    !canvas ||
+    !container ||
+    typeof pickCameraId !== 'function' ||
+    typeof globePoint !== 'function'
+  )
+    return () => {};
   let press = null;
 
   const local = (event) => {
@@ -54,13 +60,21 @@ export function bindPrivateCameraMove({
   };
 
   const onDown = (event) => {
-    if (press || event.button !== 0 || event.defaultPrevented || !isEnabled()) return;
+    if (press || event.button !== 0 || event.defaultPrevented || !isEnabled())
+      return;
     const { x, y } = local(event);
     const id = pickCameraId(x, y);
     if (!isPrivateCameraId(id)) return;
     event.preventDefault();
     event.stopPropagation();
-    press = { id, pointerId: event.pointerId, startX: x, startY: y, moved: false, last: null };
+    press = {
+      id,
+      pointerId: event.pointerId,
+      startX: x,
+      startY: y,
+      moved: false,
+      last: null,
+    };
     try {
       container.setPointerCapture?.(event.pointerId);
     } catch {
@@ -74,7 +88,11 @@ export function bindPrivateCameraMove({
     event.preventDefault();
     event.stopPropagation();
     const { x, y } = local(event);
-    if (!press.moved && Math.hypot(x - press.startX, y - press.startY) < MOVE_TRAVEL_PX) return;
+    if (
+      !press.moved &&
+      Math.hypot(x - press.startX, y - press.startY) < MOVE_TRAVEL_PX
+    )
+      return;
     press.moved = true;
     const point = globePoint(x, y);
     if (!point) return;
@@ -95,7 +113,8 @@ export function bindPrivateCameraMove({
     canvas.style.cursor = '';
     onPressEnd?.();
     if (!finished.moved) onSelect?.(finished.id);
-    else if (event.type === 'pointerup' && finished.last) onCommit?.(finished.id, finished.last);
+    else if (event.type === 'pointerup' && finished.last)
+      onCommit?.(finished.id, finished.last);
     else if (finished.last) onCommit?.(finished.id, null);
   };
 

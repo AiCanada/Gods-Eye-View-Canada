@@ -4,7 +4,8 @@ import path from 'node:path';
 // Overpass API proxy constants and cache state
 // ---------------------------------------------------------------------------
 /**
- * User-Agent sent to every Overpass mirror.
+ * User-Agent sent to every Overpass instance (operator-configured or the
+ * public mirrors below): a stable application identity.
  *
  * The OSM API usage policy asks for a "Valid User-Agent identifying application
  * and version"; a generic proxy label is not one. A mirror is free to refuse a
@@ -16,8 +17,14 @@ import path from 'node:path';
 const OVERPASS_USER_AGENT =
   'gods-eye-view/0.1 (+https://github.com/AiCanada/Gods-Eye-View-Canada)';
 
-/** Ordered list of Overpass API mirrors; tried sequentially on failure/rate-limit. */
-const OVERPASS_UPSTREAMS = [
+/**
+ * Public Overpass API mirrors, in the order they are tried. They are never
+ * used by default: an operator opts in by putting the word `public` in
+ * OVERPASS_UPSTREAMS (alone, or among their own instances, where its position
+ * sets the order). Each public mirror is skipped for
+ * OVERPASS_MIRROR_BACKOFF_BASE_MS after a failure (see transport.js).
+ */
+const OVERPASS_PUBLIC_MIRRORS = Object.freeze([
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
@@ -26,7 +33,51 @@ const OVERPASS_UPSTREAMS = [
   // ban; refused connections fail in ms, so healthy mirrors above still win).
   // Verified: planet coverage (Texas query), CORS *, ~5-20 s cold latency.
   'https://overpass.private.coffee/api/interpreter',
-];
+]);
+
+/** Keyword in OVERPASS_UPSTREAMS that stands for OVERPASS_PUBLIC_MIRRORS. */
+const OVERPASS_PUBLIC_KEYWORD = 'public';
+
+/**
+ * Parse only operator-supplied HTTP(S) endpoints; private instances are allowed.
+ * The keyword `public` expands to OVERPASS_PUBLIC_MIRRORS at its position.
+ */
+function parseOverpassUpstreams(raw) {
+  const endpoints = [];
+  for (const token of String(raw || '').split(',')) {
+    if (token.trim().toLowerCase() === OVERPASS_PUBLIC_KEYWORD) {
+      for (const mirror of OVERPASS_PUBLIC_MIRRORS)
+        if (!endpoints.includes(mirror)) endpoints.push(mirror);
+      continue;
+    }
+    try {
+      const url = new URL(token.trim());
+      if (
+        !['http:', 'https:'].includes(url.protocol) ||
+        !url.hostname ||
+        url.hash
+      )
+        continue;
+      if (!endpoints.includes(url.href)) endpoints.push(url.href);
+    } catch {
+      // Invalid configuration never becomes an upstream or appears in logs.
+    }
+  }
+  return endpoints.slice(0, 8);
+}
+
+let upstreamMemo = { raw: null, endpoints: [] };
+
+/**
+ * Resolve after environment loading. Public Overpass instances are not used by
+ * default; `OVERPASS_UPSTREAMS=public` opts in to OVERPASS_PUBLIC_MIRRORS.
+ */
+function resolveOverpassUpstreams() {
+  const raw = process.env.OVERPASS_UPSTREAMS || '';
+  if (upstreamMemo.raw !== raw)
+    upstreamMemo = { raw, endpoints: parseOverpassUpstreams(raw) };
+  return [...upstreamMemo.endpoints];
+}
 
 /**
  * TTL for FRESH cached Overpass responses (ms). Road geometry is static for
@@ -57,8 +108,10 @@ const OVERPASS_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'overpass');
 const OVERPASS_TIMEOUT_MS = 22000;
 
 /**
- * First skip window (ms) for a mirror that timed out, refused the proxy or
- * rate-limited it. Measured 2026-09-14: overpass-api.de and lz4 answer 406 and
+ * First skip window (ms) for a PUBLIC mirror (OVERPASS_PUBLIC_MIRRORS) that
+ * timed out, refused the proxy or rate-limited it and sent no Retry-After.
+ * Operator-configured instances use transport.js's shorter bounded backoff.
+ * Measured 2026-09-14: overpass-api.de and lz4 answer 406 and
  * kumi.systems and private.coffee time out, so without a breaker every query
  * spent ~45 s re-learning that before failing.
  */
@@ -155,7 +208,10 @@ export {
   OVERPASS_MAX_RESPONSE_BYTES,
   OVERPASS_MIRROR_BACKOFF_BASE_MS,
   OVERPASS_MIRROR_BACKOFF_MAX_MS,
-  OVERPASS_UPSTREAMS,
+  OVERPASS_PUBLIC_MIRRORS,
+  OVERPASS_PUBLIC_KEYWORD,
+  parseOverpassUpstreams,
+  resolveOverpassUpstreams,
   OVERPASS_USER_AGENT,
   OVERPASS_TIMEOUT_MS,
 };

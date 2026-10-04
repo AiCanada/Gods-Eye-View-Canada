@@ -362,9 +362,18 @@
 }
 
 #pp-toggles:not(.collapsed) > .pp-header-row,
-#pp-toggles:not(.collapsed) > .pp-toggle-group,
-#pp-toggles:not(.collapsed) > #clean-view-toggle {
+#pp-toggles:not(.collapsed) > .pp-panel-body > .pp-toggle-group,
+#pp-toggles:not(.collapsed) > .pp-panel-body > #clean-view-toggle {
   width: 100%;
+}
+
+.pp-panel-body,
+.cyber-panel-body {
+  display: contents;
+}
+
+.panel-collapsible.collapsed > .global-context-panel-inner > .cyber-panel-body {
+  display: none;
 }
 
 .pp-toggle-btn {
@@ -685,6 +694,28 @@
   min-width: 200px;
 }
 
+.cyber-sonar-control {
+  display: none;
+}
+
+:root[data-ui-theme='cyber'] .cyber-sonar-control {
+  display: flex;
+}
+
+.cyber-sonar-toggle-row,
+.cyber-sonar-setting {
+  min-width: 200px;
+}
+
+.cyber-sonar-toggle-row .pp-mode-btn {
+  margin-left: auto;
+  min-width: 48px;
+}
+
+:root[data-cyber-sonar='off'] .cyber-sonar-setting {
+  display: none;
+}
+
 /* Map Source tiles live with Visual Presets in the bottom command tray. */
 .map-source-section {
   display: grid;
@@ -822,6 +853,52 @@
   letter-spacing: 0.6px;
   padding: 2px 6px;
   outline: none;
+}
+
+/* DISPLAY ▸ Draw: shape segment, label field, colour, and the one-line hint */
+#draw-mode-row {
+  min-width: 184px;
+}
+#draw-label-row {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.pp-text-input {
+  flex: 1 1 110px;
+  min-width: 0;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  padding: 2px 6px;
+  outline: none;
+}
+.pp-text-input:focus {
+  border-color: var(--accent);
+}
+.draw-color-select {
+  flex: 0 0 74px;
+}
+.draw-clear-btn {
+  flex: 0 0 auto;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+}
+.draw-hint {
+  flex-basis: 100%;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+body.gev-drawing #cesiumContainer canvas {
+  cursor: crosshair;
 }
 
 /* Proximity / All segmented control under the 3D toggle */
@@ -1014,7 +1091,7 @@ body.ui-clean-view #scene-runtime.active {
 /* Display owns the constrained desktop scroll surface. Keeping Parameters as
  * a second scroll container traps wheel/touch input at its boundary and lets
  * the flex column compress newly added preset rows below the visible panel. */
-#pp-toggles:not(.collapsed) > #param-slider-panel.active {
+#pp-toggles:not(.collapsed) > .pp-panel-body > #param-slider-panel.active {
   flex: 0 0 auto;
   max-height: none;
   overflow-y: visible;

@@ -2,6 +2,7 @@ import { defaultSourceRoot } from './common/source-root.js';
 import { handleHudSummary } from './openai/hud-summary.js';
 import { createDebugLogHandler } from './openai/debug-log.js';
 import { createRealtimeTokenHandler } from './openai/realtime.js';
+import { sameSiteGated } from './common/same-site.js';
 
 /**
  * Vite plugin: OpenAI Realtime ephemeral client secret.
@@ -12,18 +13,23 @@ import { createRealtimeTokenHandler } from './openai/realtime.js';
 function openAiRealtimeProxy({
   sourceRoot = defaultSourceRoot,
   annotationGuidance,
+  realtime = {},
 } = {}) {
   function install(middlewares) {
-    middlewares.use('/api/openai/hud-summary', handleHudSummary);
+    // Cost-bearing and log endpoints refuse cross-site browser requests
+    // (see server/providers/common/same-site.js and SECURITY.md).
+    middlewares.use('/api/openai/hud-summary', sameSiteGated(handleHudSummary));
 
     middlewares.use(
       '/api/realtime/debug-log',
-      createDebugLogHandler({ sourceRoot }),
+      sameSiteGated(createDebugLogHandler({ sourceRoot })),
     );
 
     middlewares.use(
       '/api/realtime/token',
-      createRealtimeTokenHandler({ annotationGuidance }),
+      sameSiteGated(
+        createRealtimeTokenHandler({ ...realtime, annotationGuidance }),
+      ),
     );
   }
 

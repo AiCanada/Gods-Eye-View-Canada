@@ -24,7 +24,12 @@
  * typed into the form.
  */
 
-import { COMPASS_POINTS, compassPointFor, normalizePostalCode, postalCountry } from './privateCamerasCore.mjs';
+import {
+  COMPASS_POINTS,
+  compassPointFor,
+  normalizePostalCode,
+  postalCountry,
+} from './privateCamerasCore.mjs';
 
 const STATUS_ENDPOINT = '/api/private-cams/status';
 const CONFIG_ENDPOINT = '/api/private-cams/config';
@@ -36,7 +41,8 @@ const NOMINATIM_SEARCH = 'https://nominatim.openstreetmap.org/search';
 export const RELAY_REFRESH_MS = 15000;
 /** Same as the server's RELAY_HEARTBEAT_STALE_MS: an older heartbeat means the relay is gone. */
 const RELAY_HEARTBEAT_STALE_MS = 10 * 60 * 1000;
-const RELAY_SOURCE_HINT = 'Private_CCTV_Feed camera name (blank = same as Name)';
+const RELAY_SOURCE_HINT =
+  'Private_CCTV_Feed camera name (blank = same as Name)';
 
 /** Every way a home site can get its pictures, in menu order. */
 const HOME_AUTH_CHOICES = Object.freeze([
@@ -48,20 +54,38 @@ const HOME_AUTH_CHOICES = Object.freeze([
 const RELAY_STATE_TEXT = new Map([
   ['feed', 'Relay connected — reading your Private_CCTV_Feed feed'],
   ['no-cards', 'Your Private_CCTV_Feed feed has no clips loaded'],
-  ['layout-unknown', 'Private_CCTV_Feed feed layout not recognised — the relay needs an update'],
+  [
+    'layout-unknown',
+    'Private_CCTV_Feed feed layout not recognised — the relay needs an update',
+  ],
 ]);
-const RELAY_SIGNED_OUT_TEXT = 'Private_CCTV_Feed signed out — open your camera site and sign in to refresh pictures';
-const RELAY_NOT_CONNECTED_TEXT = 'Relay not connected — open your camera site feed in Chrome with the extension installed';
-const RELAY_NOT_PAIRED_TEXT = 'Relay not paired — open the extension options, press PAIR WITH GODS EYE VIEW and approve the request here';
+const RELAY_SIGNED_OUT_TEXT =
+  'Private_CCTV_Feed signed out — open your camera site and sign in to refresh pictures';
+const RELAY_NOT_CONNECTED_TEXT =
+  'Relay not connected — open your camera site feed in Chrome with the extension installed';
+const RELAY_NOT_PAIRED_TEXT =
+  'Relay not paired — open the extension options, press PAIR WITH GODS EYE VIEW and approve the request here';
 /** The only addresses the relay extension can reach Gods Eye View at. */
-const RELAY_GEV_ORIGINS = Object.freeze(['http://localhost:4173', 'http://127.0.0.1:4173']);
+const RELAY_GEV_ORIGINS = Object.freeze([
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+]);
 
 const TRANSPORT_LABELS = Object.freeze({
-  pinned: ['HTTPS · PINNED', 'Encrypted, and the certificate must match the saved fingerprint'],
+  pinned: [
+    'HTTPS · PINNED',
+    'Encrypted, and the certificate must match the saved fingerprint',
+  ],
   https: ['HTTPS', 'Encrypted in transit'],
-  'lan-http': ['LOCAL NETWORK', 'Plain http that never leaves your local network — https is still better'],
+  'lan-http': [
+    'LOCAL NETWORK',
+    'Plain http that never leaves your local network — https is still better',
+  ],
   insecure: ['NOT SECURE', 'A login would cross the internet unencrypted'],
-  relay: ['BROWSER RELAY', 'Pictures come from your own signed-in Private_CCTV_Feed feed tab through the paired Chrome extension; no login is sent anywhere'],
+  relay: [
+    'BROWSER RELAY',
+    'Pictures come from your own signed-in Private_CCTV_Feed feed tab through the paired Chrome extension; no login is sent anywhere',
+  ],
   none: ['', ''],
 });
 
@@ -91,7 +115,10 @@ function element(documentRef, tag, className, text) {
   return node;
 }
 
-function input(documentRef, { name, type = 'text', value = '', placeholder = '', label }) {
+function input(
+  documentRef,
+  { name, type = 'text', value = '', placeholder = '', label },
+) {
   const field = element(documentRef, 'input');
   field.type = type;
   field.autocomplete = type === 'password' ? 'new-password' : 'off';
@@ -126,7 +153,9 @@ function tidy(value) {
 export function splitSiteLocationQuery(query) {
   const text = tidy(query);
   const postal = normalizePostalCode(text);
-  return postal ? { postalCode: postal, address: '' } : { postalCode: '', address: text };
+  return postal
+    ? { postalCode: postal, address: '' }
+    : { postalCode: '', address: text };
 }
 
 /**
@@ -144,7 +173,9 @@ export function collectPrivateSiteUpdate(kindId, siteId, values, cameras) {
   if (siteId) body.siteId = siteId;
   const relay = kindId === 'home' && values.auth === 'relay';
   if (!relay) {
-    for (const key of kindId === 'home' ? ['token', 'password'] : ['password']) {
+    for (const key of kindId === 'home'
+      ? ['token', 'password']
+      : ['password']) {
       if (values[key]) body[key] = values[key];
     }
     if (values.username) body.username = values.username;
@@ -158,14 +189,20 @@ export function collectPrivateSiteUpdate(kindId, siteId, values, cameras) {
       body.auth = values.auth === 'login' ? 'login' : 'token';
     }
   }
-  const coordinate = (value) => (value === '' || value === undefined || value === null ? null : Number(value));
+  const coordinate = (value) =>
+    value === '' || value === undefined || value === null
+      ? null
+      : Number(value);
   body.postalCode = values.postalCode || '';
   body.address = values.address || '';
   body.lat = coordinate(values.lat);
   body.lon = coordinate(values.lon);
   body.locationLabel = values.locationLabel || '';
   body.cameras = cameras.map((camera) => {
-    const row = { name: camera.name, headingDeg: camera.headingDeg === '' ? null : camera.headingDeg };
+    const row = {
+      name: camera.name,
+      headingDeg: camera.headingDeg === '' ? null : camera.headingDeg,
+    };
     if (camera.id) row.id = camera.id;
     if (camera.source) row.source = camera.source;
     return row;
@@ -176,17 +213,22 @@ export function collectPrivateSiteUpdate(kindId, siteId, values, cameras) {
 /** The connection choices a home site offers, limited to what the server accepts — pure, exported for tests. */
 export function privateCameraAuthChoices(kind) {
   const modes = Array.isArray(kind?.authModes) ? kind.authModes : [];
-  return HOME_AUTH_CHOICES.filter(([value]) => !modes.length || modes.includes(value));
+  return HOME_AUTH_CHOICES.filter(
+    ([value]) => !modes.length || modes.includes(value),
+  );
 }
 
 /** Same rule as normalizeRelayCameraName in the core: NFKC, trimmed, single spaces, lower case. */
 function relayName(text) {
-  return typeof text === 'string' ? text.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase() : '';
+  return typeof text === 'string'
+    ? text.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase()
+    : '';
 }
 
 /** The saved Private_CCTV_Feed name of a relay camera when it differs from its own name, else '' — pure, exported for tests. */
 export function relayPrivateCctvFeedNameOverride(camera) {
-  const matchName = typeof camera?.matchName === 'string' ? camera.matchName : '';
+  const matchName =
+    typeof camera?.matchName === 'string' ? camera.matchName : '';
   return matchName && matchName !== relayName(camera.name) ? matchName : '';
 }
 
@@ -196,13 +238,30 @@ export function relayPrivateCctvFeedNameOverride(camera) {
  * name override.
  */
 export function cameraSourceField(kind, saved = {}, relay = false) {
-  if (relay) return { placeholder: saved.privateCctvFeedName ? `Private_CCTV_Feed name “${saved.privateCctvFeedName}” — saved (type the Name to clear)` : RELAY_SOURCE_HINT, label: RELAY_SOURCE_HINT };
-  return { placeholder: saved.source ? `${saved.source} — saved` : kind?.sourceHint || '', label: kind?.id === 'home' ? 'Camera entity or snapshot URL' : 'Snapshot URL' };
+  if (relay)
+    return {
+      placeholder: saved.privateCctvFeedName
+        ? `Private_CCTV_Feed name “${saved.privateCctvFeedName}” — saved (type the Name to clear)`
+        : RELAY_SOURCE_HINT,
+      label: RELAY_SOURCE_HINT,
+    };
+  return {
+    placeholder: saved.source
+      ? `${saved.source} — saved`
+      : kind?.sourceHint || '',
+    label:
+      kind?.id === 'home' ? 'Camera entity or snapshot URL' : 'Snapshot URL',
+  };
 }
 
 /** Whether a site from GET /status is saved on the browser feed relay and carries its relay report. */
 export function isRelaySite(site) {
-  return Boolean(site && site.auth === 'relay' && site.relay && typeof site.relay === 'object');
+  return Boolean(
+    site &&
+    site.auth === 'relay' &&
+    site.relay &&
+    typeof site.relay === 'object',
+  );
 }
 
 /** Whether the relay has sent a recent heartbeat: the server's flag, re-checked against `now`. */
@@ -210,7 +269,11 @@ export function relayConnected(site, now = Date.now()) {
   const relay = site?.relay;
   if (!relay?.connected) return false;
   const at = relay.lastHeartbeatAt;
-  return !(Number.isFinite(at) && Number.isFinite(now) && now - at > RELAY_HEARTBEAT_STALE_MS);
+  return !(
+    Number.isFinite(at) &&
+    Number.isFinite(now) &&
+    now - at > RELAY_HEARTBEAT_STALE_MS
+  );
 }
 
 /**
@@ -229,7 +292,9 @@ export function relayStatusText(site, now = Date.now()) {
 /** "Paired with extension <id>" or "Not paired" — pure, exported for tests. */
 export function relayPairedText(site) {
   const relay = site?.relay;
-  return relay?.paired && relay.extensionId ? `Paired with extension ${relay.extensionId}` : 'Not paired';
+  return relay?.paired && relay.extensionId
+    ? `Paired with extension ${relay.extensionId}`
+    : 'Not paired';
 }
 
 function clockTime(ms) {
@@ -240,20 +305,27 @@ function clockTime(ms) {
 /** What the relay last delivered for one camera, with the local time it arrived — pure, exported for tests. */
 export function relayCameraLine(camera) {
   const name = tidy(camera?.name) || 'Camera';
-  if (!Number.isFinite(camera?.lastFrameAt)) return `${name}: waiting for a clip`;
+  if (!Number.isFinite(camera?.lastFrameAt))
+    return `${name}: waiting for a clip`;
   const clip = tidy(camera.lastClip);
   return `${name}: last clip picture ${clockTime(camera.lastFrameAt)}${clip ? ` (${clip})` : ''}`;
 }
 
 /** The hint for Private_CCTV_Feed camera names that matched no camera, or '' — pure, exported for tests. */
 export function relayUnknownNamesText(site) {
-  const names = Array.isArray(site?.relay?.unknownNames) ? site.relay.unknownNames.map(tidy).filter(Boolean) : [];
-  return names.length ? `Your Private_CCTV_Feed feed has cameras named ${names.map((name) => `“${name}”`).join(', ')} that match no camera here — set a camera's Private_CCTV_Feed name` : '';
+  const names = Array.isArray(site?.relay?.unknownNames)
+    ? site.relay.unknownNames.map(tidy).filter(Boolean)
+    : [];
+  return names.length
+    ? `Your Private_CCTV_Feed feed has cameras named ${names.map((name) => `“${name}”`).join(', ')} that match no camera here — set a camera's Private_CCTV_Feed name`
+    : '';
 }
 
 /** The pairing request line, or '' when no request is waiting — pure, exported for tests. */
 export function relayPendingText(pending) {
-  return pending && pending.extensionId && pending.code ? `Pairing request from extension ${pending.extensionId} — code ${pending.code}` : '';
+  return pending && pending.extensionId && pending.code
+    ? `Pairing request from extension ${pending.extensionId} — code ${pending.code}`
+    : '';
 }
 
 /**
@@ -264,8 +336,18 @@ export function relayPendingText(pending) {
 export function relayPendingRequests(pending) {
   const list = Array.isArray(pending) ? pending : pending ? [pending] : [];
   return list
-    .filter((request) => request && typeof request.extensionId === 'string' && typeof request.code === 'string' && relayPendingText(request))
-    .map((request) => ({ extensionId: request.extensionId, code: request.code, text: relayPendingText(request) }));
+    .filter(
+      (request) =>
+        request &&
+        typeof request.extensionId === 'string' &&
+        typeof request.code === 'string' &&
+        relayPendingText(request),
+    )
+    .map((request) => ({
+      extensionId: request.extensionId,
+      code: request.code,
+      text: relayPendingText(request),
+    }));
 }
 
 /**
@@ -273,7 +355,12 @@ export function relayPendingRequests(pending) {
  * reach, or '' — pure, exported for tests. An unknown origin gets no warning.
  */
 export function relayOriginWarning(origin) {
-  if (typeof origin !== 'string' || !/^https?:\/\//.test(origin) || RELAY_GEV_ORIGINS.includes(origin)) return '';
+  if (
+    typeof origin !== 'string' ||
+    !/^https?:\/\//.test(origin) ||
+    RELAY_GEV_ORIGINS.includes(origin)
+  )
+    return '';
   return `The Private_CCTV_Feed relay only reaches Gods Eye View at http://localhost:4173, but this page is on ${origin} — start the app on port 4173 to use it.`;
 }
 
@@ -287,13 +374,16 @@ export function relayPanelLines(site, pending, now = Date.now()) {
   let tone = 'off';
   if (!site?.relay?.paired) tone = 'off';
   else if (state === 'signed-out') tone = 'warn';
-  else if (relayConnected(site, now)) tone = RELAY_STATE_TEXT.has(state) && state !== 'feed' ? 'warn' : 'ok';
+  else if (relayConnected(site, now))
+    tone = RELAY_STATE_TEXT.has(state) && state !== 'feed' ? 'warn' : 'ok';
   return {
     tone,
     status: relayStatusText(site, now),
     paired: Boolean(site?.relay?.paired && site.relay.extensionId),
     pairedText: relayPairedText(site),
-    cameras: (Array.isArray(site?.cameras) ? site.cameras : []).map(relayCameraLine),
+    cameras: (Array.isArray(site?.cameras) ? site.cameras : []).map(
+      relayCameraLine,
+    ),
     unknown: relayUnknownNamesText(site),
     requests: relayPendingRequests(pending),
   };
@@ -301,7 +391,9 @@ export function relayPanelLines(site, pending, now = Date.now()) {
 
 /** Leading house number of a street address ("42" in "42 Charlotte St"), or ''. */
 function houseNumber(text) {
-  return /^\s*(\d+[a-z]?)\b/i.exec(String(text || ''))?.[1]?.toLowerCase() || '';
+  return (
+    /^\s*(\d+[a-z]?)\b/i.exec(String(text || ''))?.[1]?.toLowerCase() || ''
+  );
 }
 
 /**
@@ -315,9 +407,13 @@ function houseNumber(text) {
  * A network failure throws, so the caller can tell it apart from "not found".
  * @returns {Promise<{lat: number, lon: number, label: string, precision: string} | null>}
  */
-export async function locateSiteLocation(query, { fetchImpl = globalThis.fetch?.bind(globalThis), signal } = {}) {
+export async function locateSiteLocation(
+  query,
+  { fetchImpl = globalThis.fetch?.bind(globalThis), signal } = {},
+) {
   const { postalCode, address } = splitSiteLocationQuery(query);
-  if ((!postalCode && address.length < 4) || typeof fetchImpl !== 'function') return null;
+  if ((!postalCode && address.length < 4) || typeof fetchImpl !== 'function')
+    return null;
   const url = new URL(NOMINATIM_SEARCH);
   url.searchParams.set('format', 'jsonv2');
   url.searchParams.set('limit', '1');
@@ -328,8 +424,12 @@ export async function locateSiteLocation(query, { fetchImpl = globalThis.fetch?.
   } else {
     url.searchParams.set('q', address);
   }
-  const response = await fetchImpl(url.toString(), { signal, headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`OpenStreetMap answered ${response.status}`);
+  const response = await fetchImpl(url.toString(), {
+    signal,
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok)
+    throw new Error(`OpenStreetMap answered ${response.status}`);
   const results = await response.json();
   const hit = Array.isArray(results) ? results[0] : null;
   const lat = Number(hit?.lat);
@@ -339,7 +439,11 @@ export async function locateSiteLocation(query, { fetchImpl = globalThis.fetch?.
   const number = postalCode ? '' : houseNumber(address);
   let precision = 'exact';
   if (postalCode) precision = 'approximate';
-  else if (number && !new RegExp(`(^|[^0-9a-z])${number}([^0-9a-z]|$)`, 'i').test(label)) precision = 'street';
+  else if (
+    number &&
+    !new RegExp(`(^|[^0-9a-z])${number}([^0-9a-z]|$)`, 'i').test(label)
+  )
+    precision = 'street';
   return { lat, lon, label, precision };
 }
 
@@ -353,7 +457,13 @@ export function siteLocateMessage(point) {
 }
 
 /** Mount the section into `host`; returns a handle whose destroy() stops pending work. */
-export function initPrivateCameraSetup({ host, documentRef = globalThis.document, fetchImpl, signal, onSections = null } = {}) {
+export function initPrivateCameraSetup({
+  host,
+  documentRef = globalThis.document,
+  fetchImpl,
+  signal,
+  onSections = null,
+} = {}) {
   if (!host || !documentRef) return { destroy() {} };
   const doFetch = fetchImpl || globalThis.fetch?.bind(globalThis);
   const lifetime = new AbortController();
@@ -388,12 +498,17 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
       body: JSON.stringify(body),
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) throw new Error(payload.error || `Save failed (${response.status})`);
+    if (!response.ok || !payload.ok)
+      throw new Error(payload.error || `Save failed (${response.status})`);
     return payload;
   };
 
   const readStatus = async () => {
-    const response = await doFetch(STATUS_ENDPOINT, { cache: 'no-store', credentials: 'same-origin', signal: lifetime.signal });
+    const response = await doFetch(STATUS_ENDPOINT, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      signal: lifetime.signal,
+    });
     if (!response.ok) throw new Error(String(response.status));
     return response.json();
   };
@@ -401,7 +516,8 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
   const updateRelayPanels = (status) => {
     const pending = status?.relayPending || null;
     for (const kind of status?.kinds || []) {
-      for (const site of kind.sites || []) if (isRelaySite(site)) relayPanels.get(site.id)?.(site, pending);
+      for (const site of kind.sites || [])
+        if (isRelaySite(site)) relayPanels.get(site.id)?.(site, pending);
     }
   };
 
@@ -416,7 +532,8 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     try {
       const status = await readStatus();
       // A status read before the section was re-rendered describes old panels.
-      if (!lifetime.signal.aborted && startedFor === generation) updateRelayPanels(status);
+      if (!lifetime.signal.aborted && startedFor === generation)
+        updateRelayPanels(status);
     } catch {
       // A missed refresh keeps the last report; the next one tries again.
     } finally {
@@ -431,7 +548,8 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
   // The section lives inside the POWER UP dialog, which is hidden while closed.
   const sectionShown = () => {
     if (documentRef.visibilityState === 'hidden') return false;
-    for (let node = host; node; node = node.parentElement) if (node.hidden) return false;
+    for (let node = host; node; node = node.parentElement)
+      if (node.hidden) return false;
     return true;
   };
 
@@ -451,9 +569,14 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
   const refreshIfShown = () => {
     if (!lifetime.signal.aborted && sectionShown()) void refreshRelay();
   };
-  documentRef.addEventListener?.('visibilitychange', refreshIfShown, { signal: lifetime.signal });
+  documentRef.addEventListener?.('visibilitychange', refreshIfShown, {
+    signal: lifetime.signal,
+  });
 
-  const facingTitle = (label) => (label ? `${COMPASS_NAMES[label]} · ${COMPASS_POINTS.find(([point]) => point === label)[1]}°` : 'Facing unknown');
+  const facingTitle = (label) =>
+    label
+      ? `${COMPASS_NAMES[label]} · ${COMPASS_POINTS.find(([point]) => point === label)[1]}°`
+      : 'Facing unknown';
 
   const facingSelect = (camera) => {
     const select = element(documentRef, 'select', 'private-cams-facing');
@@ -477,7 +600,14 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
   };
 
   const labelSource = (field, kind, relay) => {
-    const { placeholder, label } = cameraSourceField(kind, { source: field.dataset.savedSource, privateCctvFeedName: field.dataset.privateCctvFeedName }, relay);
+    const { placeholder, label } = cameraSourceField(
+      kind,
+      {
+        source: field.dataset.savedSource,
+        privateCctvFeedName: field.dataset.privateCctvFeedName,
+      },
+      relay,
+    );
     field.placeholder = placeholder;
     field.setAttribute('aria-label', label);
   };
@@ -485,14 +615,30 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
   const renderCameraRow = (list, kind, camera = {}, relay = false) => {
     const row = element(documentRef, 'div', 'private-cams-camera');
     if (camera.id) row.dataset.cameraId = camera.id;
-    const remove = button(documentRef, 'private-cams-remove-camera', '✕', 'Remove this camera (takes effect on save)');
+    const remove = button(
+      documentRef,
+      'private-cams-remove-camera',
+      '✕',
+      'Remove this camera (takes effect on save)',
+    );
     remove.setAttribute('aria-label', 'Remove this camera');
     remove.addEventListener('click', () => row.remove());
     const source = input(documentRef, { name: 'source' });
     source.dataset.savedSource = camera.source || '';
-    source.dataset.privateCctvFeedName = relayPrivateCctvFeedNameOverride(camera);
+    source.dataset.privateCctvFeedName =
+      relayPrivateCctvFeedNameOverride(camera);
     labelSource(source, kind, relay);
-    row.append(input(documentRef, { name: 'name', value: camera.name || '', placeholder: 'Name', label: 'Camera name' }), source, facingSelect(camera), remove);
+    row.append(
+      input(documentRef, {
+        name: 'name',
+        value: camera.name || '',
+        placeholder: 'Name',
+        label: 'Camera name',
+      }),
+      source,
+      facingSelect(camera),
+      remove,
+    );
     list.append(row);
   };
 
@@ -502,13 +648,19 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     details.open = open;
     const steps = element(documentRef, 'ol');
     for (const parts of [
-      ['Run ', code('npm run private-cctv-feed-relay:install'), ' in the app folder.'],
+      [
+        'Run ',
+        code('npm run private-cctv-feed-relay:install'),
+        ' in the app folder.',
+      ],
       [
         'Open ',
         code('chrome://extensions'),
         ', turn on Developer mode, choose Load unpacked and paste the folder path the install printed into the folder box (on Windows it is under AppData, a hidden folder you will not see by browsing).',
       ],
-      ["Open the extension's options (Details → Extension options) and press PAIR WITH GODS EYE VIEW. Gods Eye View gives that request a code: APPROVE only the request here whose code and extension ID both match the options page."],
+      [
+        "Open the extension's options (Details → Extension options) and press PAIR WITH GODS EYE VIEW. Gods Eye View gives that request a code: APPROVE only the request here whose code and extension ID both match the options page.",
+      ],
       [
         'Keep your camera site feed page (the FEED link on this card) open and signed in — reload that tab once after installing or updating the extension — and add that site to ',
         code('chrome://settings/performance'),
@@ -519,20 +671,54 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
       step.append(...parts);
       steps.append(step);
     }
-    details.append(element(documentRef, 'summary', '', 'SET UP THE PRIVATE_CCTV_FEED FEED RELAY'), steps);
+    details.append(
+      element(
+        documentRef,
+        'summary',
+        '',
+        'SET UP THE PRIVATE_CCTV_FEED FEED RELAY',
+      ),
+      steps,
+    );
     return details;
   };
 
   const renderRelay = (site, pending) => {
     const box = element(documentRef, 'div', 'private-cams-relay');
     box.append(
-      element(documentRef, 'p', 'private-cams-warning', "Private_CCTV_Feed's terms of service prohibit data-extraction tools and allow Private_CCTV_Feed to close accounts. Use the relay at your own risk."),
-      element(documentRef, 'p', 'private-cams-relay-limits', 'Pictures are the latest motion-clip thumbnails, not live video; Private_CCTV_Feed signs the web page out after inactivity.'),
+      element(
+        documentRef,
+        'p',
+        'private-cams-warning',
+        "Private_CCTV_Feed's terms of service prohibit data-extraction tools and allow Private_CCTV_Feed to close accounts. Use the relay at your own risk.",
+      ),
+      element(
+        documentRef,
+        'p',
+        'private-cams-relay-limits',
+        'Pictures are the latest motion-clip thumbnails, not live video; Private_CCTV_Feed signs the web page out after inactivity.',
+      ),
     );
     const originWarning = relayOriginWarning(globalThis.location?.origin);
-    if (originWarning) box.append(element(documentRef, 'p', 'private-cams-warning private-cams-relay-origin', originWarning));
+    if (originWarning)
+      box.append(
+        element(
+          documentRef,
+          'p',
+          'private-cams-warning private-cams-relay-origin',
+          originWarning,
+        ),
+      );
     if (!site.id || !isRelaySite(site)) {
-      box.append(element(documentRef, 'p', 'private-cams-relay-limits', 'Save this site with Browser feed relay selected, then pair the extension here.'), relaySetupSteps(true));
+      box.append(
+        element(
+          documentRef,
+          'p',
+          'private-cams-relay-limits',
+          'Save this site with Browser feed relay selected, then pair the extension here.',
+        ),
+        relaySetupSteps(true),
+      );
       return box;
     }
 
@@ -547,8 +733,16 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     const statusLine = element(documentRef, 'p', 'private-cams-relay-status');
     const pairedLine = element(documentRef, 'p', 'private-cams-relay-paired');
     const cameraList = element(documentRef, 'ul', 'private-cams-relay-cameras');
-    const unknownLine = element(documentRef, 'p', 'private-cams-warning private-cams-relay-unknown');
-    const requestList = element(documentRef, 'div', 'private-cams-relay-requests');
+    const unknownLine = element(
+      documentRef,
+      'p',
+      'private-cams-warning private-cams-relay-unknown',
+    );
+    const requestList = element(
+      documentRef,
+      'div',
+      'private-cams-relay-requests',
+    );
     live.append(statusLine, pairedLine, cameraList, unknownLine, requestList);
     let unpairButton = null;
     let camerasShown = '';
@@ -556,7 +750,8 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     // While an approval or unpairing is on its way, every relay button stays disabled, however often the panel refreshes.
     let busy = false;
     const syncControls = () => {
-      for (const control of requestList.querySelectorAll('button')) control.disabled = busy || !editable;
+      for (const control of requestList.querySelectorAll('button'))
+        control.disabled = busy || !editable;
       if (unpairButton) unpairButton.disabled = busy || !editable;
     };
     const setText = (node, text) => {
@@ -570,7 +765,14 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
       message.textContent = 'Approving…';
       try {
         // The code and the extension id exactly as shown here: the server pairs that request and no other.
-        const payload = await post({ siteId: site.id, code: request.code, extensionId: request.extensionId }, RELAY_APPROVE_ENDPOINT);
+        const payload = await post(
+          {
+            siteId: site.id,
+            code: request.code,
+            extensionId: request.extensionId,
+          },
+          RELAY_APPROVE_ENDPOINT,
+        );
         if (lifetime.signal.aborted) return;
         message.textContent = `Paired${payload.extensionId ? ` with extension ${payload.extensionId}` : ''}. Pictures of cameras with clips in your feed arrive within a minute.`;
         steps.open = false;
@@ -585,14 +787,20 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
 
     const unpairRelay = async () => {
       if (lifetime.signal.aborted || !editable || busy) return;
-      const ok = typeof globalThis.confirm !== 'function' || globalThis.confirm(`Unpair the Private_CCTV_Feed feed relay from ${site.name}? Its cameras get no new pictures until you pair again.`);
+      const ok =
+        typeof globalThis.confirm !== 'function' ||
+        globalThis.confirm(
+          `Unpair the Private_CCTV_Feed feed relay from ${site.name}? Its cameras get no new pictures until you pair again.`,
+        );
       if (!ok) return;
       busy = true;
       syncControls();
       message.textContent = 'Unpairing…';
       try {
         await post({ siteId: site.id }, RELAY_UNPAIR_ENDPOINT);
-        if (!lifetime.signal.aborted) message.textContent = 'Unpaired. Pair again from the extension options to get pictures.';
+        if (!lifetime.signal.aborted)
+          message.textContent =
+            'Unpaired. Pair again from the extension options to get pictures.';
       } catch (error) {
         if (!lifetime.signal.aborted) message.textContent = error.message;
       } finally {
@@ -611,22 +819,35 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
       if (camerasKey !== camerasShown) {
         camerasShown = camerasKey;
         cameraList.textContent = '';
-        for (const line of lines.cameras) cameraList.append(element(documentRef, 'li', '', line));
+        for (const line of lines.cameras)
+          cameraList.append(element(documentRef, 'li', '', line));
         cameraList.hidden = !lines.cameras.length;
       }
       setText(unknownLine, lines.unknown);
       unknownLine.hidden = !lines.unknown;
-      const requestsKey = JSON.stringify(lines.requests.map((request) => [request.extensionId, request.code]));
+      const requestsKey = JSON.stringify(
+        lines.requests.map((request) => [request.extensionId, request.code]),
+      );
       if (requestsKey !== requestsShown) {
         requestsShown = requestsKey;
         requestList.textContent = '';
         for (const request of lines.requests) {
           const box = element(documentRef, 'div', 'private-cams-relay-pending');
-          const approve = button(documentRef, 'key-setup-apply private-cams-save private-cams-relay-approve', 'APPROVE', 'Pair this site with the extension whose options page shows this code and extension ID');
+          const approve = button(
+            documentRef,
+            'key-setup-apply private-cams-save private-cams-relay-approve',
+            'APPROVE',
+            'Pair this site with the extension whose options page shows this code and extension ID',
+          );
           approve.addEventListener('click', () => void approvePairing(request));
           box.append(
             element(documentRef, 'strong', '', request.text),
-            element(documentRef, 'span', 'private-cams-relay-limits', "Only approve if both this code and this extension ID are shown on the relay's options page."),
+            element(
+              documentRef,
+              'span',
+              'private-cams-relay-limits',
+              "Only approve if both this code and this extension ID are shown on the relay's options page.",
+            ),
             approve,
           );
           requestList.append(box);
@@ -634,7 +855,12 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
         requestList.hidden = !lines.requests.length;
       }
       if (lines.paired && !unpairButton) {
-        unpairButton = button(documentRef, 'private-cams-remove-site private-cams-relay-unpair', 'UNPAIR', 'Forget the paired extension; it sends no pictures until paired again');
+        unpairButton = button(
+          documentRef,
+          'private-cams-remove-site private-cams-relay-unpair',
+          'UNPAIR',
+          'Forget the paired extension; it sends no pictures until paired again',
+        );
         unpairButton.addEventListener('click', () => void unpairRelay());
         live.append(unpairButton);
       } else if (!lines.paired && unpairButton) {
@@ -654,10 +880,23 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     block.dataset.siteId = site.id || '';
 
     const head = element(documentRef, 'div', 'private-cams-site-head');
-    head.append(input(documentRef, { name: 'name', value: site.name || '', placeholder: 'Site name', label: 'Site name' }));
-    const [transportText, transportTitle] = TRANSPORT_LABELS[site.transport || 'none'] || TRANSPORT_LABELS.none;
+    head.append(
+      input(documentRef, {
+        name: 'name',
+        value: site.name || '',
+        placeholder: 'Site name',
+        label: 'Site name',
+      }),
+    );
+    const [transportText, transportTitle] =
+      TRANSPORT_LABELS[site.transport || 'none'] || TRANSPORT_LABELS.none;
     if (transportText) {
-      const badge = element(documentRef, 'span', 'private-cams-transport', transportText);
+      const badge = element(
+        documentRef,
+        'span',
+        'private-cams-transport',
+        transportText,
+      );
       badge.dataset.transport = site.transport;
       badge.title = transportTitle;
       head.append(badge);
@@ -679,11 +918,24 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     const where = input(documentRef, {
       name: 'locationQuery',
       value: site.address || site.postalCode || '',
-      placeholder: 'Street address or postal / ZIP code, e.g. 42 Charlotte St, Saint John NB',
+      placeholder:
+        'Street address or postal / ZIP code, e.g. 42 Charlotte St, Saint John NB',
       label: 'Street address or postal / ZIP code for this site',
     });
-    const locate = button(documentRef, 'private-cams-add private-cams-locate', 'LOCATE', 'Place this site on the map from its street address or postal code');
-    const located = element(documentRef, 'span', 'private-cams-located', site.located && site.locationLabel ? `On the map at ${site.locationLabel}. Drag a camera icon on the map to fine-tune it.` : '');
+    const locate = button(
+      documentRef,
+      'private-cams-add private-cams-locate',
+      'LOCATE',
+      'Place this site on the map from its street address or postal code',
+    );
+    const located = element(
+      documentRef,
+      'span',
+      'private-cams-located',
+      site.located && site.locationLabel
+        ? `On the map at ${site.locationLabel}. Drag a camera icon on the map to fine-tune it.`
+        : '',
+    );
     located.setAttribute('role', 'status');
     const setLocation = (point) => {
       if (point) {
@@ -697,20 +949,27 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
       }
     };
     const queryKey = (value) => tidy(value).toLowerCase();
-    if (site.located) setLocation({ lat: site.lat, lon: site.lon, label: site.locationLabel });
-    let locatedQuery = site.located ? queryKey(site.address || site.postalCode || '') : '';
+    if (site.located)
+      setLocation({ lat: site.lat, lon: site.lon, label: site.locationLabel });
+    let locatedQuery = site.located
+      ? queryKey(site.address || site.postalCode || '')
+      : '';
     const runLocate = async () => {
       const query = tidy(where.value);
       const { postalCode, address } = splitSiteLocationQuery(query);
       if (!postalCode && address.length < 4) {
-        located.textContent = 'Type the street address or the postal / ZIP code first.';
+        located.textContent =
+          'Type the street address or the postal / ZIP code first.';
         return false;
       }
       if (postalCode) where.value = postalCode;
       locate.disabled = true;
       located.textContent = 'Locating…';
       try {
-        const point = await locateSiteLocation(query, { fetchImpl: doFetch, signal: lifetime.signal });
+        const point = await locateSiteLocation(query, {
+          fetchImpl: doFetch,
+          signal: lifetime.signal,
+        });
         if (lifetime.signal.aborted) return false;
         if (!point) {
           located.textContent = `Could not find “${query}”. Add the city and province or state, or try the street address.`;
@@ -721,7 +980,9 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
         located.textContent = siteLocateMessage(point);
         return true;
       } catch {
-        if (!lifetime.signal.aborted) located.textContent = 'Lookup failed — check the connection and try again.';
+        if (!lifetime.signal.aborted)
+          located.textContent =
+            'Lookup failed — check the connection and try again.';
         return false;
       } finally {
         locate.disabled = false;
@@ -730,7 +991,8 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     where.addEventListener('input', () => {
       if (queryKey(where.value) !== locatedQuery) {
         setLocation(null);
-        located.textContent = 'Press LOCATE, or SAVE SITE, to place this on the map.';
+        located.textContent =
+          'Press LOCATE, or SAVE SITE, to place this on the map.';
       }
     });
     where.addEventListener('keydown', (event) => {
@@ -746,7 +1008,15 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     const login = element(documentRef, 'div', 'private-cams-login');
     let authSelect = null;
     if (kind.id === 'home') {
-      login.append(input(documentRef, { name: 'bridgeUrl', value: site.bridgeUrl || '', placeholder: 'Bridge URL — https://homeassistant.local:8123 (cameras show a placeholder until set)', label: 'Bridge URL' }));
+      login.append(
+        input(documentRef, {
+          name: 'bridgeUrl',
+          value: site.bridgeUrl || '',
+          placeholder:
+            'Bridge URL — https://homeassistant.local:8123 (cameras show a placeholder until set)',
+          label: 'Bridge URL',
+        }),
+      );
       authSelect = element(documentRef, 'select', 'private-cams-auth');
       authSelect.dataset.field = 'auth';
       authSelect.setAttribute('aria-label', 'How this site gets its pictures');
@@ -756,17 +1026,42 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
         option.value = value;
         authSelect.append(option);
       }
-      authSelect.value = choices.some(([value]) => value === site.auth) ? site.auth : 'token';
+      authSelect.value = choices.some(([value]) => value === site.auth)
+        ? site.auth
+        : 'token';
       login.append(authSelect);
-      login.append(input(documentRef, { name: 'token', type: 'password', placeholder: site.tokenSet ? 'Token saved — paste to replace' : 'Long-lived access token', label: 'Access token' }));
+      login.append(
+        input(documentRef, {
+          name: 'token',
+          type: 'password',
+          placeholder: site.tokenSet
+            ? 'Token saved — paste to replace'
+            : 'Long-lived access token',
+          label: 'Access token',
+        }),
+      );
     }
     login.append(
-      input(documentRef, { name: 'username', placeholder: site.usernameSet ? 'Username saved — type to replace' : 'Username', label: 'Username' }),
-      input(documentRef, { name: 'password', type: 'password', placeholder: site.passwordSet ? 'Password saved — type to replace' : 'Password', label: 'Password' }),
+      input(documentRef, {
+        name: 'username',
+        placeholder: site.usernameSet
+          ? 'Username saved — type to replace'
+          : 'Username',
+        label: 'Username',
+      }),
+      input(documentRef, {
+        name: 'password',
+        type: 'password',
+        placeholder: site.passwordSet
+          ? 'Password saved — type to replace'
+          : 'Password',
+        label: 'Password',
+      }),
       input(documentRef, {
         name: 'tlsFingerprint',
         value: site.tlsFingerprint || '',
-        placeholder: 'Certificate SHA-256 fingerprint (optional, pins a self-signed https certificate)',
+        placeholder:
+          'Certificate SHA-256 fingerprint (optional, pins a self-signed https certificate)',
         label: 'Pinned certificate fingerprint',
       }),
     );
@@ -774,13 +1069,22 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     const relayBox = kind.id === 'home' ? renderRelay(site, pending) : null;
     if (relayBox) block.append(relayBox);
 
-    const listHead = element(documentRef, 'div', 'private-cams-camera private-cams-camera-head');
-    const headCells = ['NAME', '', 'FACING', ''].map((label) => element(documentRef, 'span', '', label));
+    const listHead = element(
+      documentRef,
+      'div',
+      'private-cams-camera private-cams-camera-head',
+    );
+    const headCells = ['NAME', '', 'FACING', ''].map((label) =>
+      element(documentRef, 'span', '', label),
+    );
     listHead.append(...headCells);
     const list = element(documentRef, 'div', 'private-cams-cameras');
     const relayChosen = () => authSelect?.value === 'relay';
-    for (const camera of site.cameras || []) renderCameraRow(list, kind, camera, relayChosen());
-    const unplaced = (site.cameras || []).filter((camera) => !camera.placed).length;
+    for (const camera of site.cameras || [])
+      renderCameraRow(list, kind, camera, relayChosen());
+    const unplaced = (site.cameras || []).filter(
+      (camera) => !camera.placed,
+    ).length;
 
     // The relay hides the bridge and login fields without clearing them: they
     // are not sent while it is chosen, so anything saved stays saved.
@@ -797,38 +1101,68 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
       loginField('tlsFingerprint').hidden = relay;
       if (privateCctvFeedWarning) privateCctvFeedWarning.hidden = relay;
       if (relayBox) relayBox.hidden = !relay;
-      let sourceHeading = kind.id === 'home' ? 'ENTITY OR SNAPSHOT URL' : 'SNAPSHOT URL';
+      let sourceHeading =
+        kind.id === 'home' ? 'ENTITY OR SNAPSHOT URL' : 'SNAPSHOT URL';
       if (relay) sourceHeading = 'PRIVATE_CCTV_FEED CAMERA NAME';
       headCells[1].textContent = sourceHeading;
-      for (const field of list.querySelectorAll('[data-field="source"]')) labelSource(field, kind, relay);
+      for (const field of list.querySelectorAll('[data-field="source"]'))
+        labelSource(field, kind, relay);
     };
     authSelect?.addEventListener('change', syncAuth);
     syncAuth();
 
     const actions = element(documentRef, 'div', 'private-cams-actions');
     const add = button(documentRef, 'private-cams-add', '+ ADD CAMERA');
-    add.addEventListener('click', () => renderCameraRow(list, kind, {}, relayChosen()));
-    const save = button(documentRef, 'key-setup-apply private-cams-save', 'SAVE SITE');
-    const note = element(documentRef, 'span', 'private-cams-note', unplaced ? `${unplaced} camera${unplaced === 1 ? '' : 's'} not on the map yet — enter the site street address or postal code and LOCATE.` : '');
+    add.addEventListener('click', () =>
+      renderCameraRow(list, kind, {}, relayChosen()),
+    );
+    const save = button(
+      documentRef,
+      'key-setup-apply private-cams-save',
+      'SAVE SITE',
+    );
+    const note = element(
+      documentRef,
+      'span',
+      'private-cams-note',
+      unplaced
+        ? `${unplaced} camera${unplaced === 1 ? '' : 's'} not on the map yet — enter the site street address or postal code and LOCATE.`
+        : '',
+    );
     note.setAttribute('role', 'status');
     actions.append(add, save);
     if (site.id) {
-      const removeSite = button(documentRef, 'private-cams-remove-site', 'REMOVE SITE', 'Delete this site, its login and its cameras');
+      const removeSite = button(
+        documentRef,
+        'private-cams-remove-site',
+        'REMOVE SITE',
+        'Delete this site, its login and its cameras',
+      );
       removeSite.addEventListener('click', async () => {
-        const ok = typeof globalThis.confirm !== 'function' || globalThis.confirm(`Remove ${site.name} with its login and ${site.cameras.length} camera(s)?`);
+        const ok =
+          typeof globalThis.confirm !== 'function' ||
+          globalThis.confirm(
+            `Remove ${site.name} with its login and ${site.cameras.length} camera(s)?`,
+          );
         if (!ok) return;
         try {
           const payload = await post({ removeSiteId: site.id });
           render({ ...payload.status, editable });
           void refreshRelay();
-          globalThis.dispatchEvent?.(new CustomEvent('gev:private-cameras-changed'));
+          globalThis.dispatchEvent?.(
+            new CustomEvent('gev:private-cameras-changed'),
+          );
         } catch (error) {
           if (!lifetime.signal.aborted) note.textContent = error.message;
         }
       });
       actions.append(removeSite);
     } else {
-      const discard = button(documentRef, 'private-cams-remove-site', 'DISCARD');
+      const discard = button(
+        documentRef,
+        'private-cams-remove-site',
+        'DISCARD',
+      );
       discard.addEventListener('click', () => block.remove());
       actions.append(discard);
     }
@@ -836,7 +1170,11 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     block.append(listHead, list, actions);
 
     save.addEventListener('click', async () => {
-      if (lifetime.signal.aborted || save.getAttribute('aria-disabled') === 'true') return;
+      if (
+        lifetime.signal.aborted ||
+        save.getAttribute('aria-disabled') === 'true'
+      )
+        return;
       save.setAttribute('aria-disabled', 'true');
       try {
         const typed = splitSiteLocationQuery(where.value);
@@ -849,12 +1187,23 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
             return;
           }
         }
-        const field = (name) => block.querySelector(`.private-cams-site-head [data-field="${name}"], .private-cams-login [data-field="${name}"]`);
+        const field = (name) =>
+          block.querySelector(
+            `.private-cams-site-head [data-field="${name}"], .private-cams-login [data-field="${name}"]`,
+          );
         const trimmed = (name) => field(name)?.value?.trim() ?? '';
-        const cameras = [...list.querySelectorAll('.private-cams-camera')].map((row) => {
-          const cell = (name) => row.querySelector(`[data-field="${name}"]`)?.value?.trim() ?? '';
-          return { id: row.dataset.cameraId || '', name: cell('name'), source: cell('source'), headingDeg: cell('headingDeg') };
-        });
+        const cameras = [...list.querySelectorAll('.private-cams-camera')].map(
+          (row) => {
+            const cell = (name) =>
+              row.querySelector(`[data-field="${name}"]`)?.value?.trim() ?? '';
+            return {
+              id: row.dataset.cameraId || '',
+              name: cell('name'),
+              source: cell('source'),
+              headingDeg: cell('headingDeg'),
+            };
+          },
+        );
         const saved = splitSiteLocationQuery(where.value);
         const body = collectPrivateSiteUpdate(
           kind.id,
@@ -865,7 +1214,9 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
             address: saved.address,
             lat: hasLocation ? (block.dataset.lat ?? '') : '',
             lon: hasLocation ? (block.dataset.lon ?? '') : '',
-            locationLabel: hasLocation ? (block.dataset.locationLabel ?? '') : '',
+            locationLabel: hasLocation
+              ? (block.dataset.locationLabel ?? '')
+              : '',
             bridgeUrl: trimmed('bridgeUrl'),
             auth: authSelect?.value,
             token: field('token')?.value ?? '',
@@ -880,9 +1231,14 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
         if (lifetime.signal.aborted) return;
         render({ ...payload.status, editable });
         void refreshRelay();
-        globalThis.dispatchEvent?.(new CustomEvent('gev:private-cameras-changed'));
-        const savedNote = host.querySelector(`[data-site-id="${payload.siteId}"] .private-cams-note`);
-        if (savedNote) savedNote.textContent = `Saved on this machine only; the camera list is reloading.${savedNote.textContent ? ` ${savedNote.textContent}` : ''}`;
+        globalThis.dispatchEvent?.(
+          new CustomEvent('gev:private-cameras-changed'),
+        );
+        const savedNote = host.querySelector(
+          `[data-site-id="${payload.siteId}"] .private-cams-note`,
+        );
+        if (savedNote)
+          savedNote.textContent = `Saved on this machine only; the camera list is reloading.${savedNote.textContent ? ` ${savedNote.textContent}` : ''}`;
       } catch (error) {
         if (!lifetime.signal.aborted) note.textContent = error.message;
       } finally {
@@ -891,36 +1247,73 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     });
 
     if (!editable) {
-      for (const control of block.querySelectorAll('input, select, button')) control.disabled = true;
+      for (const control of block.querySelectorAll('input, select, button'))
+        control.disabled = true;
       note.textContent = 'Editing is available under the dev server only.';
     }
     return block;
   };
 
   const renderKind = (kind, pending) => {
-    const card = element(documentRef, 'section', 'key-setup-row private-cams-kind');
+    const card = element(
+      documentRef,
+      'section',
+      'key-setup-row private-cams-kind',
+    );
     card.dataset.kindId = kind.id;
-    card.dataset.set = String(kind.sites.some((site) => site.cameras.length > 0));
+    card.dataset.set = String(
+      kind.sites.some((site) => site.cameras.length > 0),
+    );
     const head = element(documentRef, 'div', 'key-setup-row-head');
     const led = element(documentRef, 'span', 'key-setup-led');
     led.setAttribute('aria-hidden', 'true');
-    const total = kind.sites.reduce((sum, site) => sum + site.cameras.length, 0);
+    const total = kind.sites.reduce(
+      (sum, site) => sum + site.cameras.length,
+      0,
+    );
     head.append(led, element(documentRef, 'strong', '', kind.title));
-    head.append(element(documentRef, 'span', 'private-cams-count', `${kind.sites.length} site${kind.sites.length === 1 ? '' : 's'} · ${total} camera${total === 1 ? '' : 's'}`));
+    head.append(
+      element(
+        documentRef,
+        'span',
+        'private-cams-count',
+        `${kind.sites.length} site${kind.sites.length === 1 ? '' : 's'} · ${total} camera${total === 1 ? '' : 's'}`,
+      ),
+    );
     if (kind.feedUrl) {
-      const feed = element(documentRef, 'a', 'key-setup-get', 'OPEN PRIVATE_CCTV_FEED FEED ↗');
+      const feed = element(
+        documentRef,
+        'a',
+        'key-setup-get',
+        'OPEN PRIVATE_CCTV_FEED FEED ↗',
+      );
       feed.href = kind.feedUrl;
       feed.target = '_blank';
       feed.rel = 'noopener noreferrer';
-      feed.title = 'Opens your Private_CCTV_Feed feed, where your own Private_CCTV_Feed sign-in applies';
+      feed.title =
+        'Opens your Private_CCTV_Feed feed, where your own Private_CCTV_Feed sign-in applies';
       head.append(feed);
     }
     const sites = element(documentRef, 'div', 'private-cams-sites');
-    for (const site of kind.sites) sites.append(renderSite(kind, site, pending));
-    const addSite = button(documentRef, 'private-cams-add private-cams-add-site', kind.id === 'home' ? '+ ADD HOME SITE' : '+ ADD BUSINESS SITE');
+    for (const site of kind.sites)
+      sites.append(renderSite(kind, site, pending));
+    const addSite = button(
+      documentRef,
+      'private-cams-add private-cams-add-site',
+      kind.id === 'home' ? '+ ADD HOME SITE' : '+ ADD BUSINESS SITE',
+    );
     addSite.disabled = !editable;
-    addSite.addEventListener('click', () => sites.append(renderSite(kind, { name: '', cameras: [], transport: 'none' })));
-    card.append(head, element(documentRef, 'p', 'key-setup-unlocks', kind.unlocks), sites, addSite);
+    addSite.addEventListener('click', () =>
+      sites.append(
+        renderSite(kind, { name: '', cameras: [], transport: 'none' }),
+      ),
+    );
+    card.append(
+      head,
+      element(documentRef, 'p', 'key-setup-unlocks', kind.unlocks),
+      sites,
+      addSite,
+    );
     return card;
   };
 
@@ -930,7 +1323,12 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
     relayPanels.clear();
     host.textContent = '';
     host.append(
-      element(documentRef, 'div', 'private-cams-heading', 'SECURITY CAMERAS · PRIVATE TO THIS MACHINE'),
+      element(
+        documentRef,
+        'div',
+        'private-cams-heading',
+        'SECURITY CAMERAS · PRIVATE TO THIS MACHINE',
+      ),
       element(
         documentRef,
         'p',
@@ -938,9 +1336,15 @@ export function initPrivateCameraSetup({ host, documentRef = globalThis.document
         'Logins and camera addresses stay in config/private-cameras.json on this computer. These cameras never enter share links or the public camera list, the server shows them only to this machine, and a login is never sent over plain http beyond your local network. LOCATE sends only the site street address or postal code to the OpenStreetMap search. Drag any private camera icon on the map to move it.',
       ),
     );
-    for (const kind of status.kinds || []) host.append(renderKind(kind, status.relayPending || null));
+    for (const kind of status.kinds || [])
+      host.append(renderKind(kind, status.relayPending || null));
     // The dashboard chip counts each section once: ON when it holds a camera.
-    onSections?.((status.kinds || []).map((kind) => ({ id: `cameras-${kind.id}`, set: (kind.sites || []).some((site) => (site.cameras || []).length > 0) })));
+    onSections?.(
+      (status.kinds || []).map((kind) => ({
+        id: `cameras-${kind.id}`,
+        set: (kind.sites || []).some((site) => (site.cameras || []).length > 0),
+      })),
+    );
     host.hidden = false;
     syncRelayTimer();
   };

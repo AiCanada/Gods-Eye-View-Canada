@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { expandApplicationHtml } from '../build/application-html.js';
 import {
   SOCIAL_ACCOUNT_PLATFORMS,
   SOCIAL_ACCOUNTS_KEY,
@@ -37,7 +38,7 @@ import {
 } from './socialMedia.js';
 import { SOCIAL_LOCATION_FIX_ID, SocialMediaPanel } from './socialMediaPanel.js';
 
-const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const html = expandApplicationHtml(readFileSync(new URL('../index.html', import.meta.url), 'utf8'));
 const panelHtml = html.slice(html.indexOf('id="social-panel"'), html.indexOf('id="right-context-rail"'));
 
 function selectOptions(source, id) {

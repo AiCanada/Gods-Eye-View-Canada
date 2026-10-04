@@ -49,11 +49,17 @@ function answerFailure(res) {
  * @param {Function} handler
  * @param {(message: string) => void} log
  */
-export function guardHandler(handler, log = (message) => console.error(message)) {
-  if (typeof handler !== 'function' || handler.length >= 4 || handler[GUARDED]) return handler;
+export function guardHandler(
+  handler,
+  log = (message) => console.error(message),
+) {
+  if (typeof handler !== 'function' || handler.length >= 4 || handler[GUARDED])
+    return handler;
   const guarded = function guardedRoute(req, res, next) {
     const fail = (error) => {
-      log(`[Server] ${req.method || 'GET'} ${String(req.url || '').split('?')[0]} failed: ${describe(error)}`);
+      log(
+        `[Server] ${req.method || 'GET'} ${String(req.url || '').split('?')[0]} failed: ${describe(error)}`,
+      );
       answerFailure(res);
     };
     let result;
@@ -65,7 +71,8 @@ export function guardHandler(handler, log = (message) => console.error(message))
     }
     // The handled chain is what goes back: nobody downstream can be left
     // holding the rejected original.
-    if (result && typeof result.then === 'function') return result.then(undefined, fail);
+    if (result && typeof result.then === 'function')
+      return result.then(undefined, fail);
     return result;
   };
   Object.defineProperty(guarded, GUARDED, { value: true });
@@ -76,12 +83,16 @@ export function guardHandler(handler, log = (message) => console.error(message))
 export function guardMiddlewares(middlewares, log) {
   if (!middlewares || middlewares[GUARDED]) return;
   const use = middlewares.use.bind(middlewares);
-  middlewares.use = (...args) => use(...args.map((arg) => guardHandler(arg, log)));
+  middlewares.use = (...args) =>
+    use(...args.map((arg) => guardHandler(arg, log)));
   Object.defineProperty(middlewares, GUARDED, { value: true });
 }
 
 /** Log unhandled rejections instead of letting them end the process. Once per process. */
-export function guardProcess(target = process, log = (message) => console.error(message)) {
+export function guardProcess(
+  target = process,
+  log = (message) => console.error(message),
+) {
   if (target[PROCESS_GUARD]) return;
   Object.defineProperty(target, PROCESS_GUARD, { value: true });
   target.on('unhandledRejection', (reason) => {

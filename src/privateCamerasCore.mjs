@@ -1,4 +1,7 @@
-import { PRIVATE_CCTV_FEED_DEFAULTS, hostMatchesSuffixes } from './privateCctvFeedConfig.mjs';
+import {
+  PRIVATE_CCTV_FEED_DEFAULTS,
+  hostMatchesSuffixes,
+} from './privateCctvFeedConfig.mjs';
 /**
  * Private security cameras (POWER UP → HOME and BUSINESS SECURITY) — the pure core.
  *
@@ -137,10 +140,23 @@ export function isPrivateNetworkHost(hostname) {
   const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (v4) {
     const [a, b] = [Number(v4[1]), Number(v4[2])];
-    return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+    return (
+      a === 10 ||
+      a === 127 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254) ||
+      (a === 100 && b >= 64 && b <= 127)
+    );
   }
-  if (host.includes(':')) return host === '::1' || /^f[cd][0-9a-f]{0,2}:/.test(host) || /^fe[89ab][0-9a-f]?:/.test(host);
-  if (/\.(local|lan|home\.arpa|internal|intranet|home|corp)$/.test(host)) return true;
+  if (host.includes(':'))
+    return (
+      host === '::1' ||
+      /^f[cd][0-9a-f]{0,2}:/.test(host) ||
+      /^fe[89ab][0-9a-f]?:/.test(host)
+    );
+  if (/\.(local|lan|home\.arpa|internal|intranet|home|corp)$/.test(host))
+    return true;
   return !host.includes('.');
 }
 
@@ -153,7 +169,8 @@ export function credentialTransport(url) {
   try {
     const parsed = new URL(url);
     if (parsed.protocol === 'https:') return 'https';
-    if (parsed.protocol === 'http:') return isPrivateNetworkHost(parsed.hostname) ? 'lan-http' : 'insecure';
+    if (parsed.protocol === 'http:')
+      return isPrivateNetworkHost(parsed.hostname) ? 'lan-http' : 'insecure';
     return 'invalid';
   } catch {
     return 'invalid';
@@ -202,7 +219,10 @@ export function isPrivateCctvFeedCloudUrl(value) {
 /** Whether a site points at Private_CCTV_Feed's website instead of a local bridge or snapshot address. */
 export function siteUsesPrivateCctvFeedWebsite(site) {
   if (isRelaySite(site)) return false;
-  return Boolean(isPrivateCctvFeedCloudUrl(site?.bridgeUrl) || site?.cameras?.some((camera) => isPrivateCctvFeedCloudUrl(camera.source)));
+  return Boolean(
+    isPrivateCctvFeedCloudUrl(site?.bridgeUrl) ||
+    site?.cameras?.some((camera) => isPrivateCctvFeedCloudUrl(camera.source)),
+  );
 }
 
 /**
@@ -249,7 +269,10 @@ function isBridgeSource(text) {
  */
 export function relayMatchName(camera) {
   const source = typeof camera?.source === 'string' ? camera.source : '';
-  const override = source.trim() && !isBridgeSource(source) ? normalizeRelayCameraName(source) : '';
+  const override =
+    source.trim() && !isBridgeSource(source)
+      ? normalizeRelayCameraName(source)
+      : '';
   return override || normalizeRelayCameraName(camera?.name);
 }
 
@@ -293,7 +316,13 @@ export function headingFromFacing(value) {
 
 /** The nearest of the sixteen compass points for a heading, or '' when unknown. */
 export function compassPointFor(headingDeg) {
-  if (headingDeg === null || headingDeg === undefined || headingDeg === '' || !Number.isFinite(Number(headingDeg))) return '';
+  if (
+    headingDeg === null ||
+    headingDeg === undefined ||
+    headingDeg === '' ||
+    !Number.isFinite(Number(headingDeg))
+  )
+    return '';
   const normalized = ((Number(headingDeg) % 360) + 360) % 360;
   return COMPASS_POINTS[Math.round(normalized / 22.5) % 16][0];
 }
@@ -321,7 +350,14 @@ function blankSite(kindId) {
 }
 
 function validPoint(lat, lon) {
-  return lat !== null && lon !== null && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+  return (
+    lat !== null &&
+    lon !== null &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lon >= -180 &&
+    lon <= 180
+  );
 }
 
 /**
@@ -361,43 +397,87 @@ export function normalizePrivateCameraConfig(raw) {
     for (const kind of PRIVATE_CAMERA_KINDS) {
       const site = raw.sites[kind.id];
       // Only a site that was actually set up becomes a site.
-      const used = site && typeof site === 'object' && ((Array.isArray(site.cameras) && site.cameras.length) || site.token || site.username || site.password || site.bridgeUrl);
-      if (used) stored.push({ ...site, id: kind.id, kind: kind.id, name: kind.defaultSiteName });
+      const used =
+        site &&
+        typeof site === 'object' &&
+        ((Array.isArray(site.cameras) && site.cameras.length) ||
+          site.token ||
+          site.username ||
+          site.password ||
+          site.bridgeUrl);
+      if (used)
+        stored.push({
+          ...site,
+          id: kind.id,
+          kind: kind.id,
+          name: kind.defaultSiteName,
+        });
     }
   }
   const siteIds = new Set();
   for (const site of stored) {
-    if (!site || typeof site !== 'object' || !KIND_BY_ID.has(site.kind)) continue;
-    if (typeof site.id !== 'string' || !ID_PATTERN.test(site.id) || siteIds.has(site.id)) continue;
+    if (!site || typeof site !== 'object' || !KIND_BY_ID.has(site.kind))
+      continue;
+    if (
+      typeof site.id !== 'string' ||
+      !ID_PATTERN.test(site.id) ||
+      siteIds.has(site.id)
+    )
+      continue;
     siteIds.add(site.id);
     const next = blankSite(site.kind);
     next.id = site.id;
-    next.name = typeof site.name === 'string' && site.name.trim() ? site.name.trim().slice(0, 60) : KIND_BY_ID.get(site.kind).defaultSiteName;
+    next.name =
+      typeof site.name === 'string' && site.name.trim()
+        ? site.name.trim().slice(0, 60)
+        : KIND_BY_ID.get(site.kind).defaultSiteName;
     next.postalCode = normalizePostalCode(site.postalCode) || '';
-    if (typeof site.address === 'string') next.address = site.address.trim().slice(0, 200);
+    if (typeof site.address === 'string')
+      next.address = site.address.trim().slice(0, 200);
     const lat = finiteOrNull(site.lat);
     const lon = finiteOrNull(site.lon);
     if (validPoint(lat, lon)) {
       next.lat = lat;
       next.lon = lon;
     }
-    if (typeof site.locationLabel === 'string') next.locationLabel = site.locationLabel.slice(0, 160);
-    for (const key of ['username', 'password']) if (typeof site[key] === 'string') next[key] = site[key];
+    if (typeof site.locationLabel === 'string')
+      next.locationLabel = site.locationLabel.slice(0, 160);
+    for (const key of ['username', 'password'])
+      if (typeof site[key] === 'string') next[key] = site[key];
     if (site.kind === 'home') {
       if (typeof site.bridgeUrl === 'string') next.bridgeUrl = site.bridgeUrl;
       if (typeof site.token === 'string') next.token = site.token;
-      next.auth = site.auth === 'login' || site.auth === 'relay' ? site.auth : 'token';
+      next.auth =
+        site.auth === 'login' || site.auth === 'relay' ? site.auth : 'token';
       // A pairing only means something on a relay site, and only in its exact shape.
       if (next.auth === 'relay') {
-        if (typeof site.relayExtensionId === 'string' && RELAY_EXTENSION_ID_PATTERN.test(site.relayExtensionId)) next.relayExtensionId = site.relayExtensionId;
-        if (typeof site.relaySecretHash === 'string' && RELAY_SECRET_HASH_PATTERN.test(site.relaySecretHash)) next.relaySecretHash = site.relaySecretHash;
+        if (
+          typeof site.relayExtensionId === 'string' &&
+          RELAY_EXTENSION_ID_PATTERN.test(site.relayExtensionId)
+        )
+          next.relayExtensionId = site.relayExtensionId;
+        if (
+          typeof site.relaySecretHash === 'string' &&
+          RELAY_SECRET_HASH_PATTERN.test(site.relaySecretHash)
+        )
+          next.relaySecretHash = site.relaySecretHash;
       }
     }
     next.tlsFingerprint = normalizeFingerprint(site.tlsFingerprint);
     const cameraIds = new Set();
     for (const camera of Array.isArray(site.cameras) ? site.cameras : []) {
-      if (!camera || typeof camera !== 'object' || typeof camera.name !== 'string') continue;
-      if (typeof camera.id !== 'string' || !ID_PATTERN.test(camera.id) || cameraIds.has(camera.id)) continue;
+      if (
+        !camera ||
+        typeof camera !== 'object' ||
+        typeof camera.name !== 'string'
+      )
+        continue;
+      if (
+        typeof camera.id !== 'string' ||
+        !ID_PATTERN.test(camera.id) ||
+        cameraIds.has(camera.id)
+      )
+        continue;
       cameraIds.add(camera.id);
       next.cameras.push({
         id: camera.id,
@@ -421,8 +501,10 @@ function checkUrl(value, label) {
   } catch {
     return `${label} is not a valid URL`;
   }
-  if (!['http:', 'https:'].includes(parsed.protocol)) return `${label} must start with http:// or https://`;
-  if (parsed.username || parsed.password) return `${label} must not contain a login — use the site's login fields`;
+  if (!['http:', 'https:'].includes(parsed.protocol))
+    return `${label} must start with http:// or https://`;
+  if (parsed.username || parsed.password)
+    return `${label} must not contain a login — use the site's login fields`;
   return '';
 }
 
@@ -436,16 +518,30 @@ function uniqueId(base, taken) {
 export function credentialDestinations(site) {
   const destinations = [];
   if (isRelaySite(site)) return destinations;
-  const entities = site.cameras.some((camera) => ENTITY_PATTERN.test(camera.source));
-  if (site.kind === 'home' && site.bridgeUrl && (entities || !site.cameras.length)) destinations.push({ label: 'Bridge URL', url: site.bridgeUrl });
+  const entities = site.cameras.some((camera) =>
+    ENTITY_PATTERN.test(camera.source),
+  );
+  if (
+    site.kind === 'home' &&
+    site.bridgeUrl &&
+    (entities || !site.cameras.length)
+  )
+    destinations.push({ label: 'Bridge URL', url: site.bridgeUrl });
   for (const camera of site.cameras) {
-    if (!ENTITY_PATTERN.test(camera.source)) destinations.push({ label: `${camera.name} snapshot URL`, url: camera.source });
+    if (!ENTITY_PATTERN.test(camera.source))
+      destinations.push({
+        label: `${camera.name} snapshot URL`,
+        url: camera.source,
+      });
   }
   return destinations;
 }
 
 function siteHasCredentials(site) {
-  return Boolean((site.kind === 'home' && site.auth === 'token' && site.token) || site.username);
+  return Boolean(
+    (site.kind === 'home' && site.auth === 'token' && site.token) ||
+    site.username,
+  );
 }
 
 /** The first Private_CCTV_Feed name two cameras of a relay site would both answer to, or ''. */
@@ -485,12 +581,18 @@ function duplicateRelayMatchName(cameras) {
  *
  * @returns {{ok: true, config: object, siteId: string} | {ok: false, error: string}}
  */
-export function applyPrivateCameraUpdate(body, previous = emptyPrivateCameraConfig()) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return { ok: false, error: 'Body must be a JSON object' };
+export function applyPrivateCameraUpdate(
+  body,
+  previous = emptyPrivateCameraConfig(),
+) {
+  if (!body || typeof body !== 'object' || Array.isArray(body))
+    return { ok: false, error: 'Body must be a JSON object' };
   const config = normalizePrivateCameraConfig(previous);
 
   if (body.removeSiteId !== undefined) {
-    const index = config.sites.findIndex((site) => site.id === body.removeSiteId);
+    const index = config.sites.findIndex(
+      (site) => site.id === body.removeSiteId,
+    );
     if (index === -1) return { ok: false, error: 'Unknown site' };
     const [removed] = config.sites.splice(index, 1);
     return { ok: true, config, siteId: removed.id };
@@ -498,20 +600,32 @@ export function applyPrivateCameraUpdate(body, previous = emptyPrivateCameraConf
 
   const kind = KIND_BY_ID.get(body.kind);
   if (!kind) return { ok: false, error: 'Unknown camera type' };
-  const current = body.siteId === undefined || body.siteId === '' ? null : config.sites.find((site) => site.id === body.siteId);
+  const current =
+    body.siteId === undefined || body.siteId === ''
+      ? null
+      : config.sites.find((site) => site.id === body.siteId);
   if (body.siteId && !current) return { ok: false, error: 'Unknown site' };
-  if (current && current.kind !== kind.id) return { ok: false, error: 'A site cannot change type' };
-  const next = current ? { ...current, cameras: [...current.cameras] } : blankSite(kind.id);
+  if (current && current.kind !== kind.id)
+    return { ok: false, error: 'A site cannot change type' };
+  const next = current
+    ? { ...current, cameras: [...current.cameras] }
+    : blankSite(kind.id);
 
   if (body.name !== undefined || !current) {
-    const name = String(body.name ?? '').trim() || (current ? '' : kind.defaultSiteName);
-    if (!name || name.length > 60 || CONTROL_CHARS.test(name)) return { ok: false, error: 'Site name is not valid' };
+    const name =
+      String(body.name ?? '').trim() || (current ? '' : kind.defaultSiteName);
+    if (!name || name.length > 60 || CONTROL_CHARS.test(name))
+      return { ok: false, error: 'Site name is not valid' };
     next.name = name;
   }
 
   if (body.postalCode !== undefined) {
     const code = normalizePostalCode(body.postalCode);
-    if (code === null) return { ok: false, error: 'Postal or ZIP code is not valid — for example E2L 4S6 or 90210' };
+    if (code === null)
+      return {
+        ok: false,
+        error: 'Postal or ZIP code is not valid — for example E2L 4S6 or 90210',
+      };
     if (code !== next.postalCode && body.lat === undefined) {
       next.lat = null;
       next.lon = null;
@@ -526,7 +640,8 @@ export function applyPrivateCameraUpdate(body, previous = emptyPrivateCameraConf
       .filter(Boolean)
       .join(' ')
       .slice(0, 200);
-    if (CONTROL_CHARS.test(address)) return { ok: false, error: 'Street address is not valid' };
+    if (CONTROL_CHARS.test(address))
+      return { ok: false, error: 'Street address is not valid' };
     if (address !== next.address && body.lat === undefined) {
       next.lat = null;
       next.lon = null;
@@ -537,8 +652,13 @@ export function applyPrivateCameraUpdate(body, previous = emptyPrivateCameraConf
   if (body.lat !== undefined || body.lon !== undefined) {
     const lat = finiteOrNull(body.lat);
     const lon = finiteOrNull(body.lon);
-    if ((lat === null) !== (lon === null)) return { ok: false, error: 'The site location needs both latitude and longitude' };
-    if (lat !== null && !validPoint(lat, lon)) return { ok: false, error: 'The site location is outside the map' };
+    if ((lat === null) !== (lon === null))
+      return {
+        ok: false,
+        error: 'The site location needs both latitude and longitude',
+      };
+    if (lat !== null && !validPoint(lat, lon))
+      return { ok: false, error: 'The site location is outside the map' };
     next.lat = lat;
     next.lon = lon;
   }
@@ -546,7 +666,8 @@ export function applyPrivateCameraUpdate(body, previous = emptyPrivateCameraConf
     const label = String(body.locationLabel ?? '')
       .trim()
       .slice(0, 160);
-    if (CONTROL_CHARS.test(label)) return { ok: false, error: 'Location label is not valid' };
+    if (CONTROL_CHARS.test(label))
+      return { ok: false, error: 'Location label is not valid' };
     next.locationLabel = label;
   }
 
@@ -557,15 +678,20 @@ export function applyPrivateCameraUpdate(body, previous = emptyPrivateCameraConf
       next[key] = '';
       continue;
     }
-    if (typeof body[key] !== 'string') return { ok: false, error: `${key} must be a string` };
-    if (body[key].length > PRIVATE_CAMERA_VALUE_LIMIT) return { ok: false, error: `${key} is too long` };
-    if (CONTROL_CHARS.test(body[key])) return { ok: false, error: `${key} contains a control character` };
+    if (typeof body[key] !== 'string')
+      return { ok: false, error: `${key} must be a string` };
+    if (body[key].length > PRIVATE_CAMERA_VALUE_LIMIT)
+      return { ok: false, error: `${key} is too long` };
+    if (CONTROL_CHARS.test(body[key]))
+      return { ok: false, error: `${key} contains a control character` };
     next[key] = body[key];
   }
   if (body.username !== undefined && body.username !== '') {
-    if (body.username !== null && typeof body.username !== 'string') return { ok: false, error: 'username must be a string' };
+    if (body.username !== null && typeof body.username !== 'string')
+      return { ok: false, error: 'username must be a string' };
     const username = String(body.username ?? '').trim();
-    if (username.length > 128 || CONTROL_CHARS.test(username)) return { ok: false, error: 'username is not valid' };
+    if (username.length > 128 || CONTROL_CHARS.test(username))
+      return { ok: false, error: 'username is not valid' };
     next.username = username;
   }
   if (body.tlsFingerprint !== undefined) {
@@ -573,13 +699,19 @@ export function applyPrivateCameraUpdate(body, previous = emptyPrivateCameraConf
       next.tlsFingerprint = '';
     } else {
       const fingerprint = normalizeFingerprint(body.tlsFingerprint);
-      if (!fingerprint) return { ok: false, error: 'Certificate fingerprint must be a SHA-256 fingerprint (64 hex characters)' };
+      if (!fingerprint)
+        return {
+          ok: false,
+          error:
+            'Certificate fingerprint must be a SHA-256 fingerprint (64 hex characters)',
+        };
       next.tlsFingerprint = fingerprint;
     }
   }
   if (kind.id === 'home') {
     if (body.auth !== undefined) {
-      if (!kind.authModes.includes(body.auth)) return { ok: false, error: 'auth must be token or login, or relay' };
+      if (!kind.authModes.includes(body.auth))
+        return { ok: false, error: 'auth must be token or login, or relay' };
       next.auth = body.auth;
     }
     if (next.auth !== 'relay') {
@@ -591,7 +723,8 @@ export function applyPrivateCameraUpdate(body, previous = emptyPrivateCameraConf
         .trim()
         .replace(/\/+$/, '');
       if (bridgeUrl) {
-        if (bridgeUrl.length > PRIVATE_CAMERA_VALUE_LIMIT) return { ok: false, error: 'Bridge URL is too long' };
+        if (bridgeUrl.length > PRIVATE_CAMERA_VALUE_LIMIT)
+          return { ok: false, error: 'Bridge URL is too long' };
         const problem = checkUrl(bridgeUrl, 'Bridge URL');
         if (problem) return { ok: false, error: problem };
       }
@@ -602,35 +735,69 @@ export function applyPrivateCameraUpdate(body, previous = emptyPrivateCameraConf
   const relay = isRelaySite(next);
   const explicitSpots = new Set();
   if (body.cameras !== undefined) {
-    if (!Array.isArray(body.cameras)) return { ok: false, error: 'cameras must be a list' };
-    const previousById = new Map((current?.cameras || []).map((camera) => [camera.id, camera]));
+    if (!Array.isArray(body.cameras))
+      return { ok: false, error: 'cameras must be a list' };
+    const previousById = new Map(
+      (current?.cameras || []).map((camera) => [camera.id, camera]),
+    );
     const usedIds = new Set();
     const cameras = [];
     for (const [index, row] of body.cameras.entries()) {
       const where = `Camera ${index + 1}`;
-      if (!row || typeof row !== 'object') return { ok: false, error: `${where} is not valid` };
+      if (!row || typeof row !== 'object')
+        return { ok: false, error: `${where} is not valid` };
       const name = String(row.name ?? '').trim();
       if (!name) return { ok: false, error: `${where} needs a name` };
-      if (name.length > 60 || CONTROL_CHARS.test(name)) return { ok: false, error: `${where} name is not valid` };
-      const saved = typeof row.id === 'string' ? previousById.get(row.id) : undefined;
+      if (name.length > 60 || CONTROL_CHARS.test(name))
+        return { ok: false, error: `${where} name is not valid` };
+      const saved =
+        typeof row.id === 'string' ? previousById.get(row.id) : undefined;
       let source;
       if (relay && row.source === null) source = '';
-      else source = row.source === undefined || row.source === '' ? saved?.source || '' : String(row.source).trim();
+      else
+        source =
+          row.source === undefined || row.source === ''
+            ? saved?.source || ''
+            : String(row.source).trim();
       if (relay) {
         // Optional: the camera's name in the Private_CCTV_Feed feed when it differs from its name here.
         // A saved bridge source (a snapshot or feed.private-cctv.example address, or a Home Assistant
         // entity) left untouched stays saved for switching back, and is never used as a name.
-        const legacyBridgeSource = Boolean(saved) && source === saved.source && isBridgeSource(source);
+        const legacyBridgeSource =
+          Boolean(saved) && source === saved.source && isBridgeSource(source);
         if (source && !legacyBridgeSource) {
-          if (isHttpUrl(source)) return { ok: false, error: `${where} (${name}) Private_CCTV_Feed name must be the camera name shown in the Private_CCTV_Feed feed, not an address` };
-          if (ENTITY_PATTERN.test(source)) return { ok: false, error: `${where} (${name}) Private_CCTV_Feed name must be the camera name shown in the Private_CCTV_Feed feed, not a Home Assistant entity` };
-          if (source.length > RELAY_CAMERA_NAME_LIMIT || CONTROL_CHARS.test(source)) return { ok: false, error: `${where} (${name}) Private_CCTV_Feed name is not valid` };
+          if (isHttpUrl(source))
+            return {
+              ok: false,
+              error: `${where} (${name}) Private_CCTV_Feed name must be the camera name shown in the Private_CCTV_Feed feed, not an address`,
+            };
+          if (ENTITY_PATTERN.test(source))
+            return {
+              ok: false,
+              error: `${where} (${name}) Private_CCTV_Feed name must be the camera name shown in the Private_CCTV_Feed feed, not a Home Assistant entity`,
+            };
+          if (
+            source.length > RELAY_CAMERA_NAME_LIMIT ||
+            CONTROL_CHARS.test(source)
+          )
+            return {
+              ok: false,
+              error: `${where} (${name}) Private_CCTV_Feed name is not valid`,
+            };
           // A Private_CCTV_Feed name equal to the camera's own name is no override: typing the Name clears a saved one.
-          if (normalizeRelayCameraName(source) === normalizeRelayCameraName(name)) source = '';
+          if (
+            normalizeRelayCameraName(source) === normalizeRelayCameraName(name)
+          )
+            source = '';
         }
       } else {
-        if (!source) return { ok: false, error: `${where} (${name}) needs a ${kind.id === 'home' ? 'camera entity or snapshot URL' : 'snapshot URL'}` };
-        if (source.length > PRIVATE_CAMERA_VALUE_LIMIT) return { ok: false, error: `${where} source is too long` };
+        if (!source)
+          return {
+            ok: false,
+            error: `${where} (${name}) needs a ${kind.id === 'home' ? 'camera entity or snapshot URL' : 'snapshot URL'}`,
+          };
+        if (source.length > PRIVATE_CAMERA_VALUE_LIMIT)
+          return { ok: false, error: `${where} source is too long` };
         if (!(kind.id === 'home' && ENTITY_PATTERN.test(source))) {
           const problem = checkUrl(source, `${where} snapshot URL`);
           if (problem) return { ok: false, error: problem };
@@ -641,13 +808,28 @@ export function applyPrivateCameraUpdate(body, previous = emptyPrivateCameraConf
       const keepSpot = row.lat === undefined && row.lon === undefined;
       const lat = keepSpot ? (saved?.lat ?? null) : finiteOrNull(row.lat);
       const lon = keepSpot ? (saved?.lon ?? null) : finiteOrNull(row.lon);
-      if ((lat === null) !== (lon === null)) return { ok: false, error: `${where} (${name}) needs both latitude and longitude, or neither` };
-      if (lat !== null && !validPoint(lat, lon)) return { ok: false, error: `${where} (${name}) position is outside the map` };
+      if ((lat === null) !== (lon === null))
+        return {
+          ok: false,
+          error: `${where} (${name}) needs both latitude and longitude, or neither`,
+        };
+      if (lat !== null && !validPoint(lat, lon))
+        return {
+          ok: false,
+          error: `${where} (${name}) position is outside the map`,
+        };
       // A facing is a compass point (N, NNE … NNW) or a number of degrees, which
       // wraps onto 0–359° (−90 → 270).
       const headingDeg = headingFromFacing(row.headingDeg);
-      if (headingDeg === undefined) return { ok: false, error: `${where} (${name}) facing must be a compass point such as N, NE or SW` };
-      const id = saved && !usedIds.has(saved.id) ? saved.id : uniqueId(slug(name), usedIds);
+      if (headingDeg === undefined)
+        return {
+          ok: false,
+          error: `${where} (${name}) facing must be a compass point such as N, NE or SW`,
+        };
+      const id =
+        saved && !usedIds.has(saved.id)
+          ? saved.id
+          : uniqueId(slug(name), usedIds);
       usedIds.add(id);
       if (!keepSpot) explicitSpots.add(id);
       cameras.push({ id, name, source, lat, lon, headingDeg });
@@ -657,14 +839,26 @@ export function applyPrivateCameraUpdate(body, previous = emptyPrivateCameraConf
 
   // A site given a new postal location re-spreads its cameras around it; only a
   // spot sent in this same save survives the move.
-  if (current && validPoint(next.lat, next.lon) && (next.lat !== current.lat || next.lon !== current.lon)) {
-    next.cameras = next.cameras.map((camera) => (explicitSpots.has(camera.id) ? camera : { ...camera, lat: null, lon: null }));
+  if (
+    current &&
+    validPoint(next.lat, next.lon) &&
+    (next.lat !== current.lat || next.lon !== current.lon)
+  ) {
+    next.cameras = next.cameras.map((camera) =>
+      explicitSpots.has(camera.id)
+        ? camera
+        : { ...camera, lat: null, lon: null },
+    );
   }
 
   // Each Private_CCTV_Feed feed name reaches exactly one camera of a relay site.
   if (relay) {
     const duplicate = duplicateRelayMatchName(next.cameras);
-    if (duplicate) return { ok: false, error: `Two cameras would both match the Private_CCTV_Feed camera “${duplicate}”` };
+    if (duplicate)
+      return {
+        ok: false,
+        error: `Two cameras would both match the Private_CCTV_Feed camera “${duplicate}”`,
+      };
   }
 
   // A login never crosses the internet unencrypted.
@@ -680,7 +874,10 @@ export function applyPrivateCameraUpdate(body, previous = emptyPrivateCameraConf
   }
 
   if (!current) {
-    next.id = uniqueId(slug(next.name), new Set(config.sites.map((site) => site.id)));
+    next.id = uniqueId(
+      slug(next.name),
+      new Set(config.sites.map((site) => site.id)),
+    );
     config.sites.push(next);
   } else {
     config.sites[config.sites.indexOf(current)] = next;
@@ -692,8 +889,13 @@ function offsetPoint(point, bearingDeg, meters) {
   const bearing = (bearingDeg * Math.PI) / 180;
   const metresPerDegree = 111320;
   const dLat = (meters * Math.cos(bearing)) / metresPerDegree;
-  const dLon = (meters * Math.sin(bearing)) / (metresPerDegree * Math.max(0.05, Math.cos((point.lat * Math.PI) / 180)));
-  return { lat: Number((point.lat + dLat).toFixed(7)), lon: Number((point.lon + dLon).toFixed(7)) };
+  const dLon =
+    (meters * Math.sin(bearing)) /
+    (metresPerDegree * Math.max(0.05, Math.cos((point.lat * Math.PI) / 180)));
+  return {
+    lat: Number((point.lat + dLat).toFixed(7)),
+    lon: Number((point.lon + dLon).toFixed(7)),
+  };
 }
 
 function distanceM(a, b) {
@@ -712,7 +914,9 @@ function distanceM(a, b) {
  */
 export function privateCameraPositions(site) {
   const positions = new Map();
-  const anchor = validPoint(site.lat, site.lon) ? { lat: site.lat, lon: site.lon } : null;
+  const anchor = validPoint(site.lat, site.lon)
+    ? { lat: site.lat, lon: site.lon }
+    : null;
   const placed = [];
   for (const camera of site.cameras) {
     if (!validPoint(camera.lat, camera.lon)) continue;
@@ -723,9 +927,17 @@ export function privateCameraPositions(site) {
   site.cameras.forEach((camera, index) => {
     if (positions.has(camera.id) || !anchor) return;
     const base = anchor;
-    let bearing = camera.headingDeg ?? (index * 360) / Math.max(1, site.cameras.length);
+    let bearing =
+      camera.headingDeg ?? (index * 360) / Math.max(1, site.cameras.length);
     let point = offsetPoint(base, bearing, PRIVATE_CAMERA_SPREAD_M);
-    for (let attempt = 1; attempt <= 16 && placed.some((other) => distanceM(other, point) < PRIVATE_CAMERA_MIN_GAP_M); attempt += 1) {
+    for (
+      let attempt = 1;
+      attempt <= 16 &&
+      placed.some(
+        (other) => distanceM(other, point) < PRIVATE_CAMERA_MIN_GAP_M,
+      );
+      attempt += 1
+    ) {
       bearing += 45;
       point = offsetPoint(base, bearing, PRIVATE_CAMERA_SPREAD_M + attempt * 3);
     }
@@ -754,10 +966,14 @@ export function maskPrivateCameraSource(source) {
 /** 'relay' | 'pinned' | 'https' | 'lan-http' | 'insecure' | 'none' for a whole site. */
 export function privateSiteTransport(site) {
   if (isRelaySite(site)) return 'relay';
-  const transports = credentialDestinations(site).map((destination) => credentialTransport(destination.url));
+  const transports = credentialDestinations(site).map((destination) =>
+    credentialTransport(destination.url),
+  );
   if (!transports.length) return 'none';
-  if (transports.includes('insecure') || transports.includes('invalid')) return 'insecure';
-  if (transports.every((transport) => transport === 'https')) return site.tlsFingerprint ? 'pinned' : 'https';
+  if (transports.includes('insecure') || transports.includes('invalid'))
+    return 'insecure';
+  if (transports.every((transport) => transport === 'https'))
+    return site.tlsFingerprint ? 'pinned' : 'https';
   return 'lan-http';
 }
 
@@ -790,7 +1006,8 @@ export function privateCameraStatus(config) {
             locationLabel: site.locationLabel,
             located: validPoint(site.lat, site.lon),
             bridgeUrl: kind.id === 'home' ? site.bridgeUrl : null,
-            bridgeConnected: kind.id === 'home' ? Boolean(site.bridgeUrl) : null,
+            bridgeConnected:
+              kind.id === 'home' ? Boolean(site.bridgeUrl) : null,
             auth: site.auth,
             tokenSet: Boolean(site.token),
             usernameSet: Boolean(site.username),
@@ -799,7 +1016,15 @@ export function privateCameraStatus(config) {
             transport: privateSiteTransport(site),
             privateCctvFeedWebsite: siteUsesPrivateCctvFeedWebsite(site),
             // Whether a relay extension is paired, and which one. The secret's hash never leaves the store.
-            relay: kind.id === 'home' ? { paired: Boolean(site.relayExtensionId && site.relaySecretHash), extensionId: site.relayExtensionId } : null,
+            relay:
+              kind.id === 'home'
+                ? {
+                    paired: Boolean(
+                      site.relayExtensionId && site.relaySecretHash,
+                    ),
+                    extensionId: site.relayExtensionId,
+                  }
+                : null,
             cameras: site.cameras.map((camera) => ({
               id: camera.id,
               name: camera.name,
@@ -807,7 +1032,8 @@ export function privateCameraStatus(config) {
               headingDeg: camera.headingDeg,
               facing: compassPointFor(camera.headingDeg),
               placed: positions.has(camera.id),
-              privateCctvFeedWebsite: !relaySite && isPrivateCctvFeedCloudUrl(camera.source),
+              privateCctvFeedWebsite:
+                !relaySite && isPrivateCctvFeedCloudUrl(camera.source),
               matchName: relayMatchName(camera),
             })),
           };
@@ -828,13 +1054,19 @@ export function privateCameraPublicId(siteId, cameraId) {
  */
 export function movePrivateCamera(previous, publicId, lat, lon) {
   const config = normalizePrivateCameraConfig(previous);
-  const match = /^private-([a-z0-9]+(?:-[a-z0-9]+)*)--([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(String(publicId || ''));
-  const site = match ? config.sites.find((candidate) => candidate.id === match[1]) : null;
+  const match =
+    /^private-([a-z0-9]+(?:-[a-z0-9]+)*)--([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(
+      String(publicId || ''),
+    );
+  const site = match
+    ? config.sites.find((candidate) => candidate.id === match[1])
+    : null;
   const camera = site?.cameras.find((candidate) => candidate.id === match[2]);
   if (!camera) return { ok: false, error: 'Unknown camera' };
   const nextLat = finiteOrNull(lat);
   const nextLon = finiteOrNull(lon);
-  if (!validPoint(nextLat, nextLon)) return { ok: false, error: 'That spot is outside the map' };
+  if (!validPoint(nextLat, nextLon))
+    return { ok: false, error: 'That spot is outside the map' };
   camera.lat = Number(nextLat.toFixed(7));
   camera.lon = Number(nextLon.toFixed(7));
   return { ok: true, config };
@@ -888,12 +1120,24 @@ export function privateCameraSources(config) {
  * @returns {{url: string, auth: {type: 'bearer', token: string} | {type: 'basic', username: string, password: string} | {type: 'none'}, name: string, tlsFingerprint: string} | {relay: true, siteId: string, cameraId: string, matchName: string, name: string} | null}
  */
 export function privateFrameTarget(config, publicId) {
-  const match = /^private-([a-z0-9]+(?:-[a-z0-9]+)*)--([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(String(publicId || ''));
+  const match =
+    /^private-([a-z0-9]+(?:-[a-z0-9]+)*)--([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(
+      String(publicId || ''),
+    );
   if (!match) return null;
-  const site = normalizePrivateCameraConfig(config).sites.find((candidate) => candidate.id === match[1]);
+  const site = normalizePrivateCameraConfig(config).sites.find(
+    (candidate) => candidate.id === match[1],
+  );
   const camera = site?.cameras.find((candidate) => candidate.id === match[2]);
   if (!camera) return null;
-  if (isRelaySite(site)) return { relay: true, siteId: site.id, cameraId: camera.id, matchName: relayMatchName(camera), name: camera.name };
+  if (isRelaySite(site))
+    return {
+      relay: true,
+      siteId: site.id,
+      cameraId: camera.id,
+      matchName: relayMatchName(camera),
+      name: camera.name,
+    };
   let url = camera.source;
   if (site.kind === 'home' && ENTITY_PATTERN.test(camera.source)) {
     if (!site.bridgeUrl) return null;
@@ -913,13 +1157,30 @@ export function privateFrameTarget(config, publicId) {
  * extension id and the SHA-256 of the secret it proves itself with.
  * @returns {{ok: true, config: object} | {ok: false, error: string}}
  */
-export function applyRelayPairing(previous, siteId, { extensionId, secretHash } = {}) {
+export function applyRelayPairing(
+  previous,
+  siteId,
+  { extensionId, secretHash } = {},
+) {
   const config = normalizePrivateCameraConfig(previous);
   const site = config.sites.find((candidate) => candidate.id === siteId);
   if (!site) return { ok: false, error: 'Unknown site' };
-  if (!isRelaySite(site)) return { ok: false, error: 'Only a home site set to Browser feed relay can be paired with the relay' };
-  if (typeof extensionId !== 'string' || !RELAY_EXTENSION_ID_PATTERN.test(extensionId)) return { ok: false, error: 'Extension id is not valid' };
-  if (typeof secretHash !== 'string' || !RELAY_SECRET_HASH_PATTERN.test(secretHash)) return { ok: false, error: 'Pairing secret is not valid' };
+  if (!isRelaySite(site))
+    return {
+      ok: false,
+      error:
+        'Only a home site set to Browser feed relay can be paired with the relay',
+    };
+  if (
+    typeof extensionId !== 'string' ||
+    !RELAY_EXTENSION_ID_PATTERN.test(extensionId)
+  )
+    return { ok: false, error: 'Extension id is not valid' };
+  if (
+    typeof secretHash !== 'string' ||
+    !RELAY_SECRET_HASH_PATTERN.test(secretHash)
+  )
+    return { ok: false, error: 'Pairing secret is not valid' };
   site.relayExtensionId = extensionId;
   site.relaySecretHash = secretHash;
   return { ok: true, config };

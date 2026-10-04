@@ -12,7 +12,10 @@
  * Pure orchestration: no Cesium, no DOM. The caller supplies the region lookup
  * and the leave/arrive work.
  */
-import { fetchLocationRegion, locationRegionKey } from './data/regionalBrief.js';
+import {
+  fetchLocationRegion,
+  locationRegionKey,
+} from './data/regionalBrief.js';
 
 /** Longest wait for the camera to arrive before the new place loads anyway. */
 export const LOCATION_ARRIVAL_TIMEOUT_MS = 10_000;
@@ -52,7 +55,10 @@ export async function releaseServerLocationMemory(
       body: JSON.stringify({ latitude: to.lat, longitude: to.lon }),
     });
     if (response.ok) return await response.json();
-    console.debug?.('[LocationSwitch] server release answered', response.status);
+    console.debug?.(
+      '[LocationSwitch] server release answered',
+      response.status,
+    );
     return null;
   } catch {
     return null;
@@ -234,7 +240,8 @@ export function createLocationSwitch({
     } finally {
       if (arriving === record) arriving = null;
     }
-    if (change.signal.aborted) return { switched: false, reason: 'superseded', to };
+    if (change.signal.aborted)
+      return { switched: false, reason: 'superseded', to };
     return { switched: true, from: record.from, to };
   }
 

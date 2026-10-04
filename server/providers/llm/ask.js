@@ -13,7 +13,7 @@ import {
   LOCAL_PROVIDER_CHANGED_MESSAGE,
   localLlmSection,
   localProviderTrusted,
-} from '../../../src/localIntegrity.mjs';
+} from '../../shared/localIntegrity.mjs';
 import {
   DEFAULT_ALLOWED_HOSTS,
   originIs,

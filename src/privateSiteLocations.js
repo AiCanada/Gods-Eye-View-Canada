@@ -16,7 +16,12 @@ const KIND_LABELS = {
 
 function finiteCoordinate(value, limit) {
   const number = Number(value);
-  return value !== null && value !== '' && Number.isFinite(number) && Math.abs(number) <= limit ? number : null;
+  return value !== null &&
+    value !== '' &&
+    Number.isFinite(number) &&
+    Math.abs(number) <= limit
+    ? number
+    : null;
 }
 
 /**
@@ -31,8 +36,14 @@ export function privateSiteLocationEntries(status) {
     for (const site of Array.isArray(kind.sites) ? kind.sites : []) {
       const lat = finiteCoordinate(site?.lat, 90);
       const lon = finiteCoordinate(site?.lon, 180);
-      if (lat === null || lon === null || !/^[a-z0-9-]+$/.test(String(site.id || ''))) continue;
-      const siteName = String(site.name || '').trim() || labels.title.split(' ')[0];
+      if (
+        lat === null ||
+        lon === null ||
+        !/^[a-z0-9-]+$/.test(String(site.id || ''))
+      )
+        continue;
+      const siteName =
+        String(site.name || '').trim() || labels.title.split(' ')[0];
       entries.push({
         id: `${PRIVATE_SITE_LOCATION_PREFIX}${site.id}`,
         kind: kind.id,
@@ -71,7 +82,8 @@ export function initPrivateSiteLocations({
   const refresh = async () => {
     if (stopped || typeof fetchImpl !== 'function') return;
     controller?.abort();
-    const current = typeof AbortController === 'function' ? new AbortController() : null;
+    const current =
+      typeof AbortController === 'function' ? new AbortController() : null;
     controller = current;
     try {
       const response = await fetchImpl(PRIVATE_SITE_STATUS_ENDPOINT, {
@@ -85,7 +97,11 @@ export function initPrivateSiteLocations({
       publish(privateSiteLocationEntries(await response.json()));
     } catch (error) {
       // A dropped connection keeps the pills already shown.
-      if (error?.name !== 'AbortError') console.warn('[Locations] private sites unavailable:', error?.message || error);
+      if (error?.name !== 'AbortError')
+        console.warn(
+          '[Locations] private sites unavailable:',
+          error?.message || error,
+        );
     }
   };
   const listener = () => void refresh();

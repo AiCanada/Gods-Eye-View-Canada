@@ -8,24 +8,31 @@ import {
 } from './sstProducts.js';
 
 /** NASA GIBS Web Mercator tile root (keyless). */
-export const GIBS_WEB_MERCATOR_ROOT = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best';
+export const GIBS_WEB_MERCATOR_ROOT =
+  'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best';
 
 /** Status older than this is refreshed the next time the layer turns on. */
 const STATUS_MAX_AGE_MS = 30 * 60 * 1000;
 /** Wait for the camera to settle before drawing Level-3 data for a new view. */
 const LEVEL3_REFRESH_DELAY_MS = 700;
 
-const OFF_NOTE = 'Off. Turn on to drape sea surface temperature over the oceans.';
-const PHOTOREAL_NOTE = 'Hidden on the photorealistic 3D map. Switch MAP to an imagery stack to see SST.';
-const LOADING_NOTE = 'Loading OceanColor Level-3 data and detecting fronts for this view…';
-const NO_LAND_MASK_NOTE = 'Land mask unavailable right now: lakes and coasts may show false fronts.';
+const OFF_NOTE =
+  'Off. Turn on to drape sea surface temperature over the oceans.';
+const PHOTOREAL_NOTE =
+  'Hidden on the photorealistic 3D map. Switch MAP to an imagery stack to see SST.';
+const LOADING_NOTE =
+  'Loading OceanColor Level-3 data and detecting fronts for this view…';
+const NO_LAND_MASK_NOTE =
+  'Land mask unavailable right now: lakes and coasts may show false fronts.';
 
 /**
  * Tile URL template for a GIBS product on a date. An unknown date asks GIBS
  * for its newest one ("default").
  */
 export function sstTileUrlTemplate(product, date) {
-  const time = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? date : 'default';
+  const time = /^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))
+    ? date
+    : 'default';
   return `${GIBS_WEB_MERCATOR_ROOT}/${product.gibsLayer}/default/${time}/${product.matrixSet}/{z}/{y}/{x}.png`;
 }
 
@@ -57,7 +64,8 @@ export function sstViewBbox(view) {
 /** One-line Earthdata readout for the box. */
 export function sstEarthdataLabel(earthdata, oceanColor) {
   if (!earthdata) return 'EARTHDATA · --';
-  if (!earthdata.configured) return 'EARTHDATA · NO TOKEN · ADD EARTHDATA_TOKEN IN POWER UP';
+  if (!earthdata.configured)
+    return 'EARTHDATA · NO TOKEN · ADD EARTHDATA_TOKEN IN POWER UP';
   if (earthdata.expired) return 'EARTHDATA · TOKEN EXPIRED';
   if (!earthdata.authenticated) {
     return `EARTHDATA · SIGN-IN FAILED${earthdata.httpStatus ? ` · HTTP ${earthdata.httpStatus}` : ''}`;
@@ -127,7 +135,9 @@ export function initSeaSurfaceTemperaturePanel({
   let refreshTimer = null;
   let globeShown = viewer.scene?.globe?.show !== false;
   const lifetime = new AbortController();
-  const credit = new Cesium.Credit('Sea surface temperature: NASA OceanColor / GIBS / Earthdata');
+  const credit = new Cesium.Credit(
+    'Sea surface temperature: NASA OceanColor / GIBS / Earthdata',
+  );
 
   for (const product of SST_PRODUCTS) {
     const option = documentRef.createElement('option');
@@ -148,10 +158,13 @@ export function initSeaSurfaceTemperaturePanel({
 
   const product = () => sstProductById(select.value);
   const isLevel3 = () => product().source === 'oceancolor';
-  const sensitivity = () => sensitivitySelect?.value || DEFAULT_SST_FRONT_SENSITIVITY;
+  const sensitivity = () =>
+    sensitivitySelect?.value || DEFAULT_SST_FRONT_SENSITIVITY;
   const gibsLatestDate = () =>
-    status?.products?.find((entry) => entry.id === product().id)?.latestDate || null;
-  const alpha = () => Math.max(0.1, Math.min(1, Number(opacity?.value || 75) / 100));
+    status?.products?.find((entry) => entry.id === product().id)?.latestDate ||
+    null;
+  const alpha = () =>
+    Math.max(0.1, Math.min(1, Number(opacity?.value || 75) / 100));
 
   const render = () => {
     if (destroyed) return;
@@ -165,7 +178,8 @@ export function initSeaSurfaceTemperaturePanel({
       frontsButton.setAttribute('aria-pressed', String(frontsEnabled));
       frontsButton.disabled = !level3;
     }
-    if (sensitivitySelect) sensitivitySelect.disabled = !level3 || !frontsEnabled;
+    if (sensitivitySelect)
+      sensitivitySelect.disabled = !level3 || !frontsEnabled;
     const meta = level3 ? level3Meta : null;
     if (dateReadout) {
       if (level3) {
@@ -188,23 +202,33 @@ export function initSeaSurfaceTemperaturePanel({
       legendMax.textContent = range ? `${range.max.toFixed(1)} °C` : 'WARM';
     }
     if (earthdataReadout) {
-      earthdataReadout.textContent = sstEarthdataLabel(status?.earthdata, status?.oceanColor);
+      earthdataReadout.textContent = sstEarthdataLabel(
+        status?.earthdata,
+        status?.oceanColor,
+      );
     }
     if (note) {
       if (!enabled) note.textContent = OFF_NOTE;
       else if (!globeShown) note.textContent = PHOTOREAL_NOTE;
       else if (level3 && level3Error) note.textContent = level3Error;
       else if (level3 && level3Loading) note.textContent = LOADING_NOTE;
-      else if (level3 && meta?.landMask === 'unavailable') note.textContent = NO_LAND_MASK_NOTE;
+      else if (level3 && meta?.landMask === 'unavailable')
+        note.textContent = NO_LAND_MASK_NOTE;
       else note.textContent = product().note;
     }
   };
 
   const loadStatus = () => {
-    if (statusPromise && now() - statusAt <= STATUS_MAX_AGE_MS) return statusPromise;
+    if (statusPromise && now() - statusAt <= STATUS_MAX_AGE_MS)
+      return statusPromise;
     statusAt = now();
     statusPromise = Promise.resolve()
-      .then(() => fetchImpl(`${apiBase}/api/sst/status`, { cache: 'no-store', signal: lifetime.signal }))
+      .then(() =>
+        fetchImpl(`${apiBase}/api/sst/status`, {
+          cache: 'no-store',
+          signal: lifetime.signal,
+        }),
+      )
       .then((response) => (response?.ok ? response.json() : null))
       .catch(() => null)
       .then((payload) => {
@@ -279,14 +303,24 @@ export function initSeaSurfaceTemperaturePanel({
       });
       const payload = await response.json().catch(() => null);
       if (response.ok) meta = payload;
-      else errorText = payload?.error || `Level-3 data unavailable (HTTP ${response.status})`;
+      else
+        errorText =
+          payload?.error ||
+          `Level-3 data unavailable (HTTP ${response.status})`;
     } catch {
       if (controller.signal.aborted) return;
       errorText = 'Level-3 data unavailable: the server did not answer';
     }
     // An aborted request is stale even when its answer already arrived: the
     // view it describes was left.
-    if (destroyed || controller !== level3Controller || controller.signal.aborted || !enabled || !isLevel3()) return;
+    if (
+      destroyed ||
+      controller !== level3Controller ||
+      controller.signal.aborted ||
+      !enabled ||
+      !isLevel3()
+    )
+      return;
     level3Loading = false;
     if (!meta) {
       level3Error = errorText;
@@ -356,7 +390,8 @@ export function initSeaSurfaceTemperaturePanel({
   };
   const onSensitivity = () => {
     render();
-    if (enabled && isLevel3() && frontsEnabled) void showLevel3({ force: true });
+    if (enabled && isLevel3() && frontsEnabled)
+      void showLevel3({ force: true });
   };
   const onProduct = () => {
     level3Controller?.abort();
@@ -406,7 +441,8 @@ export function initSeaSurfaceTemperaturePanel({
   sensitivitySelect?.addEventListener('change', onSensitivity);
   select.addEventListener('change', onProduct);
   opacity?.addEventListener('input', onOpacity);
-  const removeMoveEnd = viewer.camera?.moveEnd?.addEventListener?.(onCameraSettled);
+  const removeMoveEnd =
+    viewer.camera?.moveEnd?.addEventListener?.(onCameraSettled);
   windowRef?.addEventListener?.('gev:location-switch', onLocationSwitch);
 
   // The photorealistic stack hides the globe the images drape on; say so.

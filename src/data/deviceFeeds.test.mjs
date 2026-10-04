@@ -22,7 +22,8 @@ const device = (extra = {}) => ({
 
 test('the layer is in the share-link registry under its own token', () => {
   const entry = LAYER_STATE_REGISTRY.find((item) => item.id === DEVICE_FEEDS_LAYER_ID);
-  assert.deepEqual([entry?.token, entry?.disposition], ['v', 'enabled-only']);
+  // 'v' went to upstream's weather radar in the 2026-10 merge.
+  assert.deepEqual([entry?.token, entry?.disposition], ['0', 'enabled-only']);
 });
 
 test('only well-formed devices, and only the application’s own picture route', () => {

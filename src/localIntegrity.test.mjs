@@ -16,7 +16,7 @@ import {
   noteLocalProvidersSaved,
   noteLocalRecordsSaved,
   vendorFeedPolicyParts,
-} from './localIntegrity.mjs';
+} from '../server/shared/localIntegrity.mjs';
 import { getOpenSkyToken } from '../server/providers/aircraft/opensky.js';
 import { privateCameraPolicyRecords } from './privateCamerasCore.mjs';
 import { parseLlmAskRequest } from '../server/providers/llm/ask.js';

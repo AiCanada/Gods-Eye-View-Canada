@@ -1,4 +1,8 @@
 import { formatAskLogEntry, prependOutputLog } from './askOverview.js';
+import {
+  removeOverlayEntry,
+  upsertOverlayEntry,
+} from './overlays/worldOverlay.js';
 import { closestCityForSearch, selectedPlaceLabel } from './locations.js';
 import {
   SOCIAL_ACCOUNT_PLATFORMS,
@@ -67,14 +71,19 @@ export class SocialMediaPanel {
    */
   constructor(viewer, options = {}) {
     this.viewer = viewer;
-    this._sceneContext = typeof options.sceneContext === 'function' ? options.sceneContext : null;
+    this._sceneContext =
+      typeof options.sceneContext === 'function' ? options.sceneContext : null;
     this._storage = options.storage || null;
     this._fetch = options.fetch || null;
     this._openWindow = options.openWindow || null;
     this._clipboard =
-      options.clipboard !== undefined ? options.clipboard : globalThis.navigator?.clipboard || null;
+      options.clipboard !== undefined
+        ? options.clipboard
+        : globalThis.navigator?.clipboard || null;
     this._geolocation =
-      options.geolocation !== undefined ? options.geolocation : globalThis.navigator?.geolocation || null;
+      options.geolocation !== undefined
+        ? options.geolocation
+        : globalThis.navigator?.geolocation || null;
     this._placeFix = options.placeFix || placeSocialFix;
     this._clearFix = options.clearFix || clearSocialFix;
     this._askTimeoutMs = DEFAULT_ASK_TIMEOUT_MS;
@@ -105,7 +114,10 @@ export class SocialMediaPanel {
     this._helpKind = doc.getElementById('social-help-kind');
     this._helpDestination = doc.getElementById('social-help-destination');
     this._helpEntries = doc.getElementById('social-help-entries');
-    this._helpItems = [doc.getElementById('social-help-item-1'), doc.getElementById('social-help-item-2')];
+    this._helpItems = [
+      doc.getElementById('social-help-item-1'),
+      doc.getElementById('social-help-item-2'),
+    ];
     this._helpDefault = doc.getElementById('social-help-default');
     this._query = doc.getElementById('social-query');
     this._model = doc.getElementById('social-model');
@@ -120,7 +132,10 @@ export class SocialMediaPanel {
       this._showLocation.checked = readShowLocation(this._browserStorage());
       this._showLocation.addEventListener('change', () => {
         try {
-          writeShowLocation(this._browserStorage(), this._showLocation.checked === true);
+          writeShowLocation(
+            this._browserStorage(),
+            this._showLocation.checked === true,
+          );
         } catch {
           // The choice still applies until this page closes.
         }
@@ -143,7 +158,9 @@ export class SocialMediaPanel {
     });
     this._openKind?.addEventListener('change', () => this._paintOpenSaved());
     this._helpKind?.addEventListener('change', () => this._paintHelpKind());
-    doc.getElementById('social-help-save')?.addEventListener('click', () => this._saveHelpDelivery());
+    doc
+      .getElementById('social-help-save')
+      ?.addEventListener('click', () => this._saveHelpDelivery());
     this._loadHelpDelivery();
     this._openSaved?.addEventListener('click', () => this._openSavedSites());
     this._paintOpenSaved();
@@ -164,9 +181,15 @@ export class SocialMediaPanel {
       event.preventDefault();
       void this._run('search');
     });
-    this._actions.analyze?.addEventListener('click', () => void this._run('analyze'));
+    this._actions.analyze?.addEventListener(
+      'click',
+      () => void this._run('analyze'),
+    );
     this._actions.news?.addEventListener('click', () => void this._run('news'));
-    this._actions.search?.addEventListener('click', () => void this._run('search'));
+    this._actions.search?.addEventListener(
+      'click',
+      () => void this._run('search'),
+    );
     this._actions.help?.addEventListener('click', () => void this._run('help'));
     // GROK BOT SWARM and OPENAI BOT SWARM: the instructions, and the button
     // that sends one bot per platform at once on that swarm's own key.
@@ -188,12 +211,16 @@ export class SocialMediaPanel {
         // opens ChatGPT, where the dots live.
         if (provider.desktop) {
           void this._openGrokBot().then((result) => {
-            this._setSwarmStatus(swarm, result.ok ? 'GROK BOT OPENED' : result.error);
+            this._setSwarmStatus(
+              swarm,
+              result.ok ? 'GROK BOT OPENED' : result.error,
+            );
           });
           return;
         }
         const open = this._openWindow || globalThis.open;
-        if (provider.openUrl) open?.(provider.openUrl, '_blank', 'noopener,noreferrer');
+        if (provider.openUrl)
+          open?.(provider.openUrl, '_blank', 'noopener,noreferrer');
       });
     }
 
@@ -344,8 +371,11 @@ export class SocialMediaPanel {
     const rows = [];
     const seen = new Set();
     for (const row of this._vault) {
-      const platform = SOCIAL_ACCOUNT_PLATFORMS.find((entry) => entry.id === row.platform);
-      if (!platform || seen.has(platform.id) || typeof row.userId !== 'string') continue;
+      const platform = SOCIAL_ACCOUNT_PLATFORMS.find(
+        (entry) => entry.id === row.platform,
+      );
+      if (!platform || seen.has(platform.id) || typeof row.userId !== 'string')
+        continue;
       seen.add(platform.id);
       rows.push({
         platform: platform.id,
@@ -358,7 +388,9 @@ export class SocialMediaPanel {
     }
     for (const row of local) {
       if (seen.has(row.platform)) continue;
-      const platform = SOCIAL_ACCOUNT_PLATFORMS.find((entry) => entry.id === row.platform);
+      const platform = SOCIAL_ACCOUNT_PLATFORMS.find(
+        (entry) => entry.id === row.platform,
+      );
       if (!platform) continue;
       rows.push({
         platform: platform.id,
@@ -403,7 +435,6 @@ export class SocialMediaPanel {
     }
   }
 
-
   _setSwarmStatus(swarm, text) {
     if (swarm.status) swarm.status.textContent = text;
   }
@@ -427,9 +458,13 @@ export class SocialMediaPanel {
     this._setSwarmStatus(swarm, `SPINNING UP SWARM · ${total} BOTS`);
     const instructions = swarm.instructions?.value ?? '';
     try {
-      const [context, keys] = await Promise.all([this._context(), this._swarmStatus()]);
+      const [context, keys] = await Promise.all([
+        this._context(),
+        this._swarmStatus(),
+      ]);
       const view = this._openView();
-      const place = context?.selectedLocation || context?.locality || view.place || '';
+      const place =
+        context?.selectedLocation || context?.locality || view.place || '';
       const own = keys?.[swarm.provider.id];
       if (own && own.key === false) {
         if (swarm.provider.id === 'xai') {
@@ -458,7 +493,9 @@ export class SocialMediaPanel {
   /** Which swarms have their own key, and Grok's Chief of Staff webhook; null when unknown. */
   async _swarmStatus() {
     try {
-      const response = await this._request(SWARM_STATUS_URL, { headers: { Accept: 'application/json' } });
+      const response = await this._request(SWARM_STATUS_URL, {
+        headers: { Accept: 'application/json' },
+      });
       if (!response?.ok) return null;
       const data = await response.json().catch(() => null);
       return data && typeof data === 'object' ? data : null;
@@ -489,7 +526,8 @@ export class SocialMediaPanel {
       this._setSwarmStatus(swarm, plan.error);
       return;
     }
-    const time = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const time = () =>
+      new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     if (webhook) {
       this._setSwarmStatus(swarm, 'SENDING THE TASK TO CHIEF OF STAFF…');
       let response = null;
@@ -498,14 +536,23 @@ export class SocialMediaPanel {
         response = await this._request(CHIEF_OF_STAFF_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ instructions, place, nearestCity, latitude: view.latitude, longitude: view.longitude }),
+          body: JSON.stringify({
+            instructions,
+            place,
+            nearestCity,
+            latitude: view.latitude,
+            longitude: view.longitude,
+          }),
         });
         data = await response.json().catch(() => null);
       } catch {
         response = null;
       }
       if (!response?.ok || !data?.ok) {
-        this._setSwarmStatus(swarm, String(data?.error || 'The task did not reach Grok Bot.'));
+        this._setSwarmStatus(
+          swarm,
+          String(data?.error || 'The task did not reach Grok Bot.'),
+        );
         return;
       }
       this._prepend(
@@ -515,7 +562,10 @@ export class SocialMediaPanel {
           { locationName: place },
         ),
       );
-      this._setSwarmStatus(swarm, `SENT TO CHIEF OF STAFF ${time()} · ITS REPORT COMES BACK IN GROK BOT`);
+      this._setSwarmStatus(
+        swarm,
+        `SENT TO CHIEF OF STAFF ${time()} · ITS REPORT COMES BACK IN GROK BOT`,
+      );
       return;
     }
     const copied = await this._copyText(plan.text);
@@ -557,7 +607,10 @@ export class SocialMediaPanel {
     const longitude = Number(view?.longitude);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return '';
     const controller = new AbortController();
-    const timer = globalThis.setTimeout(() => controller.abort(), NEAREST_CITY_WAIT_MS);
+    const timer = globalThis.setTimeout(
+      () => controller.abort(),
+      NEAREST_CITY_WAIT_MS,
+    );
     try {
       const response = await this._request(
         `${NEAREST_CITY_URL}?lat=${latitude.toFixed(4)}&lon=${longitude.toFixed(4)}`,
@@ -609,7 +662,10 @@ export class SocialMediaPanel {
   async _sendSwarmBots(swarm, { instructions, place, view }) {
     const total = SOCIAL_SWARM_BOTS.length;
     const title = swarm.provider.title;
-    this._setSwarmStatus(swarm, `SPINNING UP SWARM · ${total} BOTS · ${place || 'this map view'}`);
+    this._setSwarmStatus(
+      swarm,
+      `SPINNING UP SWARM · ${total} BOTS · ${place || 'this map view'}`,
+    );
     let back = 0;
     let found = 0;
     let empty = 0;
@@ -638,22 +694,40 @@ export class SocialMediaPanel {
         const data = await response.json().catch(() => null);
         if (response.status === 501 || data?.unconfigured) {
           unconfigured = String(
-            data?.error || `No ${swarm.provider.keyTitle} key yet. Add it in POWER UP → ${swarm.provider.keyTitle}.`,
+            data?.error ||
+              `No ${swarm.provider.keyTitle} key yet. Add it in POWER UP → ${swarm.provider.keyTitle}.`,
           );
           return;
         }
-        if (!response.ok || !data?.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+        if (!response.ok || !data?.ok)
+          throw new Error(data?.error || `HTTP ${response.status}`);
         if (swarmBotFoundNothing(data.text)) empty += 1;
         else found += 1;
-        this._prepend(formatAskLogEntry(`${title} · ${bot.label}`, formatSwarmBotLog(data), { locationName: place }));
+        this._prepend(
+          formatAskLogEntry(
+            `${title} · ${bot.label}`,
+            formatSwarmBotLog(data),
+            { locationName: place },
+          ),
+        );
       } catch (error) {
         failed += 1;
-        const reason = error?.name === 'AbortError' ? 'no answer in time' : error?.message || 'request failed';
-        this._prepend(formatAskLogEntry(`${title} · ${bot.label}`, `BOT FAILED: ${reason}`, { locationName: place }));
+        const reason =
+          error?.name === 'AbortError'
+            ? 'no answer in time'
+            : error?.message || 'request failed';
+        this._prepend(
+          formatAskLogEntry(
+            `${title} · ${bot.label}`,
+            `BOT FAILED: ${reason}`,
+            { locationName: place },
+          ),
+        );
       } finally {
         globalThis.clearTimeout(timer);
         back += 1;
-        if (!unconfigured) this._setSwarmStatus(swarm, `SWARM OUT · ${back}/${total} BACK`);
+        if (!unconfigured)
+          this._setSwarmStatus(swarm, `SWARM OUT · ${back}/${total} BACK`);
       }
     };
     await Promise.all(SOCIAL_SWARM_BOTS.map(sendBot));
@@ -661,7 +735,10 @@ export class SocialMediaPanel {
       this._setSwarmStatus(swarm, unconfigured);
       return;
     }
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const time = new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
     this._setSwarmStatus(
       swarm,
       `SWARM DONE ${time} · ${found} with reports · ${empty} found nothing${failed ? ` · ${failed} failed` : ''}`,
@@ -671,7 +748,9 @@ export class SocialMediaPanel {
   /** A gig-economy or delivery platform says its HELP use is still under development. */
   _showAccountNote() {
     if (!this._accountNote) return;
-    const platform = SOCIAL_ACCOUNT_PLATFORMS.find((item) => item.id === this._accountPlatform?.value);
+    const platform = SOCIAL_ACCOUNT_PLATFORMS.find(
+      (item) => item.id === this._accountPlatform?.value,
+    );
     const gig = platform?.gig === true;
     this._accountNote.hidden = !gig;
     this._accountNote.textContent = gig ? SOCIAL_GIG_HELP_NOTE : '';
@@ -679,12 +758,16 @@ export class SocialMediaPanel {
 
   /** One Power Up per saved login and per saved API key, out of every option in the menu. */
   _paintPowerUps() {
-    if (this._powerUp) this._powerUp.textContent = socialPowerUps(this._vault).label;
+    if (this._powerUp)
+      this._powerUp.textContent = socialPowerUps(this._vault).label;
   }
 
   /** Transportation picks a destination; every other kind takes two entries. */
   _paintHelpKind() {
-    const kind = SOCIAL_HELP_DELIVERY_KINDS.find((item) => item.id === this._helpKind?.value) || SOCIAL_HELP_DELIVERY_KINDS[0];
+    const kind =
+      SOCIAL_HELP_DELIVERY_KINDS.find(
+        (item) => item.id === this._helpKind?.value,
+      ) || SOCIAL_HELP_DELIVERY_KINDS[0];
     const transport = Boolean(kind.destinations);
     if (this._helpDestination) this._helpDestination.hidden = !transport;
     if (this._helpEntries) this._helpEntries.hidden = transport;
@@ -708,7 +791,8 @@ export class SocialMediaPanel {
     const saved = readHelpDelivery(this._browserStorage());
     if (saved && this._helpKind) {
       this._helpKind.value = saved.kind;
-      if (this._helpDestination && saved.destination) this._helpDestination.value = saved.destination;
+      if (this._helpDestination && saved.destination)
+        this._helpDestination.value = saved.destination;
       this._helpItems.forEach((input, index) => {
         if (input) input.value = saved.items[index] || '';
       });
@@ -742,7 +826,8 @@ export class SocialMediaPanel {
   _paintOpenSaved() {
     if (!this._openSaved) return;
     const kind = this._openKind?.value || 'login';
-    this._openSaved.textContent = SOCIAL_OPEN_SAVED_LABELS[kind] || SOCIAL_OPEN_SAVED_LABELS.login;
+    this._openSaved.textContent =
+      SOCIAL_OPEN_SAVED_LABELS[kind] || SOCIAL_OPEN_SAVED_LABELS.login;
   }
 
   /** Opens each saved site of the chosen kind in its own tab. */
@@ -764,7 +849,9 @@ export class SocialMediaPanel {
   }
 
   _showSavedUserId() {
-    const row = this._vault.find((item) => item.platform === this._accountPlatform?.value);
+    const row = this._vault.find(
+      (item) => item.platform === this._accountPlatform?.value,
+    );
     if (this._handle) this._handle.value = row?.userId || '';
     if (this._password) this._password.value = '';
     if (this._apiKey) this._apiKey.value = '';
@@ -777,7 +864,9 @@ export class SocialMediaPanel {
       const handle = normalizeSocialHandle(row.userId);
       if (!handle.ok) continue;
       const next = { platform: row.platform, handle: handle.handle };
-      const index = accounts.findIndex((item) => item.platform === row.platform);
+      const index = accounts.findIndex(
+        (item) => item.platform === row.platform,
+      );
       if (index >= 0) accounts[index] = next;
       else accounts.push(next);
     }
@@ -791,14 +880,21 @@ export class SocialMediaPanel {
       if (!response.ok || !data) return;
       if (data.locked) {
         this._vault = [];
-        this._setStatus('The encrypted store on this computer could not be opened.');
+        this._setStatus(
+          'The encrypted store on this computer could not be opened.',
+        );
         this._syncLiveLocation();
         return;
       }
       if (!Array.isArray(data.accounts)) return;
       this._vault = [];
       for (const row of data.accounts) {
-        if (!row || typeof row.platform !== 'string' || typeof row.userId !== 'string') continue;
+        if (
+          !row ||
+          typeof row.platform !== 'string' ||
+          typeof row.userId !== 'string'
+        )
+          continue;
         this._vault.push({
           platform: row.platform,
           userId: row.userId,
@@ -866,9 +962,15 @@ export class SocialMediaPanel {
       }
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.ok || typeof data.userId !== 'string') {
-        const error = String(data?.error || 'This computer did not keep that login.');
-        const leaks = (password && error.includes(password)) || (apiKey && error.includes(apiKey));
-        this._setStatus(leaks ? 'This computer did not keep that login.' : error);
+        const error = String(
+          data?.error || 'This computer did not keep that login.',
+        );
+        const leaks =
+          (password && error.includes(password)) ||
+          (apiKey && error.includes(apiKey));
+        this._setStatus(
+          leaks ? 'This computer did not keep that login.' : error,
+        );
         return;
       }
       const handle = normalizeSocialHandle(data.userId);
@@ -886,15 +988,27 @@ export class SocialMediaPanel {
       this._vault.push({
         platform,
         userId: data.userId,
-        passwordSaved: typeof data.passwordSaved === 'boolean' ? data.passwordSaved : mode !== 'api',
-        apiKeySaved: typeof data.apiKeySaved === 'boolean' ? data.apiKeySaved : mode !== 'login',
+        passwordSaved:
+          typeof data.passwordSaved === 'boolean'
+            ? data.passwordSaved
+            : mode !== 'api',
+        apiKeySaved:
+          typeof data.apiKeySaved === 'boolean'
+            ? data.apiKeySaved
+            : mode !== 'login',
       });
       if (this._password) this._password.value = '';
       if (this._apiKey) this._apiKey.value = '';
       if (this._handle) this._handle.value = '';
       this._renderAccounts();
       this._syncLiveLocation();
-      this._setStatus(mode === 'api' ? 'Saved that API key encrypted on this computer.' : mode === 'both' ? 'Saved that login and API key encrypted on this computer.' : 'Saved that login encrypted on this computer.');
+      this._setStatus(
+        mode === 'api'
+          ? 'Saved that API key encrypted on this computer.'
+          : mode === 'both'
+            ? 'Saved that login and API key encrypted on this computer.'
+            : 'Saved that login encrypted on this computer.',
+      );
     } finally {
       this._saving = false;
     }
@@ -910,7 +1024,9 @@ export class SocialMediaPanel {
         });
         const data = await response.json().catch(() => null);
         if (!response.ok) {
-          const error = String(data?.error || 'This computer did not remove that login.');
+          const error = String(
+            data?.error || 'This computer did not remove that login.',
+          );
           this._setStatus(error);
           return;
         }
@@ -918,7 +1034,9 @@ export class SocialMediaPanel {
         this._setStatus('This computer did not remove that login.');
         return;
       }
-      this._vault = this._vault.filter((item) => item.platform !== row.platform);
+      this._vault = this._vault.filter(
+        (item) => item.platform !== row.platform,
+      );
       this._syncLiveLocation();
     }
     const storage = this._browserStorage();
@@ -953,7 +1071,9 @@ export class SocialMediaPanel {
     if (providers.length === 0) {
       const option = this._doc.createElement('option');
       option.value = '';
-      option.textContent = reachable ? 'No model key yet' : 'Model list unavailable';
+      option.textContent = reachable
+        ? 'No model key yet'
+        : 'Model list unavailable';
       select.append(option);
       select.disabled = true;
       select.value = '';
@@ -1007,7 +1127,9 @@ export class SocialMediaPanel {
    */
   async _resolvePlace(context, say) {
     const view = this._openView();
-    const picked = cleanPlace(context?.selectedLocation || context?.locality || view.place || '');
+    const picked = cleanPlace(
+      context?.selectedLocation || context?.locality || view.place || '',
+    );
     if (picked) return { place: picked, view };
     if (!Number.isFinite(view.latitude) || !Number.isFinite(view.longitude)) {
       return { place: '', view };
@@ -1015,14 +1137,21 @@ export class SocialMediaPanel {
     say?.('Finding the place at the middle of the map...');
     const town = cleanPlace(await this._nearestCityFromServer(view));
     if (town) return { place: town, view };
-    const city = cleanPlace(closestCityForSearch(view.latitude, view.longitude)?.name);
+    const city = cleanPlace(
+      closestCityForSearch(view.latitude, view.longitude)?.name,
+    );
     if (city) return { place: city, view };
-    return { place: `${view.latitude.toFixed(4)}, ${view.longitude.toFixed(4)}`, view };
+    return {
+      place: `${view.latitude.toFixed(4)}, ${view.longitude.toFixed(4)}`,
+      view,
+    };
   }
 
   async _loadPublicNews(planInput, signal) {
     try {
-      const response = await this._request(socialPublicNewsPath(planInput), { signal });
+      const response = await this._request(socialPublicNewsPath(planInput), {
+        signal,
+      });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data) return { status: 'unavailable', articles: [] };
       return normalizePublicNewsReport(data);
@@ -1056,15 +1185,29 @@ export class SocialMediaPanel {
   _viewPoint() {
     const viewer = this.viewer;
     const usable = (carto) =>
-      carto && Number.isFinite(carto.latitude) && Number.isFinite(carto.longitude) ? carto : null;
+      carto &&
+      Number.isFinite(carto.latitude) &&
+      Number.isFinite(carto.longitude)
+        ? carto
+        : null;
     try {
       const canvas = viewer?.scene?.canvas;
       const ellipsoid = viewer?.scene?.globe?.ellipsoid;
       const width = canvas?.clientWidth || canvas?.width || 0;
       const height = canvas?.clientHeight || canvas?.height || 0;
-      if (width > 0 && height > 0 && ellipsoid && typeof viewer.camera?.pickEllipsoid === 'function') {
-        const ground = viewer.camera.pickEllipsoid({ x: width / 2, y: height / 2 }, ellipsoid);
-        const centre = ground ? usable(ellipsoid.cartesianToCartographic(ground)) : null;
+      if (
+        width > 0 &&
+        height > 0 &&
+        ellipsoid &&
+        typeof viewer.camera?.pickEllipsoid === 'function'
+      ) {
+        const ground = viewer.camera.pickEllipsoid(
+          { x: width / 2, y: height / 2 },
+          ellipsoid,
+        );
+        const centre = ground
+          ? usable(ellipsoid.cartesianToCartographic(ground))
+          : null;
         if (centre) return centre;
       }
     } catch {
@@ -1102,7 +1245,9 @@ export class SocialMediaPanel {
     // Held across the view lookup so a second press cannot send twice.
     this._inFlight = true;
     const context = await this._context();
-    const where = await this._resolvePlace(context, (text) => this._setStatus(text));
+    const where = await this._resolvePlace(context, (text) =>
+      this._setStatus(text),
+    );
     const planInput = this._planInput(action, where);
     const plan = planSocialRequest(planInput);
     if (!plan.ok) {
@@ -1116,7 +1261,9 @@ export class SocialMediaPanel {
     this._setStatus(`${phase}...`);
     const startedAt = Date.now();
     const ticker = globalThis.setInterval(() => {
-      this._setStatus(`${phase}... ${Math.round((Date.now() - startedAt) / 1000)}s`);
+      this._setStatus(
+        `${phase}... ${Math.round((Date.now() - startedAt) / 1000)}s`,
+      );
     }, 1000);
     const controller = new AbortController();
     this._inFlight = controller;
@@ -1160,11 +1307,15 @@ export class SocialMediaPanel {
       if (!response.ok || !data?.answer) {
         throw new Error(data?.error || `HTTP ${response.status}`);
       }
-      this._prepend(formatAskLogEntry(plan.kind, data.answer, { locationName: plan.place }));
+      this._prepend(
+        formatAskLogEntry(plan.kind, data.answer, { locationName: plan.place }),
+      );
       this._setStatus(this._usageLine(data));
     } catch (error) {
       const aborted = error?.name === 'AbortError';
-      this._setStatus(aborted ? 'No answer in time.' : error?.message || 'Request failed.');
+      this._setStatus(
+        aborted ? 'No answer in time.' : error?.message || 'Request failed.',
+      );
     } finally {
       globalThis.clearInterval(ticker);
       globalThis.clearTimeout(timeout);
@@ -1177,7 +1328,8 @@ export class SocialMediaPanel {
     const usage = data?.usage || {};
     const total = Number.isFinite(usage.total_tokens)
       ? usage.total_tokens
-      : Number(usage.input_tokens || 0) + Number(usage.output_tokens || 0) || null;
+      : Number(usage.input_tokens || 0) + Number(usage.output_tokens || 0) ||
+        null;
     const model = data?.model ? String(data.model) : '';
     if (model && total) return `${model} · ${total} tokens`;
     return model || '';
@@ -1193,6 +1345,23 @@ export class SocialMediaPanel {
   }
 }
 
+/** The marker's words go through the world-overlay host, never a Cesium label. */
+const SOCIAL_FIX_OVERLAY_SOURCE = 'social-location';
+function labelSocialFix(position, label) {
+  try {
+    upsertOverlayEntry(SOCIAL_FIX_OVERLAY_SOURCE, {
+      id: SOCIAL_LOCATION_FIX_ID,
+      position,
+      variant: 'label',
+      title: String(label || ''),
+      accent: '#00d4ff',
+      pinned: true,
+    });
+  } catch {
+    // A host that is not ready yet still shows the dot.
+  }
+}
+
 async function placeSocialFix(viewer, fix, label) {
   if (!viewer?.entities?.add || viewer.isDestroyed?.()) return;
   const latitude = Number(fix?.latitude);
@@ -1203,8 +1372,8 @@ async function placeSocialFix(viewer, fix, label) {
   const existing = viewer.entities.getById?.(SOCIAL_LOCATION_FIX_ID);
   if (existing) {
     existing.position = position;
-    if (existing.label) existing.label.text = label;
     existing.show = true;
+    labelSocialFix(position, label);
     return;
   }
   viewer.entities.add({
@@ -1218,22 +1387,17 @@ async function placeSocialFix(viewer, fix, label) {
       heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     },
-    label: {
-      text: label,
-      font: 'bold 13px "JetBrains Mono", "SF Mono", monospace',
-      fillColor: Cesium.Color.WHITE,
-      outlineColor: Cesium.Color.BLACK,
-      outlineWidth: 3,
-      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-      pixelOffset: new Cesium.Cartesian2(0, -20),
-      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
-    },
   });
+  labelSocialFix(position, label);
 }
 
 async function clearSocialFix(viewer) {
   if (!viewer?.entities?.remove || viewer.isDestroyed?.()) return;
   const existing = viewer.entities.getById?.(SOCIAL_LOCATION_FIX_ID);
   if (existing) viewer.entities.remove(existing);
+  try {
+    removeOverlayEntry(SOCIAL_FIX_OVERLAY_SOURCE, SOCIAL_LOCATION_FIX_ID);
+  } catch {
+    // Nothing drawn.
+  }
 }

@@ -40,6 +40,16 @@ function austinRows() {
 }
 const AUSTIN_KEPT = 323;
 
+/** The tests below count the Austin, Caltrans and TfL downloads, so the other
+ * live packs (Ontario, Fintraffic, DriveBC, TxDOT, ...) are switched off. */
+const OTHER_PACKS_OFF = Object.freeze(
+  Object.fromEntries(
+    ['ONTARIO', 'FINTRAFFIC', 'DRIVEBC', 'TXDOT', 'TALLINN', 'TARKTEE', 'WARENDORF', 'NSW', 'CALGARY', 'DELDOT'].map(
+      (name) => [`CCTV_${name}_ENABLED`, '0'],
+    ),
+  ),
+);
+
 function fetchRecorder(routes) {
   const calls = [];
   const fetchImpl = async (url) => {
@@ -85,14 +95,14 @@ test('Austin downloads only for an area that overlaps it with the US enabled, on
   const missing = path.join(dir, 'none.json');
   const caOnly = createCctvCatalog({
     sourceRoot: dir,
-    env: { CCTV_COUNTRIES: 'CA', CCTV_SOURCES_FILE: missing, CCTV_FORCE_AUSTIN: '1', CCTV_PREFER_AUSTIN: '1' },
+    env: { ...OTHER_PACKS_OFF, CCTV_COUNTRIES: 'CA', CCTV_SOURCES_FILE: missing, CCTV_FORCE_AUSTIN: '1', CCTV_PREFER_AUSTIN: '1' },
     fetchImpl,
   });
   assert.equal((await caOnly.snapshot()).total, 0, 'no preferred or forced Austin fallback');
   assert.deepEqual(await caOnly.ensureArea(AUSTIN), { pending: [] });
   assert.equal(calls.length, 0, 'US disabled: no download');
 
-  const catalog = createCctvCatalog({ sourceRoot: dir, env: { CCTV_COUNTRIES: 'CA,US', CCTV_SOURCES_FILE: missing }, fetchImpl });
+  const catalog = createCctvCatalog({ sourceRoot: dir, env: { ...OTHER_PACKS_OFF, CCTV_COUNTRIES: 'CA,US', CCTV_SOURCES_FILE: missing }, fetchImpl });
   await catalog.snapshot();
   assert.equal(calls.length, 0, 'nothing downloads at startup');
   assert.deepEqual(await catalog.ensureArea(HOUSTON), { pending: [] });
@@ -119,7 +129,7 @@ test('a slow download answers pending, then lands in the next snapshot', async (
       return Response.json(austinPayload(austinRows()));
     }],
   ]);
-  const env = { CCTV_COUNTRIES: 'US', CCTV_SOURCES_FILE: path.join(dir, 'none.json') };
+  const env = { ...OTHER_PACKS_OFF, CCTV_COUNTRIES: 'US', CCTV_SOURCES_FILE: path.join(dir, 'none.json') };
   const livePacks = createCctvLivePacks({ cacheDir: path.join(dir, '.gev-cache'), env, fetchImpl, waitMs: 20 });
   const catalog = createCctvCatalog({ sourceRoot: dir, env, livePacks });
   assert.deepEqual(await catalog.ensureArea(AUSTIN), { pending: ['austin'] });
@@ -138,7 +148,7 @@ test('a second instance within 24 h reads the disk copy and downloads nothing', 
   quiet(t);
   const dir = tempRoot(t);
   let clock = Date.UTC(2026, 8, 14, 10);
-  const env = { CCTV_COUNTRIES: '*', CCTV_SOURCES_FILE: path.join(dir, 'none.json') };
+  const env = { ...OTHER_PACKS_OFF, CCTV_COUNTRIES: '*', CCTV_SOURCES_FILE: path.join(dir, 'none.json') };
   const first = fetchRecorder([['data.austintexas.gov', () => Response.json(austinPayload(austinRows()))]]);
   const one = createCctvCatalog({ sourceRoot: dir, env, fetchImpl: first.fetchImpl, now: () => clock });
   await one.ensureArea(AUSTIN);
@@ -180,7 +190,7 @@ test('Caltrans loads only with CCTV_CALTRANS_DISTRICTS and a Californian area; T
     ['cwwp2.dot.ca.gov', () => Response.json(caltransPayload)],
     ['api.tfl.gov.uk', () => Response.json(tflPayload)],
   ]);
-  const env = { CCTV_COUNTRIES: 'US,GB', CCTV_SOURCES_FILE: path.join(dir, 'none.json') };
+  const env = { ...OTHER_PACKS_OFF, CCTV_COUNTRIES: 'US,GB', CCTV_SOURCES_FILE: path.join(dir, 'none.json') };
   const catalog = createCctvCatalog({ sourceRoot: dir, env, fetchImpl });
   assert.deepEqual(caltransDistricts({}), [], 'no default districts');
   await catalog.ensureArea(LOS_ANGELES);
@@ -275,7 +285,7 @@ test('a Road511 listing camera within 30 m of an Austin open-data camera is hidd
     ],
   }));
   const { fetchImpl } = fetchRecorder([['data.austintexas.gov', () => Response.json(austinPayload(austinRows()))]]);
-  const catalog = createCctvCatalog({ sourceRoot: dir, env: { CCTV_COUNTRIES: 'US', CCTV_SOURCES_FILE: pack }, fetchImpl });
+  const catalog = createCctvCatalog({ sourceRoot: dir, env: { ...OTHER_PACKS_OFF, CCTV_COUNTRIES: 'US', CCTV_SOURCES_FILE: pack }, fetchImpl });
   assert.ok((await catalog.snapshot()).byId.has('us511-TX-cam-near'), 'without the Austin pack the listing camera shows');
   await catalog.ensureArea(AUSTIN);
   const after = await catalog.snapshot();
@@ -297,7 +307,7 @@ test('a Road511 listing camera within 30 m of an Austin open-data camera is hidd
 test('/sources near Austin serves the open-data pack, reporting pending while it downloads', async (t) => {
   quiet(t);
   const dir = tempRoot(t);
-  for (const [name, value] of Object.entries({ CCTV_COUNTRIES: 'US', CCTV_SOURCES_FILE: path.join(dir, 'none.json'), CCTV_SOURCES_JSON: undefined })) {
+  for (const [name, value] of Object.entries({ ...OTHER_PACKS_OFF, CCTV_COUNTRIES: 'US', CCTV_SOURCES_FILE: path.join(dir, 'none.json'), CCTV_SOURCES_JSON: undefined })) {
     const previous = process.env[name];
     if (value === undefined) delete process.env[name];
     else process.env[name] = value;
@@ -348,7 +358,7 @@ test('school cameras in a live pack are never cached or served, including an old
     row(13, 'TURNED_ON', 30.3, -97.74, 'LAMAR BLVD / 38TH ST'),
   ];
   const { calls, fetchImpl } = fetchRecorder([['data.austintexas.gov', () => Response.json(austinPayload(rows))]]);
-  const env = { CCTV_COUNTRIES: 'US', CCTV_SOURCES_FILE: path.join(dir, 'none.json') };
+  const env = { ...OTHER_PACKS_OFF, CCTV_COUNTRIES: 'US', CCTV_SOURCES_FILE: path.join(dir, 'none.json') };
   const catalog = createCctvCatalog({ sourceRoot: dir, env, fetchImpl });
   await catalog.ensureArea(AUSTIN);
   assert.equal(calls.length, 1);
@@ -376,7 +386,7 @@ test('a school camera in a pack file is left out of the catalogue', async (t) =>
     { id: 'a', name: 'Lincoln High School', lat: 45, lon: -66, country: 'CA', feedType: 'image', url: 'https://example.com/a.jpg' },
     { id: 'b', name: 'University Ave at Main St', lat: 45.01, lon: -66, country: 'CA', feedType: 'image', url: 'https://example.com/b.jpg' },
   ]));
-  const catalog = createCctvCatalog({ sourceRoot: dir, env: { CCTV_COUNTRIES: 'CA', CCTV_SOURCES_FILE: pack } });
+  const catalog = createCctvCatalog({ sourceRoot: dir, env: { ...OTHER_PACKS_OFF, CCTV_COUNTRIES: 'CA', CCTV_SOURCES_FILE: pack } });
   assert.deepEqual([...(await catalog.snapshot()).byId.keys()], ['b']);
 });
 

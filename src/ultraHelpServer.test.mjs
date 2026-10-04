@@ -6,14 +6,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { DEVICE_FEED_STORE, DEVICE_RECORDING_DIR } from './deviceFeedsCore.mjs';
-import { ULTRA_NETWORK_TICK_MS } from './ultraNetwork.mjs';
+import { ULTRA_NETWORK_TICK_MS } from '../server/shared/ultraNetwork.mjs';
 import {
   ULTRA_TOKEN_PATTERN,
   composeUltraToken,
   newUltraToken,
   parseUltraTokenKey,
   readUltraTokenSkills,
-} from './ultraTokens.mjs';
+} from '../server/shared/ultraTokens.mjs';
 import {
   handleUltraPhone,
   noteOutboundEnvSaved,

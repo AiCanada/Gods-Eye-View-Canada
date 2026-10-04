@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "${GEV_PROJECT_ROOT:-$SOURCE_ROOT}" && pwd)"
 cd "$ROOT_DIR"
 
 PORT="${PORT:-4173}"
@@ -13,7 +14,12 @@ HOST="${HOST:-localhost}"
 # cameras nearest the selected place (within 50 km), and the live Austin,
 # Caltrans and TfL packs download only when their area is selected. Values
 # from the shell or .env (CCTV_COUNTRIES, CCTV_CALTRANS_DISTRICTS,
-# CCTV_TFL_ENABLED, ...) reach the dev server unchanged.
+# CCTV_TFL_ENABLED, ...) reach the dev server unchanged. The same holds for
+# the other keyless live packs and their switches (Ontario 511, Fintraffic,
+# DriveBC, TxDOT, Tallinn, Tarktee, Warendorf, Live Traffic NSW, Open Calgary:
+# CCTV_<PACK>_ENABLED, CCTV_TXDOT_DISTRICTS, ...): the launcher neither sets nor
+# rewrites them, and sets no camera cap, so an explicit empty string such as CCTV_CALTRANS_DISTRICTS=''
+# or CCTV_TXDOT_DISTRICTS='' still reaches the server as a kill switch.
 
 # Capture which provider credentials genuinely came from the parent shell
 # before this launcher resolves dotenv and Keychain fallbacks. Only names are
@@ -57,7 +63,7 @@ read_dotenv_value() {
     echo "warning: node not found; cannot parse dotenv files" >&2
     return
   fi
-  node scripts/read-dotenv-value.mjs "${variable_name}"
+  node "$SOURCE_ROOT/scripts/read-dotenv-value.mjs" "${variable_name}"
 }
 
 # Vite loads .env for browser build-time configuration, but this launcher needs
@@ -231,13 +237,14 @@ CESIUM_ION_TOKEN="${CESIUM_ION_TOKEN:-$(read_keychain_secret "cesium-ion" "token
 TOMTOM_API_KEY="${TOMTOM_API_KEY:-$(read_keychain_secret "tomtom-api" "api-key")}"
 FIRMS_MAP_KEY="${FIRMS_MAP_KEY:-$(read_keychain_secret "firms-map" "map-key")}"
 
-if [[ ! -f "src/data/cctv.js" ]]; then
+if [[ ! -f "$SOURCE_ROOT/src/data/cctv.js" ]]; then
   echo "error: expected CCTV layer file missing: src/data/cctv.js"
   exit 1
 fi
 
-if ! grep -q "dataManager.register(cctvLayer)" src/standalone/data.js; then
-  echo "error: CCTV layer not wired in src/standalone/data.js"
+if ! grep -q "return createApplicationCatalog(" "$SOURCE_ROOT/src/standalone/catalog.js" || \
+   ! grep -q "^[[:space:]]*createApplicationCctv({" "$SOURCE_ROOT/src/app/constructCatalog.js"; then
+  echo "error: CCTV layer not wired in src/standalone/catalog.js"
   exit 1
 fi
 
@@ -295,8 +302,8 @@ case "${HOST}" in
 esac
 echo "Google Maps key source: ${GOOGLE_MAPS_API_KEY_SOURCE}"
 echo "Tip: after server starts, hard refresh browser (Cmd+Shift+R)."
-echo "If panels are still missing, run this once in browser console:"
-echo "localStorage.removeItem('godsEyeView.v6.panelPos.cctv-panel'); location.reload();"
+echo "The CCTV panel starts collapsed; open it from its header, or in browser console:"
+echo "localStorage.setItem('godsEyeView.v6.panelCollapsed.cctv-panel', '0'); location.reload();"
 echo "OpenSky auth mode: ${OPENSKY_AUTH_MODE}"
 if [[ -n "${OPENSKY_CREDENTIALS_FILE}" ]]; then
   if [[ -f "${OPENSKY_CREDENTIALS_FILE}" ]]; then

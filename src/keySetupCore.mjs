@@ -1,7 +1,8 @@
 /**
  * Key setup ("POWER UP") — the pure core.
  *
- * One registry, three pure functions, zero dependencies. The dev server's
+ * One registry and pure functions; its only import is the proxy-header check
+ * shared with the other local gates (localRequestGate.mjs). The dev server's
  * /api/setup endpoints (vite.config.js) and the in-app panel (keySetup.js)
  * are both thin shells over this module, so what a key is called, what it
  * unlocks, and how a .env line is written each live in exactly one place.
@@ -10,6 +11,8 @@
  * pass environments in and write text out, which is also what makes every
  * behavior below unit-testable.
  */
+
+import { hasProxySignals } from './localRequestGate.mjs';
 
 /** Longest accepted key/token value. NASA Earthdata Login tokens are JWTs of
  * roughly 700 characters; every other provider key is far shorter. */
@@ -21,7 +24,8 @@ export const KEY_SETUP_VALUE_LIMIT = 4096;
 export const KEY_SETUP_UPDATE_LIMIT = 40;
 
 /** Header line written above keys the panel appends to a .env file. */
-export const KEY_SETUP_APPEND_HEADER = '# Keys added by the in-app POWER UP panel';
+export const KEY_SETUP_APPEND_HEADER =
+  '# Keys added by the in-app POWER UP panel';
 
 /**
  * Provider credentials, in display order — most magic per
@@ -45,7 +49,8 @@ export const KEY_SETUP_KEYS = Object.freeze([
     id: 'google-maps-server',
     title: 'GOOGLE MAPS — SERVER',
     unlocks: 'Places context + Street View fallback; optional separate key',
-    getUrl: 'https://developers.google.com/maps/documentation/places/web-service/get-api-key',
+    getUrl:
+      'https://developers.google.com/maps/documentation/places/web-service/get-api-key',
     envVars: Object.freeze(['GOOGLE_MAPS_SERVER_API_KEY']),
     tier: 'metered',
   }),
@@ -119,7 +124,8 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'road511',
     title: 'ROAD511',
-    unlocks: 'US traffic cams with no public image: looks one up only when you open that camera',
+    unlocks:
+      'US traffic cams with no public image: looks one up only when you open that camera',
     getUrl: 'https://road511.com',
     envVars: Object.freeze(['ROAD511_API_KEY']),
     tier: 'metered',
@@ -138,11 +144,17 @@ export const KEY_SETUP_KEYS = Object.freeze([
     id: 'nvidia',
     group: 'llm',
     title: 'NVIDIA NIM',
-    unlocks: 'AI Risk & Truth Assessment: typed questions and one-click overviews of the view',
+    unlocks:
+      'AI Risk & Truth Assessment: typed questions and one-click overviews of the view',
     getUrl: 'https://build.nvidia.com/',
     envVars: Object.freeze(['NVIDIA_API_KEY']),
     optionalEnvVars: Object.freeze([
-      Object.freeze({ name: 'NVIDIA_MODEL', label: 'MODEL', placeholder: 'moonshotai/kimi-k3', options: Object.freeze([]) }),
+      Object.freeze({
+        name: 'NVIDIA_MODEL',
+        label: 'MODEL',
+        placeholder: 'moonshotai/kimi-k3',
+        options: Object.freeze([]),
+      }),
     ]),
     tier: 'free',
   }),
@@ -150,11 +162,17 @@ export const KEY_SETUP_KEYS = Object.freeze([
     id: 'xai',
     group: 'llm',
     title: 'xAI GROK',
-    unlocks: 'AI Risk & Truth Assessment: adds Grok as a second opinion on the current view',
+    unlocks:
+      'AI Risk & Truth Assessment: adds Grok as a second opinion on the current view',
     getUrl: 'https://console.x.ai/',
     envVars: Object.freeze(['XAI_API_KEY']),
     optionalEnvVars: Object.freeze([
-      Object.freeze({ name: 'XAI_MODEL', label: 'MODEL', placeholder: 'grok-4.6', options: Object.freeze([]) }),
+      Object.freeze({
+        name: 'XAI_MODEL',
+        label: 'MODEL',
+        placeholder: 'grok-4.6',
+        options: Object.freeze([]),
+      }),
     ]),
     tier: 'metered',
   }),
@@ -162,11 +180,17 @@ export const KEY_SETUP_KEYS = Object.freeze([
     id: 'anthropic',
     group: 'llm',
     title: 'ANTHROPIC CLAUDE',
-    unlocks: 'AI Risk & Truth Assessment: adds Claude as a second opinion on the current view',
+    unlocks:
+      'AI Risk & Truth Assessment: adds Claude as a second opinion on the current view',
     getUrl: 'https://console.anthropic.com/',
     envVars: Object.freeze(['ANTHROPIC_API_KEY']),
     optionalEnvVars: Object.freeze([
-      Object.freeze({ name: 'ANTHROPIC_MODEL', label: 'MODEL', placeholder: 'claude-fable-5-1', options: Object.freeze([]) }),
+      Object.freeze({
+        name: 'ANTHROPIC_MODEL',
+        label: 'MODEL',
+        placeholder: 'claude-fable-5-1',
+        options: Object.freeze([]),
+      }),
     ]),
     tier: 'metered',
   }),
@@ -174,7 +198,8 @@ export const KEY_SETUP_KEYS = Object.freeze([
     id: 'openrouter',
     group: 'llm',
     title: 'OPENROUTER',
-    unlocks: 'AI Risk & Truth Assessment: one key that reaches many models; NVIDIA Nemotron 3 Ultra (free) unless another is chosen',
+    unlocks:
+      'AI Risk & Truth Assessment: one key that reaches many models; NVIDIA Nemotron 3 Ultra (free) unless another is chosen',
     getUrl: 'https://openrouter.ai/keys',
     envVars: Object.freeze(['OPENROUTER_API_KEY']),
     optionalEnvVars: Object.freeze([
@@ -203,9 +228,14 @@ export const KEY_SETUP_KEYS = Object.freeze([
     id: 'custom',
     group: 'llm',
     title: 'CUSTOM LLM',
-    unlocks: 'AI Risk & Truth Assessment: any OpenAI-compatible endpoint, local or hosted',
+    unlocks:
+      'AI Risk & Truth Assessment: any OpenAI-compatible endpoint, local or hosted',
     getUrl: 'https://platform.openai.com/docs/api-reference/chat',
-    envVars: Object.freeze(['CUSTOM_LLM_API_KEY', 'CUSTOM_LLM_BASE_URL', 'CUSTOM_LLM_MODEL']),
+    envVars: Object.freeze([
+      'CUSTOM_LLM_API_KEY',
+      'CUSTOM_LLM_BASE_URL',
+      'CUSTOM_LLM_MODEL',
+    ]),
     tier: 'free',
   }),
   // Social Media Analysis → the bot swarms, each on a key of its own, apart
@@ -217,11 +247,17 @@ export const KEY_SETUP_KEYS = Object.freeze([
     id: 'grok-bot',
     group: 'grok-bot',
     title: 'GROK BOT',
-    unlocks: 'Social Media → GROK BOT SWARM: seven bots at once on their own xAI key (without one, the task goes to your Chief of Staff bot in Grok Bot)',
+    unlocks:
+      'Social Media → GROK BOT SWARM: seven bots at once on their own xAI key (without one, the task goes to your Chief of Staff bot in Grok Bot)',
     getUrl: 'https://console.x.ai/',
     envVars: Object.freeze(['GROK_BOT_API_KEY']),
     optionalEnvVars: Object.freeze([
-      Object.freeze({ name: 'XAI_SWARM_MODEL', label: 'MODEL', placeholder: 'grok-4.6', options: Object.freeze([]) }),
+      Object.freeze({
+        name: 'XAI_SWARM_MODEL',
+        label: 'MODEL',
+        placeholder: 'grok-4.6',
+        options: Object.freeze([]),
+      }),
     ]),
     tier: 'metered',
   }),
@@ -229,7 +265,8 @@ export const KEY_SETUP_KEYS = Object.freeze([
     id: 'grok-bot-chief-of-staff',
     group: 'grok-bot',
     title: 'GROK BOT — CHIEF OF STAFF',
-    unlocks: 'Social Media → GROK BOT SWARM with no API key: each press sends the task to a webhook routine of your Chief of Staff bot in Grok Bot (Routines → When a webhook fires; paste its Webhook URL and Webhook key)',
+    unlocks:
+      'Social Media → GROK BOT SWARM with no API key: each press sends the task to a webhook routine of your Chief of Staff bot in Grok Bot (Routines → When a webhook fires; paste its Webhook URL and Webhook key)',
     getUrl: 'https://docs.x.ai/grok-bot/skills-routines-and-automations',
     envVars: Object.freeze(['GROK_BOT_WEBHOOK_URL', 'GROK_BOT_WEBHOOK_KEY']),
     tier: 'free',
@@ -237,11 +274,17 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'openai-dots',
     title: 'OPENAI DOTS',
-    unlocks: 'Social Media → OPENAI BOT SWARM: seven bots at once on their own OpenAI key, apart from voice control',
+    unlocks:
+      'Social Media → OPENAI BOT SWARM: seven bots at once on their own OpenAI key, apart from voice control',
     getUrl: 'https://platform.openai.com/api-keys',
     envVars: Object.freeze(['OPENAI_DOTS_API_KEY']),
     optionalEnvVars: Object.freeze([
-      Object.freeze({ name: 'OPENAI_SWARM_MODEL', label: 'MODEL', placeholder: 'gpt-6-astra', options: Object.freeze([]) }),
+      Object.freeze({
+        name: 'OPENAI_SWARM_MODEL',
+        label: 'MODEL',
+        placeholder: 'gpt-6-astra',
+        options: Object.freeze([]),
+      }),
     ]),
     tier: 'metered',
   }),
@@ -256,16 +299,22 @@ export const KEY_SETUP_KEYS = Object.freeze([
     id: 'twilio-sms',
     group: 'ultra-sms',
     title: 'SMS RELAY — TWILIO',
-    unlocks: "Ultra Security Package: texts a call for help to your own cell and to your saved helpers automatically (costs money per message at Twilio's rate)",
+    unlocks:
+      "Ultra Security Package: texts a call for help to your own cell and to your saved helpers automatically (costs money per message at Twilio's rate)",
     getUrl: 'https://console.twilio.com',
-    envVars: Object.freeze(['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER']),
+    envVars: Object.freeze([
+      'TWILIO_ACCOUNT_SID',
+      'TWILIO_AUTH_TOKEN',
+      'TWILIO_FROM_NUMBER',
+    ]),
     tier: 'metered',
   }),
   Object.freeze({
     id: 'ultra-sms-relay',
     group: 'ultra-sms',
     title: 'SMS RELAY — YOUR OWN GATEWAY',
-    unlocks: 'Ultra Security Package: the same texts through an https gateway you run (it receives JSON { to, body } with a bearer token)',
+    unlocks:
+      'Ultra Security Package: the same texts through an https gateway you run (it receives JSON { to, body } with a bearer token)',
     getUrl: 'https://www.twilio.com/docs/messaging/api/message-resource',
     envVars: Object.freeze(['ULTRA_SMS_RELAY_URL', 'ULTRA_SMS_RELAY_TOKEN']),
     tier: 'free',
@@ -277,11 +326,17 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'ultra-directory',
     title: 'HELP NETWORK DIRECTORY',
-    unlocks: 'Ultra Security Package → HELP NETWORK: the shared list of help links your group publishes; set it from that box',
+    unlocks:
+      'Ultra Security Package → HELP NETWORK: the shared list of help links your group publishes; set it from that box',
     getUrl: 'https://github.com/settings/personal-access-tokens',
     envVars: Object.freeze(['ULTRA_DIRECTORY_URL']),
     optionalEnvVars: Object.freeze([
-      Object.freeze({ name: 'ULTRA_DIRECTORY_WRITE_TOKEN', label: 'GITHUB WRITE TOKEN', placeholder: 'github_pat_…', options: Object.freeze([]) }),
+      Object.freeze({
+        name: 'ULTRA_DIRECTORY_WRITE_TOKEN',
+        label: 'GITHUB WRITE TOKEN',
+        placeholder: 'github_pat_…',
+        options: Object.freeze([]),
+      }),
     ]),
     tier: 'free',
     hidden: true,
@@ -295,12 +350,17 @@ const LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 /** Parse an exact local request authority from a Host header. */
 function localAuthority(hostHeader, protocol) {
-  const raw = String(hostHeader || '').trim().toLowerCase();
+  const raw = String(hostHeader || '')
+    .trim()
+    .toLowerCase();
   const scheme = String(protocol || '').toLowerCase();
-  if (!raw || !['http:', 'https:'].includes(scheme) || /[\s/?#@]/.test(raw)) return null;
+  if (!raw || !['http:', 'https:'].includes(scheme) || /[\s/?#@]/.test(raw))
+    return null;
   try {
     const parsed = new URL(`${scheme}//${raw}`);
-    return LOCAL_HOSTNAMES.has(parsed.hostname.toLowerCase()) ? parsed.origin : null;
+    return LOCAL_HOSTNAMES.has(parsed.hostname.toLowerCase())
+      ? parsed.origin
+      : null;
   } catch {
     return null;
   }
@@ -313,7 +373,9 @@ export function commandCompletedSuccessfully(result) {
 
 /** Parse one RFC-4180-shaped CSV record, sufficient for `whoami /fo csv`. */
 function parseCsvRecord(text) {
-  const source = String(text || '').replace(/^\uFEFF/, '').trim();
+  const source = String(text || '')
+    .replace(/^\uFEFF/, '')
+    .trim();
   if (!source || /[\r\n]/.test(source)) return null;
   const fields = [];
   let field = '';
@@ -358,6 +420,24 @@ export function parseWindowsUserSid(stdout) {
 }
 
 /**
+ * Whether the launcher has sharing on. Every sharing signal the launcher
+ * recognizes (scripts/pinokio-preflight.mjs) counts, so the two sets cannot
+ * drift apart. One DELIBERATE divergence: preflight is a boot check that
+ * treats an empty PINOKIO_SHARE_VAR as sharing-on (fail closed before Start),
+ * but here an empty/unset value is the NORMAL git-clone and Pinokio state, so
+ * a bare/sentinel value is not sharing; only a real tunnel var is.
+ */
+export function isSharingEnabled(env = {}) {
+  const shareVar = String(env.PINOKIO_SHARE_VAR ?? '').trim();
+  return (
+    ['PINOKIO_SHARE_CLOUDFLARE', 'PINOKIO_SHARE_LOCAL'].some((name) =>
+      /^(1|true)$/i.test(String(env[name] || '').trim()),
+    ) ||
+    (shareVar !== '' && shareVar !== '__gev_sharing_disabled__')
+  );
+}
+
+/**
  * The admission gate for the Provider Settings endpoints — pure, exported so
  * every refusal below is pinned by a unit assertion rather than a review note.
  *
@@ -392,9 +472,12 @@ export function admitKeySetupRequest({
   // on this machine, whatever its socket says. Refuse them outright as defense
   // in depth — the shipped tunnel (Pinokio) is force-closed at boot, so these
   // only appear when someone has deliberately fronted the dev server.
-  const PROXY_SIGNALS = ['forwarded', 'via', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-port', 'x-forwarded-proto', 'x-real-ip', 'cf-connecting-ip', 'cf-ray'];
-  if (PROXY_SIGNALS.some((name) => String(proxyHeaders[name] || '').trim() !== '')) {
-    return { ok: false, status: 403, error: 'Provider Settings does not answer proxied requests' };
+  if (hasProxySignals(proxyHeaders)) {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Provider Settings does not answer proxied requests',
+    };
   }
   // Every sharing signal the launcher recognizes (scripts/pinokio-preflight.mjs)
   // also disables this surface — so the gate's set is complete, not a subset the
@@ -406,22 +489,37 @@ export function admitKeySetupRequest({
   // tunnel var is. This is defense in depth regardless: the loopback+Host checks
   // below independently refuse LAN/tunnel traffic, and under Pinokio the launcher
   // refuses to boot at all when sharing is genuinely on.
-  const shareVar = String(env.PINOKIO_SHARE_VAR ?? '').trim();
-  const sharingEnabled = ['PINOKIO_SHARE_CLOUDFLARE', 'PINOKIO_SHARE_LOCAL']
-    .some((name) => /^(1|true)$/i.test(String(env[name] || '').trim()))
-    || (shareVar !== '' && shareVar !== '__gev_sharing_disabled__');
-  if (sharingEnabled) {
-    return { ok: false, status: 403, error: 'Provider Settings is disabled while sharing is enabled' };
+  if (isSharingEnabled(env)) {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Provider Settings is disabled while sharing is enabled',
+    };
   }
   if (!LOOPBACK_ADDRESSES.has(String(remoteAddress || ''))) {
-    return { ok: false, status: 403, error: 'Provider Settings answers only the machine running the server' };
+    return {
+      ok: false,
+      status: 403,
+      error: 'Provider Settings answers only the machine running the server',
+    };
   }
   const authority = localAuthority(hostHeader, protocol);
   if (!authority) {
-    return { ok: false, status: 403, error: 'Provider Settings answers only local hostnames' };
+    return {
+      ok: false,
+      status: 403,
+      error: 'Provider Settings answers only local hostnames',
+    };
   }
-  if (method === 'POST' && (origin === undefined || origin === null || origin === '')) {
-    return { ok: false, status: 403, error: 'Provider Settings requires an exact local Origin' };
+  if (
+    method === 'POST' &&
+    (origin === undefined || origin === null || origin === '')
+  ) {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Provider Settings requires an exact local Origin',
+    };
   }
   if (origin !== undefined && origin !== null && origin !== '') {
     let parsedOrigin;
@@ -430,18 +528,32 @@ export function admitKeySetupRequest({
     } catch {
       return { ok: false, status: 403, error: 'Unrecognized Origin refused' };
     }
-    const exactOrigin = parsedOrigin.username === ''
-      && parsedOrigin.password === ''
-      && parsedOrigin.pathname === '/'
-      && parsedOrigin.search === ''
-      && parsedOrigin.hash === ''
-      && parsedOrigin.origin === authority;
+    const exactOrigin =
+      parsedOrigin.username === '' &&
+      parsedOrigin.password === '' &&
+      parsedOrigin.pathname === '/' &&
+      parsedOrigin.search === '' &&
+      parsedOrigin.hash === '' &&
+      parsedOrigin.origin === authority;
     if (!exactOrigin) {
-      return { ok: false, status: 403, error: 'Cross-origin requests are refused' };
+      return {
+        ok: false,
+        status: 403,
+        error: 'Cross-origin requests are refused',
+      };
     }
   }
-  if (method === 'POST' && !String(contentType || '').toLowerCase().startsWith('application/json')) {
-    return { ok: false, status: 415, error: 'Content-Type must be application/json' };
+  if (
+    method === 'POST' &&
+    !String(contentType || '')
+      .toLowerCase()
+      .startsWith('application/json')
+  ) {
+    return {
+      ok: false,
+      status: 415,
+      error: 'Content-Type must be application/json',
+    };
   }
   return { ok: true };
 }
@@ -451,7 +563,8 @@ export function knownKeySetupEnvVars() {
   const names = new Set();
   for (const entry of KEY_SETUP_KEYS) {
     for (const envVar of entry.envVars) names.add(envVar);
-    for (const optional of entry.optionalEnvVars || []) names.add(optional.name);
+    for (const optional of entry.optionalEnvVars || [])
+      names.add(optional.name);
   }
   return names;
 }
@@ -469,7 +582,12 @@ function smsTailnetLiteral(hostname) {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname);
   if (!m) return false;
   const octets = m.slice(1).map(Number);
-  return octets.every((o) => o <= 255) && octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127;
+  return (
+    octets.every((o) => o <= 255) &&
+    octets[0] === 100 &&
+    octets[1] >= 64 &&
+    octets[1] <= 127
+  );
 }
 
 /** https anywhere, or http to a Tailscale literal, never with user:password in it. */
@@ -482,7 +600,10 @@ function smsRelayUrlOk(value) {
     return false;
   }
   if (url.username || url.password) return false;
-  return url.protocol === 'https:' || (url.protocol === 'http:' && smsTailnetLiteral(url.hostname));
+  return (
+    url.protocol === 'https:' ||
+    (url.protocol === 'http:' && smsTailnetLiteral(url.hostname))
+  );
 }
 
 /**
@@ -498,20 +619,50 @@ function grokBotWebhookUrlOk(value) {
   } catch {
     return false;
   }
-  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.search || url.hash) return false;
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.search ||
+    url.hash
+  )
+    return false;
   const host = url.hostname.toLowerCase();
-  if (!host.endsWith('.cursor.sh') && !host.endsWith('.cursor.com')) return false;
+  if (!host.endsWith('.cursor.sh') && !host.endsWith('.cursor.com'))
+    return false;
   return /^\/automations\/webhook\/[A-Za-z0-9._~%-]{1,200}$/.test(url.pathname);
 }
 
 const KEY_SETUP_FORMATS = Object.freeze({
-  GROK_BOT_WEBHOOK_URL: [grokBotWebhookUrlOk, "GROK_BOT_WEBHOOK_URL must be the Webhook URL Grok Bot shows for the routine: https://api2.cursor.sh/automations/webhook/…"],
-  GROK_BOT_WEBHOOK_KEY: [(v) => SMS_SECRET.test(v), 'GROK_BOT_WEBHOOK_KEY is longer than any real key (512 max)'],
-  TWILIO_ACCOUNT_SID: [(v) => /^[A-Za-z0-9]{2,64}$/.test(v), 'TWILIO_ACCOUNT_SID is letters and digits only (it starts AC)'],
-  TWILIO_AUTH_TOKEN: [(v) => SMS_SECRET.test(v), 'TWILIO_AUTH_TOKEN is longer than any real token (512 max)'],
-  TWILIO_FROM_NUMBER: [(v) => SMS_E164.test(v.replace(/[\s()-]/g, '')), 'TWILIO_FROM_NUMBER needs + and the country code, e.g. +15065550100'],
-  ULTRA_SMS_RELAY_URL: [smsRelayUrlOk, 'ULTRA_SMS_RELAY_URL must be https, or http to a 100.64.x.x Tailscale address, with no user:password in it'],
-  ULTRA_SMS_RELAY_TOKEN: [(v) => SMS_SECRET.test(v), 'ULTRA_SMS_RELAY_TOKEN is longer than any real token (512 max)'],
+  GROK_BOT_WEBHOOK_URL: [
+    grokBotWebhookUrlOk,
+    'GROK_BOT_WEBHOOK_URL must be the Webhook URL Grok Bot shows for the routine: https://api2.cursor.sh/automations/webhook/…',
+  ],
+  GROK_BOT_WEBHOOK_KEY: [
+    (v) => SMS_SECRET.test(v),
+    'GROK_BOT_WEBHOOK_KEY is longer than any real key (512 max)',
+  ],
+  TWILIO_ACCOUNT_SID: [
+    (v) => /^[A-Za-z0-9]{2,64}$/.test(v),
+    'TWILIO_ACCOUNT_SID is letters and digits only (it starts AC)',
+  ],
+  TWILIO_AUTH_TOKEN: [
+    (v) => SMS_SECRET.test(v),
+    'TWILIO_AUTH_TOKEN is longer than any real token (512 max)',
+  ],
+  TWILIO_FROM_NUMBER: [
+    (v) => SMS_E164.test(v.replace(/[\s()-]/g, '')),
+    'TWILIO_FROM_NUMBER needs + and the country code, e.g. +15065550100',
+  ],
+  ULTRA_SMS_RELAY_URL: [
+    smsRelayUrlOk,
+    'ULTRA_SMS_RELAY_URL must be https, or http to a 100.64.x.x Tailscale address, with no user:password in it',
+  ],
+  ULTRA_SMS_RELAY_TOKEN: [
+    (v) => SMS_SECRET.test(v),
+    'ULTRA_SMS_RELAY_TOKEN is longer than any real token (512 max)',
+  ],
 });
 
 /**
@@ -520,7 +671,9 @@ const KEY_SETUP_FORMATS = Object.freeze({
  * rule, never the value.
  */
 export function keySetupValueProblem(name, value) {
-  const rule = Object.hasOwn(KEY_SETUP_FORMATS, name) ? KEY_SETUP_FORMATS[name] : null;
+  const rule = Object.hasOwn(KEY_SETUP_FORMATS, name)
+    ? KEY_SETUP_FORMATS[name]
+    : null;
   return rule && !rule[0](String(value ?? '')) ? rule[1] : '';
 }
 
@@ -565,7 +718,8 @@ export function keySetupStatus(env = {}) {
     // `present` keeps the row's REMOVE (or its external badge), and
     // `unusable` names the refused variables, never their values.
     const unusable = entry.envVars.filter(
-      (name, i) => values[i].length > 0 && keySetupValueProblem(name, values[i]),
+      (name, i) =>
+        values[i].length > 0 && keySetupValueProblem(name, values[i]),
     );
     const present = values.every((value) => value.length > 0);
     const set = present && unusable.length === 0;
@@ -616,12 +770,18 @@ export function keySetupStatus(env = {}) {
  */
 export function validateKeySetupUpdates(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return { ok: false, error: 'Body must be a JSON object of {ENV_VAR: value}' };
+    return {
+      ok: false,
+      error: 'Body must be a JSON object of {ENV_VAR: value}',
+    };
   }
   const entries = Object.entries(body);
   if (entries.length === 0) return { ok: false, error: 'No keys provided' };
   if (entries.length > KEY_SETUP_UPDATE_LIMIT) {
-    return { ok: false, error: `At most ${KEY_SETUP_UPDATE_LIMIT} keys per save` };
+    return {
+      ok: false,
+      error: `At most ${KEY_SETUP_UPDATE_LIMIT} keys per save`,
+    };
   }
   const known = knownKeySetupEnvVars();
   const updates = {};
@@ -631,14 +791,21 @@ export function validateKeySetupUpdates(body) {
       updates[name] = null;
       continue;
     }
-    if (typeof raw !== 'string') return { ok: false, error: `${name} must be a string` };
+    if (typeof raw !== 'string')
+      return { ok: false, error: `${name} must be a string` };
     const value = raw.trim();
     if (!value) return { ok: false, error: `${name} is empty` };
     if (value.length > KEY_SETUP_VALUE_LIMIT) {
-      return { ok: false, error: `${name} is longer than any real key (${KEY_SETUP_VALUE_LIMIT} max)` };
+      return {
+        ok: false,
+        error: `${name} is longer than any real key (${KEY_SETUP_VALUE_LIMIT} max)`,
+      };
     }
     if (!/^[\x21-\x7e]+$/.test(value)) {
-      return { ok: false, error: `${name} may only contain printable characters with no spaces` };
+      return {
+        ok: false,
+        error: `${name} may only contain printable characters with no spaces`,
+      };
     }
     // Reject the dotenv metacharacters that would round-trip WRONG when written
     // unquoted (# starts a comment, quotes redelimit, $ expands, backslash and
@@ -646,7 +813,10 @@ export function validateKeySetupUpdates(body) {
     // parseEnv and Vite's expansion read back. Real provider keys never contain
     // these; they are base64url / hex / JWT alphabets.
     if (/[#"'$\\`]/.test(value)) {
-      return { ok: false, error: `${name} contains a character that is not valid in a key (#, quotes, $, \\, or backtick)` };
+      return {
+        ok: false,
+        error: `${name} contains a character that is not valid in a key (#, quotes, $, \\, or backtick)`,
+      };
     }
     // A few names have a shape of their own (the SMS relay's number, gateway
     // address and ids): refuse what the relay would silently never use.

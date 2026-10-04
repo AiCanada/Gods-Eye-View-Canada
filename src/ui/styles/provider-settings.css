@@ -930,33 +930,40 @@ body.scene-playback-mode #key-setup {
   opacity: 0.45;
 }
 
-/* POWER UP → ROAD511 → GENERIC ROAD CCTV API KEYS: one row per saved key and
-   one form per entry. */
-.road-cctv-key {
+/* POWER UP → ROAD511 → GENERIC ROAD CCTV API KEYS: each saved key is a
+   .key-setup-row like the provider keys; the site is a picker, not an address. */
+.road-cctv-key-row {
+  margin: 6px 0;
+}
+
+.road-cctv-key-row select {
+  width: 100%;
+  padding: 0.42rem 0.55rem;
+  color: rgba(225, 244, 248, 0.92);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  background: rgba(4, 14, 20, 0.72);
+  border: 1px solid rgba(100, 200, 220, 0.22);
+  border-radius: 0.32rem;
+}
+
+.road-cctv-key-row select:focus {
+  border-color: rgba(54, 220, 255, 0.65);
+  outline: none;
+}
+
+.road-cctv-key-actions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 6px 0 2px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  overflow-wrap: anywhere;
+  gap: 0.4rem;
 }
 
-.road-cctv-key-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 6px;
-  margin: 4px 0 8px;
+.road-cctv-key-save {
+  color: rgba(84, 227, 156, 0.85);
+  border-color: rgba(84, 227, 156, 0.35);
 }
 
-.road-cctv-key-input {
-  min-width: 0;
-  padding: 5px 7px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: inherit;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 3px;
+.road-cctv-key-save:hover,
+.road-cctv-key-save:focus-visible {
+  color: rgba(120, 240, 180, 1);
+  border-color: rgba(84, 227, 156, 0.7);
 }

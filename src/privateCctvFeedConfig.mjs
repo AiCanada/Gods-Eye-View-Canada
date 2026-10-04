@@ -51,7 +51,9 @@ const HOSTNAME = {
  * @returns {string}
  */
 export function sharedHostSuffix(hostname) {
-  const labels = String(hostname || '').toLowerCase().split('.');
+  const labels = String(hostname || '')
+    .toLowerCase()
+    .split('.');
   if (labels.length <= 2) return labels.join('.');
   const [second, top] = labels.slice(-2);
   const looksLikePublicSuffix = top.length === 2 && second.length <= 3;

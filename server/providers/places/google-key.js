@@ -1,5 +1,5 @@
 import { resolveGoogleServerKey } from '../../../scripts/google-server-key.mjs';
-import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
+import { localProviderTrusted } from '../../shared/localIntegrity.mjs';
 
 /**
  * Optional Google place context is an empty capability when no key is present,

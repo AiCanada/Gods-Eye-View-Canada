@@ -15,8 +15,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { admitKeySetupRequest } from '../../src/keySetupCore.mjs';
-import { replaceCredentialStore } from '../../src/keySetupHardening.mjs';
-import { noteLocalProvidersSaved } from '../../src/localIntegrity.mjs';
+import { replaceCredentialStore } from '../shared/keySetupHardening.mjs';
+import { noteLocalProvidersSaved } from '../shared/localIntegrity.mjs';
 import {
   DEVICE_FEED_STORE,
   DEVICE_RECORDING_DIR,
@@ -95,7 +95,7 @@ import {
   ultraTailnetBase,
   ultraTailnetTarget,
   ultraWatchingCount,
-} from '../../src/ultraNetwork.mjs';
+} from '../shared/ultraNetwork.mjs';
 import {
   ULTRA_SMS_NO_NUMBER,
   ULTRA_SMS_NO_RELAY,
@@ -114,7 +114,7 @@ import {
   ultraSmsRelayPublic,
   ultraSmsRelayRequest,
   ultraSmsSentToday,
-} from '../../src/ultraSmsRelay.mjs';
+} from '../shared/ultraSmsRelay.mjs';
 import {
   ULTRA_HELP_BODY_LIMIT,
   ULTRA_HELP_NAME_LIMIT,
@@ -154,7 +154,7 @@ import {
   ultraTokenStoreHasPolicyMac,
   ultraTokenTamperFlags,
   ultraTokenSkillFields,
-} from '../../src/ultraTokens.mjs';
+} from '../shared/ultraTokens.mjs';
 
 const KEY = /^[A-Za-z0-9_-]{43}$/;
 /**

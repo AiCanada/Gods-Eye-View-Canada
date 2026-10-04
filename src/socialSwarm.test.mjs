@@ -30,7 +30,7 @@ import {
   LOCAL_PROVIDER_CHANGED_MESSAGE,
   bindLocalIntegrityRoot,
   noteLocalProvidersSaved,
-} from './localIntegrity.mjs';
+} from '../server/shared/localIntegrity.mjs';
 
 const NOW = new Date('2026-10-01T15:00:00.000Z');
 

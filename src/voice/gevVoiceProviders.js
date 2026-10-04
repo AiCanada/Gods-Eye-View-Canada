@@ -124,35 +124,51 @@ export function grokSessionForPushToTalk(sessionUpdate, pushToTalk) {
 export function grokFunctionCalls(event) {
   if (!event) return [];
   if (event.type === 'response.function_call_arguments.done' && event.name) {
-    return [{
-      id: event.call_id || '',
-      itemId: event.item_id || '',
-      name: event.name,
-      arguments: event.arguments || '{}',
-    }];
+    return [
+      {
+        id: event.call_id || '',
+        itemId: event.item_id || '',
+        name: event.name,
+        arguments: event.arguments || '{}',
+      },
+    ];
   }
-  if (event.type === 'response.output_item.done' && event.item?.type === 'function_call' && event.item.name) {
-    return [{
-      id: event.item.call_id || '',
-      itemId: event.item.id || '',
-      name: event.item.name,
-      arguments: event.item.arguments || '{}',
-    }];
+  if (
+    event.type === 'response.output_item.done' &&
+    event.item?.type === 'function_call' &&
+    event.item.name
+  ) {
+    return [
+      {
+        id: event.item.call_id || '',
+        itemId: event.item.id || '',
+        name: event.item.name,
+        arguments: event.item.arguments || '{}',
+      },
+    ];
   }
   return [];
 }
 
 export function grokAudioDelta(event) {
   if (!event) return '';
-  if (event.type === 'response.output_audio.delta' || event.type === 'response.audio.delta') {
+  if (
+    event.type === 'response.output_audio.delta' ||
+    event.type === 'response.audio.delta'
+  ) {
     return event.delta || event.audio || '';
   }
   return '';
 }
 
 function floatSampleToInt16(sample) {
-  const clamped = Math.max(-1, Math.min(1, Number.isFinite(sample) ? sample : 0));
-  return clamped < 0 ? Math.round(clamped * 0x8000) : Math.round(clamped * 0x7fff);
+  const clamped = Math.max(
+    -1,
+    Math.min(1, Number.isFinite(sample) ? sample : 0),
+  );
+  return clamped < 0
+    ? Math.round(clamped * 0x8000)
+    : Math.round(clamped * 0x7fff);
 }
 
 export function downsampleToPcm16(float32, inputRate, outputRate = 24000) {
@@ -191,7 +207,11 @@ export function bytesToBase64(bytes) {
 
 export function pcm16ToBase64(int16) {
   if (!int16?.length) return '';
-  const bytes = new Uint8Array(int16.buffer, int16.byteOffset, int16.byteLength);
+  const bytes = new Uint8Array(
+    int16.buffer,
+    int16.byteOffset,
+    int16.byteLength,
+  );
   return bytesToBase64(bytes);
 }
 
@@ -216,7 +236,11 @@ export function rmsLevel(samples) {
  * End an utterance after speech followed by quiet. Times are milliseconds
  * from the start of the recording.
  */
-export function createUtteranceMonitor({ speech = 0.015, silenceMs = 700, minSpeechMs = 200 } = {}) {
+export function createUtteranceMonitor({
+  speech = 0.015,
+  silenceMs = 700,
+  minSpeechMs = 200,
+} = {}) {
   let speaking = false;
   let speechAt = 0;
   let silenceAt = 0;
@@ -273,7 +297,11 @@ export async function runSpokenTurn({
     if (!isCurrent()) return { ok: false, cancelled: true, messages };
     const data = await post({ provider, messages: trimVoiceHistory(messages) });
     if (!data || data.error) {
-      return { ok: false, error: data?.error || 'The model did not answer.', messages };
+      return {
+        ok: false,
+        error: data?.error || 'The model did not answer.',
+        messages,
+      };
     }
     if (data.assistant) messages.push(data.assistant);
     const calls = Array.isArray(data.toolCalls) ? data.toolCalls : [];
@@ -314,7 +342,13 @@ export async function runSpokenTurn({
       });
       const kind = classifyRadio(result);
       if (kind === 'stop') {
-        return { ok: true, stopVoice: true, lastResult: result, text: '', messages };
+        return {
+          ok: true,
+          stopVoice: true,
+          lastResult: result,
+          text: '',
+          messages,
+        };
       }
       if (kind === 'playback') pendingRadio = result;
     }
@@ -366,7 +400,10 @@ export class GrokVoiceSession {
 
   appendPcm(int16) {
     if (this.stopped || !this.sending || !int16?.length) return false;
-    this.send({ type: 'input_audio_buffer.append', audio: pcm16ToBase64(int16) });
+    this.send({
+      type: 'input_audio_buffer.append',
+      audio: pcm16ToBase64(int16),
+    });
     return true;
   }
 
@@ -398,8 +435,13 @@ export class GrokVoiceSession {
       this.onSpeaker?.('user');
       return;
     }
-    if (event.type === 'response.created' && this.pendingRadio) this.followupStarted = true;
-    if (event.type === 'response.done' && this.followupStarted && this.pendingRadio) {
+    if (event.type === 'response.created' && this.pendingRadio)
+      this.followupStarted = true;
+    if (
+      event.type === 'response.done' &&
+      this.followupStarted &&
+      this.pendingRadio
+    ) {
       this.followupStarted = false;
       const pending = this.pendingRadio;
       this.pendingRadio = null;
@@ -418,7 +460,9 @@ export class GrokVoiceSession {
         this.processed.delete(this.processed.values().next().value);
       }
     }
-    this.toolQueue = this.toolQueue.then(() => this.runTool(call)).catch(() => {});
+    this.toolQueue = this.toolQueue
+      .then(() => this.runTool(call))
+      .catch(() => {});
   }
 
   async runTool(call) {
@@ -433,7 +477,11 @@ export class GrokVoiceSession {
     try {
       result = await this.onTool?.(call.name, args);
     } catch (error) {
-      result = { ok: false, error: error?.message || 'GEV command failed', tool: call.name };
+      result = {
+        ok: false,
+        error: error?.message || 'GEV command failed',
+        tool: call.name,
+      };
     }
     if (this.stopped) return;
     this.send({
@@ -458,7 +506,9 @@ async function readJsonResponse(response) {
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     const error = new Error(
-      typeof data?.error === 'string' ? data.error : `Voice request failed: HTTP ${response.status}`,
+      typeof data?.error === 'string'
+        ? data.error
+        : `Voice request failed: HTTP ${response.status}`,
     );
     error.browserSpeech = Boolean(data?.browserSpeech);
     error.status = response.status;
@@ -509,7 +559,9 @@ function audioFormatFromMime(mime) {
 }
 
 function blobToBase64(blob) {
-  return blob.arrayBuffer().then((buffer) => bytesToBase64(new Uint8Array(buffer)));
+  return blob
+    .arrayBuffer()
+    .then((buffer) => bytesToBase64(new Uint8Array(buffer)));
 }
 
 function classifyFromHost(host) {
@@ -538,7 +590,11 @@ async function openMicrophone(host) {
 
 function stopStream(stream) {
   stream?.getTracks?.().forEach((track) => {
-    try { track.stop(); } catch { /* already stopped */ }
+    try {
+      track.stop();
+    } catch {
+      /* already stopped */
+    }
   });
 }
 
@@ -572,10 +628,21 @@ export function startGrokVoice(host) {
       clearConnectTimer();
       detachMic();
       detachMic = () => {};
-      try { socket?.close(); } catch { /* closing */ }
-      try { audioContext?.close(); } catch { /* closing */ }
+      try {
+        socket?.close();
+      } catch {
+        /* closing */
+      }
+      try {
+        audioContext?.close();
+      } catch {
+        /* closing */
+      }
       stopStream(micStream);
-      const wrapped = error instanceof Error ? error : new Error(String(error || 'Grok voice failed.'));
+      const wrapped =
+        error instanceof Error
+          ? error
+          : new Error(String(error || 'Grok voice failed.'));
       if (!settled) {
         settled = true;
         reject(wrapped);
@@ -583,92 +650,122 @@ export function startGrokVoice(host) {
       }
       host.fail?.(wrapped);
     };
-    postJson(host, '/api/llm/voice/session', { provider: 'xai' }).then(async (session) => {
-      if (!host.isCurrent()) {
-        finish(null);
-        return;
-      }
-      const url = grokSocketUrl(session?.url);
-      if (!url || typeof session?.value !== 'string' || !session.value) {
-        throw new Error('Grok voice did not return a session.');
-      }
-      if (!session.sessionUpdate || session.sessionUpdate.type !== 'session.update') {
-        throw new Error('Grok voice did not return a session.');
-      }
-      const Socket = host.WebSocket || globalThis.WebSocket;
-      const AudioCtx = host.AudioContext || globalThis.AudioContext || globalThis.webkitAudioContext;
-      if (!Socket || !AudioCtx) throw new Error('This browser cannot open a Grok voice socket.');
-      const stream = await openMicrophone(host);
-      if (!stream || !host.isCurrent()) {
-        stopStream(stream);
-        finish(null);
-        return;
-      }
-      micStream = stream;
-      audioContext = new AudioCtx();
-      await audioContext.resume?.().catch(() => {});
-      if (!host.isCurrent()) {
-        stopStream(micStream);
-        try { audioContext.close?.(); } catch { /* closing */ }
-        finish(null);
-        return;
-      }
-      const sessionApi = new GrokVoiceSession({
-        send: (message) => {
-          if (socket?.readyState === 1) socket.send(JSON.stringify(message));
-        },
-        sessionUpdate: session.sessionUpdate,
-        pushToTalk: host.pushToTalk,
-        onTool: (name, args) => host.runner(name, args),
-        onAudio: (pcm) => playPcm(audioContext, session.sampleRate || 24000, pcm),
-        onSpeaker: (speaker) => host.setSpeaker?.(speaker),
-        onRadioReady: (result) => host.finishRadio?.(result),
-        onStopVoice: () => host.stopForRadio?.(),
-        classifyRadio: classifyFromHost(host),
-      });
-      if (host.pushToTalk) sessionApi.sending = Boolean(host.initiallyHeld);
-      detachMic = attachMicPcm(audioContext, micStream, (pcm) => sessionApi.appendPcm(pcm));
-      const transport = {
-        stop() {
-          stopped = true;
-          sessionApi.stopped = true;
-          clearConnectTimer();
-          detachMic();
-          detachMic = () => {};
-          try { socket?.close(); } catch { /* closing */ }
-          try { audioContext?.close(); } catch { /* closing */ }
-          stopStream(micStream);
-        },
-        setMicrophoneHeld(held) {
-          sessionApi.setMicrophoneHeld(held);
-        },
-      };
-      socket = new Socket(url, [`xai-client-secret.${session.value}`]);
-      socket.onopen = () => {
-        if (stopped || !host.isCurrent()) {
-          try { socket.close(); } catch { /* closing */ }
-          stopStream(micStream);
+    postJson(host, '/api/llm/voice/session', { provider: 'xai' })
+      .then(async (session) => {
+        if (!host.isCurrent()) {
           finish(null);
           return;
         }
-        sessionApi.handleOpen();
-        finish(transport);
-      };
-      socket.onmessage = (event) => {
-        if (typeof event?.data === 'string') sessionApi.handleMessage(event.data);
-      };
-      socket.onerror = () => fail(new Error('Grok voice connection failed.'));
-      socket.onclose = () => {
-        if (!stopped) fail(new Error('Grok voice disconnected.'));
-      };
-      if (!settled && !stopped) {
-        connectTimer = setTimeout(() => {
-          if (!settled && !stopped) fail(new Error('Grok voice did not connect.'));
-        }, 15000);
-      }
-    }).catch((error) => {
-      fail(error);
-    });
+        const url = grokSocketUrl(session?.url);
+        if (!url || typeof session?.value !== 'string' || !session.value) {
+          throw new Error('Grok voice did not return a session.');
+        }
+        if (
+          !session.sessionUpdate ||
+          session.sessionUpdate.type !== 'session.update'
+        ) {
+          throw new Error('Grok voice did not return a session.');
+        }
+        const Socket = host.WebSocket || globalThis.WebSocket;
+        const AudioCtx =
+          host.AudioContext ||
+          globalThis.AudioContext ||
+          globalThis.webkitAudioContext;
+        if (!Socket || !AudioCtx)
+          throw new Error('This browser cannot open a Grok voice socket.');
+        const stream = await openMicrophone(host);
+        if (!stream || !host.isCurrent()) {
+          stopStream(stream);
+          finish(null);
+          return;
+        }
+        micStream = stream;
+        audioContext = new AudioCtx();
+        await audioContext.resume?.().catch(() => {});
+        if (!host.isCurrent()) {
+          stopStream(micStream);
+          try {
+            audioContext.close?.();
+          } catch {
+            /* closing */
+          }
+          finish(null);
+          return;
+        }
+        const sessionApi = new GrokVoiceSession({
+          send: (message) => {
+            if (socket?.readyState === 1) socket.send(JSON.stringify(message));
+          },
+          sessionUpdate: session.sessionUpdate,
+          pushToTalk: host.pushToTalk,
+          onTool: (name, args) => host.runner(name, args),
+          onAudio: (pcm) =>
+            playPcm(audioContext, session.sampleRate || 24000, pcm),
+          onSpeaker: (speaker) => host.setSpeaker?.(speaker),
+          onRadioReady: (result) => host.finishRadio?.(result),
+          onStopVoice: () => host.stopForRadio?.(),
+          classifyRadio: classifyFromHost(host),
+        });
+        if (host.pushToTalk) sessionApi.sending = Boolean(host.initiallyHeld);
+        detachMic = attachMicPcm(audioContext, micStream, (pcm) =>
+          sessionApi.appendPcm(pcm),
+        );
+        const transport = {
+          stop() {
+            stopped = true;
+            sessionApi.stopped = true;
+            clearConnectTimer();
+            detachMic();
+            detachMic = () => {};
+            try {
+              socket?.close();
+            } catch {
+              /* closing */
+            }
+            try {
+              audioContext?.close();
+            } catch {
+              /* closing */
+            }
+            stopStream(micStream);
+          },
+          setMicrophoneHeld(held) {
+            sessionApi.setMicrophoneHeld(held);
+          },
+        };
+        socket = new Socket(url, [`xai-client-secret.${session.value}`]);
+        socket.onopen = () => {
+          if (stopped || !host.isCurrent()) {
+            try {
+              socket.close();
+            } catch {
+              /* closing */
+            }
+            stopStream(micStream);
+            finish(null);
+            return;
+          }
+          sessionApi.handleOpen();
+          finish(transport);
+        };
+        socket.onmessage = (event) => {
+          if (typeof event?.data === 'string')
+            sessionApi.handleMessage(event.data);
+        };
+        socket.onerror = () => fail(new Error('Grok voice connection failed.'));
+        socket.onclose = () => {
+          if (!stopped) fail(new Error('Grok voice disconnected.'));
+        };
+        if (!settled && !stopped) {
+          connectTimer = setTimeout(() => {
+            if (!settled && !stopped)
+              fail(new Error('Grok voice did not connect.'));
+          }, 15000);
+        }
+      })
+      .catch((error) => {
+        fail(error);
+      });
   });
 }
 
@@ -707,16 +804,29 @@ function attachMicPcm(audioContext, stream, onPcm) {
   mute.connect(audioContext.destination);
   return () => {
     processor.onaudioprocess = null;
-    try { source.disconnect(); } catch { /* already disconnected */ }
-    try { processor.disconnect(); } catch { /* already disconnected */ }
-    try { mute.disconnect(); } catch { /* already disconnected */ }
+    try {
+      source.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      processor.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      mute.disconnect();
+    } catch {
+      /* already disconnected */
+    }
   };
 }
 
 function startBrowserListener(host, onFinal) {
-  const Ctor = host.SpeechRecognition
-    || globalThis.SpeechRecognition
-    || globalThis.webkitSpeechRecognition;
+  const Ctor =
+    host.SpeechRecognition ||
+    globalThis.SpeechRecognition ||
+    globalThis.webkitSpeechRecognition;
   if (!Ctor) return null;
   const recognition = new Ctor();
   recognition.continuous = true;
@@ -734,31 +844,56 @@ function startBrowserListener(host, onFinal) {
   recognition.onerror = (event) => {
     const code = event?.error || '';
     if (code === 'no-speech' || code === 'aborted') return;
-    if (!stopped) host.fail?.(new Error(code === 'not-allowed'
-      ? 'Microphone permission was denied.'
-      : 'Speech recognition failed.'));
+    if (!stopped)
+      host.fail?.(
+        new Error(
+          code === 'not-allowed'
+            ? 'Microphone permission was denied.'
+            : 'Speech recognition failed.',
+        ),
+      );
   };
   recognition.onend = () => {
     if (stopped || paused || !host.isCurrent()) return;
-    try { recognition.start(); } catch { /* already started */ }
+    try {
+      recognition.start();
+    } catch {
+      /* already started */
+    }
   };
   if (!paused) {
-    try { recognition.start(); } catch { /* start races are benign */ }
+    try {
+      recognition.start();
+    } catch {
+      /* start races are benign */
+    }
   }
   return {
     stop() {
       stopped = true;
       recognition.onend = null;
-      try { recognition.stop(); } catch { /* already stopped */ }
+      try {
+        recognition.stop();
+      } catch {
+        /* already stopped */
+      }
     },
     setMicrophoneHeld(held) {
       if (!host.pushToTalk) return;
       if (held && paused) {
         paused = false;
-        try { recognition.start(); } catch { /* already started */ }
+        try {
+          recognition.start();
+        } catch {
+          /* already started */
+        }
       } else if (!held && !paused) {
         paused = true;
-        try { recognition.stop(); } catch { /* already stopped */ }
+        try {
+          recognition.stop();
+        } catch {
+          /* already stopped */
+        }
       }
     },
   };
@@ -766,13 +901,20 @@ function startBrowserListener(host, onFinal) {
 
 async function recordUtterance(host, stream, audioContext, heldOnly) {
   const Recorder = host.MediaRecorder || globalThis.MediaRecorder;
-  if (!Recorder || typeof audioContext?.createMediaStreamSource !== 'function') {
+  if (
+    !Recorder ||
+    typeof audioContext?.createMediaStreamSource !== 'function'
+  ) {
     throw new Error('This browser cannot record audio for that provider.');
   }
   const mime = Recorder.isTypeSupported?.('audio/webm;codecs=opus')
     ? 'audio/webm;codecs=opus'
-    : (Recorder.isTypeSupported?.('audio/webm') ? 'audio/webm' : '');
-  const recorder = mime ? new Recorder(stream, { mimeType: mime }) : new Recorder(stream);
+    : Recorder.isTypeSupported?.('audio/webm')
+      ? 'audio/webm'
+      : '';
+  const recorder = mime
+    ? new Recorder(stream, { mimeType: mime })
+    : new Recorder(stream);
   const chunks = [];
   recorder.ondataavailable = (event) => {
     if (event.data?.size) chunks.push(event.data);
@@ -789,25 +931,46 @@ async function recordUtterance(host, stream, audioContext, heldOnly) {
   const heard = await new Promise((resolve) => {
     const tick = () => {
       if (!host.isCurrent()) {
-        try { recorder.stop(); } catch { /* stopped */ }
+        try {
+          recorder.stop();
+        } catch {
+          /* stopped */
+        }
         resolve(false);
         return;
       }
       if (heldOnly && !host.isHeld?.()) {
-        try { recorder.onstop = () => resolve(monitor.push(0, 10_000) || chunks.length > 0); } catch { /* ignore */ }
-        try { recorder.stop(); } catch { resolve(false); }
+        try {
+          recorder.onstop = () =>
+            resolve(monitor.push(0, 10_000) || chunks.length > 0);
+        } catch {
+          /* ignore */
+        }
+        try {
+          recorder.stop();
+        } catch {
+          resolve(false);
+        }
         return;
       }
       analyser.getFloatTimeDomainData?.(data);
       const nowMs = ((audioContext.currentTime || 0) - started) * 1000;
       if (!heldOnly && monitor.push(rmsLevel(data), nowMs)) {
         recorder.onstop = () => resolve(true);
-        try { recorder.stop(); } catch { resolve(false); }
+        try {
+          recorder.stop();
+        } catch {
+          resolve(false);
+        }
         return;
       }
       if (nowMs > 20_000) {
         recorder.onstop = () => resolve(false);
-        try { recorder.stop(); } catch { resolve(false); }
+        try {
+          recorder.stop();
+        } catch {
+          resolve(false);
+        }
         return;
       }
       if (typeof frame === 'function') frame(tick);
@@ -816,7 +979,11 @@ async function recordUtterance(host, stream, audioContext, heldOnly) {
     if (typeof frame === 'function') frame(tick);
     else setTimeout(tick, 50);
   });
-  try { source.disconnect(); } catch { /* already disconnected */ }
+  try {
+    source.disconnect();
+  } catch {
+    /* already disconnected */
+  }
   if (!heard) return null;
   const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
   if (!blob.size) return null;
@@ -838,7 +1005,9 @@ async function speakReply(host, speech, text) {
     });
     if (!response.ok) {
       const data = await response.json().catch(() => null);
-      const error = new Error(typeof data?.error === 'string' ? data.error : 'Speech failed.');
+      const error = new Error(
+        typeof data?.error === 'string' ? data.error : 'Speech failed.',
+      );
       error.browserSpeech = Boolean(data?.browserSpeech);
       throw error;
     }
@@ -865,7 +1034,11 @@ function playAudioBytes(bytes, mime, host) {
   const audio = new AudioImpl(url);
   return new Promise((resolve) => {
     const done = () => {
-      try { URLImpl.revokeObjectURL(url); } catch { /* already revoked */ }
+      try {
+        URLImpl.revokeObjectURL(url);
+      } catch {
+        /* already revoked */
+      }
       resolve();
     };
     audio.onended = done;
@@ -883,8 +1056,14 @@ export async function startTurnVoice(host) {
   if (!speech.mode) {
     speech = {
       mode: 'turn',
-      transcribe: host.provider === 'openrouter' || host.provider === 'custom' ? 'server' : 'browser',
-      speak: host.provider === 'openrouter' || host.provider === 'custom' ? 'server' : 'browser',
+      transcribe:
+        host.provider === 'openrouter' || host.provider === 'custom'
+          ? 'server'
+          : 'browser',
+      speak:
+        host.provider === 'openrouter' || host.provider === 'custom'
+          ? 'server'
+          : 'browser',
       browserFallback: host.provider === 'custom',
     };
   }
@@ -898,7 +1077,8 @@ export async function startTurnVoice(host) {
   const localHost = { ...host, isHeld };
 
   async function consume(text) {
-    if (stopped || busy || !host.isCurrent() || !String(text || '').trim()) return;
+    if (stopped || busy || !host.isCurrent() || !String(text || '').trim())
+      return;
     busy = true;
     host.setStatus?.('executing', 'Running command');
     try {
@@ -918,11 +1098,16 @@ export async function startTurnVoice(host) {
         stopped = true;
         return;
       }
-      if (outcome.text) speech = await speakReply(localHost, speech, outcome.text);
+      if (outcome.text)
+        speech = await speakReply(localHost, speech, outcome.text);
       if (stopped || !host.isCurrent()) return;
       if (outcome.pendingRadio) await host.finishRadio?.(outcome.pendingRadio);
       else if (outcome.stopVoice) host.stopForRadio?.(outcome.lastResult);
-      else host.setStatus?.('listening', host.pushToTalk ? 'Hold Space to talk' : 'Ask or command');
+      else
+        host.setStatus?.(
+          'listening',
+          host.pushToTalk ? 'Hold Space to talk' : 'Ask or command',
+        );
     } catch (error) {
       if (!stopped && host.isCurrent()) host.fail?.(error);
       stopped = true;
@@ -932,16 +1117,27 @@ export async function startTurnVoice(host) {
   }
 
   async function serverLoop() {
-    const AudioCtx = host.AudioContext || globalThis.AudioContext || globalThis.webkitAudioContext;
-    if (!AudioCtx) throw new Error('This browser cannot record audio for that provider.');
+    const AudioCtx =
+      host.AudioContext ||
+      globalThis.AudioContext ||
+      globalThis.webkitAudioContext;
+    if (!AudioCtx)
+      throw new Error('This browser cannot record audio for that provider.');
     audioContext = new AudioCtx();
     await audioContext.resume?.().catch(() => {});
     while (!stopped && host.isCurrent() && speech.transcribe === 'server') {
       if (host.pushToTalk && !held) {
-        await new Promise((resolve) => { setTimeout(resolve, 40); });
+        await new Promise((resolve) => {
+          setTimeout(resolve, 40);
+        });
         continue;
       }
-      const blob = await recordUtterance(localHost, stream, audioContext, host.pushToTalk);
+      const blob = await recordUtterance(
+        localHost,
+        stream,
+        audioContext,
+        host.pushToTalk,
+      );
       if (!blob || stopped || !host.isCurrent()) continue;
       if (speech.transcribe !== 'server') break;
       const audioBase64 = await blobToBase64(blob);
@@ -960,13 +1156,25 @@ export async function startTurnVoice(host) {
         throw error;
       }
     }
-    if (stopped || !host.isCurrent() || speech.transcribe !== 'browser' || listener) return;
-    try { await audioContext?.close?.(); } catch { /* closing */ }
+    if (
+      stopped ||
+      !host.isCurrent() ||
+      speech.transcribe !== 'browser' ||
+      listener
+    )
+      return;
+    try {
+      await audioContext?.close?.();
+    } catch {
+      /* closing */
+    }
     audioContext = null;
     listener = startBrowserListener({ ...host, initiallyHeld: held }, consume);
     if (!listener) {
       const name = voiceProviderFullName(host.provider);
-      throw new Error(`${name} listens through this browser's speech recognition, and this browser does not have it.`);
+      throw new Error(
+        `${name} listens through this browser's speech recognition, and this browser does not have it.`,
+      );
     }
   }
 
@@ -975,7 +1183,9 @@ export async function startTurnVoice(host) {
     if (!listener) {
       stopStream(stream);
       const name = voiceProviderFullName(host.provider);
-      throw new Error(`${name} listens through this browser's speech recognition, and this browser does not have it.`);
+      throw new Error(
+        `${name} listens through this browser's speech recognition, and this browser does not have it.`,
+      );
     }
   } else {
     serverLoop().catch((error) => {
@@ -987,7 +1197,11 @@ export async function startTurnVoice(host) {
     stop() {
       stopped = true;
       listener?.stop();
-      try { audioContext?.close(); } catch { /* closing */ }
+      try {
+        audioContext?.close();
+      } catch {
+        /* closing */
+      }
       stopStream(stream);
     },
     setMicrophoneHeld(next) {

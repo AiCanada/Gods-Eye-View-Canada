@@ -43,9 +43,24 @@ import os from 'node:os';
 import path from 'node:path';
 import { defaultSourceRoot } from './common/source-root.js';
 import { admitKeySetupRequest } from '../../src/keySetupCore.mjs';
-import { handleUltraPhone, noteSecurityFeedsSaved, noteUltraEndpoint, noteUltraPhone, noteUltraPosition, ultraNetworkPins, ultraOutboundFeedsTrusted } from './ultra-help.js';
-import { listenerPolicyParts, localRecordsTrusted, noteLocalDevicesSaved } from '../../src/localIntegrity.mjs';
-import { hardenPrivateFolder, replaceCredentialStore } from '../../src/keySetupHardening.mjs';
+import {
+  handleUltraPhone,
+  noteSecurityFeedsSaved,
+  noteUltraEndpoint,
+  noteUltraPhone,
+  noteUltraPosition,
+  ultraNetworkPins,
+  ultraOutboundFeedsTrusted,
+} from './ultra-help.js';
+import {
+  listenerPolicyParts,
+  localRecordsTrusted,
+  noteLocalDevicesSaved,
+} from '../shared/localIntegrity.mjs';
+import {
+  hardenPrivateFolder,
+  replaceCredentialStore,
+} from '../shared/keySetupHardening.mjs';
 import {
   DEVICE_FEED_MIN_POLL_MS,
   DEVICE_FEED_STORE,
@@ -98,8 +113,13 @@ const BACKOFF_BASE_MS = 15_000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
 const PICTURE_TTL_MS = 4000;
 const IMAGE_TYPE = /^image\/(jpeg|pjpeg|png|webp|gif)\b/i;
-const STORE_NAME_PATTERN = /device-feeds\.json|device-recordings|ultra-help\.json|ultra-tokens\.(?:json|key)|ultra-inbox\.json|ultra-network\.json|ultra-outbound\.json|local-integrity\.(?:json|key)|social-accounts\.(?:json|key)/i;
-const STORE_FAILURE_CODES = new Set(['GEV_HARDEN_FAILED', 'GEV_STORE_UNREADABLE', 'GEV_STORE_REPLACE_REFUSED']);
+const STORE_NAME_PATTERN =
+  /device-feeds\.json|device-recordings|ultra-help\.json|ultra-tokens\.(?:json|key)|ultra-inbox\.json|ultra-network\.json|ultra-outbound\.json|local-integrity\.(?:json|key)|social-accounts\.(?:json|key)/i;
+const STORE_FAILURE_CODES = new Set([
+  'GEV_HARDEN_FAILED',
+  'GEV_STORE_UNREADABLE',
+  'GEV_STORE_REPLACE_REFUSED',
+]);
 
 const SECURITY_HEADERS = {
   'Cache-Control': 'no-store, private',
@@ -109,7 +129,13 @@ const SECURITY_HEADERS = {
 };
 
 /** Whether a URL could reach the device store, or a recording, through the server's static file handling. */
-export function isDeviceFeedStoreRequest(rawUrl, { sourceRoot = defaultSourceRoot, realpath = (file) => fs.realpathSync.native(file) } = {}) {
+export function isDeviceFeedStoreRequest(
+  rawUrl,
+  {
+    sourceRoot = defaultSourceRoot,
+    realpath = (file) => fs.realpathSync.native(file),
+  } = {},
+) {
   const raw = String(rawUrl || '');
   let decoded = raw;
   try {
@@ -117,11 +143,14 @@ export function isDeviceFeedStoreRequest(rawUrl, { sourceRoot = defaultSourceRoo
   } catch {
     // A malformed escape is checked as written.
   }
-  if (STORE_NAME_PATTERN.test(raw) || STORE_NAME_PATTERN.test(decoded)) return true;
+  if (STORE_NAME_PATTERN.test(raw) || STORE_NAME_PATTERN.test(decoded))
+    return true;
   const pathname = decoded.split(/[?#]/)[0].replace(/\\/g, '/');
   // A Windows 8.3 short name (DEVICE~1.JSO) is resolved to its real file first.
   if (!pathname.includes('~')) return false;
-  const candidate = pathname.startsWith('/@fs/') ? pathname.slice('/@fs/'.length) : path.join(sourceRoot, pathname);
+  const candidate = pathname.startsWith('/@fs/')
+    ? pathname.slice('/@fs/'.length)
+    : path.join(sourceRoot, pathname);
   try {
     return STORE_NAME_PATTERN.test(realpath(candidate));
   } catch {
@@ -155,9 +184,14 @@ async function readCapped(response, maxBytes) {
  * is never carried to wherever a device points.
  * @returns {Promise<Response>}
  */
-export async function fetchDeviceResource(feed, address, { fetchImpl = fetch, signal } = {}) {
+export async function fetchDeviceResource(
+  feed,
+  address,
+  { fetchImpl = fetch, signal } = {},
+) {
   const request = deviceFeedRequest(feed, address);
-  const go = (headers) => fetchImpl(request.url, { headers, signal, redirect: 'manual' });
+  const go = (headers) =>
+    fetchImpl(request.url, { headers, signal, redirect: 'manual' });
   let response = await go(request.headers);
   if (response.status === 401 && request.basic) {
     const header = response.headers.get('www-authenticate') || '';
@@ -170,11 +204,18 @@ export async function fetchDeviceResource(feed, address, { fetchImpl = fetch, si
     const target = new URL(request.url);
     let authorization = '';
     if (challenge) {
-      authorization = digestAuthorization({ method: 'GET', uri: `${target.pathname}${target.search}`, username: request.basic.username, password: request.basic.password, challenge });
+      authorization = digestAuthorization({
+        method: 'GET',
+        uri: `${target.pathname}${target.search}`,
+        username: request.basic.username,
+        password: request.basic.password,
+        challenge,
+      });
     } else if (/^\s*basic\b/i.test(header)) {
       authorization = `Basic ${Buffer.from(`${request.basic.username}:${request.basic.password}`).toString('base64')}`;
     }
-    if (authorization) response = await go({ ...request.headers, Authorization: authorization });
+    if (authorization)
+      response = await go({ ...request.headers, Authorization: authorization });
   }
   return response;
 }
@@ -187,7 +228,10 @@ function readCappedBody(req, limit) {
     const finish = (overflowed) => {
       if (settled) return;
       settled = true;
-      resolve({ overflowed, body: overflowed ? Buffer.alloc(0) : Buffer.concat(chunks) });
+      resolve({
+        overflowed,
+        body: overflowed ? Buffer.alloc(0) : Buffer.concat(chunks),
+      });
     };
     req.on('data', (chunk) => {
       if (settled) return;
@@ -210,8 +254,14 @@ const REPORT_KEY = /^[A-Za-z0-9_-]{43}$/;
 /** The key a report presents: `/report/<key>`, `/<key>`, or `?id=<key>` (Traccar Client's device identifier). */
 export function reportKeyOf(url) {
   const segments = url.pathname.split('/').filter(Boolean);
-  const fromPath = segments[0] === 'report' || segments[0] === 'api' ? segments[segments.length - 1] : segments[0];
-  const fromId = url.searchParams.get('id') || url.searchParams.get('deviceid') || url.searchParams.get('device');
+  const fromPath =
+    segments[0] === 'report' || segments[0] === 'api'
+      ? segments[segments.length - 1]
+      : segments[0];
+  const fromId =
+    url.searchParams.get('id') ||
+    url.searchParams.get('deviceid') ||
+    url.searchParams.get('device');
   return [fromPath, fromId].find((value) => REPORT_KEY.test(value || '')) || '';
 }
 
@@ -222,7 +272,8 @@ function localAddresses() {
     for (const entry of list || []) {
       if (entry.family === 'IPv4' || entry.family === 4) {
         // A link-local address (a VPN adapter that is not signed in) reaches nothing.
-        if (!entry.internal && !entry.address.startsWith('169.254.')) out.push(entry.address);
+        if (!entry.internal && !entry.address.startsWith('169.254.'))
+          out.push(entry.address);
       }
     }
   }
@@ -235,7 +286,15 @@ function localAddresses() {
  *   `listen: false` never opens the report listener (tests); `reportPort` 0
  *   takes any free port.
  */
-export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, listen = true, reportPort, reportHost, reportMaxConnections = REPORT_MAX_CONNECTIONS, hardenFolder = hardenPrivateFolder } = {}) {
+export function deviceFeedsProxy({
+  sourceRoot = defaultSourceRoot,
+  fetchImpl,
+  listen = true,
+  reportPort,
+  reportHost,
+  reportMaxConnections = REPORT_MAX_CONNECTIONS,
+  hardenFolder = hardenPrivateFolder,
+} = {}) {
   const storePath = path.join(sourceRoot, DEVICE_FEED_STORE);
   let cache = { stamp: '', config: emptyDeviceFeedConfig(), unreadable: false };
   /** feed id -> {position, at, error, failures, nextAt, pending} */
@@ -261,12 +320,19 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
       let unreadable = false;
       if (stamp !== 'missing') {
         try {
-          config = normalizeDeviceFeedConfig(JSON.parse(fs.readFileSync(storePath, 'utf8')));
+          config = normalizeDeviceFeedConfig(
+            JSON.parse(fs.readFileSync(storePath, 'utf8')),
+          );
         } catch (error) {
           unreadable = true;
           // The parser's message quotes the file around the fault, and the file holds device passwords and report keys: only the kind of failure is said.
-          const why = error instanceof SyntaxError ? 'not valid JSON' : error?.code || 'unreadable';
-          console.warn(`[Device feeds] ${DEVICE_FEED_STORE} could not be read (${why}); no device is shown until it is fixed.`);
+          const why =
+            error instanceof SyntaxError
+              ? 'not valid JSON'
+              : error?.code || 'unreadable';
+          console.warn(
+            `[Device feeds] ${DEVICE_FEED_STORE} could not be read (${why}); no device is shown until it is fixed.`,
+          );
         }
       }
       cache = { stamp, config, unreadable };
@@ -274,7 +340,12 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
       syncListener(config);
     }
     if (strict && cache.unreadable) {
-      throw Object.assign(new Error(`${DEVICE_FEED_STORE} exists but cannot be read; fix or remove it first`), { code: 'GEV_STORE_UNREADABLE' });
+      throw Object.assign(
+        new Error(
+          `${DEVICE_FEED_STORE} exists but cannot be read; fix or remove it first`,
+        ),
+        { code: 'GEV_STORE_UNREADABLE' },
+      );
     }
     return cache.config;
   };
@@ -288,7 +359,9 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     try {
       noteSecurityFeedsSaved(config, sourceRoot);
     } catch (error) {
-      console.warn(`[Device feeds] Phone package check was not saved (${String(error?.code || 'error').slice(0, 40)})`);
+      console.warn(
+        `[Device feeds] Phone package check was not saved (${String(error?.code || 'error').slice(0, 40)})`,
+      );
     }
     // A phone package is not part of the device check. An empty other list is
     // still stamped, so a drone added by hand afterwards is not fetched. The
@@ -296,14 +369,20 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     try {
       noteLocalDevicesSaved(sourceRoot, trackedDevicePolicyRecords(config));
     } catch (error) {
-      console.warn(`[Device feeds] Device and report address checks were not saved (${String(error?.code || 'error').slice(0, 40)})`);
+      console.warn(
+        `[Device feeds] Device and report address checks were not saved (${String(error?.code || 'error').slice(0, 40)})`,
+      );
     }
   };
 
   /** Drones, robots, marine drones and trackers. A phone package is judged apart. */
   const trackedDevicesTrusted = () => {
     try {
-      return localRecordsTrusted(sourceRoot, 'devices', trackedDevicePolicyRecords(readConfig()));
+      return localRecordsTrusted(
+        sourceRoot,
+        'devices',
+        trackedDevicePolicyRecords(readConfig()),
+      );
     } catch {
       return false;
     }
@@ -337,7 +416,9 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     if (recordingsPrivate && !made) return;
     recordingsPrivate = true;
     if (!hardenFolder(recordingRoot)) {
-      console.warn(`[Device feeds] ${DEVICE_RECORDING_DIR} could not be restricted to your account; other accounts on this computer may be able to read the recorded positions.`);
+      console.warn(
+        `[Device feeds] ${DEVICE_RECORDING_DIR} could not be restricted to your account; other accounts on this computer may be able to read the recorded positions.`,
+      );
     }
   };
   /** feed id -> when its last line was saved */
@@ -348,13 +429,22 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     try {
       let bytes = 0;
       let lastAt = 0;
-      const names = fs.readdirSync(path.join(recordingRoot, feedId)).filter((name) => name.endsWith('.jsonl'));
+      const names = fs
+        .readdirSync(path.join(recordingRoot, feedId))
+        .filter((name) => name.endsWith('.jsonl'));
       for (const name of names) {
         const stat = fs.statSync(path.join(recordingRoot, feedId, name));
         bytes += stat.size;
         lastAt = Math.max(lastAt, stat.mtimeMs);
       }
-      return names.length ? { files: names.length, bytes, lastAt: Math.round(lastAt), folder: `${DEVICE_RECORDING_DIR}/${feedId}` } : null;
+      return names.length
+        ? {
+            files: names.length,
+            bytes,
+            lastAt: Math.round(lastAt),
+            folder: `${DEVICE_RECORDING_DIR}/${feedId}`,
+          }
+        : null;
     } catch {
       return null;
     }
@@ -364,7 +454,10 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     privateRecordingRoot();
     const folder = path.join(recordingRoot, feedId);
     fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
-    const file = path.join(folder, `${new Date(at).toISOString().slice(0, 10)}.jsonl`);
+    const file = path.join(
+      folder,
+      `${new Date(at).toISOString().slice(0, 10)}.jsonl`,
+    );
     const created = !fs.existsSync(file);
     fs.appendFileSync(file, `${JSON.stringify(line)}\n`, { mode: 0o600 });
     if (created) {
@@ -384,15 +477,24 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
    * recorded around them.
    */
   const serveTrack = (res, publicId, query) => {
-    const feed = readConfig().feeds.find((item) => deviceFeedPublicId(item) === publicId);
+    const feed = readConfig().feeds.find(
+      (item) => deviceFeedPublicId(item) === publicId,
+    );
     if (!feed) {
       respondJson(res, 404, { error: 'No such device' });
       return;
     }
-    const days = Math.min(366, Math.max(1, Number.parseInt(query.get('days'), 10) || 30));
+    const days = Math.min(
+      366,
+      Math.max(1, Number.parseInt(query.get('days'), 10) || 30),
+    );
     let names = [];
     try {
-      names = fs.readdirSync(path.join(recordingRoot, feed.id)).filter((name) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(name)).sort().slice(-days);
+      names = fs
+        .readdirSync(path.join(recordingRoot, feed.id))
+        .filter((name) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(name))
+        .sort()
+        .slice(-days);
     } catch {
       names = [];
     }
@@ -407,11 +509,21 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     const all = trackFromRecordingLines(text);
     const points = thinTrackPoints(all);
     const info = recordingInfo(feed.id);
-    respondJson(res, 200, { id: publicId, days: names.length, from: all[0]?.at ?? null, to: all[all.length - 1]?.at ?? null, total: all.length, points, lastAt: info?.lastAt ?? null });
+    respondJson(res, 200, {
+      id: publicId,
+      days: names.length,
+      from: all[0]?.at ?? null,
+      to: all[all.length - 1]?.at ?? null,
+      total: all.length,
+      points,
+      lastAt: info?.lastAt ?? null,
+    });
   };
 
   const serveRecord = async (req, res, publicId) => {
-    const feed = readConfig().feeds.find((item) => deviceFeedPublicId(item) === publicId);
+    const feed = readConfig().feeds.find(
+      (item) => deviceFeedPublicId(item) === publicId,
+    );
     if (!feed) {
       respondJson(res, 404, { error: 'No such device' });
       return;
@@ -421,11 +533,17 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
       return;
     }
     const now = Date.now();
-    if (now - (lastRecordedAt.get(feed.id) || 0) < DEVICE_RECORD_MIN_INTERVAL_MS) {
+    if (
+      now - (lastRecordedAt.get(feed.id) || 0) <
+      DEVICE_RECORD_MIN_INTERVAL_MS
+    ) {
       respondJson(res, 429, { error: 'Saved a moment ago' });
       return;
     }
-    const { overflowed, body } = await readCappedBody(req, DEVICE_RECORD_BODY_LIMIT);
+    const { overflowed, body } = await readCappedBody(
+      req,
+      DEVICE_RECORD_BODY_LIMIT,
+    );
     if (overflowed) {
       respondJson(res, 413, { error: 'Request too large' });
       return;
@@ -438,20 +556,40 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
       return;
     }
     // Where the device is, as this process knows it; never as the page says.
-    const position = live.get(feed.id)?.position || (feed.lat !== null && feed.lon !== null ? { lat: feed.lat, lon: feed.lon } : null);
-    const built = buildDeviceRecordingLine(parsed, position, { at: now, radiusKm: recordRadiusKm(feed.recordKm) });
+    const position =
+      live.get(feed.id)?.position ||
+      (feed.lat !== null && feed.lon !== null
+        ? { lat: feed.lat, lon: feed.lon }
+        : null);
+    const built = buildDeviceRecordingLine(parsed, position, {
+      at: now,
+      radiusKm: recordRadiusKm(feed.recordKm),
+    });
     if (!built.ok) {
       respondJson(res, 409, { error: built.error });
       return;
     }
-    appendRecording(feed.id, { device: feed.name, kind: feed.kind, ...built.line }, now);
+    appendRecording(
+      feed.id,
+      { device: feed.name, kind: feed.kind, ...built.line },
+      now,
+    );
     lastRecordedAt.set(feed.id, now);
-    respondJson(res, 200, { saved: built.kept, recording: recordingInfo(feed.id) });
+    respondJson(res, 200, {
+      saved: built.kept,
+      recording: recordingInfo(feed.id),
+    });
   };
 
   const stateOf = (feed) => {
     const state = live.get(feed.id);
-    return state ? { ok: Boolean(state.position), at: state.at || null, error: state.error || '' } : null;
+    return state
+      ? {
+          ok: Boolean(state.position),
+          at: state.at || null,
+          error: state.error || '',
+        }
+      : null;
   };
 
   const statusFor = (config) => {
@@ -467,8 +605,19 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
       if (info) recordings.set(feed.id, info);
     }
     return {
-      ...deviceFeedStatus(config, { live: states, recordings, reportAddresses: reportAddresses() }),
-      reportListener: { port: listener.port, wanted: listen && listenerWanted && config.feeds.some((feed) => methodReportsIn(feed.method)), error: listener.error },
+      ...deviceFeedStatus(config, {
+        live: states,
+        recordings,
+        reportAddresses: reportAddresses(),
+      }),
+      reportListener: {
+        port: listener.port,
+        wanted:
+          listen &&
+          listenerWanted &&
+          config.feeds.some((feed) => methodReportsIn(feed.method)),
+        error: listener.error,
+      },
     };
   };
 
@@ -478,7 +627,14 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     if (!address) return null;
     let state = live.get(feed.id);
     if (!state) {
-      state = { position: null, at: 0, error: '', failures: 0, nextAt: 0, pending: null };
+      state = {
+        position: null,
+        at: 0,
+        error: '',
+        failures: 0,
+        nextAt: 0,
+        pending: null,
+      };
       live.set(feed.id, state);
     }
     const now = Date.now();
@@ -496,16 +652,26 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     state.nextAt = now + DEVICE_FEED_MIN_POLL_MS;
     state.pending = (async () => {
       try {
-        const response = await fetchDeviceResource(feed, address, { fetchImpl: doFetch, signal: AbortSignal.timeout(DEVICE_FEED_TIMEOUT_MS) });
+        const response = await fetchDeviceResource(feed, address, {
+          fetchImpl: doFetch,
+          signal: AbortSignal.timeout(DEVICE_FEED_TIMEOUT_MS),
+        });
         if (!response.ok) {
           try {
             await response.body?.cancel();
           } catch {
             /* already closed */
           }
-          throw new Error(response.status >= 300 && response.status < 400 ? 'redirect refused' : `HTTP ${response.status}`);
+          throw new Error(
+            response.status >= 300 && response.status < 400
+              ? 'redirect refused'
+              : `HTTP ${response.status}`,
+          );
         }
-        const bytes = await readCapped(response, DEVICE_FEED_POSITION_MAX_BYTES);
+        const bytes = await readCapped(
+          response,
+          DEVICE_FEED_POSITION_MAX_BYTES,
+        );
         if (!bytes) throw new Error('answer too large');
         const text = bytes.toString('utf8');
         let json;
@@ -516,11 +682,24 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
         }
         const position = extractDevicePosition(feed, { json, text });
         if (!position) throw new Error('no position in the answer');
-        Object.assign(state, { position, at: Date.now(), error: '', failures: 0 });
+        Object.assign(state, {
+          position,
+          at: Date.now(),
+          error: '',
+          failures: 0,
+        });
       } catch (error) {
         state.failures += 1;
-        state.error = error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'timed out' : String(error?.message || 'unreachable').slice(0, 120);
-        state.nextAt = Date.now() + Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** Math.min(8, state.failures - 1));
+        state.error =
+          error?.name === 'TimeoutError' || error?.name === 'AbortError'
+            ? 'timed out'
+            : String(error?.message || 'unreachable').slice(0, 120);
+        state.nextAt =
+          Date.now() +
+          Math.min(
+            BACKOFF_MAX_MS,
+            BACKOFF_BASE_MS * 2 ** Math.min(8, state.failures - 1),
+          );
       } finally {
         state.pending = null;
       }
@@ -531,13 +710,24 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
   const forget = (config) => {
     const ids = new Set(config.feeds.map((feed) => feed.id));
     for (const id of [...live.keys()]) if (!ids.has(id)) live.delete(id);
-    for (const id of [...pictures.keys()]) if (!ids.has(id)) pictures.delete(id);
+    for (const id of [...pictures.keys()])
+      if (!ids.has(id)) pictures.delete(id);
   };
 
   // ---- reports in ---------------------------------------------------------
-  const port = Number.isInteger(reportPort) ? reportPort : Number.parseInt(process.env.DEVICE_REPORT_PORT, 10) || DEVICE_REPORT_DEFAULT_PORT;
+  const port = Number.isInteger(reportPort)
+    ? reportPort
+    : Number.parseInt(process.env.DEVICE_REPORT_PORT, 10) ||
+      DEVICE_REPORT_DEFAULT_PORT;
   const host = reportHost || process.env.DEVICE_REPORT_HOST || '0.0.0.0';
-  const listener = { server: null, port: null, error: '', scheme: 'http', retries: 0, retryTimer: null };
+  const listener = {
+    server: null,
+    port: null,
+    error: '',
+    scheme: 'http',
+    retries: 0,
+    retryTimer: null,
+  };
 
   /**
    * The address the card tells a phone to send its key to, and the certificate
@@ -552,7 +742,9 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     } catch {
       trusted = false;
     }
-    return trusted ? parts : { publicBase: '', publicHost: '', tlsCert: '', tlsKey: '' };
+    return trusted
+      ? parts
+      : { publicBase: '', publicHost: '', tlsCert: '', tlsKey: '' };
   };
 
   /**
@@ -569,7 +761,9 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     try {
       return { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) };
     } catch (error) {
-      console.warn(`[Device feeds] DEVICE_REPORT_TLS_CERT/KEY could not be read (${error?.message || error}); reports are accepted over http`);
+      console.warn(
+        `[Device feeds] DEVICE_REPORT_TLS_CERT/KEY could not be read (${error?.message || error}); reports are accepted over http`,
+      );
       return null;
     }
   };
@@ -577,12 +771,21 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
   const listenerAddresses = () => {
     if (!listener.port) return [];
     const material = reportMaterial();
-    const local = localAddresses().map((address) => `${listener.scheme}://${address}:${listener.port}`);
-    const named = material.publicHost ? [`${listener.scheme}://${material.publicHost}:${listener.port}`] : [];
-    return [...(material.publicBase ? [material.publicBase] : []), ...named, ...local];
+    const local = localAddresses().map(
+      (address) => `${listener.scheme}://${address}:${listener.port}`,
+    );
+    const named = material.publicHost
+      ? [`${listener.scheme}://${material.publicHost}:${listener.port}`]
+      : [];
+    return [
+      ...(material.publicBase ? [material.publicBase] : []),
+      ...named,
+      ...local,
+    ];
   };
 
-  const lastReportPath = (feedId) => path.join(recordingRoot, feedId, LAST_REPORT_FILE);
+  const lastReportPath = (feedId) =>
+    path.join(recordingRoot, feedId, LAST_REPORT_FILE);
 
   /** The newest report survives a restart: kept beside the device's recordings, with their permissions. */
   const rememberReport = (feed, position, at) => {
@@ -590,9 +793,15 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
       privateRecordingRoot();
       const folder = path.join(recordingRoot, feed.id);
       fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
-      fs.writeFileSync(lastReportPath(feed.id), JSON.stringify({ position, at }), { mode: 0o600 });
+      fs.writeFileSync(
+        lastReportPath(feed.id),
+        JSON.stringify({ position, at }),
+        { mode: 0o600 },
+      );
     } catch (error) {
-      console.warn(`[Device feeds] ${feed.name}: the last report could not be kept (${error?.message || error})`);
+      console.warn(
+        `[Device feeds] ${feed.name}: the last report could not be kept (${error?.message || error})`,
+      );
     }
   };
 
@@ -606,11 +815,26 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
       } catch {
         kept = null;
       }
-      const position = kept?.position && Number.isFinite(kept.position.lat) && Number.isFinite(kept.position.lon) ? kept.position : null;
+      const position =
+        kept?.position &&
+        Number.isFinite(kept.position.lat) &&
+        Number.isFinite(kept.position.lon)
+          ? kept.position
+          : null;
       // A future fix saved before the clamp above existed counts as now too,
       // or it would go on outranking every true report after a restart.
-      const reportedAt = position ? Math.min(Number(position.at) || 0, Date.now()) : 0;
-      live.set(feed.id, { position, at: position ? Number(kept.at) || 0 : 0, error: position ? '' : 'no report yet', failures: 0, nextAt: 0, pending: null, reportedAt });
+      const reportedAt = position
+        ? Math.min(Number(position.at) || 0, Date.now())
+        : 0;
+      live.set(feed.id, {
+        position,
+        at: position ? Number(kept.at) || 0 : 0,
+        error: position ? '' : 'no report yet',
+        failures: 0,
+        nextAt: 0,
+        pending: null,
+        reportedAt,
+      });
     }
   };
 
@@ -622,7 +846,8 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     for (const feed of config.feeds) {
       if (!methodReportsIn(feed.method) || !feed.reportKey) continue;
       const saved = Buffer.from(feed.reportKey);
-      if (saved.length === given.length && timingSafeEqual(saved, given)) found = feed;
+      if (saved.length === given.length && timingSafeEqual(saved, given))
+        found = feed;
     }
     return found;
   };
@@ -639,10 +864,18 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     recallReports({ feeds: [feed] });
     const state = live.get(feed.id);
     const future = Number.isFinite(reported.at) && reported.at > now;
-    const fixAt = Number.isFinite(reported.at) ? Math.min(reported.at, now) : now;
+    const fixAt = Number.isFinite(reported.at)
+      ? Math.min(reported.at, now)
+      : now;
     const position = future ? { ...reported, at: now } : reported;
     if (state.position && fixAt < state.reportedAt) return false;
-    Object.assign(state, { position, at: now, error: '', failures: 0, reportedAt: fixAt });
+    Object.assign(state, {
+      position,
+      at: now,
+      error: '',
+      failures: 0,
+      reportedAt: fixAt,
+    });
     if (!state.announced) {
       state.announced = true;
       console.log(`[Device feeds] ${feed.name}: reporting in`);
@@ -671,49 +904,94 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     if (now - (refusalsSaid.get(about) ?? -Infinity) < REFUSAL_LOG_MS) return;
     refusalsSaid.delete(about);
     refusalsSaid.set(about, now);
-    while (refusalsSaid.size > 1000) refusalsSaid.delete(refusalsSaid.keys().next().value);
+    while (refusalsSaid.size > 1000)
+      refusalsSaid.delete(refusalsSaid.keys().next().value);
     console.warn(line);
   };
 
   const serveReport = async (req, res, key) => {
     const reply = (status, contentType, body) => {
-      res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': contentType, 'Content-Security-Policy': "default-src 'none'" });
+      res.writeHead(status, {
+        ...SECURITY_HEADERS,
+        'Content-Type': contentType,
+        'Content-Security-Policy': "default-src 'none'",
+      });
       res.end(body);
     };
     const feed = feedForKey(readConfig(), key);
     if (!feed) {
       // Said in the log (never the key itself) so a phone with a mistyped identifier can be told apart from one that never connects.
-      const socketAddress = printable(String(req.socket?.remoteAddress || '?').replace(/^::ffff:/i, '')).slice(0, 64);
+      const socketAddress = printable(
+        String(req.socket?.remoteAddress || '?').replace(/^::ffff:/i, ''),
+      ).slice(0, 64);
       // Behind tailscale serve the tunnel names the address and node the request came from; on any other socket those headers are whatever the client typed, so they are not repeated.
       const loopback = /^(127\.|::1$)/.test(socketAddress);
-      const forwarded = loopback ? printable(String(req.headers?.['x-forwarded-for'] || '').split(',')[0]).trim().slice(0, 64) : '';
-      const from = forwarded ? `${forwarded} via ${socketAddress}` : socketAddress;
+      const forwarded = loopback
+        ? printable(
+            String(req.headers?.['x-forwarded-for'] || '').split(',')[0],
+          )
+            .trim()
+            .slice(0, 64)
+        : '';
+      const from = forwarded
+        ? `${forwarded} via ${socketAddress}`
+        : socketAddress;
       const agent = printable(req.headers?.['user-agent']).slice(0, 40);
-      const login = loopback ? printable(req.headers?.['tailscale-user-login']).slice(0, 80) : '';
+      const login = loopback
+        ? printable(req.headers?.['tailscale-user-login']).slice(0, 80)
+        : '';
       const node = login ? `, tailnet user ${login}` : '';
       // The path is shown with every key-sized segment blanked: a help token or a near-miss key typed into the wrong slot must never land in the log.
-      const shownPath = `/${String(req.url || '/').split('?')[0].split('/').filter(Boolean).map((segment) => (/[A-Za-z0-9_-]{20,}/.test(segment) ? '<key>' : printable(segment).slice(0, 24))).join('/')}`.slice(0, 120);
-      sayRefusal(from, `[Device feeds] Report refused from ${from}: ${key ? 'the identifier is not a saved device key' : 'no identifier or key in the request'} (${printable(req.method).slice(0, 10)} ${shownPath}${agent ? `, ${agent}` : ''}${node})`);
+      const shownPath = `/${String(req.url || '/')
+        .split('?')[0]
+        .split('/')
+        .filter(Boolean)
+        .map((segment) =>
+          /[A-Za-z0-9_-]{20,}/.test(segment)
+            ? '<key>'
+            : printable(segment).slice(0, 24),
+        )
+        .join('/')}`.slice(0, 120);
+      sayRefusal(
+        from,
+        `[Device feeds] Report refused from ${from}: ${key ? 'the identifier is not a saved device key' : 'no identifier or key in the request'} (${printable(req.method).slice(0, 10)} ${shownPath}${agent ? `, ${agent}` : ''}${node})`,
+      );
       reply(404, 'text/plain', 'Not found');
       return;
     }
     // One check covers every phone package, so a rewritten address refuses
     // the report key too. Same answer as an unknown key, and the key is not logged.
     if (feed.kind === 'security' && !ultraOutboundFeedsTrusted(sourceRoot)) {
-      sayRefusal(`changed:${feed.id}`, '[Device feeds] Report refused: the phone package was changed and is not being used');
+      sayRefusal(
+        `changed:${feed.id}`,
+        '[Device feeds] Report refused: the phone package was changed and is not being used',
+      );
       reply(404, 'text/plain', 'Not found');
       return;
     }
     if (feed.kind !== 'security' && !trackedDevicesTrusted()) {
-      sayRefusal(`changed:${feed.id}`, '[Device feeds] Report refused: the device package was changed and is not being used');
+      sayRefusal(
+        `changed:${feed.id}`,
+        '[Device feeds] Report refused: the device package was changed and is not being used',
+      );
       reply(404, 'text/plain', 'Not found');
       return;
     }
     if (feed.kind === 'security') {
       // Behind a local proxy (tailscale serve) the socket is loopback; the phone's address is in the forwarded header.
-      const socketAddress = String(req.socket?.remoteAddress || '').replace(/^::ffff:/i, '');
-      const forwarded = String(req.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
-      noteUltraPhone(key, /^(127\.|::1$)/.test(socketAddress) && forwarded ? forwarded : req.socket?.remoteAddress);
+      const socketAddress = String(req.socket?.remoteAddress || '').replace(
+        /^::ffff:/i,
+        '',
+      );
+      const forwarded = String(req.headers?.['x-forwarded-for'] || '')
+        .split(',')[0]
+        .trim();
+      noteUltraPhone(
+        key,
+        /^(127\.|::1$)/.test(socketAddress) && forwarded
+          ? forwarded
+          : req.socket?.remoteAddress,
+      );
     }
     if (req.method !== 'GET' && req.method !== 'POST') {
       reply(405, 'text/plain', 'GET or POST');
@@ -723,20 +1001,27 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     const params = Object.fromEntries(url.searchParams);
     let json;
     if (req.method === 'POST') {
-      const { overflowed, body } = await readCappedBody(req, DEVICE_REPORT_BODY_LIMIT);
+      const { overflowed, body } = await readCappedBody(
+        req,
+        DEVICE_REPORT_BODY_LIMIT,
+      );
       if (overflowed) {
         reply(413, 'text/plain', 'Too large');
         return;
       }
       const text = body.toString('utf8');
-      if (/json/i.test(String(req.headers?.['content-type'] || '')) || /^\s*[[{]/.test(text)) {
+      if (
+        /json/i.test(String(req.headers?.['content-type'] || '')) ||
+        /^\s*[[{]/.test(text)
+      ) {
         try {
           json = JSON.parse(text);
         } catch {
           json = undefined;
         }
       } else if (text) {
-        for (const [name, value] of new URLSearchParams(text)) if (!(name in params)) params[name] = value;
+        for (const [name, value] of new URLSearchParams(text))
+          if (!(name in params)) params[name] = value;
       }
     }
     const parsed = parseDeviceReport({ params, json });
@@ -757,7 +1042,10 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     const handle = async (req, res) => {
       try {
         // A doubled leading slash would otherwise parse as a host, and a typed or dictated /Ultra/ would miss the phone routes and fall into the report log.
-        const url = new URL(String(req.url || '/').replace(/^\/{2,}/, '/'), 'http://localhost');
+        const url = new URL(
+          String(req.url || '/').replace(/^\/{2,}/, '/'),
+          'http://localhost',
+        );
         const segments = url.pathname.split('/').filter(Boolean);
         let first = segments[0] || '';
         try {
@@ -767,16 +1055,26 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
         }
         if (first.toLowerCase() === 'ultra') {
           segments[0] = 'ultra';
-          await handleUltraPhone(req, res, new URL(`/${segments.join('/')}${url.search}`, 'http://localhost'));
+          await handleUltraPhone(
+            req,
+            res,
+            new URL(`/${segments.join('/')}${url.search}`, 'http://localhost'),
+          );
           return;
         }
         await serveReport(req, res, reportKeyOf(url));
       } catch {
-        if (!res.headersSent) res.writeHead(500, { ...SECURITY_HEADERS, 'Content-Type': 'text/plain' });
+        if (!res.headersSent)
+          res.writeHead(500, {
+            ...SECURITY_HEADERS,
+            'Content-Type': 'text/plain',
+          });
         res.end();
       }
     };
-    const server = tls ? https.createServer(tls, handle) : http.createServer(handle);
+    const server = tls
+      ? https.createServer(tls, handle)
+      : http.createServer(handle);
     server.requestTimeout = 15_000;
     server.headersTimeout = 10_000;
     // A handful of phones and a tailscale serve proxy need a few each; a
@@ -794,17 +1092,21 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
           listener.retryTimer = null;
           // Only while a reporting device is still saved: removing the last
           // one during the retries must not open the port after all.
-          if (listenerWanted && !listener.server && reportingDeviceSaved()) startListener();
+          if (listenerWanted && !listener.server && reportingDeviceSaved())
+            startListener();
         }, LISTEN_RETRY_MS);
         listener.retryTimer.unref?.();
         return;
       }
       // Out of retries: the next start (a device saved again, a restart) gets its own.
       listener.retries = 0;
-      listener.error = error?.code === 'EADDRINUSE'
-        ? `port ${port} is already in use (set DEVICE_REPORT_PORT to another port and restart)`
-        : String(error?.message || error);
-      console.warn(`[Device feeds] Reports cannot be received: ${listener.error}`);
+      listener.error =
+        error?.code === 'EADDRINUSE'
+          ? `port ${port} is already in use (set DEVICE_REPORT_PORT to another port and restart)`
+          : String(error?.message || error);
+      console.warn(
+        `[Device feeds] Reports cannot be received: ${listener.error}`,
+      );
     });
     server.listen(port, host, () => {
       listener.port = server.address()?.port ?? port;
@@ -812,7 +1114,9 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
       listener.retries = 0;
       const bases = listenerAddresses();
       noteUltraEndpoint(bases);
-      console.log(`[Device feeds] Reports accepted on port ${listener.port} over ${listener.scheme} (${bases.join(', ') || host})`);
+      console.log(
+        `[Device feeds] Reports accepted on port ${listener.port} over ${listener.scheme} (${bases.join(', ') || host})`,
+      );
     });
     listener.server = server;
   };
@@ -832,13 +1136,15 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
   };
 
   /** Whether a device that reports in is still saved: the only reason to listen. */
-  const reportingDeviceSaved = () => readConfig().feeds.some((feed) => methodReportsIn(feed.method));
+  const reportingDeviceSaved = () =>
+    readConfig().feeds.some((feed) => methodReportsIn(feed.method));
 
   /** Listen only while a reporting device is configured; opened and closed as devices come and go. */
   let listenerWanted = false;
   const syncListener = (config) => {
     if (!listenerWanted) return;
-    if (config.feeds.some((feed) => methodReportsIn(feed.method))) startListener();
+    if (config.feeds.some((feed) => methodReportsIn(feed.method)))
+      startListener();
     else stopListener();
   };
 
@@ -848,25 +1154,40 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     const config = readConfig();
     recallReports(config);
     // Whatever is already known answers at once; stale devices refresh behind it.
-    const waits = config.feeds.map((feed) => {
-      const pending = refreshPosition(feed);
-      return live.get(feed.id)?.at ? null : pending;
-    }).filter(Boolean);
-    if (waits.length) await Promise.race([Promise.allSettled(waits), new Promise((resolve) => setTimeout(resolve, 2500))]);
+    const waits = config.feeds
+      .map((feed) => {
+        const pending = refreshPosition(feed);
+        return live.get(feed.id)?.at ? null : pending;
+      })
+      .filter(Boolean);
+    if (waits.length)
+      await Promise.race([
+        Promise.allSettled(waits),
+        new Promise((resolve) => setTimeout(resolve, 2500)),
+      ]);
     const devices = [];
     for (const feed of config.feeds) {
       const state = live.get(feed.id);
-      const record = devicePublicRecord(feed, state?.position || null, { at: state?.at || null });
+      const record = devicePublicRecord(feed, state?.position || null, {
+        at: state?.at || null,
+      });
       if (!record) continue;
       // What the map needs to know whether a saved route exists and has grown.
       const info = recordingInfo(feed.id);
-      devices.push({ ...record, error: state?.error || '', history: info ? { days: info.files, lastAt: info.lastAt } : null });
+      devices.push({
+        ...record,
+        error: state?.error || '',
+        history: info ? { days: info.files, lastAt: info.lastAt } : null,
+      });
     }
     // A call for help received from the owner's help network is a pin for
     // this same layer: memory only, never followed and never written to the
     // device store. A package with RECORD on captures it among its
     // surroundings like any other map record (see the CHANGELOG caveat).
-    respondJson(res, 200, { devices: [...devices, ...ultraNetworkPins(Date.now())], minPollMs: DEVICE_FEED_MIN_POLL_MS });
+    respondJson(res, 200, {
+      devices: [...devices, ...ultraNetworkPins(Date.now())],
+      minPollMs: DEVICE_FEED_MIN_POLL_MS,
+    });
   };
 
   const fetchPicture = async (feed) => {
@@ -876,7 +1197,10 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
     if (feed.kind !== 'security' && !trackedDevicesTrusted()) {
       throw new Error('the device package was changed');
     }
-    const response = await fetchDeviceResource(feed, feed.pictureUrl, { fetchImpl: doFetch, signal: AbortSignal.timeout(DEVICE_FEED_TIMEOUT_MS) });
+    const response = await fetchDeviceResource(feed, feed.pictureUrl, {
+      fetchImpl: doFetch,
+      signal: AbortSignal.timeout(DEVICE_FEED_TIMEOUT_MS),
+    });
     const type = response.headers.get('content-type') || '';
     if (!response.ok) {
       try {
@@ -884,11 +1208,18 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
       } catch {
         /* already closed */
       }
-      throw new Error(response.status >= 300 && response.status < 400 ? 'redirect refused' : `HTTP ${response.status}`);
+      throw new Error(
+        response.status >= 300 && response.status < 400
+          ? 'redirect refused'
+          : `HTTP ${response.status}`,
+      );
     }
     // A motion-JPEG camera (web_video_server, most IP cameras): its first picture.
     if (/^multipart\/x-mixed-replace/i.test(type)) {
-      const boundary = (/boundary="?([^";]+)"?/i.exec(type)?.[1] || '').replace(/^-+/, '');
+      const boundary = (/boundary="?([^";]+)"?/i.exec(type)?.[1] || '').replace(
+        /^-+/,
+        '',
+      );
       const scanner = createMotionJpegScanner(boundary);
       let total = 0;
       let frame = null;
@@ -920,22 +1251,47 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
   };
 
   const serveFrame = async (res, publicId) => {
-    const feed = readConfig().feeds.find((item) => deviceFeedPublicId(item) === publicId);
+    const feed = readConfig().feeds.find(
+      (item) => deviceFeedPublicId(item) === publicId,
+    );
     if (!feed || !feed.pictureUrl) {
       respondJson(res, 404, { error: 'No picture for this device' });
       return;
     }
     let held = pictures.get(feed.id);
     const now = Date.now();
-    if (!held || (!held.pending && now - held.at > PICTURE_TTL_MS && now >= (held.nextAt || 0))) {
-      const entry = { at: now, picture: held?.picture || null, failures: held?.failures || 0, nextAt: 0, pending: null };
-      entry.pending = fetchPicture(feed).then((picture) => {
-        Object.assign(entry, { picture, at: Date.now(), failures: 0, pending: null });
-      }).catch(() => {
-        entry.failures += 1;
-        entry.pending = null;
-        entry.nextAt = Date.now() + Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** Math.min(8, entry.failures - 1));
-      });
+    if (
+      !held ||
+      (!held.pending &&
+        now - held.at > PICTURE_TTL_MS &&
+        now >= (held.nextAt || 0))
+    ) {
+      const entry = {
+        at: now,
+        picture: held?.picture || null,
+        failures: held?.failures || 0,
+        nextAt: 0,
+        pending: null,
+      };
+      entry.pending = fetchPicture(feed)
+        .then((picture) => {
+          Object.assign(entry, {
+            picture,
+            at: Date.now(),
+            failures: 0,
+            pending: null,
+          });
+        })
+        .catch(() => {
+          entry.failures += 1;
+          entry.pending = null;
+          entry.nextAt =
+            Date.now() +
+            Math.min(
+              BACKOFF_MAX_MS,
+              BACKOFF_BASE_MS * 2 ** Math.min(8, entry.failures - 1),
+            );
+        });
       pictures.set(feed.id, entry);
       held = entry;
     }
@@ -944,7 +1300,11 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
       respondJson(res, 502, { error: 'The device did not give a picture' });
       return;
     }
-    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': held.picture.contentType, 'Content-Security-Policy': "default-src 'none'" });
+    res.writeHead(200, {
+      ...SECURITY_HEADERS,
+      'Content-Type': held.picture.contentType,
+      'Content-Security-Policy': "default-src 'none'",
+    });
     res.end(held.picture.body);
   };
 
@@ -959,7 +1319,10 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
       try {
         // A device's report is admitted by its key, not by where it comes from.
         const reportUrl = new URL(req.url || '/', 'http://localhost');
-        if (reportUrl.pathname === '/report' || reportUrl.pathname.startsWith('/report/')) {
+        if (
+          reportUrl.pathname === '/report' ||
+          reportUrl.pathname.startsWith('/report/')
+        ) {
           await serveReport(req, res, reportKeyOf(reportUrl));
           return;
         }
@@ -974,7 +1337,12 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
           env: process.env,
         });
         if (!admitted.ok) {
-          respondJson(res, admitted.status || 403, { error: String(admitted.error || 'Refused').replace('Provider Settings', 'Device feeds') });
+          respondJson(res, admitted.status || 403, {
+            error: String(admitted.error || 'Refused').replace(
+              'Provider Settings',
+              'Device feeds',
+            ),
+          });
           return;
         }
         if (!privateFetchSiteAllowed(req.headers)) {
@@ -983,11 +1351,18 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
         }
         const url = new URL(req.url || '/', 'http://localhost');
         if (url.pathname === '/status' && req.method === 'GET') {
-          respondJson(res, 200, { ...statusFor(readConfig()), editable: allowEdit });
+          respondJson(res, 200, {
+            ...statusFor(readConfig()),
+            editable: allowEdit,
+          });
           return;
         }
         if (url.pathname.startsWith('/track/') && req.method === 'GET') {
-          serveTrack(res, decodeURIComponent(url.pathname.slice('/track/'.length)), url.searchParams);
+          serveTrack(
+            res,
+            decodeURIComponent(url.pathname.slice('/track/'.length)),
+            url.searchParams,
+          );
           return;
         }
         if (url.pathname === '/positions' && req.method === 'GET') {
@@ -995,19 +1370,31 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
           return;
         }
         if (url.pathname.startsWith('/frame/') && req.method === 'GET') {
-          await serveFrame(res, decodeURIComponent(url.pathname.slice('/frame/'.length)));
+          await serveFrame(
+            res,
+            decodeURIComponent(url.pathname.slice('/frame/'.length)),
+          );
           return;
         }
         if (url.pathname.startsWith('/record/') && req.method === 'POST') {
-          await serveRecord(req, res, decodeURIComponent(url.pathname.slice('/record/'.length)));
+          await serveRecord(
+            req,
+            res,
+            decodeURIComponent(url.pathname.slice('/record/'.length)),
+          );
           return;
         }
         if (url.pathname === '/config' && req.method === 'POST') {
           if (!allowEdit) {
-            respondJson(res, 403, { error: 'Editing is available under the dev server only' });
+            respondJson(res, 403, {
+              error: 'Editing is available under the dev server only',
+            });
             return;
           }
-          const { overflowed, body } = await readCappedBody(req, CONFIG_BODY_LIMIT);
+          const { overflowed, body } = await readCappedBody(
+            req,
+            CONFIG_BODY_LIMIT,
+          );
           if (overflowed) {
             respondJson(res, 413, { error: 'Request too large' });
             return;
@@ -1019,7 +1406,10 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
             respondJson(res, 400, { error: 'Invalid JSON' });
             return;
           }
-          const result = applyDeviceFeedUpdate(parsed, readConfig({ strict: true }));
+          const result = applyDeviceFeedUpdate(
+            parsed,
+            readConfig({ strict: true }),
+          );
           if (!result.ok) {
             respondJson(res, 400, { error: result.error });
             return;
@@ -1032,12 +1422,17 @@ export function deviceFeedsProxy({ sourceRoot = defaultSourceRoot, fetchImpl, li
             live.delete(result.feedId);
             pictures.delete(result.feedId);
           }
-          respondJson(res, 200, { status: { ...statusFor(config), editable: allowEdit }, feedId: result.feedId || null });
+          respondJson(res, 200, {
+            status: { ...statusFor(config), editable: allowEdit },
+            feedId: result.feedId || null,
+          });
           return;
         }
         respondJson(res, 404, { error: 'Unknown device feed route' });
       } catch (error) {
-        const message = STORE_FAILURE_CODES.has(error?.code) ? `Not saved: ${error.message}` : 'Device feed request failed';
+        const message = STORE_FAILURE_CODES.has(error?.code)
+          ? `Not saved: ${error.message}`
+          : 'Device feed request failed';
         if (!res.headersSent) respondJson(res, 500, { error: message });
         else res.end();
       }

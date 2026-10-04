@@ -390,7 +390,9 @@ test('a still no catalogue vouches for follows at most two redirects, each hop r
 
   ({ result, calls } = await run([jpeg], {}));
   assert.equal(result?.ok, true);
-  assert.equal(calls[0].redirect, undefined, 'a catalogue still keeps fetch\'s own redirect handling');
+  // A catalogue still follows redirects by hand too, but only within its own
+  // origin (fetchWithinHost in cctv/media.js), with no public-address check.
+  assert.equal(calls[0].redirect, 'manual', 'a catalogue still follows only same-origin redirects');
 });
 
 test('rejected snapshot responses abort the upstream download', async () => {

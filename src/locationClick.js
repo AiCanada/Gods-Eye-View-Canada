@@ -80,7 +80,10 @@ export function viewCenterPoint(viewer) {
     canvas && canvas.clientWidth > 0 && canvas.clientHeight > 0
       ? groundPointAt(
           viewer,
-          new Cesium.Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2),
+          new Cesium.Cartesian2(
+            canvas.clientWidth / 2,
+            canvas.clientHeight / 2,
+          ),
         )
       : null;
   if (centre) return centre;

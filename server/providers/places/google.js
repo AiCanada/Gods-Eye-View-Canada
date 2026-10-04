@@ -2,21 +2,35 @@ import {
   googleServerApiKey,
   keylessGooglePlacesResponse,
 } from './google-key.js';
-import { makeOptInRateLimiter, clientKey } from '../common/rate-limit.js';
+import { makeCostRateLimiter, clientKey } from '../common/rate-limit.js';
+import { admitSameSite } from '../common/same-site.js';
 import {
   projectNearbyPlaces,
   projectTextSearchPlaces,
 } from '../../../src/data/placeProviderPayloads.js';
 
 // Construct lazily after the standalone environment has loaded.
-// undefined = not built yet; null = unlimited; fn = active limiter
+// undefined = not built yet; null = the explicit 0 opt-out; fn = active limiter
 let _googleRateLimiter;
 
-/** Google cost endpoint (nearby-places). Null = unlimited (default). */
+/**
+ * Requests/min/IP applied when GEV_RATELIMIT_GOOGLE_PER_MIN is unset. This is
+ * the value the Pinokio build already ships (pinokio/_ENVIRONMENT), so the
+ * packaged app keeps behaving exactly as it does today and only an
+ * unconfigured server changes — from unlimited to what the product already
+ * runs with. Places calls are user-driven (a search, a nearby lookup, an
+ * installation probe) rather than polled, so this sits far above what the app
+ * generates and bites only a caller enumerating the endpoint. `.env.example`
+ * suggests a tighter 60 when the host is not localhost; that still applies.
+ */
+export const GOOGLE_DEFAULT_PER_MIN = 120;
+
+/** Google cost endpoints (nearby-places + text-search). Null only when set to 0. */
 function googleRateLimiter() {
   if (_googleRateLimiter === undefined)
-    _googleRateLimiter = makeOptInRateLimiter(
+    _googleRateLimiter = makeCostRateLimiter(
       process.env.GEV_RATELIMIT_GOOGLE_PER_MIN,
+      GOOGLE_DEFAULT_PER_MIN,
     );
   return _googleRateLimiter;
 }
@@ -45,9 +59,14 @@ export function validatePlacesCoordinates(searchParams) {
 /** Nearby place labels and view-biased text search, with request-time key resolution. */
 export function googlePlacesContextProxy({
   resolveApiKey = googleServerApiKey,
+  fetchImpl = (...args) => fetch(...args),
+  endpoints = {},
 } = {}) {
   function install(middlewares) {
     middlewares.use('/api/google/nearby-places', async (req, res) => {
+      // Gate first, like the OpenAI routes: a cross-site caller learns nothing
+      // about this endpoint's method surface.
+      if (admitSameSite(req, res)) return;
       if (req.method !== 'GET') {
         res.statusCode = 405;
         res.setHeader('Content-Type', 'application/json');
@@ -78,7 +97,7 @@ export function googlePlacesContextProxy({
       }
       const { latitude, longitude } = coordinates;
 
-      // Opt-in per-IP throttle (GEV_RATELIMIT_GOOGLE_PER_MIN). No-op when unset.
+      // Per-IP throttle (GEV_RATELIMIT_GOOGLE_PER_MIN). On by default; 0 disables.
       // Inlined (not the shared helper) so the 429 body keeps this endpoint's
       // `places: []` contract that the client expects on every error response.
       const _grl = googleRateLimiter();
@@ -96,10 +115,12 @@ export function googlePlacesContextProxy({
       );
 
       try {
-        const response = await fetch(
-          'https://places.googleapis.com/v1/places:searchNearby',
+        const response = await fetchImpl(
+          endpoints.nearby ||
+            'https://places.googleapis.com/v1/places:searchNearby',
           {
             method: 'POST',
+            redirect: 'error',
             headers: {
               'Content-Type': 'application/json',
               'X-Goog-Api-Key': apiKey,
@@ -157,6 +178,8 @@ export function googlePlacesContextProxy({
     // a view-biased Text Search lands on the actual feature. Same key, field
     // mask, throttle, and `places: []` error contract as nearby-places above.
     middlewares.use('/api/google/text-search', async (req, res) => {
+      // Paid like nearby-places, so gated the same way, first.
+      if (admitSameSite(req, res)) return;
       if (req.method !== 'GET') {
         res.statusCode = 405;
         res.setHeader('Content-Type', 'application/json');
@@ -196,7 +219,7 @@ export function googlePlacesContextProxy({
       }
       const { latitude, longitude } = coordinates;
 
-      // Opt-in per-IP throttle (GEV_RATELIMIT_GOOGLE_PER_MIN). No-op when unset.
+      // Per-IP throttle (GEV_RATELIMIT_GOOGLE_PER_MIN). On by default; 0 disables.
       // Inlined (like nearby-places) so the 429 body keeps the `places: []`
       // contract the client expects on every error response.
       const _grl = googleRateLimiter();
@@ -214,10 +237,12 @@ export function googlePlacesContextProxy({
       );
 
       try {
-        const response = await fetch(
-          'https://places.googleapis.com/v1/places:searchText',
+        const response = await fetchImpl(
+          endpoints.textSearch ||
+            'https://places.googleapis.com/v1/places:searchText',
           {
             method: 'POST',
+            redirect: 'error',
             headers: {
               'Content-Type': 'application/json',
               'X-Goog-Api-Key': apiKey,

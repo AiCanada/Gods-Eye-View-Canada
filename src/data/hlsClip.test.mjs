@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -13,6 +13,26 @@ import {
   road511StreamUrl,
   safeRoad511StreamUrl,
 } from '../../server/providers/cctv/road511-lookup.js';
+
+/**
+ * The CCTV layer's client source (src/layers/cctv/; src/data/cctv.js is its
+ * facade) as one text, with component qualification (`layerState.`,
+ * `parts.<component>.`) and formatter wrapping removed.
+ */
+function cctvLayerSource() {
+  const dir = new URL('../layers/cctv/', import.meta.url);
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.js'))
+    .sort()
+    .map((name) => readFileSync(new URL(name, dir), 'utf8'))
+    .join('\n')
+    .replace(/\blayerState\./g, '')
+    .replace(/\bparts\.\w+\./g, '')
+    .replace(/,\s*(?=\))/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')');
+}
 
 // Every request here goes to a fake fetch: no operator is ever contacted.
 const BASE = 'https://streams.example.org/hls/public/50/cam_high';
@@ -144,7 +164,7 @@ test('the lookup remembers a stream as a stream, and re-asks cameras written off
 });
 
 test('video plays only when its camera is clicked, and one clip address serves one set of bytes', () => {
-  const client = readFileSync(new URL('./cctv.js', import.meta.url), 'utf8');
+  const client = cctvLayerSource();
   // No background video: the thumbnail pacer never loads a stream.
   assert.ok(client.includes('if (isVideoFeedType(normalizeFeedType(record.camera.feedType))) return;'));
   assert.equal(client.includes('fetchCardFrameFromVideo'), false);

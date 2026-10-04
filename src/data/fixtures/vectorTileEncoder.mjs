@@ -37,7 +37,8 @@ function encodeGeometry(type, parts) {
 function writeValue(value, pbf) {
   if (typeof value === 'string') pbf.writeStringField(1, value);
   else if (typeof value === 'boolean') pbf.writeBooleanField(7, value);
-  else if (Number.isInteger(value) && value >= 0) pbf.writeVarintField(5, value);
+  else if (Number.isInteger(value) && value >= 0)
+    pbf.writeVarintField(5, value);
   else if (Number.isInteger(value)) pbf.writeSVarintField(6, value);
   else pbf.writeDoubleField(3, value);
 }
@@ -49,7 +50,8 @@ function writeFeature({ feature, keys, values }, pbf) {
     if (value === undefined || value === null) continue;
     if (!keys.has(key)) keys.set(key, keys.size);
     const valueKey = `${typeof value}:${value}`;
-    if (!values.has(valueKey)) values.set(valueKey, { index: values.size, value });
+    if (!values.has(valueKey))
+      values.set(valueKey, { index: values.size, value });
     tags.push(keys.get(key), values.get(valueKey).index);
   }
   pbf.writePackedVarint(2, tags);
@@ -67,7 +69,8 @@ function writeLayer(layer, pbf) {
     pbf.writeMessage(2, writeFeature, { feature, keys, values });
   }
   for (const key of keys.keys()) pbf.writeStringField(3, key);
-  for (const { value } of values.values()) pbf.writeMessage(4, writeValue, value);
+  for (const { value } of values.values())
+    pbf.writeMessage(4, writeValue, value);
   pbf.writeVarintField(5, layer.extent ?? 4096);
 }
 

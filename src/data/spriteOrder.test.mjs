@@ -1,3 +1,4 @@
+import { createRendering as createFirmsRendering } from '../layers/firms/rendering.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -14,7 +15,8 @@ import aisLiveVesselsLayer from './aisLiveVessels.js';
 import { createFirmsHeatmapLayer } from './firmsHeatmap.js';
 import trafficLayer from './traffic.js';
 
-const ORDER = ['cctv', 'cctv-projection', 'traffic', 'firms', 'bikeshare', 'directions', 'ais', 'military', 'flights'];
+// Upstream's transit layers draw between bike share and directions.
+const ORDER = ['cctv', 'cctv-projection', 'traffic', 'firms', 'bikeshare', 'transit', 'transit-motion', 'directions', 'ais', 'military', 'flights'];
 
 function makePrimitives(initial = []) {
   return {
@@ -109,11 +111,13 @@ test('traffic sits above CCTV so vehicles draw through camera sprites', () => {
   assert.ok(SPRITE_LAYER_ORDER.indexOf('cctv-projection') > SPRITE_LAYER_ORDER.indexOf('cctv'));
   assert.ok(SPRITE_LAYER_ORDER.indexOf('traffic') > SPRITE_LAYER_ORDER.indexOf('cctv-projection'));
   assert.equal(SPRITE_LAYER_ORDER[SPRITE_LAYER_ORDER.length - 1], 'flights');
-  const trafficSrc = readFileSync(fileURLToPath(new URL('./traffic.js', import.meta.url)), 'utf8');
-  assert.match(trafficSrc, /function animate\(\) \{[\s\S]*?restoreSpriteOrder\(_viewer\)/);
-  const cctvSrc = readFileSync(fileURLToPath(new URL('./cctv.js', import.meta.url)), 'utf8');
+  // Traffic's frame loop lives in its animation module since upstream's layer split.
+  const trafficSrc = readFileSync(fileURLToPath(new URL('../layers/traffic/animation.js', import.meta.url)), 'utf8');
+  assert.match(trafficSrc, /function animate\(\) \{[\s\S]*?restoreSpriteOrder\?\.\(layerState\._viewer\)/);
+  // The monitor plane is built by the CCTV layer's projection component.
+  const cctvSrc = readFileSync(fileURLToPath(new URL('../layers/cctv/projection.js', import.meta.url)), 'utf8');
   assert.match(cctvSrc, /transparent:\s*false/);
-  assert.match(cctvSrc, /registerSpriteCollection\('cctv-projection'/);
+  assert.match(cctvSrc, /registerSpriteCollection\(\s*'cctv-projection'/);
   assert.match(cctvSrc, /rs\.depthMask = false/);
 });
 
@@ -130,10 +134,14 @@ test('flights, AIS, FIRMS, and traffic enable paths are wired through the shared
   assert.match(flightsLayer.enable.toString(), /restoreSpriteOrderOnEnable\('flights', viewer\)/);
   assert.match(aisLiveVesselsLayer.enable.toString(), /restoreSpriteOrderOnEnable\('ais', activeViewer\)/);
   assert.match(firmsLayer.enable.toString(), /restoreSpriteOrderOnEnable\('firms', viewer\)/);
-  assert.match(trafficLayer.enable.toString(), /restoreSpriteOrderOnEnable\('traffic', viewer\)/);
+  // Traffic's enable lives in its lifecycle module since upstream's layer split.
   assert.match(
-    createFirmsHeatmapLayer.toString(),
-    /registerSpriteCollection\('firms', _billboards\);\s*restoreSpriteOrder\(_viewer\);/,
+    readFileSync(new URL('../layers/traffic/lifecycle.js', import.meta.url), 'utf8'),
+    /restoreSpriteOrderOnEnable\?\.\('traffic', viewer\)/,
+  );
+  assert.match(
+    createFirmsRendering.toString(),
+    /registerSpriteCollection\('firms', layerState\._billboards\);\s*restoreSpriteOrder\(layerState\._viewer\);/,
     'lazy FIRMS registration must restore order immediately',
   );
 });

@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { createAisStreamAdapter } from '../../../src/data/aisStreamAdapter.js';
 import { parseSilenceTimeoutEnv } from '../../../src/data/aisWatchdog.js';
 import { clampInt } from '../common/query.js';
-import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
+import { localProviderTrusted } from '../../shared/localIntegrity.mjs';
 import {
   AISSTREAM_CACHE_MAX,
   AISSTREAM_STALE_MS,

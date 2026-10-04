@@ -220,7 +220,7 @@ test('the docs say what RECORD does with a received NEEDS HELP pin', async () =>
   // receiver's with RECORD on keeps it among its surroundings. That is the
   // accepted caveat in the CHANGELOG; nothing may still claim it is never
   // recorded. If a filter is ever added, this pin fails and the docs change.
-  const { ultraNetworkPin } = await import('./ultraNetwork.mjs');
+  const { ultraNetworkPin } = await import('../server/shared/ultraNetwork.mjs');
   const { createDeviceRecorder } = await import('./data/deviceRecorder.js');
   const now = Date.parse('2026-09-29T12:00:00Z');
   const pin = ultraNetworkPin(

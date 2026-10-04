@@ -1,13 +1,28 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { areaOverlapsBox } from './area.js';
 import {
   AUSTIN_COVERAGE_BOX,
+  BRITISH_COLUMBIA_BOX,
+  CALGARY_BOX,
   CALIFORNIA_BOX,
   CCTV_LIVE_PACK_RETRY_MS,
   CCTV_LIVE_PACK_TTL_MS,
   CCTV_LIVE_PACK_WAIT_MS,
   DEFAULT_AUSTIN_ROWS_URL,
+  DEFAULT_CALGARY_ROWS_URL,
+  DEFAULT_TALLINN_SOURCE_FILE,
+  DEFAULT_TXDOT_DISTRICTS,
+  DEFAULT_WARENDORF_SOURCE_FILE,
+  DELAWARE_BOX,
+  ESTONIA_BOX,
+  FINLAND_BOX,
   GREATER_LONDON_BOX,
+  NSW_BOX,
+  ONTARIO_BOX,
+  TALLINN_BOX,
+  TEXAS_BOX,
+  WARENDORF_BOX,
 } from './constants.js';
 import { readJsonFile, writeJsonFileAtomic } from './json-file.js';
 import { withoutSchoolCameras } from './school-filter.js';
@@ -16,7 +31,33 @@ import {
   loadAustinSourcesFromOpenData,
   loadCaltransSourcesFromOpenData,
   loadTflSourcesFromOpenData,
+  loadOntarioSourcesFromOpenData,
+  loadFintrafficSourcesFromOpenData,
+  loadDriveBcSourcesFromOpenData,
+  loadTxdotSourcesFromOpenData,
+  loadTallinnSourcesFromCatalog,
+  loadTarkteeSourcesFromDatex,
+  loadWarendorfSourcesFromCatalog,
+  loadNswSourcesFromOpenData,
+  loadCalgarySourcesFromOpenData,
+  loadDelDOTSourcesFromOpenData,
 } from './sources.js';
+
+/** Env kill switch: unset or anything but "0" means enabled. */
+const envEnabled = (env, name) => String(env[name] ?? '').trim() !== '0';
+
+/** A curated pack file's identity (path, mtime and size), so an edit refetches. */
+function packFileKey(file, sourceRoot) {
+  const resolved = path.isAbsolute(file)
+    ? file
+    : path.resolve(sourceRoot || process.cwd(), file);
+  try {
+    const stat = fs.statSync(resolved);
+    return `${resolved}:${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return `${resolved}:missing`;
+  }
+}
 
 const LIVE_PACK_FORMAT = 'gev-cctv-live/1';
 
@@ -24,8 +65,10 @@ const LIVE_PACK_FORMAT = 'gev-cctv-live/1';
  * The keyless open-data packs downloaded while the server runs. None has a
  * default size or cap: each returns every camera its feed lists. None
  * downloads at startup either: a pack loads only when a /sources area overlaps
- * its coverage box, its country is enabled, and (Caltrans) it is configured.
- * `key` names what the download depends on, so a changed setting refetches.
+ * its coverage box, its country is enabled, and (Caltrans, TxDOT) it is
+ * configured. CCTV_<PACK>_ENABLED=0 turns a pack off (TfL, Ontario, Fintraffic,
+ * DriveBC, TxDOT, Tallinn, Tarktee, Warendorf, NSW, Calgary, DelDOT). `key`
+ * names what the download depends on, so a changed setting refetches.
  */
 export const CCTV_LIVE_PACKS = Object.freeze([
   {
@@ -52,7 +95,118 @@ export const CCTV_LIVE_PACKS = Object.freeze([
     key: () => 'jamcam',
     load: loadTflSourcesFromOpenData,
   },
+  {
+    name: 'ontario',
+    country: 'CA',
+    region: 'ON',
+    box: ONTARIO_BOX,
+    enabled: (env) => envEnabled(env, 'CCTV_ONTARIO_ENABLED'),
+    key: () => 'ontario-511',
+    load: loadOntarioSourcesFromOpenData,
+  },
+  {
+    name: 'fintraffic',
+    country: 'FI',
+    box: FINLAND_BOX,
+    enabled: (env) => envEnabled(env, 'CCTV_FINTRAFFIC_ENABLED'),
+    key: () => 'weathercam',
+    load: loadFintrafficSourcesFromOpenData,
+  },
+  {
+    name: 'drivebc',
+    country: 'CA',
+    region: 'BC',
+    box: BRITISH_COLUMBIA_BOX,
+    enabled: (env) => envEnabled(env, 'CCTV_DRIVEBC_ENABLED'),
+    key: () => 'webcams',
+    load: loadDriveBcSourcesFromOpenData,
+  },
+  {
+    name: 'txdot',
+    country: 'US',
+    region: 'TX',
+    box: TEXAS_BOX,
+    enabled: (env) =>
+      envEnabled(env, 'CCTV_TXDOT_ENABLED') &&
+      String(env.CCTV_TXDOT_DISTRICTS ?? DEFAULT_TXDOT_DISTRICTS).trim() !== '',
+    key: (env) =>
+      String(env.CCTV_TXDOT_DISTRICTS ?? DEFAULT_TXDOT_DISTRICTS)
+        .toUpperCase()
+        .replace(/\s+/g, ''),
+    load: loadTxdotSourcesFromOpenData,
+  },
+  {
+    name: 'tallinn',
+    country: 'EE',
+    box: TALLINN_BOX,
+    enabled: (env) => envEnabled(env, 'CCTV_TALLINN_ENABLED'),
+    key: (env, sourceRoot) =>
+      packFileKey(
+        env.CCTV_TALLINN_SOURCES_FILE || DEFAULT_TALLINN_SOURCE_FILE,
+        sourceRoot,
+      ),
+    load: loadTallinnSourcesFromCatalog,
+  },
+  {
+    name: 'tarktee',
+    country: 'EE',
+    box: ESTONIA_BOX,
+    enabled: (env) => envEnabled(env, 'CCTV_TARKTEE_ENABLED'),
+    key: () => 'datex',
+    load: loadTarkteeSourcesFromDatex,
+  },
+  {
+    name: 'warendorf',
+    country: 'DE',
+    box: WARENDORF_BOX,
+    enabled: (env) => envEnabled(env, 'CCTV_WARENDORF_ENABLED'),
+    key: (env, sourceRoot) =>
+      packFileKey(
+        env.CCTV_WARENDORF_SOURCES_FILE || DEFAULT_WARENDORF_SOURCE_FILE,
+        sourceRoot,
+      ),
+    load: loadWarendorfSourcesFromCatalog,
+  },
+  {
+    name: 'nsw',
+    country: 'AU',
+    box: NSW_BOX,
+    enabled: (env) => envEnabled(env, 'CCTV_NSW_ENABLED'),
+    key: () => 'traffic-cam',
+    load: loadNswSourcesFromOpenData,
+  },
+  {
+    name: 'calgary',
+    country: 'CA',
+    region: 'AB',
+    box: CALGARY_BOX,
+    enabled: (env) => envEnabled(env, 'CCTV_CALGARY_ENABLED'),
+    key: (env) => String(env.CCTV_CALGARY_ROWS_URL || DEFAULT_CALGARY_ROWS_URL),
+    load: loadCalgarySourcesFromOpenData,
+  },
+  {
+    name: 'deldot',
+    country: 'US',
+    region: 'DE',
+    box: DELAWARE_BOX,
+    enabled: (env) => envEnabled(env, 'CCTV_DELDOT_ENABLED'),
+    key: () => 'videocamera',
+    load: loadDelDOTSourcesFromOpenData,
+  },
 ]);
+
+/**
+ * A live pack's cameras tagged with the pack they came from, and with the
+ * pack's country and province/state where the feed itself names none.
+ */
+function tagPackSources(pack, sources) {
+  return sources.map((source) => ({
+    ...source,
+    pack: pack.name,
+    country: source.country || pack.country,
+    ...(pack.region && !source.region ? { region: pack.region } : {}),
+  }));
+}
 
 /**
  * Area-triggered live packs with a memory and disk cache (`cctv-<name>.json`
@@ -66,6 +220,7 @@ export const CCTV_LIVE_PACKS = Object.freeze([
  */
 export function createCctvLivePacks({
   cacheDir = '',
+  sourceRoot = process.cwd(),
   env,
   fetchImpl,
   now = Date.now,
@@ -108,7 +263,9 @@ export function createCctvLivePacks({
     now() - state.at < ttlMs;
   const hasData = (pack) => {
     const state = states.get(pack.name);
-    return Boolean(state?.sources) && state.key === pack.key(envNow());
+    return (
+      Boolean(state?.sources) && state.key === pack.key(envNow(), sourceRoot)
+    );
   };
 
   /** Adopt the disk copy when it is for this key and newer than memory. */
@@ -131,7 +288,12 @@ export function createCctvLivePacks({
     // A copy saved before the school filter existed is cleaned on the way in.
     const { kept } = withoutSchoolCameras(saved.sources);
     if (!kept.length) return false;
-    Object.assign(state, { key, at: saved.at, sources: kept, partial: false });
+    Object.assign(state, {
+      key,
+      at: saved.at,
+      sources: tagPackSources(pack, kept),
+      partial: false,
+    });
     return true;
   }
 
@@ -142,10 +304,11 @@ export function createCctvLivePacks({
       await readDisk(pack, key);
       if (isFresh(state, key)) return;
     }
-    const loaded = await pack.load({ fetchImpl, env: envNow() });
+    const loaded = await pack.load({ fetchImpl, env: envNow(), sourceRoot });
     const partial = Boolean(loaded?.partial);
     // School cameras never reach memory, the disk copy or a response.
-    const { kept: sources, removed } = withoutSchoolCameras(loaded);
+    const { kept, removed } = withoutSchoolCameras(loaded);
+    const sources = tagPackSources(pack, kept);
     if (removed) {
       console.log(
         `[CCTV] ${pack.name} live pack: left out ${removed} school camera${removed === 1 ? '' : 's'}`,
@@ -183,7 +346,7 @@ export function createCctvLivePacks({
   /** Start (or join) a pack's refresh; null when nothing needs to run. */
   function ensure(pack) {
     const state = stateOf(pack);
-    const key = pack.key(envNow());
+    const key = pack.key(envNow(), sourceRoot);
     if (isFresh(state, key)) return null;
     if (state.loading) return state.loading;
     if (state.failedKey === key && now() - state.failedAt < retryMs)
@@ -280,7 +443,8 @@ export function createCctvLivePacks({
         let adopted = false;
         for (const pack of packs) {
           if (!turnedOn(pack, countries) || hasData(pack)) continue;
-          if (await readDisk(pack, pack.key(envNow()))) adopted = true;
+          if (await readDisk(pack, pack.key(envNow(), sourceRoot)))
+            adopted = true;
         }
         return adopted;
       })();

@@ -57,7 +57,7 @@ import {
   ultraTokenSendAllowed,
   ultraHelpSmsLink,
   ultraClientAddress,
-} from './ultraTokens.mjs';
+} from '../server/shared/ultraTokens.mjs';
 
 const NOW = Date.parse('2026-09-27T18:00:00Z');
 const PHONE_KEY = /^[A-Za-z0-9_-]{43}$/;
@@ -1082,7 +1082,8 @@ test('the module loads where Buffer and node:crypto are only stubs (the browser 
   // must still touch neither Buffer nor crypto until a server-side function
   // is called. A child process with the Buffer global removed stands in for
   // the browser.
-  const moduleUrl = new URL('./ultraTokens.mjs', import.meta.url).href;
+  const moduleUrl = new URL('../server/shared/ultraTokens.mjs', import.meta.url)
+    .href;
   const script = [
     'delete globalThis.Buffer;',
     `const m = await import(${JSON.stringify(moduleUrl)});`,

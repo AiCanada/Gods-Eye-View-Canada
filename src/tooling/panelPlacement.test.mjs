@@ -5,8 +5,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { expandApplicationHtml } from '../../build/application-html.js';
 
-const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+const html = expandApplicationHtml(readFileSync(new URL('../../index.html', import.meta.url), 'utf8'));
 const between = (start, end) => {
   const from = html.indexOf(start);
   const to = html.indexOf(end, from);
@@ -21,8 +22,9 @@ test('left stack: AI Risk & Truth Assessment, CCTV, Ultra, Social Media Analysis
   // The rail's own closing tag is the two-space-indented one; the Contacts
   // aside inside Context closes deeper.
   const right = between('<aside id="right-context-rail">', '\n  </aside>');
-  // Radio is the rail's last member, below Scenes, but never a tab.
-  assert.deepEqual(panelOrder(right), ['data-panel', 'global-context-panel', 'sst-panel', 'scene-panel', 'radio-panel']);
+  // Radio is the rail's last member, below Scenes, but never a tab. Weather and
+  // Recent Imagery are hidden until a product or imagery day is chosen.
+  assert.deepEqual(panelOrder(right), ['data-panel', 'weather-panel', 'recent-imagery-panel', 'global-context-panel', 'sst-panel', 'scene-panel', 'radio-panel']);
 });
 
 test('the LLM box collapses like the others and is titled AI Risk & Truth Assessment', () => {

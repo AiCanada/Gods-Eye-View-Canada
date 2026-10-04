@@ -34,6 +34,13 @@ function setup(t, sources, env = {}) {
     CCTV_SOURCES_FILE: file,
     CCTV_SOURCES_JSON: undefined,
     CCTV_COUNTRIES: 'CA,US',
+    // Only the pack file under test: the area-triggered live packs (Ontario
+    // 511, TxDOT, ...) would otherwise download for these places.
+    ...Object.fromEntries(
+      ['ONTARIO', 'FINTRAFFIC', 'DRIVEBC', 'TXDOT', 'TALLINN', 'TARKTEE', 'WARENDORF', 'NSW', 'CALGARY', 'DELDOT'].map(
+        (name) => [`CCTV_${name}_ENABLED`, '0'],
+      ),
+    ),
     CCTV_STREETVIEW_FALLBACK: undefined,
     CCTV_BROWSER_DIRECT_HOSTS: undefined,
     ROAD511_API_KEY: undefined,

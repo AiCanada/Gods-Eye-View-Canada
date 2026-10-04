@@ -28,8 +28,10 @@ export function isTrackingClickGesture(gesture = {}) {
   const durationMs = Number.isFinite(gesture.durationMs)
     ? Math.max(0, gesture.durationMs)
     : Number.POSITIVE_INFINITY;
-  return isTrackingSelectionGesture(gesture)
-    && durationMs <= MAX_TRACKING_CLICK_DURATION_MS;
+  return (
+    isTrackingSelectionGesture(gesture) &&
+    durationMs <= MAX_TRACKING_CLICK_DURATION_MS
+  );
 }
 
 /**
@@ -53,7 +55,12 @@ export function bindTrackingClickGesture(handler, onClick, options = {}) {
   let completedGesture = null;
 
   const appendTravel = (position) => {
-    if (!pressActive || !Number.isFinite(position?.x) || !Number.isFinite(position?.y)) return;
+    if (
+      !pressActive ||
+      !Number.isFinite(position?.x) ||
+      !Number.isFinite(position?.y)
+    )
+      return;
     if (previousPosition) {
       travelPx += Math.hypot(
         position.x - previousPosition.x,
@@ -96,6 +103,8 @@ export function bindTrackingClickGesture(handler, onClick, options = {}) {
     if (pressActive) finishPress(click?.position);
     const gesture = completedGesture || { travelPx: 0, durationMs: 0 };
     completedGesture = null;
+    // A tool owns the pointer: a draw vertex placed over an aircraft is a
+    // vertex, not a track request (src/data/inputOwnership.js).
     if (!isPointerFree()) return;
     onClick(click, gesture);
   }, eventTypes.LEFT_CLICK);

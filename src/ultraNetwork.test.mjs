@@ -84,7 +84,7 @@ import {
   ultraWatchingCount,
   ultraGeocodeKey,
   ultraNeedsGeocode,
-} from './ultraNetwork.mjs';
+} from '../server/shared/ultraNetwork.mjs';
 import {
   composeUltraToken,
   newUltraToken,
@@ -92,7 +92,7 @@ import {
   sealUltraToken,
   openUltraToken,
   normalizeUltraInboxRecord,
-} from './ultraTokens.mjs';
+} from '../server/shared/ultraTokens.mjs';
 import { ultraHelpMessage } from './ultraHelp.mjs';
 import { securityFeedPolicyRecords } from './deviceFeedsCore.mjs';
 import {
@@ -100,7 +100,7 @@ import {
   ULTRA_SMS_HOST_LIMIT,
   ULTRA_SMS_OWN_RESERVE,
   ultraSmsRelayMaterial,
-} from './ultraSmsRelay.mjs';
+} from '../server/shared/ultraSmsRelay.mjs';
 
 const NOW = Date.parse('2026-09-28T18:00:00Z');
 const KEY = Buffer.alloc(32, 7);
@@ -3062,7 +3062,10 @@ test('the module loads where Buffer and node:crypto are only stubs (the browser 
   // still touch neither Buffer nor crypto until a function that needs them
   // runs. A child process with the Buffer global removed stands in for the
   // browser, exactly as the ultraTokens pin does.
-  const moduleUrl = new URL('./ultraNetwork.mjs', import.meta.url).href;
+  const moduleUrl = new URL(
+    '../server/shared/ultraNetwork.mjs',
+    import.meta.url,
+  ).href;
   const script = [
     'delete globalThis.Buffer;',
     `const m = await import(${JSON.stringify(moduleUrl)});`,

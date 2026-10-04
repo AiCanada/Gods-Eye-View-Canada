@@ -6,7 +6,7 @@ import {
   listSocialLogins,
   removeSocialLogin,
   saveSocialLogin,
-} from '../../src/socialAccounts.mjs';
+} from '../shared/socialAccounts.mjs';
 
 const BODY_LIMIT = 8192;
 const HEADERS = Object.freeze({
@@ -38,14 +38,17 @@ function readBody(req, limit) {
       }
       chunks.push(chunk);
     });
-    req.on('end', () => finish({ overflowed: false, body: Buffer.concat(chunks) }));
+    req.on('end', () =>
+      finish({ overflowed: false, body: Buffer.concat(chunks) }),
+    );
     req.on('error', () => finish({ overflowed: false, body: null }));
   });
 }
 
 async function readJsonBody(req) {
   const read = await readBody(req, BODY_LIMIT);
-  if (read.overflowed) return { ok: false, status: 413, error: 'Request too large' };
+  if (read.overflowed)
+    return { ok: false, status: 413, error: 'Request too large' };
   if (!read.body) return { ok: false, status: 400, error: 'Invalid JSON' };
   try {
     const value = JSON.parse(read.body.toString('utf8') || '{}');
@@ -72,7 +75,11 @@ export function socialAccountsProxy({ sourceRoot = defaultSourceRoot } = {}) {
   const allow = makeRateLimiter({ windowMs: 60_000, max: 20, globalMax: 60 });
   function install(middlewares) {
     middlewares.use('/api/social/accounts', async (req, res) => {
-      if (req.method !== 'GET' && req.method !== 'POST' && req.method !== 'DELETE') {
+      if (
+        req.method !== 'GET' &&
+        req.method !== 'POST' &&
+        req.method !== 'DELETE'
+      ) {
         send(res, 405, { error: 'Method Not Allowed' });
         return;
       }
@@ -91,12 +98,20 @@ export function socialAccountsProxy({ sourceRoot = defaultSourceRoot } = {}) {
       });
       if (!admitted.ok) {
         send(res, admitted.status || 403, {
-          error: String(admitted.error || 'Refused').replace('Provider Settings', 'Saved logins'),
+          error: String(admitted.error || 'Refused').replace(
+            'Provider Settings',
+            'Saved logins',
+          ),
         });
         return;
       }
       if (!allow(clientKey(req))) {
-        send(res, 429, { error: 'Rate limit exceeded' }, { 'Retry-After': '10' });
+        send(
+          res,
+          429,
+          { error: 'Rate limit exceeded' },
+          { 'Retry-After': '10' },
+        );
         return;
       }
       try {
@@ -113,15 +128,16 @@ export function socialAccountsProxy({ sourceRoot = defaultSourceRoot } = {}) {
           send(res, body.status, { error: body.error });
           return;
         }
-        const result = req.method === 'POST'
-          ? saveSocialLogin(sourceRoot, {
-            platform: body.value.platform,
-            userId: body.value.userId,
-            password: body.value.password,
-            apiKey: body.value.apiKey,
-            mode: body.value.mode,
-          })
-          : removeSocialLogin(sourceRoot, String(body.value.platform || ''));
+        const result =
+          req.method === 'POST'
+            ? saveSocialLogin(sourceRoot, {
+                platform: body.value.platform,
+                userId: body.value.userId,
+                password: body.value.password,
+                apiKey: body.value.apiKey,
+                mode: body.value.mode,
+              })
+            : removeSocialLogin(sourceRoot, String(body.value.platform || ''));
         if (!result.ok) {
           const status = result.error === SOCIAL_LOGIN_LOCKED ? 409 : 400;
           send(res, status, { error: result.error });

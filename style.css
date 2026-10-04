@@ -12,7 +12,10 @@
 @import './src/ui/styles/ultra.css';
 @import './src/ui/styles/scenes.css';
 @import './src/ui/styles/social.css';
+@import './src/ui/styles/bhote-koshi.css';
+@import './src/ui/styles/recent-imagery.css';
 @import './src/ui/styles/recording.css';
+@import './src/ui/styles/embed.css';
 @import './src/ui/styles/responsive.css';
 @import './src/ui/styles/command-dock.css';
 @import './src/ui/styles/command-dock-compact.css';
@@ -22,3 +25,7 @@
 @import './src/ui/styles/first-run.css';
 @import './src/ui/styles/provider-settings.css';
 @import './src/ui/styles/ask.css';
+
+@import './src/ui/styles/weather.css';
+@import './src/ui/styles/panel-surfaces.css';
+@import './src/ui/styles/cyber.css';

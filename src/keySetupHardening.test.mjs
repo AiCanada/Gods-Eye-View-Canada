@@ -7,7 +7,7 @@ import {
   hardenCredentialFile,
   hardenPrivateFolder,
   replaceCredentialStore,
-} from './keySetupHardening.mjs';
+} from '../server/standalone/key-setup-hardening.mjs';
 
 const FILE = path.join(os.tmpdir(), 'provider-settings-test');
 const USER_SID = 'S-1-5-21-1111111111-2222222222-3333333333-1001';
@@ -66,6 +66,21 @@ test('macOS ACL removal failure stops before chmod and fails closed', () => {
     [],
     'mode bits must not disguise an ACL-removal failure',
   );
+});
+
+test('macOS ACL removal spawns Apple /bin/chmod by absolute path, not via PATH', () => {
+  const spawned = [];
+  hardenCredentialFile(FILE, {
+    platform: 'darwin',
+    fileSystem: fileSystemWithMode(0o100600),
+    spawn(command, args) {
+      spawned.push([command, args]);
+      return { status: 0, signal: null };
+    },
+  });
+  // A coreutils-first PATH (Nix home-manager, Homebrew) resolves bare `chmod`
+  // to GNU chmod, which has no `-N` and would fail every save.
+  assert.deepEqual(spawned, [['/bin/chmod', ['-N', FILE]]]);
 });
 
 test('POSIX hardening verifies the resulting 0600 mode', () => {

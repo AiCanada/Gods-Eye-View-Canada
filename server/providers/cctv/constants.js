@@ -115,16 +115,215 @@ export const US_COORDINATE_BOX = {
   west: -179.5,
   east: -64,
 };
+/** Coverage boxes of the other live packs: each downloads only when a
+ * selected area overlaps its box (see live-packs.js). */
+/** Ontario, for Ontario 511. */
+export const ONTARIO_BOX = {
+  south: 41.6,
+  north: 56.9,
+  west: -95.2,
+  east: -74.3,
+};
+/** Finland, for Fintraffic weathercams. */
+export const FINLAND_BOX = { south: 59.5, north: 70.5, west: 19, east: 32 };
+/** British Columbia (with its border crossings), for DriveBC. */
+export const BRITISH_COLUMBIA_BOX = {
+  south: 48,
+  north: 60.5,
+  west: -139.5,
+  east: -114,
+};
+/** Texas, for TxDOT ITS. */
+export const TEXAS_BOX = { south: 25.5, north: 36.7, west: -107, east: -93.4 };
+/** Tallinn, for its intersection cameras. */
+export const TALLINN_BOX = {
+  south: 59.33,
+  north: 59.53,
+  west: 24.5,
+  east: 25.0,
+};
+/** Estonia, for Transpordiamet (Tarktee) road cameras. */
+export const ESTONIA_BOX = { south: 57.5, north: 59.8, west: 21.7, east: 28.3 };
+/** Warendorf district (Germany), for its municipal webcam. */
+export const WARENDORF_BOX = {
+  south: 51.8,
+  north: 52.1,
+  west: 7.75,
+  east: 8.3,
+};
+/** New South Wales (with the ACT and Lord Howe Island), for Live Traffic NSW. */
+export const NSW_BOX = { south: -38, north: -28, west: 140.9, east: 159.2 };
+/** Calgary, for Open Calgary traffic cameras. */
+export const CALGARY_BOX = {
+  south: 50.8,
+  north: 51.25,
+  west: -114.4,
+  east: -113.8,
+};
+/** Delaware, for DelDOT. */
+export const DELAWARE_BOX = {
+  south: 38.4,
+  north: 39.9,
+  west: -75.8,
+  east: -75.0,
+};
 /** A Road511 listing camera this close to an Austin open-data camera is the
  * same pole; the Austin one has a still, so the listing entry is hidden. */
 export const CCTV_AUSTIN_DEDUPE_M = 30;
 /** Caltrans CCTV: one JSON feed per district, identical schema statewide. */
+/** TxDOT ITS: one keyless JSON catalog per district (25 districts statewide). */
+export const TXDOT_ORIGIN = 'https://its.txdot.gov';
+export const TXDOT_CCTV_STATUS_URL = (district) =>
+  `${TXDOT_ORIGIN}/its/DistrictIts/GetCctvStatusListByDistrict?districtCode=${encodeURIComponent(district)}`;
+/** Per-camera frame. Returns JSON `{snippet:<base64 jpeg>}`, not an image body;
+ * media.js decodes it (fetchTxdotSnapshot) and only for this origin. */
+export const TXDOT_CCTV_SNAPSHOT_URL = `${TXDOT_ORIGIN}/its/DistrictIts/GetCctvSnapshotByIcdId`;
+/** Valid TxDOT district codes (the ITS map's own districtCodes list). */
+export const TXDOT_DISTRICTS = new Set([
+  'ABL',
+  'AMA',
+  'ATL',
+  'AUS',
+  'BMT',
+  'BWD',
+  'BRY',
+  'CHS',
+  'CRP',
+  'DAL',
+  'ELP',
+  'FTW',
+  'HOU',
+  'LRD',
+  'LBB',
+  'LFK',
+  'ODA',
+  'PAR',
+  'PHR',
+  'SJT',
+  'SAT',
+  'TYL',
+  'WAC',
+  'WFS',
+  'YKM',
+]);
+/** Districts fetched when CCTV_TXDOT_DISTRICTS is unset: Austin and San
+ * Antonio. CCTV_TXDOT_DISTRICTS opens up the rest ("AUS,SAT,HOU,DAL,FTW" for
+ * the five big metros, or any of the 25 codes); an empty value turns the pack
+ * off. Each listed district returns every online camera (no cap). */
+export const DEFAULT_TXDOT_DISTRICTS = 'AUS,SAT';
+/** Ground-elevation priors in metres, by district. The TxDOT payload carries
+ * no elevation, and on a keyless (no-tileset) stack the client's ground snap
+ * never fires, so this prior is the only height a camera gets there. Texas
+ * spans sea level (Houston) to ~1,140 m (El Paso). */
+export const TXDOT_DISTRICT_ELEVATION_M = Object.freeze({
+  ABL: 520,
+  AMA: 1099,
+  ATL: 105,
+  AUS: 149,
+  BMT: 5,
+  BWD: 425,
+  BRY: 111,
+  CHS: 250,
+  CRP: 7,
+  DAL: 131,
+  ELP: 1140,
+  FTW: 199,
+  HOU: 15,
+  LRD: 132,
+  LBB: 992,
+  LFK: 91,
+  ODA: 890,
+  PAR: 185,
+  PHR: 30,
+  SJT: 585,
+  SAT: 198,
+  TYL: 165,
+  WAC: 143,
+  WFS: 289,
+  YKM: 70,
+});
+export const TXDOT_DEFAULT_ELEVATION_M = 150;
 export const CALTRANS_CCTV_URL = (district) =>
   `https://cwwp2.dot.ca.gov/data/d${district}/cctv/cctvStatusD${String(district).padStart(2, '0')}.json`;
 /** TfL JamCams: one keyless list endpoint; frames live on a public S3 bucket. */
 export const TFL_JAMCAM_URL = 'https://api.tfl.gov.uk/Place/Type/JamCam';
 export const TFL_IMAGE_ORIGIN =
   'https://s3-eu-west-1.amazonaws.com/jamcams.tfl.gov.uk/';
+/** Ontario 511: keyless CARS/511 camera catalog; frame URLs are still images. */
+export const ONTARIO_511_CAMERAS_URL =
+  'https://511on.ca/api/v2/get/cameras?format=json&lang=en';
+export const ONTARIO_511_IMAGE_ORIGIN = 'https://511on.ca/map/Cctv/';
+/** Fintraffic road weather cameras (Digitraffic): one keyless GeoJSON list
+ * covering all of Finland. Each STATION carries N presets (fixed camera views)
+ * that share the station position; one preset is one camera here. */
+export const FINTRAFFIC_STATIONS_URL =
+  'https://tie.digitraffic.fi/api/weathercam/v1/stations';
+/** Frames: `<origin><presetId>.jpg`. Preset ids are synthesized into this
+ * origin rather than read from the payload, so no upstream field can steer the
+ * frame proxy off-host. */
+export const FINTRAFFIC_IMAGE_ORIGIN = 'https://weathercam.digitraffic.fi/';
+/** Digitraffic asks every client to identify itself on API calls. */
+export const DIGITRAFFIC_USER = 'gods-eye-view';
+/** Ground-elevation prior, in metres, for stations that report no altitude.
+ * 228 of 809 stations carry a real metre value (median 94 m); the rest report
+ * 0, which means "not reported" rather than sea level — Kouvola (~80 m of real
+ * elevation) reports 0. The observed median stands in for those. */
+export const FINTRAFFIC_GROUND_ELEVATION_M = 90;
+/** DriveBC highway cameras (British Columbia): the keyless camera list served by
+ * the DriveBC.ca site (github.com/bcgov/DriveBC.ca). The DataBC HighwayCams CSV
+ * lists the same cameras but still carries retired images.drivebc.ca frame URLs,
+ * so frames are built from the numeric camera id on the current image host. */
+export const DRIVEBC_WEBCAMS_URL = 'https://www.drivebc.ca/api/webcams/';
+export const DRIVEBC_IMAGE_URL = (id) =>
+  `https://www.drivebc.ca/images/${id}.jpg`;
+/** Tallinn intersection cameras: curated catalog + public stills on ristmikud.tallinn.ee. */
+export const DEFAULT_TALLINN_SOURCE_FILE = 'config/cctv_sources.tallinn.json';
+export const TALLINN_IMAGE_ORIGIN = 'https://ristmikud.tallinn.ee/';
+/** Transpordiamet / Tarktee road-weather cameras: keyless DATEX2 feeds. */
+export const TARKTEE_LOCATIONS_URL =
+  'https://tarktee.transpordiamet.ee/api/v1/datex/roadCameraLocations';
+export const TARKTEE_IMAGES_URL =
+  'https://tarktee.transpordiamet.ee/api/v1/datex/roadCameraImages';
+export const TARKTEE_IMAGE_ORIGIN = 'https://tarktee.transpordiamet.ee/images/';
+/** Warendorf (Germany): the Marktplatz municipal webcam from a curated catalog file. */
+export const DEFAULT_WARENDORF_SOURCE_FILE =
+  'config/cctv_sources.warendorf.json';
+export const WARENDORF_IMAGE_ORIGINS = Object.freeze([
+  'http://webcam.warendorf.de/',
+  'https://www.kreis-warendorf.de/',
+]);
+/** Live Traffic NSW (Transport for NSW): keyless public camera catalog. */
+export const NSW_CAMERAS_URL =
+  'https://data.livetraffic.com/cameras/traffic-cam.json';
+export const NSW_IMAGE_ORIGIN = 'https://webcams.transport.nsw.gov.au/';
+/**
+ * The NSW webcam host answers non-browser clients with HTTP 200 and a short
+ * HTML body instead of the frame (verified 2026-09-13), so the proxy
+ * identifies as a browser for that one host. See media.js.
+ */
+export const NSW_IMAGE_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+/**
+ * Longest NSW `view` sentence still usable as a label. NSW occasionally
+ * repurposes `view` for a multi-paragraph works notice; real descriptions top
+ * out around 120 characters.
+ */
+export const NSW_MAX_VIEW_LABEL = 140;
+/** Open Calgary traffic cameras: one keyless Socrata endpoint for the whole
+ * city; frames are stills on a City of Calgary host. */
+export const DEFAULT_CALGARY_ROWS_URL =
+  'https://data.calgary.ca/resource/k7p9-kppz.json?$limit=500';
+/** The only origin Calgary camera frames may come from. The catalog publishes
+ * most rows as `http://`; that host serves HTTPS and 301-redirects to it, so
+ * URLs are upgraded and then pinned here before registration. */
+export const CALGARY_IMAGE_ORIGIN = 'https://trafficcam.calgary.ca/';
+/** Hard ceiling on the Calgary catalog body. The whole city is ~215 rows and
+ * under 100 KB; this only exists so an upstream that streams an unbounded
+ * body cannot be buffered without limit. */
+export const CALGARY_MAX_CATALOG_BYTES = 4 * 1024 * 1024;
+
+/** DelDOT CCTV: one keyless statewide JSON catalog; live video via RTMP-over-HTTP (rtmpt:80). */
+export const DELDOT_CCTV_URL = 'https://tmc.deldot.gov/json/videocamera.json';
 /** Per-provider catalog-fetch timeout. Bounds a live pack download so one
  * stalled upstream can't leave it pending forever — a hung fetch aborts, the
  * loader returns [], and the pack retries later. */
@@ -144,6 +343,11 @@ export const CCTV_FRAME_MAX_REDIRECTS = 2;
 
 /** Deadline for upstream response headers; live bodies keep streaming afterward. */
 export const CCTV_MEDIA_FETCH_TIMEOUT_MS = 15 * 1000;
+/** Silence a live body may carry before the relay gives up on it. Twice the
+ * header deadline, because a camera that is merely slow between frames is far
+ * more common than one that has died mid-stream, and a viewer would rather
+ * wait than be dropped. */
+export const CCTV_MEDIA_IDLE_TIMEOUT_MS = 30 * 1000;
 /** Declared size ceiling for fixed media responses. */
 export const CCTV_MEDIA_MAX_BODY_BYTES = 64 * 1024 * 1024;
 

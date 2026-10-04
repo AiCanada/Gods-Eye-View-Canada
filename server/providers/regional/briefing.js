@@ -3,7 +3,7 @@ import {
   resolvedAllowedHosts,
   servedRequestOrigin,
 } from '../common/allowed-hosts.js';
-import { fetchRegionalPlace } from './place.js';
+import { fetchNominatimPlace, fetchRegionalPlace } from './place.js';
 import { fetchRegionalWeather } from './weather.js';
 import {
   fetchAlJazeeraCoverage,
@@ -19,7 +19,7 @@ import {
 import { fetchCountryGroundTruth } from './country-ground-truth.js';
 import { validRegionalPoint } from './query.js';
 import { coalesceProxyRequest } from '../common/http.js';
-import { locationRegionKey } from '../../../src/data/regionalBrief.js';
+import { locationRegionKey } from '../../../src/data/regionalModel.js';
 
 /** Every public-news answer, refusals included: JSON, never cached, never sniffed. */
 const SOCIAL_NEWS_HEADERS = Object.freeze({
@@ -37,17 +37,7 @@ const REGIONAL_BRIEF_STALE_MS = 60 * 60_000;
 
 const REGIONAL_BRIEF_MAX_CACHE = 120;
 
-const _regionalBriefCache = new Map();
-
-const _regionalBriefInFlight = new Map();
-
 const _groundTruthInFlight = new Map();
-
-const _regionalBriefRateLimiter = makeRateLimiter({
-  windowMs: 60_000,
-  max: 30,
-  globalMax: 90,
-});
 
 // Which province, state or country a point is in: the key a location switch
 // compares. The answer for a spot does not change, so it is kept for a day.
@@ -103,14 +93,6 @@ const _socialNewsRateLimiter = makeRateLimiter({
   globalMax: 60,
 });
 
-function trimRegionalBriefCache() {
-  while (_regionalBriefCache.size > REGIONAL_BRIEF_MAX_CACHE) {
-    const oldest = _regionalBriefCache.keys().next().value;
-    if (oldest === undefined) break;
-    _regionalBriefCache.delete(oldest);
-  }
-}
-
 function trimRiskNewsCache() {
   while (_riskNewsCache.size > RISK_NEWS_MAX_CACHE) {
     const oldest = _riskNewsCache.keys().next().value;
@@ -144,7 +126,7 @@ function cacheLocationRegion(key, payload, ttlMs) {
 function startLocationRegionLookup(point, key) {
   const controller = new AbortController();
   const flight = { promise: null, controller, waiters: 0 };
-  flight.promise = fetchRegionalPlace(point, { signal: controller.signal })
+  flight.promise = fetchNominatimPlace(point, { signal: controller.signal })
     .then((place) => {
       if (!place) {
         cacheLocationRegion(
@@ -172,10 +154,28 @@ function startLocationRegionLookup(point, key) {
   return flight;
 }
 
-function regionalBriefProxy() {
+function regionalBriefProxy({ placeProvider = fetchRegionalPlace } = {}) {
+  const _regionalBriefCache = new Map();
+
+  const _regionalBriefInFlight = new Map();
+
+  const _regionalBriefRateLimiter = makeRateLimiter({
+    windowMs: 60_000,
+    max: 30,
+    globalMax: 90,
+  });
+
+  function trimRegionalBriefCache() {
+    while (_regionalBriefCache.size > REGIONAL_BRIEF_MAX_CACHE) {
+      const oldest = _regionalBriefCache.keys().next().value;
+      if (oldest === undefined) break;
+      _regionalBriefCache.delete(oldest);
+    }
+  }
+
   async function refresh(point, key) {
     const [placeResult, weatherResult] = await Promise.allSettled([
-      fetchRegionalPlace(point),
+      placeProvider(point),
       fetchRegionalWeather(point),
     ]);
     const place = placeResult.status === 'fulfilled' ? placeResult.value : null;

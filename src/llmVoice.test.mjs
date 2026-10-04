@@ -7,11 +7,11 @@ import path from 'node:path';
 import { llmAskProxy } from '../server/providers/llm.js';
 import { realtimeInstructions } from '../server/providers/openai/instructions.js';
 import { GEV_REALTIME_TOOLS } from '../server/providers/openai/tools.js';
-import { LOCAL_PROVIDER_CHANGED_MESSAGE } from './localIntegrity.mjs';
+import { LOCAL_PROVIDER_CHANGED_MESSAGE } from '../server/shared/localIntegrity.mjs';
 import {
   bindLocalIntegrityRoot,
   noteLocalProvidersSaved,
-} from './localIntegrity.mjs';
+} from '../server/shared/localIntegrity.mjs';
 
 const savedRateLimit = process.env.GEV_RATELIMIT_OPENAI_PER_MIN;
 delete process.env.GEV_RATELIMIT_OPENAI_PER_MIN;

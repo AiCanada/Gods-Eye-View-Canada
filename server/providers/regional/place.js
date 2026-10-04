@@ -1,24 +1,59 @@
 import { makeRateLimiter, clientKey } from '../common/rate-limit.js';
 import { coalesceProxyRequest } from '../common/http.js';
 import { fetchRegionalJson } from './http.js';
-import { normalizeRegionalPlace } from '../../../src/data/regionalBrief.js';
+import { normalizeRegionalPlace } from '../../../src/data/regionalModel.js';
+import { naturalRegionAtPoint } from '../../../src/data/naturalEarthRegions.js';
 import {
   nominatimToGeocodeResult,
   nominatimViewboxFromBounds,
 } from '../../../src/nominatimGeocode.js';
 
-const NOMINATIM_SPACING_MS = 1100;
+/**
+ * The usage policy for the public Nominatim instance asks for a User-Agent or
+ * Referer that identifies the application, and states that stock library
+ * agents will not do. Both are sent.
+ */
 const NOMINATIM_HEADERS = Object.freeze({
   'User-Agent':
     'gods-eye-view/0.1 (+https://github.com/AiCanada/Gods-Eye-View-Canada)',
   Referer: 'https://github.com/AiCanada/Gods-Eye-View-Canada',
 });
+
+/**
+ * Minimum spacing between upstream calls. The policy states an absolute
+ * maximum of one request per second; 1.1 s keeps clock jitter from crossing it.
+ */
+const NOMINATIM_MIN_SPACING_MS = 1100;
+
+/**
+ * How many searches may be waiting for their turn.
+ *
+ * One request per second and an unbounded queue are incompatible: a burst of
+ * searches would keep the upstream busy long after everyone who asked has given
+ * up, which is exactly the load the policy asks callers not to create. Past
+ * this depth a search is refused at once instead of being promised a slot
+ * minutes away.
+ */
 const NOMINATIM_MAX_PENDING = 4;
+
+/**
+ * How long a queued search may wait before it is not worth sending. The
+ * browser gives up well before this, so anything reaching the front later than
+ * this is answering nobody.
+ */
 const NOMINATIM_MAX_WAIT_MS = 10_000;
+
 const NOMINATIM_SEARCH_CACHE_MS = 5 * 60_000;
+
 const NOMINATIM_SEARCH_MAX_CACHE = 80;
+
 const NOMINATIM_SEARCH_MAX_QUERY = 200;
 
+// The pacer is deliberately module state while everything else here is
+// per-instance. One request per second is a budget for the whole application,
+// not for each provider object: two instances each pacing themselves would
+// send two requests a second between them. Only last-resort forward searches
+// use this queue.
 let _nominatimQueue = Promise.resolve();
 
 let _nominatimLastRequestAt = 0;
@@ -42,52 +77,14 @@ function waitForNominatimTurn(waitMs, signal) {
   });
 }
 
-/**
- * Reverse-geocode a point through Nominatim. Every lookup shares one queue
- * spaced NOMINATIM_SPACING_MS apart (the public usage policy). A lookup whose
- * `signal` has aborted by its turn, or during the spacing wait, rejects with an
- * AbortError without calling Nominatim, so superseded lookups do not hold up
- * the ones behind them. A lookup already sent to Nominatim is not cancelled.
- * @param {{latitude: number, longitude: number}} point
- * @param {{signal?: AbortSignal}} [options]
- */
-function fetchRegionalPlace(point, { signal } = {}) {
-  const task = _nominatimQueue.then(async () => {
-    if (signal?.aborted) throw placeLookupAborted();
-    const waitMs = Math.max(
-      0,
-      NOMINATIM_SPACING_MS - (Date.now() - _nominatimLastRequestAt),
-    );
-    if (waitMs) await waitForNominatimTurn(waitMs, signal);
-    if (signal?.aborted) throw placeLookupAborted();
-    _nominatimLastRequestAt = Date.now();
-    const params = new URLSearchParams({
-      format: 'jsonv2',
-      lat: point.latitude.toFixed(5),
-      lon: point.longitude.toFixed(5),
-      zoom: '10',
-      addressdetails: '1',
-      'accept-language': 'en',
-    });
-    const payload = await fetchRegionalJson(
-      `https://nominatim.openstreetmap.org/reverse?${params}`,
-      {
-        headers: NOMINATIM_HEADERS,
-        redirect: 'error',
-      },
-    );
-    return normalizeRegionalPlace(payload);
-  });
-  _nominatimQueue = task.catch(() => null);
-  return task;
-}
-
+/** Raised when the queue is already as deep as it is allowed to get. */
 function queueFullError() {
   return Object.assign(new Error('Place search queue is full'), {
     code: 'NOMINATIM_QUEUE_FULL',
   });
 }
 
+/** Raised when a queued search waited so long that nobody is left to answer. */
 function abandonedError() {
   return Object.assign(new Error('Place search was abandoned'), {
     code: 'NOMINATIM_ABANDONED',
@@ -95,7 +92,97 @@ function abandonedError() {
 }
 
 /**
- * Construct the forward search adapter. Reverse lookups and searches share the
+ * Run one piece of upstream work, never closer than the policy spacing to the
+ * last one.
+ *
+ * `bounded` applies queue-depth and staleness limits to interactive forward
+ * searches. A `signal` that aborts while the work waits for its turn ends the
+ * wait early and the work is never sent, so superseded lookups do not hold up
+ * the ones behind them: a bounded search rejects with NOMINATIM_ABANDONED, a
+ * reverse lookup with an AbortError. Work already sent is not cancelled.
+ *
+ * @param {() => Promise<unknown>} work
+ * @param {{bounded?: boolean, signal?: AbortSignal}} [options]
+ */
+function enqueueNominatim(work, { bounded = false, signal } = {}) {
+  if (bounded && _nominatimPending >= NOMINATIM_MAX_PENDING)
+    return Promise.reject(queueFullError());
+  if (bounded) _nominatimPending += 1;
+  const queuedAt = Date.now();
+  const aborted = () => (bounded ? abandonedError() : placeLookupAborted());
+  const task = _nominatimQueue.then(async () => {
+    try {
+      if (signal?.aborted) throw aborted();
+      const waitMs = Math.max(
+        0,
+        NOMINATIM_MIN_SPACING_MS - (Date.now() - _nominatimLastRequestAt),
+      );
+      if (waitMs) await waitForNominatimTurn(waitMs, signal);
+      // Nobody is waiting for this any more: sending it would spend the one
+      // request per second the policy allows on an answer with no reader.
+      if (bounded && Date.now() - queuedAt > NOMINATIM_MAX_WAIT_MS)
+        throw abandonedError();
+      if (signal?.aborted) throw aborted();
+      _nominatimLastRequestAt = Date.now();
+      return await work();
+    } finally {
+      if (bounded) _nominatimPending -= 1;
+    }
+  });
+  _nominatimQueue = task.catch(() => null);
+  return task;
+}
+
+/** Construct the offline regional context provider from bundled Natural Earth polygons. */
+export function createRegionalPlaceProvider() {
+  return (point) => naturalRegionAtPoint(point.latitude, point.longitude);
+}
+
+/**
+ * Regional place context for the brief: offline, from bundled Natural Earth
+ * polygons, so a brief never sends the viewed point to a third party.
+ */
+export const fetchRegionalPlace = createRegionalPlaceProvider();
+
+/**
+ * Reverse-geocode a point through Nominatim: locality, province/state with its
+ * ISO 3166-2 code, and country code. Only the routes that need those fields
+ * call it, each on an explicit user action (the location switch's
+ * /api/location-region and the bot swarm's nearest city); the regional brief
+ * uses the offline Natural Earth provider above instead. Every
+ * lookup shares the one-request-per-second queue with forward searches. A
+ * lookup whose `signal` aborts before it is sent rejects with an AbortError.
+ * @param {{latitude: number, longitude: number}} point
+ * @param {{signal?: AbortSignal}} [options]
+ */
+export function fetchNominatimPlace(point, { signal } = {}) {
+  const params = new URLSearchParams({
+    format: 'jsonv2',
+    lat: point.latitude.toFixed(5),
+    lon: point.longitude.toFixed(5),
+    zoom: '10',
+    addressdetails: '1',
+    'accept-language': 'en',
+  });
+  return enqueueNominatim(
+    async () =>
+      normalizeRegionalPlace(
+        await fetchRegionalJson(
+          `https://nominatim.openstreetmap.org/reverse?${params}`,
+          { headers: NOMINATIM_HEADERS, redirect: 'error' },
+        ),
+      ),
+    { signal },
+  );
+}
+
+/**
+ * Construct the forward search adapter with a trusted endpoint.
+ *
+ * The policy asks that results be cached, and warns that a client repeating the
+ * same query may be treated as faulty, so an answer is remembered and identical
+ * searches already in flight share one upstream call rather than queueing
+ * behind each other. Reverse lookups and searches share the
  * one-request-per-second Nominatim budget.
  */
 export function createNominatimSearchProvider({
@@ -120,48 +207,32 @@ export function createNominatimSearchProvider({
       return { ...cached.payload, cached: true };
     }
     const { promise } = coalesceProxyRequest(inFlight, cacheKey, async () => {
-      if (_nominatimPending >= NOMINATIM_MAX_PENDING) throw queueFullError();
-      _nominatimPending += 1;
-      const queuedAt = Date.now();
-      const task = _nominatimQueue.then(async () => {
-        try {
-          const waitMs = Math.max(
-            0,
-            NOMINATIM_SPACING_MS - (Date.now() - _nominatimLastRequestAt),
-          );
-          if (waitMs) await waitForNominatimTurn(waitMs, signal);
-          if (Date.now() - queuedAt > NOMINATIM_MAX_WAIT_MS)
-            throw abandonedError();
-          if (signal?.aborted) throw abandonedError();
-          _nominatimLastRequestAt = Date.now();
-          const params = new URLSearchParams({
-            format: 'jsonv2',
-            q: query,
-            addressdetails: '1',
-            limit: '1',
-            'accept-language': 'en',
-          });
-          const viewbox = nominatimViewboxFromBounds(bounds);
-          if (viewbox) params.set('viewbox', viewbox);
-          const rows = await requestJson(`${endpoint}?${params}`, {
+      const params = new URLSearchParams({
+        format: 'jsonv2',
+        q: query,
+        addressdetails: '1',
+        limit: '1',
+        'accept-language': 'en',
+      });
+      const viewbox = nominatimViewboxFromBounds(bounds);
+      if (viewbox) params.set('viewbox', viewbox);
+      const rows = await enqueueNominatim(
+        () =>
+          requestJson(`${endpoint}?${params}`, {
             headers: NOMINATIM_HEADERS,
             redirect: 'error',
-          });
-          const result = nominatimToGeocodeResult(
-            Array.isArray(rows) ? rows[0] : null,
-          );
-          const payload = result
-            ? { status: 'OK', results: [result] }
-            : { status: 'ZERO_RESULTS', results: [] };
-          cache.set(cacheKey, { payload, cachedAt: Date.now() });
-          trimCache();
-          return payload;
-        } finally {
-          _nominatimPending -= 1;
-        }
-      });
-      _nominatimQueue = task.catch(() => null);
-      return await task;
+          }),
+        { bounded: true, signal },
+      );
+      const result = nominatimToGeocodeResult(
+        Array.isArray(rows) ? rows[0] : null,
+      );
+      const payload = result
+        ? { status: 'OK', results: [result] }
+        : { status: 'ZERO_RESULTS', results: [] };
+      cache.set(cacheKey, { payload, cachedAt: Date.now() });
+      trimCache();
+      return payload;
     });
     return await promise;
   };
@@ -203,6 +274,8 @@ export function geocodeProxy({ search = fetchNominatimSearch } = {}) {
         );
         return;
       }
+      // A browser that gave up is no longer waiting; the queue reads this
+      // before spending its slot.
       const abandoned = new AbortController();
       req.on?.('aborted', () => abandoned.abort());
       res.on?.('close', () => abandoned.abort());
@@ -250,4 +323,4 @@ export function geocodeProxy({ search = fetchNominatimSearch } = {}) {
   };
 }
 
-export { fetchRegionalPlace, NOMINATIM_MAX_PENDING };
+export { NOMINATIM_MAX_PENDING };

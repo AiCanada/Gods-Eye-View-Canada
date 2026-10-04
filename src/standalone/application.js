@@ -1,3 +1,4 @@
+import { createStandaloneCatalog } from './catalog.js';
 import { createStandalonePlaceSearch } from './placeSearch.js';
 import { CITY_POIS } from '../locations.js';
 import { createApplication } from '../app/application.js';
@@ -13,6 +14,8 @@ let constructed = false;
 export function createStandaloneApplication({
   googleApiKey,
   cesiumToken,
+  geospatial = {},
+  voice = {},
   allowQaRegistration = false,
 }) {
   if (constructed)
@@ -21,25 +24,48 @@ export function createStandaloneApplication({
   const loadingScreen = document.getElementById('loading-screen');
   const loaderStatus = loadingScreen.querySelector('.loader-status');
   let placeSearch;
+  let catalog;
   return createApplication({
-    createScene: (context) => {
+    createScene: async (context) => {
       placeSearch = createStandalonePlaceSearch({
+        // The bundled city and landmark data the offline name provider reads.
+        // The search package takes it as plain data rather than importing it,
+        // so it stays free of application state.
         presets: CITY_POIS,
+        ...geospatial,
         resolveApiKey: () => googleApiKey,
         signal: context.signal,
       });
-      return createStandaloneScene({
+      const scene = await createStandaloneScene({
         ...context,
         googleApiKey,
         cesiumToken,
         loaderStatus,
       });
+      catalog = createStandaloneCatalog({
+        nepalBoundaryResolver: (signal) =>
+          scene.operations.annotationResolver.resolveRegionRingForQuery(
+            'Nepal',
+            signal,
+            placeSearch,
+            // The locator draws the border whenever it arrives.
+            { budgetMs: Infinity },
+          ),
+        signal: context.signal,
+        surface: scene.operations.surface,
+      });
+      return scene;
     },
     createControls: (context) =>
-      createStandaloneControls({ ...context, loaderStatus, placeSearch }),
+      createStandaloneControls({
+        ...context,
+        loaderStatus,
+        placeSearch,
+        catalog,
+      }),
     createData: (context) =>
-      createStandaloneData({ ...context, allowQaRegistration }),
+      createStandaloneData({ ...context, allowQaRegistration, catalog }),
     createTools: (context) =>
-      createStandaloneTools({ ...context, loadingScreen, placeSearch }),
+      createStandaloneTools({ ...context, loadingScreen, placeSearch, voice }),
   });
 }

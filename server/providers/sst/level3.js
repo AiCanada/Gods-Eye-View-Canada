@@ -15,7 +15,7 @@ import {
 import { createLandMaskSource } from './landmask.js';
 import { encodeRgbaPng } from './png.js';
 import { renderFrontsRgba, renderSstRgba, sstDisplayRange } from './render.js';
-import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
+import { localProviderTrusted } from '../../shared/localIntegrity.mjs';
 
 /** Newest OceanColor MODIS Aqua Level-3 SST granules, daily and 8-day mixed. */
 export const CMR_LEVEL3_LIST_URL =

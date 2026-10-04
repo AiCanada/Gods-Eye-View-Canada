@@ -15,7 +15,7 @@ import {
   upsertDotenvValues,
   validateKeySetupUpdates,
 } from './keySetupCore.mjs';
-import { ultraSmsRelayConfig } from './ultraSmsRelay.mjs';
+import { ultraSmsRelayConfig } from '../server/shared/ultraSmsRelay.mjs';
 
 test('provider requirements name the registry env vars and next step', () => {
   assert.equal(

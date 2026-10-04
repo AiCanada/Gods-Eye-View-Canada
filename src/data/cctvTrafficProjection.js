@@ -43,12 +43,23 @@ const MAX_PIXEL_SIZE = 14;
 export function monitorPlaneFrame(spec) {
   if (!spec?.mount || !spec.center || !spec.orientation) return null;
   if (!(spec.halfW > 0) || !(spec.halfH > 0)) return null;
-  const rotation = Cesium.Matrix3.fromQuaternion(spec.orientation, new Cesium.Matrix3());
+  const rotation = Cesium.Matrix3.fromQuaternion(
+    spec.orientation,
+    new Cesium.Matrix3(),
+  );
   const right = Cesium.Matrix3.getColumn(rotation, 0, new Cesium.Cartesian3());
   const up = Cesium.Matrix3.getColumn(rotation, 1, new Cesium.Cartesian3());
-  const towardMount = Cesium.Matrix3.getColumn(rotation, 2, new Cesium.Cartesian3());
+  const towardMount = Cesium.Matrix3.getColumn(
+    rotation,
+    2,
+    new Cesium.Cartesian3(),
+  );
   const axis = Cesium.Cartesian3.negate(towardMount, new Cesium.Cartesian3());
-  const toPlane = Cesium.Cartesian3.subtract(spec.center, spec.mount, new Cesium.Cartesian3());
+  const toPlane = Cesium.Cartesian3.subtract(
+    spec.center,
+    spec.mount,
+    new Cesium.Cartesian3(),
+  );
   const planeDistance = Cesium.Cartesian3.dot(toPlane, axis);
   if (!(planeDistance > 0)) return null;
   return {
@@ -66,13 +77,14 @@ export function monitorPlaneFrame(spec) {
     // hence the slack; depth along the axis is capped at the picture below.)
     maxRange: Math.min(CCTV_TRAFFIC_MAX_RANGE_M, planeDistance * 1.3),
     // Local up at the mount, scaled to the dot's lift above the road.
-    roadDrop: Cesium.Cartesian3.magnitude(spec.mount) > 1
-      ? Cesium.Cartesian3.multiplyByScalar(
-        Cesium.Cartesian3.normalize(spec.mount, new Cesium.Cartesian3()),
-        DOT_HEIGHT_ABOVE_ROAD_M,
-        new Cesium.Cartesian3(),
-      )
-      : null,
+    roadDrop:
+      Cesium.Cartesian3.magnitude(spec.mount) > 1
+        ? Cesium.Cartesian3.multiplyByScalar(
+            Cesium.Cartesian3.normalize(spec.mount, new Cesium.Cartesian3()),
+            DOT_HEIGHT_ABOVE_ROAD_M,
+            new Cesium.Cartesian3(),
+          )
+        : null,
     halfW: spec.halfW,
     halfH: spec.halfH,
   };
@@ -91,7 +103,8 @@ const _local = new Cesium.Cartesian3();
 export function projectOntoMonitorPlane(frame, point, result) {
   if (!frame || !point) return null;
   Cesium.Cartesian3.subtract(point, frame.mount, _toPoint);
-  if (frame.roadDrop) Cesium.Cartesian3.subtract(_toPoint, frame.roadDrop, _toPoint);
+  if (frame.roadDrop)
+    Cesium.Cartesian3.subtract(_toPoint, frame.roadDrop, _toPoint);
   const range = Cesium.Cartesian3.magnitude(_toPoint);
   if (!(range > 1) || range > frame.maxRange) return null;
   // Depth along the view axis; behind the lens there is nothing to draw.
@@ -106,13 +119,21 @@ export function projectOntoMonitorPlane(frame, point, result) {
   // A small inset keeps half-visible vehicles off the frame edge, and nothing
   // on the road can sit in the top band of a downward-looking camera: a hit
   // there is a pose error, not a vehicle.
-  if (Math.abs(localX) > frame.halfW * EDGE_INSET || Math.abs(localY) > frame.halfH * EDGE_INSET) return null;
+  if (
+    Math.abs(localX) > frame.halfW * EDGE_INSET ||
+    Math.abs(localY) > frame.halfH * EDGE_INSET
+  )
+    return null;
   if (localY > frame.halfH * SKY_BAND_START) return null;
   // Normalised picture coordinates: -1..1, +u viewer-right, +v up.
   result.u = localX / frame.halfW;
   result.v = localY / frame.halfH;
   // In front of the picture, never coplanar with it.
-  Cesium.Cartesian3.multiplyByScalar(frame.towardMount, PLANE_STANDOFF_M, _local);
+  Cesium.Cartesian3.multiplyByScalar(
+    frame.towardMount,
+    PLANE_STANDOFF_M,
+    _local,
+  );
   Cesium.Cartesian3.add(result.position, _local, result.position);
   // A vehicle nearer than the picture looks larger in the camera, a farther
   // one smaller; t is exactly that ratio.
@@ -135,13 +156,19 @@ const _diag = { updates: 0, visited: 0, used: 0 };
 
 function sceneUsable(viewer) {
   const scene = viewer?.scene;
-  return Boolean(scene?.primitives?.add && scene.preRender?.addEventListener && !viewer.isDestroyed?.());
+  return Boolean(
+    scene?.primitives?.add &&
+    scene.preRender?.addEventListener &&
+    !viewer.isDestroyed?.(),
+  );
 }
 
 function ensureCollection() {
   if (_collection && !_collection.isDestroyed?.()) return _collection;
   _pool = [];
-  _collection = new Cesium.PointPrimitiveCollection({ blendOption: Cesium.BlendOption.TRANSLUCENT });
+  _collection = new Cesium.PointPrimitiveCollection({
+    blendOption: Cesium.BlendOption.TRANSLUCENT,
+  });
   _viewer.scene.primitives.add(_collection);
   return _collection;
 }
@@ -160,7 +187,8 @@ export function updateProjectedTraffic(forEachDot = forEachTrafficDot) {
     for (const frame of _frames.values()) {
       forEachDot((point, index) => {
         visited += 1;
-        if (used >= CCTV_TRAFFIC_MAX_POINTS || !point || point.show === false) return;
+        if (used >= CCTV_TRAFFIC_MAX_POINTS || !point || point.show === false)
+          return;
         if (!projectOntoMonitorPlane(frame, point.position, _hit)) return;
         let marker = _pool[used];
         if (!marker) {
@@ -176,7 +204,10 @@ export function updateProjectedTraffic(forEachDot = forEachTrafficDot) {
         marker.position = _hit.position;
         if (point.color) marker.color = point.color;
         const size = (Number(point.pixelSize) || 5) * _hit.scale;
-        marker.pixelSize = Math.min(MAX_PIXEL_SIZE, Math.max(MIN_PIXEL_SIZE, size));
+        marker.pixelSize = Math.min(
+          MAX_PIXEL_SIZE,
+          Math.max(MIN_PIXEL_SIZE, size),
+        );
         marker.show = true;
         _markerTags[used] = index;
         used += 1;
@@ -223,7 +254,9 @@ export function setCctvTrafficPlane(viewer, cameraId, spec) {
   }
   ensureCollection();
   if (!_removeListener) {
-    _removeListener = _viewer.scene.preRender.addEventListener(() => updateProjectedTraffic());
+    _removeListener = _viewer.scene.preRender.addEventListener(() =>
+      updateProjectedTraffic(),
+    );
   }
 }
 
@@ -241,7 +274,12 @@ export function forEachProjectedMarker(visit) {
 
 /** Live counters for QA: open pictures, dots visited and markers drawn last frame. */
 export function getCctvTrafficProjectionDiagnostics() {
-  return { planes: _frames.size, listening: Boolean(_removeListener), pool: _pool.length, ..._diag };
+  return {
+    planes: _frames.size,
+    listening: Boolean(_removeListener),
+    pool: _pool.length,
+    ..._diag,
+  };
 }
 
 /** Drop every open picture (layer teardown). */

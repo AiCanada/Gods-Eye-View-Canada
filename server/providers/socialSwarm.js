@@ -4,17 +4,14 @@ import {
 } from './common/allowed-hosts.js';
 import { clientKey, makeRateLimiter } from './common/rate-limit.js';
 import { readRequestBody } from './common/request.js';
-import { fetchRegionalPlace } from './regional/place.js';
+import { fetchNominatimPlace } from './regional/place.js';
 import { admitLlmRequestFrom } from './llm/ask.js';
-import {
-  enforceOptInRateLimit,
-  openAiRateLimiter,
-} from './openai/rate-limit.js';
+import { enforceRateLimit, openAiRateLimiter } from './openai/rate-limit.js';
 import { keySetupValueProblem } from '../../src/keySetupCore.mjs';
 import {
   LOCAL_PROVIDER_CHANGED_MESSAGE,
   localProviderTrusted,
-} from '../../src/localIntegrity.mjs';
+} from '../shared/localIntegrity.mjs';
 import {
   SOCIAL_SWARM_PROVIDERS,
   planSwarmBot,
@@ -201,7 +198,7 @@ async function handleSwarmBot(req, res, allow, allowedHosts) {
     );
     return;
   }
-  if (!enforceOptInRateLimit(openAiRateLimiter(), req, res)) return;
+  if (!enforceRateLimit(openAiRateLimiter(), req, res)) return;
   // A closed tab must not leave a billed search running to completion.
   const disconnect = new AbortController();
   res.on('close', () => disconnect.abort());
@@ -542,7 +539,7 @@ async function readCapped(response, limit) {
  */
 export function socialSwarmProxy({
   fetchImpl,
-  placeLookup = fetchRegionalPlace,
+  placeLookup = fetchNominatimPlace,
 } = {}) {
   const allow = makeRateLimiter({
     windowMs: 60_000,

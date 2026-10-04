@@ -1,3 +1,6 @@
+import { readShellSource, shellMethod } from './testSupport/readShellSource.mjs';
+import { expandApplicationHtml } from '../build/application-html.js';
+import { readLayerSource } from './testSupport/readLayerSource.mjs';
 import { PanelLayoutController } from './ui/panelLayoutController.js';
 import { readShellElements } from './ui/shellElements.js';
 import { readStylesheet } from './testSupport/readStylesheet.mjs';
@@ -25,12 +28,12 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-const ui = fs.readFileSync(path.join(ROOT, 'src', 'ui', 'applicationShell.js'), 'utf8');
+const html = expandApplicationHtml(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'));
+const ui = readShellSource();
 const css = readStylesheet(path.join(ROOT, 'style.css'));
 const sceneDirector = fs.readFileSync(path.join(ROOT, 'src', 'scenes', 'director.js'), 'utf8');
-const manager = fs.readFileSync(path.join(ROOT, 'src', 'data', 'manager.js'), 'utf8');
-const contextLayer = fs.readFileSync(path.join(ROOT, 'src', 'data', 'militaryAwareness.js'), 'utf8');
+const manager = fs.readFileSync(path.join(ROOT, 'src', 'data', 'lifecycle.js'), 'utf8');
+const contextLayer = readLayerSource(path.join(ROOT, 'src', 'data', 'militaryAwareness.js'), 'utf8');
 const voiceActions = fs.readFileSync(path.join(ROOT, 'src', 'voice', 'gevActions.js'), 'utf8');
 
 test('Cockpit has one reset action beside its bottom exit path', () => {
@@ -83,23 +86,47 @@ test('Cockpit heading tape leaves the bottom exit row unobstructed', () => {
   assert.doesNotMatch(css, /cockpit-compass-label/);
 });
 
-test('Cockpit vision cycle exposes exactly five real visual styles without NONE', () => {
-  assert.match(cycleVisionMode.toString(), /const modes = COCKPIT_VISION_MODES;/);
-  assert.match(setVisionMode.toString(), /const labels = \{\s*optical: inherited,\s*crt: 'CRT',\s*nvg: 'NVG',\s*thermal: 'FLIR',\s*noir: 'NOIR',?\s*\};/);
+test('Cockpit vision cycle exposes every map preset exactly once', () => {
+  assert.match(
+    cycleVisionMode.toString(),
+    /const modes = COCKPIT_VISION_MODES;/,
+  );
+  assert.match(
+    setVisionMode.toString(),
+    /const labels = \{\s*optical: 'NORMAL',\s*crt: 'CRT',\s*nvg: 'NVG',\s*thermal: 'FLIR',\s*anime: 'ANIME',\s*noir: 'NOIR',\s*snow: 'SNOW',?\s*\};/,
+  );
   assert.doesNotMatch(setVisionMode.toString(), /none: 'NONE'/);
-  assert.match(ui, /getInheritedVisionLabel: \(\) =>\s*\(?[\s\S]*?STYLE_STATUS_LABELS\[this\.activeStyle\]/);
+  assert.doesNotMatch(ui, /getInheritedVisionLabel/);
   assert.match(html, /id="cockpit-vision-current-label"[^>]*>NORMAL<\/strong>/);
-  assert.match(ui, /const target = applyCockpitVisionStageIntensities\(\s*this\.stages,\s*next,\s*this\._cockpitVisionRestore,?\s*\);/);
-  assert.match(ui, /this\._cockpitVisionRestore = captureCockpitVisionBaseline\(\s*this\.stages,\s*this\.transitions,?\s*\);/);
+  assert.match(
+    cockpitEnter.toString(),
+    /this\.setVisionMode\(this\.getInitialVisionMode\(\)\)/,
+    'Cockpit must enter on the mode matching the active map preset',
+  );
+  assert.match(
+    readRadioSource(
+      new URL('./ui/cockpitCoordinator.js', import.meta.url),
+      'utf8',
+    ),
+    /getInitialVisionMode:\s*\(\)\s*=>\s*cockpitVisionModeForStyle\(this\.activeStyle\)/,
+  );
   assert.match(
     ui,
-    /if \(next === 'optical'\) \{[\s\S]*?applyCockpitVisionStageIntensities\(\s*this\.stages,\s*next,\s*this\._cockpitVisionRestore,?\s*\);[\s\S]*?return;[\s\S]*?const target = applyCockpitVisionStageIntensities/,
-    'the inherited entry must restore the map shader while CRT, NVG, FLIR, and NOIR remain temporary Cockpit overrides',
+    /const target = applyCockpitVisionStageIntensities\(\s*this\.stages,\s*next,?\s*\);/,
+  );
+  assert.match(
+    ui,
+    /this\._cockpitVisionRestore = captureCockpitVisionBaseline\(\s*this\.stages,\s*this\.transitions,?\s*\);/,
+  );
+  assert.match(
+    ui,
+    /if \(next === 'optical'\) \{[\s\S]*?applyCockpitVisionStageIntensities\(\s*this\.stages,\s*next,?\s*\);[\s\S]*?this\._updateSliderPanel\(null,[\s\S]*?return;[\s\S]*?const target = applyCockpitVisionStageIntensities/,
+    'Normal must clear the inherited map shader while the other map presets remain temporary Cockpit overrides',
   );
   assert.match(
     ui,
     /_syncCockpitInheritedStyle\(\)[\s\S]*?name === this\.activeStyle \? 1 : 0[\s\S]*?this\.transitions\.delete\(name\)[\s\S]*?setVisionMode\(this\.cockpitView\.visionMode\)/,
-    'changing the map preset in Cockpit must refresh both the inherited label and restore baseline',
+    'changing the map preset in Cockpit must refresh the exit restore baseline without replacing Normal',
   );
   assert.match(ui, /setStyle\([\s\S]*?this\._syncCockpitInheritedStyle\(\);/);
 });
@@ -201,7 +228,8 @@ test('programmatic Context layer changes cannot bypass explicit expansion policy
 });
 
 test('share startup isolates panel defaults from recipient-local collapse preferences', () => {
-  const parseIndex = ui.indexOf('this._initialShareState = this.shareLinkManager.parseInitialHash();');
+  const parseIndex = ui.indexOf('this._shareRestoration.attachLinks(this.shareLinkManager);');
+  assert.match(shellMethod('attachLinks').toString(), /this\._initialShareState = shareLinkManager\.parseInitialHash\(\)/);
   const panelChromeIndex = ui.indexOf('this._initPanelChrome();');
   assert.ok(parseIndex >= 0, 'initial share state must be parsed during UI construction');
   assert.ok(
@@ -209,11 +237,11 @@ test('share startup isolates panel defaults from recipient-local collapse prefer
     'share state must be known before panel chrome can read recipient-local preferences',
   );
   assert.equal(
-    (ui.match(/this\.shareLinkManager\.parseInitialHash\(\)/g) || []).length,
+    (ui.match(/shareLinkManager\.parseInitialHash\(\)/g) || []).length,
     1,
     'startup must parse the incoming share exactly once',
   );
-  const panelChrome = ui.match(/_initPanelChrome\(\) \{([\s\S]*?)\n  \}\n\n  \/\*\*/);
+  const panelChrome = { 1: shellMethod('_initPanelChrome').toString() };
   assert.ok(panelChrome, 'panel chrome initializer is missing');
   assert.match(
     panelChrome[1],
@@ -253,7 +281,7 @@ test('Cockpit owns a focused shared Display portal and compact Radio controls', 
     css,
     /body\.scene-playback-mode\s*:is\([\s\S]*?#clear-selected-layers,[\s\S]*?#tilt-map-view,[\s\S]*?#north-up-view,[\s\S]*?#reset-globe-view[\s\S]*?\)\s*\{\s*display:\s*none !important;/,
   );
-  assert.match(sceneDirector, /this\._running = true;\s*this\._setPlaybackActive\(true\);/);
+  assert.match(sceneDirector, /this\._running = true;\s*this\._previewRun = preview;\s*if \(preview\) this\._setPlaybackActive\(true\);/);
   assert.match(sceneDirector, /styleManager\.setRecordingMode\(false\);\s*this\._setPlaybackActive\(false\);/);
   assert.match(SceneControls.prototype.setPlaybackActive.toString(), /document\.body\.classList\.toggle\('scene-playback-mode', active\)/);
   assert.equal((html.match(/id="hud-toggle"/g) || []).length, 1, 'HUD control must have one stateful DOM owner');
@@ -340,11 +368,11 @@ test('Clear Selected Layers uses one adopted batch and discards Context restorat
 
 test('Cockpit Display portal retains both scroll owners across round trips', () => {
   const portal = CockpitDisplayPortal.toString();
-  assert.match(portal, /this\.standardScrollTop = standardPanel\?\.scrollTop \|\| 0/);
+  assert.match(portal, /this\.standardScrollTop =\s*displayPanelScroller\(standardPanel\)\?\.scrollTop \|\| 0/);
   assert.match(portal, /this\.cockpitScrollTop = cockpitPanel\?\.scrollTop \|\| 0/);
-  assert.match(portal, /if \(!this\.active\)[\s\S]*?this\.standardScrollTop = standardPanel\.scrollTop/);
+  assert.match(portal, /if \(!this\.active\)[\s\S]*?this\.standardScrollTop =\s*displayPanelScroller\(standardPanel\)\.scrollTop/);
   assert.match(portal, /if \(this\.active\)[\s\S]*?this\.cockpitScrollTop = cockpitPanel\.scrollTop/);
-  assert.match(portal, /this\.cockpitPanel\.scrollTop = this\.cockpitScrollTop[\s\S]*?this\.standardPanel\.scrollTop = this\.standardScrollTop/);
+  assert.match(portal, /this\.cockpitPanel\.scrollTop = this\.cockpitScrollTop[\s\S]*?displayPanelScroller\(this\.standardPanel\)\.scrollTop =\s*this\.standardScrollTop/);
 });
 
 test('Cockpit side surfaces behave as two single-expanded accordions', () => {
@@ -406,7 +434,9 @@ test('fresh Cockpit entry temporarily collapses map panels and exit restores the
     assert.match(entryPanels[1], new RegExp(`'${panelId}'`), `${panelId} must collapse on entry`);
   }
 
-  const callback = ui.match(/onEntered: \(\) => \{([\s\S]*?)\n      \},\n      onExited:/);
+  assert.match(ui, /onEntered: \(\) => this\.enterPanels\(\)/);
+  assert.match(ui, /enterPanels: \(\) => this\._panelChrome\.enterCockpit\(\)/);
+  const callback = { 1: shellMethod('enterCockpit').toString() };
   assert.ok(callback, 'Cockpit onEntered callback is missing');
   assert.match(
     callback[1],
@@ -435,7 +465,9 @@ test('fresh Cockpit entry temporarily collapses map panels and exit restores the
     'normal Context must not reopen over Cockpit',
   );
 
-  const exitCallback = ui.match(/onExited: \(\) => \{([\s\S]*?)\n      \},\n      restoreTrackingFrame:/);
+  assert.match(ui, /onExited: \(\) => this\.exitPanels\(\)/);
+  assert.match(ui, /exitPanels: \(\) => this\._panelChrome\.exitCockpit\(\)/);
+  const exitCallback = { 1: shellMethod('exitCockpit').toString() };
   assert.ok(exitCallback, 'Cockpit onExited callback is missing');
   assert.match(
     exitCallback[1],
@@ -779,7 +811,7 @@ test('Global Context uses its dedicated right rail without a duplicate Data Laye
   assert.match(contextLayer, /id:\s*'military-awareness'[\s\S]*?showInTogglePanel:\s*false/);
   const panel = fs.readFileSync(path.join(ROOT, 'src', 'ui', 'layerPanel.js'), 'utf8');
   assert.match(panel, /if \(!layer\.showInTogglePanel\) continue;/);
-  assert.match(manager, /getLayers: \(\) => this\.getAll\(\)/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'src', 'app', 'layerPresentation.js'), 'utf8'), /getLayers: \(\) => this\.manager\.getAll\(\)/);
   assert.match(html, /id="global-context-panel"/);
   assert.match(html, /id="global-context-flights-btn"/);
   assert.match(html, /id="global-context-missions-btn"/);

@@ -1,8 +1,12 @@
 import { makeRateLimiter, clientKey } from './common/rate-limit.js';
 import { defaultSourceRoot } from './common/source-root.js';
 import { admitKeySetupRequest } from '../../src/keySetupCore.mjs';
-import { listRoadCctvKeys, removeRoadCctvKey, saveRoadCctvKey } from '../../src/roadCctvKeys.mjs';
-import { setRoadCctvKeysRoot } from './cctv/media.js';
+import {
+  listRoadCctvKeys,
+  removeRoadCctvKey,
+  saveRoadCctvKey,
+} from '../shared/roadCctvKeys.mjs';
+import { listRoadCctvSites, setRoadCctvKeysRoot } from './cctv/media.js';
 
 const BODY_LIMIT = 4096;
 const HEADERS = Object.freeze({
@@ -41,12 +45,17 @@ function readJson(req) {
     });
     req.on('end', () => {
       try {
-        finish({ ok: true, value: JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') });
+        finish({
+          ok: true,
+          value: JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'),
+        });
       } catch {
         finish({ ok: false, status: 400, error: 'Send JSON.' });
       }
     });
-    req.on('error', () => finish({ ok: false, status: 400, error: 'Send JSON.' }));
+    req.on('error', () =>
+      finish({ ok: false, status: 400, error: 'Send JSON.' }),
+    );
   });
 }
 
@@ -76,7 +85,9 @@ export function roadCctvKeysProxy({ sourceRoot = defaultSourceRoot } = {}) {
         env: process.env,
       });
       if (!admitted.ok) {
-        send(res, admitted.status || 403, { error: String(admitted.error || 'Refused') });
+        send(res, admitted.status || 403, {
+          error: String(admitted.error || 'Refused'),
+        });
         return;
       }
       if (!allow(clientKey(req))) {
@@ -85,7 +96,18 @@ export function roadCctvKeysProxy({ sourceRoot = defaultSourceRoot } = {}) {
       }
       try {
         if (req.method === 'GET') {
-          send(res, 200, { keys: listRoadCctvKeys(sourceRoot) });
+          // ?sites=1: the camera sites to pick from (waits for the catalogue).
+          const wantsSites =
+            new URL(req.url || '/', 'http://localhost').searchParams.get(
+              'sites',
+            ) === '1';
+          send(
+            res,
+            200,
+            wantsSites
+              ? { sites: await listRoadCctvSites() }
+              : { keys: listRoadCctvKeys(sourceRoot) },
+          );
           return;
         }
         const body = await readJson(req);
@@ -93,14 +115,19 @@ export function roadCctvKeysProxy({ sourceRoot = defaultSourceRoot } = {}) {
           send(res, body.status, { error: body.error });
           return;
         }
-        const result = req.method === 'POST'
-          ? saveRoadCctvKey(sourceRoot, body.value)
-          : removeRoadCctvKey(sourceRoot, String(body.value?.id || ''));
+        const result =
+          req.method === 'POST'
+            ? saveRoadCctvKey(sourceRoot, body.value)
+            : removeRoadCctvKey(sourceRoot, String(body.value?.id || ''));
         if (!result.ok) {
           send(res, 400, { error: result.error });
           return;
         }
-        send(res, 200, { ok: true, id: result.id, keys: listRoadCctvKeys(sourceRoot) });
+        send(res, 200, {
+          ok: true,
+          id: result.id,
+          keys: listRoadCctvKeys(sourceRoot),
+        });
       } catch {
         send(res, 500, { error: 'This computer did not keep that key.' });
       }

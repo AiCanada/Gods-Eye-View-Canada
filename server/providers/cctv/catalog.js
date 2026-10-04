@@ -9,6 +9,7 @@ import {
   DEFAULT_CCTV_COUNTRIES,
   DEFAULT_CCTV_SOURCE_FILES,
 } from './constants.js';
+import { loadGroundHeights, joinGroundHeights } from './groundHeights.js';
 import { createCctvLivePacks } from './live-packs.js';
 import {
   canonicalCountryCode,
@@ -638,6 +639,7 @@ function admit(items, countries, intern, counts) {
     source.country = intern(source.country);
     source.region = intern(source.region);
     source.sourceKind = intern(source.sourceKind);
+    source.pack = intern(source.pack);
     source.headingConfidence = intern(source.headingConfidence);
     source.regionKey = intern(cctvRegionKey(source));
     sources.push(source);
@@ -685,7 +687,8 @@ export function createCctvCatalog({
 } = {}) {
   const envNow = () => env || process.env;
   const packs =
-    livePacks || createCctvLivePacks({ cacheDir, env, fetchImpl, now });
+    livePacks ||
+    createCctvLivePacks({ cacheDir, sourceRoot, env, fetchImpl, now });
   let current = null;
   let generation = 0;
   let statCache = null;
@@ -797,6 +800,12 @@ export function createCctvCatalog({
 
     const merged = mergeCctvSources(parts);
     const { sources } = merged;
+    // Shipped ground heights (src/data/local_data/cctv_ground_heights/,
+    // produced by scripts/precompute-cctv-heights.mjs) ride along on the served
+    // camera so the client can place it and its monitor plane with no sampling.
+    // Cameras are reused across builds, so a stale join is cleared first.
+    for (const source of sources) delete source.groundHeights;
+    joinGroundHeights(sources, loadGroundHeights(sourceRoot));
     const byId = new Map();
     let withoutPosition = 0;
     for (const source of sources) {
@@ -900,5 +909,13 @@ export function createCctvCatalog({
       packs.ensureArea(area, enabledCctvCountries(envNow())),
     /** Adopt live pack lists saved on disk (no download); true if any. */
     warmFromDisk: () => packs.warmFromDisk(enabledCctvCountries(envNow())),
+    /**
+     * Packs serving fewer cameras than they offer. Always empty: no pack and
+     * no catalogue cap trims cameras; only an area's 1,000-camera load is
+     * capped, and /sources reports that in `area`.
+     *
+     * @returns {Array<{pack: string, available: number, served: number}>}
+     */
+    trimmedPacks: () => [],
   };
 }

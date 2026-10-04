@@ -13,7 +13,7 @@ import {
   openSocialLogin,
   removeSocialLogin,
   saveSocialLogin,
-} from './socialAccounts.mjs';
+} from '../server/shared/socialAccounts.mjs';
 
 const USER_ID = 'river.operator.handle';
 const SECRET = 's3al-check-value-not-a-platform-login';

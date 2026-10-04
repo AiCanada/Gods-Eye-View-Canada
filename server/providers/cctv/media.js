@@ -1,7 +1,8 @@
 import {
   readRoadCctvKeys,
+  roadCctvSitesFrom,
   withRoadCctvKey,
-} from '../../../src/roadCctvKeys.mjs';
+} from '../../shared/roadCctvKeys.mjs';
 import dns from 'node:dns';
 import http from 'node:http';
 import https from 'node:https';
@@ -15,7 +16,10 @@ import {
   CCTV_FRAME_MAX_BODY_BYTES,
   CCTV_FRAME_MAX_REDIRECTS,
   CCTV_MEDIA_FETCH_TIMEOUT_MS,
+  CCTV_MEDIA_IDLE_TIMEOUT_MS,
   CCTV_MEDIA_MAX_BODY_BYTES,
+  NSW_IMAGE_ORIGIN,
+  NSW_IMAGE_USER_AGENT,
 } from './constants.js';
 /**
  * Generate a synthetic SVG billboard image for a CCTV camera placeholder.
@@ -112,11 +116,17 @@ export function toReadable(body) {
  * @param {Response} upstream - fetch() Response object.
  * @param {object} [opts]
  * @param {string} [opts.sourceHeader='upstream'] - Value for X-CCTV-Source header.
+ * @param {number} [opts.idleTimeoutMs=CCTV_MEDIA_IDLE_TIMEOUT_MS] - Silence
+ *   allowed between upstream chunks before the stream is released. Injectable
+ *   only to keep the deadline unit-testable.
  */
 export async function proxyMediaResponse(
   res,
   upstream,
-  { sourceHeader = 'upstream' } = {},
+  {
+    sourceHeader = 'upstream',
+    idleTimeoutMs = CCTV_MEDIA_IDLE_TIMEOUT_MS,
+  } = {},
 ) {
   const contentType =
     upstream.headers.get('content-type') || 'application/octet-stream';
@@ -162,7 +172,20 @@ export async function proxyMediaResponse(
     return;
   }
 
+  // The header deadline only covers the wait for a response line. Past that an
+  // upstream can hold the connection open and send nothing at all, and the
+  // relay would wait on it for as long as the camera host cared to. The
+  // deadline below measures the gap between upstream chunks rather than the
+  // life of the stream, so a feed that keeps delivering keeps its connection.
+  let idleTimer = null;
+  const clearIdleDeadline = () => {
+    if (!idleTimer) return;
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  };
+
   stream.on('error', () => {
+    clearIdleDeadline();
     if (!res.writableEnded) res.end();
   });
 
@@ -173,6 +196,7 @@ export async function proxyMediaResponse(
   const releaseUpstream = () => {
     if (released) return;
     released = true;
+    clearIdleDeadline();
     stream.unpipe(res);
     // Destroying the Node stream cancels the web body it wraps; the direct
     // cancel covers a body that was never wrapped, and rejects harmlessly when
@@ -185,14 +209,37 @@ export async function proxyMediaResponse(
       /* already closed */
     }
   };
+  const armIdleDeadline = () => {
+    clearIdleDeadline();
+    idleTimer = setTimeout(onIdleDeadline, idleTimeoutMs);
+    idleTimer.unref?.();
+  };
+  const onIdleDeadline = () => {
+    // A viewer who cannot keep up pauses the pipe, and no upstream bytes arrive
+    // while it is paused. That is a slow client rather than a dead camera, so
+    // it gets the deadline again instead of a teardown.
+    if (res.writableNeedDrain) {
+      armIdleDeadline();
+      return;
+    }
+    releaseUpstream();
+    if (!res.writableEnded) res.end();
+  };
   res.once('close', () => {
+    clearIdleDeadline();
     if (!res.writableEnded) releaseUpstream();
   });
   res.once('error', releaseUpstream);
   stream.once('end', () => {
+    clearIdleDeadline();
     released = true;
   });
+  armIdleDeadline();
   stream.pipe(res);
+  // Attached after the pipe because a data listener resumes the stream, and
+  // flowing before the destination is attached would spill chunks nobody
+  // forwards. Only bytes from upstream renew the deadline.
+  stream.on('data', armIdleDeadline);
 }
 
 /**
@@ -424,6 +471,28 @@ let roadKeysRoot = process.cwd();
 export function setRoadCctvKeysRoot(root) {
   if (root) roadKeysRoot = root;
 }
+// The camera catalogue the key setup lists sites from (set by the CCTV plugin).
+let roadSitesSnapshot = null;
+let roadSitesCache = { generation: undefined, sites: [] };
+/** Let POWER UP list the catalogue's camera sites. */
+export function setRoadCctvSiteSource(snapshotFn) {
+  roadSitesSnapshot = typeof snapshotFn === 'function' ? snapshotFn : null;
+  roadSitesCache = { generation: undefined, sites: [] };
+}
+/** Every https camera site in the catalogue, with its camera count. */
+export async function listRoadCctvSites() {
+  if (!roadSitesSnapshot) return [];
+  const snapshot = await roadSitesSnapshot();
+  if (
+    snapshot?.generation === undefined ||
+    roadSitesCache.generation !== snapshot.generation
+  )
+    roadSitesCache = {
+      generation: snapshot?.generation,
+      sites: roadCctvSitesFrom(snapshot?.sources),
+    };
+  return roadSitesCache.sites;
+}
 /** A camera address with its site's saved key, if one is saved for that site. */
 export function keyedCctvUrl(url) {
   return withRoadCctvKey(url, readRoadCctvKeys(roadKeysRoot));
@@ -454,6 +523,163 @@ export async function fetchCctvMediaUpstream(
   } finally {
     clearTimeout(timeoutId);
     downstream?.removeEventListener?.('abort', onDownstreamAbort);
+  }
+}
+
+/**
+ * Fetch and decode a TxDOT ITS / TransGuide snapshot.
+ *
+ * TxDOT returns JSON with a base64-encoded JPEG in `snippet`, rather than
+ * returning image/jpeg directly.
+ */
+export async function fetchTxdotSnapshot(
+  url,
+  {
+    fetchImpl = fetch,
+    timeoutMs = CCTV_FRAME_FETCH_TIMEOUT_MS,
+    maxBytes = CCTV_FRAME_MAX_BODY_BYTES,
+  } = {},
+) {
+  if (!url) return null;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (
+    parsed.origin !== 'https://its.txdot.gov' ||
+    parsed.pathname !== '/its/DistrictIts/GetCctvSnapshotByIcdId'
+  ) {
+    return null;
+  }
+  // Base64 inflates by 4/3; the JSON envelope adds a few bytes of framing.
+  const maxEnvelopeBytes = Math.ceil((maxBytes * 4) / 3) + 4096;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    // The snapshot endpoint answers directly; a redirect is not followed, so
+    // the origin/path pin above holds for the request that is actually made.
+    const upstream = await fetchImpl(parsed.toString(), {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'gods-eye-view-cctv-proxy/1.0',
+      },
+      signal: controller.signal,
+      redirect: 'manual',
+    });
+    if (!upstream.ok) return null;
+    const envelope = await readCappedResponseBytes(upstream, maxEnvelopeBytes);
+    if (!envelope) return null;
+    let payload;
+    try {
+      payload = JSON.parse(envelope.toString('utf8'));
+    } catch {
+      return null;
+    }
+    let snippet =
+      typeof payload?.snippet === 'string' ? payload.snippet.trim() : '';
+    if (!snippet) return null;
+    snippet = snippet.replace(/^data:image\/jpeg;base64,/i, '');
+    // Canonical base64 only (4-char groups, padding only at the end):
+    // Buffer.from() silently skips junk, which would let a non-image body
+    // decode into "something".
+    if (
+      snippet.length > maxEnvelopeBytes ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+        snippet,
+      )
+    ) {
+      return null;
+    }
+    const body = Buffer.from(snippet, 'base64');
+    if (body.length < 4 || body.length > maxBytes) return null;
+    if (body[0] !== 0xff || body[1] !== 0xd8 || body[2] !== 0xff) return null;
+    return { ok: true, body, contentType: 'image/jpeg' };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+    controller.abort();
+  }
+}
+
+/** Redirect hops the frame path will follow, and only within the same host. */
+const MAX_SAME_HOST_REDIRECTS = 2;
+
+/**
+ * Fetch a registered frame URL following redirects ONLY within the original
+ * origin (scheme, host and port; at most MAX_SAME_HOST_REDIRECTS hops).
+ * Default redirect-following would let an upstream steer a host-pinned
+ * request, and its host-specific headers, to any origin, another port, or a
+ * plaintext downgrade.
+ *
+ * @param {string} url
+ * @param {object} init - fetch init (headers, signal).
+ * @param {typeof fetch} fetchImpl
+ * @returns {Promise<Response|null>} Final response, or null on an off-host or
+ *   over-long redirect chain.
+ */
+export async function fetchWithinHost(url, init, fetchImpl = fetch) {
+  let current;
+  try {
+    current = new URL(url);
+  } catch {
+    return null;
+  }
+  const origin = current.origin;
+  for (let hop = 0; hop <= MAX_SAME_HOST_REDIRECTS; hop++) {
+    const upstream = await fetchImpl(current.toString(), {
+      ...init,
+      redirect: 'manual',
+    });
+    // Anything that is not a 3xx (including a test double with no status) is
+    // the final answer.
+    const status = Number(upstream?.status);
+    if (!(status >= 300 && status < 400)) return upstream;
+    const location = upstream.headers.get('location');
+    try {
+      await upstream.body?.cancel();
+    } catch {
+      /* no-op */
+    }
+    if (!location || hop === MAX_SAME_HOST_REDIRECTS) return null;
+    let next;
+    try {
+      next = new URL(location, current);
+    } catch {
+      return null;
+    }
+    if (next.origin !== origin) return null;
+    current = next;
+  }
+  return null;
+}
+
+/**
+ * Image hosts that only serve frames to browser-identified clients, keyed by
+ * exact hostname. Every other upstream sees the proxy's own identifying
+ * User-Agent. Keyed on host, not on a URL substring, so a look-alike host or a
+ * path that merely mentions the host never inherits the header.
+ */
+const CCTV_IMAGE_USER_AGENT_BY_HOST = Object.freeze({
+  [new URL(NSW_IMAGE_ORIGIN).hostname]: NSW_IMAGE_USER_AGENT,
+});
+
+/**
+ * User-Agent for one upstream frame request.
+ *
+ * @param {string} url
+ * @returns {string}
+ */
+export function cctvUpstreamUserAgent(url) {
+  try {
+    return (
+      CCTV_IMAGE_USER_AGENT_BY_HOST[new URL(url).hostname] ||
+      CCTV_PROXY_USER_AGENT
+    );
+  } catch {
+    return CCTV_PROXY_USER_AGENT;
   }
 }
 
@@ -851,27 +1077,44 @@ export async function fetchCctvImageFromUpstream(
       _refererHosts.delete(host);
       httpsRefused = true;
     }
-    let target = url;
-    let upstream;
-    for (let hop = 0; ; hop += 1) {
-      if (guarded && !allowUrl(target)) return null;
-      upstream = await doFetch(target, {
-        headers: { 'User-Agent': CCTV_PROXY_USER_AGENT },
-        signal: controller.signal,
-        ...(guarded ? { redirect: 'manual' } : {}),
-      });
-      if (typeof onResponse === 'function') {
-        try {
-          onResponse({ status: upstream.status, headers: upstream.headers });
-        } catch {
-          /* an observer never breaks the fetch */
-        }
+    const reportResponse = (response) => {
+      if (typeof onResponse !== 'function') return;
+      try {
+        onResponse({ status: response.status, headers: response.headers });
+      } catch {
+        /* an observer never breaks the fetch */
       }
-      if (!guarded || !isRedirectResponse(upstream)) break;
-      const location = upstream.headers?.get?.('location') || '';
-      cancelQuietly(upstream);
-      if (!location || hop >= CCTV_FRAME_MAX_REDIRECTS) return null;
-      target = new URL(location, target).href;
+    };
+    let upstream;
+    if (guarded) {
+      // A host no catalogue vouches for: every hop is checked again by hand.
+      let target = url;
+      for (let hop = 0; ; hop += 1) {
+        if (!allowUrl(target)) return null;
+        upstream = await doFetch(target, {
+          headers: { 'User-Agent': CCTV_PROXY_USER_AGENT },
+          signal: controller.signal,
+          redirect: 'manual',
+        });
+        reportResponse(upstream);
+        if (!isRedirectResponse(upstream)) break;
+        const location = upstream.headers?.get?.('location') || '';
+        cancelQuietly(upstream);
+        if (!location || hop >= CCTV_FRAME_MAX_REDIRECTS) return null;
+        target = new URL(location, target).href;
+      }
+    } else {
+      // A registered still follows redirects only within its own origin.
+      upstream = await fetchWithinHost(
+        url,
+        {
+          headers: { 'User-Agent': cctvUpstreamUserAgent(url) },
+          signal: controller.signal,
+        },
+        doFetch,
+      );
+      if (!upstream) return null;
+      reportResponse(upstream);
     }
     const contentType = upstream.headers.get('content-type') || '';
     if (viaReferer && (upstream.status === 401 || upstream.status === 403)) {

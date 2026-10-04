@@ -8,10 +8,13 @@ import {
   proxyMediaResponse,
   createPublicOnlyFetch,
   fetchCctvImageFromUpstream,
+  fetchTxdotSnapshot,
   fetchCctvMediaUpstream,
   watchDownstreamClose,
+  setRoadCctvSiteSource,
 } from './cctv/media.js';
 import { sanitizeCctvRangeHeader } from './cctv/range.js';
+import { createHlsPuller } from './cctv/stream.js';
 import {
   CCTV_AREA_RADIUS_KM,
   CCTV_FRAME_CACHE_TTL_MS,
@@ -145,6 +148,8 @@ export function cctvProxy({
   // Nothing below reads a file, opens a timer or contacts a network until the
   // first request: building the plugin is free.
   const cameras = catalog || createCctvCatalog({ sourceRoot, cacheDir });
+  // POWER UP lists this catalogue's camera sites for the road CCTV keys.
+  setRoadCctvSiteSource(() => cameras.snapshot());
   const frames = frameCache || createFrameCache();
   const gate = upstreamGate || createUpstreamGate();
   // Hand-made thumbnail alignments, kept in a tracked config file.
@@ -175,6 +180,9 @@ export function cctvProxy({
   const frameFailures = new Map();
   /** One upstream still request per camera at a time, shared by every caller. */
   const inflightFrames = new Map();
+  /** Live HLS sessions for pack cameras whose feed is an HLS playlist (see
+   * ./cctv/stream.js). Shared across dev and preview. */
+  const puller = createHlsPuller();
 
   /** Update the health entry for a camera, evicting the oldest entry if at capacity. */
   const setHealth = (cameraId, patch) => {
@@ -289,6 +297,10 @@ export function cctvProxy({
     return {
       id: cameraId,
       feedType,
+      // A stream-only camera's HLS is relayed through /api/cctv/hls (ask
+      // /media/<id>?hls=1); a pack camera listed as HLS is pulled into a
+      // leased session instead (/media/<id>?lease=<uuid>).
+      hlsVia: stream ? 'proxy' : feedType === 'hls' ? 'pull' : undefined,
       // Only for a host whose certificate chain this server could not verify,
       // and only an https address: the browser plays that stream itself.
       directStreamUrl:
@@ -348,9 +360,17 @@ export function cctvProxy({
       mountHeightM: source.mountHeightM,
       groundElevationM: source.groundElevationM,
       feedType,
+      // How an HLS camera plays: 'proxy' (?hls=1) or 'pull' (?lease=<uuid>).
+      hlsVia: stream ? 'proxy' : feedType === 'hls' ? 'pull' : undefined,
       sourceKind: source.sourceKind || (source.url ? 'configured' : 'fallback'),
       poseSource: source.poseSource,
       license: source.license,
+      // The pack a camera came from, a partner credit and the operator's own
+      // camera code, and shipped ground heights (see cctv/groundHeights.js).
+      pack: source.pack || '',
+      credit: source.credit || '',
+      code: source.code || '',
+      groundHeights: source.groundHeights || null,
       // Set only for hosts the viewer's browser must load itself
       // (CCTV_BROWSER_DIRECT_HOSTS); every other still stays proxied.
       browserImageUrl: browserDirectImageUrl(source) || undefined,
@@ -395,6 +415,9 @@ export function cctvProxy({
     const { matches, area } = queryCctvArea(snapshot, { ...point, radiusKm });
     await sendJson(req, res, 200, {
       area: { ...area, generation: snapshot.generation, pending },
+      // Packs the catalogue serves only part of. Live packs carry no cap, so
+      // this is empty; the area cap is reported in `area` (capped, dropped).
+      trimmedPacks: cameras.trimmedPacks?.() ?? [],
       sources: matches.map(({ source, distKm }) =>
         serializeSource(source, distKm),
       ),
@@ -564,6 +587,11 @@ export function cctvProxy({
               (source && normalizeFeedType(source.feedType) !== 'none')
             ? 'image'
             : 'none',
+      // A looked-up stream plays through the HLS relay (?hls=1), not a pull.
+      hlsVia:
+        result.lookupState === 'resolved' && result.kind === 'hls'
+          ? 'proxy'
+          : undefined,
       retryAfterMs: Math.max(0, Math.round(result.retryAfterMs || 0)),
     });
   };
@@ -679,6 +707,11 @@ export function cctvProxy({
           return { kind: 'budget', retryAfterMs: grant.retryAfterMs };
       }
       counters.upstreamFrameFetches += 1;
+      // TxDOT ITS answers a JSON envelope around a base64 JPEG, not an image.
+      if (source.sourceKind === 'txdot-its' && !lookupStill && !resolvedUrl) {
+        const image = await fetchTxdotSnapshot(candidate);
+        return image?.ok ? { kind: 'image', image } : { kind: 'failed' };
+      }
       const image = await fetchCctvImageFromUpstream(candidate, {
         ...(allowUrl ? { allowUrl, fetchImpl: guardedFetch } : {}),
         // A budgeted 511 host allows 20 requests a minute: one grant is one
@@ -1236,10 +1269,141 @@ export function cctvProxy({
     await serveHlsResource(req, res, cameraId, source, stream, target);
   };
 
+  /**
+   * A pack camera whose feed is itself an HLS playlist: pulled into a bounded
+   * session (./cctv/stream.js) that the viewer holds with a lease. GET with
+   * `lease` answers the session playlist, `/seg_<n>.ts` its segments, and
+   * DELETE releases the lease.
+   */
+  const servePulledHls = async (req, res, url, match, cameraId, source) => {
+    const mediaUrl = source?.url || '';
+    const leaseId = url.searchParams.get('lease');
+    if (req.method === 'DELETE') {
+      if (leaseId) puller.release(cameraId, leaseId);
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    if (!/^[a-f0-9-]{36}$/i.test(leaseId || '')) {
+      res.writeHead(400);
+      res.end();
+      return;
+    }
+    if (req.method !== 'GET') {
+      res.writeHead(405);
+      res.end();
+      return;
+    }
+    if (!/^https?:\/\//i.test(mediaUrl) || !/\.m3u8(?:\?|$)/i.test(mediaUrl)) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          error:
+            'This stream requires an unsupported transport; use the frame fallback',
+        }),
+      );
+      return;
+    }
+    if (match[2]) {
+      const body = puller.getSegment(
+        cameraId,
+        url.searchParams.get('session'),
+        Number(match[3]),
+        leaseId,
+      );
+      res.writeHead(body ? 200 : 404, {
+        'Content-Type': 'video/mp2t',
+        'Cache-Control': 'no-store',
+      });
+      res.end(body || undefined);
+      return;
+    }
+    const downstream = watchDownstreamClose(res);
+    let entry;
+    const cancelPending = () => {
+      if (entry) puller.release(cameraId, leaseId);
+    };
+    try {
+      entry = await puller.ensure(cameraId, mediaUrl, leaseId);
+      if (downstream.closed) {
+        cancelPending();
+        return;
+      }
+      downstream.signal.addEventListener('abort', cancelPending, {
+        once: true,
+      });
+      if (!(await puller.waitReady(entry, downstream.signal)))
+        throw new Error('Stream unavailable');
+      const playlist = await puller.buildPlaylist(entry, cameraId, leaseId);
+      if (downstream.closed) return;
+      if (!playlist) throw new Error('Stream unavailable');
+      setHealth(cameraId, {
+        status: 'ok',
+        sourceKind: 'live',
+        label: source?.provider || 'Configured source',
+        message: 'Live HLS connected',
+      });
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.apple.mpegurl',
+        'Cache-Control': 'no-store',
+        'X-CCTV-Source': 'hls-pull',
+        'X-CCTV-Session': entry.token,
+      });
+      res.end(playlist);
+    } catch {
+      setHealth(cameraId, {
+        status: 'degraded',
+        sourceKind: 'fallback',
+        label: source?.provider || 'Configured source',
+        message: 'Live HLS unavailable',
+      });
+      if (!downstream.closed) {
+        res.writeHead(503, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Retry-After': '2',
+        });
+        res.end(JSON.stringify({ error: 'Live stream unavailable' }));
+      }
+    } finally {
+      downstream.signal.removeEventListener('abort', cancelPending);
+    }
+  };
+
   const serveMedia = async (req, res, url, snapshot) => {
-    const cameraId = cameraIdFrom(url.pathname, '/media/') || 'camera';
+    // `/media/<id>`, or `/media/<id>/seg_<n>.ts` inside a pulled HLS session.
+    const match = /^\/media\/([^/]+)(?:\/(seg_(\d+)\.ts))?$/.exec(url.pathname);
+    let cameraId = '';
+    try {
+      cameraId = match ? decodeURIComponent(match[1]).trim() : '';
+    } catch {
+      cameraId = '';
+    }
+    if (!cameraId) {
+      res.writeHead(404, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+      });
+      res.end(JSON.stringify({ error: 'not found' }));
+      return;
+    }
     const source = await findSource(snapshot, cameraId);
     const feedType = normalizeFeedType(source?.feedType || 'image');
+    if (source && feedType === 'hls') {
+      await servePulledHls(req, res, url, match, cameraId, source);
+      return;
+    }
+    if (req.method === 'DELETE') {
+      // A lease release for a camera that is not pulled: nothing to free.
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    if (match[2] || (req.method !== 'GET' && req.method !== 'HEAD')) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
     // A video-only camera. `hls=1` (a browser that plays HLS itself): its
     // playlist, rewritten to come back through this origin. Otherwise a short
     // MP4 clip cut from the stream, which any browser plays (fragmented-MP4
@@ -1406,11 +1570,16 @@ export function cctvProxy({
       }
       const timedOut =
         error?.name === 'AbortError' || error?.name === 'TimeoutError';
+      // GET /api/cctv/health serializes `message`, and the CCTV panel renders
+      // it as a status label, so the raw error (which names the camera's
+      // upstream host) never goes there or into the log. The status codes
+      // below carry the diagnosis: 504 for a timeout, 502 otherwise.
+      console.warn('[CCTV Proxy] media fetch failed');
       setHealth(cameraId, {
         status: 'degraded',
         sourceKind: 'upstream',
         label: source?.provider || 'Configured source',
-        message: error?.message || 'Media fetch failed',
+        message: 'Media fetch failed',
       });
       res.writeHead(timedOut ? 504 : 502, {
         'Content-Type': 'application/json',
@@ -1428,6 +1597,9 @@ export function cctvProxy({
   const installMiddleware = (server, section) => {
     // The hosts this server answers, for the route that checks Host itself.
     const allowedHosts = resolvedAllowedHosts(server.config, section);
+    server.httpServer?.on('close', () => {
+      puller.shutdown();
+    });
     server.middlewares.use('/api/cctv', async (req, res) => {
       try {
         const url = new URL(req.url || '/', 'http://localhost');

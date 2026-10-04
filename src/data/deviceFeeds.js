@@ -5,13 +5,23 @@ import {
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
-import { governorRequestRender, holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
-import { DEVICE_FEEDS_CHANGED_EVENT, DEVICE_FEEDS_FOCUS_EVENT } from '../deviceFeedsCore.mjs';
+import {
+  governorRequestRender,
+  holdContinuousRender,
+  releaseContinuousRender,
+} from '../renderGovernor.js';
+import {
+  DEVICE_FEEDS_CHANGED_EVENT,
+  DEVICE_FEEDS_FOCUS_EVENT,
+} from '../deviceFeedsCore.mjs';
 import { requestWorldFocus } from '../worldFocus.js';
 import { applyTrackedCameraFrame } from './trackedCamera.js';
 import { refreshTrackedReadout } from './trackedReadout.js';
 import { createDeviceRecorder } from './deviceRecorder.js';
-import { bindTrackingClickGesture, isTrackingClickGesture } from './trackingClickGesture.js';
+import {
+  bindTrackingClickGesture,
+  isTrackingClickGesture,
+} from './trackingClickGesture.js';
 
 /**
  * YOUR DEVICES: the drones, robots, marine drones and GPS trackers set up under
@@ -46,7 +56,8 @@ import { bindTrackingClickGesture, isTrackingClickGesture } from './trackingClic
 const POSITIONS_URL = '/api/device-feeds/positions';
 const TRACK_URL = '/api/device-feeds/track/';
 /** The Ultra box's newest phone, or one phone package's own picture by its public id. */
-const ULTRA_PICTURE_PATH = /^\/api\/ultra-help\/picture(?:\/device-[a-z0-9-]{1,120})?$/;
+const ULTRA_PICTURE_PATH =
+  /^\/api\/ultra-help\/picture(?:\/device-[a-z0-9-]{1,120})?$/;
 
 export const DEVICE_FEEDS_LAYER_ID = 'device-feeds';
 export const DEVICE_FEEDS_OVERLAY_SOURCE_ID = 'device-feeds';
@@ -57,7 +68,11 @@ export const DEVICE_FEEDS_TRAIL_POINTS = 240;
 export const DEVICE_FEEDS_TRAIL_MIN_STEP_M = 2;
 export const DEVICE_FEEDS_PICTURE_REFRESH_MS = 10000;
 /** Where the follow camera sits: behind and above, about 1.4 km off. */
-export const DEVICE_FEEDS_FOLLOW_VIEW_FROM = Object.freeze({ x: 0, y: -1100, z: 850 });
+export const DEVICE_FEEDS_FOLLOW_VIEW_FROM = Object.freeze({
+  x: 0,
+  y: -1100,
+  z: 850,
+});
 /** A followed device glides to each new report over this long (one poll). */
 export const DEVICE_FEEDS_FOLLOW_GLIDE_MS = DEVICE_FEEDS_POLL_MS;
 const FOLLOW_RENDER_OWNER = 'device-feeds-follow';
@@ -74,8 +89,12 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   clearSource: clearOverlaySource,
 });
 
-const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
-const text = (value, limit = 80) => String(value ?? '').trim().slice(0, limit);
+const num = (value) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+const text = (value, limit = 80) =>
+  String(value ?? '')
+    .trim()
+    .slice(0, limit);
 
 /**
  * The devices out of a /positions answer, or null when the answer is not one.
@@ -99,7 +118,9 @@ export function normalizeDevicePositions(payload) {
       id,
       kind: text(raw.kind, 20) || 'tracker',
       kindLabel: text(raw.kindLabel, 30) || 'DEVICE',
-      color: /^#[0-9a-f]{6}$/i.test(String(raw.color || '')) ? raw.color : '#ffffff',
+      color: /^#[0-9a-f]{6}$/i.test(String(raw.color || ''))
+        ? raw.color
+        : '#ffffff',
       name: text(raw.name) || 'DEVICE',
       lat,
       lon,
@@ -113,11 +134,15 @@ export function normalizeDevicePositions(payload) {
       record: raw.record === true,
       // Only this application's own picture routes are ever loaded: a device's
       // frame, or a phone package's own picture by its public id.
-      pictureUrl: pictureUrl.startsWith('/api/device-feeds/frame/') || ULTRA_PICTURE_PATH.test(pictureUrl)
-        ? pictureUrl
-        : '',
+      pictureUrl:
+        pictureUrl.startsWith('/api/device-feeds/frame/') ||
+        ULTRA_PICTURE_PATH.test(pictureUrl)
+          ? pictureUrl
+          : '',
       // A saved route exists: how many days, and when it was last written.
-      history: num(raw.history?.lastAt) ? { days: num(raw.history.days) || 0, lastAt: num(raw.history.lastAt) } : null,
+      history: num(raw.history?.lastAt)
+        ? { days: num(raw.history.days) || 0, lastAt: num(raw.history.lastAt) }
+        : null,
     });
   }
   return rows;
@@ -129,21 +154,35 @@ export function deviceDetailLines(device) {
   if (device.record) first.push('REC');
   if (!device.live) first.push(device.error ? 'NO SIGNAL' : 'FIXED POSITION');
   const motion = [];
-  if (device.speedMps !== null) motion.push(`${(device.speedMps * 3.6).toFixed(0)} KM/H`);
+  if (device.speedMps !== null)
+    motion.push(`${(device.speedMps * 3.6).toFixed(0)} KM/H`);
   if (device.headingDeg !== null) {
-    motion.push(`HDG ${String(Math.round(((device.headingDeg % 360) + 360) % 360)).padStart(3, '0')}`);
+    motion.push(
+      `HDG ${String(Math.round(((device.headingDeg % 360) + 360) % 360)).padStart(3, '0')}`,
+    );
   }
   if (device.altM !== null) {
-    motion.push(device.altM < 0 ? `DEPTH ${Math.abs(device.altM).toFixed(0)} M` : `ALT ${device.altM.toFixed(0)} M`);
+    motion.push(
+      device.altM < 0
+        ? `DEPTH ${Math.abs(device.altM).toFixed(0)} M`
+        : `ALT ${device.altM.toFixed(0)} M`,
+    );
   }
-  return motion.length ? [first.join(' · '), motion.join(' · ')] : [first.join(' · ')];
+  return motion.length
+    ? [first.join(' · '), motion.join(' · ')]
+    : [first.join(' · ')];
 }
 
 /**
  * One device's label. With a picture it is a thumbnail card, otherwise a card
  * of text.
  */
-export function createDeviceOverlayEntry({ device, position, image = null, rank = 0 }) {
+export function createDeviceOverlayEntry({
+  device,
+  position,
+  image = null,
+  rank = 0,
+}) {
   return {
     id: device.id,
     position,
@@ -177,7 +216,14 @@ export function deviceStepMeters(a, b) {
  * Add a position to a device's trail. Returns true when the trail changed.
  * @param {Array<{lat:number, lon:number}>} trail Mutated.
  */
-export function extendDeviceTrail(trail, point, { minStepM = DEVICE_FEEDS_TRAIL_MIN_STEP_M, limit = DEVICE_FEEDS_TRAIL_POINTS } = {}) {
+export function extendDeviceTrail(
+  trail,
+  point,
+  {
+    minStepM = DEVICE_FEEDS_TRAIL_MIN_STEP_M,
+    limit = DEVICE_FEEDS_TRAIL_POINTS,
+  } = {},
+) {
   const last = trail[trail.length - 1];
   if (last && deviceStepMeters(last, point) < minStepM) return false;
   trail.push({ lat: point.lat, lon: point.lon });
@@ -217,14 +263,17 @@ export function createDeviceFeedsLayer({
 
   // ---- history ------------------------------------------------------------
   const removeHistory = (record) => {
-    if (record.historyEntity) _dataSource?.entities.remove(record.historyEntity);
+    if (record.historyEntity)
+      _dataSource?.entities.remove(record.historyEntity);
     record.historyEntity = null;
     record.historyAt = null;
   };
 
   const drawHistory = (record, device, points) => {
     const positions = (Array.isArray(points) ? points : [])
-      .filter((point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lon))
+      .filter(
+        (point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lon),
+      )
       .map((point) => Cesium.Cartesian3.fromDegrees(point.lon, point.lat));
     if (positions.length < 2) {
       removeHistory(record);
@@ -256,11 +305,15 @@ export function createDeviceFeedsLayer({
     }
     if (record.historyAt === lastAt || record.historyPending) return;
     record.historyPending = true;
-    fetchImpl(`${TRACK_URL}${encodeURIComponent(device.id)}`, { cache: 'no-store', credentials: 'same-origin' })
+    fetchImpl(`${TRACK_URL}${encodeURIComponent(device.id)}`, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         record.historyPending = false;
-        if (!payload || !_dataSource || _devices.get(device.id) !== record) return;
+        if (!payload || !_dataSource || _devices.get(device.id) !== record)
+          return;
         record.historyAt = lastAt;
         drawHistory(record, device, payload.points);
       })
@@ -280,7 +333,9 @@ export function createDeviceFeedsLayer({
       record.picture = held;
     }
     const time = now();
-    const refreshMs = ULTRA_PICTURE_PATH.test(held.url) ? 120 : DEVICE_FEEDS_PICTURE_REFRESH_MS;
+    const refreshMs = ULTRA_PICTURE_PATH.test(held.url)
+      ? 120
+      : DEVICE_FEEDS_PICTURE_REFRESH_MS;
     if (!held.next && time - held.at >= refreshMs) {
       const next = createImage();
       if (next) {
@@ -304,20 +359,27 @@ export function createDeviceFeedsLayer({
   let _latest = [];
   function publish() {
     if (!_enabled) return;
-    const entries = _latest.filter((device) => device.id !== _follow?.id).map((device, rank) => {
-      const record = _devices.get(device.id);
-      return createDeviceOverlayEntry({
-        device,
-        position: record?.position,
-        image: record?.picture?.image || null,
-        rank,
-      });
-    }).filter((entry) => entry.position);
-    overlayHost.setEntries(DEVICE_FEEDS_OVERLAY_SOURCE_ID, entries.slice(0, DEVICE_FEEDS_OVERLAY_COHORT_LIMIT), {
-      cohortLimit: DEVICE_FEEDS_OVERLAY_COHORT_LIMIT,
-      collisionCapacity: DEVICE_FEEDS_OVERLAY_COLLISION_CAPACITY,
-      moving: true,
-    });
+    const entries = _latest
+      .filter((device) => device.id !== _follow?.id)
+      .map((device, rank) => {
+        const record = _devices.get(device.id);
+        return createDeviceOverlayEntry({
+          device,
+          position: record?.position,
+          image: record?.picture?.image || null,
+          rank,
+        });
+      })
+      .filter((entry) => entry.position);
+    overlayHost.setEntries(
+      DEVICE_FEEDS_OVERLAY_SOURCE_ID,
+      entries.slice(0, DEVICE_FEEDS_OVERLAY_COHORT_LIMIT),
+      {
+        cohortLimit: DEVICE_FEEDS_OVERLAY_COHORT_LIMIT,
+        collisionCapacity: DEVICE_FEEDS_OVERLAY_COLLISION_CAPACITY,
+        moving: true,
+      },
+    );
     governorRequestRender('device-feeds');
   }
 
@@ -325,13 +387,19 @@ export function createDeviceFeedsLayer({
   const groundedPosition = (device) => {
     let ground = 0;
     try {
-      const height = _viewer?.scene?.globe?.getHeight?.(Cesium.Cartographic.fromDegrees(device.lon, device.lat));
+      const height = _viewer?.scene?.globe?.getHeight?.(
+        Cesium.Cartographic.fromDegrees(device.lon, device.lat),
+      );
       if (Number.isFinite(height)) ground = height;
     } catch {
       ground = 0;
     }
     const above = device.altM !== null && device.altM > 0 ? device.altM : 0;
-    return Cesium.Cartesian3.fromDegrees(device.lon, device.lat, ground + above);
+    return Cesium.Cartesian3.fromDegrees(
+      device.lon,
+      device.lat,
+      ground + above,
+    );
   };
 
   const followLabel = (device) => ({
@@ -353,7 +421,12 @@ export function createDeviceFeedsLayer({
     follow.removeClick?.();
     follow.stopFrame?.();
     releaseContinuousRender(FOLLOW_RENDER_OWNER);
-    if (_viewer && !skipViewerUntrack && _viewer.trackedEntity === follow.entity) _viewer.trackedEntity = undefined;
+    if (
+      _viewer &&
+      !skipViewerUntrack &&
+      _viewer.trackedEntity === follow.entity
+    )
+      _viewer.trackedEntity = undefined;
     try {
       _viewer?.entities?.remove(follow.entity);
     } catch {
@@ -364,19 +437,43 @@ export function createDeviceFeedsLayer({
   };
 
   const glidePosition = (follow, result) => {
-    const t = Math.min(1, Math.max(0, (now() - follow.startedAt) / DEVICE_FEEDS_FOLLOW_GLIDE_MS));
-    return Cesium.Cartesian3.lerp(follow.from, follow.to, t, result || new Cesium.Cartesian3());
+    const t = Math.min(
+      1,
+      Math.max(0, (now() - follow.startedAt) / DEVICE_FEEDS_FOLLOW_GLIDE_MS),
+    );
+    return Cesium.Cartesian3.lerp(
+      follow.from,
+      follow.to,
+      t,
+      result || new Cesium.Cartesian3(),
+    );
   };
 
   const startFollow = (device) => {
     if (!_viewer?.entities || !_enabled) return false;
     stopFollow();
     const at = groundedPosition(device);
-    const follow = { id: device.id, from: at, to: at, startedAt: now(), entity: null, stopFrame: null, removeChanged: null, removeClick: null };
+    const follow = {
+      id: device.id,
+      from: at,
+      to: at,
+      startedAt: now(),
+      entity: null,
+      stopFrame: null,
+      removeChanged: null,
+      removeClick: null,
+    };
     const scratch = new Cesium.Cartesian3();
     follow.entity = _viewer.entities.add({
-      position: new Cesium.CallbackProperty(() => glidePosition(follow, scratch), false),
-      viewFrom: new Cesium.Cartesian3(DEVICE_FEEDS_FOLLOW_VIEW_FROM.x, DEVICE_FEEDS_FOLLOW_VIEW_FROM.y, DEVICE_FEEDS_FOLLOW_VIEW_FROM.z),
+      position: new Cesium.CallbackProperty(
+        () => glidePosition(follow, scratch),
+        false,
+      ),
+      viewFrom: new Cesium.Cartesian3(
+        DEVICE_FEEDS_FOLLOW_VIEW_FROM.x,
+        DEVICE_FEEDS_FOLLOW_VIEW_FROM.y,
+        DEVICE_FEEDS_FOLLOW_VIEW_FROM.z,
+      ),
       point: { pixelSize: 1, color: Cesium.Color.TRANSPARENT },
     });
     follow.entity.gevSelectionOrigin = 'programmatic';
@@ -386,13 +483,19 @@ export function createDeviceFeedsLayer({
     _follow = follow;
     holdContinuousRender(FOLLOW_RENDER_OWNER);
     _viewer.trackedEntity = follow.entity;
-    follow.stopFrame = applyFollowFrame(_viewer, follow.entity, follow.entity.viewFrom?.getValue?.() ?? follow.entity.viewFrom) || null;
+    follow.stopFrame =
+      applyFollowFrame(
+        _viewer,
+        follow.entity,
+        follow.entity.viewFrom?.getValue?.() ?? follow.entity.viewFrom,
+      ) || null;
     // Someone else taking the follow camera (a flight, a satellite, a search)
     // ends this follow without touching what they just set.
     const changed = _viewer.trackedEntityChanged;
     if (changed?.addEventListener) {
       const onChanged = (next) => {
-        if (_follow === follow && next !== follow.entity) stopFollow({ skipViewerUntrack: true, released: true });
+        if (_follow === follow && next !== follow.entity)
+          stopFollow({ skipViewerUntrack: true, released: true });
       };
       changed.addEventListener(onChanged);
       follow.removeChanged = () => changed.removeEventListener(onChanged);
@@ -402,7 +505,11 @@ export function createDeviceFeedsLayer({
       const handler = new Cesium.ScreenSpaceEventHandler(_viewer.scene.canvas);
       bindTrackingClickGesture(handler, (click, gesture) => {
         if (_follow !== follow || !isTrackingClickGesture(gesture)) return;
-        if (hitTestOverlay(click?.position?.x, click?.position?.y) || _viewer.scene.pick(click.position)) return;
+        if (
+          hitTestOverlay(click?.position?.x, click?.position?.y) ||
+          _viewer.scene.pick(click.position)
+        )
+          return;
         stopFollow({ released: true });
       });
       follow.removeClick = () => handler.destroy();
@@ -415,7 +522,8 @@ export function createDeviceFeedsLayer({
     if (!wanted) {
       // Its owner unticked FOLLOW, or removed it. A device that merely stops
       // answering keeps the camera where it last was.
-      if (_follow && !rows.some((row) => row.id === _follow.id && row.follow)) stopFollow();
+      if (_follow && !rows.some((row) => row.id === _follow.id && row.follow))
+        stopFollow();
       if (!rows.some((row) => row.follow)) _followReleasedId = null;
       return;
     }
@@ -436,7 +544,11 @@ export function createDeviceFeedsLayer({
     try {
       const carto = Cesium.Cartographic.fromCartesian(position);
       if (!carto) return null;
-      return { lat: Cesium.Math.toDegrees(carto.latitude), lon: Cesium.Math.toDegrees(carto.longitude), altM: Math.round(carto.height) };
+      return {
+        lat: Cesium.Math.toDegrees(carto.latitude),
+        lon: Cesium.Math.toDegrees(carto.longitude),
+        altM: Math.round(carto.height),
+      };
     } catch {
       return null;
     }
@@ -455,7 +567,10 @@ export function createDeviceFeedsLayer({
     if (!record?.position) return;
     const id = _pendingFocusId;
     _pendingFocusId = null;
-    requestWorldFocus({ kind: 'help', id, position: record.position }, windowRef);
+    requestWorldFocus(
+      { kind: 'help', id, position: record.position },
+      windowRef,
+    );
   };
 
   const removeDevice = (id) => {
@@ -470,13 +585,29 @@ export function createDeviceFeedsLayer({
   const applyDevice = (device) => {
     let record = _devices.get(device.id);
     if (!record) {
-      record = { entity: null, trailEntity: null, trail: [], picture: null, position: null, historyEntity: null, historyAt: null, historyPending: false };
+      record = {
+        entity: null,
+        trailEntity: null,
+        trail: [],
+        picture: null,
+        position: null,
+        historyEntity: null,
+        historyAt: null,
+        historyPending: false,
+      };
       _devices.set(device.id, record);
     }
     const height = device.altM !== null && device.altM > 0 ? device.altM : 0;
     const color = Cesium.Color.fromCssColorString(device.color);
-    record.position = Cesium.Cartesian3.fromDegrees(device.lon, device.lat, height);
-    const heightReference = height > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND;
+    record.position = Cesium.Cartesian3.fromDegrees(
+      device.lon,
+      device.lat,
+      height,
+    );
+    const heightReference =
+      height > 0
+        ? Cesium.HeightReference.RELATIVE_TO_GROUND
+        : Cesium.HeightReference.CLAMP_TO_GROUND;
     if (!record.entity) {
       record.entity = _dataSource.entities.add({
         id: `device-feed:${device.id}`,
@@ -489,7 +620,11 @@ export function createDeviceFeedsLayer({
           heightReference,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
-        properties: { deviceId: device.id, kind: device.kind, name: device.name },
+        properties: {
+          deviceId: device.id,
+          kind: device.kind,
+          name: device.name,
+        },
       });
     } else {
       record.entity.position = record.position;
@@ -497,8 +632,14 @@ export function createDeviceFeedsLayer({
       record.entity.point.heightReference = heightReference;
     }
     // A trail is drawn only from positions the device itself reported.
-    if (device.live && extendDeviceTrail(record.trail, device) && record.trail.length > 1) {
-      const positions = record.trail.map((point) => Cesium.Cartesian3.fromDegrees(point.lon, point.lat));
+    if (
+      device.live &&
+      extendDeviceTrail(record.trail, device) &&
+      record.trail.length > 1
+    ) {
+      const positions = record.trail.map((point) =>
+        Cesium.Cartesian3.fromDegrees(point.lon, point.lat),
+      );
       if (!record.trailEntity) {
         record.trailEntity = _dataSource.entities.add({
           id: `device-feed-trail:${device.id}`,
@@ -537,7 +678,10 @@ export function createDeviceFeedsLayer({
         // Saving a card is the owner speaking: FOLLOW is honoured afresh.
         _followReleasedId = null;
         if (!_enabled) {
-          if (count > 0) Promise.resolve(_dataManager?.setEnabled?.(DEVICE_FEEDS_LAYER_ID, true)).catch(() => {});
+          if (count > 0)
+            Promise.resolve(
+              _dataManager?.setEnabled?.(DEVICE_FEEDS_LAYER_ID, true),
+            ).catch(() => {});
           return;
         }
         const refreshed = _dataManager?.refreshLayer?.(DEVICE_FEEDS_LAYER_ID);
@@ -581,9 +725,15 @@ export function createDeviceFeedsLayer({
 
     async update() {
       try {
-        const response = await fetchImpl(POSITIONS_URL, { cache: 'no-store', credentials: 'same-origin' });
+        const response = await fetchImpl(POSITIONS_URL, {
+          cache: 'no-store',
+          credentials: 'same-origin',
+        });
         if (!response.ok) {
-          _lastError = response.status === 404 ? 'Device feeds need the local server' : `Device feeds HTTP ${response.status}`;
+          _lastError =
+            response.status === 404
+              ? 'Device feeds need the local server'
+              : `Device feeds HTTP ${response.status}`;
           return false;
         }
         const rows = normalizeDevicePositions(await response.json());
@@ -593,20 +743,30 @@ export function createDeviceFeedsLayer({
         }
         if (!_dataSource) return false;
         const keep = new Set(rows.map((row) => row.id));
-        for (const id of [..._devices.keys()]) if (!keep.has(id)) removeDevice(id);
+        for (const id of [..._devices.keys()])
+          if (!keep.has(id)) removeDevice(id);
         for (const device of rows) applyDevice(device);
         tryFocus();
         _latest = rows;
         _count = rows.length;
         _lastUpdate = now();
         const silent = rows.filter((row) => !row.live && row.error).length;
-        _lastError = silent ? `${silent} of ${rows.length} not answering` : null;
+        _lastError = silent
+          ? `${silent} of ${rows.length} not answering`
+          : null;
         if (_enabled) {
           syncFollow(rows);
           // Not awaited: a slow save never holds up the next position.
-          _recorder.tick(rows, _dataManager, { toLatLon, skip: DEVICE_FEEDS_RECORD_SKIP_LAYERS }).then((results) => {
-            if (results.some((result) => result.error)) _lastError = _lastError || 'Recording could not be saved';
-          }).catch(() => {});
+          _recorder
+            .tick(rows, _dataManager, {
+              toLatLon,
+              skip: DEVICE_FEEDS_RECORD_SKIP_LAYERS,
+            })
+            .then((results) => {
+              if (results.some((result) => result.error))
+                _lastError = _lastError || 'Recording could not be saved';
+            })
+            .catch(() => {});
         }
         publish();
         return true;
@@ -658,14 +818,26 @@ export function createDeviceFeedsLayer({
     },
 
     getTrackedInfo() {
-      const device = _follow ? _latest.find((row) => row.id === _follow.id) : null;
-      return device ? { id: device.id, name: device.name, kind: device.kind, lat: device.lat, lon: device.lon } : null;
+      const device = _follow
+        ? _latest.find((row) => row.id === _follow.id)
+        : null;
+      return device
+        ? {
+            id: device.id,
+            name: device.name,
+            kind: device.kind,
+            lat: device.lat,
+            lon: device.lon,
+          }
+        : null;
     },
 
     /** Plain records for the analyst query engine. Never an address or a login. */
     getAnalystRecords(maxCount = 2000) {
       if (!_enabled) return [];
-      const limit = Number.isFinite(maxCount) ? Math.max(1, Math.floor(maxCount)) : 2000;
+      const limit = Number.isFinite(maxCount)
+        ? Math.max(1, Math.floor(maxCount))
+        : 2000;
       return _latest.slice(0, limit).map((device) => ({
         id: device.id,
         kind: device.kind,
@@ -681,7 +853,13 @@ export function createDeviceFeedsLayer({
     },
 
     getStats() {
-      return { count: _count, lastUpdate: _lastUpdate, error: _lastError, following: _follow?.id || null, ..._recorder.stats() };
+      return {
+        count: _count,
+        lastUpdate: _lastUpdate,
+        error: _lastError,
+        following: _follow?.id || null,
+        ..._recorder.stats(),
+      };
     },
   };
   return layer;

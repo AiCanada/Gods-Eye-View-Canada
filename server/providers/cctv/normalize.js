@@ -1,3 +1,8 @@
+import {
+  normalizeFeedType,
+  isVideoFeedType,
+} from '../../../src/sources/cctvTypes.js';
+export { normalizeFeedType, isVideoFeedType };
 import { directionToHeading } from '../../../src/data/directionText.js';
 import { CCTV_CACHE_BUSTER_PARAMS, US_COORDINATE_BOX } from './constants.js';
 import { FRAME_RESOLVERS, normalizeFrameHosts } from './frame-resolver.js';
@@ -33,39 +38,6 @@ export function escapeXml(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-/**
- * Canonicalize a CCTV feed type string to one of:
- * 'image', 'mjpeg', 'mp4', 'webm', 'hls', 'none', or pass-through.
- *
- * 'none' is a camera with no public still or stream the proxy may fetch; it
- * shows a placeholder until a lookup (Road511) finds its still.
- *
- * @param {string} value - Raw feed type (e.g. 'jpeg', 'mjpg', 'video', 'stream').
- * @returns {string} Normalized feed type.
- */
-export function normalizeFeedType(value) {
-  const raw = String(value || '')
-    .trim()
-    .toLowerCase();
-  if (!raw) return 'image';
-  if (raw === 'none') return 'none';
-  if (raw === 'jpeg' || raw === 'jpg' || raw === 'png') return 'image';
-  if (raw === 'mjpg') return 'mjpeg';
-  if (raw === 'video') return 'mp4';
-  if (raw === 'stream') return 'hls';
-  return raw;
-}
-
-/**
- * Check whether a normalized feed type represents streaming video.
- *
- * @param {string} feedType
- * @returns {boolean}
- */
-export function isVideoFeedType(feedType) {
-  return feedType === 'mp4' || feedType === 'webm' || feedType === 'hls';
 }
 
 /**
@@ -321,6 +293,120 @@ export function isPlausibleUsCoordinate(lat, lon) {
 }
 
 /**
+ * Bounding-box sanity check: is this coordinate plausibly on the Finnish road
+ * network? Generous around the observed catalog extent (59.86..70.09 N,
+ * 19.62..31.28 E) so a real new station is never dropped, tight enough that a
+ * swapped lat/lon or a null island record is.
+ *
+ * @param {number} lat
+ * @param {number} lon
+ * @returns {boolean}
+ */
+/** Longest unselected camera label the HUD shows before it gets noisy. */
+export const CAMERA_CODE_MAX_CHARS = 28;
+
+/**
+ * Short display code for the unselected camera label ("CAM-<code>"): the
+ * feed's own name for the camera ("5TH ST / CONGRESS AVE", "TRAFALGAR
+ * SQUARE"), trimmed to CAMERA_CODE_MAX_CHARS. A pack may pass an explicit
+ * `code` (TxDOT's device key, NSW's title); the id is the last resort.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function cameraDisplayCode(text) {
+  const clean = String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (clean.length <= CAMERA_CODE_MAX_CHARS) return clean;
+  return `${clean.slice(0, CAMERA_CODE_MAX_CHARS - 1).trimEnd()}…`;
+}
+
+/** Finite, in range, and not the null island that Number(null) produces. */
+export function isPlausibleLatLon(lat, lon) {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lon) <= 180 &&
+    !(lat === 0 && lon === 0)
+  );
+}
+
+/** British Columbia bounding box (with the neighbouring border crossings). */
+export function isLikelyBcCoordinate(lat, lon) {
+  return (
+    isPlausibleLatLon(lat, lon) &&
+    lat >= 48 &&
+    lat <= 60.5 &&
+    lon >= -139.5 &&
+    lon <= -114
+  );
+}
+
+/** Texas bounding box. */
+export function isLikelyTexasCoordinate(lat, lon) {
+  return (
+    isPlausibleLatLon(lat, lon) &&
+    lat >= 25.5 &&
+    lat <= 36.7 &&
+    lon >= -107 &&
+    lon <= -93.4
+  );
+}
+
+/** New South Wales bounding box (incl. the ACT and Lord Howe Island). */
+export function isLikelyNswCoordinate(lat, lon) {
+  return (
+    isPlausibleLatLon(lat, lon) &&
+    lat >= -38 &&
+    lat <= -28 &&
+    lon >= 140.9 &&
+    lon <= 159.2
+  );
+}
+
+/** Calgary's municipal extent, with slack for the ring road. */
+export function isLikelyCalgaryCoordinate(lat, lon) {
+  return (
+    isPlausibleLatLon(lat, lon) &&
+    lat >= 50.8 &&
+    lat <= 51.25 &&
+    lon >= -114.4 &&
+    lon <= -113.8
+  );
+}
+
+export function isLikelyFinlandCoordinate(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  return lat >= 59.5 && lat <= 70.5 && lon >= 19 && lon <= 32;
+}
+
+/**
+ * Human label for one Fintraffic preset (camera view).
+ *
+ * Station names are machine-shaped road codes ("vt3_Hyvinkää_Noppo"); the
+ * underscores become spaces. A preset id is always its station id plus a
+ * two-digit view number, so the remainder distinguishes the several views that
+ * share one station position. The station list endpoint carries no
+ * presentationName ("Helsinkiin"); that lives only on the per-station detail
+ * endpoint, which would cost one request per station.
+ *
+ * @param {string} stationName - Raw `properties.name`.
+ * @param {string} stationId - Raw `properties.id` (e.g. "C01503").
+ * @param {string} presetId - Raw preset id (e.g. "C0150301").
+ * @returns {string}
+ */
+export function fintrafficCameraName(stationName, stationId, presetId) {
+  const base =
+    String(stationName || '')
+      .replace(/_/g, ' ')
+      .trim() || `Fintraffic ${stationId}`;
+  const view = String(presetId || '').slice(String(stationId || '').length);
+  return view ? `${base} (view ${view})` : base;
+}
+
+/**
  * Derive a deterministic fallback heading from a camera ID hash.
  *
  * Produces one of 16 evenly-spaced compass directions (0, 22.5, 45, ...).
@@ -348,6 +434,31 @@ export function rowArrayToObject(row, columns) {
     record[key] = row[idx];
   }
   return record;
+}
+
+/**
+ * The bounding box of cameras with coordinates, or null: where a pack's
+ * cameras are, for coverage reports.
+ *
+ * @param {Array<object>} cameras
+ * @returns {{west: number, south: number, east: number, north: number}|null}
+ */
+export function cameraRegion(cameras) {
+  let region = null;
+  for (const camera of cameras || []) {
+    const lat = Number(camera?.lat);
+    const lon = Number(camera?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    region = region
+      ? {
+          west: Math.min(region.west, lon),
+          south: Math.min(region.south, lat),
+          east: Math.max(region.east, lon),
+          north: Math.max(region.north, lat),
+        }
+      : { west: lon, south: lat, east: lon, north: lat };
+  }
+  return region;
 }
 
 /**
@@ -413,6 +524,16 @@ export function normalizeSourceItem(item) {
     region: String(item.region || '')
       .trim()
       .toUpperCase(),
+    // Per-camera attribution for feeds a partner supplies inside a pack
+    // (DriveBC: TransLink, city cameras). Shown beside the provider.
+    credit: String(item.credit || '').trim(),
+    // Unselected-label code: the pack's explicit short name, else the feed's
+    // name, else the id.
+    code: cameraDisplayCode(
+      item.code || String(item.name || '').toUpperCase() || item.id || '',
+    ),
+    // The live pack a camera came from ('' for pack files and CCTV_SOURCES_JSON).
+    pack: typeof item.pack === 'string' ? item.pack : '',
     sourceKind: String(item.sourceKind || item.kind || 'configured'),
     // Optional CAL badge input (cctv-v2 design §3b/§9.2, additive-only per the
     // global constraints — nothing else in this file changes): hand-authored

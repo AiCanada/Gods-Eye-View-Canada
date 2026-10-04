@@ -1,5 +1,13 @@
 import * as Cesium from 'cesium';
 import { installRenderRecovery } from './renderRecovery.js';
+import { applyModelAtmosphereWorkaround } from './atmosphereCompat.js';
+
+/**
+ * Wheel events this module dispatched itself (a combined trackpad step or a
+ * relayed pinch). Both trackpad handlers skip them so neither re-amplifies the
+ * other's output.
+ */
+const relayedWheelEvents = new WeakSet();
 
 /** Wheel and trackpad zoom speed; Cesium's default is 5. */
 export const GLOBE_ZOOM_FACTOR = 10;
@@ -86,17 +94,18 @@ export function bindTrackpadZoom({
       -TRACKPAD_BURST_LIMIT,
       Math.min(TRACKPAD_BURST_LIMIT, burst.deltaY),
     );
-    canvas.dispatchEvent(
-      new WheelEventCtor('wheel', {
-        deltaY,
-        deltaMode: 0,
-        clientX: burst.clientX,
-        clientY: burst.clientY,
-        ctrlKey: burst.ctrlKey,
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
+    const combined = new WheelEventCtor('wheel', {
+      deltaY,
+      deltaMode: 0,
+      clientX: burst.clientX,
+      clientY: burst.clientY,
+      ctrlKey: burst.ctrlKey,
+      bubbles: true,
+      cancelable: true,
+    });
+    if (combined && typeof combined === 'object')
+      relayedWheelEvents.add(combined);
+    canvas.dispatchEvent(combined);
   };
   const onWheel = (event) => {
     if (isDestroyed()) {
@@ -123,6 +132,110 @@ export function bindTrackpadZoom({
     passive: false,
   });
   return unbind;
+}
+
+const PINCH_ZOOM_MULTIPLIER = 8;
+const MAX_PINCH_PIXEL_DELTA = 120;
+
+function boundedPinchDelta(delta) {
+  if (!Number.isFinite(delta) || delta === 0) return delta;
+  return (
+    Math.sign(delta) *
+    Math.min(Math.abs(delta) * PINCH_ZOOM_MULTIPLIER, MAX_PINCH_PIXEL_DELTA)
+  );
+}
+
+/**
+ * Add browser trackpad pinch to Cesium's zoom inputs and return its disposer.
+ * Browsers expose this gesture as a small pixel-mode Ctrl+wheel event.
+ */
+export function installTrackpadPinchZoom(
+  viewer,
+  { createWheelEvent = (type, init) => new WheelEvent(type, init) } = {},
+) {
+  const controller = viewer?.scene?.screenSpaceCameraController;
+  const container = viewer?.container;
+  const canvas = viewer?.canvas;
+  if (!controller || !container || !canvas)
+    throw new TypeError('A complete Cesium viewer is required');
+
+  const originalZoomEventTypes = controller.zoomEventTypes;
+  const zoomEventTypes = Array.isArray(originalZoomEventTypes)
+    ? originalZoomEventTypes
+    : originalZoomEventTypes === undefined
+      ? []
+      : [originalZoomEventTypes];
+  const alreadyHandlesControlWheel = zoomEventTypes.some(
+    (binding) =>
+      binding?.eventType === Cesium.CameraEventType.WHEEL &&
+      binding?.modifier === Cesium.KeyboardEventModifier.CTRL,
+  );
+  const configuredZoomEventTypes = alreadyHandlesControlWheel
+    ? originalZoomEventTypes
+    : [
+        ...zoomEventTypes,
+        {
+          eventType: Cesium.CameraEventType.WHEEL,
+          modifier: Cesium.KeyboardEventModifier.CTRL,
+        },
+      ];
+  if (!alreadyHandlesControlWheel)
+    controller.zoomEventTypes = configuredZoomEventTypes;
+
+  const relayedEvents = relayedWheelEvents;
+  const relayPinch = (event) => {
+    if (
+      !event.ctrlKey ||
+      relayedEvents.has(event) ||
+      // bindTrackpadZoom (installed with the viewer) already took this event
+      // and hands Cesium its own combined step.
+      event.defaultPrevented ||
+      event.deltaMode !== 0 ||
+      !Number.isFinite(event.deltaY) ||
+      event.deltaY === 0
+    )
+      return;
+    let relayed;
+    try {
+      relayed = createWheelEvent('wheel', {
+        deltaX: event.deltaX,
+        deltaY: boundedPinchDelta(event.deltaY),
+        deltaZ: event.deltaZ,
+        deltaMode: event.deltaMode,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+        view: globalThis.window,
+      });
+    } catch {
+      // The registered Ctrl+wheel binding can still consume the original.
+      return;
+    }
+    relayedEvents.add(relayed);
+    event.preventDefault();
+    event.stopPropagation();
+    canvas.dispatchEvent(relayed);
+  };
+  container.addEventListener('wheel', relayPinch, {
+    capture: true,
+    passive: false,
+  });
+
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    container.removeEventListener('wheel', relayPinch, true);
+    if (
+      !alreadyHandlesControlWheel &&
+      controller.zoomEventTypes === configuredZoomEventTypes
+    )
+      controller.zoomEventTypes = originalZoomEventTypes;
+  };
 }
 
 /** Create the standard globe viewer in caller-owned, visible containers. */
@@ -152,6 +265,10 @@ export function createApplicationViewer({ container, creditContainer }) {
   });
   try {
     viewer.targetFrameRate = 60;
+    // Before any tile builds a draw command: Cesium's per-vertex model
+    // atmosphere fails to LINK on Apple's Metal backend and kills the
+    // render loop. See app/atmosphereCompat.js.
+    applyModelAtmosphereWorkaround(viewer.scene);
     viewer.scene.screenSpaceCameraController.zoomEventTypes =
       globeZoomEventTypes();
     // Twice Cesium's default of 5: wheel and trackpad zoom felt sluggish.

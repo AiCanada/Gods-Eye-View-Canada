@@ -28,11 +28,24 @@ export const LOCATION_CACHE_KEEP_RADIUS_KM = 300;
  *   switched to (the location-switch `to` descriptor).
  * @param {number} [options.keepRadiusKm] - Entries within this distance of
  *   `to` stay warm.
+ * @param {{terrain?: object, groundFloor?: object}} [options.surface] - The
+ *   application's own surface services (src/app/surfaceServices.js). The live
+ *   app builds its terrain/floor caches there rather than in the src/data
+ *   compatibility modules, so pass it to prune those instances too.
  * @returns {{released: boolean, meshCells: number, pendingFloorCells: number, terrainHeights: number}}
  *   Entries removed from each cache.
  */
-export function releaseSharedLocationCaches({ to, keepRadiusKm = LOCATION_CACHE_KEEP_RADIUS_KM } = {}) {
-  const counts = { released: false, meshCells: 0, pendingFloorCells: 0, terrainHeights: 0 };
+export function releaseSharedLocationCaches({
+  to,
+  keepRadiusKm = LOCATION_CACHE_KEEP_RADIUS_KM,
+  surface = null,
+} = {}) {
+  const counts = {
+    released: false,
+    meshCells: 0,
+    pendingFloorCells: 0,
+    terrainHeights: 0,
+  };
   const radiusKm = keepRadiusKm ?? LOCATION_CACHE_KEEP_RADIUS_KM;
   if (!Number.isFinite(to?.lat) || !Number.isFinite(to?.lon)) return counts;
   if (!Number.isFinite(radiusKm) || radiusKm < 0) return counts;
@@ -42,11 +55,34 @@ export function releaseSharedLocationCaches({ to, keepRadiusKm = LOCATION_CACHE_
     const floor = pruneGroundFloorOutside(center, radiusKm);
     counts.meshCells = floor.meshCells;
     counts.pendingFloorCells = floor.pendingCells;
+    if (
+      surface &&
+      typeof surface.terrain?.pruneTerrainHeightsOutside === 'function'
+    ) {
+      counts.terrainHeights += surface.terrain.pruneTerrainHeightsOutside(
+        center,
+        radiusKm,
+      );
+    }
+    if (
+      surface &&
+      typeof surface.groundFloor?.pruneGroundFloorOutside === 'function'
+    ) {
+      const live = surface.groundFloor.pruneGroundFloorOutside(
+        center,
+        radiusKm,
+      );
+      counts.meshCells += live.meshCells;
+      counts.pendingFloorCells += live.pendingCells;
+    }
     counts.released = true;
   } catch (error) {
     // Both prunes are plain Map walks; this only guards the switch path from
     // an unexpected failure. Whatever was not released stays warm.
-    console.debug('[LocationSwitch] shared cache release skipped:', error?.message || error);
+    console.debug(
+      '[LocationSwitch] shared cache release skipped:',
+      error?.message || error,
+    );
   }
   return counts;
 }

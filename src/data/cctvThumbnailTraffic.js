@@ -32,7 +32,8 @@ const CCTV_SOURCE = 'cctv';
 const MIN_RADIUS = 2;
 const MAX_RADIUS = 5;
 const OUTLINE = 'rgba(0, 0, 0, 0.85)';
-const TAG_FONT = '9px "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace';
+const TAG_FONT =
+  '9px "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace';
 const TAG_BG = 'rgba(8, 18, 26, 0.82)';
 const TAG_TEXT = 'rgba(170, 242, 255, 0.98)';
 const BRACKET = 'rgba(200, 245, 255, 0.95)';
@@ -50,7 +51,10 @@ function cssFor(color) {
   if (!color || typeof color !== 'object') return '#ffffff';
   let css = _cssByColor.get(color);
   if (!css) {
-    css = typeof color.toCssColorString === 'function' ? color.toCssColorString() : '#ffffff';
+    css =
+      typeof color.toCssColorString === 'function'
+        ? color.toCssColorString()
+        : '#ffffff';
     _cssByColor.set(color, css);
   }
   return css;
@@ -73,7 +77,12 @@ export function collectThumbnailPictures(frame) {
   for (let i = 0; i < total; i += 1) {
     const rect = rects[i];
     const entry = rect?.entry;
-    if (!entry || rect.sourceId !== CCTV_SOURCE || entry.variant !== 'thumbnail') continue;
+    if (
+      !entry ||
+      rect.sourceId !== CCTV_SOURCE ||
+      entry.variant !== 'thumbnail'
+    )
+      continue;
     const layout = entry._overlayLayout || {};
     const padX = Number.isFinite(layout.padX) ? layout.padX : 4;
     const padY = Number.isFinite(layout.padY) ? layout.padY : 4;
@@ -81,8 +90,13 @@ export function collectThumbnailPictures(frame) {
     const thumbH = layout.thumbH || Number(entry.thumbnailHeight) || 54;
     const scale = rect.w / (thumbW + padX * 2) || 1;
     // A card scrolled off the canvas has nothing to draw on.
-    if (rect.x > (frame.width || Infinity) || rect.y > (frame.height || Infinity)
-      || rect.x + rect.w < 0 || rect.y + rect.h < 0) continue;
+    if (
+      rect.x > (frame.width || Infinity) ||
+      rect.y > (frame.height || Infinity) ||
+      rect.x + rect.w < 0 ||
+      rect.y + rect.h < 0
+    )
+      continue;
     const picture = _pictures[count] || (_pictures[count] = {});
     picture.x = rect.x + padX * scale;
     picture.y = rect.y + padY * scale;
@@ -103,7 +117,10 @@ export function collectThumbnailPictures(frame) {
 }
 
 function drawVehicle(ctx, sx, sy, point) {
-  const radius = Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, (Number(point?.pixelSize) || 5) / 2));
+  const radius = Math.min(
+    MAX_RADIUS,
+    Math.max(MIN_RADIUS, (Number(point?.pixelSize) || 5) / 2),
+  );
   ctx.beginPath();
   ctx.arc(sx, sy, radius, 0, Math.PI * 2);
   ctx.fillStyle = cssFor(point?.color);
@@ -140,12 +157,19 @@ function placeTag(ctx, sx, sy, index, bounds, placed) {
     if (bx + boxW > bounds.x + bounds.w) bx = sx - TAG_HALF - 3 - boxW;
     if (bx < bounds.x) bx = bounds.x;
     if (by < bounds.y) by = sy + TAG_HALF + 2;
-    if (by + TAG_BOX_H > bounds.y + bounds.h) by = bounds.y + bounds.h - TAG_BOX_H;
+    if (by + TAG_BOX_H > bounds.y + bounds.h)
+      by = bounds.y + bounds.h - TAG_BOX_H;
   }
   if (placed) {
     for (let i = 0; i < placed.length; i += 1) {
       const o = placed[i];
-      if (bx < o.bx + o.boxW && bx + boxW > o.bx && by < o.by + TAG_BOX_H && by + TAG_BOX_H > o.by) return null;
+      if (
+        bx < o.bx + o.boxW &&
+        bx + boxW > o.bx &&
+        by < o.by + TAG_BOX_H &&
+        by + TAG_BOX_H > o.by
+      )
+        return null;
     }
   }
   return { text, bx, by, boxW };
@@ -157,7 +181,12 @@ function paintTag(ctx, sx, sy, tag) {
   ctx.strokeStyle = BRACKET;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (const [dx, dy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+  for (const [dx, dy] of [
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
+  ]) {
     const cx = sx + dx * TAG_HALF;
     const cy = sy + dy * TAG_HALF;
     ctx.moveTo(cx - dx * arm, cy);
@@ -200,8 +229,12 @@ export function paintTrafficOverThumbnails(
     const clipW = vp[3] * px + vp[7] * py + vp[11] * pz + vp[15];
     if (clipW <= 0) return false;
     const invW = 1 / clipW;
-    out.sx = ((vp[0] * px + vp[4] * py + vp[8] * pz + vp[12]) * invW * 0.5 + 0.5) * width;
-    out.sy = (0.5 - (vp[1] * px + vp[5] * py + vp[9] * pz + vp[13]) * invW * 0.5) * height;
+    out.sx =
+      ((vp[0] * px + vp[4] * py + vp[8] * pz + vp[12]) * invW * 0.5 + 0.5) *
+      width;
+    out.sy =
+      (0.5 - (vp[1] * px + vp[5] * py + vp[9] * pz + vp[13]) * invW * 0.5) *
+      height;
     return true;
   };
   const screen = { sx: 0, sy: 0 };
@@ -211,7 +244,12 @@ export function paintTrafficOverThumbnails(
   let tagsLeft = CCTV_VIEW_MAX_TAGS;
   forEachMarker((position, index) => {
     if (tagsLeft <= 0 || !toScreen(position, screen)) return;
-    paintTag(ctx, screen.sx, screen.sy, placeTag(ctx, screen.sx, screen.sy, index, null, null));
+    paintTag(
+      ctx,
+      screen.sx,
+      screen.sy,
+      placeTag(ctx, screen.sx, screen.sy, index, null, null),
+    );
     tagsLeft -= 1;
   });
   _diag.tags += CCTV_VIEW_MAX_TAGS - tagsLeft;
@@ -220,11 +258,17 @@ export function paintTrafficOverThumbnails(
   _diag.cards = cards;
   if (cards === 0) return 0;
 
-  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
   for (let i = 0; i < cards; i += 1) {
     const p = _pictures[i];
     // A turned picture can reach its own diagonal from the pivot in any direction.
-    const reach = p.rot ? Math.hypot(p.w, p.h) + Math.hypot(p.px - (p.x + p.w / 2), p.py - (p.y + p.h / 2)) : 0;
+    const reach = p.rot
+      ? Math.hypot(p.w, p.h) +
+        Math.hypot(p.px - (p.x + p.w / 2), p.py - (p.y + p.h / 2))
+      : 0;
     const loX = p.rot ? p.px - reach : p.x;
     const loY = p.rot ? p.py - reach : p.y;
     const hiX = p.rot ? p.px + reach : p.x + p.w;
@@ -253,9 +297,13 @@ export function paintTrafficOverThumbnails(
       }
       if (lx < p.x || lx > p.x + p.w || ly < p.y || ly > p.y + p.h) continue;
       if (tagsLeft <= 0) return;
-      if (occluder?.isPointVisible && !occluder.isPointVisible(point.position)) return;
-      const roadY = p.y + p.h * (THUMBNAIL_ROAD_BAND_TOP
-        + (1 - THUMBNAIL_ROAD_BAND_TOP) * ((ly - p.y) / p.h));
+      if (occluder?.isPointVisible && !occluder.isPointVisible(point.position))
+        return;
+      const roadY =
+        p.y +
+        p.h *
+          (THUMBNAIL_ROAD_BAND_TOP +
+            (1 - THUMBNAIL_ROAD_BAND_TOP) * ((ly - p.y) / p.h));
       let drawX = lx;
       let drawY = roadY;
       if (p.rot) {
@@ -266,7 +314,14 @@ export function paintTrafficOverThumbnails(
       }
       // No room for the identifier means no dot either. A turned picture has no
       // upright box to keep the tag inside, so only overlap is checked there.
-      const tag = placeTag(ctx, drawX, drawY, index, p.rot ? null : p, p.placed);
+      const tag = placeTag(
+        ctx,
+        drawX,
+        drawY,
+        index,
+        p.rot ? null : p,
+        p.placed,
+      );
       if (!tag) return;
       p.placed.push(tag);
       drawVehicle(ctx, drawX, drawY, point);
@@ -286,10 +341,14 @@ let _lane = null;
 /** Turn the camera-view traffic pass on or off with the CCTV layer. */
 export function setCctvThumbnailTrafficActive(active) {
   if (!_lane && active) {
-    _lane = registerWorldOverlayPaintLane(LANE, (frame) => paintTrafficOverThumbnails(frame), {
-      id: LANE_ID,
-      active: true,
-    });
+    _lane = registerWorldOverlayPaintLane(
+      LANE,
+      (frame) => paintTrafficOverThumbnails(frame),
+      {
+        id: LANE_ID,
+        active: true,
+      },
+    );
     return;
   }
   _lane?.setActive(active === true);

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { expandApplicationHtml } from '../build/application-html.js';
 import {
   ULTRA_PHONE_MODELS,
   classifyUltraIncident,
@@ -62,9 +63,8 @@ test('the SMS sentence names the place and the class', () => {
 });
 
 test('the Ultra box is a collapsed left-stack panel and the help module does not import CCTV', () => {
-  const html = fs.readFileSync(
-    new URL('../index.html', import.meta.url),
-    'utf8',
+  const html = expandApplicationHtml(
+    fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8'),
   );
   const panel = html.slice(
     html.indexOf('id="ultra-panel"'),
@@ -212,9 +212,9 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
   );
   for (const file of [
     './ultraHelp.mjs',
-    './ultraTokens.mjs',
-    './ultraNetwork.mjs',
-    './ultraSmsRelay.mjs',
+    '../server/shared/ultraTokens.mjs',
+    '../server/shared/ultraNetwork.mjs',
+    '../server/shared/ultraSmsRelay.mjs',
   ]) {
     const source = fs.readFileSync(new URL(file, import.meta.url), 'utf8');
     assert.doesNotMatch(source, /cctv/i, `${file} does not import CCTV`);

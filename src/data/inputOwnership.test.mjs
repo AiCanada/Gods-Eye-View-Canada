@@ -116,14 +116,25 @@ test('every scene click handler consults ownership before it picks', () => {
   const guarded = [
     ['src/data/trackingClickGesture.js', 'onClick(click, gesture);'],
     ['src/data/localGeojsonCore.js', 'viewer.scene.pick(click.position)'],
-    ['src/data/cctvGizmo.js', 'scene.pick(windowPosition, 14, 14)'],
-    ['src/data/bikeshare.js', 'viewer.scene.pick(click.position)'],
-    ['src/data/firmsHeatmap.js', '_viewer.scene.pick(click.position)'],
-    ['src/data/militaryInstallations.js', 'viewer.scene.pick(click.position)'],
-    ['src/data/rocketLaunches.js', 'drillPick(movement.position'],
-    ['src/data/radio.js', 'scene.pick(position)'],
-    ['src/data/satellites.js', 'viewer.scene.pick(click.position)'],
-    ['src/data/aisLiveVessels.js', 'viewer.scene.pick(click.position)'],
+    ['src/data/cctvGizmo.js', 'pickGizmoPart(event.position)'],
+    ['src/layers/alpr/presentation.js', 'viewer.scene.pick(click.position)'],
+    ['src/layers/bikeshare/selection.js', 'viewer.scene.pick(click.position)'],
+    ['src/layers/firms/selection.js', 'scene.pick(click.position)'],
+    [
+      'src/layers/installations/selection.js',
+      'viewer.scene.pick(click.position)',
+    ],
+    ['src/layers/launches/lifecycle.js', 'drillPick(movement.position'],
+    ['src/layers/radio/interaction.js', 'pickedRadioStationAt(click.position)'],
+    [
+      'src/layers/satellites/interaction.js',
+      'viewer.scene.pick(click.position)',
+    ],
+    [
+      'src/layers/submarineCables/interaction.js',
+      'viewer.scene.pick(click.position)',
+    ],
+    ['src/layers/vessels/selection.js', 'viewer.scene.pick(click.position)'],
   ];
   for (const [file, firstPick] of guarded) {
     const source = read(file);
@@ -153,8 +164,8 @@ test('ambient selection handlers never claim the pointer themselves', () => {
     'src/data/trackingClickGesture.js',
     'src/data/localGeojsonCore.js',
     'src/data/cctvGizmo.js',
-    'src/data/aisLiveVessels.js',
-    'src/data/satellites.js',
+    'src/layers/vessels/selection.js',
+    'src/layers/satellites/interaction.js',
   ]) {
     assert.doesNotMatch(
       read(file),

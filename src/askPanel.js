@@ -168,10 +168,15 @@ export class AskPanel {
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'ask-input';
-    input.placeholder = showLabel ? `Ask ${provider.label}...` : 'Ask about this view...';
+    input.placeholder = showLabel
+      ? `Ask ${provider.label}...`
+      : 'Ask about this view...';
     input.autocomplete = 'off';
     input.spellcheck = false;
-    input.setAttribute('aria-label', `Ask ${provider.label} about the current view`);
+    input.setAttribute(
+      'aria-label',
+      `Ask ${provider.label} about the current view`,
+    );
 
     const ask = document.createElement('button');
     ask.type = 'button';
@@ -285,7 +290,8 @@ export class AskPanel {
     if (!row || !row.output.textContent) return;
     event.preventDefault();
     event.stopPropagation();
-    for (const [id, other] of this._rows) if (id !== providerId) other.find?.close();
+    for (const [id, other] of this._rows)
+      if (id !== providerId) other.find?.close();
     row.find.open();
   }
 
@@ -380,17 +386,26 @@ export class AskPanel {
     }
 
     this._inFlight.set(providerId, new AbortController());
-    this._setBusy(providerId, true, 'Checking the country’s published statistics...');
+    this._setBusy(
+      providerId,
+      true,
+      'Checking the country’s published statistics...',
+    );
     try {
       const context = await this.sceneContext();
       const brief = await this._riskBrief(context);
       const evidence = await this._groundTruthEvidence(brief);
-      const countryName = evidence.country || brief.country || brief.locationName;
+      const countryName =
+        evidence.country || brief.country || brief.locationName;
       this._prependAnswer(
         providerId,
-        formatAskLogEntry('GROUND TRUTH CHECKS', formatGroundTruthBody(evidence), {
-          locationName: countryName,
-        }),
+        formatAskLogEntry(
+          'GROUND TRUTH CHECKS',
+          formatGroundTruthBody(evidence),
+          {
+            locationName: countryName,
+          },
+        ),
       );
       if (evidence.status !== 'ready') {
         this._inFlight.delete(providerId);
@@ -420,7 +435,10 @@ export class AskPanel {
     } catch (error) {
       this._inFlight.delete(providerId);
       this._setBusy(providerId, false);
-      this._setStatus(providerId, error?.message || 'Ground truth check failed.');
+      this._setStatus(
+        providerId,
+        error?.message || 'Ground truth check failed.',
+      );
       return null;
     }
   }
@@ -434,20 +452,38 @@ export class AskPanel {
         // No country could be read for this view at all.
         country: null,
         connected: [
-          { country: 'Canada', source: 'Statistics Canada table 35-10-0177-01' },
-          { country: 'United States', source: 'FBI Crime Data Explorer (Uniform Crime Reporting Program)' },
-          { country: 'European countries', source: 'Eurostat, police-recorded offences by category' },
-          { country: 'Every other country', source: 'United Nations SDG database and World Health Organization estimates' },
+          {
+            country: 'Canada',
+            source: 'Statistics Canada table 35-10-0177-01',
+          },
+          {
+            country: 'United States',
+            source: 'FBI Crime Data Explorer (Uniform Crime Reporting Program)',
+          },
+          {
+            country: 'European countries',
+            source: 'Eurostat, police-recorded offences by category',
+          },
+          {
+            country: 'Every other country',
+            source:
+              'United Nations SDG database and World Health Organization estimates',
+          },
         ],
       };
     }
-    const params = new URLSearchParams({ country: code, name: brief?.country || '' });
+    const params = new URLSearchParams({
+      country: code,
+      name: brief?.country || '',
+    });
     const response = await fetch(`/api/country-ground-truth?${params}`, {
       signal: AbortSignal.timeout(90000),
     });
     const data = await response.json().catch(() => null);
     if (!response.ok || !data?.status) {
-      throw new Error(data?.error || 'The country statistics table could not be read.');
+      throw new Error(
+        data?.error || 'The country statistics table could not be read.',
+      );
     }
     return data;
   }
@@ -474,7 +510,10 @@ export class AskPanel {
     // looks broken, which is exactly how it was first reported.
     const startedAt = Date.now();
     const ticker = window.setInterval(() => {
-      this._setStatus(providerId, `${verb}... ${Math.round((Date.now() - startedAt) / 1000)}s`);
+      this._setStatus(
+        providerId,
+        `${verb}... ${Math.round((Date.now() - startedAt) / 1000)}s`,
+      );
     }, 1000);
 
     const controller = new AbortController();
@@ -485,7 +524,7 @@ export class AskPanel {
     );
 
     try {
-      const context = options.context || await this.sceneContext();
+      const context = options.context || (await this.sceneContext());
       const response = await fetch(ASK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -493,7 +532,9 @@ export class AskPanel {
           provider: providerId,
           question,
           context,
-          ...(options.answerTokens ? { answerTokens: options.answerTokens } : {}),
+          ...(options.answerTokens
+            ? { answerTokens: options.answerTokens }
+            : {}),
         }),
         signal: controller.signal,
       });
@@ -503,7 +544,10 @@ export class AskPanel {
       window.clearInterval(ticker);
 
       if (response.status === 501 || data?.unconfigured) {
-        this._setStatus(providerId, 'No key for this model. Add one in POWER UP.');
+        this._setStatus(
+          providerId,
+          'No key for this model. Add one in POWER UP.',
+        );
         return null;
       }
       if (!response.ok || !data?.answer) {
@@ -522,7 +566,10 @@ export class AskPanel {
       // The previous answer stays on screen: a failed follow-up must not erase
       // what the operator was reading.
       const aborted = error?.name === 'AbortError';
-      this._setStatus(providerId, aborted ? 'No answer in time.' : (error?.message || 'Request failed.'));
+      this._setStatus(
+        providerId,
+        aborted ? 'No answer in time.' : error?.message || 'Request failed.',
+      );
       return null;
     } finally {
       window.clearInterval(ticker);
@@ -538,7 +585,8 @@ export class AskPanel {
     // OpenAI-shaped and Anthropic-shaped usage report different field names.
     const total = Number.isFinite(usage.total_tokens)
       ? usage.total_tokens
-      : (Number(usage.input_tokens || 0) + Number(usage.output_tokens || 0)) || null;
+      : Number(usage.input_tokens || 0) + Number(usage.output_tokens || 0) ||
+        null;
     const model = data?.model ? String(data.model) : '';
     if (model && total) return `${model} · ${total} tokens`;
     return model || '';
@@ -556,15 +604,20 @@ export class AskPanel {
     const carto = camera?.positionCartographic;
     const view = carto
       ? {
-        latitude: Number(Cesium.Math.toDegrees(carto.latitude).toFixed(5)),
-        longitude: Number(Cesium.Math.toDegrees(carto.longitude).toFixed(5)),
-        cameraAltitudeMeters: Math.round(carto.height),
-        headingDegrees: Math.round(Cesium.Math.toDegrees(camera.heading)),
-        pitchDegrees: Math.round(Cesium.Math.toDegrees(camera.pitch)),
-      }
+          latitude: Number(Cesium.Math.toDegrees(carto.latitude).toFixed(5)),
+          longitude: Number(Cesium.Math.toDegrees(carto.longitude).toFixed(5)),
+          cameraAltitudeMeters: Math.round(carto.height),
+          headingDegrees: Math.round(Cesium.Math.toDegrees(camera.heading)),
+          pitchDegrees: Math.round(Cesium.Math.toDegrees(camera.pitch)),
+        }
       : null;
 
-    let labels = { placeLabels: [], streetLabels: [], nearbyPlaceLabels: [], locality: null };
+    let labels = {
+      placeLabels: [],
+      streetLabels: [],
+      nearbyPlaceLabels: [],
+      locality: null,
+    };
     try {
       labels = await getBasemapLabelContext(this.viewer);
     } catch {
@@ -583,7 +636,9 @@ export class AskPanel {
       enabledLayers: enabled.map((layer) => layer.name),
       layerActivity: buildLayerActivity(enabled),
       availableLayers: layers.map((layer) => layer.name),
-      activeVisualStyle: document.getElementById('active-style-name')?.textContent?.trim() || null,
+      activeVisualStyle:
+        document.getElementById('active-style-name')?.textContent?.trim() ||
+        null,
       selectedCamera: this._selectedCameraLabel(),
       selectedLocation: this._selectedLocationLabel(),
       locality: labels.locality || null,
@@ -591,8 +646,12 @@ export class AskPanel {
   }
 
   _selectedCityLabel() {
-    const city = document.getElementById('location-mini-city')?.textContent || '';
-    const cityName = city.replace(/^📍\s*/u, '').replace(/^location:\s*/i, '').trim();
+    const city =
+      document.getElementById('location-mini-city')?.textContent || '';
+    const cityName = city
+      .replace(/^📍\s*/u, '')
+      .replace(/^location:\s*/i, '')
+      .trim();
     if (!cityName || cityName === '--') return null;
     return cityName;
   }
@@ -609,7 +668,9 @@ export class AskPanel {
       context?.view?.latitude,
       context?.view?.longitude,
     );
-    return fromView?.name || context?.locality || this._selectedCityLabel() || null;
+    return (
+      fromView?.name || context?.locality || this._selectedCityLabel() || null
+    );
   }
 
   /**
@@ -650,7 +711,11 @@ export class AskPanel {
   }
 
   async _riskHeadlines(brief, view) {
-    const empty = { localHeadlines: [], govCrimeHeadlines: [], alJazeera: null };
+    const empty = {
+      localHeadlines: [],
+      govCrimeHeadlines: [],
+      alJazeera: null,
+    };
     if (!Number.isFinite(view?.latitude) || !Number.isFinite(view?.longitude)) {
       return empty;
     }
@@ -668,7 +733,9 @@ export class AskPanel {
       if (!response.ok) return empty;
       const data = await response.json();
       return {
-        localHeadlines: Array.isArray(data?.articles) ? data.articles.slice(0, 8) : [],
+        localHeadlines: Array.isArray(data?.articles)
+          ? data.articles.slice(0, 8)
+          : [],
         govCrimeHeadlines: Array.isArray(data?.govArticles)
           ? data.govArticles.slice(0, 10)
           : [],
@@ -690,7 +757,9 @@ export class AskPanel {
 
   /** Name of the CCTV camera currently open, when one is. */
   _selectedCameraLabel() {
-    const text = document.getElementById('cctv-source-badge')?.textContent?.trim();
+    const text = document
+      .getElementById('cctv-source-badge')
+      ?.textContent?.trim();
     if (!text || /unknown/i.test(text)) return null;
     return text.replace(/^SOURCE\s*[^A-Za-z0-9]*/i, '').trim() || null;
   }

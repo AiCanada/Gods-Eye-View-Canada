@@ -18,6 +18,8 @@ import { cctvProxy } from './cctv.js';
 import { defaultSourceRoot } from './common/source-root.js';
 import { radioBrowserProxy } from './radio.js';
 import { gbfsProxy } from './gbfs.js';
+import { localReceiversProxy } from './local-receivers.js';
+import { transitProxy } from './transit.js';
 import { adsbLolProxy } from './aircraft/adsb-lol.js';
 import { aisLiveProxy } from './vessels/ais-live.js';
 import { trackBackfillProxies } from './aircraft/tracks.js';
@@ -29,15 +31,18 @@ import { keySetupEndpoint } from '../standalone/key-setup.js';
 import { privateCamerasProxy } from './private-cameras.js';
 import { deviceFeedsProxy } from './device-feeds.js';
 import { noteOutboundEnvSaved, ultraHelpProxy } from './ultra-help.js';
-import { bindLocalIntegrityRoot } from '../../src/localIntegrity.mjs';
+import { bindLocalIntegrityRoot } from '../shared/localIntegrity.mjs';
 import { locationSwitchReleaseEndpoint } from './location-switch.js';
 import { socialAccountsProxy } from './socialAccounts.js';
 import { roadCctvKeysProxy } from './roadCctvKeys.js';
 import { socialSwarmProxy } from './socialSwarm.js';
 import { grokBotDesktopProxy } from './grokBotDesktop.js';
 
-/** Construct the local provider plugins in their established order. */
-function localProviderPlugins() {
+/**
+ * Construct the local provider plugins in their established order.
+ * `realtime` configures the voice session token endpoint.
+ */
+function localProviderPlugins({ realtime } = {}) {
   // Provider checks apply only after this checkout is bound. A unit test
   // that never binds still uses the keys it set.
   bindLocalIntegrityRoot(defaultSourceRoot);
@@ -68,10 +73,12 @@ function localProviderPlugins() {
     ultraHelpProxy({ sourceRoot: defaultSourceRoot }),
     radioBrowserProxy(),
     gbfsProxy(),
+    localReceiversProxy(),
+    transitProxy(),
     adsbLolProxy(),
     aisLiveProxy(),
     trackBackfillProxies(),
-    openAiRealtimeProxy(),
+    openAiRealtimeProxy({ realtime }),
     llmAskProxy(),
     seaSurfaceTemperatureProxy(),
     googlePlacesContextProxy(),

@@ -29,13 +29,15 @@ export function bearingBetween(lat1, lon1, lat2, lon2) {
   const phi2 = toRad(lat2);
   const dLon = toRad(lon2 - lon1);
   const y = Math.sin(dLon) * Math.cos(phi2);
-  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLon);
+  const x =
+    Math.cos(phi1) * Math.sin(phi2) -
+    Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLon);
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
 /** A bearing turned by some degrees, kept in [0, 360) to one decimal. Pure. */
 export function turnedBearing(bearingDeg, deltaDeg) {
-  const next = (((Number(bearingDeg) || 0) + deltaDeg) % 360 + 360) % 360;
+  const next = ((((Number(bearingDeg) || 0) + deltaDeg) % 360) + 360) % 360;
   return Math.round(next * 10) / 10;
 }
 
@@ -99,7 +101,9 @@ export function bindCctvCardAlign({
     let bearing = session.draft.bearingDeg;
     if (!Number.isFinite(bearing)) {
       // Upright so far: start from whatever "up the screen" is on the map here.
-      bearing = hit ? screenUpBearing(hit.rect.anchorX, hit.rect.anchorY) : null;
+      bearing = hit
+        ? screenUpBearing(hit.rect.anchorX, hit.rect.anchorY)
+        : null;
       if (!Number.isFinite(bearing)) bearing = 0;
     }
     update({ bearingDeg: turnedBearing(bearing, deltaDeg) });
@@ -118,7 +122,14 @@ export function bindCctvCardAlign({
     const hit = hitSession(x, y);
     if (!hit) return;
     swallow(event);
-    drag = { pointerId: event.pointerId, startX: x, startY: y, offsetX: hit.rect.anchorX - x, offsetY: hit.rect.anchorY - y, moved: false };
+    drag = {
+      pointerId: event.pointerId,
+      startX: x,
+      startY: y,
+      offsetX: hit.rect.anchorX - x,
+      offsetY: hit.rect.anchorY - y,
+      moved: false,
+    };
     try {
       container.setPointerCapture?.(event.pointerId);
     } catch {
@@ -130,7 +141,11 @@ export function bindCctvCardAlign({
     if (!drag || event.pointerId !== drag.pointerId) return;
     swallow(event);
     const { x, y } = local(event);
-    if (!drag.moved && Math.hypot(x - drag.startX, y - drag.startY) < CLICK_TRAVEL_PX) return;
+    if (
+      !drag.moved &&
+      Math.hypot(x - drag.startX, y - drag.startY) < CLICK_TRAVEL_PX
+    )
+      return;
     drag.moved = true;
     const ground = pickGround(x + drag.offsetX, y + drag.offsetY);
     if (ground) update({ lat: ground.lat, lon: ground.lon });
@@ -151,7 +166,8 @@ export function bindCctvCardAlign({
     const { x, y } = local(event);
     const press = rightDown;
     rightDown = null;
-    if (press && Math.hypot(x - press.x, y - press.y) >= CLICK_TRAVEL_PX) return;
+    if (press && Math.hypot(x - press.x, y - press.y) >= CLICK_TRAVEL_PX)
+      return;
     const hit = hitTest(x, y);
     if (!hit) return;
     swallow(event);
@@ -169,15 +185,25 @@ export function bindCctvCardAlign({
     const hit = hitSession(x, y);
     if (!hit) return;
     swallow(event);
-    const step = event.shiftKey ? CCTV_ALIGN_COARSE_STEP_DEG : CCTV_ALIGN_STEP_DEG;
+    const step = event.shiftKey
+      ? CCTV_ALIGN_COARSE_STEP_DEG
+      : CCTV_ALIGN_STEP_DEG;
     const direction = (event.deltaY || event.deltaX) > 0 ? 1 : -1;
     turn(direction * step, hit);
   };
   const onKey = (event) => {
     if (!isEnabled() || !getSession()) return;
     const tag = event.target?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable) return;
-    const step = event.shiftKey ? CCTV_ALIGN_COARSE_STEP_DEG : CCTV_ALIGN_STEP_DEG;
+    if (
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      tag === 'SELECT' ||
+      event.target?.isContentEditable
+    )
+      return;
+    const step = event.shiftKey
+      ? CCTV_ALIGN_COARSE_STEP_DEG
+      : CCTV_ALIGN_STEP_DEG;
     if (event.key === 'Escape') cancel();
     else if (event.key === 'Enter') save();
     else if (event.key === 'Delete' || event.key === 'Backspace') reset();
@@ -197,7 +223,10 @@ export function bindCctvCardAlign({
   container.addEventListener('pointerup', onUp, true);
   container.addEventListener('pointercancel', onUp, true);
   container.addEventListener('contextmenu', onContextMenu, true);
-  container.addEventListener('wheel', onWheel, { capture: true, passive: false });
+  container.addEventListener('wheel', onWheel, {
+    capture: true,
+    passive: false,
+  });
   container.addEventListener('click', swallowClick, true);
   container.addEventListener('dblclick', swallowClick, true);
   const keyTarget = typeof window !== 'undefined' ? window : null;

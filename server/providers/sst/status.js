@@ -1,5 +1,5 @@
 import { readResponseTextCapped } from '../common/http.js';
-import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
+import { localProviderTrusted } from '../../shared/localIntegrity.mjs';
 
 /** Layer list and date extents for every GIBS product. */
 export const GIBS_CAPABILITIES_URL =

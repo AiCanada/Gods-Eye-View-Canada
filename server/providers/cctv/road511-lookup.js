@@ -19,7 +19,7 @@ import { readJsonFile, writeJsonFileAtomic } from './json-file.js';
 import { normalizeFeedType } from './normalize.js';
 import { CCTV_PROXY_USER_AGENT } from './upstream-headers.js';
 import { parseRetryAfterMs } from './upstream-gate.js';
-import { localProviderTrusted } from '../../../src/localIntegrity.mjs';
+import { localProviderTrusted } from '../../shared/localIntegrity.mjs';
 
 const LOOKUP_FORMAT = 'gev-road511-lookups/1';
 const ID_PREFIX = 'us511-';

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { execFileSync } from 'node:child_process';
 import { DEVICE_FEED_STORE } from './deviceFeedsCore.mjs';
-import { ULTRA_TOKEN_PATTERN, newUltraToken, sealUltraToken, ultraTokenId } from './ultraTokens.mjs';
+import { ULTRA_TOKEN_PATTERN, newUltraToken, sealUltraToken, ultraTokenId } from '../server/shared/ultraTokens.mjs';
 import { deviceFeedsProxy, fetchDeviceResource, isDeviceFeedStoreRequest } from '../server/providers/device-feeds.js';
 
 const PAGE_ORIGIN = 'http://localhost:4173';

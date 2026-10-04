@@ -61,7 +61,12 @@ const ROAD_LAYER_NAME = 'transportation';
 /** @const {number} Decoded tiles kept in memory (versioned tiles never change). */
 const DECODE_CACHE_MAX_ENTRIES = 32;
 /** OpenMapTiles classes the major pass keeps (the old Overpass major query). */
-const MAJOR_ROAD_CLASSES = new Set(['motorway', 'trunk', 'primary', 'secondary']);
+const MAJOR_ROAD_CLASSES = new Set([
+  'motorway',
+  'trunk',
+  'primary',
+  'secondary',
+]);
 /** OpenMapTiles classes that keep their own name as the highway value. */
 const NAMED_ROAD_CLASSES = new Set([...MAJOR_ROAD_CLASSES, 'tertiary']);
 
@@ -151,7 +156,14 @@ export function clipPolyline(points, minX, minY, maxX, maxY) {
     current = null;
   };
   for (let i = 0; i < points.length - 1; i++) {
-    const clipped = clipSegment(points[i], points[i + 1], minX, minY, maxX, maxY);
+    const clipped = clipSegment(
+      points[i],
+      points[i + 1],
+      minX,
+      minY,
+      maxX,
+      maxY,
+    );
     if (!clipped) {
       close();
       continue;
@@ -265,7 +277,10 @@ function abortError() {
  * @param {boolean} [opts.majorOnly=false] z12 motorway…secondary instead of the z14 full graph.
  * @returns {Promise<{elements:Array<{type:'way', id:string, tags:{highway:string, oneway?:string}, geometry:Array<{lat:number, lon:number}>}>, partial?:boolean}>}
  */
-export async function fetchRoadsForBounds(bounds, { signal, majorOnly = false } = {}) {
+export async function fetchRoadsForBounds(
+  bounds,
+  { signal, majorOnly = false } = {},
+) {
   const zoom = majorOnly ? ROAD_TILE_MAJOR_ZOOM : ROAD_TILE_FULL_ZOOM;
   const tiles = tilesForBounds(bounds, zoom);
   if (tiles.length === 0) return { elements: [] };
@@ -277,7 +292,9 @@ export async function fetchRoadsForBounds(bounds, { signal, majorOnly = false } 
       if (cached) return cached;
       _tilesFetched += 1;
       try {
-        const res = await fetch(`/api/roads/tiles/${z}/${x}/${y}.pbf`, { signal });
+        const res = await fetch(`/api/roads/tiles/${z}/${x}/${y}.pbf`, {
+          signal,
+        });
         if (!res.ok) throw new Error(`road tile ${key}: HTTP ${res.status}`);
         const roads = decodeRoadTile(await res.arrayBuffer(), z, x, y);
         if (!signal?.aborted) cacheSet(key, roads);
@@ -304,7 +321,13 @@ export async function fetchRoadsForBounds(bounds, { signal, majorOnly = false } 
     for (const road of result.value) {
       if (majorOnly && !road.major) continue;
       let piece = 0;
-      for (const coords of clipPolyline(road.coords, west, south, east, north)) {
+      for (const coords of clipPolyline(
+        road.coords,
+        west,
+        south,
+        east,
+        north,
+      )) {
         elements.push({
           type: 'way',
           id: `${road.key}/${piece++}`,

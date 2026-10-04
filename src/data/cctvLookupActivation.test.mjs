@@ -39,9 +39,30 @@ import {
   waitFor,
 } from './cctvTestHarness.mjs';
 
-const CCTV_SOURCE = fs.readFileSync(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), 'cctv.js'),
-  'utf8',
+// The layer lives in src/layers/cctv/ (src/data/cctv.js is its facade). Its
+// component sources are read as one text with component qualification
+// (`layerState.`, `parts.<component>.`) and formatter wrapping removed, so the
+// structural pins below read like the code they pin.
+const normalizeComponentSource = (text) =>
+  text
+    .replace(/\blayerState\./g, '')
+    .replace(/\bparts\.\w+\./g, '')
+    .replace(/,\s*(?=\))/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\(\s+/g, '(');
+const CCTV_LAYER_DIR = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'layers',
+  'cctv',
+);
+const CCTV_SOURCE = normalizeComponentSource(
+  fs
+    .readdirSync(CCTV_LAYER_DIR)
+    .filter((name) => name.endsWith('.js'))
+    .sort()
+    .map((name) => fs.readFileSync(path.join(CCTV_LAYER_DIR, name), 'utf8'))
+    .join('\n'),
 );
 
 /**

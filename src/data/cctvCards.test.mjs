@@ -296,7 +296,8 @@ test('a thumbnail standing where its camera looks is centred there; one at the m
   const base = { id: 'cam-a', position: { x: 1, y: 2, z: 3 }, title: 'A', frameSlot: createFrameSlot() };
   assert.equal(createCctvThumbnailOverlayEntry({ ...base, centered: true }).placement, 'center');
   assert.equal(createCctvThumbnailOverlayEntry(base).placement, 'auto');
-  const source = readFileSync(new URL('./cctv.js', import.meta.url), 'utf8');
+  // The map cards are published by the CCTV layer's cards component.
+  const source = readFileSync(new URL('../layers/cctv/cards.js', import.meta.url), 'utf8');
   // Centred only when there is a spot, and the last good spot is kept: the card
   // never drops back onto its own camera icon because one frame had no answer.
   assert.ok(source.includes('centered: Boolean(spot) || Boolean(road) || Boolean(aligned),'));
@@ -304,7 +305,7 @@ test('a thumbnail standing where its camera looks is centred there; one at the m
 });
 
 test('every camera thumbnail stands where its picture opens, a camera of unknown heading included', () => {
-  const source = readFileSync(new URL('./cctv.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../layers/cctv/thumbnails.js', import.meta.url), 'utf8');
   const start = source.indexOf('function thumbnailTrafficFrame(');
   assert.ok(start > 0);
   assert.equal(source.slice(start, start + 400).includes("headingConfidence === 'unknown'"), false);
@@ -321,8 +322,9 @@ test('a road-matched thumbnail stands on the bottom edge of its picture and carr
   const plain = createCctvThumbnailOverlayEntry(base);
   assert.equal(plain.pictureAnchor, 'center');
   assert.equal(plain.worldWidthM, 0);
-  const host = readFileSync(new URL('../overlays/worldOverlay.js', import.meta.url), 'utf8');
-  assert.ok(host.includes("entry.pictureAnchor === 'bottom' ? record.layout.thumbH : record.layout.thumbH / 2"));
+  // Read with line breaks folded, so the formatter's wrapping does not matter.
+  const host = readFileSync(new URL('../overlays/worldOverlay.js', import.meta.url), 'utf8').replace(/\s+/g, ' ');
+  assert.ok(host.includes("entry.pictureAnchor === 'bottom' ? layout.thumbH : layout.thumbH / 2"));
   assert.ok(host.includes('(entry.worldWidthM * pixelsPerMetre) / entry.worldWidthBasePx'));
 });
 

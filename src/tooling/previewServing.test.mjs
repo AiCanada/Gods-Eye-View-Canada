@@ -9,7 +9,9 @@ import { apiNotFoundPlugin } from '../../server/standalone/api-not-found.js';
 import { makeFixtureRoot } from './fixtureRoot.mjs';
 
 test('data providers have both hooks; credential editing stays development-only', () => {
-  for (const plugin of localProviderPlugins()) {
+  const plugins = localProviderPlugins();
+  assert.ok(plugins.some(({ name }) => name === 'fire-perimeters'));
+  for (const plugin of plugins) {
     if (plugin.name === 'gev-key-setup') {
       assert.equal(plugin.configurePreviewServer, undefined);
       assert.equal(
@@ -107,8 +109,10 @@ test('real dev and built-preview servers serve provider JSON and terminate unkno
         ['/api/adsblol/mil', 200],
         ['/api/adsbdb/type/invalid', 400],
         ['/api/firms/status', 200],
+        ['/api/fire-perimeters/inciweb/publication/invalid', 400],
         ['/api/terrain/heights?points=invalid', 400],
         ['/api/overpass', 405],
+        ['/api/overpass/status', 200],
         ['/api/cctv/sources?lat=30.27&lon=-97.74', 200],
         ['/api/gbfs/', 400],
         ['/api/tomtom/status', 200],

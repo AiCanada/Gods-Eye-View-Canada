@@ -16,13 +16,13 @@
 import crypto from 'node:crypto';
 import { readRequestBody } from '../common/request.js';
 import { realtimeInstructions } from '../openai/instructions.js';
-import { enforceOptInRateLimit, openAiRateLimiter } from '../openai/rate-limit.js';
+import { enforceRateLimit, openAiRateLimiter } from '../openai/rate-limit.js';
 import { GEV_REALTIME_TOOLS } from '../openai/tools.js';
 import {
   LOCAL_PROVIDER_CHANGED_MESSAGE,
   localLlmSection,
   localProviderTrusted,
-} from '../../../src/localIntegrity.mjs';
+} from '../../shared/localIntegrity.mjs';
 import {
   admitLlmRequestFrom,
   llmMaxTokens,
@@ -41,7 +41,15 @@ const MAX_USER_CHARS = 4000;
 const MAX_TOOL_CHARS = 80_000;
 const MAX_TOOL_CALLS = 8;
 const MAX_ARG_CHARS = 8000;
-const AUDIO_FORMATS = new Set(['webm', 'wav', 'mp3', 'ogg', 'flac', 'm4a', 'mp4']);
+const AUDIO_FORMATS = new Set([
+  'webm',
+  'wav',
+  'mp3',
+  'ogg',
+  'flac',
+  'm4a',
+  'mp4',
+]);
 const AUDIO_MIME = Object.freeze({
   webm: 'audio/webm',
   wav: 'audio/wav',
@@ -167,7 +175,10 @@ function jsonReply(res, statusCode, payload) {
 
 function publicUpstreamError(value, apiKey) {
   const message = typeof value === 'string' ? value : value?.message || '';
-  const text = String(message || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+  const text = String(message || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
   if (!text || (apiKey && text.includes(apiKey))) {
     return 'The voice service refused the request.';
   }
@@ -219,7 +230,10 @@ export function admitVoiceProvider(providerId, env = process.env) {
     return {
       ok: false,
       status: 503,
-      payload: { error: `${provider.keyEnv} is not set`, provider: provider.id },
+      payload: {
+        error: `${provider.keyEnv} is not set`,
+        provider: provider.id,
+      },
     };
   }
   if (provider.requiresBaseUrl && (!settings.baseUrl || !settings.model)) {
@@ -245,11 +259,19 @@ function modeRefusal(providerId, route) {
 export function parseVoiceSessionRequest(rawBody) {
   const request = readJsonBody(rawBody);
   if (!request) {
-    return { ok: false, status: 400, payload: { error: 'Malformed request body' } };
+    return {
+      ok: false,
+      status: 400,
+      payload: { error: 'Malformed request body' },
+    };
   }
   const providerId = String(request.provider || '').trim();
   if (!providerId) {
-    return { ok: false, status: 400, payload: { error: 'A voice provider is required.' } };
+    return {
+      ok: false,
+      status: 400,
+      payload: { error: 'A voice provider is required.' },
+    };
   }
   return { ok: true, providerId };
 }
@@ -273,7 +295,8 @@ function sanitizeToolCalls(toolCalls) {
         return { error: 'Malformed conversation.' };
       }
     }
-    if (args.length > MAX_ARG_CHARS) return { error: 'Malformed conversation.' };
+    if (args.length > MAX_ARG_CHARS)
+      return { error: 'Malformed conversation.' };
     value.push({
       id,
       type: 'function',
@@ -285,7 +308,11 @@ function sanitizeToolCalls(toolCalls) {
 
 /** Keep the client's history to user, assistant, and tool rows. System is ours. */
 export function sanitizeVoiceMessages(messages) {
-  if (!Array.isArray(messages) || messages.length === 0 || messages.length > MAX_VOICE_MESSAGES) {
+  if (
+    !Array.isArray(messages) ||
+    messages.length === 0 ||
+    messages.length > MAX_VOICE_MESSAGES
+  ) {
     return { ok: false, error: 'A spoken turn needs its conversation.' };
   }
   const clean = [];
@@ -303,9 +330,10 @@ export function sanitizeVoiceMessages(messages) {
     } else if (message.role === 'assistant') {
       const toolCalls = sanitizeToolCalls(message.tool_calls);
       if (toolCalls.error) return { ok: false, error: toolCalls.error };
-      const content = message.content == null
-        ? null
-        : String(message.content).slice(0, MAX_USER_CHARS);
+      const content =
+        message.content == null
+          ? null
+          : String(message.content).slice(0, MAX_USER_CHARS);
       const row = { role: 'assistant', content };
       if (toolCalls.value.length) row.tool_calls = toolCalls.value;
       if (!row.tool_calls && !row.content) {
@@ -337,11 +365,19 @@ export function sanitizeVoiceMessages(messages) {
 export function parseVoiceTurnRequest(rawBody) {
   const request = readJsonBody(rawBody);
   if (!request) {
-    return { ok: false, status: 400, payload: { error: 'Malformed request body' } };
+    return {
+      ok: false,
+      status: 400,
+      payload: { error: 'Malformed request body' },
+    };
   }
   const providerId = String(request.provider || '').trim();
   if (!providerId) {
-    return { ok: false, status: 400, payload: { error: 'A voice provider is required.' } };
+    return {
+      ok: false,
+      status: 400,
+      payload: { error: 'A voice provider is required.' },
+    };
   }
   const messages = sanitizeVoiceMessages(request.messages);
   if (!messages.ok) {
@@ -353,16 +389,21 @@ export function parseVoiceTurnRequest(rawBody) {
 function applyNvidiaReasoning(provider, payload, env) {
   const effort = env.NVIDIA_REASONING_EFFORT ?? 'low';
   if (
-    provider.supportsReasoningEffort
-    && effort
-    && !/^(none|off|0)$/i.test(String(effort).trim())
+    provider.supportsReasoningEffort &&
+    effort &&
+    !/^(none|off|0)$/i.test(String(effort).trim())
   ) {
     payload.reasoning_effort = String(effort).trim();
   }
 }
 
 /** The chat call for one spoken turn. The system prompt is always ours. */
-export function buildVoiceChatCall(provider, settings, messages, env = process.env) {
+export function buildVoiceChatCall(
+  provider,
+  settings,
+  messages,
+  env = process.env,
+) {
   const payload = {
     model: settings.model,
     messages: [
@@ -422,13 +463,19 @@ function upstreamToolCalls(toolCalls) {
   return out;
 }
 
-export function voiceTurnFromUpstream({ ok, status }, data, provider, settings) {
+export function voiceTurnFromUpstream(
+  { ok, status },
+  data,
+  provider,
+  settings,
+) {
   if (!ok) {
     return {
       status: 502,
       payload: {
-        error: publicUpstreamError(data?.error || data?.detail, settings.apiKey)
-          || `${provider.label} returned ${status}`,
+        error:
+          publicUpstreamError(data?.error || data?.detail, settings.apiKey) ||
+          `${provider.label} returned ${status}`,
         provider: provider.id,
         upstreamStatus: status,
       },
@@ -489,27 +536,54 @@ function decodeAudio(audioBase64) {
 export function parseVoiceAudioRequest(rawBody, kind) {
   const request = readJsonBody(rawBody);
   if (!request) {
-    return { ok: false, status: 400, payload: { error: 'Malformed request body' } };
+    return {
+      ok: false,
+      status: 400,
+      payload: { error: 'Malformed request body' },
+    };
   }
   const providerId = String(request.provider || '').trim();
   if (!providerId) {
-    return { ok: false, status: 400, payload: { error: 'A voice provider is required.' } };
+    return {
+      ok: false,
+      status: 400,
+      payload: { error: 'A voice provider is required.' },
+    };
   }
   if (kind === 'speak') {
-    const text = String(request.text || '').replace(/\s+/g, ' ').trim();
-    if (!text) return { ok: false, status: 400, payload: { error: 'There is nothing to say.' } };
+    const text = String(request.text || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!text)
+      return {
+        ok: false,
+        status: 400,
+        payload: { error: 'There is nothing to say.' },
+      };
     if (text.length > MAX_USER_CHARS) {
-      return { ok: false, status: 400, payload: { error: 'That reply is too long to speak.' } };
+      return {
+        ok: false,
+        status: 400,
+        payload: { error: 'That reply is too long to speak.' },
+      };
     }
     return { ok: true, providerId, text };
   }
   const format = String(request.format || '').toLowerCase();
   if (!AUDIO_FORMATS.has(format)) {
-    return { ok: false, status: 400, payload: { error: 'Unsupported audio format.' } };
+    return {
+      ok: false,
+      status: 400,
+      payload: { error: 'Unsupported audio format.' },
+    };
   }
   const audio = decodeAudio(request.audioBase64);
   if (!audio) {
-    return { ok: false, status: 400, payload: { error: 'The recording could not be read.' } };
+    return {
+      ok: false,
+      status: 400,
+      payload: { error: 'The recording could not be read.' },
+    };
   }
   return { ok: true, providerId, format, audio };
 }
@@ -527,13 +601,29 @@ function speechModels(providerId, env) {
         'openai/gpt-4o-mini-tts-2025-12-15',
         /^[A-Za-z0-9_.:/+-]{1,120}$/,
       ),
-      voice: safeToken(env.OPENROUTER_TTS_VOICE, 'alloy', /^[A-Za-z0-9_-]{1,40}$/),
+      voice: safeToken(
+        env.OPENROUTER_TTS_VOICE,
+        'alloy',
+        /^[A-Za-z0-9_-]{1,40}$/,
+      ),
     };
   }
   return {
-    stt: safeToken(env.CUSTOM_LLM_STT_MODEL, 'whisper-1', /^[A-Za-z0-9_.:/+-]{1,120}$/),
-    tts: safeToken(env.CUSTOM_LLM_TTS_MODEL, 'tts-1', /^[A-Za-z0-9_.:/+-]{1,120}$/),
-    voice: safeToken(env.CUSTOM_LLM_TTS_VOICE, 'alloy', /^[A-Za-z0-9_-]{1,40}$/),
+    stt: safeToken(
+      env.CUSTOM_LLM_STT_MODEL,
+      'whisper-1',
+      /^[A-Za-z0-9_.:/+-]{1,120}$/,
+    ),
+    tts: safeToken(
+      env.CUSTOM_LLM_TTS_MODEL,
+      'tts-1',
+      /^[A-Za-z0-9_.:/+-]{1,120}$/,
+    ),
+    voice: safeToken(
+      env.CUSTOM_LLM_TTS_VOICE,
+      'alloy',
+      /^[A-Za-z0-9_-]{1,40}$/,
+    ),
   };
 }
 
@@ -550,9 +640,15 @@ function browserSpeechRefusal(providerId) {
 }
 
 /** Transcription request. Claude and NVIDIA never leave this machine as audio. */
-export function buildTranscriptionCall(provider, settings, audio, env = process.env) {
+export function buildTranscriptionCall(
+  provider,
+  settings,
+  audio,
+  env = process.env,
+) {
   const plan = voiceSpeechPlan(provider.id);
-  if (!plan || plan.transcribe !== 'server') return browserSpeechRefusal(provider.id);
+  if (!plan || plan.transcribe !== 'server')
+    return browserSpeechRefusal(provider.id);
   const models = speechModels(provider.id, env);
   const headers = {
     Authorization: `Bearer ${settings.apiKey}`,
@@ -568,7 +664,11 @@ export function buildTranscriptionCall(provider, settings, audio, env = process.
     return {
       ok: true,
       url: `${settings.baseUrl}/audio/transcriptions`,
-      headers: { ...headers, 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
       body: JSON.stringify(payload),
     };
   }
@@ -577,7 +677,9 @@ export function buildTranscriptionCall(provider, settings, audio, env = process.
     `--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n${models.stt}\r\n`,
   ];
   if (language) {
-    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n${language}\r\n`);
+    parts.push(
+      `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n${language}\r\n`,
+    );
   }
   parts.push(
     `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="speech.${audio.format}"\r\nContent-Type: ${AUDIO_MIME[audio.format]}\r\n\r\n`,
@@ -585,7 +687,10 @@ export function buildTranscriptionCall(provider, settings, audio, env = process.
   return {
     ok: true,
     url: `${settings.baseUrl}/audio/transcriptions`,
-    headers: { ...headers, 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+    headers: {
+      ...headers,
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+    },
     body: Buffer.concat([
       Buffer.from(parts.join('')),
       audio.bytes,
@@ -597,7 +702,8 @@ export function buildTranscriptionCall(provider, settings, audio, env = process.
 /** Speech request. The reply is audio bytes, not JSON. */
 export function buildSpeechCall(provider, settings, text, env = process.env) {
   const plan = voiceSpeechPlan(provider.id);
-  if (!plan || plan.speak !== 'server') return browserSpeechRefusal(provider.id);
+  if (!plan || plan.speak !== 'server')
+    return browserSpeechRefusal(provider.id);
   const models = speechModels(provider.id, env);
   return {
     ok: true,
@@ -654,9 +760,11 @@ function createVoiceSessionHandler(allowedHosts) {
     const gate = gateProvider(parsed.providerId, res);
     if (!gate) return;
     if (voiceSpeechPlan(parsed.providerId).mode !== 'realtime') {
-      return jsonReply(res, 400, { error: modeRefusal(parsed.providerId, 'session') });
+      return jsonReply(res, 400, {
+        error: modeRefusal(parsed.providerId, 'session'),
+      });
     }
-    if (!enforceOptInRateLimit(openAiRateLimiter(), req, res)) return;
+    if (!enforceRateLimit(openAiRateLimiter(), req, res)) return;
     const call = buildGrokClientSecretCall(gate.settings.apiKey);
     const disconnect = new AbortController();
     res.on('close', () => disconnect.abort());
@@ -698,7 +806,10 @@ function createVoiceSessionHandler(allowedHosts) {
       });
     } catch {
       if (disconnect.signal.aborted) return;
-      jsonReply(res, 502, { error: 'Grok voice did not answer.', provider: 'xai' });
+      jsonReply(res, 502, {
+        error: 'Grok voice did not answer.',
+        provider: 'xai',
+      });
     }
   };
 }
@@ -713,9 +824,11 @@ function createVoiceTurnHandler(allowedHosts) {
     const gate = gateProvider(parsed.providerId, res);
     if (!gate) return;
     if (voiceSpeechPlan(parsed.providerId).mode !== 'turn') {
-      return jsonReply(res, 400, { error: modeRefusal(parsed.providerId, 'turn') });
+      return jsonReply(res, 400, {
+        error: modeRefusal(parsed.providerId, 'turn'),
+      });
     }
-    if (!enforceOptInRateLimit(openAiRateLimiter(), req, res)) return;
+    if (!enforceRateLimit(openAiRateLimiter(), req, res)) return;
     const call = buildVoiceChatCall(
       gate.provider,
       gate.settings,
@@ -735,11 +848,17 @@ function createVoiceTurnHandler(allowedHosts) {
       });
       const data = await upstream.json().catch(() => ({}));
       if (disconnect.signal.aborted) return;
-      const answer = voiceTurnFromUpstream(upstream, data, gate.provider, gate.settings);
+      const answer = voiceTurnFromUpstream(
+        upstream,
+        data,
+        gate.provider,
+        gate.settings,
+      );
       jsonReply(res, answer.status, answer.payload);
     } catch (error) {
       if (disconnect.signal.aborted) return;
-      const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+      const timedOut =
+        error?.name === 'TimeoutError' || error?.name === 'AbortError';
       jsonReply(res, 504, {
         error: timedOut
           ? `${gate.provider.label} did not answer in time.`
@@ -765,7 +884,7 @@ function createVoiceTranscribeHandler(allowedHosts) {
       format: parsed.format,
     });
     if (!call.ok) return jsonReply(res, call.status, call.payload);
-    if (!enforceOptInRateLimit(openAiRateLimiter(), req, res)) return;
+    if (!enforceRateLimit(openAiRateLimiter(), req, res)) return;
     const disconnect = new AbortController();
     res.on('close', () => disconnect.abort());
     try {
@@ -785,17 +904,23 @@ function createVoiceTranscribeHandler(allowedHosts) {
         if (unsupported && voiceSpeechPlan(gate.provider.id).browserFallback) {
           return jsonReply(res, 501, {
             browserSpeech: true,
-            error: 'This endpoint has no transcription route. The browser will listen.',
+            error:
+              'This endpoint has no transcription route. The browser will listen.',
             provider: gate.provider.id,
           });
         }
         return jsonReply(res, 502, {
-          error: publicUpstreamError(data?.error || data?.detail, gate.settings.apiKey),
+          error: publicUpstreamError(
+            data?.error || data?.detail,
+            gate.settings.apiKey,
+          ),
           provider: gate.provider.id,
           upstreamStatus: upstream.status,
         });
       }
-      const text = String(data?.text || '').trim().slice(0, MAX_USER_CHARS);
+      const text = String(data?.text || '')
+        .trim()
+        .slice(0, MAX_USER_CHARS);
       jsonReply(res, 200, { provider: gate.provider.id, text });
     } catch {
       if (disconnect.signal.aborted) return;
@@ -818,7 +943,7 @@ function createVoiceSpeakHandler(allowedHosts) {
     if (!gate) return;
     const call = buildSpeechCall(gate.provider, gate.settings, parsed.text);
     if (!call.ok) return jsonReply(res, call.status, call.payload);
-    if (!enforceOptInRateLimit(openAiRateLimiter(), req, res)) return;
+    if (!enforceRateLimit(openAiRateLimiter(), req, res)) return;
     const disconnect = new AbortController();
     res.on('close', () => disconnect.abort());
     try {
@@ -844,7 +969,10 @@ function createVoiceSpeakHandler(allowedHosts) {
           });
         }
         return jsonReply(res, 502, {
-          error: publicUpstreamError(data?.error || data?.detail, gate.settings.apiKey),
+          error: publicUpstreamError(
+            data?.error || data?.detail,
+            gate.settings.apiKey,
+          ),
           provider: gate.provider.id,
           upstreamStatus: upstream.status,
         });
@@ -858,7 +986,10 @@ function createVoiceSpeakHandler(allowedHosts) {
         });
       }
       res.statusCode = 200;
-      res.setHeader('Content-Type', /^audio\//i.test(type) ? type : 'audio/mpeg');
+      res.setHeader(
+        'Content-Type',
+        /^audio\//i.test(type) ? type : 'audio/mpeg',
+      );
       res.setHeader('Cache-Control', 'no-store');
       res.end(bytes);
     } catch {
@@ -872,10 +1003,19 @@ function createVoiceSpeakHandler(allowedHosts) {
 }
 
 function installLlmVoiceRoutes(middlewares, { allowedHosts } = {}) {
-  middlewares.use('/api/llm/voice/session', createVoiceSessionHandler(allowedHosts));
+  middlewares.use(
+    '/api/llm/voice/session',
+    createVoiceSessionHandler(allowedHosts),
+  );
   middlewares.use('/api/llm/voice/turn', createVoiceTurnHandler(allowedHosts));
-  middlewares.use('/api/llm/voice/transcribe', createVoiceTranscribeHandler(allowedHosts));
-  middlewares.use('/api/llm/voice/speak', createVoiceSpeakHandler(allowedHosts));
+  middlewares.use(
+    '/api/llm/voice/transcribe',
+    createVoiceTranscribeHandler(allowedHosts),
+  );
+  middlewares.use(
+    '/api/llm/voice/speak',
+    createVoiceSpeakHandler(allowedHosts),
+  );
 }
 
 export { installLlmVoiceRoutes };

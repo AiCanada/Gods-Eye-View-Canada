@@ -2,17 +2,18 @@ import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 
 import { filterTrailing24h, parseFirmsCsv } from '../../src/data/firmsCsv.js';
-import { localProviderTrusted } from '../../src/localIntegrity.mjs';
+import { localProviderTrusted } from '../shared/localIntegrity.mjs';
 
 /**
  * NASA FIRMS live active-fire proxy with a memory + disk cache.
  * Upstream: https://firms.modaps.eosdis.nasa.gov/api/area/csv/{KEY}/{SOURCE}/world/2
  *
- * Merges MODIS NRT and three VIIRS NRT sources (NOAA-20, NOAA-21, Suomi-NPP —
- * independent satellites, no cross-source dedup) fetched sequentially with `days=2`
- * (`days=1` means "current UTC day", nearly empty just after 00:00Z) and
- * clamps to the trailing 24 h via src/data/firmsCsv.js. FIRMS quota is
- * 5,000 transactions / 10 min per MAP_KEY, so the cache is the point:
+ * Merges three VIIRS NRT sources (NOAA-20, NOAA-21, Suomi-NPP — independent
+ * satellites, no cross-source dedup) plus MODIS_NRT (combined Terra+Aqua,
+ * ~1 km, numeric 0-100 confidence), fetched sequentially (quota courtesy)
+ * with `days=2` (`days=1` means "current UTC day", nearly empty just after
+ * 00:00Z) and clamps to the trailing 24 h via src/data/firmsCsv.js. FIRMS
+ * quota is 5,000 transactions / 10 min per MAP_KEY, so the cache is the point:
  * TTL 30 min, single-flight refresh, serve-stale-on-failure, and a
  * fresh-enough disk cache (.gev-cache/firms.json) prevents ANY upstream
  * fetch across dev-server restarts. Pattern mirrors celestrakProxy.
