@@ -207,7 +207,7 @@ test('flights poll refreshes tracked callsign/FL/kts and marks a missed poll STA
   const nowSec = Math.floor(Date.now() / 1000);
   let openskyPoll = 0;
   globalThis.fetch = async (url) => {
-    if (!String(url).startsWith('/api/opensky')) {
+    if (!String(url).startsWith('/api/flights')) {
       return { ok: true, status: 200, json: async () => ({ ac: [] }) };
     }
     const states = openskyPoll++ === 0
@@ -1588,7 +1588,7 @@ test('regional fallback switch: old-anchor fetch aborts quietly, mid-flight poll
   let openskyCalls = 0;
   const hanging = hangingFetch((signal) => { pendingSignal = signal; });
   globalThis.fetch = (url, options = {}) => {
-    if (!String(url).startsWith('/api/opensky')) {
+    if (!String(url).startsWith('/api/flights')) {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ ac: [] }) });
     }
     openskyCalls += 1;

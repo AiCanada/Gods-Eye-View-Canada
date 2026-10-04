@@ -122,3 +122,14 @@ test('a view that only follows an aircraft is framed where the aircraft is', asy
       /not reported now/.test(error.message),
   );
 });
+
+test('the package exports the panel resource and its runtime together', async () => {
+  const panel = await import('gods-eye-view/tools/panel');
+  const resource = panel.createGlobePanelResource({
+    runtime: panel.panelRuntime,
+    panelKey: 'key',
+  });
+  assert.equal(resource.uri, panel.GLOBE_PANEL_URI);
+  assert.equal(panel.PANEL_BASE, '/panel/');
+  assert.match(resource.text, /panelRuntime|function/);
+});

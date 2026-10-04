@@ -277,6 +277,7 @@
     "./sources/map-features": "./src/sources/overpassFeatures.js",
     "./tools": "./src/tools/index.js",
     "./tools/mcp": "./src/tools/mcp/index.js",
+    "./tools/panel": "./src/tools/panel.js",
     "./tools/services": "./src/tools/services.js",
     "./view": "./src/view/index.js"
   }

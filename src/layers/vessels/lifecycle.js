@@ -197,10 +197,18 @@ export function createLifecycle({
         state.records.byMmsi.has(pickedId),
       );
       restoreSpriteOrderOnEnable('ais', activeViewer);
+      // Vessels are asked for by view, so ask again when the view moves away.
+      removeViewListener();
+      const moveEnd = activeViewer?.camera?.moveEnd;
+      if (typeof moveEnd?.addEventListener === 'function')
+        state.feed.removeViewListener = moveEnd.addEventListener(() => {
+          components.ingestion.refreshIfMoved(activeViewer);
+        });
       return components.ingestion.loadLivePositions(activeViewer);
     },
 
     disable() {
+      removeViewListener();
       state.feed.enabled = false;
       invalidateAisSession();
       releaseContinuousRender('ais-vessels');
@@ -264,6 +272,7 @@ export function createLifecycle({
     },
 
     destroy(viewer) {
+      removeViewListener();
       const activeViewer = viewer || state.viewer;
       invalidateAisSession();
       releaseContinuousRender('ais-vessels'); // direct-destroy path (perf wave 2 fix)
@@ -286,6 +295,12 @@ export function createLifecycle({
       resetState();
     },
   };
+
+  function removeViewListener() {
+    const remove = state.feed.removeViewListener;
+    state.feed.removeViewListener = null;
+    if (typeof remove === 'function') remove();
+  }
 
   return {
     clearFirstConnectTimer,

@@ -1787,7 +1787,7 @@ test('location arrival polls only when the last successful AIS poll is older tha
 });
 
 test('vessel selection passes the opaque source reference to optional history', async () => {
-  const { createAisStreamSource } = await import('../sources/live/standalone.js');
+  const { createVesselSource } = await import('../sources/live/standalone.js');
   _setVesselStateForTest({ enabled: false });
   const requests = [];
   aisLiveVesselsLayer.setSource({
@@ -1807,6 +1807,6 @@ test('vessel selection passes the opaque source reference to optional history', 
   } finally {
     harness.cleanup();
     _setVesselStateForTest({ enabled: false });
-    aisLiveVesselsLayer.setSource(createAisStreamSource());
+    aisLiveVesselsLayer.setSource(createVesselSource());
   }
 });

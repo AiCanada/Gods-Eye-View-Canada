@@ -19,8 +19,8 @@ The golden rule: **secret-bearing API keys stay on the server side.** The dev/pr
 |-----|----------------|--------------------------|
 | `OPENAI_API_KEY` | Server only | Browser fetches a short-lived **ephemeral** Realtime session token from `/api/realtime/token`; the real key never ships |
 | `NVIDIA_API_KEY`, `XAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `CUSTOM_LLM_API_KEY` | Server only | Ask and voice both stay on the server. Grok voice receives a short-lived secret from `/api/llm/voice/session`. Claude, NVIDIA, OpenRouter, and a custom endpoint send transcripts and audio through `/api/llm/voice/*`. The browser never receives those keys |
-| `AISSTREAM_API_KEY` | Server only | Server holds the AISStream websocket; browser polls the same-origin `/api/ais-live` cache |
-| OpenSky OAuth (`OPENSKY_CLIENT_ID/SECRET`) | Server only | Server mints + refreshes the token behind `/api/opensky` |
+| `AISSTREAM_API_KEY` | Server only | Server holds the AISStream websocket; browser polls the same-origin `/api/vessels` cache |
+| OpenSky OAuth (`OPENSKY_CLIENT_ID/SECRET`) | Server only | Server mints + refreshes the token behind `/api/flights` |
 | `GOOGLE_MAPS_SERVER_API_KEY` (optional, #33) | Server only | Server calls Places (`/api/google/nearby-places`, `/api/google/text-search`) and the Street View fallback with this key; falls back to `GOOGLE_MAPS_API_KEY` when unset |
 | `ROAD511_API_KEY` (optional) | Server only | Read from the server environment on every lookup. Road511 is called only after you open a US camera that has no public image (`POST /api/cctv/lookup/:id`); the browser gets back only the lookup state. The 24 h lookup cache on disk stores image URLs and states, never the key, and a rejected key is logged once without its value |
 

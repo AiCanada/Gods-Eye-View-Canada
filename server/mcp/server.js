@@ -7,8 +7,10 @@ import {
   coreTools,
   catalogForSurface,
 } from '../../src/tools/index.js';
-import { panelRuntime } from '../../src/app/globePanelRuntime.js';
-import { createGlobePanelResource } from '../../src/tools/globePanel.js';
+import {
+  createGlobePanelResource,
+  panelRuntime,
+} from '../../src/tools/panel.js';
 import { createMcpServer } from '../../src/tools/mcp/index.js';
 import { DEFAULT_API_BASE, createLocalToolServices } from './services.js';
 
