@@ -458,6 +458,32 @@ export function isSharingEnabled(env = {}) {
  *
  * @returns {{ok: true} | {ok: false, status: number, error: string}}
  */
+/**
+ * Read access for the owner's own phone or tablet through the tailnet
+ * dashboard (Mirror of PC GEVC on Cell). That listener stamps a request with
+ * this process's token only after Tailscale confirms the caller is signed in
+ * as this machine's owner, only for a GET to a status read, and strips any
+ * copy a caller sent. The token lives in memory only; changes stay PC-only.
+ */
+export const OWNER_DEVICE_READ_HEADER = 'x-gev-owner-device-read';
+let ownerDeviceReadToken = '';
+/** Set by the tailnet dashboard at start-up; a short or empty token turns it off. */
+export function setOwnerDeviceReadToken(token) {
+  ownerDeviceReadToken =
+    typeof token === 'string' && token.length >= 32 ? token : '';
+}
+function ownerDeviceRead(method, headers) {
+  if (!ownerDeviceReadToken || String(method || '').toUpperCase() !== 'GET')
+    return false;
+  const value = headers?.[OWNER_DEVICE_READ_HEADER];
+  if (typeof value !== 'string' || value.length !== ownerDeviceReadToken.length)
+    return false;
+  let diff = 0;
+  for (let i = 0; i < value.length; i++)
+    diff |= value.charCodeAt(i) ^ ownerDeviceReadToken.charCodeAt(i);
+  return diff === 0;
+}
+
 export function admitKeySetupRequest({
   method,
   remoteAddress,
@@ -496,6 +522,9 @@ export function admitKeySetupRequest({
       error: 'Provider Settings is disabled while sharing is enabled',
     };
   }
+  // The owner's own phone, confirmed by Tailscale, may read (never change).
+  if (ownerDeviceRead(method, proxyHeaders))
+    return { ok: true, ownerDevice: true };
   if (!LOOPBACK_ADDRESSES.has(String(remoteAddress || ''))) {
     return {
       ok: false,

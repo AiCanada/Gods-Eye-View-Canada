@@ -220,7 +220,16 @@ export function bindKeySetupPlacement(documentRef, chip, root) {
   const Observer = documentRef?.defaultView?.MutationObserver;
   if (!theme || !toolbar || !Observer) return () => {};
   const sync = () => {
-    if (theme.dataset.uiTheme === 'cyber') {
+    // The Cyber theme, and a phone (Mirror of PC GEVC on Cell): in the PC
+    // layout the right-hand panels cover the corner, in the phone layout the
+    // map credits and the dock do.
+    if (
+      theme.dataset.uiTheme === 'cyber' ||
+      theme.dataset.pcMirror === 'true' ||
+      // The phone layout on a touch screen: the bottom corner holds the dock.
+      (theme.dataset.touchDevice === 'true' &&
+        theme.dataset.layoutMode === 'phone')
+    ) {
       if (chip.parentNode !== toolbar) toolbar.append(chip);
     } else if (chip.parentNode !== root.parentNode) {
       root.before(chip);

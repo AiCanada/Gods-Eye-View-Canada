@@ -402,6 +402,8 @@ export const DEVICE_FEED_KINDS = Object.freeze([
     ]),
     authModes: everyAuth,
     color: '#ff4d4d',
+    // Its trail and saved route: fluorescent green, apart from every pin.
+    pathColor: '#39ff14',
     // A new package follows and records unless its owner says otherwise.
     followDefault: true,
     recordDefault: true,
@@ -1343,6 +1345,8 @@ export function devicePublicRecord(feed, position, state = {}) {
     kind: feed.kind,
     kindLabel: kind?.noun || feed.kind.toUpperCase(),
     color: kind?.color || '#ffffff',
+    // The trail and saved route; the pin colour unless the kind has its own.
+    pathColor: kind?.pathColor || kind?.color || '#ffffff',
     name: feed.name,
     lat,
     lon,

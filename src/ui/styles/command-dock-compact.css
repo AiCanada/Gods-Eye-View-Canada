@@ -434,3 +434,10 @@ body:not(.ui-clean-view):not(.recording-mode) #cesium-credits {
     flex-basis: 8.5rem;
   }
 }
+
+/* A fold's cover screen (about 320 px across): the dock's three parts are
+   wider than the screen, so each is drawn smaller and the dock shrinks with
+   them. Smaller only ever moves the dock away from the map credits. */
+:root[data-screen-kind='cover'][data-layout-mode='phone'] #command-dock > * {
+  zoom: 0.6;
+}

@@ -12,6 +12,7 @@ import { apiNotFoundPlugin } from './api-not-found.js';
 import { routeGuardPlugin } from './route-guard.js';
 import { singleInstancePlugin } from './single-instance.js';
 import { standaloneVoiceTools } from './voiceTools.js';
+import { tailnetDashboardPlugin } from '../../Mirror of PC GEVC on Cell/tailnet-dashboard.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -32,6 +33,8 @@ export default defineConfig(({ command, mode }) => {
       ...localProviderPlugins({ realtime: { tools: standaloneVoiceTools() } }),
       localMcpPlugin(),
       apiNotFoundPlugin(),
+      // The same dashboard on this machine's Tailscale address (off unless set).
+      tailnetDashboardPlugin(),
     ],
     googleApiKey: localClientCredential('google', 'GOOGLE_MAPS_API_KEY'),
     cesiumToken: localClientCredential('cesium', 'CESIUM_ION_TOKEN'),

@@ -12,24 +12,43 @@ import {
 test('setup placement moves the same button only in Cyber and disconnects on teardown', () => {
   const home = {};
   const chip = { parentNode: home, hidden: true };
-  const root = { parentNode: home, before: (node) => { node.parentNode = home; } };
+  const root = {
+    parentNode: home,
+    before: (node) => {
+      node.parentNode = home;
+    },
+  };
   let moves = 0;
-  const toolbar = { append: (node) => { moves++; node.parentNode = toolbar; } };
+  const toolbar = {
+    append: (node) => {
+      moves++;
+      node.parentNode = toolbar;
+    },
+  };
   const theme = { dataset: { uiTheme: 'tactical' } };
-  let notify, disconnected = false;
+  let notify,
+    disconnected = false;
   class Observer {
-    constructor(callback) { notify = callback; }
+    constructor(callback) {
+      notify = callback;
+    }
     observe(target, options) {
       assert.equal(target, theme);
       assert.deepEqual(options.attributeFilter, ['data-ui-theme']);
     }
-    disconnect() { disconnected = true; }
+    disconnect() {
+      disconnected = true;
+    }
   }
-  const dispose = bindKeySetupPlacement({
-    documentElement: theme,
-    getElementById: () => toolbar,
-    defaultView: { MutationObserver: Observer },
-  }, chip, root);
+  const dispose = bindKeySetupPlacement(
+    {
+      documentElement: theme,
+      getElementById: () => toolbar,
+      defaultView: { MutationObserver: Observer },
+    },
+    chip,
+    root,
+  );
   assert.equal(chip.parentNode, home);
   for (const variant of ['cyber', 'operator', 'cyber', 'minimal']) {
     theme.dataset.uiTheme = variant;
@@ -38,16 +57,41 @@ test('setup placement moves the same button only in Cyber and disconnects on tea
     notify();
   }
   assert.equal(moves, 2, 'identical theme sync does not reparent again');
+  // The PC layout on a phone puts it in the toolbar whatever the theme.
+  theme.dataset.pcMirror = 'true';
+  notify();
+  assert.equal(chip.parentNode, toolbar);
+  delete theme.dataset.pcMirror;
+  notify();
+  assert.equal(chip.parentNode, home);
+  // So does the phone layout on a touch screen; a PC in the phone layout does not move it.
+  theme.dataset.touchDevice = 'true';
+  theme.dataset.layoutMode = 'phone';
+  notify();
+  assert.equal(chip.parentNode, toolbar);
+  theme.dataset.touchDevice = 'false';
+  notify();
+  assert.equal(chip.parentNode, home);
   assert.equal(chip.hidden, true, 'placement cannot reveal a retired button');
   dispose();
   assert.equal(disconnected, true);
 });
 
 test('the chip counts what is missing, and retires the count at zero', () => {
-  assert.equal(keySetupChipLabel({ setCount: 0, total: 8 }), 'POWER UP · 8 KEYS WAITING');
-  assert.equal(keySetupChipLabel({ setCount: 7, total: 8 }), 'POWER UP · 1 KEY WAITING');
+  assert.equal(
+    keySetupChipLabel({ setCount: 0, total: 8 }),
+    'POWER UP · 8 KEYS WAITING',
+  );
+  assert.equal(
+    keySetupChipLabel({ setCount: 7, total: 8 }),
+    'POWER UP · 1 KEY WAITING',
+  );
   assert.equal(keySetupChipLabel({ setCount: 8, total: 8 }), 'POWERED UP');
-  assert.equal(keySetupChipLabel(null), 'POWERED UP', 'no status is not a broken label');
+  assert.equal(
+    keySetupChipLabel(null),
+    'POWERED UP',
+    'no status is not a broken label',
+  );
 });
 
 test('the chip counts every power-up: keys, camera sections and device sections', () => {
@@ -61,27 +105,78 @@ test('the chip counts every power-up: keys, camera sections and device sections'
     { id: 'devices-tracker', set: true },
     { id: 'devices-security', set: false },
   ];
-  assert.deepEqual(keySetupPowerUpCount(keys, sections), { on: 7, total: 19, missing: 12 });
+  assert.deepEqual(keySetupPowerUpCount(keys, sections), {
+    on: 7,
+    total: 19,
+    missing: 12,
+  });
   assert.equal(keySetupChipLabel(keys, sections), 'POWER UP · 12 WAITING');
-  assert.equal(keySetupChipLabel({ setCount: 12, total: 12 }, sections.map((section) => ({ ...section, set: true }))), 'POWERED UP');
-  assert.equal(keySetupChipLabel({ setCount: 12, total: 12 }, sections), 'POWER UP · 5 WAITING', 'all keys in, sections still waiting');
-  assert.deepEqual(keySetupPowerUpCount(null, null), { on: 0, total: 0, missing: 0 });
-  assert.deepEqual(keySetupPowerUpCount({ setCount: 20, total: 12 }, []), { on: 12, total: 12, missing: 0 }, 'never more on than there are');
+  assert.equal(
+    keySetupChipLabel(
+      { setCount: 12, total: 12 },
+      sections.map((section) => ({ ...section, set: true })),
+    ),
+    'POWERED UP',
+  );
+  assert.equal(
+    keySetupChipLabel({ setCount: 12, total: 12 }, sections),
+    'POWER UP · 5 WAITING',
+    'all keys in, sections still waiting',
+  );
+  assert.deepEqual(keySetupPowerUpCount(null, null), {
+    on: 0,
+    total: 0,
+    missing: 0,
+  });
+  assert.deepEqual(
+    keySetupPowerUpCount({ setCount: 20, total: 12 }, []),
+    { on: 12, total: 12, missing: 0 },
+    'never more on than there are',
+  );
 });
 
 test('a saved value the provider cannot use reads as saved, and says which box to replace', () => {
-  const vars = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER'];
-  const refused = { set: false, present: true, unusable: ['TWILIO_FROM_NUMBER'] };
-  assert.deepEqual(vars.map((name) => keySetupPlaceholder(refused, name)), [
-    'TWILIO_ACCOUNT_SID saved — paste to replace',
+  const vars = [
+    'TWILIO_ACCOUNT_SID',
+    'TWILIO_AUTH_TOKEN',
+    'TWILIO_FROM_NUMBER',
+  ];
+  const refused = {
+    set: false,
+    present: true,
+    unusable: ['TWILIO_FROM_NUMBER'],
+  };
+  assert.deepEqual(
+    vars.map((name) => keySetupPlaceholder(refused, name)),
+    [
+      'TWILIO_ACCOUNT_SID saved — paste to replace',
+      'TWILIO_AUTH_TOKEN saved — paste to replace',
+      'TWILIO_FROM_NUMBER saved but not usable — paste to replace',
+    ],
+  );
+  assert.equal(
+    keySetupPlaceholder(
+      { set: true, present: true, unusable: [] },
+      'TWILIO_AUTH_TOKEN',
+    ),
     'TWILIO_AUTH_TOKEN saved — paste to replace',
-    'TWILIO_FROM_NUMBER saved but not usable — paste to replace',
-  ]);
-  assert.equal(keySetupPlaceholder({ set: true, present: true, unusable: [] }, 'TWILIO_AUTH_TOKEN'), 'TWILIO_AUTH_TOKEN saved — paste to replace');
-  assert.equal(keySetupPlaceholder({ set: false, present: false, unusable: [] }, 'TWILIO_AUTH_TOKEN'), 'paste TWILIO_AUTH_TOKEN');
+  );
+  assert.equal(
+    keySetupPlaceholder(
+      { set: false, present: false, unusable: [] },
+      'TWILIO_AUTH_TOKEN',
+    ),
+    'paste TWILIO_AUTH_TOKEN',
+  );
   // A status from before `present` existed still reads as it did.
-  assert.equal(keySetupPlaceholder({ set: true }, 'OPENAI_API_KEY'), 'OPENAI_API_KEY saved — paste to replace');
-  assert.equal(keySetupPlaceholder({ set: false }, 'OPENAI_API_KEY'), 'paste OPENAI_API_KEY');
+  assert.equal(
+    keySetupPlaceholder({ set: true }, 'OPENAI_API_KEY'),
+    'OPENAI_API_KEY saved — paste to replace',
+  );
+  assert.equal(
+    keySetupPlaceholder({ set: false }, 'OPENAI_API_KEY'),
+    'paste OPENAI_API_KEY',
+  );
 });
 
 test('collectKeyUpdates keeps only non-empty trimmed values', () => {
@@ -98,7 +193,9 @@ test('collectKeyUpdates keeps only non-empty trimmed values', () => {
 });
 
 test('the first Google key strips ONLY the keyless OSM basemap from the share hash', () => {
-  const stripped = stripKeylessBasemapFromHash('lat=30.2&lon=-97.7&map=osm&style=normal');
+  const stripped = stripKeylessBasemapFromHash(
+    'lat=30.2&lon=-97.7&map=osm&style=normal',
+  );
   assert.ok(stripped !== null);
   const params = new URLSearchParams(stripped);
   assert.equal(params.get('map'), null, 'osm basemap removed');
@@ -106,7 +203,11 @@ test('the first Google key strips ONLY the keyless OSM basemap from the share ha
   assert.equal(params.get('style'), 'normal', 'style survives');
   // A stack under any other name was chosen or shared on purpose.
   assert.equal(stripKeylessBasemapFromHash('map=bing-aerial&lat=1'), null);
-  assert.equal(stripKeylessBasemapFromHash('lat=1&lon=2'), null, 'no stack, nothing to do');
+  assert.equal(
+    stripKeylessBasemapFromHash('lat=1&lon=2'),
+    null,
+    'no stack, nothing to do',
+  );
   assert.equal(stripKeylessBasemapFromHash(''), null);
   assert.equal(stripKeylessBasemapFromHash(undefined), null);
 });
@@ -120,11 +221,15 @@ test('aborting pending setup removes its surface and ignores a late response', a
   let requestSignal;
   const controller = new AbortController();
   const pending = initKeySetup({
-    documentRef: { getElementById: (id) => id === 'key-setup-chip' ? chip : root },
+    documentRef: {
+      getElementById: (id) => (id === 'key-setup-chip' ? chip : root),
+    },
     signal: controller.signal,
     fetchImpl: (_url, { signal }) => {
       requestSignal = signal;
-      return new Promise((resolve) => { resolveResponse = resolve; });
+      return new Promise((resolve) => {
+        resolveResponse = resolve;
+      });
     },
   });
   controller.abort();

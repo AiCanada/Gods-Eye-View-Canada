@@ -3694,6 +3694,15 @@ async function pullGenericPhonePicture(key, fetchImpl) {
 }
 
 /** Remember a position the paired security package just reported. */
+// The device layer's own use of a fix the phone link sent (its pin, trail
+// and saved route); set by device-feeds.js. A report the device layer took
+// itself is never handed back.
+let phoneFixListener = null;
+/** Called with {feedId, lat, lon, at} for every fix the phone link takes. */
+export function onUltraPhoneFix(listener) {
+  phoneFixListener = typeof listener === 'function' ? listener : null;
+}
+
 export function noteUltraPosition(fix) {
   const key = KEY.test(String(fix?.key || ''))
     ? String(fix.key)
@@ -4456,6 +4465,18 @@ export async function handleUltraPhone(req, res, url) {
           lon: clean.lon,
           at: fixAt,
         });
+        // The map pin, its trail and the package's saved route follow the
+        // phone link too, not only reports from a tracker app.
+        try {
+          phoneFixListener?.({
+            feedId: feed.id,
+            lat: clean.lat,
+            lon: clean.lon,
+            at: fixAt,
+          });
+        } catch {
+          /* the device layer's trouble never refuses the phone's fix */
+        }
       }
       const previous = currentRelease(feed.id, now);
       const fix = positions.get(key) || runningFix(previous);

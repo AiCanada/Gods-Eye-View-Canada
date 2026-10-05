@@ -415,3 +415,58 @@
   visibility: visible;
   transform: translateX(-50%) translateY(0);
 }
+
+/* Mirror of PC GEVC on Cell: on a phone or tablet the toolbar's eight
+   buttons stay in one row, centred at the top, 27 px on the glass
+   (smaller only if the row would not fit). The PC view, which the phone draws
+   smaller, sizes them through --pc-mirror-boost (set by viewport-mode.js) so
+   they come out the same on the glass. Icons grow with their buttons. */
+:root[data-touch-device='true'] #top-center-actions {
+  --cell-boost: 1;
+  --cell-gap: calc(4px * var(--cell-boost));
+  /* 27 px on the glass (owner's choice), smaller only where one row of
+     eight would not fit across the screen. */
+  --cell-tap: min(
+    calc(27px * var(--cell-boost)),
+    calc((100vw - 16px * var(--cell-boost) - 7 * var(--cell-gap)) / 8)
+  );
+  right: auto;
+  left: 50%;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: var(--cell-gap);
+  max-width: none;
+  transform: translateX(-50%);
+}
+
+:root[data-pc-mirror='true'] #top-center-actions {
+  --cell-boost: var(--pc-mirror-boost, 1);
+}
+
+:root[data-touch-device='true'] #top-center-actions > button,
+/* The chip's own id twice: it outranks the Cyber theme's fixed 36 px chip. */
+:root[data-touch-device='true'] #top-center-actions > #key-setup-chip#key-setup-chip {
+  width: var(--cell-tap);
+  height: var(--cell-tap);
+  flex: 0 0 var(--cell-tap);
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: calc(var(--cell-tap) * 0.42);
+}
+
+:root[data-touch-device='true'] #top-center-actions .material-symbols-outlined,
+:root[data-touch-device='true'] #top-center-actions .share-icon {
+  font-size: 1.35em;
+}
+
+:root[data-touch-device='true']
+  #top-center-actions
+  #key-setup-chip
+  [data-key-setup-chip-label] {
+  display: none;
+}
+
+:root[data-touch-device='true'] #top-center-actions #layout-switch {
+  font-size: calc(var(--cell-tap) * 0.3);
+}

@@ -590,6 +590,7 @@ export class StyleManager extends ShellFacade {
     this._initGlobalContextPanel();
     this._initLocationBar();
     this._initShareButton();
+    this._initMyLocationButton();
     this._initCameraOrientationControls();
     this._initClearSelectedLayersButton();
     this._initHUDToggle();
@@ -1615,6 +1616,65 @@ export class StyleManager extends ShellFacade {
       const success = await this.shareLinkManager.copyLink();
       if (!this._disposed)
         this._showToast(success ? 'Link copied!' : 'Copy failed');
+    });
+  }
+
+  /**
+   * MY LOCATION, on a phone or tablet (Mirror of PC GEVC on Cell): one tap
+   * asks this device where it is and flies the map there, the way voice flies
+   * to coordinates. Nothing is sent anywhere; the browser asks permission the
+   * first time. A PC has no reliable position, so it shows no button.
+   * @returns {void}
+   */
+  _initMyLocationButton() {
+    if (document.documentElement.dataset.touchDevice !== 'true') return;
+    const bar = document.getElementById('top-center-actions');
+    if (
+      !bar ||
+      !navigator.geolocation ||
+      document.getElementById('my-location-btn')
+    )
+      return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = 'my-location-btn';
+    button.title = 'Fly to my location';
+    button.setAttribute('aria-label', 'Fly to my location');
+    const icon = document.createElement('span');
+    icon.className = 'material-symbols-outlined';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = 'my_location';
+    button.append(icon);
+    bar.prepend(button);
+    this._lifetime.listen(button, 'click', () => {
+      if (button.getAttribute('aria-busy') === 'true') return;
+      button.setAttribute('aria-busy', 'true');
+      this._showToast('Finding your location…');
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          button.removeAttribute('aria-busy');
+          if (this._disposed) return;
+          const { latitude, longitude, accuracy } = position.coords;
+          this.services.flyToLandmark?.(this.viewer, latitude, longitude, {
+            range: Math.max(400, Math.min(3000, (accuracy || 0) * 6)),
+            pitch: -45,
+            heading: 0,
+            buildingHeight: 0,
+            duration: 2.2,
+          });
+          this._showToast(`You are here (±${Math.round(accuracy || 0)} m)`);
+        },
+        (error) => {
+          button.removeAttribute('aria-busy');
+          if (this._disposed) return;
+          this._showToast(
+            error?.code === 1
+              ? 'Location is blocked: allow it for this page in Chrome'
+              : 'Your location could not be found',
+          );
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 },
+      );
     });
   }
 

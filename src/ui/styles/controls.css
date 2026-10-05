@@ -1195,3 +1195,164 @@ body.ui-clean-view #scene-runtime.active {
   text-align: right;
   flex-shrink: 0;
 }
+
+/* Mirror of PC GEVC on Cell: held upright, the PC layout says how to read it.
+   Sized in the 1024 px layout, so it reads at about a third of that on a phone. */
+#pc-mirror-hint {
+  position: fixed;
+  left: 50%;
+  top: 12px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: 94vw;
+  padding: 22px 30px;
+  transform: translateX(-50%);
+  color: rgba(225, 244, 248, 0.96);
+  font-family: var(--font-mono);
+  font-size: 34px;
+  line-height: 1.3;
+  background: rgba(4, 14, 20, 0.94);
+  border: 2px solid rgba(54, 220, 255, 0.6);
+  border-radius: 14px;
+}
+
+#pc-mirror-hint[hidden] {
+  display: none;
+}
+
+#pc-mirror-hint button {
+  flex: none;
+  padding: 14px 22px;
+  color: rgba(54, 220, 255, 1);
+  font: inherit;
+  font-size: 30px;
+  background: none;
+  border: 2px solid rgba(54, 220, 255, 0.6);
+  border-radius: 10px;
+}
+
+/* Mirror of PC GEVC on Cell: PC / CELL, the view switch in the top toolbar
+   (added on touch screens by viewport-mode.js). */
+#top-center-actions #layout-switch {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.06rem;
+}
+
+/* Mirror of PC GEVC on Cell: on a touch screen a collapsed box is see-through
+   (a light tint, no blur, no glow), so the map shows underneath; its title
+   keeps a shadow to stay readable over the map. Opened, it is the usual dark glass. */
+:root[data-touch-device='true']
+  .panel-collapsible.collapsed
+  > div[class*='-panel-inner'],
+:root[data-touch-device='true'] .panel-collapsible.collapsed > .pp-header-row,
+:root[data-touch-device='true'] #pp-toggles.collapsed > .pp-header-row {
+  background: rgba(12, 12, 20, 0.28);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+:root[data-touch-device='true'] .panel-collapsible.collapsed > .panel-glow {
+  display: none;
+}
+
+:root[data-touch-device='true'] .panel-collapsible.collapsed .panel-title,
+:root[data-touch-device='true'] .panel-collapsible.collapsed .pp-header-label {
+  text-shadow:
+    0 0 3px rgba(0, 0, 0, 0.95),
+    0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+/* Mirror of PC GEVC on Cell: a collapsed box's label is fluorescent green on
+   a phone or tablet (the PC keeps its colours). It wins over each box's own
+   label colour on purpose. An opened box keeps all of its own colours. */
+:root[data-touch-device='true'] .panel-collapsible.collapsed,
+:root[data-touch-device='true'] .panel-collapsible.collapsed *,
+:root[data-touch-device='true'] #param-slider-panel.collapsed,
+:root[data-touch-device='true'] #param-slider-panel.collapsed * {
+  color: #39ff14 !important;
+  -webkit-text-fill-color: #39ff14;
+}
+
+/* Mirror of PC GEVC on Cell: an open box's title lettering is 25% larger on
+   a phone or tablet (the PC keeps its size); a collapsed one fills its box. */
+:root[data-touch-device='true'] .panel-collapsible:not(.collapsed) .panel-title,
+:root[data-touch-device='true']
+  .panel-collapsible:not(.collapsed)
+  .pp-header-label,
+:root[data-touch-device='true'] #param-slider-panel .panel-title {
+  zoom: 1.25;
+}
+
+/* A collapsed side box's heading fills the box (viewport-mode.js fits its
+   size): the divider makes way, and the heading may take two lines. */
+:root[data-touch-device='true']
+  :is(#left-panel-stack, #right-context-rail)
+  .panel-collapsible.collapsed
+  .panel-divider {
+  display: none;
+}
+
+:root[data-touch-device='true']
+  .panel-collapsible.collapsed
+  [data-fitted='true'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  max-width: none !important;
+  white-space: normal;
+  overflow-wrap: normal;
+  line-height: 1.05;
+  /* A fixed letter gap would not grow with the lettering: this one does. */
+  letter-spacing: 0.06em !important;
+}
+
+/* Boxes whose collapsed label is a short form drawn after the hidden full
+   name: the full name stays hidden and the short label takes the fitted size. */
+:root[data-touch-device='true']
+  .panel-collapsible.collapsed
+  [data-fitted='true'][data-collapsed-title] {
+  font-size: 0 !important;
+  letter-spacing: 0;
+}
+
+:root[data-touch-device='true']
+  .panel-collapsible.collapsed
+  [data-fitted='true'][data-collapsed-title]::after {
+  /* Outranks each box's own fixed 8 px short label (scenes.css). */
+  font-size: var(--fit-size, 8px) !important;
+  letter-spacing: 0.06em !important;
+  line-height: 1.05;
+  white-space: normal;
+}
+
+/* A collapsed side box grows to hold its heading when the heading wraps. */
+:root[data-touch-device='true']
+  :is(#left-panel-stack, #right-context-rail)
+  .panel-collapsible.collapsed:has([data-fitted='true'])
+  :is(.panel-header, .pp-header-row) {
+  height: auto !important;
+  min-height: 100%;
+  align-items: center;
+}
+
+/* The box itself grows with a wrapped heading too (the AI box has a fixed
+   height of its own), with a little room above and below the lettering. */
+:root[data-touch-device='true']
+  :is(#left-panel-stack, #right-context-rail)
+  .panel-collapsible.collapsed:has([data-fitted='true'])
+  > div[class*='-panel-inner'] {
+  height: auto !important;
+  min-height: 0;
+}
+
+:root[data-touch-device='true']
+  :is(#left-panel-stack, #right-context-rail)
+  .panel-collapsible.collapsed
+  :is(.panel-header, .pp-header-row):has(> [data-fitted='true']) {
+  padding-block: 0.35em;
+}

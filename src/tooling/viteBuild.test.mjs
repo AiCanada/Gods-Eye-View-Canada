@@ -118,7 +118,7 @@ test('root config retains existing named exports and standalone provider order',
     assert.equal(compatibility[name], value, name);
   const config = standaloneConfig({ mode: 'test' });
   assert.deepEqual(
-    config.plugins.slice(5, -4).map((plugin) => plugin.name),
+    config.plugins.slice(5, -5).map((plugin) => plugin.name),
     providers.localProviderPlugins().map((plugin) => plugin.name),
   );
   // The single-instance guard stops the previous dev server before anything
@@ -128,10 +128,12 @@ test('root config retains existing named exports and standalone provider order',
   assert.equal(config.plugins[0].name, 'host-check');
   assert.equal(config.plugins[3].name, 'dev-single-instance');
   assert.equal(config.plugins[4].name, 'route-guard');
-  assert.equal(config.plugins.at(-5).name, 'gev-key-setup');
+  assert.equal(config.plugins.at(-6).name, 'gev-key-setup');
   // The local MCP route follows every provider and precedes the API fallback.
-  assert.equal(config.plugins.at(-4).name, 'local-mcp');
-  assert.equal(config.plugins.at(-3).name, 'api-not-found');
+  assert.equal(config.plugins.at(-5).name, 'local-mcp');
+  assert.equal(config.plugins.at(-4).name, 'api-not-found');
+  // The tailnet copy of the dashboard serves the same middleware (off unless set).
+  assert.equal(config.plugins.at(-3).name, 'gev-tailnet-dashboard');
   assert.equal(config.plugins.at(-2).name, 'embed-framing');
   assert.equal(config.plugins.at(-1).name, 'panel-build');
 });

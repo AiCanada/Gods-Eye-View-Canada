@@ -21,9 +21,10 @@ test('each handset offers only its own cameras, and a generic cell stops at four
     'rear-tele',
   ]);
   assert.equal(ids('generic-cell').length, 4);
-  assert.deepEqual(ids('apple-iphone-17'), ['front', 'rear', 'rear-ultrawide']);
-  assert.deepEqual(ids('apple-iphone-16'), ids('apple-iphone-15'));
-  assert.equal(ultraCameraRole('apple-iphone-15', 'rear-tele'), null);
+  assert.deepEqual(ids('motorola'), ['front', 'rear', 'rear-ultrawide']);
+  // iPhones are no longer listed: one saved before reads as the generic cell.
+  assert.deepEqual(ids('apple-iphone-17'), ids('generic-cell'));
+  assert.equal(ultraCameraRole('motorola', 'rear-tele'), null);
   assert.deepEqual(ids('motorola'), ['front', 'rear', 'rear-ultrawide']);
   assert.deepEqual(ids('google-pixel'), ids('generic-cell'));
   assert.deepEqual(ids('oppo'), ids('vivo'));

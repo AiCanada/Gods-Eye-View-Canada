@@ -23,6 +23,7 @@ import {
   noteSecurityFeedsSaved,
   noteUltraEndpoint,
   noteUltraPosition,
+  onUltraPhoneFix,
   pollUltraNetworkOnce,
   ultraHelpProxy,
   ultraNetworkPins,
@@ -8248,5 +8249,29 @@ test('a key file another process made first is read back, never written over', a
     ultraHelpProxy({
       sourceRoot: fs.mkdtempSync(path.join(os.tmpdir(), 'gev-uht-')),
     });
+  }
+});
+
+test('a fix from the phone link is handed to the device layer, so its pin and path follow the trip', async () => {
+  setup();
+  const clock = withClock(Date.UTC(2026, 9, 4, 18));
+  const taken = [];
+  onUltraPhoneFix((fix) => taken.push(fix));
+  try {
+    const answer = await phone(`/ultra/${VAN_KEY}/help`, {
+      method: 'POST',
+      headers: JSON_BODY,
+      body: { lat: 45.3, lon: -66.1, incident: 'fire' },
+    });
+    assert.equal(answer.status, 200, answer.text);
+    assert.equal(taken.length, 1);
+    assert.deepEqual(
+      [taken[0].feedId, taken[0].lat, taken[0].lon],
+      ['security-van', 45.3, -66.1],
+    );
+    assert.equal(taken[0].at, Date.now());
+  } finally {
+    onUltraPhoneFix(null);
+    clock.restore();
   }
 });

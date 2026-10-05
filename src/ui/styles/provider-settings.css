@@ -972,3 +972,12 @@ body.scene-playback-mode #key-setup {
   color: rgba(120, 240, 180, 1);
   border-color: rgba(84, 227, 156, 0.7);
 }
+
+/* Mirror of PC GEVC on Cell: in the top toolbar the chip is a round bolt sized
+   with the other toolbar buttons (status.css). */
+:root[data-pc-mirror='true'] #top-center-actions #key-setup-chip,
+:root[data-touch-device='true'] #top-center-actions #key-setup-chip {
+  position: relative;
+  inset: auto;
+  align-self: center;
+}

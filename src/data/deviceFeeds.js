@@ -118,6 +118,11 @@ export function normalizeDevicePositions(payload) {
       id,
       kind: text(raw.kind, 20) || 'tracker',
       kindLabel: text(raw.kindLabel, 30) || 'DEVICE',
+      pathColor: /^#[0-9a-f]{6}$/i.test(String(raw.pathColor || ''))
+        ? raw.pathColor
+        : /^#[0-9a-f]{6}$/i.test(String(raw.color || ''))
+          ? raw.color
+          : '#ffffff',
       color: /^#[0-9a-f]{6}$/i.test(String(raw.color || ''))
         ? raw.color
         : '#ffffff',
@@ -279,7 +284,9 @@ export function createDeviceFeedsLayer({
       removeHistory(record);
       return;
     }
-    const color = Cesium.Color.fromCssColorString(device.color);
+    const color = Cesium.Color.fromCssColorString(
+      device.pathColor || device.color,
+    );
     if (!record.historyEntity) {
       record.historyEntity = _dataSource.entities.add({
         id: `device-feed-history:${device.id}`,
@@ -641,12 +648,15 @@ export function createDeviceFeedsLayer({
         Cesium.Cartesian3.fromDegrees(point.lon, point.lat),
       );
       if (!record.trailEntity) {
+        const pathColor = Cesium.Color.fromCssColorString(
+          device.pathColor || device.color,
+        );
         record.trailEntity = _dataSource.entities.add({
           id: `device-feed-trail:${device.id}`,
           polyline: {
             positions,
-            width: 2,
-            material: color.withAlpha(0.7),
+            width: 3,
+            material: pathColor.withAlpha(0.9),
             clampToGround: true,
           },
         });

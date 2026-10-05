@@ -1006,8 +1006,24 @@ test('the saved route comes back as points, oldest first, thinned, positions onl
       headers: { 'sec-fetch-site': 'same-origin' },
     })
   ).json().devices[0];
-  assert.equal(placed.history.days, 2);
+  // A recording device's report is saved as a route point by the server
+  // itself (no map open needed): today's file now holds it, positions only.
+  assert.equal(placed.history.days, 3);
   assert.ok(placed.history.lastAt > 0);
+  const today = fs
+    .readdirSync(folder)
+    .filter((name) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(name))
+    .sort()
+    .pop();
+  const saved = fs
+    .readFileSync(path.join(folder, today), 'utf8')
+    .trim()
+    .split('\n')
+    .map((text) => JSON.parse(text))
+    .filter((row) => row.route === true);
+  assert.equal(saved.length, 1);
+  assert.deepEqual([saved[0].target.lat, saved[0].target.lon], [45.22, -66.12]);
+  assert.deepEqual(saved[0].layers, {});
 });
 
 test('a call for help received from the help network is a pin on the same layer', async () => {

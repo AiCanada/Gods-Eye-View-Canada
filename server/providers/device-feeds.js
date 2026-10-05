@@ -49,6 +49,7 @@ import {
   noteUltraEndpoint,
   noteUltraPhone,
   noteUltraPosition,
+  onUltraPhoneFix,
   ultraNetworkPins,
   ultraOutboundFeedsTrusted,
 } from './ultra-help.js';
@@ -67,6 +68,7 @@ import {
   DEVICE_RECORDING_DIR,
   applyDeviceFeedUpdate,
   buildDeviceRecordingLine,
+  deviceDistanceKm,
   deviceFeedPublicId,
   deviceFeedRequest,
   deviceFeedStatus,
@@ -859,6 +861,50 @@ export function deviceFeedsProxy({
    * noteUltraPosition does: kept as given, it would outrank every true report
    * after it, and the file would carry that across a restart.
    */
+  /**
+   * A recording device's route is saved by the server as its fixes arrive, so
+   * a trip is kept with no map open (the page's own recording lines add what
+   * lay around it). One point at most every ten seconds, unless it has moved
+   * fifty metres.
+   */
+  const routePointAt = new Map(); // feed id -> {at, lat, lon}
+  const saveRoutePoint = (feed, position, fixAt) => {
+    if (!feed.record) return;
+    const last = routePointAt.get(feed.id);
+    const movedM = last ? deviceDistanceKm(last, position) * 1000 : Infinity;
+    if (last && fixAt - last.at < DEVICE_RECORD_MIN_INTERVAL_MS && movedM < 50)
+      return;
+    if (last && fixAt <= last.at) return;
+    routePointAt.set(feed.id, {
+      at: fixAt,
+      lat: position.lat,
+      lon: position.lon,
+    });
+    appendRecording(
+      feed.id,
+      {
+        device: feed.name,
+        kind: feed.kind,
+        at: new Date(fixAt).toISOString(),
+        target: {
+          lat: position.lat,
+          lon: position.lon,
+          altM: Number.isFinite(position.altM) ? position.altM : null,
+          headingDeg: Number.isFinite(position.headingDeg)
+            ? position.headingDeg
+            : null,
+          speedMps: Number.isFinite(position.speedMps)
+            ? position.speedMps
+            : null,
+        },
+        radiusKm: recordRadiusKm(feed.recordKm),
+        layers: {},
+        route: true,
+      },
+      fixAt,
+    );
+  };
+
   const takeReport = (feed, reported) => {
     const now = Date.now();
     recallReports({ feeds: [feed] });
@@ -881,6 +927,7 @@ export function deviceFeedsProxy({
       console.log(`[Device feeds] ${feed.name}: reporting in`);
     }
     rememberReport(feed, position, now);
+    saveRoutePoint(feed, position, fixAt);
     if (feed.kind === 'security') {
       // The same fix time as above: a report with no time is dated now, never
       // 1970 (Number(null) is 0), or SEND HELP would call it 56 years old.
@@ -894,6 +941,15 @@ export function deviceFeedsProxy({
     }
     return true;
   };
+
+  // A fix the Ultra phone link took moves this package like a report would:
+  // its pin, its trail and, with RECORD on, its saved route.
+  onUltraPhoneFix(({ feedId, lat, lon, at }) => {
+    const feed = readConfig().feeds.find(
+      (item) => item.id === feedId && item.kind === 'security',
+    );
+    if (feed) takeReport(feed, { lat, lon, at });
+  });
 
   // A refusal is said once a minute for each address (or package): a device
   // looping a wrong address must not fill the terminal or bury the warnings

@@ -45,21 +45,6 @@ const FOLD8 = Object.freeze(['front', 'rear', 'rear-ultrawide', 'inner']);
  */
 export const ULTRA_PHONE_MODELS = Object.freeze([
   Object.freeze({ id: 'generic-cell', label: 'Generic cell', cameras: QUAD }),
-  Object.freeze({
-    id: 'apple-iphone-17',
-    label: 'Apple iPhone 17',
-    cameras: DUAL,
-  }),
-  Object.freeze({
-    id: 'apple-iphone-16',
-    label: 'Apple iPhone 16',
-    cameras: DUAL,
-  }),
-  Object.freeze({
-    id: 'apple-iphone-15',
-    label: 'Apple iPhone 15',
-    cameras: DUAL,
-  }),
   Object.freeze({ id: 'google-pixel', label: 'Google Pixel', cameras: QUAD }),
   Object.freeze({ id: 'motorola', label: 'Motorola', cameras: DUAL }),
   Object.freeze({ id: 'oppo', label: 'Oppo', cameras: QUAD }),
