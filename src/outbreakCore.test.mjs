@@ -22,6 +22,14 @@ import {
   contagionLabel,
   contagionStyle,
   simulateAirTraffic,
+  cleanProfile,
+  HUMAN_FACTORS,
+  DENSITY_BANDS,
+  densityRange,
+  suggestedContagion,
+  profileText,
+  outbreakMediaQuestion,
+  outbreakSocialInstructions,
   airportInfectedAfterHours,
   patternDestinations,
   PATTERN_DESTINATIONS,
@@ -556,4 +564,156 @@ test('past HIGH the slider runs to ZERO HOUR: an airport counts as infected the 
   assert.equal(run(0).infectedAfterHours, 0, 'zero is kept, not read as unset');
   assert.ok(run(0).flights.every((f) => f.departMs >= START));
   assert.equal(run(undefined).infectedAfterHours, 1);
+});
+
+test('PATHOGEN CHARACTERISTICS: optional fields, a suggested HOW CONTAGIOUS, and words for the model', () => {
+  assert.deepEqual(cleanProfile({}), {});
+  assert.deepEqual(
+    cleanProfile({
+      transmission: 'teleport',
+      r0: 'x',
+      asymptomatic: 'maybe',
+      incubationDays: -2,
+      mutation: 'wild',
+    }),
+    {},
+    'nothing invalid is kept',
+  );
+  assert.equal(suggestedContagion({}), null, 'nothing set: no suggestion');
+  const worst = suggestedContagion({
+    transmission: 'airborne',
+    r0: 3,
+    asymptomatic: 'yes',
+    incubationDays: 9,
+    mutation: 'high',
+  });
+  assert.equal(worst.level, 110, 'reaches ZERO HOUR');
+  assert.deepEqual(
+    worst.parts.map((p) => p.delta),
+    [25, 18, 15, 10, 10],
+  );
+  const mild = suggestedContagion({
+    transmission: 'vector',
+    r0: 1.1,
+    asymptomatic: 'no',
+  });
+  assert.equal(mild.level, 15);
+  assert.equal(suggestedContagion({ transmission: 'contact' }).level, 50);
+  assert.equal(profileText({}), '');
+  const words = profileText({
+    transmission: 'airborne',
+    r0: 3,
+    incubationDays: 5,
+  });
+  assert.match(words, /^Pathogen characteristics: transmission airborne/);
+  assert.match(words, /R0 3/);
+  assert.match(words, /incubation period 5 days/);
+  // It travels with the forecast, the media search and the bots.
+  const profile = { transmission: 'airborne', r0: 3 };
+  assert.match(
+    outbreakForecastQuestion(24, '', profile),
+    /Pathogen characteristics: transmission airborne/,
+  );
+  assert.match(
+    outbreakMediaQuestion(OUTBREAK_DEFAULT_LOCATIONS, '', profile),
+    /R0 3/,
+  );
+  assert.match(
+    outbreakSocialInstructions(OUTBREAK_DEFAULT_LOCATIONS, '', profile),
+    /R0 3/,
+  );
+  assert.doesNotMatch(outbreakForecastQuestion(24), /Pathogen characteristics/);
+});
+
+test('HUMAN BEHAVIOR & DEMOGRAPHICS: optional, they move the suggestion and go to the model', () => {
+  assert.deepEqual(
+    HUMAN_FACTORS.map((f) => f.key),
+    [
+      'density',
+      'densityNew',
+      'travel',
+      'compliance',
+      'vulnerability',
+      'season',
+      'immunity',
+    ],
+  );
+  assert.deepEqual(cleanProfile({ density: 'moon', immunity: '' }), {});
+  const fast = suggestedContagion({
+    density: '5m-10m',
+    travel: 'high',
+    compliance: 'low',
+    vulnerability: 'high',
+    season: 'winter',
+    immunity: 'novel',
+  });
+  assert.equal(fast.level, 110, '50 + 15 + 10 + 12 + 10 + 10 + 15');
+  const slow = suggestedContagion({
+    density: '0-10k',
+    compliance: 'high',
+    immunity: 'strong',
+  });
+  assert.equal(slow.level, 10, '50 - 10 - 15 - 15');
+  // With the pathogen, both count.
+  assert.equal(
+    suggestedContagion({ transmission: 'airborne', compliance: 'high' }).level,
+    60,
+  );
+  const words = profileText({
+    r0: 2,
+    density: '5m-10m',
+    densityNew: '0-10k',
+    immunity: 'novel',
+  });
+  assert.match(
+    words,
+    /^Pathogen characteristics: basic reproduction number R0 2./,
+  );
+  assert.match(
+    words,
+    /Human behavior and demographics: near patient zero, 5 million – 10 million people \(megacity\); at the new infected locations, 0 – 10,000 people \(rural \/ village\); a novel virus: no natural immunity\./,
+  );
+  assert.equal(
+    suggestedContagion({ density: '5m-10m', densityNew: '5m-10m' }).level,
+    75,
+    '50 + 15 near patient zero + 8 at the new infected locations, to the nearest 5',
+  );
+  assert.match(
+    outbreakForecastQuestion(24, '', { season: 'winter' }),
+    /cold, dry winter air/,
+  );
+});
+
+test('population density runs in bands of people, from a village to a megacity', () => {
+  assert.equal(DENSITY_BANDS.length, 9);
+  assert.equal(DENSITY_BANDS[0].low, 0);
+  assert.equal(DENSITY_BANDS.at(-1).high, 10_000_000);
+  for (let i = 1; i < DENSITY_BANDS.length; i += 1)
+    assert.equal(DENSITY_BANDS[i].low, DENSITY_BANDS[i - 1].high, 'no gaps');
+  assert.deepEqual(
+    [DENSITY_BANDS[0], DENSITY_BANDS[5], DENSITY_BANDS.at(-1)].map(
+      densityRange,
+    ),
+    [
+      '0 – 10,000 people',
+      '500,000 – 1 million people',
+      '5 million – 10 million people',
+    ],
+  );
+  const near = HUMAN_FACTORS.find((f) => f.key === 'density').options;
+  const later = HUMAN_FACTORS.find((f) => f.key === 'densityNew').options;
+  assert.deepEqual(
+    near.map((o) => o.delta),
+    [-10, -7, -4, 0, 3, 6, 9, 12, 15],
+  );
+  assert.deepEqual(
+    later.map((o) => o.delta),
+    [-5, -3, -2, 0, 2, 3, 5, 6, 8],
+  );
+  assert.equal(near[5].label, '500,000 – 1 million people · Large city');
+  assert.deepEqual(
+    cleanProfile({ density: 'dense' }),
+    {},
+    'the old choices are gone',
+  );
 });

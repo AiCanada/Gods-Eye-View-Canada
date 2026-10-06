@@ -42,6 +42,9 @@ import {
   candidateLine,
   airportInfectedAfterHours,
   cleanContagion,
+  cleanProfile,
+  HUMAN_FACTORS,
+  suggestedContagion,
   contagionLabel,
   cleanFlight,
   cleanLocation,
@@ -140,6 +143,34 @@ export class OutbreakPanel {
     this._contagion = byId('outbreak-contagion');
     this._contagionValue = byId('outbreak-contagion-value');
     this._contagionNote = byId('outbreak-contagion-note');
+    this._profileFields = {
+      transmission: byId('outbreak-transmission'),
+      r0: byId('outbreak-r0'),
+      asymptomatic: byId('outbreak-asymptomatic'),
+      incubationDays: byId('outbreak-incubation'),
+      mutation: byId('outbreak-mutation'),
+      density: byId('outbreak-density'),
+      densityNew: byId('outbreak-density-new'),
+      travel: byId('outbreak-travel'),
+      compliance: byId('outbreak-compliance'),
+      vulnerability: byId('outbreak-vulnerability'),
+      season: byId('outbreak-season'),
+      immunity: byId('outbreak-immunity'),
+    };
+    // The two density menus: people in the area, from HUMAN_FACTORS.
+    for (const key of ['density', 'densityNew']) {
+      const select = this._profileFields[key];
+      const factor = HUMAN_FACTORS.find((f) => f.key === key);
+      if (!select || !factor || !doc) continue;
+      for (const option of factor.options) {
+        const el = doc.createElement('option');
+        el.value = option.id;
+        el.textContent = option.label;
+        select.appendChild(el);
+      }
+    }
+    this._suggest = byId('outbreak-suggest');
+    this._useSuggested = byId('outbreak-use-suggested');
     this._summary = byId('outbreak-summary');
     this._destinations = byId('outbreak-destinations');
     this._model = byId('outbreak-model');
@@ -234,6 +265,29 @@ export class OutbreakPanel {
     });
     this._mediaBtn?.addEventListener('click', () => void this._mediaSearch());
     this._clearBtn?.addEventListener('click', () => this._clear());
+    for (const field of Object.values(this._profileFields)) {
+      for (const type of ['change', 'input'])
+        field?.addEventListener(type, () => {
+          const read = {};
+          for (const [key, el] of Object.entries(this._profileFields))
+            if (el) read[key] = el.value;
+          this._state.profile = cleanProfile(read);
+          this._save();
+          this._showSuggestion();
+        });
+    }
+    // USE SUGGESTED: the only way the profile moves the slider.
+    this._useSuggested?.addEventListener('click', () => {
+      const suggestion = suggestedContagion(this._state.profile);
+      if (!suggestion) return;
+      this._state.contagion = suggestion.level;
+      if (this._contagion) this._contagion.value = String(suggestion.level);
+      this._showContagion();
+      this._refresh({ send: true });
+      this._say(
+        `HOW CONTAGIOUS set to ${contagionLabel(suggestion.level)} from the disease profile.`,
+      );
+    });
     this._futureBtn?.addEventListener('click', () => void this._futureSpread());
     this._forecastList?.addEventListener('click', (event) => {
       const index = event?.target?.dataset?.outbreakForecast;
@@ -286,6 +340,7 @@ export class OutbreakPanel {
       shown,
       show: saved?.show === true,
       contagion: cleanContagion(saved?.contagion),
+      profile: cleanProfile(saved?.profile),
       hour: Number(saved?.hour) || null,
       scan: Number.isFinite(startMs)
         ? {
@@ -339,7 +394,24 @@ export class OutbreakPanel {
           : `Entire airport considered infected after ${airportInfectedAfterHours(this._state.contagion)} h, not just connected flights on infected planes`;
   }
 
+  /** The suggested HOW CONTAGIOUS level, and what each field added. */
+  _showSuggestion() {
+    const suggestion = suggestedContagion(this._state.profile);
+    if (this._useSuggested) this._useSuggested.disabled = !suggestion;
+    if (!this._suggest) return;
+    this._suggest.textContent = suggestion
+      ? `Suggested HOW CONTAGIOUS: ${contagionLabel(suggestion.level)} (${suggestion.parts
+          .map((p) => `${p.label} ${p.delta >= 0 ? '+' : ''}${p.delta}`)
+          .join(
+            ', ',
+          )}) · airports infected after ${airportInfectedAfterHours(suggestion.level)} h`
+      : 'Set any of these for a suggested HOW CONTAGIOUS level.';
+  }
+
   _fillControls() {
+    for (const [key, el] of Object.entries(this._profileFields || {}))
+      if (el) el.value = this._state.profile?.[key] ?? '';
+    this._showSuggestion();
     if (this._contagion) this._contagion.value = String(this._state.contagion);
     this._showContagion();
     if (this._showBox) this._showBox.checked = this._state.show;
@@ -1191,7 +1263,11 @@ export class OutbreakPanel {
       for (const within of OUTBREAK_FORECAST_WINDOWS) {
         this._say(`FUTURE SPREAD · asking the model: within ${within} h…`);
         const answer = await this._ask(
-          outbreakForecastQuestion(within, this._state.keywords),
+          outbreakForecastQuestion(
+            within,
+            this._state.keywords,
+            this._state.profile,
+          ),
           outbreakForecastScene({
             locations,
             spread,
@@ -1313,7 +1389,11 @@ export class OutbreakPanel {
       }
       this._say('MEDIA SEARCH · the language model is reading the articles…');
       const answer = await this._ask(
-        outbreakMediaQuestion(locations, this._state.keywords),
+        outbreakMediaQuestion(
+          locations,
+          this._state.keywords,
+          this._state.profile,
+        ),
         {
           outbreakNews: articles.slice(0, 60),
         },
@@ -1348,6 +1428,7 @@ export class OutbreakPanel {
     const instructions = outbreakSocialInstructions(
       locations,
       this._state.keywords,
+      this._state.profile,
     );
     const place = locations[0];
     this._setBusy('the social media search');

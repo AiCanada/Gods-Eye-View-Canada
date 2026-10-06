@@ -624,6 +624,393 @@ export function spreadSummary(spread, speeds = {}) {
 }
 
 /* ---------------------------------------------------------------------------
+ * PATHOGEN CHARACTERISTICS (optional): what is known about the pathogen. Each field
+ * left unset is ignored. The profile does two things: it suggests a HOW
+ * CONTAGIOUS level (applied only when the operator presses USE SUGGESTED),
+ * and it travels with every language-model and bot-swarm request.
+ * ------------------------------------------------------------------------- */
+
+/** How it travels, hardest to contain first, with its weight on the level. */
+export const TRANSMISSION_MODES = Object.freeze([
+  Object.freeze({
+    id: 'airborne',
+    label: 'Airborne',
+    words: 'airborne (fine droplets that linger in the air)',
+    delta: 25,
+  }),
+  Object.freeze({
+    id: 'droplets',
+    label: 'Respiratory droplets',
+    words: 'respiratory droplets (coughing and sneezing)',
+    delta: 15,
+  }),
+  Object.freeze({
+    id: 'contact',
+    label: 'Direct contact',
+    words: 'direct physical contact',
+    delta: 0,
+  }),
+  Object.freeze({
+    id: 'fomites',
+    label: 'Fomites (surfaces)',
+    words: 'fomites (contaminated surfaces)',
+    delta: -10,
+  }),
+  Object.freeze({
+    id: 'vector',
+    label: 'Vector-borne',
+    words: 'vector-borne (for example mosquitoes)',
+    delta: -20,
+  }),
+]);
+export const MUTATION_RATES = Object.freeze([
+  Object.freeze({ id: 'low', label: 'Low', delta: 0 }),
+  Object.freeze({ id: 'medium', label: 'Medium', delta: 5 }),
+  Object.freeze({ id: 'high', label: 'High', delta: 10 }),
+]);
+export const R0_MAX = 20;
+export const INCUBATION_DAYS_MAX = 60;
+
+/**
+ * Population density as the number of people in the area, low to high
+ * (owner ruling, 2026-10-06): nine bands from a village to a megacity, each
+ * with its weight on the suggested HOW CONTAGIOUS level near patient zero.
+ */
+export const DENSITY_BANDS = Object.freeze([
+  Object.freeze({
+    id: '0-10k',
+    low: 0,
+    high: 10_000,
+    type: 'Rural / village',
+    delta: -10,
+  }),
+  Object.freeze({
+    id: '10k-50k',
+    low: 10_000,
+    high: 50_000,
+    type: 'Small town',
+    delta: -7,
+  }),
+  Object.freeze({
+    id: '50k-100k',
+    low: 50_000,
+    high: 100_000,
+    type: 'Town',
+    delta: -4,
+  }),
+  Object.freeze({
+    id: '100k-250k',
+    low: 100_000,
+    high: 250_000,
+    type: 'Small city',
+    delta: 0,
+  }),
+  Object.freeze({
+    id: '250k-500k',
+    low: 250_000,
+    high: 500_000,
+    type: 'City',
+    delta: 3,
+  }),
+  Object.freeze({
+    id: '500k-1m',
+    low: 500_000,
+    high: 1_000_000,
+    type: 'Large city',
+    delta: 6,
+  }),
+  Object.freeze({
+    id: '1m-2.5m',
+    low: 1_000_000,
+    high: 2_500_000,
+    type: 'Metropolis',
+    delta: 9,
+  }),
+  Object.freeze({
+    id: '2.5m-5m',
+    low: 2_500_000,
+    high: 5_000_000,
+    type: 'Major metropolis',
+    delta: 12,
+  }),
+  Object.freeze({
+    id: '5m-10m',
+    low: 5_000_000,
+    high: 10_000_000,
+    type: 'Megacity',
+    delta: 15,
+  }),
+]);
+
+/** 10,000 → "10,000"; 2,500,000 → "2.5 million". */
+function peopleCount(n) {
+  if (n >= 1_000_000) return `${n / 1_000_000} million`;
+  return n.toLocaleString('en-US');
+}
+
+/** A band's range in words: "250,000 – 500,000 people". */
+export function densityRange(band) {
+  return `${peopleCount(band.low)} – ${peopleCount(band.high)} people`;
+}
+
+/** The bands as a factor's choices, their weight scaled by `weight`. */
+function densityOptions(where, weight) {
+  return Object.freeze(
+    DENSITY_BANDS.map((band) =>
+      Object.freeze({
+        id: band.id,
+        label: `${densityRange(band)} · ${band.type}`,
+        words: `${where}, ${densityRange(band)} (${band.type.toLowerCase()})`,
+        delta: Math.round(band.delta * weight),
+      }),
+    ),
+  );
+}
+
+/**
+ * HUMAN BEHAVIOR & DEMOGRAPHICS (optional): how quickly the people at the
+ * outbreak let it spread. Each is a choice, its weight on the suggested HOW
+ * CONTAGIOUS level, and its words for the language model.
+ */
+export const HUMAN_FACTORS = Object.freeze([
+  Object.freeze({
+    key: 'density',
+    label: 'Density near patient zero',
+    options: densityOptions('near patient zero', 1),
+  }),
+  // Where it lands next: half the weight, since it speeds the spread on from
+  // there rather than out of the outbreak itself.
+  Object.freeze({
+    key: 'densityNew',
+    label: 'Density of new infected locations',
+    options: densityOptions('at the new infected locations', 0.5),
+  }),
+  Object.freeze({
+    key: 'travel',
+    label: 'Global travel',
+    options: Object.freeze([
+      {
+        id: 'low',
+        label: 'Low',
+        words: 'little international travel',
+        delta: -5,
+      },
+      {
+        id: 'medium',
+        label: 'Medium',
+        words: 'some international travel',
+        delta: 0,
+      },
+      {
+        id: 'high',
+        label: 'High',
+        words: 'a high-volume international flight and transit hub',
+        delta: 10,
+      },
+    ]),
+  }),
+  Object.freeze({
+    key: 'compliance',
+    label: 'Public compliance',
+    options: Object.freeze([
+      {
+        id: 'high',
+        label: 'High',
+        words:
+          'high public compliance and trust (masking, distancing, quarantine, vaccination)',
+        delta: -15,
+      },
+      {
+        id: 'medium',
+        label: 'Medium',
+        words: 'mixed public compliance and trust',
+        delta: 0,
+      },
+      {
+        id: 'low',
+        label: 'Low',
+        words: 'low public compliance and trust',
+        delta: 12,
+      },
+    ]),
+  }),
+  Object.freeze({
+    key: 'vulnerability',
+    label: 'Socioeconomic vulnerability',
+    options: Object.freeze([
+      {
+        id: 'low',
+        label: 'Low',
+        words: 'low socioeconomic vulnerability',
+        delta: -5,
+      },
+      {
+        id: 'medium',
+        label: 'Medium',
+        words: 'some socioeconomic vulnerability',
+        delta: 0,
+      },
+      {
+        id: 'high',
+        label: 'High',
+        words:
+          'high socioeconomic vulnerability (no remote work, clean water or paid sick leave)',
+        delta: 10,
+      },
+    ]),
+  }),
+  Object.freeze({
+    key: 'season',
+    label: 'Seasonality',
+    options: Object.freeze([
+      {
+        id: 'warm',
+        label: 'Warm and humid',
+        words: 'warm, humid weather',
+        delta: -5,
+      },
+      { id: 'mild', label: 'Mild', words: 'mild weather', delta: 0 },
+      {
+        id: 'winter',
+        label: 'Cold, dry winter',
+        words: 'cold, dry winter air (droplets stay suspended longer)',
+        delta: 10,
+      },
+      {
+        id: 'rain',
+        label: 'Heavy rain',
+        words: 'heavy rainfall driving people indoors',
+        delta: 5,
+      },
+    ]),
+  }),
+  Object.freeze({
+    key: 'immunity',
+    label: 'Immunity',
+    options: Object.freeze([
+      {
+        id: 'novel',
+        label: 'Novel',
+        words: 'a novel virus: no natural immunity',
+        delta: 15,
+      },
+      { id: 'partial', label: 'Partial', words: 'partial immunity', delta: 0 },
+      {
+        id: 'strong',
+        label: 'Strong',
+        words: 'strong immunity from past strains or vaccination',
+        delta: -15,
+      },
+    ]),
+  }),
+]);
+
+/** The profile as kept: only the fields that are set, each valid. */
+export function cleanProfile(raw) {
+  const out = {};
+  if (TRANSMISSION_MODES.some((m) => m.id === raw?.transmission))
+    out.transmission = raw.transmission;
+  const r0 = finite(raw?.r0);
+  if (r0 !== null && r0 > 0 && r0 <= R0_MAX)
+    out.r0 = Math.round(r0 * 100) / 100;
+  if (raw?.asymptomatic === 'yes' || raw?.asymptomatic === 'no')
+    out.asymptomatic = raw.asymptomatic;
+  const days = finite(raw?.incubationDays);
+  if (days !== null && days > 0 && days <= INCUBATION_DAYS_MAX)
+    out.incubationDays = Math.round(days * 10) / 10;
+  if (MUTATION_RATES.some((m) => m.id === raw?.mutation))
+    out.mutation = raw.mutation;
+  for (const factor of HUMAN_FACTORS)
+    if (factor.options.some((o) => o.id === raw?.[factor.key]))
+      out[factor.key] = raw[factor.key];
+  return out;
+}
+
+/**
+ * The HOW CONTAGIOUS level the profile points to, with what each field
+ * added, or null when nothing is set. It starts from the middle (50):
+ *  - transmission: airborne +25, droplets +15, contact 0, surfaces -10,
+ *    vector-borne -20;
+ *  - R0: 12 a whole step from 1.5, from -25 to +35 (R0 3 is +18);
+ *  - spreads without symptoms +15, does not -10;
+ *  - incubation: over 7 days +10, 3 to 7 days +5;
+ *  - mutation: high +10, medium +5.
+ * Past HIGH (100) it reaches ZERO HOUR (110).
+ */
+export function suggestedContagion(profile) {
+  const p = cleanProfile(profile);
+  const parts = [];
+  const mode = TRANSMISSION_MODES.find((m) => m.id === p.transmission);
+  if (mode) parts.push({ label: mode.label, delta: mode.delta });
+  if (p.r0 !== undefined)
+    parts.push({
+      label: `R0 ${p.r0}`,
+      delta: Math.round(Math.max(-25, Math.min(35, (p.r0 - 1.5) * 12))),
+    });
+  if (p.asymptomatic)
+    parts.push(
+      p.asymptomatic === 'yes'
+        ? { label: 'spreads without symptoms', delta: 15 }
+        : { label: 'only with symptoms', delta: -10 },
+    );
+  if (p.incubationDays !== undefined)
+    parts.push({
+      label: `incubation ${p.incubationDays} d`,
+      delta: p.incubationDays > 7 ? 10 : p.incubationDays >= 3 ? 5 : 0,
+    });
+  const mutation = MUTATION_RATES.find((m) => m.id === p.mutation);
+  if (mutation)
+    parts.push({
+      label: `mutation ${mutation.label.toLowerCase()}`,
+      delta: mutation.delta,
+    });
+  for (const factor of HUMAN_FACTORS) {
+    const option = factor.options.find((o) => o.id === p[factor.key]);
+    if (option)
+      parts.push({
+        label: `${factor.label.toLowerCase()} ${option.label.toLowerCase()}`,
+        delta: option.delta,
+      });
+  }
+  if (!parts.length) return null;
+  const level = cleanContagion(
+    OUTBREAK_CONTAGION_DEFAULT +
+      parts.reduce((sum, part) => sum + part.delta, 0),
+  );
+  return { level: Math.round(level / 5) * 5, parts };
+}
+
+/** The profile in words, for the language model and the bots; '' when unset. */
+export function profileText(profile) {
+  const p = cleanProfile(profile);
+  const words = [];
+  const mode = TRANSMISSION_MODES.find((m) => m.id === p.transmission);
+  if (mode) words.push(`transmission ${mode.words}`);
+  if (p.r0 !== undefined) words.push(`basic reproduction number R0 ${p.r0}`);
+  if (p.asymptomatic === 'yes')
+    words.push(
+      'spreads before or without symptoms (hard to track and isolate)',
+    );
+  if (p.asymptomatic === 'no') words.push('spreads only once symptoms show');
+  if (p.incubationDays !== undefined)
+    words.push(
+      `incubation period ${p.incubationDays} days (time to travel before symptoms)`,
+    );
+  if (p.mutation) words.push(`mutation rate ${p.mutation}`);
+  const people = HUMAN_FACTORS.map(
+    (factor) => factor.options.find((o) => o.id === p[factor.key])?.words,
+  ).filter(Boolean);
+  return [
+    words.length ? `Pathogen characteristics: ${words.join('; ')}.` : '',
+    people.length
+      ? `Human behavior and demographics: ${people.join('; ')}.`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/* ---------------------------------------------------------------------------
  * Language model: what is asked, and what is read back.
  * ------------------------------------------------------------------------- */
 
@@ -664,27 +1051,36 @@ export function outbreakRoutesQuestion(airports, { connecting = false } = {}) {
 }
 
 /** The question for the global media search; the articles travel in the SCENE. */
-export function outbreakMediaQuestion(locations, keywords = '') {
+export function outbreakMediaQuestion(locations, keywords = '', profile = {}) {
   const names = locations.map((l) => l.name).join('; ');
   const topic = cleanLine(keywords, 80);
   return [
     `An outbreak${topic ? ` (${topic})` : ''} is reported at: ${names}.`,
+    profileText(profile),
     'SCENE.outbreakNews holds recent news articles found by a global media search.',
     'From those articles only, list every other place reported to have cases, suspected cases, quarantine or contact tracing linked to this outbreak.',
     'Answer with one place per line and nothing else, written: PLACE, COUNTRY | what the article says | link.',
     'Do not repeat the outbreak locations above. If the articles name no other place, answer exactly: NONE.',
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 /** The instructions for the Grok Bot / OpenAI DOTS social media swarm. */
-export function outbreakSocialInstructions(locations, keywords = '') {
+export function outbreakSocialInstructions(
+  locations,
+  keywords = '',
+  profile = {},
+) {
   const names = locations.map((l) => l.name).join('; ');
   const topic = cleanLine(keywords, 80);
   return [
     `Find public posts from the last 7 days about a disease outbreak${topic ? ` (${topic})` : ''} at ${names},`,
     'and especially about new places with cases, suspected cases, quarantine or travellers from there falling ill.',
     'In each line, the place is the town or city with the new report.',
+    profileText(profile),
   ]
+    .filter(Boolean)
     .join(' ')
     .slice(0, 1000);
 }
@@ -1059,18 +1455,23 @@ export function outbreakForecastScene({
 }
 
 /** The question for one forecast window. */
-export function outbreakForecastQuestion(within, keywords = '') {
+export function outbreakForecastQuestion(within, keywords = '', profile = {}) {
   const topic = cleanLine(keywords, 80);
   return [
     `Predict where the outbreak${topic ? ` (${topic})` : ''} in SCENE.outbreakForecast.outbreakLocations is most likely to be reported next,`,
     within === 48
       ? 'in the period 24 to 48 hours from now. SCENE.outbreakForecast.predictedWithin24h lists the places already predicted for the first 24 hours: do not repeat them; carry the spread on from them.'
       : 'within the next 24 hours.',
+    profileText(profile)
+      ? `${profileText(profile)} Weigh it: faster, airborne or symptom-free spread, and a longer incubation (more travel before anyone is ill), reach more places sooner.`
+      : '',
     'Reason from the flights (reachedByPlane, flightRoutes, and scheduledNext48h: the flights expected to leave the airports in the next 48 hours, taken to fly daily), how far each way of travel has reached (reachNow), and the news in SCENE.outbreakNews.',
     'Name only places from SCENE.outbreakForecast.candidates or places named in SCENE.outbreakNews, and none of the outbreak locations.',
     'Answer with at most 12 lines, most likely first, and nothing else, each written: PLACE, COUNTRY | AIRPORT CODE or - | HIGH, MEDIUM or LOW | why, in a few words.',
     'If nothing supports a prediction, answer exactly: NONE.',
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 /** The forecast lines of an answer, with the window they were asked for. */

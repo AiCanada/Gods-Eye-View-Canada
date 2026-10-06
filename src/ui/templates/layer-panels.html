@@ -497,6 +497,92 @@
         <div class="cctv-controls">
           <input id="outbreak-keywords" class="ask-input" type="text" maxlength="80" placeholder="Disease or outbreak name (optional)" aria-label="Disease or outbreak name" />
         </div>
+        <!-- PATHOGEN CHARACTERISTICS (optional): any field left at "Not set" is
+             ignored. Set ones suggest a HOW CONTAGIOUS level (USE SUGGESTED
+             applies it) and go with every language-model and bot request. -->
+        <div class="cctv-summary-label">PATHOGEN CHARACTERISTICS (OPTIONAL)</div>
+        <div class="outbreak-profile">
+          <label for="outbreak-transmission">Transmission mode</label>
+          <select id="outbreak-transmission" aria-label="Transmission mode">
+            <option value="">Not set</option>
+            <option value="airborne">Airborne (lingers in the air)</option>
+            <option value="droplets">Respiratory droplets (coughing, sneezing)</option>
+            <option value="contact">Direct physical contact</option>
+            <option value="fomites">Fomites (contaminated surfaces)</option>
+            <option value="vector">Vector-borne (e.g. mosquitoes)</option>
+          </select>
+          <label for="outbreak-r0">Reproduction number R₀</label>
+          <input id="outbreak-r0" type="number" min="0.1" max="20" step="0.1" placeholder="Not set" aria-label="Basic reproduction number R0" />
+          <label for="outbreak-asymptomatic">Asymptomatic transmission</label>
+          <select id="outbreak-asymptomatic" aria-label="Asymptomatic transmission">
+            <option value="">Not set</option>
+            <option value="yes">Yes, spreads without symptoms</option>
+            <option value="no">No, only with symptoms</option>
+          </select>
+          <label for="outbreak-incubation">Incubation period (days)</label>
+          <input id="outbreak-incubation" type="number" min="0.5" max="60" step="0.5" placeholder="Not set" aria-label="Incubation period in days" />
+          <label for="outbreak-mutation">Mutation rate</label>
+          <select id="outbreak-mutation" aria-label="Mutation rate">
+            <option value="">Not set</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <!-- HUMAN BEHAVIOR & DEMOGRAPHICS (optional): how quickly the people
+             at the outbreak let it spread. Like the pathogen, they suggest a
+             HOW CONTAGIOUS level and go with every model and bot request. -->
+        <div class="cctv-summary-label">HUMAN BEHAVIOR &amp; DEMOGRAPHICS (OPTIONAL)</div>
+        <div class="outbreak-profile">
+          <label for="outbreak-density">Population Density Near Patient Zero</label>
+          <select id="outbreak-density" aria-label="Population Density Near Patient Zero">
+            <option value="">Not set</option>
+          </select>
+          <label for="outbreak-density-new">Population Density of New Infected Locations</label>
+          <select id="outbreak-density-new" aria-label="Population Density of New Infected Locations">
+            <option value="">Not set</option>
+          </select>
+          <label for="outbreak-travel">Global travel &amp; mobility</label>
+          <select id="outbreak-travel" aria-label="Global travel &amp; mobility">
+            <option value="">Not set</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High (major flight and transit hub)</option>
+          </select>
+          <label for="outbreak-compliance">Public compliance &amp; trust</label>
+          <select id="outbreak-compliance" aria-label="Public compliance &amp; trust">
+            <option value="">Not set</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <label for="outbreak-vulnerability">Socioeconomic vulnerability</label>
+          <select id="outbreak-vulnerability" aria-label="Socioeconomic vulnerability">
+            <option value="">Not set</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High (no remote work, clean water, sick leave)</option>
+          </select>
+          <label for="outbreak-season">Seasonality &amp; weather</label>
+          <select id="outbreak-season" aria-label="Seasonality &amp; weather">
+            <option value="">Not set</option>
+            <option value="warm">Warm and humid</option>
+            <option value="mild">Mild</option>
+            <option value="winter">Cold, dry winter</option>
+            <option value="rain">Heavy rain (people indoors)</option>
+          </select>
+          <label for="outbreak-immunity">Immunity landscape</label>
+          <select id="outbreak-immunity" aria-label="Immunity landscape">
+            <option value="">Not set</option>
+            <option value="novel">Novel (no immunity)</option>
+            <option value="partial">Partial</option>
+            <option value="strong">Strong (past strains, vaccination)</option>
+          </select>
+        </div>
+        <div class="cctv-controls">
+          <p id="outbreak-suggest" class="social-note outbreak-suggest">Set any of these for a suggested HOW CONTAGIOUS level.</p>
+          <button id="outbreak-use-suggested" class="scene-btn" type="button" disabled>USE SUGGESTED</button>
+        </div>
         <div class="cctv-summary-label">TRAVEL HISTORY</div>
         <div class="cctv-controls">
           <select id="outbreak-days" aria-label="Scan travel history from">
