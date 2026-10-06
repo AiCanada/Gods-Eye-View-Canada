@@ -2277,6 +2277,9 @@
       "src/socialMedia.js",
       "src/socialSwarm.mjs",
       "src/socialMediaPanel.js",
+      "src/outbreakCore.mjs",
+      "src/outbreakPanel.js",
+      "src/data/outbreak.js",
       "src/layers/cctv/lookup.js",
       "src/layers/cctv/thumbnails.js",
       "src/locationCacheRelease.js",
@@ -2813,7 +2816,9 @@
       "src/data/cctvCardAlign.js",
       "src/data/cctvCardResize.js",
       "src/data/cctvPrivateMove.js",
-      "src/data/privateCctv.js"
+      "src/data/privateCctv.js",
+      "src/data/outbreak.js",
+      "src/outbreakCore.mjs"
     ],
     "external": [
       "hls.js",

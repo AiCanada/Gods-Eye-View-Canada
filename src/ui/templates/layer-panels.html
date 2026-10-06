@@ -465,4 +465,87 @@
         <div id="social-output" class="ask-output" role="status" aria-live="polite" tabindex="0"></div>
       </div>
     </div>
+
+    <!-- Outbreak Locations & Predicted Spread: a left-stack box under Social
+         Media Analysis. Outbreak locations (Irkutsk and Shelekhov to start,
+         any can be added or removed), the travel out of them since the scan
+         began, and how far each way of travel could have carried it, drawn
+         on the map by the Outbreak layer for the hour picked. -->
+    <div id="outbreak-panel" class="panel-collapsible collapsed" data-panel-id="outbreak-panel">
+      <div class="panel-glow"></div>
+      <div class="outbreak-panel-inner">
+        <div class="panel-header">
+          <span class="panel-title" data-collapsed-title="OUTBREAK LOCATIONS &amp; PREDICTED SPREAD">OUTBREAK LOCATIONS &amp; PREDICTED SPREAD</span>
+          <span class="panel-divider"></span>
+          <button class="panel-collapse-btn" data-collapse-target="outbreak-panel" title="Collapse panel">+</button>
+        </div>
+        <div class="cctv-controls">
+          <label class="social-show-location" for="outbreak-show">
+            <input id="outbreak-show" type="checkbox" aria-label="Display the outbreak and its predicted spread on the map" />
+            Display spread on map
+          </label>
+        </div>
+        <div class="cctv-summary-label">CURRENT OUTBREAK LOCATIONS</div>
+        <ul id="outbreak-locations" class="outbreak-list" aria-label="Outbreak locations"></ul>
+        <form id="outbreak-add" class="cctv-controls" autocomplete="off">
+          <input id="outbreak-add-name" class="ask-input" type="text" maxlength="80" placeholder="New outbreak location (city, town)" aria-label="New outbreak location" />
+          <button id="outbreak-add-btn" class="scene-btn" type="submit">+ ADD</button>
+        </form>
+        <div class="cctv-controls">
+          <input id="outbreak-keywords" class="ask-input" type="text" maxlength="80" placeholder="Disease or outbreak name (optional)" aria-label="Disease or outbreak name" />
+        </div>
+        <div class="cctv-summary-label">TRAVEL HISTORY</div>
+        <div class="cctv-controls">
+          <select id="outbreak-days" aria-label="Scan travel history from">
+            <option value="1">From 1 day ago</option>
+            <option value="2" selected>From 2 days ago</option>
+            <option value="3">From 3 days ago</option>
+            <option value="5">From 5 days ago</option>
+            <option value="7">From 7 days ago</option>
+          </select>
+          <button id="outbreak-scan" class="scene-btn" type="button">SCAN TRAVEL</button>
+        </div>
+        <p id="outbreak-scan-note" class="social-note">Plane: flight history (POWER UP → OPENSKY), else the chosen language model's airline schedules. Train and boat: OpenStreetMap near each location.</p>
+        <div class="cctv-summary-label">SPREAD BY TRANSPORT</div>
+        <div id="outbreak-modes" class="outbreak-modes">
+          <label class="outbreak-mode" data-mode="plane"><input id="outbreak-mode-plane" type="checkbox" checked aria-label="Show spread by plane" /><span class="outbreak-swatch"></span>Plane · Red · flights, then 100 km by road</label>
+          <label class="outbreak-mode" data-mode="train"><input id="outbreak-mode-train" type="checkbox" checked aria-label="Show spread by train" /><span class="outbreak-swatch"></span>Train · Orange <input id="outbreak-speed-train" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="60" aria-label="Train speed in km/h" /> KM/H</label>
+          <label class="outbreak-mode" data-mode="boat"><input id="outbreak-mode-boat" type="checkbox" checked aria-label="Show spread by boat" /><span class="outbreak-swatch"></span>Boat · Yellow · within 100 km <input id="outbreak-speed-boat" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="38" aria-label="Boat speed in km/h" /> KM/H</label>
+          <label class="outbreak-mode" data-mode="road"><input id="outbreak-mode-road" type="checkbox" checked aria-label="Show spread by road" /><span class="outbreak-swatch"></span>Road · Blue <input id="outbreak-speed-road" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="100" aria-label="Road speed in km/h" /> KM/H</label>
+        </div>
+        <div class="cctv-controls">
+          <select id="outbreak-hour" aria-label="Spread shown at hour"></select>
+          <button id="outbreak-play" class="scene-btn" type="button">PLAY</button>
+        </div>
+        <ul id="outbreak-summary" class="outbreak-list" aria-label="How far each way of travel has reached"></ul>
+        <ul id="outbreak-destinations" class="outbreak-list" aria-label="Places reached by plane"></ul>
+        <!-- FUTURE SPREAD LOCATIONS: a new global news search, then two
+             requests to the chosen model (within 24 h, then 24 to 48 h)
+             from the scan and the news. Pink: 24 h. Violet: 48 h. -->
+        <div class="cctv-summary-label">FUTURE SPREAD · LLM</div>
+        <div class="cctv-controls">
+          <button id="outbreak-future" class="scene-btn" type="button">FUTURE SPREAD LOCATIONS</button>
+        </div>
+        <ul id="outbreak-forecast" class="outbreak-list" aria-label="Future spread locations within 24 and 48 hours"></ul>
+        <div class="cctv-summary-label">GLOBAL MEDIA SEARCH · LLM</div>
+        <div class="cctv-controls">
+          <select id="outbreak-model" aria-label="Language model">
+            <option value="">No model key yet</option>
+          </select>
+          <button id="outbreak-media" class="scene-btn" type="button">MEDIA SEARCH</button>
+        </div>
+        <div class="cctv-summary-label">GLOBAL SOCIAL MEDIA SEARCH</div>
+        <div class="cctv-controls">
+          <select id="outbreak-swarm" aria-label="Social media search bot">
+            <option value="xai">Grok Bot</option>
+            <option value="openai">OpenAI DOTS</option>
+          </select>
+          <button id="outbreak-social" class="scene-btn" type="button">SOCIAL SEARCH</button>
+        </div>
+        <div class="cctv-summary-label">NEW LOCATIONS FOUND</div>
+        <ul id="outbreak-found" class="outbreak-list" aria-label="New outbreak locations found"></ul>
+        <div id="outbreak-status" class="ask-status" role="status" aria-live="polite"></div>
+        <div id="outbreak-output" class="ask-output" role="status" aria-live="polite" tabindex="0"></div>
+      </div>
+    </div>
   </div>

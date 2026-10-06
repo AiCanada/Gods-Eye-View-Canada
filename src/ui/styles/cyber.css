@@ -205,6 +205,7 @@
     .ask-panel-inner,
     .ultra-panel-inner,
     .social-panel-inner,
+    .outbreak-panel-inner,
     #pp-toggles:not(.collapsed),
     #pp-toggles.collapsed > .pp-header-row
   ) {
@@ -228,7 +229,8 @@
     .sst-panel-inner,
     .ask-panel-inner,
     .ultra-panel-inner,
-    .social-panel-inner
+    .social-panel-inner,
+    .outbreak-panel-inner
   )
   > .panel-header {
   min-height: 28px;
@@ -308,7 +310,8 @@
     .sst-panel-inner,
     .ask-panel-inner,
     .ultra-panel-inner,
-    .social-panel-inner
+    .social-panel-inner,
+    .outbreak-panel-inner
   )
   > .panel-header
   .panel-title {
@@ -327,7 +330,8 @@
     .sst-panel-inner,
     .ask-panel-inner,
     .ultra-panel-inner,
-    .social-panel-inner
+    .social-panel-inner,
+    .outbreak-panel-inner
   )
   > .panel-header
   .panel-title::before {
@@ -354,7 +358,8 @@
     .sst-panel-inner,
     .ask-panel-inner,
     .ultra-panel-inner,
-    .social-panel-inner
+    .social-panel-inner,
+    .outbreak-panel-inner
   )
   > .panel-header
   .panel-divider {
@@ -415,7 +420,13 @@
    box lines up with the tabs in it rather than with the line. */
 :root[data-ui-theme='cyber']
   #left-panel-stack.layout-overlap
-  > :is(#ask-panel, #cctv-panel, #ultra-panel, #social-panel):not(.collapsed) {
+  > :is(
+    #ask-panel,
+    #cctv-panel,
+    #ultra-panel,
+    #social-panel,
+    #outbreak-panel
+  ):not(.collapsed) {
   left: 10px;
   width: calc(100% - 10px);
 }
@@ -1692,7 +1703,14 @@
 
   :root[data-ui-theme='cyber']
     #left-panel-stack
-    > :is(#data-panel, #scene-panel, #ask-panel, #ultra-panel, #social-panel) {
+    > :is(
+      #data-panel,
+      #scene-panel,
+      #ask-panel,
+      #ultra-panel,
+      #social-panel,
+      #outbreak-panel
+    ) {
     --panel-expanded-width: var(--cyber-panel-width);
     width: var(--panel-expanded-width);
   }
@@ -1704,7 +1722,8 @@
       #scene-panel,
       #ask-panel,
       #ultra-panel,
-      #social-panel
+      #social-panel,
+      #outbreak-panel
     ).collapsed {
     width: var(--cyber-panel-collapsed-width);
   }
@@ -1716,14 +1735,16 @@
       #scene-panel,
       #ask-panel,
       #ultra-panel,
-      #social-panel
+      #social-panel,
+      #outbreak-panel
     ).collapsed
     :is(
       .data-panel-inner,
       .scene-panel-inner,
       .ask-panel-inner,
       .ultra-panel-inner,
-      .social-panel-inner
+      .social-panel-inner,
+      .outbreak-panel-inner
     ) {
     box-sizing: border-box;
     height: 50px;
@@ -2887,12 +2908,19 @@
    the marker moves inside the title's own padding instead of hanging 8px
    outside it; the negative margin keeps the text where it was. */
 :root[data-ui-theme='cyber']
-  :is(#ask-panel, #ultra-panel, #sst-panel, #social-panel).collapsed
+  :is(
+    #ask-panel,
+    #ultra-panel,
+    #sst-panel,
+    #social-panel,
+    #outbreak-panel
+  ).collapsed
   > :is(
     .ask-panel-inner,
     .ultra-panel-inner,
     .sst-panel-inner,
-    .social-panel-inner
+    .social-panel-inner,
+    .outbreak-panel-inner
   )
   > .panel-header
   .panel-title {
@@ -2901,12 +2929,19 @@
 }
 
 :root[data-ui-theme='cyber']
-  :is(#ask-panel, #ultra-panel, #sst-panel, #social-panel).collapsed
+  :is(
+    #ask-panel,
+    #ultra-panel,
+    #sst-panel,
+    #social-panel,
+    #outbreak-panel
+  ).collapsed
   > :is(
     .ask-panel-inner,
     .ultra-panel-inner,
     .sst-panel-inner,
-    .social-panel-inner
+    .social-panel-inner,
+    .outbreak-panel-inner
   )
   > .panel-header
   .panel-title::before {

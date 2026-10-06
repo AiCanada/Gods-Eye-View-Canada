@@ -615,6 +615,9 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
     token: 'i',
     disposition: 'enabled-only',
   }),
+  // Fork layer: Outbreak Locations & Predicted Spread, the next free
+  // merge-time token.
+  Object.freeze({ id: 'outbreak', token: '4', disposition: 'enabled-only' }),
   // Fork layer: Private CCTV Cams, the next free merge-time token.
   Object.freeze({
     id: 'private-cctv',

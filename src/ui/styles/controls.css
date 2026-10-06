@@ -1001,7 +1001,8 @@ body.ui-clean-view #ultra-panel,
 body.ui-clean-view #radio-panel,
 body.ui-clean-view #global-context-panel,
 body.ui-clean-view #scene-panel,
-body.ui-clean-view #social-panel {
+body.ui-clean-view #social-panel,
+body.ui-clean-view #outbreak-panel {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;

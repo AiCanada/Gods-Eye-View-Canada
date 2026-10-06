@@ -1,0 +1,129 @@
+/* Outbreak Locations & Predicted Spread. A left-stack box: its glass, the
+   collapse chrome and its inputs come from the Social Media Analysis rules
+   (social.css), which name #outbreak-panel beside #social-panel. This file
+   is only the box's own lists and its four transport rows. */
+#outbreak-panel {
+  --outbreak-plane: #ff2a2a;
+  --outbreak-train: #ff8c1a;
+  --outbreak-boat: #ffd21a;
+  --outbreak-road: #2f7bff;
+}
+
+/* The box's name is longer than the box is wide: it wraps onto a second
+   line, so the expand/collapse button keeps its place in the corner. */
+#outbreak-panel:not(.collapsed) .panel-header .panel-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+#outbreak-panel:not(.collapsed) .panel-header .panel-divider {
+  flex: 0 0 12px;
+}
+
+#outbreak-panel .panel-header .panel-collapse-btn {
+  flex: 0 0 auto;
+}
+
+/* The scan and search log: as tall as Social Media Analysis's. */
+#outbreak-panel .ask-output {
+  min-height: 200px;
+  max-height: min(70vh, 640px);
+}
+
+#outbreak-panel .outbreak-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+#outbreak-panel .outbreak-list:empty {
+  display: none;
+}
+
+#outbreak-panel .outbreak-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+#outbreak-panel .outbreak-list li > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#outbreak-panel .outbreak-list .scene-btn {
+  padding: 3px 7px;
+  font-size: 9px;
+}
+
+#outbreak-panel .outbreak-list a {
+  color: var(--accent, #00d4ff);
+}
+
+#outbreak-panel .outbreak-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+#outbreak-panel .outbreak-mode {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--text-primary);
+}
+
+#outbreak-panel .outbreak-swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  background: color-mix(in srgb, currentColor 25%, transparent);
+}
+
+#outbreak-panel .outbreak-mode[data-mode='plane'] .outbreak-swatch {
+  color: var(--outbreak-plane);
+}
+
+#outbreak-panel .outbreak-mode[data-mode='train'] .outbreak-swatch {
+  color: var(--outbreak-train);
+}
+
+#outbreak-panel .outbreak-mode[data-mode='boat'] .outbreak-swatch {
+  color: var(--outbreak-boat);
+}
+
+#outbreak-panel .outbreak-mode[data-mode='road'] .outbreak-swatch {
+  color: var(--outbreak-road);
+}
+
+#outbreak-panel .outbreak-mode input[type='checkbox'] {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+#outbreak-panel .outbreak-speed {
+  width: 58px;
+  padding: 2px 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}

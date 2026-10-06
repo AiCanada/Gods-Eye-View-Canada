@@ -365,6 +365,12 @@ export class StyleManager extends ShellFacade {
           sceneContext: () => this.askPanel?.sceneContext?.() ?? null,
         })
       : null;
+    // Outbreak Locations & Predicted Spread: the box under Social Media
+    // Analysis. It draws through the Outbreak layer, and contacts a model or
+    // a bot swarm only on a press.
+    this.outbreakPanel = services.OutbreakPanel
+      ? new services.OutbreakPanel(viewer)
+      : null;
     this._recording.hud = this.hud;
     this._cockpitCoordinator = new CockpitCoordinator({
       viewer,

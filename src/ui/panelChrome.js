@@ -31,6 +31,7 @@ const COCKPIT_ENTRY_COLLAPSE_PANEL_IDS = Object.freeze([
   'ultra-panel',
   'scene-panel',
   'social-panel',
+  'outbreak-panel',
   'pp-toggles',
   'global-context-panel',
   'radio-panel',

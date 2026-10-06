@@ -2140,7 +2140,7 @@ test('the box carries both swarms: instructions, the button and OPEN, with no no
   );
   assert.match(
     panelHtml,
-    /<div id="social-output"[^>]*><\/div>\n      <\/div>\n    <\/div>\n  <\/div>\n/,
+    /<div id="social-output"[^>]*><\/div>\n      <\/div>\n    <\/div>\n/,
   );
 });
 

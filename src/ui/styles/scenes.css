@@ -14,7 +14,8 @@
 #left-panel-stack > #ask-panel,
 #left-panel-stack > #cctv-panel,
 #left-panel-stack > #ultra-panel,
-#left-panel-stack > #social-panel {
+#left-panel-stack > #social-panel,
+#left-panel-stack > #outbreak-panel {
   position: relative;
   top: auto;
   right: auto;
@@ -27,7 +28,7 @@
   pointer-events: auto;
 }
 
-/* AI Risk & Truth Assessment first, the Ultra Security Package under it, CCTV, then Social Media Analysis. */
+/* AI Risk & Truth Assessment first, the Ultra Security Package under it, CCTV, Social Media Analysis, then Outbreak. */
 #left-panel-stack > #ask-panel {
   order: 1;
 }
@@ -44,6 +45,11 @@
   order: 4;
 }
 
+/* Outbreak Locations & Predicted Spread last, under Social Media Analysis. */
+#left-panel-stack > #outbreak-panel {
+  order: 5;
+}
+
 /*
  * Runtime focus mode: the layout engine applies this when the expanded
  * panels' measured natural height plus sibling labels cannot fit inside the
@@ -55,7 +61,8 @@
 #left-panel-stack > #ask-panel:not(.collapsed),
 #left-panel-stack > #cctv-panel:not(.collapsed),
 #left-panel-stack > #ultra-panel:not(.collapsed),
-#left-panel-stack > #social-panel:not(.collapsed) {
+#left-panel-stack > #social-panel:not(.collapsed),
+#left-panel-stack > #outbreak-panel:not(.collapsed) {
   box-sizing: border-box;
   flex: 0 1 var(--left-panel-allocated-height, auto);
   height: var(--left-panel-allocated-height, auto);
@@ -67,7 +74,13 @@
  * the canonical control order and center their combined stack at 50vh.
  */
 #left-panel-stack.layout-tail
-  > :is(#ask-panel, #cctv-panel, #ultra-panel, #social-panel):not(.collapsed) {
+  > :is(
+    #ask-panel,
+    #cctv-panel,
+    #ultra-panel,
+    #social-panel,
+    #outbreak-panel
+  ):not(.collapsed) {
   box-sizing: border-box;
   flex: 0 0 var(--left-panel-allocated-height);
   height: var(--left-panel-allocated-height);
@@ -88,7 +101,8 @@
 #left-panel-stack.layout-overlap > #ask-panel:not(.collapsed),
 #left-panel-stack.layout-overlap > #cctv-panel:not(.collapsed),
 #left-panel-stack.layout-overlap > #ultra-panel:not(.collapsed),
-#left-panel-stack.layout-overlap > #social-panel:not(.collapsed) {
+#left-panel-stack.layout-overlap > #social-panel:not(.collapsed),
+#left-panel-stack.layout-overlap > #outbreak-panel:not(.collapsed) {
   position: absolute;
   top: var(--panel-overlap-top, 0px);
   left: 0;
@@ -106,7 +120,8 @@
 #left-panel-stack > #ask-panel:not(.collapsed) .ask-panel-inner,
 #left-panel-stack > #cctv-panel:not(.collapsed) .cctv-panel-inner,
 #left-panel-stack > #ultra-panel:not(.collapsed) .ultra-panel-inner,
-#left-panel-stack > #social-panel:not(.collapsed) .social-panel-inner {
+#left-panel-stack > #social-panel:not(.collapsed) .social-panel-inner,
+#left-panel-stack > #outbreak-panel:not(.collapsed) .outbreak-panel-inner {
   height: 100%;
   max-height: 100%;
 }
@@ -114,7 +129,8 @@
 #left-panel-stack > #ask-panel:not(.collapsed) .ask-panel-inner,
 #left-panel-stack > #cctv-panel:not(.collapsed) .cctv-panel-inner,
 #left-panel-stack > #ultra-panel:not(.collapsed) .ultra-panel-inner,
-#left-panel-stack > #social-panel:not(.collapsed) .social-panel-inner {
+#left-panel-stack > #social-panel:not(.collapsed) .social-panel-inner,
+#left-panel-stack > #outbreak-panel:not(.collapsed) .outbreak-panel-inner {
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
@@ -467,6 +483,7 @@
 #sst-panel.collapsed .sst-panel-inner > :not(.panel-header),
 #ultra-panel.collapsed .ultra-panel-inner > :not(.panel-header),
 #social-panel.collapsed .social-panel-inner > :not(.panel-header),
+#outbreak-panel.collapsed .outbreak-panel-inner > :not(.panel-header),
 #scene-panel.collapsed .scene-controls,
 #scene-panel.collapsed .scene-shot-list,
 #scene-panel.collapsed .scene-progress,
@@ -484,7 +501,8 @@
 #sst-panel.collapsed,
 #ultra-panel.collapsed,
 #scene-panel.collapsed,
-#social-panel.collapsed {
+#social-panel.collapsed,
+#outbreak-panel.collapsed {
   width: var(--left-collapsed-width);
 }
 
@@ -504,7 +522,8 @@
 #cctv-panel.collapsed .cctv-panel-inner,
 #sst-panel.collapsed .sst-panel-inner,
 #ultra-panel.collapsed .ultra-panel-inner,
-#social-panel.collapsed .social-panel-inner {
+#social-panel.collapsed .social-panel-inner,
+#outbreak-panel.collapsed .outbreak-panel-inner {
   overflow: hidden;
 }
 
@@ -514,7 +533,8 @@
 #ask-panel.collapsed .panel-title,
 #ultra-panel.collapsed .panel-title,
 #sst-panel.collapsed .panel-title,
-#social-panel.collapsed .panel-title {
+#social-panel.collapsed .panel-title,
+#outbreak-panel.collapsed .panel-title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -525,7 +545,8 @@
 #ask-panel.collapsed .panel-title::after,
 #ultra-panel.collapsed .panel-title::after,
 #sst-panel.collapsed .panel-title::after,
-#social-panel.collapsed .panel-title::after {
+#social-panel.collapsed .panel-title::after,
+#outbreak-panel.collapsed .panel-title::after {
   content: attr(data-collapsed-title);
   font-size: 8px;
   letter-spacing: 1.8px;
@@ -534,19 +555,22 @@
 /* The AI box keeps its full name on the tab: two lines inside the 176px tab,
    and the button keeps its size instead of being squeezed by the longer title. */
 #ask-panel.collapsed .panel-title,
-#social-panel.collapsed .panel-title {
+#social-panel.collapsed .panel-title,
+#outbreak-panel.collapsed .panel-title {
   white-space: normal;
   text-overflow: clip;
   max-width: calc(100% - 36px);
 }
 
 #ask-panel.collapsed .panel-collapse-btn,
-#social-panel.collapsed .panel-collapse-btn {
+#social-panel.collapsed .panel-collapse-btn,
+#outbreak-panel.collapsed .panel-collapse-btn {
   flex: 0 0 22px;
 }
 
 #ask-panel.collapsed .panel-title::after,
-#social-panel.collapsed .panel-title::after {
+#social-panel.collapsed .panel-title::after,
+#outbreak-panel.collapsed .panel-title::after {
   display: block;
   line-height: 1.3;
   letter-spacing: 1.1px;
@@ -560,6 +584,7 @@
 #sst-panel.collapsed .sst-panel-inner,
 #ultra-panel.collapsed .ultra-panel-inner,
 #social-panel.collapsed .social-panel-inner,
+#outbreak-panel.collapsed .outbreak-panel-inner,
 #scene-panel.collapsed .scene-panel-inner,
 #param-slider-panel.collapsed,
 #location-bar.collapsed .location-inner {
@@ -575,6 +600,7 @@
 #sst-panel.collapsed .panel-header,
 #ultra-panel.collapsed .panel-header,
 #social-panel.collapsed .panel-header,
+#outbreak-panel.collapsed .panel-header,
 #scene-panel.collapsed .panel-header,
 #param-slider-panel.collapsed .param-panel-header {
   margin-bottom: 2px;

@@ -14,6 +14,7 @@ import { interruptCameraMotion } from '../cameraVerbs.js';
 import { IntelHUD } from '../hud.js';
 import { AskPanel } from '../askPanel.js';
 import { SocialMediaPanel } from '../socialMediaPanel.js';
+import { OutbreakPanel } from '../outbreakPanel.js';
 import { applyStartupLayerDefaults } from '../startupDefaults.js';
 import { ShareLinkManager } from '../sharelink.js';
 import { OrbitController } from '../orbit.js';
@@ -90,6 +91,7 @@ export class StyleManager extends ApplicationShell {
         IntelHUD,
         AskPanel,
         SocialMediaPanel,
+        OutbreakPanel,
         applyStartupLayerDefaults,
         ShareLinkManager,
         OrbitController,

@@ -16,9 +16,9 @@ const between = (start, end) => {
 };
 const panelOrder = (section) => [...section.matchAll(/<(?:div|section) id="([a-z-]+-panel|pp-toggles)" class="panel-collapsible/g)].map((match) => match[1]);
 
-test('left stack: AI Risk & Truth Assessment, CCTV, Ultra, Social Media Analysis; right rail: Data Layers first, then Context, Sea Temperature, Scenes; Radio below the last tab when selected', () => {
+test('left stack: AI Risk & Truth Assessment, CCTV, Ultra, Social Media Analysis, Outbreak; right rail: Data Layers first, then Context, Sea Temperature, Scenes; Radio below the last tab when selected', () => {
   const left = between('<div id="left-panel-stack">', '<aside id="right-context-rail">');
-  assert.deepEqual(panelOrder(left), ['ask-panel', 'cctv-panel', 'ultra-panel', 'social-panel']);
+  assert.deepEqual(panelOrder(left), ['ask-panel', 'cctv-panel', 'ultra-panel', 'social-panel', 'outbreak-panel']);
   // The rail's own closing tag is the two-space-indented one; the Contacts
   // aside inside Context closes deeper.
   const right = between('<aside id="right-context-rail">', '\n  </aside>');
@@ -36,12 +36,13 @@ test('the LLM box collapses like the others and is titled AI Risk & Truth Assess
   assert.ok(!html.includes('id="ask-toggle"'), 'no private show/hide button');
 });
 
-test('the stack CSS orders the left members LLM, Ultra, CCTV, Social Media Analysis and knows the right members', () => {
+test('the stack CSS orders the left members LLM, Ultra, CCTV, Social Media Analysis, Outbreak and knows the right members', () => {
   const scenes = readFileSync(new URL('../ui/styles/scenes.css', import.meta.url), 'utf8');
   assert.match(scenes, /#left-panel-stack > #ask-panel \{\s*order: 1;/);
   assert.match(scenes, /#left-panel-stack > #ultra-panel \{\s*order: 2;/);
   assert.match(scenes, /#left-panel-stack > #cctv-panel \{\s*order: 3;/);
   assert.match(scenes, /#left-panel-stack > #social-panel \{\s*order: 4;/);
+  assert.match(scenes, /#left-panel-stack > #outbreak-panel \{\s*order: 5;/);
   const layers = readFileSync(new URL('../ui/styles/layers.css', import.meta.url), 'utf8');
   assert.match(layers, /#right-context-rail > #data-panel \{\s*order: -1;/);
   // Radio has no tab: unseen until selected, then below the last tab.

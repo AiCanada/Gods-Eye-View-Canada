@@ -252,10 +252,12 @@
   #left-panel-stack > #cctv-panel,
   #left-panel-stack > #ultra-panel,
   #left-panel-stack > #social-panel,
+  #left-panel-stack > #outbreak-panel,
   #left-panel-stack > #ask-panel.collapsed,
   #left-panel-stack > #cctv-panel.collapsed,
   #left-panel-stack > #ultra-panel.collapsed,
-  #left-panel-stack > #social-panel.collapsed {
+  #left-panel-stack > #social-panel.collapsed,
+  #left-panel-stack > #outbreak-panel.collapsed {
     position: relative;
     top: auto;
     right: auto;

@@ -31,6 +31,7 @@ import { createBhoteKoshiEventLayer } from '../data/bhoteKoshiEvent.js';
 import { createBhoteKoshiLocatorLayer } from '../data/bhoteKoshiLocator.js';
 import { createDeviceFeedsLayer } from '../data/deviceFeeds.js';
 import { createPrivateCctvLayer } from '../data/privateCctv.js';
+import { createOutbreakLayer } from '../data/outbreak.js';
 
 const SOURCE_METHODS = Object.freeze({
   flights: ['getSnapshot'],
@@ -173,6 +174,9 @@ export function createApplicationCatalog({
         // Fork: PRIVATE CCTV CAMS, the switch for this machine's own cameras,
         // which the Cameras layer draws.
         createPrivateCctvLayer(),
+        // Fork: OUTBREAK LOCATIONS & PREDICTED SPREAD, drawn from the
+        // left-hand box of the same name.
+        createOutbreakLayer(),
         createWindLayer({ feed: sources.wind, clock: weatherClock }),
         createWeatherLayer({
           feed: sources.weather,

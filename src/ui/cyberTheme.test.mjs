@@ -504,11 +504,11 @@ test('Cyber side panels share one width and one framed surface material', () => 
   );
   assert.match(
     cyberStyles,
-    /#left-panel-stack\s*> :is\(\s*#data-panel,\s*#scene-panel,\s*#ask-panel,\s*#ultra-panel,\s*#social-panel\s*\)\.collapsed \{\s*width: var\(--cyber-panel-collapsed-width\);/,
+    /#left-panel-stack\s*> :is\(\s*#data-panel,\s*#scene-panel,\s*#ask-panel,\s*#ultra-panel,\s*#social-panel,\s*#outbreak-panel\s*\)\.collapsed \{\s*width: var\(--cyber-panel-collapsed-width\);/,
   );
   assert.match(
     cyberStyles,
-    /:is\(\s*#data-panel,\s*#scene-panel,\s*#ask-panel,\s*#ultra-panel,\s*#social-panel\s*\)\.collapsed\s+:is\(\s*\.data-panel-inner,\s*\.scene-panel-inner,\s*\.ask-panel-inner,\s*\.ultra-panel-inner,\s*\.social-panel-inner\s*\) \{[\s\S]*?height: 50px;[\s\S]*?min-height: 50px;/,
+    /:is\(\s*#data-panel,\s*#scene-panel,\s*#ask-panel,\s*#ultra-panel,\s*#social-panel,\s*#outbreak-panel\s*\)\.collapsed\s+:is\(\s*\.data-panel-inner,\s*\.scene-panel-inner,\s*\.ask-panel-inner,\s*\.ultra-panel-inner,\s*\.social-panel-inner,\s*\.outbreak-panel-inner\s*\) \{[\s\S]*?height: 50px;[\s\S]*?min-height: 50px;/,
   );
   assert.match(
     cyberStyles,

@@ -39,7 +39,7 @@ test('catalogs construct distinct layers and classification from their supplied 
     signal: b.signal,
     surface: fixtureSurface(b.signal),
   });
-  assert.equal(first.layers.length, 31);
+  assert.equal(first.layers.length, 32);
   assert.ok(first.get('local-adsb'), 'Local ADS-B is registered');
   assert.equal(first.get('private-cctv').name, 'Private CCTV Cams');
   assert.equal(first.get('device-feeds').name, 'Cell');

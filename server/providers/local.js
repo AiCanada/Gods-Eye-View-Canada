@@ -37,6 +37,7 @@ import { socialAccountsProxy } from './socialAccounts.js';
 import { roadCctvKeysProxy } from './roadCctvKeys.js';
 import { socialSwarmProxy } from './socialSwarm.js';
 import { grokBotDesktopProxy } from './grokBotDesktop.js';
+import { outbreakProxy } from './outbreak.js';
 
 /**
  * Construct the local provider plugins in their established order.
@@ -92,6 +93,9 @@ function localProviderPlugins({ realtime } = {}) {
     socialSwarmProxy(),
     // Opens the Grok Bot desktop app for that swarm when it has no key of its own.
     grokBotDesktopProxy(),
+    // OUTBREAK LOCATIONS & PREDICTED SPREAD: airports, flight history,
+    // rail and water near an outbreak, and the global media search.
+    outbreakProxy(),
     keySetupEndpoint({ onEnvSaved: noteOutboundEnvSaved }),
   ];
 }

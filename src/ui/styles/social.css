@@ -1,7 +1,8 @@
 /* Social Media Analysis. A left-stack box: the glass and the collapse chrome
    come from the shared panel rules. The stack overrides the fixed position
    below. This file is only what those rules do not already cover. */
-#social-panel {
+#social-panel,
+#outbreak-panel {
   --panel-expanded-width: 360px;
   position: fixed;
   top: calc(var(--left-stack-top) + (var(--left-stack-gap) * 3));
@@ -21,7 +22,8 @@
   max-height: min(70vh, 640px);
 }
 
-#social-panel .panel-glow {
+#social-panel .panel-glow,
+#outbreak-panel .panel-glow {
   position: absolute;
   inset: -18px;
   background: radial-gradient(
@@ -34,7 +36,8 @@
   pointer-events: none;
 }
 
-#social-panel .social-show-location {
+#social-panel .social-show-location,
+#outbreak-panel .social-show-location {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -44,14 +47,18 @@
   color: var(--text-primary);
 }
 
-#social-panel .cctv-controls select option {
+#social-panel .cctv-controls select option,
+#outbreak-panel .cctv-controls select option {
   color: #141414;
   background-color: #f4f6f8;
 }
 
 #social-panel .cctv-controls select,
+#outbreak-panel .cctv-controls select,
 #social-panel .cctv-controls input,
-#social-panel .social-query {
+#outbreak-panel .cctv-controls input,
+#social-panel .social-query,
+#outbreak-panel .social-query {
   flex: 1 1 auto;
   min-width: 0;
   background: rgba(255, 255, 255, 0.06);
@@ -63,7 +70,8 @@
   font-size: 12px;
 }
 
-#social-panel .social-show-location input {
+#social-panel .social-show-location input,
+#outbreak-panel .social-show-location input {
   flex: 0 0 auto;
   width: auto;
   min-width: 0;
@@ -73,7 +81,8 @@
   border-radius: 0;
 }
 
-#social-panel .social-query {
+#social-panel .social-query,
+#outbreak-panel .social-query {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -82,7 +91,8 @@
   margin: 0;
 }
 
-#social-panel .scene-btn {
+#social-panel .scene-btn,
+#outbreak-panel .scene-btn {
   flex: 0 0 auto;
 }
 
