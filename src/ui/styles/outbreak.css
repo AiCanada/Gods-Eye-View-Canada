@@ -167,3 +167,21 @@
 #outbreak-panel #outbreak-clear {
   margin-left: auto;
 }
+
+/* Under the slider: when a whole airport counts as infected. */
+#outbreak-panel .outbreak-contagion-note {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: 0.4px;
+  color: #ff8a8a;
+}
+
+/* FIND FUTURE SPREAD LOCATIONS on the left, MAP FUTURE SPREAD on the right,
+   half the row each; the long names wrap inside their buttons. */
+#outbreak-panel .outbreak-future-row .scene-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: normal;
+}

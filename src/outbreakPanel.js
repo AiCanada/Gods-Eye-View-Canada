@@ -139,6 +139,7 @@ export class OutbreakPanel {
     this._futurePlayBtn = byId('outbreak-play-future');
     this._contagion = byId('outbreak-contagion');
     this._contagionValue = byId('outbreak-contagion-value');
+    this._contagionNote = byId('outbreak-contagion-note');
     this._summary = byId('outbreak-summary');
     this._destinations = byId('outbreak-destinations');
     this._model = byId('outbreak-model');
@@ -329,7 +330,13 @@ export class OutbreakPanel {
 
   _showContagion() {
     if (this._contagionValue)
-      this._contagionValue.textContent = `${contagionLabel(this._state.contagion)} · airports infected after ${airportInfectedAfterHours(this._state.contagion)} h`;
+      this._contagionValue.textContent = contagionLabel(this._state.contagion);
+    // Under the slider: when an airport counts as infected as a whole.
+    if (this._contagionNote)
+      this._contagionNote.textContent =
+        airportInfectedAfterHours(this._state.contagion) === 0
+          ? 'Zero Hour: entire airport considered infected the moment the outbreak lands, not just connected flights on infected planes'
+          : `Entire airport considered infected after ${airportInfectedAfterHours(this._state.contagion)} h, not just connected flights on infected planes`;
   }
 
   _fillControls() {
@@ -1121,7 +1128,7 @@ export class OutbreakPanel {
   /* --------------------------------------------------------------------- */
 
   /**
-   * FUTURE SPREAD LOCATIONS: a new global news search, then two requests to
+   * FIND FUTURE SPREAD LOCATIONS: a new global news search, then two requests to
    * the chosen model: where it is most likely to be reported within 24 h,
    * then (told those) where in the 24 h after. Each place named is placed by
    * its airport, else by name, and drawn on the map.

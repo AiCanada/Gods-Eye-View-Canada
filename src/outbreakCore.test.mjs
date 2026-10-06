@@ -400,7 +400,7 @@ test('HOW CONTAGIOUS draws high thicker and darker, low thinner and lighter; the
   assert.equal(
     outbreakSpread({ locations: [], startMs: START, hour: 1, contagion: 130 })
       .contagion,
-    100,
+    110,
   );
 });
 
@@ -514,4 +514,46 @@ test('a large airport also flies long-haul, to the nearest large airport of each
     (a) => a.code,
   );
   assert.deepEqual(medium, ['UIUU']);
+});
+
+test('past HIGH the slider runs to ZERO HOUR: an airport counts as infected the moment it lands', () => {
+  assert.deepEqual([100, 105, 110].map(airportInfectedAfterHours), [1, 0.5, 0]);
+  assert.deepEqual([100, 105, 110].map(contagionLabel), [
+    'HIGH',
+    'UNDER AN HOUR',
+    'ZERO HOUR',
+  ]);
+  const drawn = ({ width, strength, fill }) => ({ width, strength, fill });
+  assert.deepEqual(
+    drawn(contagionStyle(110)),
+    drawn(contagionStyle(100)),
+    'drawn as HIGH',
+  );
+  const ikt = {
+    code: 'UIII',
+    kind: 'L',
+    country: 'RU',
+    lat: 52.268,
+    lon: 104.389,
+  };
+  const uud = {
+    code: 'UIUU',
+    kind: 'M',
+    country: 'RU',
+    lat: 51.81,
+    lon: 107.44,
+  };
+  const byCode = new Map([ikt, uud].map((a) => [a.code, a]));
+  const run = (infectedAfterHours) =>
+    simulateAirTraffic({
+      outbreakAirports: ['UIII'],
+      airport: (code) => byCode.get(code),
+      airports: [ikt, uud],
+      startMs: START,
+      untilMs: START + 48 * HOUR,
+      infectedAfterHours,
+    });
+  assert.equal(run(0).infectedAfterHours, 0, 'zero is kept, not read as unset');
+  assert.ok(run(0).flights.every((f) => f.departMs >= START));
+  assert.equal(run(undefined).infectedAfterHours, 1);
 });

@@ -522,27 +522,26 @@
         <div class="outbreak-contagion">
           <label for="outbreak-contagion">HOW CONTAGIOUS</label>
           <span class="outbreak-contagion-end">LOW</span>
-          <input id="outbreak-contagion" type="range" min="0" max="100" step="5" value="50" aria-label="How contagious the outbreak is, low to high" />
-          <span class="outbreak-contagion-end">HIGH</span>
+          <input id="outbreak-contagion" type="range" min="0" max="110" step="5" value="50" aria-label="How contagious the outbreak is, low to high, then zero hour" />
+          <span class="outbreak-contagion-end">ZERO HOUR</span>
           <span id="outbreak-contagion-value" class="outbreak-contagion-value">MEDIUM</span>
         </div>
+        <p id="outbreak-contagion-note" class="outbreak-contagion-note">Entire airport considered infected after 5.5 h, not just connected flights on infected planes</p>
         <div class="cctv-controls">
           <select id="outbreak-hour" aria-label="Spread shown at hour"></select>
           <button id="outbreak-play" class="scene-btn" type="button">PLAY</button>
         </div>
-        <div class="cctv-controls">
+        <!-- FIND FUTURE SPREAD LOCATIONS (left): a new global news search,
+             then two requests to the chosen model (within 24 h, then 24 to
+             48 h) from the scan and the news. Pink: 24 h. Violet: 48 h.
+             MAP FUTURE SPREAD (right): plays the present to +48 h. -->
+        <div class="cctv-controls outbreak-future-row">
+          <button id="outbreak-future" class="scene-btn" type="button">FIND FUTURE SPREAD LOCATIONS</button>
           <button id="outbreak-play-future" class="scene-btn" type="button">MAP FUTURE SPREAD</button>
         </div>
+        <ul id="outbreak-forecast" class="outbreak-list" aria-label="Future spread locations within 24 and 48 hours"></ul>
         <ul id="outbreak-summary" class="outbreak-list" aria-label="How far each way of travel has reached"></ul>
         <ul id="outbreak-destinations" class="outbreak-list" aria-label="Places reached by plane"></ul>
-        <!-- FUTURE SPREAD LOCATIONS: a new global news search, then two
-             requests to the chosen model (within 24 h, then 24 to 48 h)
-             from the scan and the news. Pink: 24 h. Violet: 48 h. -->
-        <div class="cctv-summary-label">FUTURE SPREAD · LLM</div>
-        <div class="cctv-controls">
-          <button id="outbreak-future" class="scene-btn" type="button">FUTURE SPREAD LOCATIONS</button>
-        </div>
-        <ul id="outbreak-forecast" class="outbreak-list" aria-label="Future spread locations within 24 and 48 hours"></ul>
         <div class="cctv-summary-label">GLOBAL MEDIA SEARCH · LLM</div>
         <div class="cctv-controls">
           <select id="outbreak-model" aria-label="Language model">

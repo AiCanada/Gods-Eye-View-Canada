@@ -255,12 +255,21 @@ export function cleanContagion(value) {
   const n = finite(value);
   return n === null
     ? OUTBREAK_CONTAGION_DEFAULT
-    : Math.max(0, Math.min(100, Math.round(n)));
+    : Math.max(0, Math.min(OUTBREAK_CONTAGION_MAX, Math.round(n)));
 }
+
+/**
+ * The slider runs past HIGH (100) to ZERO HOUR (110, owner ruling
+ * 2026-10-06): under an hour, down to the moment the outbreak lands.
+ */
+export const OUTBREAK_CONTAGION_HIGH = 100;
+export const OUTBREAK_CONTAGION_MAX = 110;
 
 /** The words beside the slider. */
 export function contagionLabel(value) {
   const level = cleanContagion(value);
+  if (level >= OUTBREAK_CONTAGION_MAX) return 'ZERO HOUR';
+  if (level > OUTBREAK_CONTAGION_HIGH) return 'UNDER AN HOUR';
   if (level >= 90) return 'HIGH';
   if (level >= 65) return 'MEDIUM-HIGH';
   if (level > 35) return 'MEDIUM';
@@ -274,7 +283,8 @@ export function contagionLabel(value) {
  * The middle of the slider draws as the map did before it existed.
  */
 export function contagionStyle(value) {
-  const t = cleanContagion(value) / 100;
+  // Past HIGH the map draws as HIGH: ZERO HOUR changes the airports only.
+  const t = Math.min(cleanContagion(value), OUTBREAK_CONTAGION_HIGH) / 100;
   return {
     level: cleanContagion(value),
     width: 0.4 + 1.2 * t,
@@ -750,10 +760,22 @@ export function candidateLine(airport) {
  * high, in a straight line between. Until then only the flights the scan
  * found carry it on; from then on every flight that leaves it does.
  */
-export const AIRPORT_INFECTED_AFTER_HOURS = Object.freeze({ low: 10, high: 1 });
+export const AIRPORT_INFECTED_AFTER_HOURS = Object.freeze({
+  low: 10,
+  high: 1,
+  zeroHour: 0,
+});
 export function airportInfectedAfterHours(contagion) {
-  const t = cleanContagion(contagion) / 100;
-  const { low, high } = AIRPORT_INFECTED_AFTER_HOURS;
+  const level = cleanContagion(contagion);
+  const { low, high, zeroHour } = AIRPORT_INFECTED_AFTER_HOURS;
+  // Past HIGH: from an hour down to ZERO HOUR, the moment it lands.
+  if (level > OUTBREAK_CONTAGION_HIGH) {
+    const t =
+      (level - OUTBREAK_CONTAGION_HIGH) /
+      (OUTBREAK_CONTAGION_MAX - OUTBREAK_CONTAGION_HIGH);
+    return Math.round((high - (high - zeroHour) * t) * 10) / 10;
+  }
+  const t = level / OUTBREAK_CONTAGION_HIGH;
   return Math.round((low - (low - high) * t) * 10) / 10;
 }
 export const TRAFFIC_AIRPORTS_MAX = 888;
@@ -869,9 +891,13 @@ export function simulateAirTraffic({
   untilMs,
   infectedAfterHours = 1,
 }) {
+  const asked = Number(infectedAfterHours);
   const delayHours = Math.max(
-    AIRPORT_INFECTED_AFTER_HOURS.high,
-    Math.min(AIRPORT_INFECTED_AFTER_HOURS.low, Number(infectedAfterHours) || 1),
+    AIRPORT_INFECTED_AFTER_HOURS.zeroHour,
+    Math.min(
+      AIRPORT_INFECTED_AFTER_HOURS.low,
+      Number.isFinite(asked) ? asked : 1,
+    ),
   );
   const known = new Map(); // from code -> flights the scan found out of it
   const flown = new Set(); // route|half-hour of a flight the scan found

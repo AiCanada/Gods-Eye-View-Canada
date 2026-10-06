@@ -609,7 +609,10 @@ export function outbreakProxy({
       airports: index.scheduled,
       startMs,
       untilMs,
-      infectedAfterHours: Number(body?.infectedAfterHours),
+      infectedAfterHours:
+        body?.infectedAfterHours === undefined
+          ? undefined
+          : Number(body.infectedAfterHours),
     });
     send(res, 200, result);
   }
