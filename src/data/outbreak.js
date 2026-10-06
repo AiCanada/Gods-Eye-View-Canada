@@ -19,12 +19,17 @@ import {
   OUTBREAK_SHOWN_EVENT,
   circlePoints,
   circleTakesPole,
+  contagionStyle,
 } from '../outbreakCore.mjs';
 
 const ORIGIN_COLOR = '#e040fb';
 /** FUTURE SPREAD LOCATIONS: within 24 h, and within 48 h. */
 const FORECAST_24_COLOR = '#ff4fd8';
 const FORECAST_48_COLOR = '#b388ff';
+/** A flight after the present (a daily route, assumed): a lighter red. */
+const FUTURE_FLIGHT_COLOR = '#ff8a8a';
+/** At most this many flight lines are drawn. */
+const ROUTES_DRAWN_MAX = 500;
 /**
  * Dots stay in front of hills and buildings while the camera is this close;
  * farther away the globe hides them, so they never show through it.
@@ -89,10 +94,13 @@ export function createOutbreakLayer({
   const wanted = () => {
     const out = [];
     if (!_enabled || !latest) return out;
+    // HOW CONTAGIOUS: thicker and darker when high, thinner and lighter when low.
+    const look = contagionStyle(latest.contagion);
+    const line = (alpha) => Math.min(1, alpha * look.strength);
     for (const circle of latest.rings) {
       const key = `${circle.mode}|${circle.from}|${circle.lat.toFixed(3)},${circle.lon.toFixed(3)}`;
       const km = Math.round(circle.radiusKm);
-      const sig = `${km}|${circle.color}`;
+      const sig = `${km}|${circle.color}|${look.level}`;
       out.push({
         id: `outbreak-ring|${key}`,
         sig,
@@ -102,13 +110,16 @@ export function createOutbreakLayer({
             positions: ring(
               circlePoints(circle.lat, circle.lon, circle.radiusKm, 96),
             ),
-            width: circle.mode === 'plane' ? 2 : 3,
-            material: color(circle.color, 0.95),
+            width: (circle.mode === 'plane' ? 2 : 3) * look.width,
+            material: color(circle.color, line(0.95)),
             arcType: Cesium.ArcType.GEODESIC,
           },
         }),
       });
-      for (const [j, share] of [0.33, 0.66].entries()) {
+      // A plane circle (up to 888 airports, 100 km each) is one ring: the
+      // inner rings and fill are for the reach out of the outbreak itself.
+      const plain = circle.mode === 'plane';
+      for (const [j, share] of (plain ? [] : [0.33, 0.66]).entries()) {
         out.push({
           id: `outbreak-ring|${key}|${j}`,
           sig,
@@ -122,14 +133,15 @@ export function createOutbreakLayer({
                   64,
                 ),
               ),
-              width: 1,
-              material: color(circle.color, 0.35 + 0.2 * j),
+              width: Math.max(1, look.width),
+              material: color(circle.color, line(0.35 + 0.2 * j)),
               arcType: Cesium.ArcType.GEODESIC,
             },
           }),
         });
       }
       if (
+        !plain &&
         circle.radiusKm <= FILL_MAX_KM &&
         !circleTakesPole(circle.lat, circle.radiusKm)
       ) {
@@ -143,20 +155,24 @@ export function createOutbreakLayer({
                   circlePoints(circle.lat, circle.lon, circle.radiusKm, 64),
                 ).slice(0, -1),
               ),
-              material: color(circle.color, 0.12),
+              material: color(circle.color, look.fill),
               height: RING_HEIGHT_M,
             },
           }),
         });
       }
     }
-    for (const route of latest.routes) {
-      const dashed = !route.landed || route.hop === 2;
+    // Normal traffic out of 300 airports is thousands of routes: the first
+    // ROUTES_DRAWN_MAX are drawn (the scan's own flights come first).
+    for (const route of latest.routes.slice(0, ROUTES_DRAWN_MAX)) {
+      const dashed = !route.landed || route.hop === 2 || route.future;
+      // A future (daily, assumed) flight: lighter, with longer dashes.
+      const css = route.future ? FUTURE_FLIGHT_COLOR : route.color;
       out.push({
         id: `outbreak-route|${route.from.code}>${route.to.code}|${route.hop}`,
-        sig: dashed ? 'dashed' : 'solid',
+        sig: `${dashed ? 'dashed' : 'solid'}|${css}|${look.level}`,
         make: () => ({
-          name: `FLIGHT · ${route.from.code} → ${route.to.code}${route.landed ? '' : ' · in the air'}`,
+          name: `${route.future ? 'FUTURE FLIGHT' : 'FLIGHT'} · ${route.from.code} → ${route.to.code}${route.landed ? '' : ' · in the air'}`,
           polyline: {
             positions: [
               Cesium.Cartesian3.fromDegrees(
@@ -167,13 +183,13 @@ export function createOutbreakLayer({
               Cesium.Cartesian3.fromDegrees(route.to.lon, route.to.lat, 1500),
             ],
             arcType: Cesium.ArcType.GEODESIC,
-            width: route.hop === 2 ? 1.5 : 2.5,
+            width: (route.hop === 2 ? 1.5 : 2.5) * look.width,
             material: dashed
               ? new Cesium.PolylineDashMaterialProperty({
-                  color: color(route.color, 0.85),
-                  dashLength: 14,
+                  color: color(css, line(0.85)),
+                  dashLength: route.future ? 24 : 14,
                 })
-              : color(route.color, 0.85),
+              : color(css, line(0.85)),
           },
         }),
       });

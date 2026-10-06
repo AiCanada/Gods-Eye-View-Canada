@@ -19,6 +19,15 @@ import {
   scanStartMs,
   spreadSummary,
   timeScheduleRoutes,
+  contagionLabel,
+  contagionStyle,
+  simulateAirTraffic,
+  airportInfectedAfterHours,
+  patternDestinations,
+  PATTERN_DESTINATIONS,
+  PATTERN_RANGE_KM,
+  TRAFFIC_AIRPORTS_MAX,
+  LONG_HAUL_RANGE_KM,
   outbreakForecastQuestion,
   parseForecastLines,
 } from './outbreakCore.mjs';
@@ -62,19 +71,15 @@ test('the time menu runs from hour 1 to the present, then into the future', () =
   assert.equal(scanStartMs(now, 2), now - 48 * HOUR);
   assert.equal(presentHour(START, now), 49);
   const options = outbreakHourOptions(START, now);
-  assert.equal(options.length, 54);
+  assert.equal(options.length, 97);
   assert.match(options[0].label, /^Hour 1 · 04 09:00 UTC$/);
   assert.match(options[48].label, /^Present · hour 49/);
   assert.deepEqual(
-    options.slice(49).map((o) => [o.value, o.future]),
-    [
-      [55, true],
-      [61, true],
-      [73, true],
-      [85, true],
-      [97, true],
-    ],
+    options.slice(49).map((o) => o.value),
+    Array.from({ length: 48 }, (_, i) => 50 + i),
+    'every hour to +48 h, for MAP FUTURE SPREAD',
   );
+  assert.ok(options.slice(49).every((o) => o.future));
   assert.match(options.at(-1).label, /^Future · \+48 h/);
 });
 
@@ -239,4 +244,274 @@ test('FUTURE SPREAD LOCATIONS asks for the next 24 h, then the 24 h after, and r
       within: 48,
     },
   ]);
+});
+
+test('past the present, a place forecast within 48 h shows only from +24 h on', () => {
+  const forecast = [
+    { name: 'Ulan-Ude, Russia', lat: 51.83, lon: 107.6, within: 24 },
+    { name: 'Chita, Russia', lat: 52.03, lon: 113.5, within: 48 },
+  ];
+  const at = (hour) =>
+    outbreakSpread({
+      locations: [],
+      forecast,
+      present: 49,
+      startMs: START,
+      hour,
+    }).forecast.map((f) => f.name);
+  assert.deepEqual(
+    at(49),
+    ['Ulan-Ude, Russia', 'Chita, Russia'],
+    'the present shows both',
+  );
+  assert.deepEqual(at(60), ['Ulan-Ude, Russia'], '+11 h: the 24 h place only');
+  assert.deepEqual(
+    at(73),
+    ['Ulan-Ude, Russia', 'Chita, Russia'],
+    '+24 h: both',
+  );
+});
+
+test('an airport that has had it an hour sends it out on every flight: its scanned routes daily, or normal traffic with no data', () => {
+  const ikt = {
+    code: 'UIII',
+    kind: 'L',
+    country: 'RU',
+    lat: 52.268,
+    lon: 104.389,
+  };
+  const ovb = {
+    code: 'UNNT',
+    kind: 'L',
+    country: 'RU',
+    lat: 55.012,
+    lon: 82.651,
+  };
+  const svo = {
+    code: 'UUEE',
+    kind: 'L',
+    country: 'RU',
+    lat: 55.97,
+    lon: 37.41,
+  };
+  const led = { code: 'ULLI', kind: 'L', country: 'RU', lat: 59.8, lon: 30.26 };
+  const uud = {
+    code: 'UIUU',
+    kind: 'M',
+    country: 'RU',
+    lat: 51.81,
+    lon: 107.44,
+  };
+  const table = [ikt, ovb, svo, led, uud];
+  const byCode = new Map(table.map((a) => [a.code, a]));
+  const scanned = [
+    // Left an hour after the outbreak: carries it to Novosibirsk.
+    cleanFlight({
+      from: ikt,
+      to: ovb,
+      departMs: START + HOUR,
+      arriveMs: START + 5 * HOUR,
+    }),
+    // Left Novosibirsk half an hour after it landed: a scanned flight
+    // counts from the moment its airport has it.
+    cleanFlight({
+      from: ovb,
+      to: svo,
+      hop: 2,
+      departMs: START + 5.5 * HOUR,
+      arriveMs: START + 9.5 * HOUR,
+    }),
+  ];
+  const { flights, airportsReached } = simulateAirTraffic({
+    flights: scanned,
+    outbreakAirports: ['UIII'],
+    airport: (code) => byCode.get(code),
+    airports: table,
+    startMs: START,
+    untilMs: START + 30 * HOUR,
+  });
+  const out = (code) => flights.filter((f) => f.from.code === code);
+  // Irkutsk's scanned route again a day later, not where it was flown.
+  assert.deepEqual(
+    out('UIII').map((f) => [f.to.code, (f.departMs - START) / HOUR]),
+    [['UNNT', 25]],
+  );
+  // Novosibirsk had it at hour 5: from hour 6 its scanned route, daily.
+  assert.deepEqual(
+    out('UNNT').map((f) => [f.to.code, (f.departMs - START) / HOUR]),
+    [['UUEE', 29.5]],
+  );
+  // Sheremetyevo had it at 9.5 and the scan found no route out of it:
+  // its normal traffic, from 10.5 on, every flight assumed.
+  const svoOut = out('UUEE');
+  assert.ok(svoOut.length > 0);
+  assert.ok(svoOut.every((f) => f.departMs >= START + 10.5 * HOUR));
+  assert.ok(svoOut.every((f) => f.assumed && f.hop === 3));
+  assert.ok(svoOut.every((f) => f.source === 'Normal air traffic (assumed)'));
+  assert.ok(airportsReached >= 3);
+  // In the spread: the assumed flights carry it, and are marked so.
+  const spread = outbreakSpread({
+    locations: [],
+    flights: [...scanned, ...flights.map((f) => cleanFlight(f))],
+    airports: ['UIII'],
+    startMs: START,
+    hour: 30,
+  });
+  assert.ok(spread.destinations.some((d) => d.code === 'ULLI'));
+  assert.equal(spread.routes[0].assumed, false, 'the scan’s own flights first');
+});
+
+test('normal traffic: a large airport flies to more and farther places than a medium one, the same country first', () => {
+  const home = { code: 'AAAA', kind: 'L', country: 'RU', lat: 52, lon: 104 };
+  const airports = [];
+  for (let i = 0; i < 40; i += 1)
+    airports.push({
+      code: `B${String(i).padStart(3, '0')}`,
+      kind: i % 3 ? 'M' : 'L',
+      country: i % 2 ? 'RU' : 'CN',
+      lat: 52 + (i % 7) - 3,
+      lon: 104 + i * 1.5 - 30,
+    });
+  const large = patternDestinations(home, airports);
+  const medium = patternDestinations({ ...home, kind: 'M' }, airports);
+  assert.equal(large.length, PATTERN_DESTINATIONS.L);
+  assert.equal(medium.length, PATTERN_DESTINATIONS.M);
+  assert.ok(medium.every((a) => distanceKm(home, a) <= PATTERN_RANGE_KM.M));
+  assert.equal(TRAFFIC_AIRPORTS_MAX, 888);
+});
+
+test('HOW CONTAGIOUS draws high thicker and darker, low thinner and lighter; the middle as before', () => {
+  const low = contagionStyle(0);
+  const mid = contagionStyle(50);
+  const high = contagionStyle(100);
+  assert.deepEqual([mid.width, mid.strength], [1, 1]);
+  assert.ok(Math.abs(mid.fill - 0.12) < 1e-9, 'the fill the map always had');
+  assert.ok(low.width < mid.width && mid.width < high.width);
+  assert.ok(low.strength < mid.strength && mid.strength < high.strength);
+  assert.ok(low.fill < high.fill);
+  assert.deepEqual([0, 25, 50, 75, 100].map(contagionLabel), [
+    'LOW',
+    'MEDIUM-LOW',
+    'MEDIUM',
+    'MEDIUM-HIGH',
+    'HIGH',
+  ]);
+  assert.equal(contagionStyle('nonsense').level, 50);
+  assert.equal(
+    outbreakSpread({ locations: [], startMs: START, hour: 1, contagion: 130 })
+      .contagion,
+    100,
+  );
+});
+
+test('HOW CONTAGIOUS sets when an airport gets infected status: 10 h at low, 1 h at high', () => {
+  assert.deepEqual([0, 50, 100].map(airportInfectedAfterHours), [10, 5.5, 1]);
+  const ikt = {
+    code: 'UIII',
+    kind: 'L',
+    country: 'RU',
+    lat: 52.268,
+    lon: 104.389,
+  };
+  const uud = {
+    code: 'UIUU',
+    kind: 'M',
+    country: 'RU',
+    lat: 51.81,
+    lon: 107.44,
+  };
+  const byCode = new Map([ikt, uud].map((a) => [a.code, a]));
+  const first = (infectedAfterHours) =>
+    (simulateAirTraffic({
+      outbreakAirports: ['UIII'],
+      airport: (code) => byCode.get(code),
+      airports: [ikt, uud],
+      startMs: START,
+      untilMs: START + 48 * HOUR,
+      infectedAfterHours,
+    }).flights.find((f) => f.from.code === 'UIII').departMs -
+      START) /
+    HOUR;
+  assert.ok(first(1) >= 1 && first(1) < 25);
+  assert.ok(first(10) >= 10, 'low: nothing leaves before 10 h');
+  assert.ok(first(10) >= first(1));
+});
+
+test('a large airport also flies long-haul, to the nearest large airport of each other continent', () => {
+  const home = {
+    code: 'UIII',
+    kind: 'L',
+    country: 'RU',
+    continent: 'AS',
+    lat: 52.27,
+    lon: 104.39,
+  };
+  const airports = [
+    {
+      code: 'UIUU',
+      kind: 'M',
+      country: 'RU',
+      continent: 'AS',
+      lat: 51.81,
+      lon: 107.44,
+    },
+    {
+      code: 'HECA',
+      kind: 'L',
+      country: 'EG',
+      continent: 'AF',
+      lat: 30.12,
+      lon: 31.41,
+    },
+    {
+      code: 'FAOR',
+      kind: 'L',
+      country: 'ZA',
+      continent: 'AF',
+      lat: -26.14,
+      lon: 28.25,
+    },
+    {
+      code: 'PANC',
+      kind: 'L',
+      country: 'US',
+      continent: 'NA',
+      lat: 61.17,
+      lon: -149.99,
+    },
+    {
+      code: 'SVMI',
+      kind: 'L',
+      country: 'VE',
+      continent: 'SA',
+      lat: 10.6,
+      lon: -66.99,
+    },
+    {
+      code: 'YSSY',
+      kind: 'L',
+      country: 'AU',
+      continent: 'OC',
+      lat: -33.95,
+      lon: 151.18,
+    },
+    {
+      code: 'EGLL',
+      kind: 'L',
+      country: 'GB',
+      continent: 'EU',
+      lat: 51.47,
+      lon: -0.45,
+    },
+  ];
+  const codes = patternDestinations(home, airports).map((a) => a.code);
+  for (const code of ['HECA', 'PANC', 'SVMI', 'YSSY', 'EGLL'])
+    assert.ok(codes.includes(code), code);
+  assert.equal(codes.includes('FAOR'), false, 'one per continent, the nearest');
+  assert.ok(distanceKm(home, airports[4]) <= LONG_HAUL_RANGE_KM);
+  // A medium airport stays regional.
+  const medium = patternDestinations({ ...home, kind: 'M' }, airports).map(
+    (a) => a.code,
+  );
+  assert.deepEqual(medium, ['UIUU']);
 });

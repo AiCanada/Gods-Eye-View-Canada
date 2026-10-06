@@ -26,9 +26,12 @@ import { geocodeKeyless } from './keylessGeocoder.js';
 import { SOCIAL_SWARM_BOTS, SOCIAL_SWARM_PROVIDERS } from './socialSwarm.mjs';
 import {
   CONNECTING_AIRPORTS_MAX,
+  FUTURE_FLIGHT_HOURS,
+  TRAFFIC_AIRPORTS_MAX,
   CONNECTION_HOURS,
   OUTBREAK_ANSWER_TOKENS,
   OUTBREAK_FORECAST_WINDOWS,
+  OUTBREAK_FUTURE_HOURS,
   OUTBREAK_MODEL_EVENT,
   OUTBREAK_REQUEST_EVENT,
   OUTBREAK_MODE_IDS,
@@ -37,6 +40,9 @@ import {
   OUTBREAK_SHOWN_EVENT,
   OUTBREAK_STORAGE_KEY,
   candidateLine,
+  airportInfectedAfterHours,
+  cleanContagion,
+  contagionLabel,
   cleanFlight,
   cleanLocation,
   cleanLocations,
@@ -120,6 +126,7 @@ export class OutbreakPanel {
     this._root = byId('outbreak-panel');
     if (!this._root) return;
     this._showBox = byId('outbreak-show');
+    this._clearBtn = byId('outbreak-clear');
     this._list = byId('outbreak-locations');
     this._addForm = byId('outbreak-add');
     this._addName = byId('outbreak-add-name');
@@ -129,6 +136,9 @@ export class OutbreakPanel {
     this._scanNote = byId('outbreak-scan-note');
     this._hour = byId('outbreak-hour');
     this._playBtn = byId('outbreak-play');
+    this._futurePlayBtn = byId('outbreak-play-future');
+    this._contagion = byId('outbreak-contagion');
+    this._contagionValue = byId('outbreak-contagion-value');
     this._summary = byId('outbreak-summary');
     this._destinations = byId('outbreak-destinations');
     this._model = byId('outbreak-model');
@@ -181,7 +191,24 @@ export class OutbreakPanel {
       this._state.hour = Number(this._hour.value) || null;
       this._refresh({ send: true });
     });
-    this._playBtn?.addEventListener('click', () => this._togglePlay());
+    this._playBtn?.addEventListener('click', () =>
+      this._togglePlay(this._playBtn, 'past'),
+    );
+    // Redrawn at most every 150 ms while the slider is dragged: a scan can
+    // hold well over a hundred flight lines.
+    let contagionTimer = null;
+    this._contagion?.addEventListener('input', () => {
+      this._state.contagion = cleanContagion(this._contagion.value);
+      this._showContagion();
+      if (contagionTimer !== null) return;
+      contagionTimer = globalThis.setTimeout(() => {
+        contagionTimer = null;
+        this._refresh({ send: true });
+      }, 150);
+    });
+    this._futurePlayBtn?.addEventListener('click', () =>
+      this._togglePlay(this._futurePlayBtn, 'future'),
+    );
     for (const mode of OUTBREAK_MODE_IDS) {
       this._modeBoxes[mode]?.addEventListener('change', () => {
         this._state.shown[mode] = this._modeBoxes[mode].checked;
@@ -205,6 +232,7 @@ export class OutbreakPanel {
       if (index !== undefined) void this._addFound(Number(index));
     });
     this._mediaBtn?.addEventListener('click', () => void this._mediaSearch());
+    this._clearBtn?.addEventListener('click', () => this._clear());
     this._futureBtn?.addEventListener('click', () => void this._futureSpread());
     this._forecastList?.addEventListener('click', (event) => {
       const index = event?.target?.dataset?.outbreakForecast;
@@ -256,6 +284,7 @@ export class OutbreakPanel {
       speeds,
       shown,
       show: saved?.show === true,
+      contagion: cleanContagion(saved?.contagion),
       hour: Number(saved?.hour) || null,
       scan: Number.isFinite(startMs)
         ? {
@@ -268,6 +297,10 @@ export class OutbreakPanel {
                 ? scan.surroundings
                 : {},
             flightSource: String(scan.flightSource || '').slice(0, 80),
+            airports: (Array.isArray(scan.airports) ? scan.airports : [])
+              .map((code) => String(code).toUpperCase())
+              .filter((code) => /^[A-Z0-9]{3,4}$/.test(code))
+              .slice(0, 10),
           }
         : null,
       found: (Array.isArray(saved?.found) ? saved.found : []).slice(0, 30),
@@ -294,7 +327,14 @@ export class OutbreakPanel {
     );
   }
 
+  _showContagion() {
+    if (this._contagionValue)
+      this._contagionValue.textContent = `${contagionLabel(this._state.contagion)} · airports infected after ${airportInfectedAfterHours(this._state.contagion)} h`;
+  }
+
   _fillControls() {
+    if (this._contagion) this._contagion.value = String(this._state.contagion);
+    this._showContagion();
     if (this._showBox) this._showBox.checked = this._state.show;
     if (this._keywords) this._keywords.value = this._state.keywords;
     if (this._days) this._days.value = String(this._state.days);
@@ -327,16 +367,84 @@ export class OutbreakPanel {
     this._state.hour = wanted === last ? null : wanted;
   }
 
+  /** The scan's flights and, after the present, the same routes flown daily. */
+  _flights() {
+    const now = this._now();
+    const past = this._state.scan?.flights || [];
+    const traffic = (this._traffic?.flights || []).map((f) =>
+      f.departMs > now ? { ...f, future: true } : f,
+    );
+    return [...past, ...traffic];
+  }
+
+  /**
+   * The air traffic beyond the scan (the server's simulateAirTraffic): every
+   * departure from an airport that has had the outbreak an hour, the scan's
+   * routes flown daily, normal traffic where there is no data, to 48 h past
+   * the present. Asked again once the present has moved on.
+   */
+  async _loadTraffic({ quiet = false } = {}) {
+    const scan = this._state.scan;
+    if (!scan || this._trafficLoading) return;
+    const nowMs = this._now();
+    const untilMs = nowMs + FUTURE_FLIGHT_HOURS * 3_600_000;
+    const delay = airportInfectedAfterHours(this._state.contagion);
+    this._trafficLoading = true;
+    try {
+      const response = await this._request(`${API}/traffic`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          startMs: scan.startMs,
+          untilMs,
+          infectedAfterHours: delay,
+          outbreakAirports: scan.airports || [],
+          flights: (scan.flights || []).map((f) => ({
+            from: f.from.code,
+            to: f.to.code,
+            departMs: f.departMs,
+            arriveMs: f.arriveMs,
+            hop: f.hop,
+          })),
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !Array.isArray(data?.flights))
+        throw new Error(data?.error || `HTTP ${response.status}`);
+      this._traffic = {
+        untilMs,
+        delay,
+        flights: data.flights.map((f) => cleanFlight(f)).filter(Boolean),
+      };
+      if (!quiet)
+        this._log(
+          'AIR TRAFFIC · ASSUMED',
+          `${this._traffic.flights.length} more flights out of the ${data.airportsReached} airports the outbreak reaches by ${timeLabel(untilMs)}${data.capped ? ` (capped at ${TRAFFIC_AIRPORTS_MAX} airports)` : ''}. An airport gets infected status ${delay} h after the outbreak lands (HOW CONTAGIOUS): from then on every flight leaving it counts, its scanned routes flown daily, or its normal traffic where there is no data.`,
+        );
+      this._refresh({ send: true });
+    } catch (error) {
+      // Asked again at most once a minute while the server cannot answer.
+      this._trafficRetryAt = this._now() + 60_000;
+      if (!quiet) this._log('AIR TRAFFIC', `Not worked out: ${error.message}`);
+    } finally {
+      this._trafficLoading = false;
+    }
+  }
+
   _spread() {
     const startMs = this._startMs();
     const hour = this._state.hour || presentHour(startMs, this._now());
     return outbreakSpread({
       locations: this._state.locations,
-      flights: this._state.scan?.flights || [],
+      flights: this._flights(),
       speeds: this._state.speeds,
       surroundings: this._state.scan?.surroundings || {},
       shown: this._state.shown,
+      airports: this._state.scan?.airports || [],
       forecast: this._state.forecast,
+      present: presentHour(startMs, this._now()),
+      contagion: this._state.contagion,
       startMs,
       hour,
     });
@@ -355,6 +463,24 @@ export class OutbreakPanel {
   }
 
   _refresh({ send = false } = {}) {
+    // The assumed traffic is kept in memory: after a reload, or once the
+    // present has moved on an hour, it is asked for again (at most once a
+    // minute when the server cannot answer).
+    const now = this._now();
+    // A new HOW CONTAGIOUS level changes when airports get infected status,
+    // so the traffic is worked out again for it too.
+    if (
+      this._state.scan &&
+      (!(
+        this._traffic?.untilMs >=
+        now + (FUTURE_FLIGHT_HOURS - 1) * 3_600_000
+      ) ||
+        this._traffic?.delay !==
+          airportInfectedAfterHours(this._state.contagion)) &&
+      !(this._trafficRetryAt > now)
+    ) {
+      void this._loadTraffic({ quiet: true });
+    }
     this._fillHours();
     const spread = this._spread();
     this._renderSummary(spread);
@@ -415,7 +541,7 @@ export class OutbreakPanel {
       this._destinations.replaceChildren(
         ...spread.destinations.map((place) =>
           this._item(
-            `✈ ${place.code}${place.name ? ` ${place.name}` : ''} · landed ${timeLabel(place.arriveMs)}${place.hop === 2 ? ' · connecting' : ''}`,
+            `✈ ${place.code}${place.name ? ` ${place.name}` : ''} · ${place.future ? 'lands' : 'landed'} ${timeLabel(place.arriveMs)}${place.hop === 2 ? ' · connecting' : ''}${place.future ? ' · future flight' : ''}`,
           ),
         ),
       );
@@ -539,6 +665,31 @@ export class OutbreakPanel {
     return true;
   }
 
+  /**
+   * CLEAR: a new run from scratch. The last run's results go: the scan and
+   * its flights, the assumed air traffic, the future spread places, the new
+   * locations found, the hour picked, the log. The outbreak locations, the
+   * disease name, the speeds, the ticks and HOW CONTAGIOUS stay.
+   */
+  _clear() {
+    if (this._busy) {
+      this._say(`Still working: ${this._busy}. Clear once it is done.`);
+      return;
+    }
+    this._stopPlay();
+    this._state.scan = null;
+    this._traffic = null;
+    this._trafficRetryAt = 0;
+    this._state.forecast = [];
+    this._state.found = [];
+    this._state.hour = null;
+    this._renderForecast();
+    this._renderFound();
+    if (this._output) this._output.textContent = '';
+    this._refresh({ send: true });
+    this._say('CLEARED · press SCAN TRAVEL for a new run.');
+  }
+
   _remove(id) {
     const before = this._state.locations.length;
     this._state.locations = this._state.locations.filter((l) => l.id !== id);
@@ -652,6 +803,7 @@ export class OutbreakPanel {
     this._busy = what;
     for (const button of [
       this._scanBtn,
+      this._clearBtn,
       this._mediaBtn,
       this._socialBtn,
       this._futureBtn,
@@ -691,7 +843,11 @@ export class OutbreakPanel {
         flights,
         surroundings,
         flightSource: source,
+        airports: this._scanAirports || [],
       };
+      this._traffic = null;
+      this._say('SCANNING · air traffic out of the airports it reaches…');
+      await this._loadTraffic();
       this._state.hour = null;
       this._state.show = true;
       if (this._showBox) this._showBox.checked = true;
@@ -771,6 +927,7 @@ export class OutbreakPanel {
 
   async _scanFlights(locations, startMs, nowMs) {
     const airports = await this._outbreakAirports(locations);
+    this._scanAirports = airports.map((a) => a.code);
     if (!airports.length) {
       this._log(
         'FLIGHTS',
@@ -921,16 +1078,23 @@ export class OutbreakPanel {
   /* Time                                                                   */
   /* --------------------------------------------------------------------- */
 
-  _togglePlay() {
-    if (this._playTimer !== null) {
-      this._stopPlay();
-      return;
-    }
-    const last = presentHour(this._startMs(), this._now());
-    let hour = 1;
-    if (this._playBtn) this._playBtn.textContent = 'STOP';
+  /**
+   * PLAY steps from hour 1 to the present; MAP FUTURE SPREAD steps from the
+   * present to 48 h ahead. Either button stops whichever is running.
+   */
+  _togglePlay(button, range) {
+    const running = this._playTimer !== null;
+    const same = this._playing === range;
+    if (running) this._stopPlay();
+    if (running && same) return;
+    const present = presentHour(this._startMs(), this._now());
+    let hour = range === 'future' ? present : 1;
+    const last =
+      range === 'future' ? present + OUTBREAK_FUTURE_HOURS.at(-1) : present;
+    this._playing = range;
+    if (button) button.textContent = 'STOP';
     const step = () => {
-      this._state.hour = hour >= last ? null : hour;
+      this._state.hour = hour === present ? null : hour;
       this._refresh({ send: true });
       if (hour >= last) {
         this._stopPlay();
@@ -946,7 +1110,10 @@ export class OutbreakPanel {
   _stopPlay() {
     if (this._playTimer) globalThis.clearTimeout(this._playTimer);
     this._playTimer = null;
+    this._playing = '';
     if (this._playBtn) this._playBtn.textContent = 'PLAY';
+    if (this._futurePlayBtn)
+      this._futurePlayBtn.textContent = 'MAP FUTURE SPREAD';
   }
 
   /* --------------------------------------------------------------------- */
@@ -1023,6 +1190,7 @@ export class OutbreakPanel {
             spread,
             speeds: this._state.speeds,
             flights: this._state.scan?.flights || [],
+            futureFlights: this._flights().filter((f) => f.future),
             candidates,
             articles,
             within24,

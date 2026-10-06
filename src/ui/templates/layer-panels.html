@@ -484,6 +484,9 @@
             <input id="outbreak-show" type="checkbox" aria-label="Display the outbreak and its predicted spread on the map" />
             Display spread on map
           </label>
+          <!-- CLEAR: the last run's results go (scan, flights, future spread,
+               found places, the log); the locations and settings stay. -->
+          <button id="outbreak-clear" class="scene-btn" type="button" title="Clear the last run's results for a new run from scratch">CLEAR</button>
         </div>
         <div class="cctv-summary-label">CURRENT OUTBREAK LOCATIONS</div>
         <ul id="outbreak-locations" class="outbreak-list" aria-label="Outbreak locations"></ul>
@@ -513,9 +516,22 @@
           <label class="outbreak-mode" data-mode="boat"><input id="outbreak-mode-boat" type="checkbox" checked aria-label="Show spread by boat" /><span class="outbreak-swatch"></span>Boat · Yellow · within 100 km <input id="outbreak-speed-boat" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="38" aria-label="Boat speed in km/h" /> KM/H</label>
           <label class="outbreak-mode" data-mode="road"><input id="outbreak-mode-road" type="checkbox" checked aria-label="Show spread by road" /><span class="outbreak-swatch"></span>Road · Blue <input id="outbreak-speed-road" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="100" aria-label="Road speed in km/h" /> KM/H</label>
         </div>
+        <!-- HOW CONTAGIOUS: how the spread is drawn in PLAY and MAP FUTURE
+             SPREAD, thicker and darker when high, thinner and lighter when
+             low. It does not change how far the spread reaches. -->
+        <div class="outbreak-contagion">
+          <label for="outbreak-contagion">HOW CONTAGIOUS</label>
+          <span class="outbreak-contagion-end">LOW</span>
+          <input id="outbreak-contagion" type="range" min="0" max="100" step="5" value="50" aria-label="How contagious the outbreak is, low to high" />
+          <span class="outbreak-contagion-end">HIGH</span>
+          <span id="outbreak-contagion-value" class="outbreak-contagion-value">MEDIUM</span>
+        </div>
         <div class="cctv-controls">
           <select id="outbreak-hour" aria-label="Spread shown at hour"></select>
           <button id="outbreak-play" class="scene-btn" type="button">PLAY</button>
+        </div>
+        <div class="cctv-controls">
+          <button id="outbreak-play-future" class="scene-btn" type="button">MAP FUTURE SPREAD</button>
         </div>
         <ul id="outbreak-summary" class="outbreak-list" aria-label="How far each way of travel has reached"></ul>
         <ul id="outbreak-destinations" class="outbreak-list" aria-label="Places reached by plane"></ul>

@@ -29,6 +29,8 @@ import {
 } from './common/allowed-hosts.js';
 import { clientKey, makeRateLimiter } from './common/rate-limit.js';
 import { getOpenSkyToken } from './aircraft/opensky.js';
+import { admitLlmRequestFrom } from './llm/ask.js';
+import { readRequestBody } from './common/request.js';
 import { fetchOverpassPayload } from './overpass.js';
 import {
   BOAT_REACH_KM,
@@ -36,6 +38,7 @@ import {
   OUTBREAK_AIRPORT_KM,
   RAIL_REACH_KM,
   distanceKm,
+  simulateAirTraffic,
   validPoint,
 } from '../../src/outbreakCore.mjs';
 
@@ -55,6 +58,9 @@ const NEWS_CACHE_MS = 10 * 60_000;
 /** Candidates for a model: scheduled medium airports this close, plus every large one. */
 const CANDIDATE_MEDIUM_KM = 3500;
 const CANDIDATES_MAX = 900;
+/** The traffic body: up to 2000 flights by code and time. */
+const TRAFFIC_BODY_BYTES = 1024 * 1024;
+const TRAFFIC_WINDOW_MAX_MS = 10 * 86_400_000;
 
 const HEADERS = Object.freeze({
   'Content-Type': 'application/json; charset=utf-8',
@@ -108,6 +114,7 @@ export function parseAirportsCsv(text) {
     lat: col('latitude_deg'),
     lon: col('longitude_deg'),
     country: col('iso_country'),
+    continent: col('continent'),
     city: col('municipality'),
     scheduled: col('scheduled_service'),
     icao: col('icao_code'),
@@ -137,6 +144,7 @@ export function parseAirportsCsv(text) {
       name: String(f[at.name] || '').slice(0, 80),
       city: String(f[at.city] || '').slice(0, 60),
       country: String(f[at.country] || '').slice(0, 2),
+      continent: String(f[at.continent] || '').slice(0, 2),
       kind,
       scheduled: f[at.scheduled] === 'yes',
       lat: Math.round(point.lat * 1e4) / 1e4,
@@ -153,6 +161,7 @@ function airportView(row, from) {
     name: row.name,
     city: row.city,
     country: row.country,
+    continent: row.continent || '',
     lat: row.lat,
     lon: row.lon,
     ...(from ? { km: Math.round(distanceKm(from, row)) } : {}),
@@ -168,7 +177,8 @@ export function airportTable({
   let rows = null;
   let byCode = null;
   let loading = null;
-  const file = path.join(cacheDir, 'airports.json');
+  let scheduledRows = null;
+  const file = path.join(cacheDir, 'airports-v2.json');
   const index = (list) => {
     rows = list;
     byCode = new Map();
@@ -240,6 +250,18 @@ export function airportTable({
         .sort((a, b) => a.km - b.km)
         .slice(0, CANDIDATES_MAX)
         .map((item) => airportView(item.row));
+    },
+    /** The table by code, and its scheduled large and medium airports. */
+    async index() {
+      await load();
+      if (!scheduledRows)
+        scheduledRows = rows.filter(
+          (row) => row.scheduled && (row.kind === 'L' || row.kind === 'M'),
+        );
+      return {
+        get: (code) => byCode.get(code) || null,
+        scheduled: scheduledRows,
+      };
     },
     async lookup(codes) {
       await load();
@@ -494,6 +516,11 @@ export function outbreakProxy({
     max: 4,
     globalMax: 8,
   });
+  const allowTraffic = makeRateLimiter({
+    windowMs: 60_000,
+    max: 10,
+    globalMax: 20,
+  });
   const allowNews = makeRateLimiter({
     windowMs: 60_000,
     max: 6,
@@ -502,10 +529,99 @@ export function outbreakProxy({
   const news = new Map();
   const surroundings = new Map();
 
+  /**
+   * POST /api/outbreak/traffic: the air traffic that carries the outbreak
+   * beyond the scan (simulateAirTraffic), worked out here where the world's
+   * airports are. The body is the scan's flights by airport code and time.
+   */
+  async function handleTraffic(req, res, allowedHosts) {
+    const admission = admitLlmRequestFrom(req, allowedHosts);
+    if (!admission.ok) {
+      send(res, admission.status, { error: admission.error });
+      return;
+    }
+    if (!allowTraffic(clientKey(req))) {
+      send(res, 429, { error: 'Too many requests. Wait a minute.' });
+      return;
+    }
+    let body;
+    try {
+      body = JSON.parse(
+        (await readRequestBody(req, TRAFFIC_BODY_BYTES)) || '{}',
+      );
+    } catch {
+      send(res, 400, { error: 'Malformed request body' });
+      return;
+    }
+    const startMs = Number(body?.startMs);
+    const untilMs = Number(body?.untilMs);
+    if (
+      !Number.isFinite(startMs) ||
+      !Number.isFinite(untilMs) ||
+      !(startMs < untilMs) ||
+      untilMs - startMs > TRAFFIC_WINDOW_MAX_MS
+    ) {
+      send(res, 400, { error: 'A window of at most 10 days is needed.' });
+      return;
+    }
+    let index;
+    try {
+      index = await table.index();
+    } catch (error) {
+      send(res, 502, {
+        error: `The airport list did not load: ${error.message}`,
+      });
+      return;
+    }
+    const place = (code) => {
+      const row = index.get(String(code || '').toUpperCase());
+      return row ? airportView(row) : null;
+    };
+    const flights = [];
+    for (const raw of (Array.isArray(body?.flights) ? body.flights : []).slice(
+      0,
+      2000,
+    )) {
+      const from = place(raw?.from);
+      const to = place(raw?.to);
+      const departMs = Number(raw?.departMs);
+      const arriveMs = Number(raw?.arriveMs);
+      if (!from || !to || !(departMs < arriveMs)) continue;
+      flights.push({
+        from,
+        to,
+        departMs,
+        arriveMs,
+        hop: raw?.hop === 2 ? 2 : 1,
+      });
+    }
+    const outbreakAirports = codesFrom(
+      (body?.outbreakAirports || []).join(','),
+      10,
+    ).filter((code) => index.get(code));
+    const result = simulateAirTraffic({
+      flights,
+      outbreakAirports,
+      airport: (code) => {
+        const row = index.get(code);
+        return row ? { ...airportView(row), kind: row.kind } : null;
+      },
+      airports: index.scheduled,
+      startMs,
+      untilMs,
+      infectedAfterHours: Number(body?.infectedAfterHours),
+    });
+    send(res, 200, result);
+  }
+
   async function handle(req, res, allowedHosts) {
-    if (!admitGet(req, res, allowedHosts)) return;
     const url = new URL(req.url || '/', 'http://localhost');
     const route = url.pathname.replace(/\/+$/, '') || '/';
+    if (route === '/traffic') {
+      await handleTraffic(req, res, allowedHosts);
+      return;
+    }
+    if (!admitGet(req, res, allowedHosts)) return;
     const params = url.searchParams;
     if (!allow(clientKey(req))) {
       send(res, 429, { error: 'Too many requests. Wait a minute.' });

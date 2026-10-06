@@ -127,3 +127,43 @@
   font-family: var(--font-mono);
   font-size: 10px;
 }
+
+/* HOW CONTAGIOUS: LOW, the slider, HIGH, then the level in words. */
+#outbreak-panel .outbreak-contagion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--text-primary);
+}
+
+#outbreak-panel .outbreak-contagion label {
+  flex: 1 0 100%;
+  color: var(--text-dim);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+
+#outbreak-panel .outbreak-contagion input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: #ff2a2a;
+}
+
+#outbreak-panel .outbreak-contagion-end {
+  color: var(--text-dim);
+}
+
+#outbreak-panel .outbreak-contagion-value {
+  flex: 0 0 auto;
+  min-width: 84px;
+  text-align: right;
+}
+
+/* CLEAR sits at the right of the top row, beside the map tick box. */
+#outbreak-panel #outbreak-clear {
+  margin-left: auto;
+}
