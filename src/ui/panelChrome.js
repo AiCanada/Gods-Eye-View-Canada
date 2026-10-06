@@ -399,33 +399,8 @@ export class PanelChrome {
     const wasAutoCollapsed =
       panelEl.classList.contains('layout-auto-collapsed') ||
       panelEl.classList.contains('cyber-accordion-collapsed');
-    // A user opening a Cyber rail panel owns the whole accordion, including
-    // peers that were only presentation-collapsed during a saved-state restore.
-    if (
-      explicit &&
-      !restore &&
-      !nextCollapsed &&
-      document.documentElement?.dataset.uiTheme === 'cyber' &&
-      panelEl.parentElement === this._rightPanelStack &&
-      // Radio sits on the rail below the last tab but is not one of its
-      // boxes: it neither owns nor yields the accordion.
-      panelId !== 'radio-panel'
-    ) {
-      for (const peer of this._rightPanelStack.children) {
-        if (
-          peer !== panelEl &&
-          peer.id !== 'radio-panel' &&
-          peer.matches('[data-panel-id]') &&
-          !peer.hidden
-        ) {
-          this.setPanelCollapsed(peer.id, true, {
-            explicit,
-            persist,
-            syncShare: false,
-          });
-        }
-      }
-    }
+    // Cyber's side tabs behave as Tactical's (owner ruling, 2026-10-06):
+    // opening one box leaves every other open box open.
     const leftOwnerPanel = this._leftPanelStack?.contains(panelEl)
       ? panelEl
       : null;

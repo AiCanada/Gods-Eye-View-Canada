@@ -1237,6 +1237,11 @@ function securityFeeds() {
               .trim()
               .slice(0, ULTRA_HELP_NAME_LIMIT),
             reportKey: feed.reportKey,
+            // For the Ultra tab's RECORD WITHIN choice, which saves the cell
+            // again through the device route (it needs the method to).
+            method: String(feed.method || ''),
+            record: feed.record === true,
+            recordKm: Number(feed.recordKm) || null,
           }));
       } catch {
         feeds = [];
@@ -3961,9 +3966,15 @@ function publicStatus(store, { editable = false } = {}) {
       fix && KEY.test(fix.key) ? fix.key : firstSecurityKey(),
     ),
     editable,
+    // Every Ultra cell, with its map id (the Cell layer's) and what it
+    // records. Never its key.
     packages: packages.map((feed) => ({
       id: feed.id,
       name: feed.name || 'Ultra',
+      mapId: deviceFeedPublicId(feed),
+      method: feed.method,
+      record: feed.record,
+      recordKm: feed.recordKm,
     })),
     ownerNumber: store.owner.number,
     // HELP DELIVERY: what SEND HELP asks to be brought, and the token skill

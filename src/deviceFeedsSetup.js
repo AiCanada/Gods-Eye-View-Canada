@@ -132,10 +132,13 @@ export function collectDeviceFeedUpdate(kindId, feedId, values) {
   for (const secret of ['password', 'token']) {
     if (values[secret]) body[secret] = values[secret];
   }
-  const lat = String(values.lat ?? '').trim();
-  const lon = String(values.lon ?? '').trim();
-  body.lat = lat === '' ? null : Number(lat);
-  body.lon = lon === '' ? null : Number(lon);
+  // A card without the FIXED boxes (an Ultra cell) keeps what is saved.
+  if (values.lat !== undefined || values.lon !== undefined) {
+    const lat = String(values.lat ?? '').trim();
+    const lon = String(values.lon ?? '').trim();
+    body.lat = lat === '' ? null : Number(lat);
+    body.lon = lon === '' ? null : Number(lon);
+  }
   if (typeof values.follow === 'boolean') body.follow = values.follow;
   if (typeof values.record === 'boolean') body.record = values.record;
   if (values.recordKm !== undefined && values.recordKm !== '')
@@ -244,6 +247,11 @@ export function initDeviceFeedSetup({
 
   const renderFeed = (kind, feed) => {
     const saved = Boolean(feed?.id);
+    // An Ultra cell is shown on the map, followed and recorded from the
+    // Ultra tab, and its pictures come from its phone: its card here has no
+    // FOLLOW, RECORD WITHIN, FIXED LATITUDE/LONGITUDE or CAMERA PICTURE boxes
+    // (owner ruling, 2026-10-06). Saving it keeps what those hold.
+    const ultraCell = kind.id === 'security';
     const block = element(documentRef, 'div', 'device-feeds-feed');
     const head = element(documentRef, 'div', 'device-feeds-feed-head');
     const name = input(documentRef, {
@@ -324,7 +332,8 @@ export function initDeviceFeedSetup({
     if (feed?.urlSet) url.placeholder = `SAVED: ${feed.url}`;
     if (feed?.pictureSet)
       picture.placeholder = `SAVED: ${feed.pictureUrl} (TYPE NONE TO REMOVE)`;
-    block.append(url, picture);
+    block.append(url);
+    if (!ultraCell) block.append(picture);
 
     const paths = element(documentRef, 'div', 'device-feeds-paths');
     const latPath = input(documentRef, {
@@ -356,7 +365,7 @@ export function initDeviceFeedSetup({
       label: 'Fixed longitude',
     });
     fixed.append(lat, lon);
-    block.append(fixed);
+    if (!ultraCell) block.append(fixed);
 
     // Login: every standard type; only the boxes that type uses are shown.
     const login = element(
@@ -442,7 +451,7 @@ export function initDeviceFeedSetup({
         : (recordRadiusOptions[recordRadiusOptions.length - 1] ?? 50),
     );
     record.parentElement.append(recordKm);
-    block.append(options);
+    if (!ultraCell) block.append(options);
     const recording = element(
       documentRef,
       'p',
@@ -521,18 +530,29 @@ export function initDeviceFeedSetup({
           method: method.value,
           auth: auth.value,
           url: url.value,
-          pictureUrl: picture.value,
+          pictureUrl: ultraCell ? undefined : picture.value,
           latPath: latPath.value,
           lonPath: lonPath.value,
           username: username.value || undefined,
           keyName: keyName.value,
           password: password.value,
           token: token.value,
-          lat: lat.value,
-          lon: lon.value,
-          follow: follow.checked === true,
-          record: record.checked === true,
-          recordKm: recordKm.value,
+          ...(ultraCell
+            ? // A new Ultra cell starts followed and recording, as before;
+              // a saved one keeps its choices from the Ultra tab.
+              saved
+              ? {}
+              : {
+                  follow: kind.followDefault === true,
+                  record: kind.recordDefault === true,
+                }
+            : {
+                lat: lat.value,
+                lon: lon.value,
+                follow: follow.checked === true,
+                record: record.checked === true,
+                recordKm: recordKm.value,
+              }),
         });
         const payload = await post(body);
         render(payload.status);
@@ -657,7 +677,7 @@ export function initDeviceFeedSetup({
         documentRef,
         'p',
         'key-setup-unlocks',
-        'Add as many as you have. Addresses and logins stay in a protected file on this computer and are never part of a share link. They stand on the map in the YOUR DEVICES layer, which turns on when you save one.',
+        'Add as many as you have. Addresses and logins stay in a protected file on this computer and are never part of a share link. They stand on the map in the Cell layer, which turns on when you save one.',
       ),
     );
     for (const kind of status?.kinds || []) host.append(renderKind(kind));

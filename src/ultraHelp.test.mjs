@@ -95,7 +95,6 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
     'ultra-inbox-count',
     'ultra-inbox',
     'ultra-read-aloud',
-    'ultra-inbox-read-all',
     'ultra-outbound-note',
     'ultra-token-note',
     'ultra-number-input',

@@ -199,8 +199,8 @@ function encode(state) {
 
 test('production registry is exact, canonical, and rejects incomplete contracts', async () => {
   assert.equal(validateLayerStateRegistry(), true);
-  assert.equal(REGISTERED_LAYER_IDS.length, 29);
-  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 29);
+  assert.equal(REGISTERED_LAYER_IDS.length, 30);
+  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 30);
   assert.ok(REGISTERED_LAYER_IDS.includes('transit'));
   assert.ok(REGISTERED_LAYER_IDS.includes('device-feeds'));
   assert.deepEqual(REGISTERED_LAYER_IDS, [...REGISTERED_LAYER_IDS].sort());
@@ -240,11 +240,16 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
   for (const [id, token] of Object.entries(LEGACY_LAYER_STATE_TOKENS)) {
     assert.equal(LAYER_STATE_TOKEN_RESERVATIONS[id], token);
   }
-  // device-feeds holds '0' (fork layer, 2026-10 merge); '1' and '2' are upstream's.
-  assert.equal(nextLayerStateToken(), '3');
+  // device-feeds holds '0' and private-cctv '3' (fork layers); '1' and '2'
+  // are upstream's.
+  assert.equal(nextLayerStateToken(), '4');
   assert.equal(
-    nextLayerStateToken({ ...LAYER_STATE_TOKEN_RESERVATIONS, alpha: '0', bravo: '3' }),
-    '4',
+    nextLayerStateToken({
+      ...LAYER_STATE_TOKEN_RESERVATIONS,
+      alpha: '0',
+      bravo: '4',
+    }),
+    '5',
   );
   const digitsExhausted = {
     ...LAYER_STATE_TOKEN_RESERVATIONS,
@@ -276,7 +281,9 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
           [
             ...'0123456789',
             ...[...LAYER_STATE_TOKEN_ALPHABET].flatMap((first) =>
-              [...LAYER_STATE_TOKEN_ALPHABET].map((second) => `${first}${second}`),
+              [...LAYER_STATE_TOKEN_ALPHABET].map(
+                (second) => `${first}${second}`,
+              ),
             ),
           ].map((token, index) => [`occupied-${index}`, token]),
         ),
@@ -300,32 +307,36 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
   assert.equal(
     validateLayerStateAllocations(
       LAYER_STATE_TOKEN_RESERVATIONS,
-      // '0' is the fork's device-feeds token, so the next free ones are '3' and '4'.
-      { ...LAYER_STATE_TOKEN_RESERVATIONS, future: '3', next: '4' },
+      // '0' and '3' are the fork's device-feeds and private-cctv tokens, so the
+      // next free ones are '4' and '5'.
+      { ...LAYER_STATE_TOKEN_RESERVATIONS, future: '4', next: '5' },
     ),
     true,
   );
   assert.throws(
-    () => validateLayerStateAllocations(LAYER_STATE_TOKEN_RESERVATIONS, {
-      ...LAYER_STATE_TOKEN_RESERVATIONS,
-      future: '00',
-    }),
-    /next free token 3/,
+    () =>
+      validateLayerStateAllocations(LAYER_STATE_TOKEN_RESERVATIONS, {
+        ...LAYER_STATE_TOKEN_RESERVATIONS,
+        future: '00',
+      }),
+    /next free token 4/,
   );
   const beforeLastDigit = { ...digitsExhausted };
   delete beforeLastDigit['prior-9'];
   assert.equal(
-    validateLayerStateAllocations(
-      beforeLastDigit,
-      { ...beforeLastDigit, futurePair: '00', futureDigit: '9' },
-    ),
+    validateLayerStateAllocations(beforeLastDigit, {
+      ...beforeLastDigit,
+      futurePair: '00',
+      futureDigit: '9',
+    }),
     true,
   );
   assert.equal(
-    validateLayerStateAllocations(
-      digitsExhausted,
-      { ...digitsExhausted, pairB: '01', pairA: '00' },
-    ),
+    validateLayerStateAllocations(digitsExhausted, {
+      ...digitsExhausted,
+      pairB: '01',
+      pairA: '00',
+    }),
     true,
   );
   assert.throws(
@@ -334,7 +345,7 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
         { ...LAYER_STATE_TOKEN_RESERVATIONS, merged: '0' },
         { ...LAYER_STATE_TOKEN_RESERVATIONS, merged: '0', competing: '0' },
       ),
-    /next free token 3/,
+    /next free token 4/,
   );
   assert.throws(
     () => validateLayerStateAllocations({ future: '00' }, { future: '01' }),

@@ -615,6 +615,12 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
     token: 'i',
     disposition: 'enabled-only',
   }),
+  // Fork layer: Private CCTV Cams, the next free merge-time token.
+  Object.freeze({
+    id: 'private-cctv',
+    token: '3',
+    disposition: 'enabled-only',
+  }),
   Object.freeze({
     id: 'radio',
     token: 'r',

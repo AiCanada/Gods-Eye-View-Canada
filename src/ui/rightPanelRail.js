@@ -61,30 +61,12 @@ export function layoutRightPanelRail({
       onCollapse(panel);
     }
   }
-  // Normalize restored state and theme entry without overwriting saved panel
-  // preferences. This marker is distinct from Tactical's space-based collapse.
-  if (hud.variant === 'cyber') {
-    // Radio is not a box of the rail (it sits below the last tab when
-    // selected), so it neither owns nor yields the accordion.
-    const expanded = panels.filter(
-      (panel) =>
-        !panel.classList.contains('collapsed') && panel.id !== 'radio-panel',
-    );
-    const owner =
-      expanded.find((panel) => panel.id === preferredPanelId) ||
-      expanded.find((panel) => panel.contains(documentRef?.activeElement)) ||
-      expanded[0];
-    for (const panel of expanded) {
-      if (panel === owner) continue;
-      panel.classList.add('collapsed', 'cyber-accordion-collapsed');
-      onCollapse(panel);
-    }
-  } else {
-    for (const panel of panels) {
-      if (!panel.classList.contains('cyber-accordion-collapsed')) continue;
-      panel.classList.remove('collapsed', 'cyber-accordion-collapsed');
-      onCollapse(panel);
-    }
+  // Cyber's side tabs behave as Tactical's (owner ruling, 2026-10-06): no
+  // one-box accordion. A box an older version collapsed for it opens again.
+  for (const panel of panels) {
+    if (!panel.classList.contains('cyber-accordion-collapsed')) continue;
+    panel.classList.remove('collapsed', 'cyber-accordion-collapsed');
+    onCollapse(panel);
   }
   const isMobile = windowRef.matchMedia('(max-width: 720px)').matches;
   // Radio is not a box of the rail: selecting it must not put the rail into

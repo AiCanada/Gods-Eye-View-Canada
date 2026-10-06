@@ -177,3 +177,45 @@
   content: '◇ ';
   opacity: 0.7;
 }
+
+/* READ ALOUD and PRIVATE CCTV ON MAP side by side, wrapping when the box is
+   too narrow for both. */
+#ultra-panel .ultra-read-row {
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 10px;
+}
+
+/* DISPLAY ULTRA ON MAP: the tick box, then the period filling the row. */
+#ultra-panel .ultra-map-controls {
+  align-items: center;
+}
+#ultra-panel .ultra-map-controls .ultra-match {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+#ultra-panel .ultra-map-controls select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ULTRA CELLS: one row per Ultra phone: ON MAP, HISTORY, RECORD WITHIN and its buttons. */
+#ultra-panel .ultra-cell-row {
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 4px;
+}
+#ultra-panel .ultra-cell-btn {
+  flex: 0 0 auto;
+}
+#ultra-panel .ultra-cell-record {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+#ultra-panel .ultra-cell-row .ultra-match {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

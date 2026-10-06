@@ -3,6 +3,7 @@ import {
   PRIVATE_FRAME_PATH,
   PRIVATE_SOURCE_ENDPOINT,
 } from './policy.js';
+import { privateCamerasShown } from '../../data/privateCctv.js';
 
 export function createCatalog({ state: layerState, services, parts, source }) {
   const { CITY_POIS } = services.locations;
@@ -68,6 +69,8 @@ export function createCatalog({ state: layerState, services, parts, source }) {
    */
 
   async function loadPrivateCameraSources() {
+    // Private CCTV Cams (Other layers, or the Ultra box) switched off.
+    if (!privateCamerasShown()) return [];
     try {
       const signal = layerState._sourceAbort?.signal;
       const resp = await fetch(PRIVATE_SOURCE_ENDPOINT, {

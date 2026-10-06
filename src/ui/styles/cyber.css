@@ -201,6 +201,10 @@
     .scene-panel-inner,
     .global-context-panel-inner,
     .radio-panel-inner,
+    .sst-panel-inner,
+    .ask-panel-inner,
+    .ultra-panel-inner,
+    .social-panel-inner,
     #pp-toggles:not(.collapsed),
     #pp-toggles.collapsed > .pp-header-row
   ) {
@@ -220,7 +224,11 @@
     .recent-imagery-panel-inner,
     .scene-panel-inner,
     .global-context-panel-inner,
-    .radio-panel-inner
+    .radio-panel-inner,
+    .sst-panel-inner,
+    .ask-panel-inner,
+    .ultra-panel-inner,
+    .social-panel-inner
   )
   > .panel-header {
   min-height: 28px;
@@ -296,7 +304,11 @@
     .recent-imagery-panel-inner,
     .scene-panel-inner,
     .global-context-panel-inner,
-    .radio-panel-inner
+    .radio-panel-inner,
+    .sst-panel-inner,
+    .ask-panel-inner,
+    .ultra-panel-inner,
+    .social-panel-inner
   )
   > .panel-header
   .panel-title {
@@ -311,7 +323,11 @@
     .recent-imagery-panel-inner,
     .scene-panel-inner,
     .global-context-panel-inner,
-    .radio-panel-inner
+    .radio-panel-inner,
+    .sst-panel-inner,
+    .ask-panel-inner,
+    .ultra-panel-inner,
+    .social-panel-inner
   )
   > .panel-header
   .panel-title::before {
@@ -334,7 +350,11 @@
     .recent-imagery-panel-inner,
     .scene-panel-inner,
     .global-context-panel-inner,
-    .radio-panel-inner
+    .radio-panel-inner,
+    .sst-panel-inner,
+    .ask-panel-inner,
+    .ultra-panel-inner,
+    .social-panel-inner
   )
   > .panel-header
   .panel-divider {
@@ -379,6 +399,25 @@
 :root[data-ui-theme='cyber']
   .panel-collapsible:not(#location-bar):not(#control-panel) {
   position: relative;
+}
+
+/* Side tabs behave as Tactical's (owner ruling, 2026-10-06): in overlap mode
+   an open box floats out of the rail's flow (layers.css, scenes.css), so the
+   collapsed tabs keep their column above it instead of being pushed under it.
+   The rule above would otherwise hold the box in the flow. */
+:root[data-ui-theme='cyber']
+  :is(#left-panel-stack, #right-context-rail).layout-overlap
+  > .panel-collapsible:not(.collapsed):not(#radio-panel) {
+  position: absolute;
+}
+
+/* The Cyber left rail keeps a 10px gutter inside its red edge line; a floating
+   box lines up with the tabs in it rather than with the line. */
+:root[data-ui-theme='cyber']
+  #left-panel-stack.layout-overlap
+  > :is(#ask-panel, #cctv-panel, #ultra-panel, #social-panel):not(.collapsed) {
+  left: 10px;
+  width: calc(100% - 10px);
 }
 
 :root[data-ui-theme='cyber']
@@ -1560,7 +1599,7 @@
 }
 
 /* Attribution's logo row extends above its text baseline. Reserve the whole
-   row plus a gap above the dock-relative 2vh + 5rem credit position. */
+   row plus a gap above the credit, which runs along the very bottom. */
 #intel-hud[data-variant='cyber'] .hud-bottom-left {
   bottom: calc(2vh + 7.75rem);
 }
@@ -1653,21 +1692,39 @@
 
   :root[data-ui-theme='cyber']
     #left-panel-stack
-    > :is(#data-panel, #scene-panel) {
+    > :is(#data-panel, #scene-panel, #ask-panel, #ultra-panel, #social-panel) {
     --panel-expanded-width: var(--cyber-panel-width);
     width: var(--panel-expanded-width);
   }
 
   :root[data-ui-theme='cyber']
     #left-panel-stack
-    > :is(#data-panel, #scene-panel).collapsed {
+    > :is(
+      #data-panel,
+      #scene-panel,
+      #ask-panel,
+      #ultra-panel,
+      #social-panel
+    ).collapsed {
     width: var(--cyber-panel-collapsed-width);
   }
 
   :root[data-ui-theme='cyber']
     #left-panel-stack
-    > :is(#data-panel, #scene-panel).collapsed
-    :is(.data-panel-inner, .scene-panel-inner) {
+    > :is(
+      #data-panel,
+      #scene-panel,
+      #ask-panel,
+      #ultra-panel,
+      #social-panel
+    ).collapsed
+    :is(
+      .data-panel-inner,
+      .scene-panel-inner,
+      .ask-panel-inner,
+      .ultra-panel-inner,
+      .social-panel-inner
+    ) {
     box-sizing: border-box;
     height: 50px;
     min-height: 50px;
@@ -2823,4 +2880,51 @@
     min-height: 54px;
     padding: 10px 12px 18px 18px;
   }
+}
+
+/* The original boxes' red title marker on every tab (owner ruling,
+   2026-10-06). A tab that shows a short collapsed name clips its title, so
+   the marker moves inside the title's own padding instead of hanging 8px
+   outside it; the negative margin keeps the text where it was. */
+:root[data-ui-theme='cyber']
+  :is(#ask-panel, #ultra-panel, #sst-panel, #social-panel).collapsed
+  > :is(
+    .ask-panel-inner,
+    .ultra-panel-inner,
+    .sst-panel-inner,
+    .social-panel-inner
+  )
+  > .panel-header
+  .panel-title {
+  padding-left: 8px;
+  margin-left: -8px;
+}
+
+:root[data-ui-theme='cyber']
+  :is(#ask-panel, #ultra-panel, #sst-panel, #social-panel).collapsed
+  > :is(
+    .ask-panel-inner,
+    .ultra-panel-inner,
+    .sst-panel-inner,
+    .social-panel-inner
+  )
+  > .panel-header
+  .panel-title::before {
+  left: 0;
+}
+
+:root[data-ui-theme='cyber'] #pp-toggles .pp-header-label {
+  position: relative;
+}
+
+:root[data-ui-theme='cyber'] #pp-toggles .pp-header-label::before {
+  position: absolute;
+  top: 50%;
+  left: -8px;
+  width: 3px;
+  height: 11px;
+  background: var(--cyber-red);
+  clip-path: polygon(0 0, 100% 2px, 100% calc(100% - 2px), 0 100%);
+  content: '';
+  transform: translateY(-50%);
 }

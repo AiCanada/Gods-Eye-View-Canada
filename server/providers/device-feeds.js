@@ -477,9 +477,9 @@ export function deviceFeedsProxy({
 
   /**
    * The route a device's recording holds, oldest first, for the map to draw:
-   * the last `days` daily files (default 30, at most 366), thinned to
-   * DEVICE_TRACK_MAX_POINTS. Only positions come back, never what was
-   * recorded around them.
+   * the last `days` daily files (default 30, at most 366), from `since`
+   * (epoch ms) when given, thinned to DEVICE_TRACK_MAX_POINTS. Only positions
+   * come back, never what was recorded around them.
    */
   const serveTrack = (res, publicId, query) => {
     const feed = readConfig().feeds.find(
@@ -511,7 +511,12 @@ export function deviceFeedsProxy({
         /* a file being written; the next ask sees it */
       }
     }
-    const all = trackFromRecordingLines(text);
+    // Cut to the asked-for period before thinning, so a short period keeps
+    // its full detail.
+    const since = Number(query.get('since'));
+    const all = trackFromRecordingLines(text).filter(
+      (point) => !(since > 0) || point.at >= since,
+    );
     const points = thinTrackPoints(all);
     const info = recordingInfo(feed.id);
     respondJson(res, 200, {

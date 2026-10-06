@@ -402,16 +402,16 @@ test('Cyber lower-left telemetry tracks the credit anchor with clearance for its
   const offset = telemetry.match(/bottom:\s*calc\(2vh \+ ([\d.]+)rem\);/);
   assert.ok(offset, 'telemetry must retain the attribution viewport anchor');
   const credits = read('./styles/command-dock-trays.css');
+  // The credit runs along the very bottom of the screen (owner ruling,
+  // 2026-10-06): its row is 2px up and 28px tall with the logos.
   const creditOffsets = [
-    ...credits.matchAll(
-      /#cesium-credits\s*\{[^}]*bottom:\s*calc\(2vh \+ ([\d.]+)rem\);/g,
-    ),
+    ...credits.matchAll(/#cesium-credits\s*\{[^}]*bottom:\s*(\d+)px;/g),
   ];
   assert.ok(creditOffsets.length > 0);
   for (const credit of creditOffsets) {
     assert.ok(
-      Number(offset[1]) - Number(credit[1]) >= 2.75,
-      'reserve the 28px logo row, baseline descent and 12px clearance at the 16px root size',
+      Number(offset[1]) * 16 - (Number(credit[1]) + 28) >= 12,
+      'reserve the 28px logo row and 12px clearance at the 16px root size',
     );
   }
   assert.doesNotMatch(cyberStyles, /\.hud-bottom-left\s*\{\s*bottom:\s*60px;/);
@@ -504,11 +504,11 @@ test('Cyber side panels share one width and one framed surface material', () => 
   );
   assert.match(
     cyberStyles,
-    /#left-panel-stack\s*> :is\(#data-panel, #scene-panel\)\.collapsed \{\s*width: var\(--cyber-panel-collapsed-width\);/,
+    /#left-panel-stack\s*> :is\(\s*#data-panel,\s*#scene-panel,\s*#ask-panel,\s*#ultra-panel,\s*#social-panel\s*\)\.collapsed \{\s*width: var\(--cyber-panel-collapsed-width\);/,
   );
   assert.match(
     cyberStyles,
-    /:is\(#data-panel, #scene-panel\)\.collapsed\s+:is\(\.data-panel-inner, \.scene-panel-inner\) \{[\s\S]*?height: 50px;[\s\S]*?min-height: 50px;/,
+    /:is\(\s*#data-panel,\s*#scene-panel,\s*#ask-panel,\s*#ultra-panel,\s*#social-panel\s*\)\.collapsed\s+:is\(\s*\.data-panel-inner,\s*\.scene-panel-inner,\s*\.ask-panel-inner,\s*\.ultra-panel-inner,\s*\.social-panel-inner\s*\) \{[\s\S]*?height: 50px;[\s\S]*?min-height: 50px;/,
   );
   assert.match(
     cyberStyles,

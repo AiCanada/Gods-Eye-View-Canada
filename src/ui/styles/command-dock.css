@@ -2,7 +2,10 @@
 #command-dock {
   position: fixed;
   right: auto;
-  bottom: 2vh;
+  /* 1.75rem above the old 2vh: the attribution row (28px with its logos) now
+     runs along the very bottom of the screen, and the voice pill hangs 8px
+     below the dock. */
+  bottom: calc(2vh + 1.75rem);
   left: 50%;
   z-index: 145;
   display: grid;
@@ -239,8 +242,8 @@ body.recording-mode #command-dock {
 body.ui-clean-view #cesium-credits,
 body.recording-mode #cesium-credits {
   right: auto;
-  bottom: 36px;
-  left: 36px;
+  bottom: 2px;
+  left: 0.75rem;
 }
 
 #intel-hud[data-variant='minimal'] .hud-bottom-left {
@@ -289,7 +292,7 @@ body.recording-mode #cesium-credits {
 
 @media (max-width: 720px) {
   #command-dock {
-    bottom: 8px;
+    bottom: 2.5rem;
   }
 
   #command-dock .location-search-wrap {

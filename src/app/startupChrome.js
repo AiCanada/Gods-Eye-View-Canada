@@ -42,7 +42,9 @@ export function startApplicationChrome({
   const keySetup = Promise.resolve(
     signal.aborted ? null : initializeSettings?.({ signal }),
   );
-  const ultraHelp = signal.aborted ? null : initializeHelp?.({ signal });
+  const ultraHelp = signal.aborted
+    ? null
+    : initializeHelp?.({ signal, dataManager });
   // Own the pending initializer too; it must not reveal a dialog after abort.
   void keySetup.catch(() =>
     console.error('Provider settings initialization failed'),

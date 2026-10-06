@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { applyDeviceFeedUpdate, deviceFeedStatus, emptyDeviceFeedConfig } from './deviceFeedsCore.mjs';
+import {
+  applyDeviceFeedUpdate,
+  deviceFeedStatus,
+  emptyDeviceFeedConfig,
+} from './deviceFeedsCore.mjs';
 import {
   DEVICE_FEEDS_CHANGED_EVENT,
   collectDeviceFeedUpdate,
@@ -27,7 +31,9 @@ class FakeElement {
   }
 
   get textContent() {
-    return this.tagName === '#TEXT' ? this.text : this.children.map((child) => child.textContent).join('');
+    return this.tagName === '#TEXT'
+      ? this.text
+      : this.children.map((child) => child.textContent).join('');
   }
 
   set textContent(value) {
@@ -42,7 +48,10 @@ class FakeElement {
 
   append(...nodes) {
     for (const node of nodes) {
-      const child = typeof node === 'string' ? Object.assign(new FakeElement('#text'), { text: node }) : node;
+      const child =
+        typeof node === 'string'
+          ? Object.assign(new FakeElement('#text'), { text: node })
+          : node;
       child.remove();
       child.parentElement = this;
       this.children.push(child);
@@ -51,7 +60,9 @@ class FakeElement {
 
   remove() {
     if (!this.parentElement) return;
-    this.parentElement.children = this.parentElement.children.filter((child) => child !== this);
+    this.parentElement.children = this.parentElement.children.filter(
+      (child) => child !== this,
+    );
     this.parentElement = null;
   }
 
@@ -65,7 +76,8 @@ class FakeElement {
   }
 
   async fire(type) {
-    for (const listener of this.listeners.get(type) || []) await listener({ target: this });
+    for (const listener of this.listeners.get(type) || [])
+      await listener({ target: this });
   }
 
   all(match, out = []) {
@@ -88,8 +100,10 @@ class FakeElement {
 }
 
 const documentRef = { createElement: (tag) => new FakeElement(tag) };
-const byClass = (root, name) => root.all((node) => node.className.split(' ').includes(name));
-const field = (root, name) => root.all((node) => node.dataset.field === name)[0];
+const byClass = (root, name) =>
+  root.all((node) => node.className.split(' ').includes(name));
+const field = (root, name) =>
+  root.all((node) => node.dataset.field === name)[0];
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 /** A server in miniature: the real rules, an in-memory store. */
@@ -97,30 +111,95 @@ function fakeServer({ editable = true } = {}) {
   let config = emptyDeviceFeedConfig();
   const posts = [];
   const fetchImpl = async (url, options = {}) => {
-    if (url === '/api/device-feeds/status') return new Response(JSON.stringify({ ...deviceFeedStatus(config), editable }), { status: 200 });
+    if (url === '/api/device-feeds/status')
+      return new Response(
+        JSON.stringify({ ...deviceFeedStatus(config), editable }),
+        { status: 200 },
+      );
     const body = JSON.parse(options.body);
     posts.push(body);
     const result = applyDeviceFeedUpdate(body, config);
-    if (!result.ok) return new Response(JSON.stringify({ error: result.error }), { status: 400 });
+    if (!result.ok)
+      return new Response(JSON.stringify({ error: result.error }), {
+        status: 400,
+      });
     config = result.config;
-    return new Response(JSON.stringify({ status: { ...deviceFeedStatus(config), editable }, feedId: result.feedId }), { status: 200 });
+    return new Response(
+      JSON.stringify({
+        status: { ...deviceFeedStatus(config), editable },
+        feedId: result.feedId,
+      }),
+      { status: 200 },
+    );
   };
   return { fetchImpl, posts, config: () => config };
 }
 
 test('the POST body keeps what was not typed', () => {
-  const kept = collectDeviceFeedUpdate('drone', 'drone-a', { name: ' Scout ', method: 'http-json', auth: 'bearer', url: '', pictureUrl: 'none', password: '', token: '', lat: '', lon: '' });
-  assert.deepEqual(kept, { kind: 'drone', name: 'Scout', method: 'http-json', auth: 'bearer', id: 'drone-a', pictureUrl: null, lat: null, lon: null });
-  const typed = collectDeviceFeedUpdate('tracker', '', { name: 'Van', method: 'traccar', url: ' https://g.example/ ', token: 'k', keyName: 'key', auth: 'query', lat: '45.2', lon: '-66' });
-  assert.deepEqual(typed, { kind: 'tracker', name: 'Van', method: 'traccar', auth: 'query', url: 'https://g.example/', keyName: 'key', token: 'k', lat: 45.2, lon: -66 });
+  const kept = collectDeviceFeedUpdate('drone', 'drone-a', {
+    name: ' Scout ',
+    method: 'http-json',
+    auth: 'bearer',
+    url: '',
+    pictureUrl: 'none',
+    password: '',
+    token: '',
+    lat: '',
+    lon: '',
+  });
+  assert.deepEqual(kept, {
+    kind: 'drone',
+    name: 'Scout',
+    method: 'http-json',
+    auth: 'bearer',
+    id: 'drone-a',
+    pictureUrl: null,
+    lat: null,
+    lon: null,
+  });
+  const typed = collectDeviceFeedUpdate('tracker', '', {
+    name: 'Van',
+    method: 'traccar',
+    url: ' https://g.example/ ',
+    token: 'k',
+    keyName: 'key',
+    auth: 'query',
+    lat: '45.2',
+    lon: '-66',
+  });
+  assert.deepEqual(typed, {
+    kind: 'tracker',
+    name: 'Van',
+    method: 'traccar',
+    auth: 'query',
+    url: 'https://g.example/',
+    keyName: 'key',
+    token: 'k',
+    lat: 45.2,
+    lon: -66,
+  });
 });
 
 test('card text', () => {
   assert.equal(deviceFeedCountText({ feeds: [] }), 'none added');
-  assert.equal(deviceFeedCountText({ feeds: [{ state: { ok: true } }] }), '1 device · 1 live');
-  assert.equal(deviceFeedCountText({ feeds: [{ state: { ok: true } }, { state: null }, {}] }), '3 devices · 1 live');
-  assert.equal(deviceFeedStateText({ state: { ok: true } }), 'LIVE · position received');
-  assert.equal(deviceFeedStateText({ state: { ok: false, error: 'HTTP 401' } }), 'NO POSITION · HTTP 401');
+  assert.equal(
+    deviceFeedCountText({ feeds: [{ state: { ok: true } }] }),
+    '1 device · 1 live',
+  );
+  assert.equal(
+    deviceFeedCountText({
+      feeds: [{ state: { ok: true } }, { state: null }, {}],
+    }),
+    '3 devices · 1 live',
+  );
+  assert.equal(
+    deviceFeedStateText({ state: { ok: true } }),
+    'LIVE · position received',
+  );
+  assert.equal(
+    deviceFeedStateText({ state: { ok: false, error: 'HTTP 401' } }),
+    'NO POSITION · HTTP 401',
+  );
   assert.equal(deviceFeedStateText({ urlSet: true }), 'Not asked yet');
   assert.equal(deviceFeedStateText({ pictureSet: true }), 'Picture only');
 });
@@ -135,9 +214,15 @@ test('the setup card says a help link carries the location alone, with Network o
     { kindId: 'security' },
   );
   const share = lines.find((line) => line.startsWith('SHARE A HELP LINK'));
-  assert.ok(share, 'a security package card points at SHARE ENCRYPTED ULTRA TOKENS');
+  assert.ok(
+    share,
+    'a security package card points at SHARE ENCRYPTED ULTRA TOKENS',
+  );
   assert.match(share, /SHARE ENCRYPTED ULTRA TOKENS/);
-  assert.match(share, /works only while its Network is on and you have pressed SEND HELP/);
+  assert.match(
+    share,
+    /works only while its Network is on and you have pressed SEND HELP/,
+  );
   assert.match(share, /and nothing else\. With Network off it opens nothing/);
   assert.equal(share.includes('ANYTIME'), false);
   assert.doesNotMatch(share, /help message/);
@@ -145,12 +230,18 @@ test('the setup card says a help link carries the location alone, with Network o
   const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   const start = readme.indexOf('- Share help tokens (');
   const end = readme.indexOf('- The help network', start);
-  assert.ok(start >= 0 && end > start, 'the README keeps its share-token bullet');
+  assert.ok(
+    start >= 0 && end > start,
+    'the README keeps its share-token bullet',
+  );
   // Read as one line: the README wraps its sentences anywhere.
   const bullet = readme.slice(start, end).replace(/\s+/g, ' ');
   assert.match(bullet, /SHARE ENCRYPTED ULTRA TOKENS/);
   assert.equal(bullet.includes('ANYTIME'), false);
-  assert.match(bullet, /only while its Network is on and you have pressed SEND HELP/);
+  assert.match(
+    bullet,
+    /only while its Network is on and you have pressed SEND HELP/,
+  );
   assert.match(bullet, /There is no page and no message box\./);
   assert.match(bullet, /never shown to a token holder/);
   assert.doesNotMatch(bullet, /500-character/);
@@ -166,17 +257,29 @@ test('one card per kind; add, save, and the saved login is never shown', async (
     initDeviceFeedSetup({ host, documentRef, fetchImpl: server.fetchImpl });
     await settle();
     const cards = byClass(host, 'device-feeds-kind');
-    assert.deepEqual(cards.map((card) => card.dataset.kindId), ['drone', 'robot', 'marine', 'tracker', 'security']);
+    assert.deepEqual(
+      cards.map((card) => card.dataset.kindId),
+      ['drone', 'robot', 'marine', 'tracker', 'security'],
+    );
     assert.ok(cards.every((card) => card.dataset.set === 'false'));
 
     const marine = cards[2];
     await byClass(marine, 'private-cams-add')[0].fire('click');
     const block = byClass(marine, 'device-feeds-feed')[0];
     const method = field(block, 'method');
-    const groups = method.children.filter((child) => child.tagName === 'OPTGROUP');
-    assert.equal(groups.length, 2, 'direct methods, then the ones that need a bridge');
+    const groups = method.children.filter(
+      (child) => child.tagName === 'OPTGROUP',
+    );
+    assert.equal(
+      groups.length,
+      2,
+      'direct methods, then the ones that need a bridge',
+    );
     assert.ok(groups[1].children.some((option) => option.value === 'ais'));
-    assert.deepEqual(field(block, 'auth').children.map((option) => option.value), ['none', 'basic', 'bearer', 'header', 'query']);
+    assert.deepEqual(
+      field(block, 'auth').children.map((option) => option.value),
+      ['none', 'basic', 'bearer', 'header', 'query'],
+    );
 
     // A bridge-only method explains itself and cannot be saved.
     const save = byClass(block, 'private-cams-save')[0];
@@ -190,14 +293,27 @@ test('one card per kind; add, save, and the saved login is never shown', async (
 
     method.value = 'signalk';
     await method.fire('change');
-    assert.deepEqual([note.hidden, save.disabled, field(block, 'url').hidden], [true, false, false]);
+    assert.deepEqual(
+      [note.hidden, save.disabled, field(block, 'url').hidden],
+      [true, false, false],
+    );
 
     // Only the chosen login's boxes show.
     const auth = field(block, 'auth');
-    assert.deepEqual(['username', 'password', 'keyName', 'token'].map((name) => field(block, name).hidden), [true, true, true, true]);
+    assert.deepEqual(
+      ['username', 'password', 'keyName', 'token'].map(
+        (name) => field(block, name).hidden,
+      ),
+      [true, true, true, true],
+    );
     auth.value = 'basic';
     await auth.fire('change');
-    assert.deepEqual(['username', 'password', 'keyName', 'token'].map((name) => field(block, name).hidden), [false, false, true, true]);
+    assert.deepEqual(
+      ['username', 'password', 'keyName', 'token'].map(
+        (name) => field(block, name).hidden,
+      ),
+      [false, false, true, true],
+    );
 
     field(block, 'name').value = 'USV One';
     field(block, 'url').value = 'https://boat.example.com/';
@@ -214,17 +330,30 @@ test('one card per kind; add, save, and the saved login is never shown', async (
     const saved = byClass(host, 'device-feeds-kind')[2];
     assert.equal(saved.dataset.set, 'true');
     const savedBlock = byClass(saved, 'device-feeds-feed')[0];
-    assert.deepEqual([field(savedBlock, 'password').value, field(savedBlock, 'url').value], ['', '']);
+    assert.deepEqual(
+      [field(savedBlock, 'password').value, field(savedBlock, 'url').value],
+      ['', ''],
+    );
     assert.equal(field(savedBlock, 'password').placeholder, 'PASSWORD (SAVED)');
-    assert.match(field(savedBlock, 'url').placeholder, /^SAVED: https:\/\/boat\.example\.com/);
-    assert.ok(!JSON.stringify(savedBlock, (key, value) => (key === 'parentElement' || key === 'listeners' ? undefined : value)).includes('hunter2'));
+    assert.match(
+      field(savedBlock, 'url').placeholder,
+      /^SAVED: https:\/\/boat\.example\.com/,
+    );
+    assert.ok(
+      !JSON.stringify(savedBlock, (key, value) =>
+        key === 'parentElement' || key === 'listeners' ? undefined : value,
+      ).includes('hunter2'),
+    );
 
     // A rename leaves the address and the login alone.
     field(savedBlock, 'name').value = 'USV Uno';
     await byClass(savedBlock, 'private-cams-save')[0].fire('click');
     await settle();
     const feed = server.config().feeds[0];
-    assert.deepEqual([feed.name, feed.url, feed.username, feed.password], ['USV Uno', 'https://boat.example.com/', 'cap', 'hunter2']);
+    assert.deepEqual(
+      [feed.name, feed.url, feed.username, feed.password],
+      ['USV Uno', 'https://boat.example.com/', 'cap', 'hunter2'],
+    );
   } finally {
     globalThis.window = previousWindow;
   }
@@ -241,7 +370,10 @@ test('a refused save says why and can be tried again', async () => {
   const save = byClass(block, 'private-cams-save')[0];
   await save.fire('click');
   await settle();
-  assert.match(byClass(block, 'private-cams-note')[0].textContent, /Name is required/);
+  assert.match(
+    byClass(block, 'private-cams-note')[0].textContent,
+    /Name is required/,
+  );
   assert.equal(save.disabled, false);
   // An unsaved device is discarded without asking the server.
   await byClass(block, 'private-cams-remove-site')[0].fire('click');
@@ -251,18 +383,124 @@ test('a refused save says why and can be tried again', async () => {
 
 test('read-only under preview; hidden where there is no server route', async () => {
   const preview = new FakeElement('div');
-  initDeviceFeedSetup({ host: preview, documentRef, fetchImpl: fakeServer({ editable: false }).fetchImpl });
+  initDeviceFeedSetup({
+    host: preview,
+    documentRef,
+    fetchImpl: fakeServer({ editable: false }).fetchImpl,
+  });
   await settle();
   assert.ok(byClass(preview, 'private-cams-add').every((add) => add.disabled));
 
   const none = new FakeElement('div');
-  initDeviceFeedSetup({ host: none, documentRef, fetchImpl: async () => new Response('', { status: 404 }) });
+  initDeviceFeedSetup({
+    host: none,
+    documentRef,
+    fetchImpl: async () => new Response('', { status: 404 }),
+  });
   await settle();
   assert.equal(none.hidden, true);
 });
 
 test('POWER UP mounts the device cards', () => {
-  const source = readFileSync(new URL('./keySetup.js', import.meta.url), 'utf8');
+  const source = readFileSync(
+    new URL('./keySetup.js', import.meta.url),
+    'utf8',
+  );
   assert.match(source, /initDeviceFeedSetup\(/);
   assert.match(source, /device-feeds/);
+});
+
+test('an Ultra cell card has no FOLLOW, RECORD WITHIN, FIXED or CAMERA PICTURE boxes, and saving it keeps their values', async () => {
+  const server = fakeServer();
+  const host = new FakeElement('div');
+  const previousWindow = globalThis.window;
+  globalThis.window = { dispatchEvent: () => true };
+  try {
+    initDeviceFeedSetup({ host, documentRef, fetchImpl: server.fetchImpl });
+    await settle();
+    const ultra = () =>
+      byClass(host, 'device-feeds-kind').find(
+        (card) => card.dataset.kindId === 'security',
+      );
+    await byClass(ultra(), 'private-cams-add')[0].fire('click');
+    const block = byClass(ultra(), 'device-feeds-feed')[0];
+    for (const name of [
+      'follow',
+      'record',
+      'recordKm',
+      'lat',
+      'lon',
+      'pictureUrl',
+    ])
+      assert.equal(
+        field(block, name),
+        undefined,
+        `${name} is not on an Ultra card`,
+      );
+    assert.ok(field(block, 'method'), 'how it connects stays in POWER UP');
+    // Another type keeps them.
+    const tracker = byClass(host, 'device-feeds-kind').find(
+      (card) => card.dataset.kindId === 'tracker',
+    );
+    await byClass(tracker, 'private-cams-add')[0].fire('click');
+    const trackerBlock = byClass(tracker, 'device-feeds-feed')[0];
+    for (const name of [
+      'follow',
+      'record',
+      'recordKm',
+      'lat',
+      'lon',
+      'pictureUrl',
+    ])
+      assert.ok(field(trackerBlock, name), `${name} stays on other types`);
+
+    // A new Ultra cell is followed and recorded, as before.
+    field(block, 'name').value = 'Ann';
+    await byClass(block, 'private-cams-save')[0].fire('click');
+    await settle();
+    let feed = server.config().feeds.find((item) => item.kind === 'security');
+    assert.deepEqual([feed.follow, feed.record], [true, true]);
+    assert.deepEqual(
+      Object.keys(server.posts.at(-1)).filter((key) =>
+        ['lat', 'lon', 'pictureUrl'].includes(key),
+      ),
+      [],
+    );
+
+    // The Ultra tab changed its distance; a rename here keeps it.
+    const tabbed = applyDeviceFeedUpdate(
+      {
+        id: feed.id,
+        kind: 'security',
+        name: 'Ann',
+        method: feed.method,
+        record: true,
+        recordKm: 25,
+      },
+      server.config(),
+    );
+    assert.equal(tabbed.ok, true);
+    const savedBlock = byClass(ultra(), 'device-feeds-feed')[0];
+    field(savedBlock, 'name').value = 'Ann R';
+    const rename = server.posts.length;
+    await byClass(savedBlock, 'private-cams-save')[0].fire('click');
+    await settle();
+    const body = server.posts[rename];
+    assert.equal(body.name, 'Ann R');
+    for (const key of [
+      'follow',
+      'record',
+      'recordKm',
+      'lat',
+      'lon',
+      'pictureUrl',
+    ])
+      assert.equal(
+        body[key],
+        undefined,
+        `${key} is left out, so what is saved stays`,
+      );
+  } finally {
+    globalThis.window = previousWindow;
+  }
 });

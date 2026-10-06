@@ -13,6 +13,14 @@ import {
 import {
   DEVICE_FEEDS_CHANGED_EVENT,
   DEVICE_FEEDS_FOCUS_EVENT,
+  DEVICE_FEEDS_HISTORY_EVENT,
+  DEVICE_FEEDS_VISIBLE_EVENT,
+  DEVICE_HIDDEN_KEY,
+  DEVICE_HISTORY_PERIOD_KEY,
+  DEVICE_NO_PATH_KEY,
+  deviceHiddenIds,
+  deviceHistoryPeriod,
+  deviceHistoryQuery,
 } from '../deviceFeedsCore.mjs';
 import { requestWorldFocus } from '../worldFocus.js';
 import { applyTrackedCameraFrame } from './trackedCamera.js';
@@ -41,7 +49,8 @@ import {
  * HISTORY: a device with a recording also carries its saved route, read from
  * the daily files through /api/device-feeds/track/<id> and drawn as a fainter
  * line under the live trail. It is asked for once, and again only when the
- * recording has grown (the poll says when it was last written).
+ * recording has grown (the poll says when it was last written) or the Ultra
+ * box chooses another period (DEVICE_FEEDS_HISTORY_EVENT; Live only draws none).
  *
  * NEEDS HELP: a call for help received through the owner's help network
  * arrives in the same /positions answer as an amber pin of kind 'help' with
@@ -52,6 +61,24 @@ import {
  * Geometry changes only when a poll brings a new position: nothing here is a
  * per-frame callback (see the measurements in earthquakes.js).
  */
+
+/** The devices this browser left off the map (or drew without a path) in the Ultra box. */
+function storedHiddenDevices(windowRef, key = DEVICE_HIDDEN_KEY) {
+  try {
+    return deviceHiddenIds(windowRef?.localStorage?.getItem(key));
+  } catch {
+    return [];
+  }
+}
+
+/** The saved-route period this browser chose in the Ultra box, if any. */
+function storedHistoryPeriod(windowRef) {
+  try {
+    return windowRef?.localStorage?.getItem(DEVICE_HISTORY_PERIOD_KEY) || null;
+  } catch {
+    return null;
+  }
+}
 
 /** Whether this page is the dashboard on the PC itself (localhost), where recording happens. */
 export function recordsOnThisMachine(hostname = globalThis.location?.hostname) {
@@ -257,6 +284,9 @@ export function createDeviceFeedsLayer({
   recordsHere = recordsOnThisMachine,
   hitTestOverlay = hitTestWorldOverlay,
   autoShowMs = DEVICE_FEEDS_AUTO_SHOW_MS,
+  historyPeriod = storedHistoryPeriod(windowRef),
+  hiddenDevices = storedHiddenDevices(windowRef),
+  noPathDevices = storedHiddenDevices(windowRef, DEVICE_NO_PATH_KEY),
 } = {}) {
   const _recorder = recorder || createDeviceRecorder({ fetchImpl, now });
   let _viewer = null;
@@ -269,6 +299,14 @@ export function createDeviceFeedsLayer({
   let _onChanged = null;
   let _onFocus = null;
   let _autoShowTimer = null;
+  let _onHistory = null;
+  let _onVisible = null;
+  // Ultra cells (or any device) this viewer left off the map. They still
+  // record: hiding one is about the map, not about its safety.
+  let _hidden = new Set(deviceHiddenIds(hiddenDevices));
+  // Devices drawn without their live trail and saved route.
+  let _noPath = new Set(deviceHiddenIds(noPathDevices));
+  let _historyPeriod = deviceHistoryPeriod(historyPeriod).id;
   /** A device the Ultra box asked to fly to before the poll brought it. */
   let _pendingFocusId = null;
   /** The follow: {id, entity, from, to, startedAt, stopFrame, removeChanged, removeClick} or null. */
@@ -284,6 +322,7 @@ export function createDeviceFeedsLayer({
       _dataSource?.entities.remove(record.historyEntity);
     record.historyEntity = null;
     record.historyAt = null;
+    record.historyPeriod = null;
   };
 
   const drawHistory = (record, device, points) => {
@@ -322,9 +361,19 @@ export function createDeviceFeedsLayer({
       removeHistory(record);
       return;
     }
-    if (record.historyAt === lastAt || record.historyPending) return;
+    const period = _historyPeriod;
+    const query = deviceHistoryQuery(period, now());
+    if (query === null) {
+      removeHistory(record);
+      return;
+    }
+    if (
+      (record.historyAt === lastAt && record.historyPeriod === period) ||
+      record.historyPending
+    )
+      return;
     record.historyPending = true;
-    fetchImpl(`${TRACK_URL}${encodeURIComponent(device.id)}`, {
+    fetchImpl(`${TRACK_URL}${encodeURIComponent(device.id)}?${query}`, {
       cache: 'no-store',
       credentials: 'same-origin',
     })
@@ -333,8 +382,13 @@ export function createDeviceFeedsLayer({
         record.historyPending = false;
         if (!payload || !_dataSource || _devices.get(device.id) !== record)
           return;
+        // A newer choice made while this one was on its way asks again.
+        if (period !== _historyPeriod) return;
         record.historyAt = lastAt;
+        record.historyPeriod = period;
         drawHistory(record, device, payload.points);
+        if (record.historyEntity)
+          record.historyEntity.show = !_noPath.has(device.id);
       })
       .catch(() => {
         record.historyPending = false;
@@ -678,12 +732,16 @@ export function createDeviceFeedsLayer({
     }
     pictureFor(record, device);
     syncHistory(record, device);
+    // Path off for this device: its trail keeps growing, only unseen.
+    const pathShown = !_noPath.has(device.id);
+    if (record.trailEntity) record.trailEntity.show = pathShown;
+    if (record.historyEntity) record.historyEntity.show = pathShown;
   };
 
   const layer = {
     id: DEVICE_FEEDS_LAYER_ID,
-    name: 'Your Devices',
-    icon: '🛰️',
+    name: 'Cell',
+    icon: '📱',
     source: 'POWER UP',
     updateInterval: DEVICE_FEEDS_POLL_MS,
 
@@ -716,6 +774,25 @@ export function createDeviceFeedsLayer({
         tryFocus();
       };
       windowRef.addEventListener(DEVICE_FEEDS_FOCUS_EVENT, _onFocus);
+      _onHistory = (event) => {
+        const next = deviceHistoryPeriod(event?.detail?.period).id;
+        if (next === _historyPeriod) return;
+        _historyPeriod = next;
+        if (!_enabled) return;
+        const refreshed = _dataManager?.refreshLayer?.(DEVICE_FEEDS_LAYER_ID);
+        if (refreshed) Promise.resolve(refreshed).catch(() => {});
+        else layer.update(_viewer).catch(() => {});
+      };
+      windowRef.addEventListener(DEVICE_FEEDS_HISTORY_EVENT, _onHistory);
+      _onVisible = (event) => {
+        _hidden = new Set(deviceHiddenIds(event?.detail?.hidden));
+        _noPath = new Set(deviceHiddenIds(event?.detail?.noPath));
+        if (!_enabled) return;
+        const refreshed = _dataManager?.refreshLayer?.(DEVICE_FEEDS_LAYER_ID);
+        if (refreshed) Promise.resolve(refreshed).catch(() => {});
+        else layer.update(_viewer).catch(() => {});
+      };
+      windowRef.addEventListener(DEVICE_FEEDS_VISIBLE_EVENT, _onVisible);
       // A device that is reporting shows on the map by itself: while the layer
       // is off it asks now and then, and comes on once one is live. Switched
       // off by the owner (a click, voice or a tool), it stays off.
@@ -730,7 +807,7 @@ export function createDeviceFeedsLayer({
           });
           if (!response.ok || _enabled) return;
           const rows = normalizeDevicePositions(await response.json());
-          if (rows?.some((row) => row.live))
+          if (rows?.some((row) => row.live && !_hidden.has(row.id)))
             await _dataManager?.setEnabled?.(DEVICE_FEEDS_LAYER_ID, true);
         } catch {
           // No server or no answer: asked again next time.
@@ -782,11 +859,12 @@ export function createDeviceFeedsLayer({
               : `Device feeds HTTP ${response.status}`;
           return false;
         }
-        const rows = normalizeDevicePositions(await response.json());
-        if (!rows) {
+        const allRows = normalizeDevicePositions(await response.json());
+        if (!allRows) {
           _lastError = 'Malformed device feed response';
           return false;
         }
+        const rows = allRows.filter((row) => !_hidden.has(row.id));
         if (!_dataSource) return false;
         const keep = new Set(rows.map((row) => row.id));
         for (const id of [..._devices.keys()])
@@ -807,7 +885,7 @@ export function createDeviceFeedsLayer({
         if (_enabled && recordsHere()) {
           // Not awaited: a slow save never holds up the next position.
           _recorder
-            .tick(rows, _dataManager, {
+            .tick(allRows, _dataManager, {
               toLatLon,
               skip: DEVICE_FEEDS_RECORD_SKIP_LAYERS,
             })
@@ -838,6 +916,14 @@ export function createDeviceFeedsLayer({
         windowRef.removeEventListener(DEVICE_FEEDS_FOCUS_EVENT, _onFocus);
       }
       _onFocus = null;
+      if (_onHistory && windowRef?.removeEventListener) {
+        windowRef.removeEventListener(DEVICE_FEEDS_HISTORY_EVENT, _onHistory);
+      }
+      _onHistory = null;
+      if (_onVisible && windowRef?.removeEventListener) {
+        windowRef.removeEventListener(DEVICE_FEEDS_VISIBLE_EVENT, _onVisible);
+      }
+      _onVisible = null;
       if (_autoShowTimer !== null) windowRef?.clearInterval?.(_autoShowTimer);
       _autoShowTimer = null;
       _pendingFocusId = null;

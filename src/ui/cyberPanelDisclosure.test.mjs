@@ -41,16 +41,22 @@ function fixture(theme = 'cyber') {
   };
 }
 
-test('explicit Cyber opening collapses peers and claims their restoration lanes', () => {
+// Owner ruling, 2026-10-06: Cyber's side tabs behave as Tactical's, so
+// opening one box leaves the others open.
+test('explicit Cyber opening leaves the other open boxes open, as in Tactical', () => {
   const f = fixture(), prior = globalThis.document;
   globalThis.document = f.doc;
   try {
     f.owner.setPanelCollapsed('global-context-panel', false, { explicit: true });
     f.owner.setPanelCollapsed('pp-toggles', false, { explicit: true });
     assert.equal(f.display.classList.contains('collapsed'), false);
-    assert.equal(f.context.classList.contains('collapsed'), true);
-    assert.ok(f.saved.some(([id, collapsed]) => id === 'global-context-panel' && collapsed));
-    assert.ok(f.claimed.some(([, id]) => id === 'global-context-panel'));
+    assert.equal(f.context.classList.contains('collapsed'), false);
+    assert.equal(
+      f.saved.some(([id, collapsed]) => id === 'global-context-panel' && collapsed),
+      false,
+      'no peer is collapsed and saved closed',
+    );
+    // A box an older version collapsed for its accordion loses the mark.
     f.cctv.classList.add('cyber-accordion-collapsed');
     f.owner.setPanelCollapsed('cctv-panel', true, { explicit: true });
     assert.equal(f.cctv.classList.contains('cyber-accordion-collapsed'), false);
@@ -61,7 +67,7 @@ test('explicit Cyber opening collapses peers and claims their restoration lanes'
 // last tab when selected, not a section nested in Context. It is not one of
 // the rail's boxes, so in Cyber it neither owns nor yields the accordion and
 // opening it does not open Context.
-test('Radio on the rail neither reveals Context nor joins the Cyber accordion', () => {
+test('Radio on the rail does not reveal Context in Cyber', () => {
   const f = fixture(), prior = globalThis.document;
   globalThis.document = f.doc;
   f.context.children = [];

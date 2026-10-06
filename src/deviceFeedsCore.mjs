@@ -20,6 +20,72 @@ export const DEVICE_FEED_STORE = 'config/device-feeds.json';
 export const DEVICE_FEEDS_CHANGED_EVENT = 'gev:device-feeds-changed';
 /** Asks the Your Devices layer to fly the camera to one device by its public id; detail { id }. */
 export const DEVICE_FEEDS_FOCUS_EVENT = 'gev:device-feeds-focus';
+/** Asks the Your Devices layer to draw another stretch of each saved route; detail { period }. */
+export const DEVICE_FEEDS_HISTORY_EVENT = 'gev:device-feeds-history';
+/**
+ * Asks the Cell layer to leave some devices off the map, or to draw some
+ * without their path; detail { hidden: [public ids], noPath: [public ids] }.
+ */
+export const DEVICE_FEEDS_VISIBLE_EVENT = 'gev:device-feeds-visible';
+/** This browser's devices left off the map (localStorage, a JSON list of public ids). */
+export const DEVICE_HIDDEN_KEY = 'ultra-cells-hidden';
+/** This browser's devices drawn without their path (localStorage, a JSON list of public ids). */
+export const DEVICE_NO_PATH_KEY = 'ultra-cells-no-path';
+
+/** The public ids in a stored or sent hidden list; anything else is dropped. */
+export function deviceHiddenIds(value) {
+  let list = value;
+  if (typeof value === 'string') {
+    try {
+      list = JSON.parse(value);
+    } catch {
+      list = [];
+    }
+  }
+  return Array.isArray(list)
+    ? [
+        ...new Set(
+          list.filter(
+            (id) => typeof id === 'string' && /^device-[\w-]{1,120}$/.test(id),
+          ),
+        ),
+      ]
+    : [];
+}
+
+/** This browser's choice of how much saved route the map shows (localStorage). */
+export const DEVICE_HISTORY_PERIOD_KEY = 'ultra-map-period';
+/** How far back the map draws a device's saved route, under its live trail. */
+export const DEVICE_HISTORY_PERIODS = Object.freeze([
+  Object.freeze({ id: 'live', label: 'Live only', ms: 0 }),
+  Object.freeze({ id: '1h', label: 'Last hour', ms: 3_600_000 }),
+  Object.freeze({ id: '6h', label: 'Last 6 hours', ms: 6 * 3_600_000 }),
+  Object.freeze({ id: '24h', label: 'Last 24 hours', ms: 24 * 3_600_000 }),
+  Object.freeze({ id: '7d', label: 'Last 7 days', ms: 7 * 86_400_000 }),
+  Object.freeze({ id: '30d', label: 'Last 30 days', ms: 30 * 86_400_000 }),
+  Object.freeze({ id: '365d', label: 'Last year', ms: 365 * 86_400_000 }),
+]);
+/** The route shown before anyone chooses: 30 days, as before the choice existed. */
+export const DEVICE_HISTORY_DEFAULT_PERIOD = '30d';
+
+/** The period with this id, or the default one. */
+export function deviceHistoryPeriod(id) {
+  return (
+    DEVICE_HISTORY_PERIODS.find((period) => period.id === id) ||
+    DEVICE_HISTORY_PERIODS.find(
+      (period) => period.id === DEVICE_HISTORY_DEFAULT_PERIOD,
+    )
+  );
+}
+
+/** The track request for a period that starts at `nowMs`, or null for live only. */
+export function deviceHistoryQuery(id, nowMs) {
+  const period = deviceHistoryPeriod(id);
+  if (!period.ms) return null;
+  // Daily files are per calendar day: one more than the span covers both ends.
+  const days = Math.min(366, Math.ceil(period.ms / 86_400_000) + 1);
+  return `days=${days}&since=${Math.floor(nowMs - period.ms)}`;
+}
 export const DEVICE_FEED_VALUE_LIMIT = 1024;
 export const DEVICE_FEED_NAME_LIMIT = 60;
 /** How often one device's position may be asked for, at most. */

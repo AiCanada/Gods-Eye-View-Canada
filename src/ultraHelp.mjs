@@ -52,27 +52,27 @@ export const ULTRA_PHONE_MODELS = Object.freeze([
   Object.freeze({ id: 'xiaomi', label: 'Xiaomi', cameras: QUAD }),
   Object.freeze({
     id: 'samsung-s26',
-    label: 'Samsung Galaxy S26',
+    label: 'Galaxy S26',
     cameras: QUAD,
   }),
   Object.freeze({
     id: 'samsung-s22-ultra',
-    label: 'Samsung Galaxy S22 Ultra',
+    label: 'Galaxy S22 Ultra',
     cameras: QUAD,
   }),
   Object.freeze({
     id: 'samsung-z8',
-    label: 'Samsung Galaxy Z8',
+    label: 'Galaxy Z8',
     cameras: FOLD8,
   }),
   Object.freeze({
     id: 'samsung-z3',
-    label: 'Samsung Galaxy Z3',
+    label: 'Galaxy Z3',
     cameras: FOLD3,
   }),
   Object.freeze({
     id: 'samsung-z-fold',
-    label: 'Samsung Galaxy Z Fold',
+    label: 'Galaxy Z Fold',
     cameras: FOLD8,
   }),
 ]);

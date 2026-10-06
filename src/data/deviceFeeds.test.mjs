@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEVICE_FEEDS_CHANGED_EVENT, DEVICE_FEEDS_FOCUS_EVENT } from '../deviceFeedsCore.mjs';
+import { DEVICE_FEEDS_CHANGED_EVENT, DEVICE_FEEDS_FOCUS_EVENT, DEVICE_FEEDS_HISTORY_EVENT, DEVICE_FEEDS_VISIBLE_EVENT, deviceHistoryQuery } from '../deviceFeedsCore.mjs';
 import { WORLD_FOCUS_REQUEST_EVENT } from '../worldFocus.js';
 import {
   DEVICE_FEEDS_LAYER_ID,
@@ -97,7 +97,7 @@ test('a trail grows only when the device actually moved', () => {
   assert.equal(trail.length, 5);
 });
 
-function fixture({ answers }) {
+function fixture({ answers, options = {} }) {
   const dataSources = [];
   const viewer = {
     dataSources: {
@@ -125,6 +125,7 @@ function fixture({ answers }) {
     windowRef,
     createImage: () => { const image = {}; images.push(image); return image; },
     fetchImpl: async (url) => { asked.push(url); return answers.shift()(); },
+    ...options,
   });
   return { layer, viewer, dataSources, calls, listeners, dispatched, images, asked };
 }
@@ -258,7 +259,8 @@ test('a device with a recording draws its saved route, asked for once and again 
   await settle();
   await settle();
   assert.equal(asked.filter((url) => url.startsWith('/api/device-feeds/track/')).length, 1);
-  assert.equal(asked[1], '/api/device-feeds/track/device-tracker-van');
+  // The last 30 days unless the Ultra box chose otherwise.
+  assert.match(asked[1], /^\/api\/device-feeds\/track\/device-tracker-van\?days=31&since=\d+$/);
   assert.ok(historyEntity(), 'the saved route is drawn');
   assert.equal(historyEntity().polyline.positions.getValue().length, 3);
 
@@ -278,5 +280,93 @@ test('a device with a recording draws its saved route, asked for once and again 
   assert.equal(await layer.update(viewer), true);
   await settle();
   assert.equal(historyEntity(), undefined);
+  layer.destroy(viewer);
+});
+
+test('the Ultra box chooses how much saved route the map draws: live only draws none, another period asks again', async () => {
+  const NOW = Date.UTC(2026, 9, 6, 12);
+  const track = (points) => () => new Response(JSON.stringify({ id: 'device-tracker-van', points }), { status: 200 });
+  const van = () => device({ id: 'device-tracker-van', kind: 'tracker', kindLabel: 'TRACKER', color: '#ff7ad9', name: 'Van', history: { days: 2, lastAt: 1000 } });
+  const route = [{ at: 1, lat: 45.2, lon: -66.1 }, { at: 2, lat: 45.21, lon: -66.11 }];
+  const { layer, viewer, dataSources, asked, listeners } = fixture({
+    answers: [ok([van()]), track(route), ok([van()]), ok([van()]), track(route)],
+    options: { historyPeriod: '24h', now: () => NOW },
+  });
+  layer.attachDataManager({ setEnabled: () => Promise.resolve(true), refreshLayer: () => Promise.resolve(true) });
+  layer.init(viewer);
+  layer.enable(viewer);
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const tracks = () => asked.filter((url) => url.startsWith('/api/device-feeds/track/'));
+  const historyEntity = () => dataSources[0].entities.values.find((entity) => entity.id === 'device-feed-history:device-tracker-van');
+
+  // A stored choice of 24 hours: the request names that period.
+  assert.equal(await layer.update(viewer), true);
+  await settle();
+  await settle();
+  assert.deepEqual(tracks(), [`/api/device-feeds/track/device-tracker-van?${deviceHistoryQuery('24h', NOW)}`]);
+  assert.ok(historyEntity(), 'the saved route is drawn');
+  // Live only: no request, and the line goes.
+  const choose = listeners.get(DEVICE_FEEDS_HISTORY_EVENT);
+  assert.equal(typeof choose, 'function', 'the layer listens for the Ultra box');
+  choose({ detail: { period: 'live' } });
+  assert.equal(await layer.update(viewer), true);
+  await settle();
+  assert.equal(tracks().length, 1);
+  assert.equal(historyEntity(), undefined);
+  // Last hour: asked again, from one hour back.
+  choose({ detail: { period: '1h' } });
+  assert.equal(await layer.update(viewer), true);
+  await settle();
+  await settle();
+  assert.equal(tracks().length, 2);
+  assert.equal(tracks()[1], `/api/device-feeds/track/device-tracker-van?${deviceHistoryQuery('1h', NOW)}`);
+  assert.equal(historyEntity().polyline.positions.getValue().length, 2);
+  layer.destroy(viewer);
+  assert.equal(listeners.has(DEVICE_FEEDS_HISTORY_EVENT), false, 'destroy removes the period listener');
+});
+
+test('Ultra cells show together or one at a time: a cell left off the map is not drawn', async () => {
+  const cell = (id, name, lat) => device({ id, kind: 'security', kindLabel: 'PACKAGE', name, lat, follow: false, record: true });
+  const both = () => ok([cell('device-security-a', 'Ann', 45.27), cell('device-security-b', 'Bob', 45.28)]);
+  const { layer, viewer, dataSources, listeners } = fixture({
+    answers: [both(), both(), both()],
+    options: { hiddenDevices: ['device-security-b', 'not-a-device'] },
+  });
+  layer.attachDataManager({ setEnabled: () => Promise.resolve(true), refreshLayer: () => Promise.resolve(true) });
+  layer.init(viewer);
+  layer.enable(viewer);
+  const drawn = () => dataSources[0].entities.values.filter((entity) => entity.point).map((entity) => entity.id).sort();
+  assert.equal(await layer.update(viewer), true);
+  assert.deepEqual(drawn(), ['device-feed:device-security-a']);
+  assert.equal(layer.getStats().count, 1);
+  // Shown together.
+  listeners.get(DEVICE_FEEDS_VISIBLE_EVENT)({ detail: { hidden: [] } });
+  assert.equal(await layer.update(viewer), true);
+  assert.deepEqual(drawn(), ['device-feed:device-security-a', 'device-feed:device-security-b']);
+  // Bob alone.
+  listeners.get(DEVICE_FEEDS_VISIBLE_EVENT)({ detail: { hidden: ['device-security-a'] } });
+  assert.equal(await layer.update(viewer), true);
+  assert.deepEqual(drawn(), ['device-feed:device-security-b']);
+  layer.destroy(viewer);
+  assert.equal(listeners.has(DEVICE_FEEDS_VISIBLE_EVENT), false);
+});
+
+test('a cell can be on the map without its path, and its path comes back when asked', async () => {
+  const cell = (lat) => device({ id: 'device-security-a', kind: 'security', kindLabel: 'PACKAGE', name: 'Ann', lat, follow: false });
+  const { layer, viewer, dataSources, listeners } = fixture({
+    answers: [ok([cell(45.27)]), ok([cell(45.28)]), ok([cell(45.29)])],
+    options: { noPathDevices: ['device-security-a'] },
+  });
+  layer.attachDataManager({ setEnabled: () => Promise.resolve(true), refreshLayer: () => Promise.resolve(true) });
+  layer.init(viewer);
+  layer.enable(viewer);
+  const entity = (id) => dataSources[0].entities.values.find((item) => item.id === id);
+  assert.equal(await layer.update(viewer), true);
+  assert.equal(await layer.update(viewer), true);
+  assert.ok(entity('device-feed:device-security-a'), 'the pin is drawn');
+  assert.equal(entity('device-feed-trail:device-security-a').show, false, 'the trail is kept but unseen');
+  listeners.get(DEVICE_FEEDS_VISIBLE_EVENT)({ detail: { hidden: [], noPath: [] } });
+  assert.equal(await layer.update(viewer), true);
+  assert.equal(entity('device-feed-trail:device-security-a').show, true);
   layer.destroy(viewer);
 });

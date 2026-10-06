@@ -513,8 +513,8 @@ test('right rail measurement cannot persist into a painted attribution layout', 
 test('every open dock tray clears the required credit at every modelled viewport', () => {
   // Below 900px the tray widens to nearly the viewport and lands on the
   // bottom-left corner where the credit lives. The clearance is NOT one fixed
-  // number: the dock is anchored at 2vh down to 721px and re-anchors to a flat
-  // 8px at 720px, while the credit keeps its 2vh base throughout.
+  // number: the dock is anchored at 2vh + 1.75rem down to 721px and re-anchors
+  // to a flat 2.5rem at 720px, while the credit sits on the bottom edge.
   const failures = [];
   for (const scenario of TRAY_SCENARIOS) {
     for (const width of WIDTHS.filter((w) => w <= 900)) {
@@ -574,14 +574,31 @@ test('the full-width context rail clears the required credit at every modelled v
   assert.deepEqual(failures, [], `context rail re-enters the credit band at ${failures.join(', ')}`);
 });
 
-test('the dock anchor changes at 720px — the 2vh cancellation is band-limited', () => {
-  assert.equal(resolve(['#command-dock'], 'bottom', 800, 'dock').decl.value, '2vh');
-  assert.equal(resolve(['#command-dock'], 'bottom', 720, 'dock').decl.value, '8px');
-  assert.equal(
-    resolve(CREDIT_SELECTORS, 'bottom', 720, 'credit').decl.value,
-    'calc(2vh + 5rem)',
-    'the credit keeps its 2vh base below 720px — that asymmetry is the whole hazard',
-  );
+test('the dock anchor changes at 720px; the credit stays on the bottom edge', () => {
+  assert.equal(resolve(['#command-dock'], 'bottom', 800, 'dock').decl.value, 'calc(2vh + 1.75rem)');
+  assert.equal(resolve(['#command-dock'], 'bottom', 720, 'dock').decl.value, '2.5rem');
+  for (const width of [720, 800, 1024, 1920]) {
+    assert.equal(
+      resolve(CREDIT_SELECTORS, 'bottom', width, 'credit').decl.value,
+      '2px',
+      `the credit runs along the very bottom of the screen at ${width}px`,
+    );
+  }
+});
+
+test('the dock and its voice pill stay clear of the bottom-edge credit', () => {
+  // The voice pill hangs this far below the dock's own box (measured).
+  const VOICE_OVERHANG_PX = 8;
+  const failures = [];
+  for (const width of WIDTHS) {
+    for (const height of HEIGHTS) {
+      const dock = resolve(['#command-dock'], 'bottom', width, 'dock');
+      const clearance =
+        toPx(dock.decl.value, height, 'dock bottom') - VOICE_OVERHANG_PX - creditTopPx(width, height);
+      if (clearance < 0) failures.push(`${width}x${height}: ${clearance.toFixed(1)}px`);
+    }
+  }
+  assert.deepEqual(failures, [], `the dock covers the credit at ${failures.join(', ')}`);
 });
 
 test('the minimal-HUD credit variant tracks the ordinary one', () => {
@@ -612,7 +629,7 @@ test('the credit line is never suppressed to make room', () => {
     assert.doesNotMatch(block, /visibility\s*:\s*hidden/, 'the credit must never be hidden');
     assert.doesNotMatch(block, /opacity\s*:\s*0(\D|$)/, 'the credit must never be faded out');
   }
-  assert.match(css, /body\.ui-clean-view #cesium-credits,\s*\n\s*body\.recording-mode #cesium-credits \{[^}]*bottom: 36px;/);
+  assert.match(css, /body\.ui-clean-view #cesium-credits,\s*\n\s*body\.recording-mode #cesium-credits \{[^}]*bottom: 2px;/);
 });
 
 

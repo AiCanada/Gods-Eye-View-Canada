@@ -23,7 +23,23 @@ import {
 import {
   DEVICE_FEEDS_CHANGED_EVENT,
   DEVICE_FEEDS_FOCUS_EVENT,
+  DEVICE_FEEDS_HISTORY_EVENT,
+  DEVICE_FEEDS_VISIBLE_EVENT,
+  DEVICE_HIDDEN_KEY,
+  DEVICE_HISTORY_PERIOD_KEY,
+  DEVICE_NO_PATH_KEY,
+  DEVICE_RECORD_RADIUS_KM,
+  DEVICE_RECORD_RADIUS_OPTIONS_KM,
+  deviceHiddenIds,
+  deviceHistoryPeriod,
 } from './deviceFeedsCore.mjs';
+/** Where a new Ultra cell is saved: the same route POWER UP's devices use. */
+const DEVICE_CONFIG_ENDPOINT = '/api/device-feeds/config';
+
+/** The map layer that draws Ultra holders and their paths (Cell). */
+const ULTRA_MAP_LAYER_ID = 'device-feeds';
+/** The switch for this machine's own private cameras (Private CCTV Cams). */
+const PRIVATE_CAMS_LAYER_ID = 'private-cctv';
 
 const STATUS = '/api/ultra-help/status';
 const ENV_ROUTE = '/api/setup/keys';
@@ -1349,6 +1365,38 @@ function readAloud(documentRef, status, now = Date.now()) {
   }
 }
 
+function storedHiddenCells(key = DEVICE_HIDDEN_KEY) {
+  try {
+    return deviceHiddenIds(globalThis.localStorage?.getItem(key));
+  } catch {
+    return [];
+  }
+}
+
+function rememberHiddenCells(ids, key = DEVICE_HIDDEN_KEY) {
+  try {
+    globalThis.localStorage?.setItem(key, JSON.stringify(ids));
+  } catch {
+    /* Blocked storage: the choice holds for this page only. */
+  }
+}
+
+function storedMapPeriod() {
+  try {
+    return globalThis.localStorage?.getItem(DEVICE_HISTORY_PERIOD_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberMapPeriod(id) {
+  try {
+    globalThis.localStorage?.setItem(DEVICE_HISTORY_PERIOD_KEY, id);
+  } catch {
+    /* Blocked storage: the choice holds for this page only. */
+  }
+}
+
 function readAloudPreference() {
   try {
     return globalThis.localStorage?.getItem(READ_ALOUD_KEY);
@@ -1370,6 +1418,7 @@ export function initUltraHelpPanel({
   fetchImpl = fetch,
   signal,
   windowRef = globalThis.window,
+  dataManager = null,
 } = {}) {
   const panel = documentRef.getElementById?.('ultra-panel');
   if (!panel) return { destroy() {} };
@@ -1389,6 +1438,35 @@ export function initUltraHelpPanel({
       /* No CustomEvent here: the map simply is not nudged. */
     }
   };
+  /* ULTRA ON MAP: the tick box is the Your Devices layer's own switch, kept
+   * in step with it however it changes (its row, voice, auto display). The
+   * period is this browser's choice of how much saved path the map draws. */
+  const mapBox = byId(documentRef, 'ultra-map-show');
+  const mapPeriod = byId(documentRef, 'ultra-map-period');
+  /* PRIVATE CCTV ON MAP: the Private CCTV Cams layer's switch, the same way. */
+  const privateBox = byId(documentRef, 'ultra-private-cams');
+  if (mapPeriod) mapPeriod.value = deviceHistoryPeriod(storedMapPeriod()).id;
+  const paintLayerBox = (box, layerId) => {
+    if (!box) return;
+    if (typeof dataManager?.isEnabled !== 'function') {
+      box.disabled = true;
+      return;
+    }
+    try {
+      box.checked = Boolean(dataManager.isEnabled(layerId));
+    } catch {
+      /* Not registered on this page: the box keeps its last state. */
+    }
+  };
+  const paintMapBox = () => {
+    paintLayerBox(mapBox, ULTRA_MAP_LAYER_ID);
+    paintLayerBox(privateBox, PRIVATE_CAMS_LAYER_ID);
+  };
+  paintMapBox();
+  const stopMapWatch =
+    typeof dataManager?.subscribe === 'function'
+      ? dataManager.subscribe(paintMapBox)
+      : () => {};
   /* A new call for help with a position turns the Your Devices layer on
    * (the same event a saved device fires), so its amber pin shows within one
    * poll of the layer. Said once per row; a row that ends leaves the set so
@@ -1428,10 +1506,233 @@ export function initUltraHelpPanel({
     const statusLine = byId(documentRef, 'ultra-status');
     if (statusLine && text) statusLine.textContent = text;
   };
+  /* ULTRA CELLS: every saved Ultra phone, each with its own ON MAP tick and
+   * its own HISTORY tick. Ticking all shows them together;
+   * ONLY shows one alone; MAP flies to one. The choice is this browser's, and
+   * a hidden cell still records. */
+  let hiddenCells = new Set(storedHiddenCells());
+  let noPathCells = new Set(storedHiddenCells(DEVICE_NO_PATH_KEY));
+  let cellsShape = '';
+  const sendHiddenCells = () => {
+    const hidden = [...hiddenCells];
+    const noPath = [...noPathCells];
+    rememberHiddenCells(hidden);
+    rememberHiddenCells(noPath, DEVICE_NO_PATH_KEY);
+    dispatchWindow(DEVICE_FEEDS_VISIBLE_EVENT, { hidden, noPath });
+  };
+  const cellIds = () =>
+    (Array.isArray(latest?.packages) ? latest.packages : [])
+      .map((cell) => cell?.mapId)
+      .filter((id) => typeof id === 'string');
+  const showCellsLayer = () => {
+    if (dataManager?.isEnabled?.(ULTRA_MAP_LAYER_ID)) return;
+    Promise.resolve(
+      dataManager?.setEnabled?.(ULTRA_MAP_LAYER_ID, true, { origin: 'user' }),
+    )
+      .catch(() => {})
+      .finally(paintMapBox);
+  };
+  const paintCells = (status, force = false) => {
+    const host = byId(documentRef, 'ultra-cells');
+    if (!host) return;
+    const cells = (
+      Array.isArray(status?.packages) ? status.packages : []
+    ).filter((cell) => typeof cell?.mapId === 'string');
+    const shape = JSON.stringify([
+      cells.map((cell) => [
+        cell.mapId,
+        cell.name,
+        cell.record,
+        cell.recordKm,
+        cell.method,
+      ]),
+      [...hiddenCells].sort(),
+      [...noPathCells].sort(),
+      status?.editable !== false,
+    ]);
+    if (!force && shape === cellsShape) return;
+    cellsShape = shape;
+    host.replaceChildren();
+    for (const cell of cells) {
+      const row = documentRef.createElement('div');
+      row.className = 'cctv-controls ultra-cell-row';
+      const label = documentRef.createElement('label');
+      label.className = 'ultra-match';
+      const box = documentRef.createElement('input');
+      box.type = 'checkbox';
+      box.dataset.ultraCellMap = cell.mapId;
+      box.checked = !hiddenCells.has(cell.mapId);
+      box.title = `Show ${cell.name || 'Ultra'} on the map`;
+      label.appendChild(box);
+      const name = documentRef.createElement('span');
+      name.textContent = `${cell.name || 'Ultra'} on map`;
+      label.appendChild(name);
+      row.appendChild(label);
+      const pathLabel = documentRef.createElement('label');
+      pathLabel.className = 'ultra-match';
+      const pathBox = documentRef.createElement('input');
+      pathBox.type = 'checkbox';
+      pathBox.dataset.ultraCellPath = cell.mapId;
+      pathBox.checked = !noPathCells.has(cell.mapId);
+      pathBox.disabled = hiddenCells.has(cell.mapId);
+      pathBox.title = `Show ${cell.name || 'Ultra'}'s location history (its path over time)`;
+      pathLabel.appendChild(pathBox);
+      const pathName = documentRef.createElement('span');
+      pathName.textContent = 'History';
+      pathLabel.appendChild(pathName);
+      row.appendChild(pathLabel);
+      /* RECORD WITHIN: what this cell saves around it as it moves, up to
+       * 50 km, or nothing. Saved on the PC; read-only on a phone. */
+      const record = documentRef.createElement('select');
+      record.className = 'ultra-cell-record';
+      record.dataset.ultraCellRecord = cell.id;
+      record.title = `What ${cell.name || 'Ultra'} records around it`;
+      record.disabled = status?.editable === false || !cell.method;
+      const off = documentRef.createElement('option');
+      off.value = 'off';
+      off.textContent = 'Record off';
+      record.appendChild(off);
+      for (const km of DEVICE_RECORD_RADIUS_OPTIONS_KM) {
+        const option = documentRef.createElement('option');
+        option.value = String(km);
+        option.textContent = `Record within ${km} km`;
+        record.appendChild(option);
+      }
+      record.value =
+        cell.record === false
+          ? 'off'
+          : String(
+              DEVICE_RECORD_RADIUS_OPTIONS_KM.includes(Number(cell.recordKm))
+                ? Number(cell.recordKm)
+                : DEVICE_RECORD_RADIUS_KM,
+            );
+      row.appendChild(record);
+      for (const [action, text, title] of [
+        [
+          'only',
+          'Only display',
+          `Show ${cell.name || 'Ultra'} alone on the map`,
+        ],
+        [
+          'map',
+          'Take to location on map',
+          `Fly the map to ${cell.name || 'Ultra'}`,
+        ],
+      ]) {
+        const button = documentRef.createElement('button');
+        button.type = 'button';
+        button.className = 'scene-btn ultra-cell-btn';
+        button.dataset.ultraCellAction = action;
+        button.dataset.ultraCellId = cell.mapId;
+        button.textContent = text;
+        button.title = title;
+        row.appendChild(button);
+      }
+      host.appendChild(row);
+    }
+    const count = byId(documentRef, 'ultra-cells-count');
+    if (count) count.textContent = cells.length ? `· ${cells.length}` : '';
+    const form = byId(documentRef, 'ultra-cell-add');
+    if (form) form.hidden = status?.editable === false;
+    const note = byId(documentRef, 'ultra-cell-note');
+    if (note) {
+      note.hidden = !(status?.editable === false || !cells.length);
+      note.textContent =
+        status?.editable === false
+          ? 'Ultra cells are added on the PC.'
+          : 'No Ultra cell yet: name one and press + ADD ULTRA CELL.';
+    }
+  };
+  /* RECORD WITHIN a cell: saved again through the device route, with what
+   * the card already holds (left-out addresses keep what is saved). */
+  const saveCellRecord = async (select) => {
+    const cell = (Array.isArray(latest?.packages) ? latest.packages : []).find(
+      (item) => item?.id === select.dataset.ultraCellRecord,
+    );
+    if (!cell?.method || disposed) return;
+    const off = select.value === 'off';
+    let response;
+    try {
+      response = await fetchImpl(DEVICE_CONFIG_ENDPOINT, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: cell.id,
+          kind: 'security',
+          name: cell.name,
+          method: cell.method,
+          record: !off,
+          ...(off ? {} : { recordKm: Number(select.value) }),
+        }),
+      });
+    } catch {
+      say('NOT SAVED — no answer from the dev server');
+      return;
+    }
+    if (!response.ok) {
+      let error = 'Recording distance not saved';
+      try {
+        error = (await response.json())?.error || error;
+      } catch {
+        /* Keep the fallback line. */
+      }
+      say(error);
+      paintCells(latest, true);
+      return;
+    }
+    say(
+      off
+        ? `${String(cell.name || 'Ultra').toUpperCase()} · RECORD OFF`
+        : `${String(cell.name || 'Ultra').toUpperCase()} · RECORDS WITHIN ${select.value} KM`,
+    );
+    dispatchWindow(DEVICE_FEEDS_CHANGED_EVENT, { count: 1 });
+    await load();
+  };
+  const addCell = async () => {
+    const input = byId(documentRef, 'ultra-cell-name');
+    const name = String(input?.value || '').trim();
+    if (!name || disposed) return;
+    const first = !(Array.isArray(latest?.packages) && latest.packages.length);
+    let response;
+    try {
+      response = await fetchImpl(DEVICE_CONFIG_ENDPOINT, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'security',
+          name,
+          method: 'report-in',
+          // The map follows one cell at a time: the first one saved.
+          follow: first,
+          record: true,
+        }),
+      });
+    } catch {
+      say('ULTRA CELL NOT ADDED — no answer from the dev server');
+      return;
+    }
+    if (!response.ok) {
+      let error = 'Ultra cell not added';
+      try {
+        error = (await response.json())?.error || error;
+      } catch {
+        /* Keep the fallback line. */
+      }
+      say(error);
+      return;
+    }
+    if (input) input.value = '';
+    say(`ULTRA CELL ADDED · ${name.toUpperCase()}`);
+    dispatchWindow(DEVICE_FEEDS_CHANGED_EVENT, { count: 1 });
+    await load();
+  };
   const paint = (status) => {
     const { revealed, published, ...rest } = status || {};
     latest = rest;
     applyUltraHelpStatus(documentRef, status);
+    paintCells(status);
     readAloud(documentRef, status);
     syncPins(status);
     if (!notice) return;
@@ -1568,6 +1869,34 @@ export function initUltraHelpPanel({
       return;
     }
     const id = target?.id;
+    const cellAction = target?.dataset?.ultraCellAction;
+    const cellTarget = target?.dataset?.ultraCellId;
+    if (cellAction && cellTarget) {
+      if (cellAction === 'only') {
+        hiddenCells = new Set(cellIds().filter((item) => item !== cellTarget));
+        noPathCells.delete(cellTarget);
+        sendHiddenCells();
+        showCellsLayer();
+        paintCells(latest, true);
+      } else if (cellAction === 'map') {
+        // On the map first (a hidden cell has no pin to fly to).
+        if (hiddenCells.delete(cellTarget)) {
+          sendHiddenCells();
+          paintCells(latest, true);
+        }
+        dispatchWindow(DEVICE_FEEDS_CHANGED_EVENT, { count: 1 });
+        dispatchWindow(DEVICE_FEEDS_FOCUS_EVENT, { id: cellTarget });
+      }
+      return;
+    }
+    if (id === 'ultra-cells-all') {
+      hiddenCells = new Set();
+      noPathCells = new Set();
+      sendHiddenCells();
+      showCellsLayer();
+      paintCells(latest, true);
+      return;
+    }
     if (id === 'ultra-release-send') {
       /* With several packages the press names the one chosen beside the
        * button, so EXTEND HELP renews that call and no other. */
@@ -1614,10 +1943,6 @@ export function initUltraHelpPanel({
         )
           say('STOOD DOWN · NO CALL FOR HELP IS ON');
       });
-      return;
-    }
-    if (id === 'ultra-inbox-read-all') {
-      void post('inbox', { read: true });
       return;
     }
     if (id === 'ultra-number-clear') {
@@ -1803,6 +2128,51 @@ export function initUltraHelpPanel({
       void post('model', { modelId: event.target.value });
       return;
     }
+    if (event.target?.dataset?.ultraCellRecord) {
+      void saveCellRecord(event.target);
+      return;
+    }
+    const pathId = event.target?.dataset?.ultraCellPath;
+    if (pathId) {
+      if (event.target.checked === false) noPathCells.add(pathId);
+      else noPathCells.delete(pathId);
+      sendHiddenCells();
+      paintCells(latest, true);
+      return;
+    }
+    const cellId = event.target?.dataset?.ultraCellMap;
+    if (cellId) {
+      if (event.target.checked === false) hiddenCells.add(cellId);
+      else {
+        hiddenCells.delete(cellId);
+        showCellsLayer();
+      }
+      sendHiddenCells();
+      paintCells(latest, true);
+      return;
+    }
+    const switched =
+      event.target?.id === 'ultra-map-show'
+        ? ULTRA_MAP_LAYER_ID
+        : event.target?.id === 'ultra-private-cams'
+          ? PRIVATE_CAMS_LAYER_ID
+          : null;
+    if (switched) {
+      const on = event.target.checked !== false;
+      Promise.resolve(
+        dataManager?.setEnabled?.(switched, on, { origin: 'user' }),
+      )
+        .catch(() => {})
+        .finally(paintMapBox);
+      return;
+    }
+    if (event.target?.id === 'ultra-map-period') {
+      const period = deviceHistoryPeriod(event.target.value).id;
+      event.target.value = period;
+      rememberMapPeriod(period);
+      dispatchWindow(DEVICE_FEEDS_HISTORY_EVENT, { period });
+      return;
+    }
     if (event.target?.id === 'ultra-read-aloud') {
       rememberReadAloud(event.target.checked !== false);
       /* Unticking also silences what is already queued; a flood of long
@@ -1832,6 +2202,11 @@ export function initUltraHelpPanel({
         number: byId(documentRef, 'ultra-contact-number')?.value,
         kind: byId(documentRef, 'ultra-contact-kind')?.value,
       });
+      return;
+    }
+    if (id === 'ultra-cell-add') {
+      event.preventDefault();
+      void addCell();
       return;
     }
     if (id === 'ultra-number') {
@@ -2015,6 +2390,7 @@ export function initUltraHelpPanel({
       panel.removeEventListener('change', onChange);
       panel.removeEventListener('input', onCustomSkill);
       panel.removeEventListener('submit', onSubmit);
+      stopMapWatch();
     },
   };
 }

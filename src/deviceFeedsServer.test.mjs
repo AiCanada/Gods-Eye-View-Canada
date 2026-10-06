@@ -977,6 +977,16 @@ test('the saved route comes back as points, oldest first, thinned, positions onl
     ).json().points.length,
     1,
   );
+  // From a moment on (the Ultra box's period): only the later fixes, and
+  // the count says how many there were in that period.
+  const since = await request(
+    `/track/device-tracker-van?days=2&since=${Date.parse('2026-09-25T10:00:05Z')}`,
+    { headers: { 'sec-fetch-site': 'same-origin' } },
+  );
+  assert.deepEqual(
+    [since.json().total, since.json().points.map((point) => point.lat)],
+    [2, [45.2, 45.21]],
+  );
   assert.equal(
     (
       await request('/track/device-nobody', {

@@ -22,7 +22,9 @@ test('Display uses an inner scroll body only in Cyber', () => {
   assert.equal(displayPanelScroller(null), null);
 });
 
-test('Cyber restores one expanded owner, keeps launchers, and restores other theme preferences', () => {
+// Owner ruling, 2026-10-06: Cyber's side tabs behave as Tactical's, with no
+// one-box accordion; a box an older version collapsed for it opens again.
+test('Cyber keeps every open box open and reopens boxes the old accordion collapsed', () => {
   for (const mobile of [false, true]) {
     const f = fixture('right', {
       mobile,
@@ -32,34 +34,16 @@ test('Cyber restores one expanded owner, keeps launchers, and restores other the
     f.expand(f.second, 250);
     f.options.preferredPanelId = f.second.id;
     f.run();
-    assert.equal(f.first.classList.contains('cyber-accordion-collapsed'), true);
+    assert.equal(f.first.classList.contains('collapsed'), false);
     assert.equal(f.second.classList.contains('collapsed'), false);
-    assert.equal(f.first.getAttribute('aria-hidden'), undefined);
-    f.run();
-    assert.equal(
-      f.first.classList.contains('collapsed'),
-      true,
-      'layout does not reopen a peer',
-    );
-    f.options.hud.variant = 'operator';
+    f.first.classList.add('collapsed', 'cyber-accordion-collapsed');
     f.run();
     assert.equal(f.first.classList.contains('collapsed'), false);
     assert.equal(
       f.first.classList.contains('cyber-accordion-collapsed'),
       false,
     );
-    assert.equal(f.second.classList.contains('collapsed'), false);
   }
-});
-
-test('Cyber restored accordion prefers keyboard focus when no explicit owner exists', () => {
-  const f = fixture('right', { hud: { visible: true, variant: 'cyber' } });
-  f.expand(f.first, 250);
-  f.expand(f.second, 250);
-  f.options.documentRef.activeElement = f.second;
-  f.run();
-  assert.equal(f.first.classList.contains('collapsed'), true);
-  assert.equal(f.second.classList.contains('collapsed'), false);
 });
 
 function element(

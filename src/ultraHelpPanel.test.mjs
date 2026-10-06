@@ -10,6 +10,9 @@ import {
 import {
   DEVICE_FEEDS_CHANGED_EVENT,
   DEVICE_FEEDS_FOCUS_EVENT,
+  DEVICE_FEEDS_HISTORY_EVENT,
+  DEVICE_FEEDS_VISIBLE_EVENT,
+  DEVICE_HISTORY_PERIODS,
 } from './deviceFeedsCore.mjs';
 
 /* The byId/createElement fake of src/overlays/worldOverlay.test.mjs, cut
@@ -257,7 +260,17 @@ function installFakeDocument() {
   make('span', 'ultra-inbox-count', heading);
   make('div', 'ultra-inbox', panel);
   make('input', 'ultra-read-aloud', panel, { checked: true });
-  make('button', 'ultra-inbox-read-all', panel);
+  /* DISPLAY ULTRA ON MAP and how much of the path it shows. */
+  make('input', 'ultra-map-show', panel, { checked: false });
+  make('input', 'ultra-private-cams', panel, { checked: false });
+  /* ULTRA CELLS: the list, SHOW ALL and the add form. */
+  make('span', 'ultra-cells-count', panel);
+  make('div', 'ultra-cells', panel);
+  make('button', 'ultra-cells-all', panel);
+  const cellForm = make('form', 'ultra-cell-add', panel);
+  make('input', 'ultra-cell-name', cellForm, { value: '' });
+  make('p', 'ultra-cell-note', panel, { hidden: true });
+  make('select', 'ultra-map-period', panel, { value: '30d' });
   make('select', 'ultra-incident', panel, { value: 'threat' });
   /* The saved helpers the plea is texted to. */
   make('p', 'ultra-help-store-note', panel, { hidden: true });
@@ -502,6 +515,17 @@ function withConfirm(answer) {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+/* Any answered request repaints the box: a message's READ press is one. */
+function pressRead(documentRef, panel) {
+  let read = panel.children.find((child) => child.dataset?.ultraInboxRead);
+  if (!read) {
+    read = documentRef.createElement('button');
+    read.dataset.ultraInboxRead = 'm-00000000000000bb';
+    panel.appendChild(read);
+  }
+  panel.dispatch('click', { target: read });
+}
+
 test('read-aloud speaks only fresh unread messages and calls for help, once, through speechSynthesis', async () => {
   const { documentRef, panel, byId } = installFakeDocument();
   const speech = installSpeech();
@@ -573,11 +597,11 @@ test('read-aloud speaks only fresh unread messages and calls for help, once, thr
 
     /* A second poll with the same inbox says nothing new and nudges nothing. */
     calls.length = 0;
-    panel.dispatch('click', { target: byId('ultra-inbox-read-all') });
+    pressRead(documentRef, panel);
     await settle();
     assert.deepEqual(calls[0], {
       url: '/api/ultra-help/inbox',
-      body: { read: true },
+      body: { read: true, id: 'm-00000000000000bb' },
     });
     assert.equal(speech.spokenText.length, 2);
     assert.equal(windowRef.dispatched.length, 1);
@@ -601,20 +625,20 @@ test('read-aloud speaks only fresh unread messages and calls for help, once, thr
      * though her start was seeded silently) the unread count is back on top. */
     status.inbox[0] = release({ active: false, until: NOW, readAt: NOW });
     status.unread = 3;
-    panel.dispatch('click', { target: byId('ultra-inbox-read-all') });
+    pressRead(documentRef, panel);
     await settle();
     assert.equal(speech.spokenText.at(-1), 'Jeff stood down');
     assert.equal(speech.spokenText.length, 3);
-    panel.dispatch('click', { target: byId('ultra-inbox-read-all') });
+    pressRead(documentRef, panel);
     await settle();
     assert.equal(speech.spokenText.length, 3);
     assert.equal(byId('ultra-status').textContent, 'NETWORK · ANN NEEDS HELP');
     status.inbox[3] = { ...ann, active: false, until: NOW, readAt: NOW };
-    panel.dispatch('click', { target: byId('ultra-inbox-read-all') });
+    pressRead(documentRef, panel);
     await settle();
     assert.equal(speech.spokenText.at(-1), 'Ann stood down');
     assert.equal(speech.spokenText.length, 4);
-    panel.dispatch('click', { target: byId('ultra-inbox-read-all') });
+    pressRead(documentRef, panel);
     await settle();
     assert.equal(speech.spokenText.length, 4);
     assert.equal(byId('ultra-status').textContent, 'HELP · 3 NEW');
@@ -735,7 +759,7 @@ test('a new call for help is spoken with its street address once the geocode lan
   };
   const fetchImpl = async () => ({ ok: true, json: async () => status });
   const repaint = async () => {
-    panel.dispatch('click', { target: byId('ultra-inbox-read-all') });
+    pressRead(documentRef, panel);
     await settle();
   };
   const said = (who) =>
@@ -873,7 +897,7 @@ test('SEND HELP, the home list and SAVE DIRECTORY post what the design names', a
         },
       };
       globalThis.confirm = () => false;
-      panel.dispatch('click', { target: byId('ultra-inbox-read-all') });
+      pressRead(documentRef, panel);
       await settle();
       assert.equal(byId('ultra-release-send').textContent, 'EXTEND HELP');
       assert.equal(byId('ultra-release-stand-down').hidden, false);
@@ -937,7 +961,7 @@ test('SEND HELP, the home list and SAVE DIRECTORY post what the design names', a
       byId('ultra-network-entry-note').textContent,
       'Send this to whoever keeps the directory, or paste it into the file yourself. Anyone who can read the directory sees where your phone is and threat type while you have pressed SEND HELP and have Network On.',
     );
-    panel.dispatch('click', { target: byId('ultra-inbox-read-all') });
+    pressRead(documentRef, panel);
     await settle();
     assert.equal(entryBox.hidden, false, 'the poll cannot wipe the entry');
     panel.dispatch('click', { target: byId('ultra-network-entry-hide') });
@@ -1539,7 +1563,7 @@ test('the package choice follows a new call until the owner picks, offers a remo
   const restoreConfirm = withConfirm(() => true);
   /* What the next poll paints: any answered request repaints the box. */
   const repaint = async () => {
-    panel.dispatch('click', { target: byId('ultra-inbox-read-all') });
+    pressRead(documentRef, panel);
     await settle();
   };
   try {
@@ -3613,4 +3637,365 @@ test('splitUltraHandout() only ever splits a legacy link with the token box empt
     address: '',
     token: '',
   });
+});
+
+test('DISPLAY ULTRA ON MAP is the device layer switch, and the period picks how much path the map draws', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const windowRef = fakeWindow();
+  let enabled = false;
+  const listeners = new Set();
+  const setCalls = [];
+  const dataManager = {
+    isEnabled: (id) => id === 'device-feeds' && enabled,
+    subscribe(fn) {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    async setEnabled(id, on, options) {
+      setCalls.push([id, on, options]);
+      enabled = on;
+      for (const fn of listeners) fn({ layerId: id });
+      return true;
+    },
+  };
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => ({ unread: 0, inbox: [], tokens: [], packages: [] }),
+  });
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef,
+    dataManager,
+  });
+  try {
+    await settle();
+    const box = byId('ultra-map-show');
+    assert.equal(box.checked, false, 'the layer is off');
+    /* The layer comes on by itself (auto display): the box follows. */
+    enabled = true;
+    for (const fn of listeners) fn({ layerId: 'device-feeds' });
+    assert.equal(box.checked, true);
+    /* Unticked by its owner: switched off as a user choice. */
+    box.checked = false;
+    panel.dispatch('change', { target: box });
+    await settle();
+    assert.deepEqual(setCalls, [['device-feeds', false, { origin: 'user' }]]);
+    assert.equal(box.checked, false);
+    /* A period is passed to the map; an unknown one falls back to 30 days. */
+    const period = byId('ultra-map-period');
+    period.value = '24h';
+    panel.dispatch('change', { target: period });
+    period.value = 'forever';
+    panel.dispatch('change', { target: period });
+    assert.equal(period.value, '30d');
+    assert.deepEqual(
+      windowRef.dispatched.filter(
+        (event) => event.type === DEVICE_FEEDS_HISTORY_EVENT,
+      ),
+      [
+        { type: DEVICE_FEEDS_HISTORY_EVENT, detail: { period: '24h' } },
+        { type: DEVICE_FEEDS_HISTORY_EVENT, detail: { period: '30d' } },
+      ],
+    );
+    /* PRIVATE CCTV ON MAP switches the Private CCTV Cams layer the same way. */
+    const privateBox = byId('ultra-private-cams');
+    privateBox.checked = true;
+    panel.dispatch('change', { target: privateBox });
+    await settle();
+    assert.deepEqual(setCalls.at(-1), [
+      'private-cctv',
+      true,
+      { origin: 'user' },
+    ]);
+  } finally {
+    handle.destroy();
+  }
+  assert.equal(listeners.size, 0, 'destroy stops watching the layer');
+});
+
+test('the Ultra box period list matches the map layer periods', () => {
+  const html = fs.readFileSync(
+    new URL('./ui/templates/layer-panels.html', import.meta.url),
+    'utf8',
+  );
+  const select = html.slice(
+    html.indexOf('id="ultra-map-period"'),
+    html.indexOf('</select>', html.indexOf('id="ultra-map-period"')),
+  );
+  const values = [...select.matchAll(/<option value="([^"]+)"/g)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(
+    values,
+    DEVICE_HISTORY_PERIODS.map((period) => period.id),
+  );
+  assert.match(select, /<option value="30d" selected>/);
+});
+
+test('ULTRA CELLS: any number, each with its own ON MAP tick; SHOW ALL and + ADD ULTRA CELL', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const windowRef = fakeWindow();
+  let enabled = false;
+  const dataManager = {
+    isEnabled: () => enabled,
+    subscribe: () => () => {},
+    async setEnabled(id, on) {
+      enabled = on;
+      return true;
+    },
+  };
+  let packages = [
+    {
+      id: 'security-ann',
+      name: 'Ann',
+      mapId: 'device-security-ann',
+      camLink: 'http://pc.example:44173/ultra/KEY-A/cam',
+    },
+    {
+      id: 'security-bob',
+      name: 'Bob',
+      mapId: 'device-security-bob',
+      camLink: '',
+    },
+  ];
+  const posted = [];
+  const fetchImpl = async (url, options = {}) => {
+    if (url === '/api/device-feeds/config') {
+      const body = JSON.parse(options.body);
+      posted.push(body);
+      packages = [
+        ...packages,
+        {
+          id: 'security-cy',
+          name: body.name,
+          mapId: 'device-security-cy',
+          camLink: '',
+        },
+      ];
+      return { ok: true, json: async () => ({}) };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        unread: 0,
+        inbox: [],
+        tokens: [],
+        packages,
+        editable: true,
+      }),
+    };
+  };
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef,
+    dataManager,
+  });
+  const inputs = () => byId('ultra-cells').querySelectorAll('input');
+  const ticks = () =>
+    inputs()
+      .filter((box) => box.dataset.ultraCellMap)
+      .map((box) => [box.dataset.ultraCellMap, box.checked]);
+  const pathTicks = () =>
+    inputs()
+      .filter((box) => box.dataset.ultraCellPath)
+      .map((box) => [box.dataset.ultraCellPath, box.checked]);
+  const button = (action, cellId) =>
+    byId('ultra-cells')
+      .querySelectorAll('button')
+      .find(
+        (item) =>
+          item.dataset.ultraCellAction === action &&
+          item.dataset.ultraCellId === cellId,
+      );
+  const visible = () =>
+    windowRef.dispatched
+      .filter((event) => event.type === DEVICE_FEEDS_VISIBLE_EVENT)
+      .map((event) => event.detail.hidden);
+  try {
+    await settle();
+    assert.deepEqual(ticks(), [
+      ['device-security-ann', true],
+      ['device-security-bob', true],
+    ]);
+    assert.equal(byId('ultra-cells-count').textContent, '· 2');
+    assert.equal(
+      byId('ultra-cells').querySelectorAll('a').length,
+      0,
+      'no phone link button in the rows',
+    );
+    /* Ann alone: Bob is left off the map. */
+    const bob = inputs().find(
+      (box) => box.dataset.ultraCellMap === 'device-security-bob',
+    );
+    bob.checked = false;
+    panel.dispatch('change', { target: bob });
+    assert.deepEqual(visible(), [['device-security-bob']]);
+    assert.deepEqual(ticks()[1], ['device-security-bob', false]);
+    /* Ann without her path. */
+    const annPath = inputs().find(
+      (box) => box.dataset.ultraCellPath === 'device-security-ann',
+    );
+    annPath.checked = false;
+    panel.dispatch('change', { target: annPath });
+    assert.deepEqual(
+      windowRef.dispatched
+        .filter((event) => event.type === DEVICE_FEEDS_VISIBLE_EVENT)
+        .at(-1).detail,
+      { hidden: ['device-security-bob'], noPath: ['device-security-ann'] },
+    );
+    assert.deepEqual(pathTicks(), [
+      ['device-security-ann', false],
+      ['device-security-bob', true],
+    ]);
+    /* ONLY Bob: Ann leaves the map. */
+    panel.dispatch('click', { target: button('only', 'device-security-bob') });
+    assert.deepEqual(visible().at(-1), ['device-security-ann']);
+    /* MAP Ann: back on the map, then the map flies to her. */
+    panel.dispatch('click', { target: button('map', 'device-security-ann') });
+    assert.deepEqual(visible().at(-1), []);
+    assert.deepEqual(windowRef.dispatched.at(-1), {
+      type: DEVICE_FEEDS_FOCUS_EVENT,
+      detail: { id: 'device-security-ann' },
+    });
+    /* SHOW ALL: every cell and every path together, and the layer is on. */
+    panel.dispatch('click', { target: byId('ultra-cells-all') });
+    await settle();
+    assert.deepEqual(visible().at(-1), []);
+    assert.deepEqual(
+      pathTicks().map(([, on]) => on),
+      [true, true],
+    );
+    assert.equal(enabled, true);
+    /* A third cell is added from the box; it is not the one the map follows. */
+    byId('ultra-cell-name').value = 'Cy';
+    panel.dispatch('submit', {
+      target: byId('ultra-cell-add'),
+      preventDefault() {},
+    });
+    await settle();
+    await settle();
+    assert.deepEqual(posted, [
+      {
+        kind: 'security',
+        name: 'Cy',
+        method: 'report-in',
+        follow: false,
+        record: true,
+      },
+    ]);
+    assert.equal(byId('ultra-cell-name').value, '');
+    assert.equal(ticks().length, 3);
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('RECORD WITHIN: each Ultra cell chooses how far around it is recorded, up to 50 km, or not at all', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const windowRef = fakeWindow();
+  let packages = [
+    {
+      id: 'security-ann',
+      name: 'Ann',
+      mapId: 'device-security-ann',
+      method: 'report-in',
+      record: true,
+      recordKm: 10,
+    },
+    {
+      id: 'security-bob',
+      name: 'Bob',
+      mapId: 'device-security-bob',
+      method: 'report-in',
+      record: true,
+      recordKm: null,
+    },
+  ];
+  const posted = [];
+  const fetchImpl = async (url, options = {}) => {
+    if (url === '/api/device-feeds/config') {
+      const body = JSON.parse(options.body);
+      posted.push(body);
+      packages = packages.map((cell) =>
+        cell.id === body.id
+          ? {
+              ...cell,
+              record: body.record,
+              recordKm: body.recordKm ?? cell.recordKm,
+            }
+          : cell,
+      );
+      return { ok: true, json: async () => ({}) };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        unread: 0,
+        inbox: [],
+        tokens: [],
+        packages,
+        editable: true,
+      }),
+    };
+  };
+  const handle = initUltraHelpPanel({ documentRef, fetchImpl, windowRef });
+  const selects = () =>
+    byId('ultra-cells')
+      .querySelectorAll('select')
+      .filter((select) => select.dataset.ultraCellRecord);
+  try {
+    await settle();
+    assert.deepEqual(
+      selects().map((select) => [select.dataset.ultraCellRecord, select.value]),
+      [
+        ['security-ann', '10'],
+        ['security-bob', '50'],
+      ],
+    );
+    assert.deepEqual(
+      selects()[0]
+        .children.map((option) => option.textContent)
+        .slice(0, 3),
+      ['Record off', 'Record within 1 km', 'Record within 2 km'],
+    );
+    assert.equal(
+      selects()[0].children.at(-1).textContent,
+      'Record within 50 km',
+    );
+    /* Ann records within 25 km. */
+    selects()[0].value = '25';
+    panel.dispatch('change', { target: selects()[0] });
+    await settle();
+    await settle();
+    /* Bob records nothing. */
+    selects()[1].value = 'off';
+    panel.dispatch('change', { target: selects()[1] });
+    await settle();
+    await settle();
+    assert.deepEqual(posted, [
+      {
+        id: 'security-ann',
+        kind: 'security',
+        name: 'Ann',
+        method: 'report-in',
+        record: true,
+        recordKm: 25,
+      },
+      {
+        id: 'security-bob',
+        kind: 'security',
+        name: 'Bob',
+        method: 'report-in',
+        record: false,
+      },
+    ]);
+    assert.deepEqual(
+      selects().map((select) => select.value),
+      ['25', 'off'],
+    );
+  } finally {
+    handle.destroy();
+  }
 });

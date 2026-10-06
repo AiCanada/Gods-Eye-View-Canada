@@ -413,7 +413,18 @@ test('mint: a sealed token, a write-once key, and a status that never carries th
     assert.equal(status.editable, true);
     assert.equal(status.tokenStore, 'ok');
     assert.equal(status.helpBase, 'http://192.168.1.5:44173/ultra/help/');
-    assert.deepEqual(status.packages, [{ id: 'security-van', name: 'Van 7' }]);
+    // Each Ultra cell carries its map id, never its key.
+    assert.deepEqual(status.packages, [
+      {
+        id: 'security-van',
+        name: 'Van 7',
+        mapId: 'device-security-van',
+        method: 'http-json',
+        record: false,
+        recordKm: null,
+      },
+    ]);
+    assert.match(status.camLink, /\/ultra\/[A-Za-z0-9_-]{43}\/cam$/);
     assert.equal(status.ownerNumber, '');
     assert.deepEqual([status.inbox, status.unread], [[], 0]);
     assert.ok(Array.isArray(status.models));

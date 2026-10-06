@@ -30,6 +30,7 @@ import { localGeoJsonServices } from './localGeojsonServices.js';
 import { createBhoteKoshiEventLayer } from '../data/bhoteKoshiEvent.js';
 import { createBhoteKoshiLocatorLayer } from '../data/bhoteKoshiLocator.js';
 import { createDeviceFeedsLayer } from '../data/deviceFeeds.js';
+import { createPrivateCctvLayer } from '../data/privateCctv.js';
 
 const SOURCE_METHODS = Object.freeze({
   flights: ['getSnapshot'],
@@ -169,6 +170,9 @@ export function createApplicationCatalog({
         // Fork: YOUR DEVICES (POWER UP device feeds). It reaches the map only
         // through the dev server's same-origin /api/device-feeds routes.
         createDeviceFeedsLayer(),
+        // Fork: PRIVATE CCTV CAMS, the switch for this machine's own cameras,
+        // which the Cameras layer draws.
+        createPrivateCctvLayer(),
         createWindLayer({ feed: sources.wind, clock: weatherClock }),
         createWeatherLayer({
           feed: sources.weather,

@@ -442,17 +442,19 @@
   letter-spacing: 0.035rem;
 }
 
-/* Keep the complete inline attribution row above the command dock. */
+/* The complete inline attribution row sits at the very bottom of the screen
+   (owner ruling, 2026-10-06), under the command dock, which rises just
+   enough to keep it uncovered (command-dock.css). */
 body:not(.ui-clean-view):not(.recording-mode) #cesium-credits,
 body:not(.ui-clean-view):not(.recording-mode):has(
     #intel-hud[data-variant='minimal'].active
   )
   #cesium-credits {
   right: auto;
-  bottom: calc(2vh + 5rem);
-  left: 1.5rem;
+  bottom: 2px;
+  left: 0.75rem;
   width: auto !important;
-  max-width: calc(100vw - 3rem);
+  max-width: calc(100vw - 1.5rem);
   text-align: left;
 }
 
@@ -492,7 +494,7 @@ body:not(.ui-clean-view):not(.recording-mode):has(
       #intel-hud[data-variant='minimal'].active
     )
     #cesium-credits {
-    bottom: calc(2vh + 5rem);
+    bottom: 2px;
     left: 0.75rem;
     max-width: calc(100vw - 1.5rem);
   }

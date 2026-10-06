@@ -110,10 +110,32 @@
       <!-- Help messages from token holders sit first under the status line: an incoming plea outranks the camera controls. -->
       <div class="cctv-summary-label">HELP MESSAGES <span id="ultra-inbox-count"></span></div>
       <div id="ultra-inbox" class="ultra-inbox"></div>
-      <div class="cctv-controls">
+      <div class="cctv-controls ultra-read-row">
         <label class="ultra-match"><input id="ultra-read-aloud" type="checkbox" checked> Read new help messages aloud</label>
-        <button id="ultra-inbox-read-all" class="scene-btn" type="button">MARK ALL READ</button>
+        <label class="ultra-match"><input id="ultra-private-cams" type="checkbox"> Private CCTV on map</label>
       </div>
+      <div class="cctv-controls ultra-map-controls">
+        <label class="ultra-match"><input id="ultra-map-show" type="checkbox"> Display Ultra history on map</label>
+        <select id="ultra-map-period" aria-label="How much of the Ultra holders' path the map shows" title="How much of each Ultra holder's path over time the map shows">
+          <option value="live">Live only</option>
+          <option value="1h">Last hour</option>
+          <option value="6h">Last 6 hours</option>
+          <option value="24h">Last 24 hours</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d" selected>Last 30 days</option>
+          <option value="365d">Last year</option>
+        </select>
+      </div>
+      <div class="cctv-summary-label">ULTRA CELLS <span id="ultra-cells-count"></span></div>
+      <div id="ultra-cells" class="ultra-cells"></div>
+      <div class="cctv-controls">
+        <button id="ultra-cells-all" class="scene-btn" type="button" title="Every Ultra cell and every path on the map at the same time">SHOW ALL ON MAP</button>
+      </div>
+      <form id="ultra-cell-add" class="cctv-controls ultra-contact">
+        <input id="ultra-cell-name" type="text" maxlength="60" placeholder="Name of another Ultra cell" aria-label="Name of another Ultra cell" autocomplete="off">
+        <button id="ultra-cell-add-btn" class="scene-btn" type="submit">+ ADD ULTRA CELL</button>
+      </form>
+      <p id="ultra-cell-note" class="ultra-note" hidden></p>
       <div class="cctv-controls">
         <select id="ultra-model" aria-label="Ultra phone model">
           <option value="generic-cell">Generic cell</option>
@@ -122,11 +144,11 @@
           <option value="oppo">Oppo</option>
           <option value="vivo">Vivo</option>
           <option value="xiaomi">Xiaomi</option>
-          <option value="samsung-s26">Samsung Galaxy S26</option>
-          <option value="samsung-s22-ultra" selected>Samsung Galaxy S22 Ultra</option>
-          <option value="samsung-z8">Samsung Galaxy Z8</option>
-          <option value="samsung-z3">Samsung Galaxy Z3</option>
-          <option value="samsung-z-fold">Samsung Galaxy Z Fold</option>
+          <option value="samsung-s26">Galaxy S26</option>
+          <option value="samsung-s22-ultra" selected>Galaxy S22 Ultra</option>
+          <option value="samsung-z8">Galaxy Z8</option>
+          <option value="samsung-z3">Galaxy Z3</option>
+          <option value="samsung-z-fold">Galaxy Z Fold</option>
         </select>
       </div>
       <div class="cctv-controls">
