@@ -1346,7 +1346,8 @@
       "src/layers/cctv/area.js",
       "src/data/cctvCardResize.js",
       "src/data/cctvCardAlign.js",
-      "src/data/cctvPrivateMove.js"
+      "src/data/cctvPrivateMove.js",
+      "src/data/privateCctv.js"
     ],
     "external": ["hls.js", "cesium"]
   },
@@ -2293,6 +2294,7 @@
       "src/data/cctvBrowserDirect.js",
       "src/layers/cctv/area.js",
       "src/data/cctvPrivateMove.js",
+      "src/data/privateCctv.js",
       "src/data/cctvCardResize.js",
       "src/data/cctvCardAlign.js",
       "src/data/deviceRecorder.js",
@@ -2810,7 +2812,8 @@
       "src/layers/cctv/area.js",
       "src/data/cctvCardAlign.js",
       "src/data/cctvCardResize.js",
-      "src/data/cctvPrivateMove.js"
+      "src/data/cctvPrivateMove.js",
+      "src/data/privateCctv.js"
     ],
     "external": [
       "hls.js",
