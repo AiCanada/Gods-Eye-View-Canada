@@ -8,7 +8,7 @@ does the work; the phone shows the same dashboard in the same PC layout.
 | File | What it does |
 | --- | --- |
 | `tailnet-dashboard.js` | A second listener for the dev server on this PC's Tailscale address only (100.64.0.0/10), never on Wi-Fi or a public address. Only devices signed in to **your** Tailscale account get in (checked with `tailscale whois`); anyone else's device is refused everything. |
-| `viewport-mode.js` | Runs first in the page. On a touch screen it lays the dashboard out at 1024 px (the PC layout) and scales it to fit. Upright, it shows a hint to turn the phone sideways. DISPLAY → Screen switches to the phone layout and back. |
+| `viewport-mode.js` | Runs first in the page. On a touch screen it lays the dashboard out at 1024 px (the PC layout) and scales it to fit. Upright, it shows a hint to turn the phone sideways. The PC view is the only view on every screen, folded or open. |
 | `phone-profiles.mjs` | The screens of the phones listed on the Ultra tab, for testing. |
 | `phone-audit.mjs` | Opens the dashboard as each listed phone (sideways and upright) and reports layout, text size, tap targets, refused requests and errors, with screenshots. |
 

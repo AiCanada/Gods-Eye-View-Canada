@@ -53,7 +53,16 @@ import {
  * per-frame callback (see the measurements in earthquakes.js).
  */
 
+/** Whether this page is the dashboard on the PC itself (localhost), where recording happens. */
+export function recordsOnThisMachine(hostname = globalThis.location?.hostname) {
+  const host = String(hostname || '').replace(/^[|]$/g, '');
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+}
+
 const POSITIONS_URL = '/api/device-feeds/positions';
+/** How often a switched-off device layer asks whether a device is reporting. */
+export const DEVICE_FEEDS_AUTO_SHOW_MS = 60_000;
+const OWNER_CHOICE_ORIGINS = new Set(['user', 'voice', 'tool']);
 const TRACK_URL = '/api/device-feeds/track/';
 /** The Ultra box's newest phone, or one phone package's own picture by its public id. */
 const ULTRA_PICTURE_PATH =
@@ -245,7 +254,9 @@ export function createDeviceFeedsLayer({
   applyFollowFrame = applyTrackedCameraFrame,
   refreshReadout = refreshTrackedReadout,
   recorder = null,
+  recordsHere = recordsOnThisMachine,
   hitTestOverlay = hitTestWorldOverlay,
+  autoShowMs = DEVICE_FEEDS_AUTO_SHOW_MS,
 } = {}) {
   const _recorder = recorder || createDeviceRecorder({ fetchImpl, now });
   let _viewer = null;
@@ -257,6 +268,7 @@ export function createDeviceFeedsLayer({
   let _lastError = null;
   let _onChanged = null;
   let _onFocus = null;
+  let _autoShowTimer = null;
   /** A device the Ultra box asked to fly to before the poll brought it. */
   let _pendingFocusId = null;
   /** The follow: {id, entity, from, to, startedAt, stopFrame, removeChanged, removeClick} or null. */
@@ -704,6 +716,30 @@ export function createDeviceFeedsLayer({
         tryFocus();
       };
       windowRef.addEventListener(DEVICE_FEEDS_FOCUS_EVENT, _onFocus);
+      // A device that is reporting shows on the map by itself: while the layer
+      // is off it asks now and then, and comes on once one is live. Switched
+      // off by the owner (a click, voice or a tool), it stays off.
+      const autoShow = async () => {
+        if (_enabled) return;
+        const entry = _dataManager?.layers?.get?.(DEVICE_FEEDS_LAYER_ID);
+        if (OWNER_CHOICE_ORIGINS.has(entry?.visibilityIntentOrigin)) return;
+        try {
+          const response = await fetchImpl(POSITIONS_URL, {
+            cache: 'no-store',
+            credentials: 'same-origin',
+          });
+          if (!response.ok || _enabled) return;
+          const rows = normalizeDevicePositions(await response.json());
+          if (rows?.some((row) => row.live))
+            await _dataManager?.setEnabled?.(DEVICE_FEEDS_LAYER_ID, true);
+        } catch {
+          // No server or no answer: asked again next time.
+        }
+      };
+      if (autoShowMs > 0 && windowRef.setInterval) {
+        windowRef.setTimeout?.(autoShow, 2_000);
+        _autoShowTimer = windowRef.setInterval(autoShow, autoShowMs);
+      }
     },
 
     init(viewer) {
@@ -764,8 +800,11 @@ export function createDeviceFeedsLayer({
         _lastError = silent
           ? `${silent} of ${rows.length} not answering`
           : null;
-        if (_enabled) {
-          syncFollow(rows);
+        if (_enabled) syncFollow(rows);
+        // Recording is the PC's job: the server saves only from this machine,
+        // so a phone viewing the dashboard over the tailnet does not try (and
+        // never shows a recording error); the route still draws on it.
+        if (_enabled && recordsHere()) {
           // Not awaited: a slow save never holds up the next position.
           _recorder
             .tick(rows, _dataManager, {
@@ -799,6 +838,8 @@ export function createDeviceFeedsLayer({
         windowRef.removeEventListener(DEVICE_FEEDS_FOCUS_EVENT, _onFocus);
       }
       _onFocus = null;
+      if (_autoShowTimer !== null) windowRef?.clearInterval?.(_autoShowTimer);
+      _autoShowTimer = null;
       _pendingFocusId = null;
       overlayHost.clearSource(DEVICE_FEEDS_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(DEVICE_FEEDS_OVERLAY_SOURCE_ID, false);

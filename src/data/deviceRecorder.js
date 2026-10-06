@@ -185,6 +185,12 @@ export function createDeviceRecorder({
               body: JSON.stringify({ layers }),
             },
           );
+          // 409: no fresh position from the device, so nothing to record now;
+          // not a failure (the next tick tries again).
+          if (response.status === 409) {
+            results.push({ id: device.id, saved: 0, skipped: true });
+            continue;
+          }
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const payload = await response.json().catch(() => ({}));
           state.memory = trial;

@@ -1,31 +1,16 @@
 /*
- * Mirror of PC GEVC on Cell: the PC layout on a phone or tablet. Runs before
- * the page's styles and modules, so every size rule and every panel sees the
- * layout chosen here.
+ * Mirror of PC GEVC on Cell: the PC view on a phone or tablet, the only view
+ * (the cell view was removed, owner's choice). Runs before the page's styles
+ * and modules, so every size rule and every panel sees the PC layout.
  *
- * Each kind of screen keeps its own choice, so a foldable is right on both of
- * its screens:
- *   - cover: a fold's narrow outer screen (under 380 px across): the phone
- *     layout unless chosen otherwise, as the PC layout cannot fit it;
- *   - phone: an ordinary phone screen: the PC layout;
- *   - large: an unfolded fold or a tablet: the PC layout.
- * In the PC layout the page is laid out at 1024 px (wide enough for every PC
- * size rule, which start at 961 px) and scaled to fit; pinch to zoom. Held
- * upright on a phone, a hint says to turn it sideways. DISPLAY > Screen (or
- * ?layout=pc / ?layout=phone) sets the choice for the screen in use. Folding
- * or unfolding moves to the other screen and reloads into its layout; turning
- * the phone sideways does not. A PC never changes.
+ * On a touch screen narrower than a PC the page is laid out at 1024 px (wide
+ * enough for every PC size rule, which start at 961 px) and scaled to fit;
+ * pinch to zoom. Held upright on a phone, a hint says to turn it sideways. A
+ * PC never changes.
  */
 (function () {
-  var KEY = 'gev.layoutMode';
   var HINT_KEY = 'gev.layoutHintDismissed';
   var PC_WIDTH = 1024;
-  var NAMES = {
-    cover: 'Cover screen',
-    phone: 'Phone screen',
-    large: 'Large screen',
-  };
-  var DEFAULTS = { cover: 'phone', phone: 'pc', large: 'pc' };
 
   function screenKind() {
     var across = Math.min(screen.width || 0, screen.height || 0);
@@ -33,41 +18,13 @@
     if (across < 600) return 'phone';
     return 'large';
   }
-  function read(key) {
-    try {
-      return localStorage.getItem(key);
-    } catch (error) {
-      return null;
-    }
-  }
-  function write(key, value) {
-    try {
-      localStorage.setItem(key, value);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
 
   var kind = screenKind();
-  var kindKey = KEY + '.' + kind;
-  // A choice made before screens were told apart counts for phone and large screens.
-  var mode =
-    read(kindKey) || (kind === 'cover' ? null : read(KEY)) || DEFAULTS[kind];
-  try {
-    var asked = new URLSearchParams(location.search).get('layout');
-    if (asked === 'pc' || asked === 'phone') {
-      mode = asked;
-      write(kindKey, mode);
-    }
-  } catch (error) {
-    /* an old browser without URLSearchParams keeps the saved choice */
-  }
-  if (mode !== 'phone') mode = 'pc';
+  var mode = 'pc';
   var touch =
     window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
   var narrow = Math.min(screen.width || 0, screen.height || 0) < PC_WIDTH;
-  var mirrored = touch && narrow && mode === 'pc';
+  var mirrored = touch && narrow;
   var root = document.documentElement;
   root.setAttribute('data-touch-device', touch ? 'true' : 'false');
   root.setAttribute('data-screen-kind', kind);
@@ -98,60 +55,6 @@
     setTimeout(setBoost, 300);
   });
   window.addEventListener('resize', setBoost);
-
-  /** Reload without ?layout=, so the screen now in use applies its own choice. */
-  function reloadForScreen(choice) {
-    var url = new URL(location.href);
-    url.searchParams.delete('layout');
-    // Kept in the address only when this browser keeps nothing.
-    if (choice && !write(KEY + '.' + screenKind(), choice))
-      url.searchParams.set('layout', choice);
-    // An address that differs only after "#" would not reload the page (the
-    // layout is chosen before it loads), so reload in place when it is the same.
-    var here = new URL(location.href);
-    if (url.pathname + url.search === here.pathname + here.search)
-      location.reload();
-    else location.replace(url.href);
-  }
-
-  // Folding or unfolding changes the screen: reload into its layout. Turning
-  // the phone sideways keeps the same kind of screen and changes nothing.
-  if (touch) {
-    var settle = null;
-    window.addEventListener('resize', function () {
-      clearTimeout(settle);
-      settle = setTimeout(function () {
-        if (screenKind() !== kind) reloadForScreen(null);
-      }, 700);
-    });
-  }
-
-  /**
-   * The one place to switch views: a PC / CELL button in the top toolbar.
-   * It names the view it switches to, for the screen in use.
-   */
-  function addLayoutSwitch() {
-    var bar = document.getElementById('top-center-actions');
-    if (!bar || document.getElementById('layout-switch')) return;
-    var next = mode === 'pc' ? 'phone' : 'pc';
-    var name = next === 'pc' ? 'PC' : 'CELL';
-    var button = document.createElement('button');
-    button.type = 'button';
-    button.id = 'layout-switch';
-    button.textContent = name;
-    var about =
-      'Switch this ' +
-      NAMES[kind].toLowerCase() +
-      ' to the ' +
-      (next === 'pc' ? 'PC' : 'cell') +
-      ' view';
-    button.title = about;
-    button.setAttribute('aria-label', about);
-    button.addEventListener('click', function () {
-      reloadForScreen(next);
-    });
-    bar.append(button);
-  }
 
   /**
    * A tap anywhere on a closed panel's box opens it; a tap on an open panel's
@@ -335,7 +238,6 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     if (touch) {
-      addLayoutSwitch();
       tapPanelBoxes();
       fitCollapsedTitles();
     }
@@ -352,7 +254,7 @@
     hint.setAttribute('role', 'status');
     var text = document.createElement('span');
     text.textContent =
-      'PC view: turn your phone sideways to read it, or pinch to zoom. CELL at the top switches views. ';
+      'PC view: turn your phone sideways to read it, or pinch to zoom. ';
     var close = document.createElement('button');
     close.type = 'button';
     close.textContent = 'OK';

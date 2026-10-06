@@ -1242,12 +1242,22 @@ function reportTime(value) {
  * whatever the app speaks, in this order:
  *  - Traccar Client / OsmAnd protocol and GPSLogger: `lat`, `lon`, `timestamp`,
  *    `speed` (knots), `bearing`, `altitude`, in the query string or a form body;
+ *  - Traccar Client 9 and later (JSON): `{location: {timestamp, coords:
+ *    {latitude, longitude, speed (m/s), heading, altitude}}, device_id}`, or
+ *    `location` as a list of buffered fixes, the newest kept;
  *  - OwnTracks (HTTP mode): `{_type: "location", lat, lon, tst, vel (km/h), cog, alt}`;
  *  - Overland: `{locations: [GeoJSON Feature, ...]}`, the last one;
  *  - any other JSON with a point in it.
  * @param {{params?: object, json?: any}} report
  * @returns {{protocol: string, position: {lat:number, lon:number, altM:number|null, headingDeg:number|null, speedMps:number|null, at:number|null}}|null}
  */
+/** The device identifier a JSON report carries (Traccar Client 9+: device_id), or ''. */
+export function reportJsonDeviceId(json) {
+  if (!json || typeof json !== 'object') return '';
+  const value = json.device_id ?? json.deviceId ?? json.id ?? json.deviceid;
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 export function parseDeviceReport({ params = {}, json } = {}) {
   const p = params || {};
   const qLat = num(p.lat ?? p.latitude);
@@ -1269,6 +1279,37 @@ export function parseDeviceReport({ params = {}, json } = {}) {
     };
   }
   if (json && typeof json === 'object') {
+    if (json.location && typeof json.location === 'object') {
+      const fixes = (
+        Array.isArray(json.location) ? json.location : [json.location]
+      )
+        .map((fix) => {
+          const c = fix?.coords || {};
+          const lat = num(c.latitude);
+          const lon = num(c.longitude);
+          if (!validPoint(lat, lon)) return null;
+          // -1 is the app's "not known" for speed and heading.
+          const speed = num(c.speed);
+          const heading = num(c.heading);
+          return {
+            lat,
+            lon,
+            altM: num(c.altitude),
+            headingDeg: heading === null || heading < 0 ? null : heading,
+            speedMps: speed === null || speed < 0 ? null : speed,
+            at: reportTime(fix.timestamp),
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+      if (fixes.length)
+        return {
+          protocol: 'traccar-json',
+          position: fixes[fixes.length - 1],
+          // Every buffered fix, oldest first, so a trip sent late is kept whole.
+          positions: fixes,
+        };
+    }
     if (json._type === 'location') {
       const lat = num(json.lat);
       const lon = num(json.lon);

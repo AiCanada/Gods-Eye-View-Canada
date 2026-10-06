@@ -654,14 +654,16 @@ test('a phone reports in by its key alone; the map and the recorder see where it
     (await request('/report/short?lat=45&lon=-66', phone)).status,
     404,
   );
+  // Reports dated now: a recording device whose last report is old records nothing.
+  const nowS = Math.floor(Date.now() / 1000);
   const taken = await request(
-    `/report/${feed.reportKey}?id=123&lat=45.27&lon=-66.06&timestamp=1700000000&speed=10&bearing=90`,
+    `/report/${feed.reportKey}?id=123&lat=45.27&lon=-66.06&timestamp=${nowS - 10}&speed=10&bearing=90`,
     phone,
   );
   assert.deepEqual([taken.status, taken.bytes.toString()], [200, 'OK']);
   // Traccar Client's own shape: the key as the device identifier, POST with an empty body.
   const asId = await request(
-    `/report?id=${feed.reportKey}&lat=45.28&lon=-66.07&timestamp=1700000010`,
+    `/report?id=${feed.reportKey}&lat=45.28&lon=-66.07&timestamp=${nowS}`,
     { ...phone, method: 'POST', body: '' },
   );
   assert.equal(asId.status, 200);
@@ -2086,4 +2088,145 @@ test('the report listener holds no more connections than its cap', async () => {
     httpServer.emit('close');
     plugin.stopReportListener();
   }
+});
+
+test('a recording device whose last report is old records nothing, so no trip is drawn that never happened', async () => {
+  const root = tempRoot();
+  const { request } = harness(
+    deviceFeedsProxy({ sourceRoot: root, listen: false }),
+  );
+  const saved = await request('/config', {
+    method: 'POST',
+    headers: pageHeaders(),
+    body: {
+      kind: 'security',
+      name: 'Samsung',
+      method: 'report-in',
+      record: true,
+    },
+  });
+  const feed = saved.json().status.kinds.find((kind) => kind.id === 'security')
+    .feeds[0];
+  const phone = {
+    remoteAddress: '10.66.0.2',
+    headers: { host: '10.66.0.1:44173' },
+  };
+  const twoHoursAgo = Math.floor(Date.now() / 1000) - 2 * 3600;
+  assert.equal(
+    (
+      await request(
+        `/report/${feed.reportKey}?lat=45.27&lon=-66.06&timestamp=${twoHoursAgo}`,
+        phone,
+      )
+    ).status,
+    200,
+  );
+  const record = await request('/record/device-security-samsung', {
+    method: 'POST',
+    headers: pageHeaders(),
+    body: { center: { lat: 45.27, lon: -66.06 }, items: [] },
+  });
+  assert.equal(record.status, 409);
+  assert.match(record.json().error, /No fresh position/);
+  // A fresh report makes it record again.
+  assert.equal(
+    (
+      await request(
+        `/report/${feed.reportKey}?lat=45.28&lon=-66.07&timestamp=${Math.floor(Date.now() / 1000)}`,
+        phone,
+      )
+    ).status,
+    200,
+  );
+  const fresh = await request('/record/device-security-samsung', {
+    method: 'POST',
+    headers: pageHeaders(),
+    body: { center: { lat: 45.28, lon: -66.07 }, items: [] },
+  });
+  assert.equal(fresh.status, 200, fresh.bytes.toString());
+});
+
+test('Traccar Client 9 and later: the key in a JSON body (device_id), every buffered fix kept', async () => {
+  const root = tempRoot();
+  const { request } = harness(
+    deviceFeedsProxy({ sourceRoot: root, listen: false }),
+  );
+  const saved = await request('/config', {
+    method: 'POST',
+    headers: pageHeaders(),
+    body: {
+      kind: 'security',
+      name: 'Samsung',
+      method: 'report-in',
+      record: true,
+    },
+  });
+  const feed = saved.json().status.kinds.find((kind) => kind.id === 'security')
+    .feeds[0];
+  const phone = {
+    remoteAddress: '10.66.0.2',
+    method: 'POST',
+    headers: {
+      host: '10.66.0.1:44173',
+      'content-type': 'application/json',
+      'user-agent': 'ktor-client',
+    },
+  };
+  const now = Date.now();
+  const fix = (lat, lon, at) => ({
+    timestamp: new Date(at).toISOString(),
+    coords: {
+      latitude: lat,
+      longitude: lon,
+      speed: 1.4,
+      heading: -1,
+      altitude: 12,
+    },
+  });
+  const taken = await request('/report', {
+    ...phone,
+    body: {
+      location: [fix(45.2, -66.2, now - 1000), fix(45.1, -66.1, now - 120000)],
+      device_id: feed.reportKey,
+    },
+  });
+  assert.equal(taken.status, 200, taken.bytes.toString());
+  const placed = (
+    await request('/positions', {
+      headers: { 'sec-fetch-site': 'same-origin' },
+    })
+  ).json().devices[0];
+  assert.deepEqual(
+    [placed.lat, placed.lon, placed.live],
+    [45.2, -66.2, true],
+    'the newest fix places it',
+  );
+  // Both buffered fixes were saved to the route, oldest first.
+  const folder = path.join(
+    root,
+    'config',
+    'device-recordings',
+    'security-samsung',
+  );
+  const day = fs
+    .readdirSync(folder)
+    .filter((name) => /\.jsonl$/.test(name))
+    .sort()
+    .pop();
+  const route = fs
+    .readFileSync(path.join(folder, day), 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line))
+    .filter((row) => row.route);
+  assert.deepEqual(
+    route.map((row) => row.target.lat),
+    [45.1, 45.2],
+  );
+  // A body with no saved key is refused like any unknown device.
+  const unknown = await request('/report', {
+    ...phone,
+    body: { location: fix(45, -66, now), device_id: 'x'.repeat(43) },
+  });
+  assert.equal(unknown.status, 404);
 });

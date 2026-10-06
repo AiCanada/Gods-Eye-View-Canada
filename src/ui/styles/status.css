@@ -466,7 +466,3 @@
   [data-key-setup-chip-label] {
   display: none;
 }
-
-:root[data-touch-device='true'] #top-center-actions #layout-switch {
-  font-size: calc(var(--cell-tap) * 0.3);
-}

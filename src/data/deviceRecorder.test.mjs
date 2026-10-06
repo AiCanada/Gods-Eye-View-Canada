@@ -96,6 +96,7 @@ function followFixture(answers) {
     createImage: () => null,
     applyFollowFrame: (...args) => { frames.push(args); return () => frames.push('stopped'); },
     refreshReadout: () => {},
+    recordsHere: () => true,
     recorder: { tick: async (rows) => { ticks.push(['record', rows.filter((row) => row.record).map((row) => row.id)]); return []; }, forget() {}, stats: () => ({}) },
     fetchImpl: async () => new Response(JSON.stringify({ devices: answers.shift() }), { status: 200 }),
   });
@@ -158,4 +159,52 @@ test('the layer never flies the camera itself', () => {
   const source = readFileSync(new URL('./deviceFeeds.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /camera\.(flyTo|setView|lookAt)\b/);
   assert.match(source, /applyTrackedCameraFrame/);
+});
+
+// ---- shown by itself -------------------------------------------------------
+
+test('a reporting device switches the device layer on by itself, unless its owner switched it off', async () => {
+  const run = async ({ devices, origin }) => {
+    const timers = [];
+    const windowRef = {
+      addEventListener() {},
+      removeEventListener() {},
+      setTimeout: (fn) => timers.push(fn),
+      setInterval: (fn) => {
+        timers.push(fn);
+        return 1;
+      },
+      clearInterval() {},
+    };
+    const calls = [];
+    const layer = createDeviceFeedsLayer({
+      windowRef,
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ devices }), { status: 200 }),
+    });
+    layer.attachDataManager({
+      layers: new Map([
+        [DEVICE_FEEDS_LAYER_ID, { visibilityIntentOrigin: origin }],
+      ]),
+      setEnabled: async (...args) => {
+        calls.push(args);
+        return true;
+      },
+    });
+    await timers[0]();
+    return calls;
+  };
+  assert.deepEqual(await run({ devices: [van()], origin: 'share-restore' }), [
+    [DEVICE_FEEDS_LAYER_ID, true],
+  ]);
+  assert.deepEqual(
+    await run({ devices: [van({ live: false })], origin: 'programmatic' }),
+    [],
+    'nothing live: stays off',
+  );
+  assert.deepEqual(
+    await run({ devices: [van()], origin: 'user' }),
+    [],
+    'switched off by its owner: stays off',
+  );
 });

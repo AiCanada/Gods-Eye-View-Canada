@@ -1233,15 +1233,6 @@ body.ui-clean-view #scene-runtime.active {
   border-radius: 10px;
 }
 
-/* Mirror of PC GEVC on Cell: PC / CELL, the view switch in the top toolbar
-   (added on touch screens by viewport-mode.js). */
-#top-center-actions #layout-switch {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  font-weight: 600;
-  letter-spacing: 0.06rem;
-}
-
 /* Mirror of PC GEVC on Cell: on a touch screen a collapsed box is see-through
    (a light tint, no blur, no glow), so the map shows underneath; its title
    keeps a shadow to stay readable over the map. Opened, it is the usual dark glass. */

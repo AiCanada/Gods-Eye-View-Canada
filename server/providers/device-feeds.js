@@ -80,6 +80,7 @@ import {
   methodReportsIn,
   normalizeDeviceFeedConfig,
   parseDeviceReport,
+  reportJsonDeviceId,
   trackedDevicePolicyRecords,
   recordRadiusKm,
   thinTrackPoints,
@@ -111,6 +112,8 @@ const LISTEN_RETRIES = 10;
 const LISTEN_RETRY_MS = 1000;
 /** A recording device's surroundings are saved no more often than this. */
 export const DEVICE_RECORD_MIN_INTERVAL_MS = 10_000;
+/** A reporting device whose last report is older than this records nothing more. */
+export const DEVICE_RECORD_STALE_MS = 30 * 60_000;
 const BACKOFF_BASE_MS = 15_000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
 const PICTURE_TTL_MS = 4000;
@@ -557,6 +560,21 @@ export function deviceFeedsProxy({
       respondJson(res, 400, { error: 'Invalid JSON' });
       return;
     }
+    // A device that reports in but has not for a while is not where its last
+    // report says now: recording that spot again and again would draw a trip
+    // that never happened, so nothing is saved until a fresh report arrives.
+    const state = live.get(feed.id);
+    if (
+      methodReportsIn(feed.method) &&
+      state?.position &&
+      Number.isFinite(state.reportedAt) &&
+      now - state.reportedAt > DEVICE_RECORD_STALE_MS
+    ) {
+      respondJson(res, 409, {
+        error: 'No fresh position from the device: nothing to record',
+      });
+      return;
+    }
     // Where the device is, as this process knows it; never as the page says.
     const position =
       live.get(feed.id)?.position ||
@@ -965,7 +983,8 @@ export function deviceFeedsProxy({
     console.warn(line);
   };
 
-  const serveReport = async (req, res, key) => {
+  const serveReport = async (req, res, keyInAddress) => {
+    let key = keyInAddress;
     const reply = (status, contentType, body) => {
       res.writeHead(status, {
         ...SECURITY_HEADERS,
@@ -974,6 +993,46 @@ export function deviceFeedsProxy({
       });
       res.end(body);
     };
+    // A POST is read first: Traccar Client 9 and later send the identifier
+    // inside the JSON body (device_id), not in the address.
+    let bodyText = '';
+    if (req.method === 'POST') {
+      const { overflowed, body } = await readCappedBody(
+        req,
+        DEVICE_REPORT_BODY_LIMIT,
+      );
+      if (overflowed) {
+        reply(413, 'text/plain', 'Too large');
+        return;
+      }
+      bodyText = body.toString('utf8');
+    }
+    let json;
+    const bodyParams = {};
+    if (bodyText) {
+      if (
+        /json/i.test(String(req.headers?.['content-type'] || '')) ||
+        /^\s*[[{]/.test(bodyText)
+      ) {
+        try {
+          json = JSON.parse(bodyText);
+        } catch {
+          json = undefined;
+        }
+      } else {
+        for (const [name, value] of new URLSearchParams(bodyText))
+          bodyParams[name] = value;
+      }
+    }
+    if (!key) {
+      const fromBody =
+        reportJsonDeviceId(json) ||
+        bodyParams.id ||
+        bodyParams.deviceid ||
+        bodyParams.device ||
+        '';
+      if (REPORT_KEY.test(fromBody)) key = fromBody;
+    }
     const feed = feedForKey(readConfig(), key);
     if (!feed) {
       // Said in the log (never the key itself) so a phone with a mistyped identifier can be told apart from one that never connects.
@@ -1008,9 +1067,16 @@ export function deviceFeedsProxy({
             : printable(segment).slice(0, 24),
         )
         .join('/')}`.slice(0, 120);
+      // A JSON report says which fields it had and how long its identifier was
+      // (never the value), so a device ID that is not the report key shows up.
+      const sentId = reportJsonDeviceId(json);
+      const shape =
+        json && typeof json === 'object' && !Array.isArray(json)
+          ? `; JSON fields ${Object.keys(json).slice(0, 6).join(', ') || 'none'}${sentId ? `, device id ${sentId.length} characters (a report key is 43)` : ''}`
+          : '';
       sayRefusal(
         from,
-        `[Device feeds] Report refused from ${from}: ${key ? 'the identifier is not a saved device key' : 'no identifier or key in the request'} (${printable(req.method).slice(0, 10)} ${shownPath}${agent ? `, ${agent}` : ''}${node})`,
+        `[Device feeds] Report refused from ${from}: ${key ? 'the identifier is not a saved device key' : 'no identifier or key in the request'} (${printable(req.method).slice(0, 10)} ${shownPath}${agent ? `, ${agent}` : ''}${node}${shape})`,
       );
       reply(404, 'text/plain', 'Not found');
       return;
@@ -1055,37 +1121,16 @@ export function deviceFeedsProxy({
     }
     const url = new URL(req.url || '/', 'http://localhost');
     const params = Object.fromEntries(url.searchParams);
-    let json;
-    if (req.method === 'POST') {
-      const { overflowed, body } = await readCappedBody(
-        req,
-        DEVICE_REPORT_BODY_LIMIT,
-      );
-      if (overflowed) {
-        reply(413, 'text/plain', 'Too large');
-        return;
-      }
-      const text = body.toString('utf8');
-      if (
-        /json/i.test(String(req.headers?.['content-type'] || '')) ||
-        /^\s*[[{]/.test(text)
-      ) {
-        try {
-          json = JSON.parse(text);
-        } catch {
-          json = undefined;
-        }
-      } else if (text) {
-        for (const [name, value] of new URLSearchParams(text))
-          if (!(name in params)) params[name] = value;
-      }
-    }
+    for (const [name, value] of Object.entries(bodyParams))
+      if (!(name in params)) params[name] = value;
     const parsed = parseDeviceReport({ params, json });
     if (!parsed) {
       reply(400, 'text/plain', 'No position in the report');
       return;
     }
-    takeReport(feed, parsed.position);
+    // A batch of buffered fixes is taken oldest first, so the route keeps them all.
+    for (const position of parsed.positions || [parsed.position])
+      takeReport(feed, position);
     const answer = deviceReportReply(parsed.protocol);
     reply(200, answer.contentType, answer.body);
   };
