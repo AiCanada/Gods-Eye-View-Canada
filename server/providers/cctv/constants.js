@@ -322,6 +322,24 @@ export const CALGARY_IMAGE_ORIGIN = 'https://trafficcam.calgary.ca/';
  * body cannot be buffered without limit. */
 export const CALGARY_MAX_CATALOG_BYTES = 4 * 1024 * 1024;
 
+/** Statens vegvesen (Norway) road cameras: the keyless OGC API Features view
+ * of the official DATEX 3.1 CCTV site table, one GeoJSON request for the whole
+ * country (~900 cameras). The raw DATEX node needs an account; this view does
+ * not. Frames are stills on the agency's camera host. */
+export const DEFAULT_VEGVESEN_CCTV_URL =
+  'https://ogckart-sn1.atlas.vegvesen.no/ogc/features/v1/collections/datex_3_1:CctvSimple/items?f=application/geo%2Bjson&limit=5000';
+/** The only origin Vegvesen camera frames may come from. */
+export const VEGVESEN_IMAGE_ORIGIN =
+  'https://kamera.atlas.vegvesen.no/api/images/';
+/** Live HLS for the ~140 cameras that publish video; only this exact
+ * per-camera manifest path is registered. */
+export const VEGVESEN_VIDEO_URL = (cameraId) =>
+  `https://kamera.vegvesen.no/public/${cameraId}/manifest.m3u8`;
+/** Hard ceiling on the catalog body. The whole country is ~800 KB. */
+export const VEGVESEN_MAX_CATALOG_BYTES = 8 * 1024 * 1024;
+/** Mainland Norway with its coast and the Finnmark border, for Statens vegvesen. */
+export const NORWAY_BOX = { south: 57.9, north: 71.3, west: 4.4, east: 31.3 };
+
 /** DelDOT CCTV: one keyless statewide JSON catalog; live video via RTMP-over-HTTP (rtmpt:80). */
 export const DELDOT_CCTV_URL = 'https://tmc.deldot.gov/json/videocamera.json';
 /** Per-provider catalog-fetch timeout. Bounds a live pack download so one

@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+- Add Norway's road cameras from Statens vegvesen as a live CCTV pack. The
+  camera list is one keyless GeoJSON request to the agency's OGC API view of
+  its DATEX 3.1 CCTV table, so no DATEX account is needed. Like the other live
+  packs it downloads only when the selected area overlaps Norway, and every
+  camera it lists is kept, including the ones it reports as faulty (they
+  usually come back), under one "Norway" category. The ~135 cameras that
+  publish HLS play as live video through the existing in-memory relay with
+  the still as fallback. Frames and manifests are pinned to each camera's own
+  path on the agency hosts. `CCTV_VEGVESEN_ENABLED=0` disables the pack and
+  `CCTV_VEGVESEN_VIDEO=0` keeps stills only. Attributed under NLOD 2.0.
+
 ## October 3, 2026
 
 **Unlimited generic road CCTV API keys in POWER UP.** Right under the ROAD511 key, a GENERIC ROAD CCTV API KEYS section keeps any number of keys, like the Ultra packages: **+ ADD GENERIC ROAD CCTV API KEYS** opens a new entry with a name, the camera site it is for (for example `511ny.org`; an address is cut to its host), the address parameter that carries it (`key` unless the site names another) and the key itself, in a masked box. Each saved key shows only its last four characters, can be replaced in place or removed, and lives in `config/road-cctv-keys.json`, which is git-ignored and written owner-only. When the CCTV layer asks that site, or one of its subdomains, for a still or a stream over https, the key rides along as that parameter. It never goes to another site, never over plain http, and never overrides a parameter the address already has. The route that keeps them answers only this computer's own page.

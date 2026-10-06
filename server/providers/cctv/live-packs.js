@@ -18,6 +18,7 @@ import {
   ESTONIA_BOX,
   FINLAND_BOX,
   GREATER_LONDON_BOX,
+  NORWAY_BOX,
   NSW_BOX,
   ONTARIO_BOX,
   TALLINN_BOX,
@@ -41,6 +42,7 @@ import {
   loadNswSourcesFromOpenData,
   loadCalgarySourcesFromOpenData,
   loadDelDOTSourcesFromOpenData,
+  loadVegvesenSourcesFromOpenData,
 } from './sources.js';
 
 /** Env kill switch: unset or anything but "0" means enabled. */
@@ -67,7 +69,8 @@ const LIVE_PACK_FORMAT = 'gev-cctv-live/1';
  * downloads at startup either: a pack loads only when a /sources area overlaps
  * its coverage box, its country is enabled, and (Caltrans, TxDOT) it is
  * configured. CCTV_<PACK>_ENABLED=0 turns a pack off (TfL, Ontario, Fintraffic,
- * DriveBC, TxDOT, Tallinn, Tarktee, Warendorf, NSW, Calgary, DelDOT). `key`
+ * DriveBC, TxDOT, Tallinn, Tarktee, Warendorf, NSW, Calgary, DelDOT,
+ * Vegvesen). `key`
  * names what the download depends on, so a changed setting refetches.
  */
 export const CCTV_LIVE_PACKS = Object.freeze([
@@ -192,6 +195,14 @@ export const CCTV_LIVE_PACKS = Object.freeze([
     enabled: (env) => envEnabled(env, 'CCTV_DELDOT_ENABLED'),
     key: () => 'videocamera',
     load: loadDelDOTSourcesFromOpenData,
+  },
+  {
+    name: 'vegvesen',
+    country: 'NO',
+    box: NORWAY_BOX,
+    enabled: (env) => envEnabled(env, 'CCTV_VEGVESEN_ENABLED'),
+    key: (env) => String(env.CCTV_VEGVESEN_URL || 'cctv-simple'),
+    load: loadVegvesenSourcesFromOpenData,
   },
 ]);
 
