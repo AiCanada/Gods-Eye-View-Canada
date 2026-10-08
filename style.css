@@ -10,6 +10,7 @@
 @import './src/ui/styles/cctv.css';
 @import './src/ui/styles/sst.css';
 @import './src/ui/styles/ultra.css';
+@import './src/ui/styles/street-level.css';
 @import './src/ui/styles/scenes.css';
 @import './src/ui/styles/social.css';
 @import './src/ui/styles/outbreak.css';
@@ -23,6 +24,7 @@
 @import './src/ui/styles/command-dock-trays.css';
 @import './src/ui/styles/command-dock-sliding.css';
 @import './src/ui/styles/voice-cost.css';
+@import './src/ui/styles/voice-card.css';
 @import './src/ui/styles/first-run.css';
 @import './src/ui/styles/provider-settings.css';
 @import './src/ui/styles/ask.css';

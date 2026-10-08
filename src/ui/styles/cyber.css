@@ -198,6 +198,7 @@
     .cctv-panel-inner,
     .weather-panel-inner,
     .recent-imagery-panel-inner,
+    .street-level-panel-inner,
     .scene-panel-inner,
     .global-context-panel-inner,
     .radio-panel-inner,
@@ -223,6 +224,7 @@
     .cctv-panel-inner,
     .weather-panel-inner,
     .recent-imagery-panel-inner,
+    .street-level-panel-inner,
     .scene-panel-inner,
     .global-context-panel-inner,
     .radio-panel-inner,
@@ -249,6 +251,7 @@
     .cctv-panel-inner,
     .weather-panel-inner,
     .recent-imagery-panel-inner,
+    .street-level-panel-inner,
     .global-context-panel-inner
   ) {
   padding-right: 8px;
@@ -263,12 +266,14 @@
     #cctv-panel,
     #weather-panel,
     #recent-imagery-panel,
+    #street-level-panel,
     #global-context-panel
   ).collapsed
   > :is(
     .cctv-panel-inner,
     .weather-panel-inner,
     .recent-imagery-panel-inner,
+    .street-level-panel-inner,
     .global-context-panel-inner
   ) {
   padding: 0;
@@ -280,12 +285,14 @@
     #cctv-panel,
     #weather-panel,
     #recent-imagery-panel,
+    #street-level-panel,
     #global-context-panel
   ).collapsed
   > :is(
     .cctv-panel-inner,
     .weather-panel-inner,
     .recent-imagery-panel-inner,
+    .street-level-panel-inner,
     .global-context-panel-inner
   )
   > .panel-header {
@@ -304,6 +311,7 @@
     .cctv-panel-inner,
     .weather-panel-inner,
     .recent-imagery-panel-inner,
+    .street-level-panel-inner,
     .scene-panel-inner,
     .global-context-panel-inner,
     .radio-panel-inner,
@@ -324,6 +332,7 @@
     .cctv-panel-inner,
     .weather-panel-inner,
     .recent-imagery-panel-inner,
+    .street-level-panel-inner,
     .scene-panel-inner,
     .global-context-panel-inner,
     .radio-panel-inner,
@@ -352,6 +361,7 @@
     .cctv-panel-inner,
     .weather-panel-inner,
     .recent-imagery-panel-inner,
+    .street-level-panel-inner,
     .scene-panel-inner,
     .global-context-panel-inner,
     .radio-panel-inner,
@@ -1796,6 +1806,7 @@
       #cctv-panel,
       #weather-panel,
       #recent-imagery-panel,
+      #street-level-panel,
       #global-context-panel
     ):not(.collapsed) {
     width: var(--cyber-right-panel-width);

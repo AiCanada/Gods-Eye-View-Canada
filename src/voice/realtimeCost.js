@@ -8,6 +8,7 @@ import {
   createVoiceCostTracker,
   resolveVoiceModel,
   formatCostUsd,
+  estimateTranscriptionCostUsd,
 } from './voiceCost.js';
 import {
   readStoredVoiceProvider,
@@ -21,6 +22,7 @@ export class RealtimeCost {
     Object.assign(this, { readUi, readStatus }, operations);
     this.voiceTier = readStoredVoiceTier();
     this.voiceLimits = readStoredVoiceLimits();
+    this.transcribeModel = null;
     this.costTracker = createVoiceCostTracker({
       tier: this.voiceTier,
       limits: this.voiceLimits,
@@ -149,7 +151,28 @@ export class RealtimeCost {
    */
   recordUsage(usage) {
     if (!usage) return null;
-    const state = this.costTracker.record(usage);
+    return this.applyCost(this.costTracker.record(usage));
+  }
+
+  /**
+   * Meter one input transcription (voice-card captions). It is billed apart
+   * from responses, so it is priced with the transcription model the server
+   * reported and folded into the same total, warning and cap.
+   */
+  recordTranscriptionUsage(usage) {
+    if (!usage) return null;
+    return this.applyCost(
+      this.costTracker.recordUsd(
+        estimateTranscriptionCostUsd(usage, this.transcribeModel),
+      ),
+    );
+  }
+
+  bindTranscriptionModel(model) {
+    this.transcribeModel = model && model !== 'off' ? model : null;
+  }
+
+  applyCost(state) {
     this.syncCostUi();
     if (state.warnCrossed) {
       // Exactly one line — the latch in the tracker guarantees it.

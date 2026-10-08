@@ -41,6 +41,7 @@ export const CREDENTIALS = Object.freeze([
   { name: 'ANTHROPIC_API_KEY', label: 'Anthropic Claude (Ask panel)', keychain: [] },
   { name: 'OPENROUTER_API_KEY', label: 'OpenRouter (Ask panel)', keychain: [] },
   { name: 'CUSTOM_LLM_API_KEY', label: 'Custom LLM (Ask panel)', keychain: [] },
+  { name: 'MAPILLARY_CLIENT_TOKEN', label: 'Mapillary street level', keychain: [['mapillary', 'client-token'], ['mapillary', 'token']] },
 ]);
 
 export function isConfiguredValue(value) {

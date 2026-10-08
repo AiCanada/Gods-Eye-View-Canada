@@ -242,7 +242,7 @@ Click **GEV MIC**, grant the microphone, and just talk. This is more than a voic
 - **🔒 Honest and secure.** The agent only confirms actions that succeeded. Your `OPENAI_API_KEY` never touches the browser; the client only gets a short-lived session token.
 - **🎙️ Same commands, more voices.** Grok is a live voice socket; the xAI key stays on this machine and the browser only receives a short-lived secret. Claude and NVIDIA use this browser's speech. OpenRouter transcribes and speaks on its audio routes. A custom endpoint does that when it has audio routes, and this browser's speech when it does not. Those five do not use the OpenAI spend cap, and a street-level screenshot stays on the OpenAI session.
 
-Twenty-nine tools, four jobs — the commands below come straight from the product's voice test suite and tool playbook:
+Thirty tools, four jobs — the commands below come straight from the product's voice test suite and tool playbook:
 
 **🎥 Direct it** — drone-operator camera verbs:
 
@@ -280,7 +280,7 @@ _Ask for radio near anywhere and the globe starts broadcasting — every station
 
 ## 🛰️ What's on the Globe
 
-Nineteen layers and map sources. **Seventeen have a keyless path.** Some offer additional capabilities with a provider key. (🟢 no key · 🟡 free key · 🔴 metered.)
+Twenty layers and map sources. **Seventeen have a keyless path.** Some offer additional capabilities with a provider key. (🟢 no key · 🟡 free key · 🔴 metered.)
 
 | Layer                       | What you get                                                                                                                                                                                                                                                                                                                                                                        | Source                                  | Auth                                                                                                |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------- |
@@ -293,6 +293,7 @@ Nineteen layers and map sources. **Seventeen have a keyless path.** Some offer a
 | 🚗 **Traffic** | Simulated vehicles on OSM roads, with road geometry from OpenFreeMap vector tiles (Overpass is the fallback). With TomTom, live flow speeds drive the simulation and congestion colors below ~8 km; individual vehicle positions are not live observations | TomTom + OpenFreeMap / OSM | 🟢 simulation · 🟡 live flow speeds |
 | 📹 **CCTV Mesh** | Public cameras from four packs: Canada (9,615: Ontario 511 · DriveBC · Alberta 511 · Québec 511 · city systems · Atlantic provinces and more), the US state DOTs (48,697, listed via Road511), international (103,573 after dedupe; the exact number is in `tools/camera-pack/cctv_sources.intl.report.txt`: Windy · WebcamGalore · WorldCam · Panomax · feratel · OpenStreetMap · national road agencies and more) and the operators' own lists (17,345 more: Georgia · Illinois · New York City · Alabama · Houston · Seattle · Montréal · Toronto · South Korea · Finland · Taiwan · Indonesia and more); see [CAMERA_PACK.md](tools/camera-pack/CAMERA_PACK.md) and [DATA_SOURCES.md](DATA_SOURCES.md). School, university, college and library cameras are left out. Every camera is stored, but only the nearest 1,000 within 50 km of the place you select load, projected *into* the 3D space. Austin · California (Caltrans) · London (TfL) live packs download only when their area is selected. Live city packs: Austin · Texas (TxDOT) · California (Caltrans) · London (TfL) · Ontario (511) · Finland (Fintraffic) · British Columbia (DriveBC) · Estonia (Tallinn, Tarktee) · Delaware (DelDOT live video) · New South Wales (Live Traffic NSW) · Calgary · Norway (Statens vegvesen). US cameras that publish no image are looked up through Road511 only when you open one. Positions are published; poses are estimated priors **you calibrate by dragging a gizmo on the camera itself** | City APIs + state DOTs + road agencies + webcam directories | 🟢 (🔴 Road511 key for US cameras with no public image) |
 | 📷 **Mapped ALPR Cameras**  | License-plate-reader camera locations tagged by OpenStreetMap contributors, loaded one city-sized view at a time, with **SHOW NEAREST**. Locations and tags only: no plate data, no video                                                                                                                                                                                           | OpenStreetMap (incl. DeFlock mapping)   | 🟢                                                                                                  |
+| 📷 **Street Level**         | Street-level photos behind one panel, one chip per provider: coverage on the streets, image cones, an embedded viewer and **FOLLOW**. Mapillary first; Panoramax, KartaView and Google Street View planned                                                                                                                                                                          | Mapillary                               | 🟡 Mapillary client token                                                                           |
 | 📻 **Radio**                | Geolocated world radio with an **analog tuner** — drag the needle across up to 750 stations and the globe flies to each broadcaster                                                                                                                                                                                                                                                 | Radio Browser / broadcasters            | 🟢                                                                                                  |
 | 🚌 **Transit**              | Live buses, trams, metros, trains and ferries with delayed playback between reports, selected-vehicle trails, and mode-coloured DETECT labels — Boston, Austin, Minneapolis, Helsinki, the Netherlands, Norway, South East Queensland                                                                                                                                               | Operator GTFS-Realtime feeds            | 🟢                                                                                                  |
 | 🚲 **Bikeshare**            | Live station availability                                                                                                                                                                                                                                                                                                                                                           | GBFS                                    | 🟢                                                                                                  |
@@ -329,6 +330,16 @@ _The Space Missions layer replaying a Falcon 9 ascent — labeled `RECONSTRUCTED
 **Missing a layer you want?** Open an issue — or add it and send the PR.
 
 ---
+
+## 📷 Street Level
+
+> Street-level photos from any provider in one panel. This build ships **Mapillary**, which needs a free client token.
+
+**Setup.** At [mapillary.com/dashboard/developers](https://www.mapillary.com/dashboard/developers), register an application with **Read** access and copy its **Client Token** (`MLY|…`). Paste it into **POWER UP → Mapillary**, or set `MAPILLARY_CLIENT_TOKEN` in `.env` and restart. Without it the panel reads **KEY REQUIRED**.
+
+**Use.** Turn on **Street Level** under DATA LAYERS → Cameras, or with the pill in the STREET LEVEL panel header. Each provider has a chip in its own colour (Mapillary green). The **IMAGERY** (ALL / 360° / FLAT) and **SINCE** filters apply to every provider. Click a coverage line for its image cones and a cone to open the photo. Above the photo: **EXPAND**, **FIT / FILL**, and **FOLLOW** (the globe camera follows the photo's view; Google 3D map only). The caption links to the image on the provider's site, and the globe credits "© Mapillary contributors, CC BY-SA 4.0" while Mapillary is on.
+
+Drag the panel header to float the panel, and resize it from any edge. Double-click the header or collapse it to put it back in the rail. Share links carry the provider switches and filters (`0.m.0` Mapillary off, `0.p.p` panoramas only, `0.s.365` the last year). To add a provider, implement the contract in `src/layers/streetLevel/registry.js` and register it in `src/app/layers/streetLevel.js`.
 
 ## 🎖️ Field Missions
 
@@ -643,7 +654,7 @@ src/
 ├── hud.js                  # Intelligence HUD + AI scene summary
 ├── keySetup.js             # POWER UP panel — in-app provider keys (dev server only)
 ├── mapStackController.js   # Basemap switching — Google 3D / Esri / OSM / ion stacks
-├── voice/                  # OpenAI Realtime session + 29 voice tools
+├── voice/                  # OpenAI Realtime session + 30 voice tools
 ├── layers/                 # Layer components — weather, wind, cyclones, transit, ALPR, …
 ├── data/                   # One module per layer + orchestration + context store
 │   ├── iconOrientation.js  # Screen-projected headings + horizon cull
@@ -674,7 +685,7 @@ names it.
 
 ### Choose the capabilities you want
 
-Six keys. Four have a free tier, and the two 🔴 ones are metered:
+Seven keys. Five have a free tier, and the two 🔴 ones are metered:
 
 |     | Key             | Why                                                                                                                                                                                  | Get it                                                                                                                                                               |
 | --- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -684,6 +695,7 @@ Six keys. Four have a free tier, and the two 🔴 ones are metered:
 | 🟡  | **AISStream**   | 🚢 Live global ships                                                                                                                                                                 | [aisstream.io](https://aisstream.io) — free signup                                                                                                                   |
 | 🟡  | **NASA FIRMS**  | 🔥 Live active fires                                                                                                                                                                 | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov/api/map_key/) — free                                                                             |
 | 🟡  | **TomTom**      | 🚦 Live flow speeds and congestion colors for the simulated traffic layer                                                                                                            | [my.tomtom.com](https://my.tomtom.com/keys) — free tier available                                                                                                    |
+| 🟡  | **Mapillary**   | 📷 Street Level coverage and photos. A public client token by design (see SECURITY.md)                                                                                               | [mapillary.com/dashboard/developers](https://www.mapillary.com/dashboard/developers) — register an app, copy its Client Token                                        |
 
 ![Diving from city-scale live congestion straight into an intersection's public camera](docs/media/05-traffic-to-cctv.gif)
 

@@ -656,7 +656,7 @@ test('the DISPLAY rail starts collapsed on a first run, and a stored choice wins
 
 // ── Voice: instruction-only, tool schema unchanged ─────────────────────
 
-test('the voice TOOL SCHEMA matches the pinned release — the mission mapping is instructions only', () => {
+test('the voice TOOL SCHEMA matches the pinned contract — the mission mapping is instructions only', () => {
   // Analyst layers and the separate satellite-pass tool deliberately extend the schema.
   // Canonical serialization pins every tool name, description, property and
   // ordering while allowing source formatting. Derived from the unchanged
@@ -672,14 +672,19 @@ test('the voice TOOL SCHEMA matches the pinned release — the mission mapping i
   // Cyber deliberately adds one layout; first-run missions still change no tools.
   hudLayout.enum = hudLayout.enum.filter((layout) => layout !== 'cyber');
   const block = JSON.stringify(legacyTools);
-  // Re-derived for the additive `local-adsb` set_layer_visibility value and
-  // its common-name mapping; the missions still ride existing tools.
-  // Re-derived 2026-10-03 for the upstream merge: the fork's Canadian presets
-  // and weather layers together with upstream's local-adsb and Cyber additions.
-  assert.equal(block.length, 28276, 'serialized tool schema length drifted');
+  // Re-derived for the voice layer manifest (generated layer enums, alias and
+  // field hints), point-and-ask's pointer/referent arguments and the prompt
+  // consolidation (shorter analyst, annotate_map and ISS wording), plus the
+  // referent-only track_entity alternative (kept out of the model-facing
+  // schema, which may not carry top-level anyOf), and Contacts requested-radius
+  // list descriptions; the missions still ride existing tools.
+  // Street Level adds toggle enum values and the generated alias hint.
+  // Re-derived 2026-10-07 for the upstream merge: the fork's Canadian city
+  // presets, its Cell, Private CCTV and Outbreak layers and their spoken names.
+  assert.equal(block.length, 30425, 'serialized tool schema length drifted');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    'bebe02ccf15fa0c3e08ca1fa332b23b1929e2948641d99eb0b58152029d2c8f3',
+    '1ec7d7e27944a5c229e5256aa943930d585ce40b2f23418ea4434e87ab2dea9d',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
   const instructions = fs.readFileSync(new URL('../server/providers/openai/instructions.js', import.meta.url), 'utf8');

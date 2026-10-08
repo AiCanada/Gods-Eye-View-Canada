@@ -18,7 +18,7 @@ const panelOrder = (section) => [...section.matchAll(/<(?:div|section) id="([a-z
 
 test('left stack: AI Risk & Truth Assessment, CCTV, Ultra, Social Media Analysis, Outbreak; right rail: Data Layers first, then Context, Sea Temperature, Scenes; Radio below the last tab when selected', () => {
   const left = between('<div id="left-panel-stack">', '<aside id="right-context-rail">');
-  assert.deepEqual(panelOrder(left), ['ask-panel', 'cctv-panel', 'ultra-panel', 'social-panel', 'outbreak-panel']);
+  assert.deepEqual(panelOrder(left), ['ask-panel', 'cctv-panel', 'street-level-panel', 'ultra-panel', 'social-panel', 'outbreak-panel']);
   // The rail's own closing tag is the two-space-indented one; the Contacts
   // aside inside Context closes deeper.
   const right = between('<aside id="right-context-rail">', '\n  </aside>');

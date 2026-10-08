@@ -35,6 +35,7 @@ export function createMilitaryFlightLayer({
     militaryRegistry: services.militaryRegistry,
     rendering: parts.rendering,
     tracking: parts.tracking,
+    motion: parts.motion,
     queries: parts.queries,
     locationSwitch: parts.locationSwitch,
   });

@@ -14,6 +14,7 @@ const SHARE_PANEL_STATE_SPECS = Object.freeze([
   { id: 'cctv-panel' },
   { id: 'weather-panel' },
   { id: 'recent-imagery-panel' },
+  { id: 'street-level-panel' },
   { id: 'radio-panel' },
   { id: 'scene-panel' },
   { id: 'global-context-panel' },
@@ -29,6 +30,7 @@ const COCKPIT_ENTRY_COLLAPSE_PANEL_IDS = Object.freeze([
   'recent-imagery-panel',
   'sst-panel',
   'ultra-panel',
+  'street-level-panel',
   'scene-panel',
   'social-panel',
   'outbreak-panel',
@@ -66,6 +68,7 @@ export class PanelChrome {
       layoutRightPanels: () => this._layoutRightPanels(),
       syncCctvPanelViewport: () => this._syncCctvPanelViewport(),
       showToast: (message) => this._showToast(message),
+      onPanelResized: (panelId) => this._onPanelResized(panelId),
     });
     this._panelLayout = new PanelLayoutController({
       readHud: () => ({
@@ -149,6 +152,7 @@ export class PanelChrome {
     this._initCommandDockPins();
     this._initCommandDockTrayMetrics();
     this._maybeNotifyLayoutReset();
+    this._panelPosition._initPanelDrag();
   }
 
   _collapsePanelOnEscape(event, panelId) {
@@ -380,6 +384,11 @@ export class PanelChrome {
     this.shareLinkManager?.onPanelStateChange?.();
   }
 
+  /** @returns {boolean} Whether the panel was floating and is now docked. */
+  dockPanel(panelId) {
+    return this._panelPosition?.dockPanel?.(panelId) === true;
+  }
+
   setPanelCollapsed(
     panelId,
     collapsed,
@@ -485,6 +494,10 @@ export class PanelChrome {
       }
     }
     panelEl.classList.toggle('collapsed', nextCollapsed);
+    // Only a user's own collapse docks a floating window; restores, cockpit
+    // entry and accordion peers keep its place.
+    if (explicit && !restore)
+      this._panelPosition?.onPanelCollapsed?.(panelId, nextCollapsed);
     // A box the operator just opened belongs in front of whatever it now
     // overlaps, whether it was opened by pointer, keyboard or voice.
     if (!nextCollapsed) this._panelLayout?.raisePanel?.(panelId);

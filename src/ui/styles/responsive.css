@@ -227,8 +227,10 @@
   }
 
   #right-context-rail #pp-toggles.collapsed .pp-header-row,
-  #right-context-rail #cctv-panel,
-  #right-context-rail #cctv-panel.collapsed,
+  #right-context-rail #cctv-panel:not(.panel-floating),
+  #right-context-rail #cctv-panel.collapsed:not(.panel-floating),
+  #right-context-rail #street-level-panel:not(.panel-floating),
+  #right-context-rail #street-level-panel.collapsed:not(.panel-floating),
   #right-context-rail #data-panel,
   #right-context-rail #data-panel.collapsed,
   #right-context-rail #sst-panel,
@@ -253,11 +255,18 @@
   #left-panel-stack > #ultra-panel,
   #left-panel-stack > #social-panel,
   #left-panel-stack > #outbreak-panel,
+  #left-panel-stack > #street-level-panel,
+  #left-panel-stack > #global-context-panel,
+  #left-panel-stack > #scene-panel,
   #left-panel-stack > #ask-panel.collapsed,
+  #left-panel-stack > #data-panel.collapsed,
   #left-panel-stack > #cctv-panel.collapsed,
   #left-panel-stack > #ultra-panel.collapsed,
   #left-panel-stack > #social-panel.collapsed,
-  #left-panel-stack > #outbreak-panel.collapsed {
+  #left-panel-stack > #outbreak-panel.collapsed,
+  #left-panel-stack > #street-level-panel.collapsed,
+  #left-panel-stack > #global-context-panel.collapsed,
+  #left-panel-stack > #scene-panel.collapsed {
     position: relative;
     top: auto;
     right: auto;

@@ -27,6 +27,7 @@ import { openAiRealtimeProxy } from './openai.js';
 import { llmAskProxy } from './llm.js';
 import { seaSurfaceTemperatureProxy } from './sst.js';
 import { googlePlacesContextProxy } from './places.js';
+import { mapillaryProxy } from './mapillary.js';
 import { keySetupEndpoint } from '../standalone/key-setup.js';
 import { privateCamerasProxy } from './private-cameras.js';
 import { deviceFeedsProxy } from './device-feeds.js';
@@ -96,6 +97,8 @@ function localProviderPlugins({ realtime } = {}) {
     // OUTBREAK LOCATIONS & PREDICTED SPREAD: airports, flight history,
     // rail and water near an outbreak, and the global media search.
     outbreakProxy(),
+    // Street Level imagery (upstream): Mapillary tiles, cached.
+    mapillaryProxy(),
     keySetupEndpoint({ onEnvSaved: noteOutboundEnvSaved }),
   ];
 }

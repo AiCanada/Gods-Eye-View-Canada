@@ -2222,6 +2222,7 @@ export async function searchAndFlyTo(viewer, query, options = {}) {
         query,
         result && !outcome.fallbackUsed ? { lat, lon: lng } : null,
         signal,
+        placeSearch,
       );
   signal?.throwIfAborted();
   if (recovered) {

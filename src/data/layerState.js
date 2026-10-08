@@ -410,6 +410,18 @@ const OPTION_GROUPS = Object.freeze({
     ),
     booleanOption('viirs', 'v', false),
   ]),
+  'street-level': Object.freeze([
+    // One switch per registered imagery provider (src/app/layers/streetLevel.js).
+    booleanOption('mapillary', 'm', true),
+    enumOption('pano', 'p', 'all', ['all', 'pano', 'flat'], {
+      all: 'a',
+      pano: 'p',
+      flat: 'f',
+    }),
+    // Relative days, so a link means the same next year. The max matches
+    // MAX_SINCE_DAYS in streetLevel/policy.js (pinned by layerState.test).
+    boundedIntegerOption('sinceDays', 's', 0, { min: 0, max: 36500 }),
+  ]),
   radio: Object.freeze([
     Object.freeze({
       key: 'filter',
@@ -572,11 +584,13 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
     disposition: 'enabled+options',
     optionOwner: 'cctv',
   }),
-  // Fork layer. The fork once used 'v', which upstream gave weather-radar;
-  // it now holds the next free merge-time token.
+  // Fork layer (Cell). The fork once used 'v', which upstream gave
+  // weather-radar, then '0', which upstream gave street-level (merged
+  // 2026-10-07, owner ruling); it now holds the next free merge-time token,
+  // a move recorded in LAYER_STATE_TOKEN_MOVES.
   Object.freeze({
     id: 'device-feeds',
-    token: '0',
+    token: '5',
     disposition: 'enabled-only',
   }),
   Object.freeze({ id: 'directions', token: 'n', disposition: 'enabled-only' }),
@@ -646,6 +660,12 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
     token: 's',
     disposition: 'enabled+options',
     optionOwner: 'satellites',
+  }),
+  Object.freeze({
+    id: 'street-level',
+    token: '0',
+    disposition: 'enabled+options',
+    optionOwner: 'street-level',
   }),
   Object.freeze({
     id: 'telegeography-submarine-cables',
@@ -719,6 +739,37 @@ function allocationRank(token) {
   return first < 0 || second < 0 ? Infinity : 10 + first * 36 + second;
 }
 
+/**
+ * Published tokens never move, with these recorded exceptions only. Each one
+ * is a fork layer that yielded its token to an upstream layer published with
+ * the same token, and took the next free one (owner ruling, 2026-10-07: the
+ * fork's Cell gave '0' to upstream's Street Level and moved to '5'). A move
+ * applies only while the published base still holds the old token and the
+ * upstream layer is arriving with it; once it is published it is ordinary.
+ */
+export const LAYER_STATE_TOKEN_MOVES = Object.freeze([
+  Object.freeze({
+    id: 'device-feeds',
+    from: '0',
+    to: '5',
+    yieldsTo: 'street-level',
+  }),
+]);
+
+/** The recorded move that explains this published token changing, if any. */
+function recordedTokenMove(id, baseReservations, reservations) {
+  return (
+    LAYER_STATE_TOKEN_MOVES.find(
+      (move) =>
+        move.id === id &&
+        baseReservations[id] === move.from &&
+        reservations[id] === move.to &&
+        reservations[move.yieldsTo] === move.from &&
+        !Object.hasOwn(baseReservations, move.yieldsTo),
+    ) || null
+  );
+}
+
 /** Check a proposed ledger against the published merge-time base. */
 export function validateLayerStateAllocations(
   baseReservations,
@@ -727,15 +778,22 @@ export function validateLayerStateAllocations(
   if (!baseReservations || typeof baseReservations !== 'object') {
     throw new Error('Base layer-state token reservations are required');
   }
+  const moved = new Set();
   for (const [id, token] of Object.entries(baseReservations)) {
-    if (reservations[id] !== token) {
-      throw new Error(`Published layer-state token changed or removed: ${id}`);
+    if (reservations[id] === token) continue;
+    if (recordedTokenMove(id, baseReservations, reservations)) {
+      moved.add(id);
+      continue;
     }
+    throw new Error(`Published layer-state token changed or removed: ${id}`);
   }
+  // A moved layer is allocated again, after the token it gave up is free.
   const newlyReserved = Object.entries(reservations)
-    .filter(([id]) => !Object.hasOwn(baseReservations, id))
+    .filter(([id]) => !Object.hasOwn(baseReservations, id) || moved.has(id))
     .sort((left, right) => allocationRank(left[1]) - allocationRank(right[1]));
-  const occupied = { ...baseReservations };
+  const occupied = Object.fromEntries(
+    Object.entries(baseReservations).filter(([id]) => !moved.has(id)),
+  );
   for (const [id, token] of newlyReserved) {
     const expected = nextLayerStateToken(occupied);
     if (token !== expected) {

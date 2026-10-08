@@ -19,7 +19,9 @@ body.recording-mode #sst-panel,
 body.recording-mode #ultra-panel,
 body.recording-mode #scene-panel,
 body.recording-mode #social-panel,
-body.recording-mode #outbreak-panel {
+body.recording-mode #outbreak-panel,
+/* The expanded viewer lives on <body>, outside every panel. */
+body.recording-mode .sl-viewer-wrap-expanded {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;

@@ -26,6 +26,8 @@ import {
 import { LayerStateCoordinator } from './layerStateCoordinator.js';
 import radioLayer from './radio.js';
 import { stampInitialShareGesture } from '../navigationPolicy.js';
+import { MAX_SINCE_DAYS } from '../layers/streetLevel/policy.js';
+import { SINCE_STOPS } from '../ui/streetLevelPresentation.js';
 
 function deferred() {
   let resolve;
@@ -199,8 +201,8 @@ function encode(state) {
 
 test('production registry is exact, canonical, and rejects incomplete contracts', async () => {
   assert.equal(validateLayerStateRegistry(), true);
-  assert.equal(REGISTERED_LAYER_IDS.length, 31);
-  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 31);
+  assert.equal(REGISTERED_LAYER_IDS.length, 32);
+  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 32);
   assert.ok(REGISTERED_LAYER_IDS.includes('transit'));
   assert.ok(REGISTERED_LAYER_IDS.includes('device-feeds'));
   assert.deepEqual(REGISTERED_LAYER_IDS, [...REGISTERED_LAYER_IDS].sort());
@@ -240,21 +242,21 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
   for (const [id, token] of Object.entries(LEGACY_LAYER_STATE_TOKENS)) {
     assert.equal(LAYER_STATE_TOKEN_RESERVATIONS[id], token);
   }
-  // device-feeds holds '0', private-cctv '3' and outbreak '4' (fork
-  // layers); '1' and '2' are upstream's.
-  assert.equal(nextLayerStateToken(), '5');
+  // street-level holds '0' (upstream); private-cctv '3', outbreak '4' and
+  // device-feeds '5' (fork layers); '1' and '2' are upstream's.
+  assert.equal(nextLayerStateToken(), '6');
   assert.equal(
     nextLayerStateToken({
       ...LAYER_STATE_TOKEN_RESERVATIONS,
       alpha: '0',
-      bravo: '5',
+      bravo: '6',
     }),
-    '6',
+    '7',
   );
   const digitsExhausted = {
     ...LAYER_STATE_TOKEN_RESERVATIONS,
     ...Object.fromEntries(
-      [...'03456789'].map((digit) => [`prior-${digit}`, digit]),
+      [...'3456789'].map((digit) => [`prior-${digit}`, digit]),
     ),
   };
   assert.equal(nextLayerStateToken(digitsExhausted), '00');
@@ -307,9 +309,10 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
   assert.equal(
     validateLayerStateAllocations(
       LAYER_STATE_TOKEN_RESERVATIONS,
-      // '0', '3' and '4' are the fork's device-feeds, private-cctv and
-      // outbreak tokens, so the next free ones are '5' and '6'.
-      { ...LAYER_STATE_TOKEN_RESERVATIONS, future: '5', next: '6' },
+      // '0' is upstream's street-level; '3', '4' and '5' are the fork's
+      // private-cctv, outbreak and device-feeds tokens, so the next free
+      // ones are '6' and '7'.
+      { ...LAYER_STATE_TOKEN_RESERVATIONS, future: '6', next: '7' },
     ),
     true,
   );
@@ -319,7 +322,7 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
         ...LAYER_STATE_TOKEN_RESERVATIONS,
         future: '00',
       }),
-    /next free token 5/,
+    /next free token 6/,
   );
   const beforeLastDigit = { ...digitsExhausted };
   delete beforeLastDigit['prior-9'];
@@ -342,10 +345,10 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
   assert.throws(
     () =>
       validateLayerStateAllocations(
-        { ...LAYER_STATE_TOKEN_RESERVATIONS, merged: '0' },
-        { ...LAYER_STATE_TOKEN_RESERVATIONS, merged: '0', competing: '0' },
+        { ...LAYER_STATE_TOKEN_RESERVATIONS, merged: '3' },
+        { ...LAYER_STATE_TOKEN_RESERVATIONS, merged: '3', competing: '3' },
       ),
-    /next free token 5/,
+    /next free token 6/,
   );
   assert.throws(
     () => validateLayerStateAllocations({ future: '00' }, { future: '01' }),
@@ -2654,5 +2657,64 @@ test('fire perimeters uses digit 2 without colliding with wind or recent imagery
   assert.deepEqual(
     decodeLayerStateParams(new URLSearchParams(encode(decoded))),
     decoded,
+  );
+});
+
+/** Street Level options decoded from a v2 link with these `lo` assignments. */
+function streetLevelOptions(lo) {
+  const params = new URLSearchParams([
+    ['v', '2'],
+    ['l', '0'],
+  ]);
+  if (lo) params.set('lo', lo);
+  return decodeLayerStateParams(params).options['street-level'];
+}
+
+test('Street Level: every option round-trips through a share link and stored state', () => {
+  const state = createDefaultLayerState();
+  state.enabledLayerIds = ['street-level'];
+  state.options['street-level'] = {
+    mapillary: false,
+    pano: 'flat',
+    sinceDays: MAX_SINCE_DAYS,
+  };
+  const decoded = decodeLayerStateParams(new URLSearchParams(encode(state)));
+  assert.deepEqual(decoded.options['street-level'], {
+    mapillary: false,
+    pano: 'flat',
+    sinceDays: MAX_SINCE_DAYS,
+  });
+  assert.deepEqual(
+    parseStoredLayerState(serializeStoredLayerState(state)).options[
+      'street-level'
+    ],
+    state.options['street-level'],
+  );
+});
+
+test('Street Level: the link codec accepts exactly the windows the filter keeps', () => {
+  // A window past MAX_SINCE_DAYS reads as "any date".
+  assert.equal(
+    streetLevelOptions(`0.s.${MAX_SINCE_DAYS}`).sinceDays,
+    MAX_SINCE_DAYS,
+  );
+  assert.equal(streetLevelOptions(`0.s.${MAX_SINCE_DAYS + 1}`).sinceDays, 0);
+  // Every SINCE slider stop survives, the LAST 10 YEARS one included.
+  for (const { days } of SINCE_STOPS)
+    assert.equal(streetLevelOptions(`0.s.${days}`).sinceDays, days);
+  assert.equal(streetLevelOptions('0.s.3652').sinceDays, 3652);
+});
+
+test('Street Level: a link without the provider switch keeps Mapillary on', () => {
+  assert.deepEqual(streetLevelOptions(''), {
+    mapillary: true,
+    pano: 'all',
+    sinceDays: 0,
+  });
+  assert.equal(streetLevelOptions('0.p.f').mapillary, true);
+  assert.equal(streetLevelOptions('0.m.0').mapillary, false);
+  assert.equal(
+    createDefaultLayerState().options['street-level'].mapillary,
+    true,
   );
 });
