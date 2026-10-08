@@ -31,10 +31,14 @@ const FUTURE_FLIGHT_COLOR = '#ff8a8a';
 /** At most this many flight lines are drawn. */
 const ROUTES_DRAWN_MAX = 500;
 /**
- * Dots stay in front of hills and buildings while the camera is this close;
- * farther away the globe hides them, so they never show through it.
+ * Dots are drawn over hills and buildings (no depth test), so the layer hides
+ * every dot that is over the horizon itself: each frame the camera has moved,
+ * Cesium's ellipsoidal occluder says which dots the Earth's curve stands
+ * between the camera and. A fixed distance cannot do this: from a low camera
+ * the horizon is barely 100 km off, from orbit it is thousands, and with the
+ * spread reaching airports worldwide dots showed through the globe.
  */
-const DOT_OVER_GROUND_M = 3_000_000;
+const HORIZON_RECHECK_M = 1;
 /** The dashed ring round a future spread location. */
 const FORECAST_RING_KM = 50;
 /**
@@ -197,6 +201,8 @@ export function createOutbreakLayer({
     const dot = (id, name, place, size, css, outline) => ({
       id,
       sig: `${place.lat},${place.lon}|${css}`,
+      // Where the horizon test looks: the dot on the ground.
+      ground: Cesium.Cartesian3.fromDegrees(place.lon, place.lat),
       make: () => ({
         name,
         position: Cesium.Cartesian3.fromDegrees(place.lon, place.lat),
@@ -206,9 +212,9 @@ export function createOutbreakLayer({
           outlineColor: outline,
           outlineWidth: size > 10 ? 2 : 1,
           heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          // Drawn over the ground only from close by: with no limit the
-          // dots showed through the Earth from the far side of the globe.
-          disableDepthTestDistance: DOT_OVER_GROUND_M,
+          // Never hidden by a hill or a building; the horizon test below
+          // hides the ones the Earth itself is in front of.
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       }),
     });
@@ -275,6 +281,33 @@ export function createOutbreakLayer({
    * stopped growing the circles after a few hours.
    */
   const drawn = new Map();
+  /** Dot entity id -> {entity, ground}: what the horizon test checks. */
+  const horizonDots = new Map();
+  let lastCamera = null;
+  let horizonDirty = true;
+  let removeHorizonListener = null;
+
+  /** Hide the dots over the horizon, show the rest; only when the camera moved. */
+  const updateHorizon = () => {
+    const camera = _viewer?.camera?.positionWC;
+    if (!_enabled || !camera || !horizonDots.size) return;
+    if (
+      !horizonDirty &&
+      lastCamera &&
+      Cesium.Cartesian3.distance(camera, lastCamera) < HORIZON_RECHECK_M
+    )
+      return;
+    lastCamera = Cesium.Cartesian3.clone(camera, lastCamera || undefined);
+    horizonDirty = false;
+    const occluder = new Cesium.EllipsoidalOccluder(
+      Cesium.Ellipsoid.WGS84,
+      camera,
+    );
+    for (const { entity, ground } of horizonDots.values()) {
+      const visible = occluder.isPointVisible(ground);
+      if (entity.show !== visible) entity.show = visible;
+    }
+  };
   let serial = 0;
   const draw = () => {
     if (!_dataSource) return;
@@ -287,22 +320,31 @@ export function createOutbreakLayer({
       for (const [key, shown] of [...drawn]) {
         if (keep.has(key)) continue;
         entities.removeById(shown.id);
+        horizonDots.delete(shown.id);
         drawn.delete(key);
         changed = true;
       }
       for (const item of next) {
         const shown = drawn.get(item.id);
         if (shown?.sig === item.sig) continue;
-        if (shown) entities.removeById(shown.id);
+        if (shown) {
+          entities.removeById(shown.id);
+          horizonDots.delete(shown.id);
+        }
         serial += 1;
         const id = `${item.id}#${serial}`;
-        entities.add({ id, ...item.make() });
+        const entity = entities.add({ id, ...item.make() });
+        if (item.ground) horizonDots.set(id, { entity, ground: item.ground });
         drawn.set(item.id, { id, sig: item.sig });
         changed = true;
       }
     } finally {
       entities.resumeEvents();
-      if (changed) settle();
+      if (changed) {
+        horizonDirty = true;
+        updateHorizon();
+        settle();
+      }
     }
   };
 
@@ -356,8 +398,12 @@ export function createOutbreakLayer({
       _viewer = viewer;
       _enabled = false;
       drawn.clear();
+      horizonDots.clear();
       _dataSource = new Cesium.CustomDataSource(OUTBREAK_LAYER_ID);
       viewer?.dataSources?.add?.(_dataSource);
+      removeHorizonListener?.();
+      removeHorizonListener =
+        viewer?.scene?.preRender?.addEventListener?.(updateHorizon) || null;
     },
 
     enable() {
@@ -394,6 +440,9 @@ export function createOutbreakLayer({
       }
       _dataSource = null;
       drawn.clear();
+      horizonDots.clear();
+      removeHorizonListener?.();
+      removeHorizonListener = null;
       _viewer = null;
       _enabled = false;
     },

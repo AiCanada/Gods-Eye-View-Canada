@@ -73,13 +73,19 @@ const STREET_LEVEL_TOKEN = LAYER_STATE_REGISTRY.find(
 export const PANEL_UI_TOKEN = 't';
 
 /** Right-rail order once the layout controller has run. */
+// The fork's right rail also holds Data Layers, Sea Temperature, Scenes and
+// Radio (upstream keeps those elsewhere).
 export const RAIL_ORDER = Object.freeze([
   'pp-toggles',
+  'data-panel',
   'cctv-panel',
   'weather-panel',
   'recent-imagery-panel',
   'street-level-panel',
   'global-context-panel',
+  'sst-panel',
+  'scene-panel',
+  'radio-panel',
 ]);
 
 /** Over downtown Sacramento, looking north and down. */

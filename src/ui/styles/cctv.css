@@ -379,9 +379,13 @@
 }
 
 /* ── Drag-to-resize camera view (src/ui/cctvPanelResize.js) ──────────── */
-#cctv-panel:not(.collapsed)[data-user-width],
-#right-context-rail #cctv-panel:not(.collapsed)[data-user-width],
-#left-panel-stack > #cctv-panel:not(.collapsed)[data-user-width] {
+/* Only while docked: a floating window (panel-floating) is sized by its own
+   edges and corners (src/ui/panelResize.js), which this must not override. */
+#cctv-panel:not(.collapsed):not(.panel-floating)[data-user-width],
+#right-context-rail
+  #cctv-panel:not(.collapsed):not(.panel-floating)[data-user-width],
+#left-panel-stack
+  > #cctv-panel:not(.collapsed):not(.panel-floating)[data-user-width] {
   width: var(--cctv-user-width) !important;
   max-width: calc(100vw - 32px);
 }
