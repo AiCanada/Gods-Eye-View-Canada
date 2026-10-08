@@ -554,9 +554,12 @@
             <input id="outbreak-show" type="checkbox" aria-label="Display the outbreak and its predicted spread on the map" />
             Display spread on map
           </label>
-          <!-- CLEAR: the last run's results go (scan, flights, future spread,
-               found places, the log); the locations and settings stay. -->
-          <button id="outbreak-clear" class="scene-btn" type="button" title="Clear the last run's results for a new run from scratch">CLEAR</button>
+          <!-- CLEAR MAP: the spread leaves the map; every result is kept.
+               CLEAR DATA: the last run's results go (scan, flights, future
+               spread, found places, the log) and the map with them; the
+               locations and settings stay. -->
+          <button id="outbreak-clear-map" class="scene-btn" type="button" title="Take the spread off the map; the results are kept">CLEAR MAP</button>
+          <button id="outbreak-clear" class="scene-btn" type="button" title="Clear the last run's results for a new run from scratch">CLEAR DATA</button>
         </div>
         <div class="cctv-summary-label">CURRENT OUTBREAK LOCATIONS</div>
         <ul id="outbreak-locations" class="outbreak-list" aria-label="Outbreak locations"></ul>

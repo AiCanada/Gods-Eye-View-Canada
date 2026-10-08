@@ -305,6 +305,28 @@ async function main() {
       await drag(header, 0, 120 - header.y);
     }
 
+    // Fork: its CCTV box (calibration, scene summary) is far taller than
+    // upstream's, so even parked near the top its south corners reach under
+    // the command dock, where no pointer can reach them. Trim the window so
+    // it ends well above the dock, with room for the loop below to grow it.
+    await page.evaluate(
+      ({ id, room }) => {
+        const panel = document.getElementById(id);
+        const docks = ['command-dock', 'gev-voice-control']
+          .map((dockId) => document.getElementById(dockId))
+          .map((node) => node?.getBoundingClientRect())
+          .filter((rect) => rect && rect.width > 0 && rect.height > 0);
+        if (!panel || !docks.length) return;
+        const dockTop = Math.min(...docks.map((rect) => rect.top));
+        const rect = panel.getBoundingClientRect();
+        const fits = dockTop - room - rect.top;
+        if (rect.bottom > dockTop - room && fits > 0)
+          panel.style.height = `${Math.round(fits)}px`;
+      },
+      { id: PANEL_ID, room: 200 },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
     const limits = {
       minWidth: MIN_SIZE.width,
       minHeight: MIN_SIZE.height,

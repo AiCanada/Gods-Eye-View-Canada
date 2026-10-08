@@ -130,6 +130,7 @@ export class OutbreakPanel {
     if (!this._root) return;
     this._showBox = byId('outbreak-show');
     this._clearBtn = byId('outbreak-clear');
+    this._clearMapBtn = byId('outbreak-clear-map');
     this._list = byId('outbreak-locations');
     this._addForm = byId('outbreak-add');
     this._addName = byId('outbreak-add-name');
@@ -265,6 +266,7 @@ export class OutbreakPanel {
     });
     this._mediaBtn?.addEventListener('click', () => void this._mediaSearch());
     this._clearBtn?.addEventListener('click', () => this._clear());
+    this._clearMapBtn?.addEventListener('click', () => this._clearMap());
     for (const field of Object.values(this._profileFields)) {
       for (const type of ['change', 'input'])
         field?.addEventListener(type, () => {
@@ -745,11 +747,30 @@ export class OutbreakPanel {
   }
 
   /**
-   * CLEAR: a new run from scratch. The last run's results go: the scan and
+   * CLEAR DATA: a new run from scratch. The last run's results go: the scan and
    * its flights, the assumed air traffic, the future spread places, the new
    * locations found, the hour picked, the log. The outbreak locations, the
    * disease name, the speeds, the ticks and HOW CONTAGIOUS stay.
    */
+  /**
+   * CLEAR MAP: the spread leaves the map and every result stays, so ticking
+   * "Display spread on map" brings it straight back.
+   */
+  _clearMap() {
+    this._stopPlay();
+    this._hideMap();
+    this._say(
+      'MAP CLEARED · the results are kept; tick Display spread on map to show them again.',
+    );
+  }
+
+  _hideMap() {
+    this._state.show = false;
+    if (this._showBox) this._showBox.checked = false;
+    this._save();
+    this._send({ show: false });
+  }
+
   _clear() {
     if (this._busy) {
       this._say(`Still working: ${this._busy}. Clear once it is done.`);
@@ -765,8 +786,9 @@ export class OutbreakPanel {
     this._renderForecast();
     this._renderFound();
     if (this._output) this._output.textContent = '';
-    this._refresh({ send: true });
-    this._say('CLEARED · press SCAN TRAVEL for a new run.');
+    this._refresh();
+    this._hideMap();
+    this._say('DATA CLEARED · press SCAN TRAVEL for a new run.');
   }
 
   _remove(id) {

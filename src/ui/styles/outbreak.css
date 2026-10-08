@@ -163,8 +163,9 @@
   text-align: right;
 }
 
-/* CLEAR sits at the right of the top row, beside the map tick box. */
-#outbreak-panel #outbreak-clear {
+/* CLEAR MAP and CLEAR DATA sit at the right of the top row, beside the
+   map tick box. */
+#outbreak-panel #outbreak-clear-map {
   margin-left: auto;
 }
 
