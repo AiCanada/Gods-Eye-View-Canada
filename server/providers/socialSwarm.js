@@ -7,17 +7,39 @@ import { readRequestBody } from './common/request.js';
 import { fetchNominatimPlace } from './regional/place.js';
 import { admitLlmRequestFrom } from './llm/ask.js';
 import { enforceRateLimit, openAiRateLimiter } from './openai/rate-limit.js';
-import { keySetupValueProblem } from '../../src/keySetupCore.mjs';
+import {
+  admitKeySetupRequest,
+  keySetupValueProblem,
+} from '../../src/keySetupCore.mjs';
 import {
   LOCAL_PROVIDER_CHANGED_MESSAGE,
   localProviderTrusted,
 } from '../shared/localIntegrity.mjs';
 import {
+  GROK_BOT_UNCONFIGURED,
   SOCIAL_SWARM_PROVIDERS,
   planSwarmBot,
   planSwarmHandoff,
   readSwarmAnswer,
+  readSwarmHandoffSections,
 } from '../../src/socialSwarm.mjs';
+import {
+  GROK_BOT_GATEWAY_ANSWER_BYTES,
+  GROK_BOT_GATEWAY_COMMAND_MS,
+  GROK_BOT_GATEWAY_DEFAULT_AGENT,
+  GROK_BOT_GATEWAY_POLL_MS,
+  GROK_BOT_GATEWAY_TOTAL_MS,
+  GROK_BOT_GATEWAY_WAIT_MS,
+  gatewayAgentAwaitingUser,
+  gatewayAgentBusy,
+  gatewayAgentId,
+  gatewayErrorText,
+  grokBotGatewayOrigin,
+  listGatewayAgents,
+  pickGatewayAgent,
+  readGatewayReply,
+  sendPromptAccepted,
+} from '../../src/grokBotGateway.mjs';
 
 /** One bot's body is a few hundred bytes; this is far beyond any of them. */
 const SWARM_BODY_BYTES = 8 * 1024;
@@ -33,6 +55,8 @@ export const OPENAI_SWARM_MODEL_DEFAULT = 'gpt-6-astra';
 export const XAI_SWARM_MODEL_DEFAULT = 'grok-4.6';
 /** A press is one routine run in Grok Bot: four a minute from one address. */
 export const CHIEF_OF_STAFF_PER_MINUTE = 4;
+/** One sweep on the Grok Bot computer: four a minute from one address. */
+export const GROK_BOT_COMPUTER_PER_MINUTE = 4;
 const CHIEF_OF_STAFF_TIMEOUT_MS = 20_000;
 /** What is read of the webhook's answer, which is never passed on. */
 const CHIEF_OF_STAFF_ANSWER_BYTES = 16 * 1024;
@@ -107,6 +131,37 @@ export function chiefOfStaffWebhook(env = process.env) {
   };
 }
 
+/**
+ * Where GROK BOT SWARM's task goes without a Grok Bot key: the Grok Bot
+ * computer's own gateway (POWER UP → GROK BOT — COMPUTER). Configured only
+ * when the URL and token pass the rule POWER UP saved them under, re-checked
+ * here so a hand edit cannot send the token anywhere but that computer.
+ */
+export function grokBotGateway(env = process.env) {
+  const url = String(env.GROK_BOT_GATEWAY_URL ?? '').trim();
+  const token = String(env.GROK_BOT_GATEWAY_TOKEN ?? '').trim();
+  const agentRaw = String(env.GROK_BOT_GATEWAY_AGENT ?? '').trim();
+  const agentProblem = agentRaw
+    ? keySetupValueProblem('GROK_BOT_GATEWAY_AGENT', agentRaw)
+    : '';
+  const configured =
+    Boolean(url && token) &&
+    !keySetupValueProblem('GROK_BOT_GATEWAY_URL', url) &&
+    !keySetupValueProblem('GROK_BOT_GATEWAY_TOKEN', token) &&
+    !agentProblem &&
+    /^[\x21-\x7e]+$/.test(token);
+  const origin = configured ? grokBotGatewayOrigin(url) : '';
+  return {
+    url,
+    token,
+    origin,
+    agent: agentProblem ? '' : agentRaw || GROK_BOT_GATEWAY_DEFAULT_AGENT,
+    named: agentProblem ? '' : agentRaw,
+    configured: configured && Boolean(origin),
+    trusted: localProviderTrusted('grokBotComputer', env),
+  };
+}
+
 /** The provider's own words for a refusal, short, and never carrying the key. */
 function upstreamError(data, status, upstream) {
   const raw = data?.error?.message || data?.error || data?.message || '';
@@ -166,9 +221,13 @@ async function handleSwarmBot(req, res, allow, allowedHosts) {
     return;
   }
   if (!upstream.apiKey) {
-    // Distinct from a failure: the box says "add a key", once.
+    // Distinct from a failure: the box says "add a key", once. Grok names
+    // the computer card as well; the client uses that path when it is set.
     send(res, 501, {
-      error: `No ${upstream.keyTitle} key yet. Add it in POWER UP → ${upstream.keyTitle}.`,
+      error:
+        providerId === 'xai'
+          ? GROK_BOT_UNCONFIGURED
+          : `No ${upstream.keyTitle} key yet. Add it in POWER UP → ${upstream.keyTitle}.`,
       unconfigured: true,
       provider: providerId,
     });
@@ -287,6 +346,11 @@ function handleSwarmStatus(req, res, allowedHosts) {
     xai: {
       key: Boolean(xai.apiKey),
       chiefOfStaff: chiefOfStaffWebhook().configured,
+      computer: (() => {
+        // A computer whose saved settings changed by hand is not offered.
+        const gate = grokBotGateway();
+        return gate.configured && gate.trusted;
+      })(),
     },
     openai: { key: Boolean(openai.apiKey) },
   });
@@ -347,10 +411,9 @@ async function handleNearestCity(req, res, allowedHosts, lookup, allow, cache) {
     send(res, 400, { error: 'Give lat and lon.' });
     return;
   }
-  const key = `${latitude.toFixed(2)},${longitude.toFixed(2)}`;
-  const kept = cache.get(key);
-  if (kept && Date.now() - kept.at < NEAREST_CITY_CACHE_MS) {
-    send(res, 200, { city: kept.city });
+  const kept = keptCity(cache, latitude, longitude);
+  if (kept != null) {
+    send(res, 200, { city: kept });
     return;
   }
   if (!allow(clientKey(req))) {
@@ -362,13 +425,31 @@ async function handleNearestCity(req, res, allowedHosts, lookup, allow, cache) {
     );
     return;
   }
+  const city = await lookUpCity(cache, latitude, longitude, lookup);
+  send(res, 200, { city });
+}
+
+function cityCacheKey(latitude, longitude) {
+  return `${latitude.toFixed(2)},${longitude.toFixed(2)}`;
+}
+
+/** The town kept for that 0.01° cell, or null when none is fresh. */
+function keptCity(cache, latitude, longitude) {
+  const kept = cache.get(cityCacheKey(latitude, longitude));
+  return kept && Date.now() - kept.at < NEAREST_CITY_CACHE_MS
+    ? kept.city
+    : null;
+}
+
+async function lookUpCity(cache, latitude, longitude, lookup) {
+  const key = cityCacheKey(latitude, longitude);
   const city = await nearestCityFor({ latitude, longitude }, { lookup });
   cache.delete(key);
   cache.set(key, { city, at: Date.now() });
   while (cache.size > NEAREST_CITY_CACHE_MAX) {
     cache.delete(cache.keys().next().value);
   }
-  send(res, 200, { city });
+  return city;
 }
 
 /** The webhook's refusal, short, and never carrying its key. */
@@ -382,6 +463,291 @@ function webhookError(status, raw, key) {
   return text
     ? `Grok Bot refused the task (HTTP ${status}): ${text}`
     : `Grok Bot refused the task (HTTP ${status})`;
+}
+
+/** Bots on a sweep now (gateway origin + bot id): one sweep a bot at a time. */
+const computerSweeps = new Set();
+
+/**
+ * GROK BOT SWARM without a Grok Bot key: one prompt of the swarm's task to
+ * a bot on the Grok Bot computer (POWER UP → GROK BOT — COMPUTER), then wait
+ * for its report and pass that text back. Not a webhook.
+ *
+ * This sends a saved token to another machine, so only this computer's own
+ * page may ask (the POWER UP check: loopback, exact origin, no proxy). One
+ * budget, GROK_BOT_GATEWAY_TOTAL_MS, covers every call; a report counts only
+ * once the bot has stopped working, and a second press for the same bot
+ * while one runs is refused.
+ */
+async function handleGrokBotComputer(
+  req,
+  res,
+  { allow, allowPlace, cities, fetchImpl, placeLookup },
+) {
+  const startedAt = Date.now();
+  const admission = admitKeySetupRequest({
+    method: req.method,
+    remoteAddress: req.socket?.remoteAddress,
+    hostHeader: req.headers?.host,
+    protocol: req.socket?.encrypted ? 'https:' : 'http:',
+    origin: req.headers?.origin,
+    contentType: req.headers?.['content-type'],
+    proxyHeaders: req.headers || {},
+    env: process.env,
+  });
+  if (!admission.ok) {
+    send(res, admission.status || 403, {
+      error: String(admission.error || 'Refused').replace(
+        'Provider Settings',
+        'Grok Bot',
+      ),
+    });
+    return;
+  }
+  let raw;
+  try {
+    raw = await readRequestBody(req, SWARM_BODY_BYTES);
+  } catch {
+    send(res, 413, { error: 'Request too large' });
+    return;
+  }
+  let body;
+  try {
+    body = JSON.parse(raw || '{}');
+  } catch {
+    send(res, 400, { error: 'Malformed request body' });
+    return;
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    send(res, 400, { error: 'Malformed request body' });
+    return;
+  }
+  const gate = grokBotGateway();
+  if (!gate.configured) {
+    send(res, 501, {
+      error: GROK_BOT_UNCONFIGURED,
+      unconfigured: true,
+    });
+    return;
+  }
+  if (!gate.trusted) {
+    send(res, 409, { error: LOCAL_PROVIDER_CHANGED_MESSAGE });
+    return;
+  }
+  // Counted before any lookup, so refused presses cost nothing upstream.
+  if (!allow(clientKey(req))) {
+    send(
+      res,
+      429,
+      {
+        error: 'Too many hand-offs this minute. Wait a minute, then try again.',
+      },
+      { 'Retry-After': '30' },
+    );
+    return;
+  }
+  let nearestCity =
+    typeof body.nearestCity === 'string' ? body.nearestCity : '';
+  const latitude = Number(body.latitude);
+  const longitude = Number(body.longitude);
+  if (
+    !nearestCity &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    Math.abs(latitude) <= 90 &&
+    Math.abs(longitude) <= 180
+  ) {
+    // The nearest-city route's cache and limit: no extra Nominatim calls.
+    const kept = keptCity(cities, latitude, longitude);
+    if (kept != null) nearestCity = kept;
+    else if (allowPlace(clientKey(req))) {
+      nearestCity = await lookUpCity(cities, latitude, longitude, placeLookup);
+    }
+  }
+  const plan = planSwarmHandoff({
+    instructions: body.instructions,
+    place: body.place,
+    nearestCity,
+    latitude: body.latitude,
+    longitude: body.longitude,
+    now: new Date(),
+  });
+  if (!plan.ok) {
+    send(res, 400, { error: plan.error });
+    return;
+  }
+  const deadlineAll = startedAt + GROK_BOT_GATEWAY_TOTAL_MS;
+  const disconnect = new AbortController();
+  res.on('close', () => disconnect.abort());
+  const command = async (name, payload) => {
+    const left = Math.min(
+      GROK_BOT_GATEWAY_COMMAND_MS,
+      deadlineAll - Date.now(),
+    );
+    if (left <= 0) {
+      const err = new Error('Out of time');
+      err.name = 'TimeoutError';
+      throw err;
+    }
+    const response = await fetchImpl(`${gate.origin}/api/${name}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${gate.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      redirect: 'error',
+      signal: AbortSignal.any([AbortSignal.timeout(left), disconnect.signal]),
+    });
+    const answer = await readCapped(response, GROK_BOT_GATEWAY_ANSWER_BYTES);
+    let data = {};
+    try {
+      data = answer ? JSON.parse(answer) : {};
+    } catch {
+      data = { message: answer };
+    }
+    if (!response.ok) {
+      const err = new Error(
+        gatewayErrorText(
+          data?.error?.message || data?.error || data?.message || answer,
+          response.status,
+          gate.token,
+        ),
+      );
+      err.status = 502;
+      throw err;
+    }
+    return data;
+  };
+  let lock = '';
+  let taken = false;
+  try {
+    const roster = listGatewayAgents(await command('listAgents', {}));
+    const chosen = pickGatewayAgent(roster, gate.named);
+    if (!chosen) {
+      send(res, 502, {
+        error: roster.length
+          ? `No Grok Bot named ${gate.agent}. Set BOT on POWER UP → GROK BOT — COMPUTER.`
+          : 'No bots on that Grok Bot computer.',
+      });
+      return;
+    }
+    const agentId = gatewayAgentId(chosen);
+    const key = `${gate.origin} ${agentId}`;
+    if (computerSweeps.has(key)) {
+      send(res, 409, {
+        error:
+          'Grok Bot is already on a sweep from this map. Wait for its report, then press again.',
+      });
+      return;
+    }
+    computerSweeps.add(key);
+    lock = key;
+    // The last line before the task: a new report must differ from it. When
+    // it cannot be read, a report counts only after the bot was seen working.
+    let before = '';
+    let beforeKnown = true;
+    try {
+      before = readGatewayReply(
+        await command('getAgentTranscriptTail', { id: agentId, limit: 12 }),
+      );
+    } catch (error) {
+      if (disconnect.signal.aborted) return;
+      if (error?.name === 'TimeoutError' && Date.now() >= deadlineAll) {
+        throw error;
+      }
+      beforeKnown = false;
+    }
+    const sent = await command('sendPrompt', {
+      agentId,
+      prompt: [
+        "God's Eye View is sending this GROK BOT SWARM sweep. When you finish, write the full report in this chat.",
+        plan.text,
+      ].join('\n\n'),
+    });
+    if (!sendPromptAccepted(sent)) {
+      send(res, 502, { error: 'Grok Bot did not take the task.' });
+      return;
+    }
+    taken = true;
+    // Room for one last pair of calls after the wait.
+    const deadline = Math.min(
+      Date.now() + GROK_BOT_GATEWAY_WAIT_MS,
+      deadlineAll - GROK_BOT_GATEWAY_COMMAND_MS,
+    );
+    let reply = '';
+    let awaiting = false;
+    let sawBusy = false;
+    let stillBusy = false;
+    for (;;) {
+      if (disconnect.signal.aborted) return;
+      const live = listGatewayAgents(await command('listAgents', {}));
+      const row =
+        live.find((item) => gatewayAgentId(item) === agentId) || chosen;
+      if (gatewayAgentAwaitingUser(row)) {
+        awaiting = true;
+        break;
+      }
+      const busy = gatewayAgentBusy(row);
+      if (busy) sawBusy = true;
+      stillBusy = busy;
+      const tail = readGatewayReply(
+        await command('getAgentTranscriptTail', { id: agentId, limit: 12 }),
+      );
+      if (tail && !busy && (beforeKnown ? tail !== before : sawBusy)) {
+        reply = tail;
+        break;
+      }
+      if (Date.now() + GROK_BOT_GATEWAY_POLL_MS > deadline) break;
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, GROK_BOT_GATEWAY_POLL_MS);
+        disconnect.signal.addEventListener('abort', () => clearTimeout(timer), {
+          once: true,
+        });
+      });
+    }
+    if (awaiting) {
+      send(res, 504, {
+        error:
+          'Grok Bot is waiting for you in the app (an approval). Finish it there, then press again.',
+      });
+      return;
+    }
+    if (!reply) {
+      send(res, 504, {
+        error: stillBusy
+          ? 'Grok Bot is still working. Its report will be in its chat in Grok Bot.'
+          : 'Grok Bot did not finish in time.',
+      });
+      return;
+    }
+    const sections = readSwarmHandoffSections(reply);
+    send(res, 200, {
+      ok: true,
+      via: 'computer',
+      text: reply,
+      sections: sections.map((row) => ({
+        bot: row.bot.id,
+        label: row.bot.label,
+        text: row.text,
+      })),
+    });
+  } catch (error) {
+    if (disconnect.signal.aborted) return;
+    const timedOut =
+      error?.name === 'TimeoutError' || error?.name === 'AbortError';
+    send(res, error?.status || 504, {
+      error: timedOut
+        ? taken
+          ? 'Grok Bot did not finish in time. Its report will be in its chat in Grok Bot.'
+          : 'Grok Bot did not take the task in time.'
+        : error?.message && !String(error.message).includes(gate.token)
+          ? error.message
+          : 'The task could not reach Grok Bot.',
+    });
+  } finally {
+    if (lock) computerSweeps.delete(lock);
+  }
 }
 
 /**
@@ -533,7 +899,8 @@ async function readCapped(response, limit) {
  * calls this on a timer. Keys stay server-side.
  *
  *   POST /api/social/swarm — { provider, bot, instructions, place, latitude, longitude }
- *   GET  /api/social/swarm/status — which swarms have a key, and the Chief of Staff webhook
+ *   GET  /api/social/swarm/status — which swarms have a key, the computer, and the Chief of Staff webhook
+ *   POST /api/social/swarm/grok-bot — { instructions, place, nearestCity, latitude, longitude }: Grok's task to the computer; the report comes back
  *   POST /api/social/swarm/chief-of-staff — { instructions, place, nearestCity, latitude, longitude }: Grok's task to that webhook
  *   GET  /api/social/swarm/nearest-city?lat=&lon= — { city } for that task, empty when none
  */
@@ -550,6 +917,11 @@ export function socialSwarmProxy({
     windowMs: 60_000,
     max: CHIEF_OF_STAFF_PER_MINUTE,
     globalMax: CHIEF_OF_STAFF_PER_MINUTE * 2,
+  });
+  const allowComputer = makeRateLimiter({
+    windowMs: 60_000,
+    max: GROK_BOT_COMPUTER_PER_MINUTE,
+    globalMax: GROK_BOT_COMPUTER_PER_MINUTE * 2,
   });
   const allowPlace = makeRateLimiter({
     windowMs: 60_000,
@@ -580,6 +952,16 @@ export function socialSwarmProxy({
           allowPlace,
           cities,
         ).catch(failed('The lookup failed.'));
+        return;
+      }
+      if (pathName === '/grok-bot') {
+        handleGrokBotComputer(req, res, {
+          allow: allowComputer,
+          allowPlace,
+          cities,
+          fetchImpl: fetchImpl || globalThis.fetch,
+          placeLookup,
+        }).catch(failed('The hand-off failed.'));
         return;
       }
       if (pathName === '/chief-of-staff') {

@@ -398,3 +398,139 @@ test('the box fetches each location’s main roads and rail lines and the spread
   assert.equal(asked.length, 4);
   panel.destroy();
 });
+
+const settle = async () => {
+  for (let i = 0; i < 10; i += 1)
+    await new Promise((resolve) => setTimeout(resolve, 0));
+};
+
+test('SOCIAL SEARCH with no Grok Bot key logs the copied task and finds no places in it', async () => {
+  const page = fakePage([
+    'outbreak-social',
+    'outbreak-swarm',
+    'outbreak-found',
+  ]);
+  page.nodes.get('outbreak-swarm').value = 'xai';
+  const panel = new OutbreakPanel(null, {
+    document: page.document,
+    windowRef: page.windowRef,
+    storage: page.storage,
+    fetch: async (url) => {
+      if (url === '/api/llm/providers') {
+        return { ok: true, json: async () => ({ providers: [] }) };
+      }
+      if (url === '/api/social/swarm/status') {
+        return {
+          ok: true,
+          json: async () => ({
+            xai: { key: false, computer: false },
+            openai: { key: false },
+          }),
+        };
+      }
+      if (String(url).startsWith('/api/social/swarm/nearest-city')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ city: 'Irkutsk' }),
+        };
+      }
+      if (url === '/api/social/grok-bot/open') {
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      }
+      throw new Error(`unexpected ${url}`);
+    },
+  });
+  await settle();
+  page.nodes.get('outbreak-social').click();
+  await settle();
+  const log = page.nodes.get('outbreak-output').textContent;
+  // The task names Irkutsk; it is the task, not a place found.
+  assert.match(log, /Chief of Staff: run a GROK BOT SWARM sweep/);
+  assert.deepEqual(panel._state.found, []);
+  assert.doesNotMatch(
+    page.nodes.get('outbreak-status').textContent,
+    /new location/,
+  );
+  panel.destroy();
+});
+
+test('SOCIAL SEARCH with Grok Bot POSTs seven bots and prepends each answer to the log', async () => {
+  const page = fakePage([
+    'outbreak-social',
+    'outbreak-swarm',
+    'outbreak-found',
+  ]);
+  page.nodes.get('outbreak-swarm').value = 'xai';
+  const bots = [];
+  const panel = new OutbreakPanel(null, {
+    document: page.document,
+    windowRef: page.windowRef,
+    storage: page.storage,
+    fetch: async (url, init = {}) => {
+      if (url === '/api/llm/providers') {
+        return { ok: true, json: async () => ({ providers: [] }) };
+      }
+      if (url === '/api/social/swarm/status') {
+        return {
+          ok: true,
+          json: async () => ({
+            xai: { key: true, computer: false },
+            openai: { key: false },
+          }),
+        };
+      }
+      if (url === '/api/social/swarm') {
+        const body = JSON.parse(init.body);
+        bots.push(body);
+        if (body.bot === 'tiktok') {
+          return {
+            ok: false,
+            status: 502,
+            json: async () => ({
+              error: 'xAI refused the bot (HTTP 500)',
+            }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            bot: body.bot,
+            text:
+              body.bot === 'x'
+                ? '14:05 · Ulan-Ude · quarantine'
+                : 'NOTHING FOUND',
+          }),
+        };
+      }
+      throw new Error(`unexpected ${url}`);
+    },
+  });
+  await settle();
+  page.nodes.get('outbreak-social').click();
+  await settle();
+  assert.deepEqual(
+    bots.map((bot) => bot.bot),
+    ['x', 'facebook', 'instagram', 'threads', 'tiktok', 'truth', 'news'],
+  );
+  for (const bot of bots) {
+    assert.equal(bot.provider, 'xai');
+    assert.equal(bot.place, 'Irkutsk, Russia');
+    assert.equal(bot.latitude, 52.287);
+    assert.equal(bot.longitude, 104.305);
+  }
+  const log = page.nodes.get('outbreak-output').textContent;
+  assert.match(log, /GROK BOT SWARM · X/);
+  assert.match(log, /Ulan-Ude · quarantine/);
+  assert.match(
+    log,
+    /GROK BOT SWARM · TikTok[^\n]*\nBOT FAILED: xAI refused the bot \(HTTP 500\)/,
+  );
+  assert.match(
+    page.nodes.get('outbreak-status').textContent,
+    /SOCIAL SEARCH DONE · 1 new location found/,
+  );
+  panel.destroy();
+});

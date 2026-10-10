@@ -92,7 +92,7 @@ function localProviderPlugins({ realtime } = {}) {
     roadCctvKeysProxy({ sourceRoot: defaultSourceRoot }),
     // Social Media Analysis bot swarms: one paid search request per bot, on a press.
     socialSwarmProxy(),
-    // Opens the Grok Bot desktop app for that swarm when it has no key of its own.
+    // Opens the Grok Bot desktop app for OPEN GROK BOT and the no-key swarm.
     grokBotDesktopProxy(),
     // OUTBREAK LOCATIONS & PREDICTED SPREAD: airports, flight history,
     // rail and water near an outbreak, and the global media search.

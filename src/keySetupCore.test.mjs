@@ -135,12 +135,14 @@ test('Windows owner SID parsing reads only the structured user-SID CSV field', (
 test('validation accepts every registry env var and only those', () => {
   const known = knownKeySetupEnvVars();
   // The SMS relay's number, gateway address and account id have a shape of
-  // their own; every other name takes a plain key.
+  // their own, as do Grok Bot's webhook and computer gateway URLs; every
+  // other name takes a plain key.
   const shaped = {
     TWILIO_FROM_NUMBER: '+15065550100',
     ULTRA_SMS_RELAY_URL: 'https://relay.example/sms',
     TWILIO_ACCOUNT_SID: 'ACvalid123',
     GROK_BOT_WEBHOOK_URL: 'https://api2.cursor.sh/automations/webhook/aut_7Hq2',
+    GROK_BOT_GATEWAY_URL: 'http://127.0.0.1:1340',
   };
   for (const name of known) {
     const value = shaped[name] || 'valid-value-123';
@@ -611,25 +613,34 @@ test('every LLM key carries an optional MODEL box; OpenRouter defaults to NVIDIA
   assert.ok(!flat.includes('SECRET-KEY-VALUE'), 'a key value never appears in the status');
 });
 
-test('the bot swarms have POWER UP cards of their own: GROK BOT, its Chief of Staff webhook, and OPENAI DOTS', () => {
+test('the bot swarms have POWER UP cards of their own: GROK BOT, its Chief of Staff webhook, its computer, and OPENAI DOTS', () => {
   const byId = Object.fromEntries(KEY_SETUP_KEYS.map((entry) => [entry.id, entry]));
   assert.deepEqual([...byId['grok-bot'].envVars], ['GROK_BOT_API_KEY']);
   assert.equal(byId['grok-bot'].optionalEnvVars[0].name, 'XAI_SWARM_MODEL');
   assert.deepEqual([...byId['grok-bot-chief-of-staff'].envVars], ['GROK_BOT_WEBHOOK_URL', 'GROK_BOT_WEBHOOK_KEY']);
+  assert.deepEqual([...byId['grok-bot-computer'].envVars], ['GROK_BOT_GATEWAY_URL', 'GROK_BOT_GATEWAY_TOKEN']);
+  assert.equal(byId['grok-bot-computer'].optionalEnvVars[0].name, 'GROK_BOT_GATEWAY_AGENT');
   assert.deepEqual([...byId['openai-dots'].envVars], ['OPENAI_DOTS_API_KEY']);
   assert.equal(byId['openai-dots'].optionalEnvVars[0].name, 'OPENAI_SWARM_MODEL');
-  for (const id of ['grok-bot', 'grok-bot-chief-of-staff', 'openai-dots']) {
+  for (const id of ['grok-bot', 'grok-bot-chief-of-staff', 'grok-bot-computer', 'openai-dots']) {
     assert.equal(Boolean(byId[id].hidden), false, `${id} has its own row`);
     assert.equal(Boolean(byId[id].clientExposed), false, `${id} never reaches the browser bundle`);
   }
   // Apart from the Ask panel's xAI key and voice control's OpenAI key.
   assert.notEqual(byId['grok-bot'].group, byId.xai.group);
   assert.equal(byId['openai-dots'].group, undefined);
-  // Either Grok Bot card powers the swarm, so the pair counts once.
+  // Any Grok Bot card powers the group, so the three count once.
   const none = keySetupStatus({});
   const webhook = 'https://api2.cursor.sh/automations/webhook/aut_7Hq2';
   assert.equal(keySetupStatus({ GROK_BOT_API_KEY: 'xai-k' }).setCount, none.setCount + 1);
   assert.equal(keySetupStatus({ GROK_BOT_WEBHOOK_URL: webhook, GROK_BOT_WEBHOOK_KEY: 'gbwh-k' }).setCount, none.setCount + 1);
+  assert.equal(
+    keySetupStatus({
+      GROK_BOT_GATEWAY_URL: 'http://127.0.0.1:1340',
+      GROK_BOT_GATEWAY_TOKEN: 'sand-k',
+    }).setCount,
+    none.setCount + 1,
+  );
   assert.equal(
     keySetupStatus({ GROK_BOT_API_KEY: 'xai-k', GROK_BOT_WEBHOOK_URL: webhook, GROK_BOT_WEBHOOK_KEY: 'gbwh-k' }).setCount,
     none.setCount + 1,
@@ -656,6 +667,28 @@ test('the bot swarms have POWER UP cards of their own: GROK BOT, its Chief of St
     assert.match(verdict.error, /^GROK_BOT_WEBHOOK_URL must be the Webhook URL Grok Bot shows/);
   }
   assert.equal(validateKeySetupUpdates({ GROK_BOT_WEBHOOK_KEY: 'k'.repeat(513) }).ok, false);
+  for (const url of [
+    'http://127.0.0.1:1340',
+    'http://localhost:1340',
+    'http://100.64.1.2:1340',
+    'https://box.ts.net',
+  ]) {
+    assert.equal(validateKeySetupUpdates({ GROK_BOT_GATEWAY_URL: url }).ok, true, url);
+  }
+  for (const url of [
+    'https://evil.example:1340',
+    'http://127.0.0.1:1340/api',
+    'http://127.0.0.1:1340?x=1',
+    'http://user:pw@127.0.0.1:1340',
+    'https://box.ts.net.evil.example',
+  ]) {
+    const verdict = validateKeySetupUpdates({ GROK_BOT_GATEWAY_URL: url });
+    assert.equal(verdict.ok, false, url);
+    assert.match(verdict.error, /^GROK_BOT_GATEWAY_URL must be http:\/\/127\.0\.0\.1:1340/);
+  }
+  assert.equal(validateKeySetupUpdates({ GROK_BOT_GATEWAY_TOKEN: 'k'.repeat(513) }).ok, false);
+  assert.equal(validateKeySetupUpdates({ GROK_BOT_GATEWAY_AGENT: 'Chief-of-Staff' }).ok, true);
+  assert.equal(validateKeySetupUpdates({ GROK_BOT_GATEWAY_AGENT: 'Chief of Staff' }).ok, false);
   // A hand-edited address that fails the rule is there, but not set.
   const handEdited = keySetupStatus({ GROK_BOT_WEBHOOK_URL: 'https://hooks.evil.example/x', GROK_BOT_WEBHOOK_KEY: 'gbwh-k' });
   const row = handEdited.keys.find((key) => key.id === 'grok-bot-chief-of-staff');
@@ -665,9 +698,11 @@ test('the bot swarms have POWER UP cards of their own: GROK BOT, its Chief of St
     GROK_BOT_API_KEY: 'xai-SECRET-1',
     GROK_BOT_WEBHOOK_URL: webhook,
     GROK_BOT_WEBHOOK_KEY: 'gbwh-SECRET-2',
+    GROK_BOT_GATEWAY_URL: 'http://127.0.0.1:1340',
+    GROK_BOT_GATEWAY_TOKEN: 'sand-SECRET-4',
     OPENAI_DOTS_API_KEY: 'sk-SECRET-3',
   }));
-  for (const secret of ['xai-SECRET-1', 'aut_7Hq2', 'gbwh-SECRET-2', 'sk-SECRET-3']) {
+  for (const secret of ['xai-SECRET-1', 'aut_7Hq2', 'gbwh-SECRET-2', 'sk-SECRET-3', 'sand-SECRET-4']) {
     assert.equal(flat.includes(secret), false, secret);
   }
 });

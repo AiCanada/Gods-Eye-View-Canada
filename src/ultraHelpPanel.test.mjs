@@ -15,6 +15,7 @@ import {
   DEVICE_FEEDS_VISIBLE_EVENT,
   DEVICE_HISTORY_PERIODS,
 } from './deviceFeedsCore.mjs';
+import { SOCIAL_SWARM_DEFAULT_PURPOSE } from './socialSwarm.mjs';
 
 /* The byId/createElement fake of src/overlays/worldOverlay.test.mjs, cut
  * down to what the Ultra box touches. innerHTML throws on purpose: every
@@ -273,6 +274,10 @@ function installFakeDocument() {
   make('p', 'ultra-cell-note', panel, { hidden: true });
   make('select', 'ultra-map-period', panel, { value: '30d' });
   make('select', 'ultra-incident', panel, { value: 'threat' });
+  make('textarea', 'ultra-swarm-instructions', panel);
+  make('button', 'ultra-swarm-run', panel, { textContent: 'GROK BOT SWARM' });
+  make('div', 'ultra-swarm-status', panel);
+  make('div', 'ultra-swarm-output', panel);
   /* The saved helpers the plea is texted to. */
   make('p', 'ultra-help-store-note', panel, { hidden: true });
   make('p', 'ultra-outbound-note', panel, { hidden: true });
@@ -4171,6 +4176,231 @@ test('PHOTOS ON MAP and VIDEOS ON MAP: unticked, that kind leaves the map; the l
     photosBox.checked = true;
     panel.dispatch('change', { target: photosBox });
     assert.deepEqual(media().photos, [items[0].name]);
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('GROK BOT SWARM refuses a phone fix with no time', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const sent = [];
+  const status = {
+    unread: 0,
+    inbox: [],
+    tokens: [],
+    packages: [],
+    position: { lat: 45.2744, lon: -66.0622 },
+    network: network(),
+  };
+  const fetchImpl = async (url) => {
+    if (url === '/api/ultra-help/status') {
+      return { ok: true, json: async () => status };
+    }
+    if (String(url).startsWith('/api/social/')) sent.push(url);
+    throw new Error(`unexpected ${url}`);
+  };
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef: fakeWindow(),
+  });
+  try {
+    await settle();
+    panel.dispatch('click', { target: byId('ultra-swarm-run') });
+    await settle();
+    assert.deepEqual(sent, []);
+    assert.match(byId('ultra-swarm-status').textContent, /has no time/);
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('GROK BOT SWARM with a fresh phone fix POSTs seven bots and writes answers in the Ultra log', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const bots = [];
+  const status = {
+    unread: 0,
+    inbox: [],
+    tokens: [],
+    packages: [],
+    position: {
+      lat: 45.2744,
+      lon: -66.0622,
+      at: Date.now(),
+      place: '10 Example St, Saint John, New Brunswick',
+    },
+    network: network(),
+  };
+  const fetchImpl = async (url, options = {}) => {
+    if (url === '/api/ultra-help/status') {
+      return { ok: true, json: async () => status };
+    }
+    if (url === '/api/social/swarm/status') {
+      return {
+        ok: true,
+        json: async () => ({
+          xai: { key: true, computer: false },
+          openai: { key: false },
+        }),
+      };
+    }
+    if (url === '/api/social/swarm') {
+      const body = JSON.parse(options.body);
+      bots.push(body);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          bot: body.bot,
+          text:
+            body.bot === 'x'
+              ? '14:05 · King St · police activity'
+              : 'NOTHING FOUND',
+          sources: [],
+        }),
+      };
+    }
+    throw new Error(`unexpected ${url}`);
+  };
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef: fakeWindow(),
+  });
+  try {
+    await settle();
+    panel.dispatch('click', { target: byId('ultra-swarm-run') });
+    await settle();
+    assert.equal(bots.length, 7);
+    for (const bot of bots) {
+      assert.equal(bot.provider, 'xai');
+      assert.equal(bot.latitude, 45.2744);
+      assert.equal(bot.longitude, -66.0622);
+      assert.equal(bot.place, '10 Example St, Saint John, New Brunswick');
+      assert.equal(bot.instructions, SOCIAL_SWARM_DEFAULT_PURPOSE);
+    }
+    assert.match(
+      byId('ultra-swarm-output').textContent,
+      /GROK BOT SWARM · X · 10 Example St, Saint John, New Brunswick/,
+    );
+    assert.match(
+      byId('ultra-swarm-output').textContent,
+      /King St · police activity/,
+    );
+    assert.match(
+      byId('ultra-swarm-status').textContent,
+      /^SWARM DONE .+ · 1 with reports · 6 found nothing$/,
+    );
+    assert.equal(byId('ultra-swarm-run').textContent, 'GROK BOT SWARM');
+    assert.equal(byId('ultra-swarm-run').disabled, false);
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('GROK BOT SWARM with no phone position sends nothing', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const bots = [];
+  const fetchImpl = async (url, options = {}) => {
+    if (url === '/api/ultra-help/status') {
+      return {
+        ok: true,
+        json: async () => ({
+          unread: 0,
+          inbox: [],
+          tokens: [],
+          packages: [],
+          position: null,
+          network: network(),
+        }),
+      };
+    }
+    if (url === '/api/social/swarm') {
+      bots.push(JSON.parse(options.body));
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    }
+    throw new Error(`unexpected ${url}`);
+  };
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef: fakeWindow(),
+  });
+  try {
+    await settle();
+    panel.dispatch('click', { target: byId('ultra-swarm-run') });
+    await settle();
+    assert.equal(bots.length, 0);
+    assert.match(
+      byId('ultra-swarm-status').textContent,
+      /Needs a fresh phone position/,
+    );
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('GROK BOT SWARM with no Grok Bot key opens Grok Bot and keeps the task in the log', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const bots = [];
+  const opens = [];
+  const fetchImpl = async (url, options = {}) => {
+    if (url === '/api/ultra-help/status') {
+      return {
+        ok: true,
+        json: async () => ({
+          unread: 0,
+          inbox: [],
+          tokens: [],
+          packages: [],
+          position: { lat: 45.2744, lon: -66.0622, at: Date.now() },
+          network: network(),
+        }),
+      };
+    }
+    if (url === '/api/social/swarm/status') {
+      return {
+        ok: true,
+        json: async () => ({
+          xai: { key: false, computer: false },
+          openai: { key: false },
+        }),
+      };
+    }
+    if (String(url).startsWith('/api/social/swarm/nearest-city')) {
+      return { ok: true, json: async () => ({ city: 'Saint John' }) };
+    }
+    if (url === '/api/social/grok-bot/open') {
+      opens.push(options.method);
+      return { ok: true, json: async () => ({ ok: true, opened: 'shortcut' }) };
+    }
+    if (url === '/api/social/swarm') {
+      bots.push(JSON.parse(options.body));
+      return {
+        ok: false,
+        status: 501,
+        json: async () => ({ unconfigured: true }),
+      };
+    }
+    throw new Error(`unexpected ${url}`);
+  };
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef: fakeWindow(),
+  });
+  try {
+    await settle();
+    panel.dispatch('click', { target: byId('ultra-swarm-run') });
+    await settle();
+    assert.equal(bots.length, 0);
+    assert.deepEqual(opens, ['POST']);
+    assert.match(
+      byId('ultra-swarm-output').textContent,
+      /GROK BOT SWARM · Chief of Staff/,
+    );
+    assert.match(byId('ultra-swarm-status').textContent, /GROK BOT OPENED/);
   } finally {
     handle.destroy();
   }

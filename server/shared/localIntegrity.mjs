@@ -70,6 +70,11 @@ const PROVIDER_FIELDS = Object.freeze({
     'GROK_BOT_WEBHOOK_URL',
     'GROK_BOT_WEBHOOK_KEY',
   ]),
+  grokBotComputer: Object.freeze([
+    'GROK_BOT_GATEWAY_URL',
+    'GROK_BOT_GATEWAY_TOKEN',
+    'GROK_BOT_GATEWAY_AGENT',
+  ]),
   openaiDots: Object.freeze(['OPENAI_DOTS_API_KEY', 'OPENAI_SWARM_MODEL']),
 });
 

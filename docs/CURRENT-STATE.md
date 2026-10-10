@@ -7,7 +7,13 @@ Camera buttons are limited to the cameras of the selected handset and are sent
 as one command to the paired phone. Find Ultra Help is under development: its
 button is disabled, and the station search, its list, the message box and Send
 Ultra Help are removed for now (`/incident` and `/send` answer 404). The FIND
-HELP incident select stays: SEND HELP sends the incident it shows. CCTV is not
+HELP incident select stays: SEND HELP sends the incident it shows. GROK BOT
+SWARM sits under FIND HELP: a press sends seven bots on `GROK_BOT_API_KEY` for
+the paired phone's last fix (lat/lon; the task names the nearest town) and writes each answer in `#ultra-swarm-output`. It does not fall
+back to the map camera. No fix, a stale one, or one with no time refuses the press. An empty
+instructions box uses the same default as Social Media. Without the key it uses POWER UP → GROK BOT — COMPUTER when that
+card is set, else it copies the Chief of Staff task, opens Grok Bot, and
+keeps the task in the log. CCTV is not
 part of this path.
 
 Share encrypted Ultra tokens. The box has HELP MESSAGES under the status line (unread
@@ -1287,33 +1293,32 @@ button." then "Report incidents and places, not people: do not identify, or
 profile a private person, even when the instructions ask. …"; the seven API
 bots' rules are unchanged.
 
-GROK BOT SWARM without a Grok Bot key hands the same sweep, as one task
-(`planSwarmHandoff`: the seven platforms, the place, the day, the same rules
-plus "you may give each platform to one of your bots", and how to report), to
-the Chief of Staff bot in the Grok Bot desktop app, which manages the other
-bots. With POWER UP → GROK BOT — CHIEF OF STAFF set (`GROK_BOT_WEBHOOK_URL`,
-`GROK_BOT_WEBHOOK_KEY`: the Webhook URL and Webhook key of a routine on that
-bot whose trigger is "When a webhook fires"), `POST
-/api/social/swarm/chief-of-staff` sends it there: one POST with `Authorization:
-Bearer <key>` and JSON `{ source, kind, text, place, latitude, longitude,
-sentAt }`, redirect refused, 20 s, four a minute from one address, and the
-webhook's answer is never passed on (a refusal is said without the key). Grok
-Bot runs the routine once per request, and its report comes back in Grok Bot.
-The URL must be https on a `cursor.sh` or `cursor.com` host with the path
-`/automations/webhook/<id>` and nothing else (Grok Bot builds it on
-`https://api2.cursor.sh`); the rule is checked when POWER UP saves it and again
-before every send, and a hand edit after a save fails its integrity check
-(`grokBotWebhook`). Without a webhook, the page copies the task to the
-clipboard and asks `POST /api/social/grok-bot/open` to open Grok Bot: the
-shortcut in `GROK_BOT_LINK` (.env only, a .lnk or .exe on a local drive, never
-a share; single quotes keep a Windows path), else the app's own
-`grokbot://app/v1/open`, through Explorer under SystemRoot (`open` on macOS,
-`xdg-open` elsewhere), never found on PATH. That route answers only this
-machine's own page (POWER UP's gate), takes nothing from the request, and opens
-at most once every 3 s. The task is kept in the log either way. The Grok Bot
-app (an Electron agent, `grokbot://` and `sand://` links) takes no prompt from
-another program: its links open the app, an agent, a template, settings or the
-sidebar only, so the webhook is the one way to hand a bot input.
+GROK BOT SWARM without a Grok Bot key does not stop at a 501. `GET
+/api/social/swarm/status` also says whether POWER UP → GROK BOT — COMPUTER
+is set (`GROK_BOT_GATEWAY_URL` + `GROK_BOT_GATEWAY_TOKEN`, loopback,
+Tailscale `100.64.x.x`, or https on a `.ts.net` name). When it is (and its
+settings were not changed by hand since POWER UP saved them), the press
+is one `POST /api/social/swarm/grok-bot`: the Chief of Staff task goes to
+that computer, the box waits for the report, and the report lands in the
+log. Only this machine's own page may call it (POWER UP's gate). BOT picks
+the bot by id or name (`Chief-of-Staff` matches Chief of Staff); a BOT that
+is not there is refused, never sent to another bot; empty means Chief of
+Staff, else the first bot. A report counts only once the bot has stopped
+working and its last line is new (when the line before the task could not
+be read, only after the bot was seen working); a bot still working at the
+end is a 504 that says the report will be in Grok Bot. The whole press has
+one budget, `GROK_BOT_GATEWAY_TOTAL_MS` (the 180 s wait plus three 20 s
+calls), which the page also waits for, and a second press for the same
+bot while one runs is refused (409). The nearest town comes from the
+shared Nominatim cache and limit, else the page's own gazetteer. When it is not, the press copies the task, opens Grok Bot
+(`POST /api/social/grok-bot/open`), and keeps the task in the log, marked
+as the task so Outbreak does not read it as places found. The status says
+copied only when a clipboard took it. The press
+does not POST `/api/social/swarm/chief-of-staff`. OPEN GROK BOT remains a
+manual opener (the shortcut in `GROK_BOT_LINK`, else
+`grokbot://app/v1/open`). POWER UP → GROK BOT — CHIEF OF STAFF and that
+webhook route stay for a Chief of Staff routine; swarm buttons no longer
+call them.
 
 Both swarm routes take JSON from this page only, as `/api/llm/ask` and the
 voice routes do (`admitLlmRequestFrom`): a Host this server answers, so a

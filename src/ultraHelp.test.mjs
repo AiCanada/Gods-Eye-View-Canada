@@ -190,6 +190,10 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
     'ultra-network-list',
     'ultra-sms-relay',
     'ultra-sms-test',
+    'ultra-swarm-instructions',
+    'ultra-swarm-run',
+    'ultra-swarm-status',
+    'ultra-swarm-output',
   ]) {
     assert.match(
       box,
@@ -207,6 +211,7 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
     'UPDATE HOME LIST',
     'ADD TO HOME LIST',
     'TEST SMS',
+    'GROK BOT SWARM',
   ]) {
     assert.ok(box.includes(label), `${label} is in the Ultra box`);
   }

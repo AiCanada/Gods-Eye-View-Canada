@@ -36,9 +36,8 @@ import {
   SOCIAL_SWARM_BOTS,
   SOCIAL_SWARM_PROVIDERS,
   formatSwarmBotLog,
-  planSwarmHandoff,
-  swarmBotFoundNothing,
 } from './socialSwarm.mjs';
+import { formatSwarmDesktopStatus, runSocialSwarm } from './socialSwarmRun.mjs';
 
 /** One marker for this device. The camera stays where the operator left it. */
 export const SOCIAL_LOCATION_FIX_ID = 'social-location-fix';
@@ -46,17 +45,13 @@ export const SOCIAL_LOCATION_FIX_ID = 'social-location-fix';
 const PROVIDERS_URL = '/api/llm/providers';
 const ASK_URL = '/api/llm/ask';
 const ACCOUNTS_URL = '/api/social/accounts';
-const SWARM_URL = '/api/social/swarm';
 const SWARM_STATUS_URL = '/api/social/swarm/status';
-const CHIEF_OF_STAFF_URL = '/api/social/swarm/chief-of-staff';
 const NEAREST_CITY_URL = '/api/social/swarm/nearest-city';
 /** The server asks Nominatim for up to 8 s; the box waits a little longer. */
 const NEAREST_CITY_WAIT_MS = 25000;
 const GROK_BOT_OPEN_URL = '/api/social/grok-bot/open';
 const CLIENT_TIMEOUT_MARGIN_MS = 10000;
 const DEFAULT_ASK_TIMEOUT_MS = 240000;
-/** The server gives a bot 150 s; the box waits a little longer for its answer. */
-const SWARM_BOT_TIMEOUT_MS = 150000;
 
 /**
  * Social Media Analysis. One note, three menus, and the same Ask route the
@@ -441,10 +436,13 @@ export class SocialMediaPanel {
   }
 
   /**
-   * A press. Each swarm runs on its own key (POWER UP → GROK BOT, OPENAI
-   * DOTS). Without one, Grok's task goes to the Chief of Staff bot in Grok
-   * Bot, and OpenAI's swarm says where its key goes. When the server cannot
-   * say which keys are in, the bots are sent and each answers for itself.
+   * A press. Each swarm POSTs seven bots on its own key (POWER UP → GROK BOT,
+   * OPENAI DOTS) and writes each answer in this box. Without an OpenAI key
+   * the OpenAI swarm says where it goes. Without a Grok Bot key the Grok
+   * swarm uses the Grok Bot computer when POWER UP has it, else it copies
+   * the task, opens Grok Bot, and keeps the task in the log. When the server
+   * cannot say which keys are in, the bots are sent and each answers for
+   * itself.
    */
   async _runSwarm(swarm) {
     if (swarm.running) {
@@ -467,23 +465,14 @@ export class SocialMediaPanel {
       const place =
         context?.selectedLocation || context?.locality || view.place || '';
       const own = keys?.[swarm.provider.id];
-      if (own && own.key === false) {
-        if (swarm.provider.id === 'xai') {
-          await this._handOffToChiefOfStaff(swarm, {
-            instructions,
-            place,
-            view,
-            webhook: own.chiefOfStaff === true,
-          });
-        } else {
-          this._setSwarmStatus(
-            swarm,
-            `No ${swarm.provider.keyTitle} key yet. Add it in POWER UP → ${swarm.provider.keyTitle}.`,
-          );
-        }
+      if (own && own.key === false && swarm.provider.id !== 'xai') {
+        this._setSwarmStatus(
+          swarm,
+          `No ${swarm.provider.keyTitle} key yet. Add it in POWER UP → ${swarm.provider.keyTitle}.`,
+        );
         return;
       }
-      await this._sendSwarmBots(swarm, { instructions, place, view });
+      await this._sendSwarmBots(swarm, { instructions, place, view, keys });
     } finally {
       swarm.running = false;
       swarm.run.disabled = false;
@@ -491,7 +480,7 @@ export class SocialMediaPanel {
     }
   }
 
-  /** Which swarms have their own key, and Grok's Chief of Staff webhook; null when unknown. */
+  /** Which swarms have their own key, Grok's computer, and the webhook; null when unknown. */
   async _swarmStatus() {
     try {
       const response = await this._request(SWARM_STATUS_URL, {
@@ -503,103 +492,6 @@ export class SocialMediaPanel {
     } catch {
       return null;
     }
-  }
-
-  /**
-   * GROK BOT SWARM with no Grok Bot key: the same sweep, as one task, for
-   * the Chief of Staff bot in Grok Bot, which runs it or hands platforms to
-   * its bots. With its webhook in POWER UP the task is sent there; otherwise
-   * Grok Bot is opened (GROK_BOT_LINK, else its own link) with the task
-   * copied to paste. The task is also kept in the log.
-   */
-  async _handOffToChiefOfStaff(swarm, { instructions, place, view, webhook }) {
-    const title = swarm.provider.title;
-    this._setSwarmStatus(swarm, 'FINDING THE NEAREST CITY…');
-    const nearestCity = await this._nearestCity(view);
-    const plan = planSwarmHandoff({
-      instructions,
-      place,
-      nearestCity,
-      latitude: view.latitude,
-      longitude: view.longitude,
-    });
-    if (!plan.ok) {
-      this._setSwarmStatus(swarm, plan.error);
-      return;
-    }
-    const time = () =>
-      new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (webhook) {
-      this._setSwarmStatus(swarm, 'SENDING THE TASK TO CHIEF OF STAFF…');
-      let response = null;
-      let data = null;
-      try {
-        response = await this._request(CHIEF_OF_STAFF_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            instructions,
-            place,
-            nearestCity,
-            latitude: view.latitude,
-            longitude: view.longitude,
-          }),
-        });
-        data = await response.json().catch(() => null);
-      } catch {
-        response = null;
-      }
-      if (!response?.ok || !data?.ok) {
-        this._setSwarmStatus(
-          swarm,
-          String(data?.error || 'The task did not reach Grok Bot.'),
-        );
-        return;
-      }
-      this._prepend(
-        formatAskLogEntry(
-          `${title} · CHIEF OF STAFF`,
-          `Sent to your Chief of Staff bot's webhook routine in Grok Bot. Its report comes back in Grok Bot.\n\n${plan.text}`,
-          { locationName: place },
-        ),
-      );
-      this._setSwarmStatus(
-        swarm,
-        `SENT TO CHIEF OF STAFF ${time()} · ITS REPORT COMES BACK IN GROK BOT`,
-      );
-      return;
-    }
-    const copied = await this._copyText(plan.text);
-    const opened = await this._openGrokBot();
-    this._prepend(
-      formatAskLogEntry(
-        `${title} · CHIEF OF STAFF`,
-        `${copied ? 'Copied for' : 'For'} your Chief of Staff bot in Grok Bot:\n\n${plan.text}`,
-        { locationName: place },
-      ),
-    );
-    const where = opened.ok ? 'GROK BOT OPENED' : opened.error;
-    this._setSwarmStatus(
-      swarm,
-      copied
-        ? `${where} · TASK COPIED · PASTE IT TO YOUR CHIEF OF STAFF BOT`
-        : `${where} · COPY THE TASK FROM THE LOG TO YOUR CHIEF OF STAFF BOT`,
-    );
-  }
-
-  /**
-   * The nearest city to the map point: the town it is in, from the server's
-   * reverse lookup; else the nearest city in the built-in gazetteer within
-   * 150 km (the same one the Ask panel searches by), with its distance, for
-   * a point at sea or in the woods; else '' and the task asks the bot.
-   */
-  async _nearestCity(view) {
-    const found = await this._nearestCityFromServer(view);
-    if (found) return found;
-    const known = closestCityForSearch(view?.latitude, view?.longitude);
-    if (!known?.name) return '';
-    const km = Math.round(known.distKm);
-    return km >= 2 ? `${known.name} (about ${km} km away)` : known.name;
   }
 
   /** The town the map point is in, from the server's reverse lookup, or ''. */
@@ -644,96 +536,53 @@ export class SocialMediaPanel {
     }
   }
 
-  /** Put text on the clipboard; false when this browser will not. */
-  async _copyText(text) {
-    const clipboard = this._clipboard;
-    if (typeof clipboard?.writeText !== 'function') return false;
-    try {
-      await clipboard.writeText(text);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   /**
-   * One bot per platform, all sent at once. Each comes back on its own: its
-   * list goes into the log as it lands, and the status line counts them in.
+   * One bot per platform, all sent at once from this box. Each comes back on
+   * its own: its list goes into the log as it lands, and the status line
+   * counts them in.
    */
-  async _sendSwarmBots(swarm, { instructions, place, view }) {
+  async _sendSwarmBots(swarm, { instructions, place, view, keys }) {
     const total = SOCIAL_SWARM_BOTS.length;
     const title = swarm.provider.title;
     this._setSwarmStatus(
       swarm,
       `SPINNING UP SWARM · ${total} BOTS · ${place || 'this map view'}`,
     );
-    let back = 0;
-    let found = 0;
-    let empty = 0;
-    let failed = 0;
-    let unconfigured = '';
-    const sendBot = async (bot) => {
-      const controller = new AbortController();
-      const timer = globalThis.setTimeout(
-        () => controller.abort(),
-        SWARM_BOT_TIMEOUT_MS + CLIENT_TIMEOUT_MARGIN_MS,
-      );
-      try {
-        const response = await this._request(SWARM_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            provider: swarm.provider.id,
-            bot: bot.id,
-            instructions,
-            place,
-            latitude: view.latitude,
-            longitude: view.longitude,
-          }),
-          signal: controller.signal,
-        });
-        const data = await response.json().catch(() => null);
-        if (response.status === 501 || data?.unconfigured) {
-          unconfigured = String(
-            data?.error ||
-              `No ${swarm.provider.keyTitle} key yet. Add it in POWER UP → ${swarm.provider.keyTitle}.`,
-          );
-          return;
-        }
-        if (!response.ok || !data?.ok)
-          throw new Error(data?.error || `HTTP ${response.status}`);
-        if (swarmBotFoundNothing(data.text)) empty += 1;
-        else found += 1;
+    const result = await runSocialSwarm({
+      request: (url, init) => this._request(url, init),
+      provider: swarm.provider.id,
+      instructions,
+      place,
+      latitude: view.latitude,
+      longitude: view.longitude,
+      xaiStatus: swarm.provider.id === 'xai' ? keys?.xai : undefined,
+      // False when there is no clipboard here, so the status never says copied.
+      copyText: (text) =>
+        typeof this._clipboard?.writeText === 'function'
+          ? this._clipboard.writeText(text)
+          : false,
+      fallbackCity: closestCityForSearch,
+      onBot: ({ bot, text, sources, error }) => {
         this._prepend(
           formatAskLogEntry(
             `${title} · ${bot.label}`,
-            formatSwarmBotLog(data),
+            error
+              ? `BOT FAILED: ${error}`
+              : formatSwarmBotLog({ text, sources }),
             { locationName: place },
           ),
         );
-      } catch (error) {
-        failed += 1;
-        const reason =
-          error?.name === 'AbortError'
-            ? 'no answer in time'
-            : error?.message || 'request failed';
-        this._prepend(
-          formatAskLogEntry(
-            `${title} · ${bot.label}`,
-            `BOT FAILED: ${reason}`,
-            { locationName: place },
-          ),
-        );
-      } finally {
-        globalThis.clearTimeout(timer);
-        back += 1;
-        if (!unconfigured)
-          this._setSwarmStatus(swarm, `SWARM OUT · ${back}/${total} BACK`);
-      }
-    };
-    await Promise.all(SOCIAL_SWARM_BOTS.map(sendBot));
-    if (unconfigured) {
-      this._setSwarmStatus(swarm, unconfigured);
+      },
+      onProgress: ({ back, total: n }) => {
+        this._setSwarmStatus(swarm, `SWARM OUT · ${back}/${n} BACK`);
+      },
+    });
+    if (result.unconfigured) {
+      this._setSwarmStatus(swarm, result.unconfigured);
+      return;
+    }
+    if (result.via === 'desktop') {
+      this._setSwarmStatus(swarm, formatSwarmDesktopStatus(result));
       return;
     }
     const time = new Date().toLocaleTimeString([], {
@@ -742,7 +591,7 @@ export class SocialMediaPanel {
     });
     this._setSwarmStatus(
       swarm,
-      `SWARM DONE ${time} · ${found} with reports · ${empty} found nothing${failed ? ` · ${failed} failed` : ''}`,
+      `SWARM DONE ${time} · ${result.found} with reports · ${result.empty} found nothing${result.failed ? ` · ${result.failed} failed` : ''}`,
     );
   }
 

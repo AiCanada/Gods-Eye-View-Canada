@@ -15,13 +15,22 @@
  */
 import { ULTRA_MEDIA_VIEW_EVENT } from './data/ultraMediaOverlay.js';
 import { showUltraMediaInCctv } from './ui/cctvUltraMediaView.js';
+import { formatAskLogEntry, prependOutputLog } from './askOverview.js';
 import {
+  ULTRA_POSITION_MAX_AGE_MS,
   ultraCameraRole,
   ultraCustomSkillList,
   ultraHelpSmsLink,
   ultraNeedsSkill,
   ultraNeedsSummary,
 } from './ultraHelp.mjs';
+import {
+  SOCIAL_SWARM_BOTS,
+  SOCIAL_SWARM_DEFAULT_PURPOSE,
+  SOCIAL_SWARM_PROVIDERS,
+  formatSwarmBotLog,
+} from './socialSwarm.mjs';
+import { formatSwarmDesktopStatus, runSocialSwarm } from './socialSwarmRun.mjs';
 import {
   DEVICE_FEEDS_CHANGED_EVENT,
   DEVICE_FEEDS_FOCUS_EVENT,
@@ -1905,6 +1914,114 @@ export function initUltraHelpPanel({
   };
   const confirmed = (question) =>
     typeof globalThis.confirm !== 'function' || globalThis.confirm(question);
+  let swarming = false;
+  const swarmStatus = (text) => {
+    const line = byId(documentRef, 'ultra-swarm-status');
+    if (line) line.textContent = text;
+  };
+  const swarmLog = (kind, body, place) => {
+    const output = byId(documentRef, 'ultra-swarm-output');
+    if (!output) return;
+    output.textContent = prependOutputLog(
+      output.textContent,
+      formatAskLogEntry(kind, body, { locationName: place }),
+    );
+    output.scrollTop = 0;
+  };
+  const runSwarm = async () => {
+    if (swarming) {
+      swarmStatus('The swarm is still out.');
+      return;
+    }
+    const run = byId(documentRef, 'ultra-swarm-run');
+    const fix = latest?.position;
+    const lat = Number(fix?.lat);
+    const lon = Number(fix?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      swarmStatus(
+        'Needs a fresh phone position: open the phone link on the phone and wait for a report.',
+      );
+      return;
+    }
+    // A fix with no time cannot be shown fresh: it counts as stale.
+    const at = Number(fix.at);
+    if (!fix.at || !Number.isFinite(at)) {
+      swarmStatus(
+        "The phone's last position has no time, too old to search from: open the phone link on the phone (it sends a fresh one).",
+      );
+      return;
+    }
+    if (Date.now() - at > ULTRA_POSITION_MAX_AGE_MS) {
+      const minutes = Math.max(0, Math.round((Date.now() - at) / 60_000));
+      const age =
+        minutes >= 120
+          ? `${Math.round(minutes / 60)} hours`
+          : `${minutes} minutes`;
+      swarmStatus(
+        `The phone's last position is ${age} old, too old to search from: open the phone link on the phone (it sends a fresh one).`,
+      );
+      return;
+    }
+    const street = String(fix.place || fix.street || '').trim();
+    const place = street || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    const typed = String(
+      byId(documentRef, 'ultra-swarm-instructions')?.value || '',
+    ).trim();
+    const instructions = typed || SOCIAL_SWARM_DEFAULT_PURPOSE;
+    const title = SOCIAL_SWARM_PROVIDERS.xai.title;
+    swarming = true;
+    const label = run?.textContent || title;
+    if (run) {
+      run.disabled = true;
+      run.textContent = 'SPINNING UP SWARM…';
+    }
+    swarmStatus(
+      `SPINNING UP SWARM · ${SOCIAL_SWARM_BOTS.length} BOTS · ${place}`,
+    );
+    try {
+      const result = await runSocialSwarm({
+        request: fetchImpl,
+        provider: 'xai',
+        instructions,
+        place,
+        latitude: lat,
+        longitude: lon,
+        onBot({ bot, text, sources, error }) {
+          swarmLog(
+            `${title} · ${bot.label}`,
+            error
+              ? `BOT FAILED: ${error}`
+              : formatSwarmBotLog({ text, sources }),
+            place,
+          );
+        },
+        onProgress({ back, total }) {
+          swarmStatus(`SWARM OUT · ${back}/${total} BACK`);
+        },
+      });
+      if (result.unconfigured) {
+        swarmStatus(result.unconfigured);
+        return;
+      }
+      if (result.via === 'desktop') {
+        swarmStatus(formatSwarmDesktopStatus(result));
+        return;
+      }
+      const time = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      swarmStatus(
+        `SWARM DONE ${time} · ${result.found} with reports · ${result.empty} found nothing${result.failed ? ` · ${result.failed} failed` : ''}`,
+      );
+    } finally {
+      swarming = false;
+      if (run) {
+        run.disabled = false;
+        run.textContent = label;
+      }
+    }
+  };
   const onClick = (event) => {
     const target = event.target;
     const camera = target?.closest?.('[data-ultra-camera]');
@@ -1937,6 +2054,10 @@ export function initUltraHelpPanel({
       return;
     }
     const id = target?.id;
+    if (id === 'ultra-swarm-run') {
+      void runSwarm();
+      return;
+    }
     const cellAction = target?.dataset?.ultraCellAction;
     const cellTarget = target?.dataset?.ultraCellId;
     if (cellAction && cellTarget) {

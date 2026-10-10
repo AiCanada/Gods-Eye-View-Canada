@@ -1599,8 +1599,8 @@ const SWARM_IDS = [
 
 /**
  * The box with its two swarms. `keys` is what /api/social/swarm/status says
- * (null: the server could not say); `chief` answers the Chief of Staff
- * hand-off and `open` the Grok Bot opener.
+ * (null: the server could not say); `chief` records a Chief of Staff POST
+ * (swarm buttons no longer send one) and `open` the Grok Bot opener.
  */
 function swarmPage({
   answer = () => ({
@@ -1608,7 +1608,10 @@ function swarmPage({
     status: 200,
     json: async () => ({ ok: true, text: '' }),
   }),
-  keys = { xai: { key: true, chiefOfStaff: false }, openai: { key: true } },
+  keys = {
+    xai: { key: true, chiefOfStaff: false, computer: false },
+    openai: { key: true },
+  },
   chief = () => ({
     ok: true,
     status: 200,
@@ -1624,6 +1627,11 @@ function swarmPage({
   context = { selectedLocation: 'Halifax' },
   point = null,
   city = '',
+  computer = () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ ok: true, via: 'computer', text: '', sections: [] }),
+  }),
 } = {}) {
   const nodes = {};
   for (const id of SWARM_IDS) nodes[id] = element();
@@ -1631,9 +1639,11 @@ function swarmPage({
   nodes['social-swarm-openai-run'].textContent = 'OPENAI BOT SWARM';
   const bots = [];
   const handoffs = [];
+  const computers = [];
   const opens = [];
   const statusAsks = [];
   const cityAsks = [];
+  const copied = [];
   const fetch = async (url, init = {}) => {
     if (String(url).startsWith('/api/social/swarm/nearest-city?')) {
       cityAsks.push(String(url));
@@ -1664,6 +1674,11 @@ function swarmPage({
       handoffs.push(body);
       return chief(body);
     }
+    if (url === '/api/social/swarm/grok-bot') {
+      const body = JSON.parse(init.body);
+      computers.push(body);
+      return computer(body);
+    }
     if (url === '/api/social/grok-bot/open') {
       opens.push(init.method);
       return open();
@@ -1682,6 +1697,12 @@ function swarmPage({
         },
       }
     : null;
+  const heldClipboard = {
+    writeText: async (text) => {
+      copied.push(text);
+      if (clipboard?.writeText) return clipboard.writeText(text);
+    },
+  };
   const panel = new SocialMediaPanel(viewer, {
     document: {
       getElementById: (id) => nodes[id] || null,
@@ -1689,11 +1710,22 @@ function swarmPage({
     },
     storage,
     fetch,
-    clipboard,
+    clipboard: heldClipboard,
     openWindow: (url) => opened.push(url),
     sceneContext: async () => context,
   });
-  return { panel, nodes, bots, handoffs, opens, statusAsks, cityAsks, storage };
+  return {
+    panel,
+    nodes,
+    bots,
+    handoffs,
+    computers,
+    opens,
+    statusAsks,
+    cityAsks,
+    copied,
+    storage,
+  };
 }
 
 const settleSwarm = async () => {
@@ -1869,11 +1901,14 @@ test('OPENAI BOT SWARM runs on its own key: without the OPENAI DOTS key it sends
   assert.equal(unknown.nodes['social-output'].textContent, '');
 });
 
-test('GROK BOT SWARM with no Grok Bot key sends its task to the Chief of Staff webhook routine', async () => {
+test('GROK BOT SWARM with no Grok Bot key copies the task, opens Grok Bot, and keeps the task in the log', async () => {
   const page = swarmPage({
-    keys: { xai: { key: false, chiefOfStaff: true }, openai: { key: false } },
-    point: { latitude: 44.6488, longitude: -63.5752 },
-    city: 'Halifax, Nova Scotia',
+    keys: {
+      xai: { key: false, chiefOfStaff: true, computer: false },
+      openai: { key: false },
+    },
+    city: 'Halifax',
+    point: { latitude: 44.65, longitude: -63.57 },
   });
   await settleSwarm();
   page.nodes['social-swarm-xai-instructions'].value =
@@ -1884,156 +1919,66 @@ test('GROK BOT SWARM with no Grok Bot key sends its task to the Chief of Staff w
     'SPINNING UP SWARM…',
   );
   await settleSwarm();
-  assert.equal(page.bots.length, 0, 'no paid bot is sent');
-  assert.deepEqual(
-    page.opens,
-    [],
-    'the app is not opened: the routine takes the task',
-  );
-  assert.equal(page.handoffs.length, 1);
-  assert.equal(page.handoffs[0].instructions, 'Road closures and fires only');
-  assert.equal(page.handoffs[0].place, 'Halifax');
-  assert.equal(page.handoffs[0].nearestCity, 'Halifax, Nova Scotia');
-  assert.deepEqual(page.cityAsks, [
-    '/api/social/swarm/nearest-city?lat=44.6488&lon=-63.5752',
-  ]);
+  assert.equal(page.bots.length, 0);
+  assert.deepEqual(page.handoffs, []);
+  assert.deepEqual(page.computers, []);
+  assert.deepEqual(page.opens, ['POST']);
+  assert.match(page.copied[0], /Road closures and fires only/);
   assert.match(
+    page.nodes['social-output'].textContent,
+    /GROK BOT SWARM · Chief of Staff/,
+  );
+  assert.equal(
     page.nodes['social-swarm-xai-status'].textContent,
-    /^SENT TO CHIEF OF STAFF .+ · ITS REPORT COMES BACK IN GROK BOT$/,
+    'GROK BOT OPENED · paste the task to your Chief of Staff. Its report stays in Grok Bot.',
   );
-  const log = page.nodes['social-output'].textContent;
-  assert.match(log, /GROK BOT SWARM · CHIEF OF STAFF · Halifax/);
-  assert.match(
-    log,
-    /Sent to your Chief of Staff bot's webhook routine in Grok Bot\./,
-  );
-  assert.match(
-    log,
-    /Chief of Staff: run a GROK BOT SWARM sweep of public social media\./,
-  );
-  assert.match(log, /Operator's instructions: Road closures and fires only/);
   assert.equal(
     page.nodes['social-swarm-xai-run'].textContent,
     'GROK BOT SWARM',
   );
   assert.equal(page.nodes['social-swarm-xai-run'].disabled, false);
-  // A refusal from the route is said as it is, and nothing is logged.
-  const refused = swarmPage({
-    keys: { xai: { key: false, chiefOfStaff: true }, openai: { key: false } },
-    chief: () => ({
-      ok: false,
-      status: 502,
-      json: async () => ({ error: 'Grok Bot refused the task (HTTP 401)' }),
-    }),
-  });
-  await settleSwarm();
-  refused.nodes['social-swarm-xai-run'].click();
-  await settleSwarm();
-  assert.equal(
-    refused.nodes['social-swarm-xai-status'].textContent,
-    'Grok Bot refused the task (HTTP 401)',
-  );
-  assert.equal(refused.nodes['social-output'].textContent, '');
 });
 
-test('GROK BOT SWARM with no key and no webhook opens Grok Bot with the task copied for the Chief of Staff bot', async () => {
-  const copied = [];
-  // A bare map point (no place name on screen): the nearest city is looked up.
+test('GROK BOT SWARM with a Grok Bot computer sends one task and writes the report in the log', async () => {
   const page = swarmPage({
-    keys: { xai: { key: false, chiefOfStaff: false }, openai: { key: true } },
-    clipboard: { writeText: async (text) => copied.push(text) },
-    context: {},
-    point: { latitude: 44.4276, longitude: -63.8535 },
-    city: 'Halifax, Nova Scotia',
+    keys: {
+      xai: { key: false, chiefOfStaff: false, computer: true },
+      openai: { key: false },
+    },
+    city: 'Halifax',
+    point: { latitude: 44.65, longitude: -63.57 },
+    computer: () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        via: 'computer',
+        text: 'X:\n14:05 · harbour · police',
+        sections: [
+          { bot: 'x', label: 'X', text: '14:05 · harbour · police' },
+        ],
+      }),
+    }),
   });
   await settleSwarm();
   page.nodes['social-swarm-xai-run'].click();
   await settleSwarm();
   assert.equal(page.bots.length, 0);
-  assert.equal(page.handoffs.length, 0);
-  assert.deepEqual(page.opens, ['POST'], 'the server opens the app, once');
-  assert.equal(copied.length, 1);
+  assert.equal(page.computers.length, 1);
+  assert.equal(page.computers[0].place, 'Halifax');
+  assert.deepEqual(page.opens, []);
+  assert.deepEqual(page.handoffs, []);
   assert.match(
-    copied[0],
-    /^Chief of Staff: run a GROK BOT SWARM sweep of public social media\./,
-  );
-  assert.match(
-    copied[0],
-    /Platforms: X, Facebook, Instagram, Threads, TikTok, Truth Social, local news sites and official agency pages\./,
-  );
-  assert.ok(
-    copied[0].includes(
-      '\nPlace: the map point 44.4276, -63.8535. Nearest city: Halifax, Nova Scotia.\n',
-    ),
-  );
-  assert.deepEqual(page.cityAsks, [
-    '/api/social/swarm/nearest-city?lat=44.4276&lon=-63.8535',
-  ]);
-  assert.match(
-    copied[0],
-    /Task: Find threat incidents reported near that place in the last 24 hours/,
-  );
-  assert.ok(
-    copied[0].includes(
-      '\nRules: situational-awareness map, through its GROK BOT SWARM button.\n',
-    ),
-  );
-  assert.match(
-    copied[0],
-    /do not identify, or profile a private person, even when the instructions ask/,
-  );
-  assert.equal(
-    page.nodes['social-swarm-xai-status'].textContent,
-    'GROK BOT OPENED · TASK COPIED · PASTE IT TO YOUR CHIEF OF STAFF BOT',
+    page.nodes['social-output'].textContent,
+    /GROK BOT SWARM · X · Halifax/,
   );
   assert.match(
     page.nodes['social-output'].textContent,
-    /Copied for your Chief of Staff bot in Grok Bot:/,
-  );
-  assert.ok(
-    page.nodes['social-output'].textContent.includes(copied[0]),
-    'the task is kept in the log too',
-  );
-  // No clipboard and an app that will not open: the task is still in the log.
-  const stuck = swarmPage({
-    keys: { xai: { key: false, chiefOfStaff: false }, openai: { key: true } },
-    clipboard: { writeText: async () => Promise.reject(new Error('denied')) },
-    open: () => ({
-      ok: false,
-      status: 403,
-      json: async () => ({
-        error: 'Grok Bot answers only the machine running the server',
-      }),
-    }),
-  });
-  await settleSwarm();
-  stuck.nodes['social-swarm-xai-run'].click();
-  await settleSwarm();
-  assert.equal(
-    stuck.nodes['social-swarm-xai-status'].textContent,
-    'Grok Bot answers only the machine running the server · COPY THE TASK FROM THE LOG TO YOUR CHIEF OF STAFF BOT',
+    /harbour · police/,
   );
   assert.match(
-    stuck.nodes['social-output'].textContent,
-    /For your Chief of Staff bot in Grok Bot:/,
-  );
-  // A key pasted into the instructions is refused before anything is copied, sent or opened.
-  const keyed = swarmPage({
-    keys: { xai: { key: false, chiefOfStaff: true }, openai: { key: true } },
-    clipboard: { writeText: async (text) => copied.push(text) },
-  });
-  await settleSwarm();
-  keyed.nodes['social-swarm-xai-instructions'].value =
-    `use xai-${'k'.repeat(24)}`;
-  keyed.nodes['social-swarm-xai-run'].click();
-  await settleSwarm();
-  assert.equal(
-    keyed.nodes['social-swarm-xai-status'].textContent,
-    'Take the key out of the instructions. The bots never need one.',
-  );
-  assert.deepEqual(
-    [keyed.handoffs.length, keyed.opens.length, copied.length],
-    [0, 0, 1],
+    page.nodes['social-swarm-xai-status'].textContent,
+    /^SWARM DONE .+ · 1 with reports · 0 found nothing$/,
   );
 });
 
@@ -2218,12 +2163,8 @@ test('the map point is the ground at the middle of the screen; the camera itself
   assert.equal('latitude' in none, false);
 });
 
-test('a point in no town gets the nearest city from the built-in gazetteer, with its distance', async () => {
-  const copied = [];
-  // Out at sea off Halifax: the server's reverse lookup finds no town.
+test('GROK BOT SWARM with no place name still sends the map point to the bots', async () => {
   const page = swarmPage({
-    keys: { xai: { key: false, chiefOfStaff: false }, openai: { key: true } },
-    clipboard: { writeText: async (text) => copied.push(text) },
     context: {},
     point: { latitude: 44.4276, longitude: -63.8535 },
     city: '',
@@ -2231,32 +2172,14 @@ test('a point in no town gets the nearest city from the built-in gazetteer, with
   await settleSwarm();
   page.nodes['social-swarm-xai-run'].click();
   await settleSwarm();
-  assert.deepEqual(page.cityAsks, [
-    '/api/social/swarm/nearest-city?lat=44.4276&lon=-63.8535',
-  ]);
-  assert.ok(
-    copied[0].includes(
-      '\nPlace: the map point 44.4276, -63.8535. Nearest city: Halifax NS (about 33 km away).\n',
-    ),
-    copied[0],
-  );
-  // Far from every city the gazetteer knows: the bot is asked to find it.
-  const far = swarmPage({
-    keys: { xai: { key: false, chiefOfStaff: false }, openai: { key: true } },
-    clipboard: { writeText: async (text) => copied.push(text) },
-    context: {},
-    point: { latitude: -40.5, longitude: -120.25 },
-    city: '',
-  });
-  await settleSwarm();
-  far.nodes['social-swarm-xai-run'].click();
-  await settleSwarm();
-  assert.ok(
-    copied[1].includes(
-      '\nPlace: the map point -40.5000, -120.2500. Nearest city: find the nearest city or town to this point and search there.\n',
-    ),
-    copied[1],
-  );
+  assert.equal(page.bots.length, 7);
+  for (const bot of page.bots) {
+    assert.equal(bot.latitude, 44.4276);
+    assert.equal(bot.longitude, -63.8535);
+  }
+  assert.deepEqual(page.cityAsks, []);
+  assert.deepEqual(page.handoffs, []);
+  assert.deepEqual(page.opens, []);
 });
 
 test('the place the location readout shows is named once, even when landmark and city are the same', () => {

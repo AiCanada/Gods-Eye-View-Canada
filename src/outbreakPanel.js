@@ -18,7 +18,8 @@
  * MEDIA SEARCH: a global news search (GDELT), then the chosen language model
  * (the Ask route) names the new places those articles report.
  * SOCIAL SEARCH: the Grok Bot or OpenAI DOTS swarm (the Social Media
- * Analysis route), one bot per platform, on that swarm's own key.
+ * Analysis route), one bot per platform, on that swarm's own key; answers
+ * land in this box.
  * New places found are listed for the operator to add; none is added alone.
  * RUN EPIDEMIC MODEL: the server's stochastic simulation (src/outbreakEpi.mjs)
  * over the scan, the pathogen, the people and the interventions; each place's
@@ -27,6 +28,7 @@
 import { formatAskLogEntry, prependOutputLog } from './askOverview.js';
 import { geocodeKeyless } from './keylessGeocoder.js';
 import { SOCIAL_SWARM_BOTS, SOCIAL_SWARM_PROVIDERS } from './socialSwarm.mjs';
+import { formatSwarmDesktopStatus, runSocialSwarm } from './socialSwarmRun.mjs';
 import {
   CONNECTING_AIRPORTS_MAX,
   FUTURE_FLIGHT_HOURS,
@@ -82,11 +84,9 @@ import {
 
 const PROVIDERS_URL = '/api/llm/providers';
 const ASK_URL = '/api/llm/ask';
-const SWARM_URL = '/api/social/swarm';
 const API = '/api/outbreak';
 const DEFAULT_ASK_TIMEOUT_MS = 90_000;
 const CLIENT_TIMEOUT_MARGIN_MS = 10_000;
-const SWARM_BOT_TIMEOUT_MS = 150_000;
 /** PLAY's step: long enough for the map to finish drawing each hour. */
 const PLAY_STEP_MS = 900;
 /**
@@ -2003,63 +2003,41 @@ export class OutbreakPanel {
     );
     const place = locations[0];
     this._setBusy('the social media search');
-    let back = 0;
     let found = 0;
-    let unconfigured = '';
-    const total = SOCIAL_SWARM_BOTS.length;
-    this._say(`SOCIAL SEARCH · ${provider.title} · ${total} BOTS`);
+    this._say(
+      `SOCIAL SEARCH · ${provider.title} · ${SOCIAL_SWARM_BOTS.length} BOTS`,
+    );
     try {
-      await Promise.all(
-        SOCIAL_SWARM_BOTS.map(async (bot) => {
-          const controller = new AbortController();
-          const timer = globalThis.setTimeout(
-            () => controller.abort(),
-            SWARM_BOT_TIMEOUT_MS + CLIENT_TIMEOUT_MARGIN_MS,
-          );
-          try {
-            const response = await this._request(SWARM_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                provider: providerId,
-                bot: bot.id,
-                instructions,
-                place: place.name,
-                latitude: place.lat,
-                longitude: place.lon,
-              }),
-              signal: controller.signal,
-            });
-            const data = await response.json().catch(() => null);
-            if (response.status === 501 || data?.unconfigured) {
-              unconfigured =
-                data?.error ||
-                `No ${provider.keyTitle} key yet. Add it in POWER UP → ${provider.keyTitle}.`;
-              return;
-            }
-            if (!response.ok || !data?.ok)
-              throw new Error(data?.error || `HTTP ${response.status}`);
-            this._log(`${provider.title} · ${bot.label}`, data.text);
-            found += this._keepFound(
-              parsePlaceLines(data.text, locations),
-              bot.label,
-            );
-          } catch (error) {
+      const result = await runSocialSwarm({
+        request: (url, init) => this._request(url, init),
+        provider: providerId,
+        instructions,
+        place: place.name,
+        latitude: place.lat,
+        longitude: place.lon,
+        onBot: ({ bot, text, error, task }) => {
+          if (error) {
             this._log(
               `${provider.title} · ${bot.label}`,
-              `BOT FAILED: ${error?.name === 'AbortError' ? 'no answer in time' : error?.message || 'request failed'}`,
+              `BOT FAILED: ${error}`,
             );
-          } finally {
-            globalThis.clearTimeout(timer);
-            back += 1;
-            if (!unconfigured)
-              this._say(`SOCIAL SEARCH · ${back}/${total} BACK`);
+            return;
           }
-        }),
-      );
+          this._log(`${provider.title} · ${bot.label}`, text);
+          // The copied task (no key, no computer) names this place: it is not
+          // a finding.
+          if (task) return;
+          found += this._keepFound(parsePlaceLines(text, locations), bot.label);
+        },
+        onProgress: ({ back, total }) => {
+          this._say(`SOCIAL SEARCH · ${back}/${total} BACK`);
+        },
+      });
       this._say(
-        unconfigured ||
-          `SOCIAL SEARCH DONE · ${found} new location${found === 1 ? '' : 's'} found`,
+        result.unconfigured ||
+          (result.via === 'desktop'
+            ? formatSwarmDesktopStatus(result)
+            : `SOCIAL SEARCH DONE · ${found} new location${found === 1 ? '' : 's'} found`),
       );
     } finally {
       this._setBusy('');

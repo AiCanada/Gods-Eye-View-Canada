@@ -248,17 +248,18 @@ export const KEY_SETUP_KEYS = Object.freeze([
     ]),
     tier: 'free',
   }),
-  // Social Media Analysis → the bot swarms, each on a key of its own, apart
-  // from the Ask panel's xAI key and voice control's OpenAI key. GROK BOT and
-  // its Chief of Staff webhook share a group: either one powers GROK BOT
-  // SWARM. With neither, the swarm still runs: it opens the Grok Bot desktop
-  // app with its task copied, for the Chief of Staff bot.
+  // Social Media, Outbreak SOCIAL SEARCH, and Ultra GROK BOT SWARM each send
+  // seven bots on GROK_BOT_API_KEY (or OPENAI_DOTS_API_KEY). GROK BOT, its
+  // computer, and its Chief of Staff webhook share a group. The swarm press
+  // uses the API key when it is set; without one it uses the computer, else
+  // it opens Grok Bot with the task copied. The webhook card stays for a
+  // Chief of Staff routine the swarm buttons do not call.
   Object.freeze({
     id: 'grok-bot',
     group: 'grok-bot',
     title: 'GROK BOT',
     unlocks:
-      'Social Media → GROK BOT SWARM: seven bots at once on their own xAI key (without one, the task goes to your Chief of Staff bot in Grok Bot)',
+      'Social Media, Outbreak SOCIAL SEARCH, and Ultra → GROK BOT SWARM: seven bots at once on their own xAI key; answers land in that panel. Without this key, GROK BOT — COMPUTER or a copied task in Grok Bot',
     getUrl: 'https://console.x.ai/',
     envVars: Object.freeze(['GROK_BOT_API_KEY']),
     optionalEnvVars: Object.freeze([
@@ -276,9 +277,27 @@ export const KEY_SETUP_KEYS = Object.freeze([
     group: 'grok-bot',
     title: 'GROK BOT — CHIEF OF STAFF',
     unlocks:
-      'Social Media → GROK BOT SWARM with no API key: each press sends the task to a webhook routine of your Chief of Staff bot in Grok Bot (Routines → When a webhook fires; paste its Webhook URL and Webhook key)',
+      'A webhook routine of your Chief of Staff bot in Grok Bot (Routines → When a webhook fires; paste its Webhook URL and Webhook key). GROK BOT SWARM uses the GROK BOT API key instead',
     getUrl: 'https://docs.x.ai/grok-bot/skills-routines-and-automations',
     envVars: Object.freeze(['GROK_BOT_WEBHOOK_URL', 'GROK_BOT_WEBHOOK_KEY']),
+    tier: 'free',
+  }),
+  Object.freeze({
+    id: 'grok-bot-computer',
+    group: 'grok-bot',
+    title: 'GROK BOT — COMPUTER',
+    unlocks:
+      "GROK BOT SWARM without a GROK BOT API key: send the sweep to a Grok Bot on this computer (or a Tailscale one) and write its report in the panel. Paste the gateway URL and token from that computer's gateway.json. Not a webhook",
+    getUrl: 'https://docs.x.ai/grok-bot/skills-routines-and-automations',
+    envVars: Object.freeze(['GROK_BOT_GATEWAY_URL', 'GROK_BOT_GATEWAY_TOKEN']),
+    optionalEnvVars: Object.freeze([
+      Object.freeze({
+        name: 'GROK_BOT_GATEWAY_AGENT',
+        label: 'BOT',
+        placeholder: 'Chief-of-Staff',
+        options: Object.freeze([]),
+      }),
+    ]),
     tier: 'free',
   }),
   Object.freeze({
@@ -646,6 +665,38 @@ function smsRelayUrlOk(value) {
 }
 
 /**
+ * The Grok Bot computer's own gateway: loopback, a Tailscale 100.64.x.x
+ * address, or https on a .ts.net name. No user:password, query, hash, or
+ * path, so the token goes only to that computer.
+ */
+function grokBotGatewayUrlOk(value) {
+  if (value.length > 2048) return false;
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    (url.pathname !== '/' && url.pathname !== '')
+  ) {
+    return false;
+  }
+  const host = url.hostname.toLowerCase();
+  const http = url.protocol === 'http:' || url.protocol === 'https:';
+  if (!http) return false;
+  if (host === '127.0.0.1' || host === 'localhost' || host === '::1') {
+    return true;
+  }
+  if (smsTailnetLiteral(host)) return true;
+  return url.protocol === 'https:' && host.endsWith('.ts.net');
+}
+
+/**
  * The Webhook URL Grok Bot shows for a routine: https on its own backend
  * (api2.cursor.sh, or api.origin.cursor.com), /automations/webhook/<id>, and
  * nothing else, so the webhook key it carries goes nowhere but Grok Bot.
@@ -674,6 +725,18 @@ function grokBotWebhookUrlOk(value) {
 }
 
 const KEY_SETUP_FORMATS = Object.freeze({
+  GROK_BOT_GATEWAY_URL: [
+    grokBotGatewayUrlOk,
+    'GROK_BOT_GATEWAY_URL must be http://127.0.0.1:1340, http to a 100.64.x.x Tailscale address, or https on a .ts.net name, with no user:password, query or path',
+  ],
+  GROK_BOT_GATEWAY_TOKEN: [
+    (v) => SMS_SECRET.test(v),
+    'GROK_BOT_GATEWAY_TOKEN is longer than any real token (512 max)',
+  ],
+  GROK_BOT_GATEWAY_AGENT: [
+    (v) => /^[A-Za-z0-9][A-Za-z0-9._~-]{0,79}$/.test(v),
+    'GROK_BOT_GATEWAY_AGENT is the bot id or a short name (letters, digits, . _ - ~; write a space as -, e.g. Chief-of-Staff)',
+  ],
   GROK_BOT_WEBHOOK_URL: [
     grokBotWebhookUrlOk,
     'GROK_BOT_WEBHOOK_URL must be the Webhook URL Grok Bot shows for the routine: https://api2.cursor.sh/automations/webhook/…',

@@ -2415,6 +2415,8 @@
       "src/askPanel.js",
       "src/socialMedia.js",
       "src/socialSwarm.mjs",
+      "src/socialSwarmRun.mjs",
+      "src/grokBotGateway.mjs",
       "src/socialMediaPanel.js",
       "src/outbreakCore.mjs",
       "src/outbreakEpi.mjs",

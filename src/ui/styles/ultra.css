@@ -26,6 +26,27 @@
   line-height: 1.35;
 }
 
+#ultra-panel .social-query {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 68px;
+  resize: vertical;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: var(--text-primary);
+  padding: 6px 8px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+#ultra-panel .ask-output {
+  min-height: 160px;
+  max-height: min(50vh, 400px);
+}
+
 .ultra-note,
 .ultra-message {
   margin: 6px 0;

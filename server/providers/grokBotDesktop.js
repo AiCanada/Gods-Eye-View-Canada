@@ -43,9 +43,9 @@ function grokBotLinkUsable(value, { platform, fileSystem }) {
 }
 
 /**
- * What GROK BOT SWARM opens when it has no key: the shortcut in GROK_BOT_LINK
- * (the owner's own .lnk to Grok Bot.exe), else the app's grokbot:// link. A
- * GROK_BOT_LINK that cannot be used is refused, never replaced.
+ * What OPEN GROK BOT opens: the shortcut in GROK_BOT_LINK (the owner's own
+ * .lnk to Grok Bot.exe), else the app's grokbot:// link. A GROK_BOT_LINK
+ * that cannot be used is refused, never replaced.
  *
  * @returns {{target: string, kind: 'shortcut' | 'app-link' | 'refused'}}
  */
@@ -85,8 +85,8 @@ export function systemOpener(
 
 /**
  * Vite plugin: POST /api/social/grok-bot/open opens the Grok Bot desktop app
- * on this computer, for GROK BOT SWARM's hand-off to the Chief of Staff bot
- * and for OPEN GROK BOT. Only this machine's own page may ask (POWER UP's
+ * on this computer for OPEN GROK BOT, and for GROK BOT SWARM when it has no
+ * API key and no computer. Only this machine's own page may ask (POWER UP's
  * gate: a loopback socket, a local Host, an exact Origin, JSON), and what is
  * opened comes from the environment, never the request.
  */

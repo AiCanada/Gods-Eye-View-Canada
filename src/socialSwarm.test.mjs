@@ -12,17 +12,21 @@ import {
   SOCIAL_SWARM_HANDOFF_RULES,
   SOCIAL_SWARM_PROVIDERS,
   SOCIAL_SWARM_RULES,
+  GROK_BOT_UNCONFIGURED,
   formatSwarmBotLog,
   planSwarmBot,
   planSwarmHandoff,
   readSwarmAnswer,
+  readSwarmHandoffSections,
   swarmBotFoundNothing,
 } from './socialSwarm.mjs';
 import {
   CHIEF_OF_STAFF_PER_MINUTE,
+  GROK_BOT_COMPUTER_PER_MINUTE,
   NEAREST_CITY_PER_MINUTE,
   OPENAI_SWARM_MODEL_DEFAULT,
   SOCIAL_SWARM_BOTS_PER_MINUTE,
+  grokBotGateway,
   nearestCityFor,
   socialSwarmProxy,
 } from '../server/providers/socialSwarm.js';
@@ -312,6 +316,21 @@ test('the log entry is the list, then the links; an empty answer reads NOTHING F
   assert.equal(formatSwarmBotLog({ text: '', sources: [] }), 'NOTHING FOUND');
 });
 
+test('a Chief of Staff report splits on platform headings', () => {
+  const sections = readSwarmHandoffSections(
+    'X:\n14:05 · harbour · police\nFacebook:\nNOTHING FOUND\n## TikTok\nnoon · fire',
+  );
+  assert.deepEqual(
+    sections.map((row) => [row.bot.id, row.text]),
+    [
+      ['x', '14:05 · harbour · police'],
+      ['facebook', 'NOTHING FOUND'],
+      ['tiktok', 'noon · fire'],
+    ],
+  );
+  assert.deepEqual(readSwarmHandoffSections('no headings at all'), []);
+});
+
 // ---- the route ------------------------------------------------------------
 
 function route() {
@@ -390,6 +409,9 @@ const KEYLESS = {
   GROK_BOT_API_KEY: undefined,
   GROK_BOT_WEBHOOK_URL: undefined,
   GROK_BOT_WEBHOOK_KEY: undefined,
+  GROK_BOT_GATEWAY_URL: undefined,
+  GROK_BOT_GATEWAY_TOKEN: undefined,
+  GROK_BOT_GATEWAY_AGENT: undefined,
   OPENAI_DOTS_API_KEY: undefined,
   XAI_API_KEY: undefined,
   XAI_BASE_URL: undefined,
@@ -494,18 +516,20 @@ test('route: an unknown swarm or bot, or no key of its own, sends nothing', asyn
     const refused = await call(handler, { body: { provider, bot: 'x' } });
     assert.equal(refused.status, 400, provider);
   }
-  for (const [provider, card] of [
-    ['xai', 'GROK BOT'],
-    ['openai', 'OPENAI DOTS'],
-  ]) {
-    const keyless = await call(handler, { body: { provider, bot: 'x' } });
-    assert.equal(keyless.status, 501);
-    assert.deepEqual(keyless.json(), {
-      error: `No ${card} key yet. Add it in POWER UP → ${card}.`,
-      unconfigured: true,
-      provider,
-    });
-  }
+  const grok = await call(handler, { body: { provider: 'xai', bot: 'x' } });
+  assert.equal(grok.status, 501);
+  assert.deepEqual(grok.json(), {
+    error: GROK_BOT_UNCONFIGURED,
+    unconfigured: true,
+    provider: 'xai',
+  });
+  const dots = await call(handler, { body: { provider: 'openai', bot: 'x' } });
+  assert.equal(dots.status, 501);
+  assert.deepEqual(dots.json(), {
+    error: 'No OPENAI DOTS key yet. Add it in POWER UP → OPENAI DOTS.',
+    unconfigured: true,
+    provider: 'openai',
+  });
   process.env.GROK_BOT_API_KEY = 'xai-test-key';
   assert.equal(
     (await call(handler, { body: { provider: 'xai', bot: 'snapchat' } }))
@@ -911,7 +935,7 @@ test('status: which swarms have their own key and whether the webhook is set, bo
     });
   // The Ask panel's and voice control's keys do not count.
   assert.deepEqual((await ask()).json(), {
-    xai: { key: false, chiefOfStaff: false },
+    xai: { key: false, chiefOfStaff: false, computer: false },
     openai: { key: false },
   });
   process.env.GROK_BOT_API_KEY = 'xai-test-key';
@@ -922,7 +946,7 @@ test('status: which swarms have their own key and whether the webhook is set, bo
   assert.equal(set.status, 200);
   assert.equal(set.headers['Cache-Control'], 'no-store');
   assert.deepEqual(set.json(), {
-    xai: { key: true, chiefOfStaff: true },
+    xai: { key: true, chiefOfStaff: true, computer: false },
     openai: { key: true },
   });
   for (const secret of [
@@ -937,6 +961,9 @@ test('status: which swarms have their own key and whether the webhook is set, bo
   process.env.GROK_BOT_WEBHOOK_URL =
     'https://hooks.evil.example/automations/webhook/aut_7Hq2xYz';
   assert.equal((await ask()).json().xai.chiefOfStaff, false);
+  process.env.GROK_BOT_GATEWAY_URL = 'http://127.0.0.1:1340';
+  process.env.GROK_BOT_GATEWAY_TOKEN = 'sand-token';
+  assert.equal((await ask()).json().xai.computer, true);
   assert.equal((await ask({}, 'POST')).status, 405);
   assert.equal((await ask({ host: 'rebind.evil:4173' })).status, 403);
   assert.equal((await ask({ 'sec-fetch-site': 'cross-site' })).status, 403);
@@ -1176,4 +1203,335 @@ test('chief of staff: a webhook changed by hand after POWER UP saved it is not u
   assert.equal(dots.status, 409);
   assert.equal(dots.json().error, LOCAL_PROVIDER_CHANGED_MESSAGE);
   assert.equal(sent.length, 1);
+});
+
+const GATEWAY = 'http://127.0.0.1:1340';
+const GATEWAY_TOKEN = 'sand_test_token_0123456789';
+
+test('computer: only a loopback or Tailscale gateway is configured', () => {
+  assert.equal(
+    grokBotGateway({
+      ...KEYLESS,
+      GROK_BOT_GATEWAY_URL: GATEWAY,
+      GROK_BOT_GATEWAY_TOKEN: GATEWAY_TOKEN,
+    }).configured,
+    true,
+  );
+  assert.equal(
+    grokBotGateway({
+      ...KEYLESS,
+      GROK_BOT_GATEWAY_URL: 'https://evil.example:1340',
+      GROK_BOT_GATEWAY_TOKEN: GATEWAY_TOKEN,
+    }).configured,
+    false,
+  );
+  assert.equal(
+    grokBotGateway({
+      ...KEYLESS,
+      GROK_BOT_GATEWAY_URL: 'http://127.0.0.1:1340/api',
+      GROK_BOT_GATEWAY_TOKEN: GATEWAY_TOKEN,
+    }).configured,
+    false,
+  );
+});
+
+test('computer: one sendPrompt to Chief of Staff, the report comes back, token never leaves', async (t) => {
+  withEnv(t, {
+    ...KEYLESS,
+    GROK_BOT_GATEWAY_URL: GATEWAY,
+    GROK_BOT_GATEWAY_TOKEN: GATEWAY_TOKEN,
+  });
+  const roster = [{ id: 'agent-1', name: 'Chief of Staff', isRunning: false }];
+  const sent = [];
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    const href = String(url);
+    sent.push({ url: href, body: JSON.parse(init.body || '{}') });
+    assert.equal(init.headers.Authorization, `Bearer ${GATEWAY_TOKEN}`);
+    assert.equal(init.redirect, 'error');
+    const path = href.slice(GATEWAY.length);
+    if (path === '/api/listAgents') {
+      return new Response(JSON.stringify(roster), { status: 200 });
+    }
+    if (path === '/api/getAgentTranscriptTail') {
+      const afterSend = sent.some((row) => row.url.endsWith('/api/sendPrompt'));
+      return new Response(
+        JSON.stringify({
+          messages: [
+            {
+              role: 'assistant',
+              text: afterSend
+                ? 'X:\n14:05 · harbour · police\nFacebook:\nNOTHING FOUND'
+                : 'old',
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    if (path === '/api/sendPrompt') {
+      return new Response(JSON.stringify({ accepted: true }), { status: 200 });
+    }
+    throw new Error(`unexpected ${href}`);
+  });
+  const answer = await call(route(), {
+    url: '/grok-bot',
+    body: {
+      place: 'Halifax',
+      nearestCity: 'Halifax',
+      latitude: 44.65,
+      longitude: -63.57,
+    },
+  });
+  assert.equal(answer.status, 200, answer.text);
+  const data = answer.json();
+  assert.equal(data.ok, true);
+  assert.equal(data.via, 'computer');
+  assert.match(data.text, /harbour · police/);
+  assert.equal(data.sections[0].bot, 'x');
+  assert.equal(data.sections[1].bot, 'facebook');
+  const prompt = sent.find((row) => row.url.endsWith('/api/sendPrompt')).body;
+  assert.equal(prompt.agentId, 'agent-1');
+  assert.match(prompt.prompt, /Chief of Staff: run a GROK BOT SWARM sweep/);
+  assert.equal(JSON.stringify(sent).includes(GATEWAY_TOKEN), false);
+  assert.equal(answer.text.includes(GATEWAY_TOKEN), false);
+  assert.equal(GROK_BOT_COMPUTER_PER_MINUTE, 4);
+});
+
+test('computer: without a gateway the route is unconfigured; a public URL is not one', async (t) => {
+  withEnv(t, KEYLESS);
+  const sent = upstream(t, ANSWERED);
+  const none = await call(route(), {
+    url: '/grok-bot',
+    body: { place: 'Halifax' },
+  });
+  assert.equal(none.status, 501);
+  assert.deepEqual(none.json(), {
+    error: GROK_BOT_UNCONFIGURED,
+    unconfigured: true,
+  });
+  process.env.GROK_BOT_GATEWAY_TOKEN = GATEWAY_TOKEN;
+  process.env.GROK_BOT_GATEWAY_URL = 'https://evil.example:1340';
+  assert.equal(
+    (
+      await call(route(), {
+        url: '/grok-bot',
+        body: { place: 'Halifax' },
+      })
+    ).status,
+    501,
+  );
+  assert.equal(sent.length, 0);
+});
+
+test('computer: a gateway changed by hand after POWER UP saved it is not used', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-swarm-computer-'));
+  fs.mkdirSync(path.join(root, 'config'));
+  t.after(() => {
+    bindLocalIntegrityRoot('');
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  withEnv(t, {
+    ...KEYLESS,
+    GROK_BOT_GATEWAY_URL: GATEWAY,
+    GROK_BOT_GATEWAY_TOKEN: GATEWAY_TOKEN,
+  });
+  noteLocalProvidersSaved(
+    ['GROK_BOT_GATEWAY_URL', 'GROK_BOT_GATEWAY_TOKEN'],
+    root,
+  );
+  bindLocalIntegrityRoot(root);
+  const sent = upstream(t, () => new Response('{}', { status: 200 }));
+  const handler = route();
+  process.env.GROK_BOT_GATEWAY_URL = 'http://127.0.0.1:1341';
+  const changed = await call(handler, {
+    url: '/grok-bot',
+    body: { place: 'Halifax', nearestCity: 'Halifax' },
+  });
+  assert.equal(changed.status, 409);
+  assert.equal(changed.json().error, LOCAL_PROVIDER_CHANGED_MESSAGE);
+  assert.equal(sent.length, 0);
+});
+
+/**
+ * A fake Grok Bot gateway. `step` answers each listAgents / tail read after
+ * the task was sent, in turn: { busy, tail }. `before` is the tail before
+ * the task (a number is an HTTP failure).
+ */
+function fakeGateway(t, { roster, before = 'old', steps = [], hold } = {}) {
+  const sent = [];
+  let step = -1;
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    const href = String(url);
+    const path = href.slice(GATEWAY.length);
+    sent.push({ path, body: JSON.parse(init.body || '{}') });
+    const taken = sent.some((row) => row.path === '/api/sendPrompt');
+    const json = (value, status = 200) =>
+      new Response(JSON.stringify(value), { status });
+    if (path === '/api/listAgents') {
+      if (!taken) return json(roster);
+      step = Math.min(step + 1, steps.length - 1);
+      return json(
+        roster.map((row) => ({
+          ...row,
+          isRunning: Boolean(steps[step]?.busy),
+        })),
+      );
+    }
+    if (path === '/api/getAgentTranscriptTail') {
+      const text = taken ? steps[step]?.tail : before;
+      if (typeof text === 'number') return json({ error: 'nope' }, text);
+      return json({ messages: [{ role: 'assistant', text }] });
+    }
+    if (path === '/api/sendPrompt') {
+      if (hold) await hold;
+      return json({ accepted: true });
+    }
+    throw new Error(`unexpected ${href}`);
+  });
+  return sent;
+}
+
+/** Run the route with the poll sleeps on a mock clock. */
+async function pumped(t, handler, options) {
+  const pending = call(handler, options);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let done = false;
+  pending.then(
+    () => (done = true),
+    () => (done = true),
+  );
+  while (!done) {
+    await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(1_500);
+  }
+  return pending;
+}
+
+const GATEWAY_ENV = {
+  ...KEYLESS,
+  GROK_BOT_GATEWAY_URL: GATEWAY,
+  GROK_BOT_GATEWAY_TOKEN: GATEWAY_TOKEN,
+};
+const SWEEP = {
+  url: '/grok-bot',
+  body: { place: 'Halifax', nearestCity: 'Halifax' },
+};
+
+test("computer: only this computer's own page may send the token", async (t) => {
+  withEnv(t, GATEWAY_ENV);
+  const sent = fakeGateway(t, {
+    roster: [{ id: 'a', name: 'Chief of Staff' }],
+  });
+  const far = await call(route(), { ...SWEEP, remoteAddress: '192.168.1.20' });
+  assert.equal(far.status, 403);
+  const proxied = await call(route(), {
+    ...SWEEP,
+    headers: { ...LOCAL, 'x-forwarded-for': '203.0.113.9' },
+  });
+  assert.equal(proxied.status, 403);
+  assert.equal(sent.length, 0);
+});
+
+test('computer: a BOT name that is not there is a miss, never another bot', async (t) => {
+  withEnv(t, { ...GATEWAY_ENV, GROK_BOT_GATEWAY_AGENT: 'Night-Desk' });
+  const sent = fakeGateway(t, {
+    roster: [
+      { id: 'a', name: 'Chief of Staff' },
+      { id: 'b', name: 'Scout' },
+    ],
+  });
+  const answer = await call(route(), SWEEP);
+  assert.equal(answer.status, 502);
+  assert.match(answer.json().error, /No Grok Bot named Night-Desk/);
+  assert.equal(
+    sent.some((row) => row.path === '/api/sendPrompt'),
+    false,
+  );
+});
+
+test('computer: a reply while the bot still works is not the report', async (t) => {
+  withEnv(t, GATEWAY_ENV);
+  fakeGateway(t, {
+    roster: [{ id: 'a', name: 'Chief of Staff' }],
+    steps: [
+      { busy: true, tail: 'Searching X now…' },
+      { busy: false, tail: 'X:\n14:05 · harbour · police' },
+    ],
+  });
+  const answer = await pumped(t, route(), SWEEP);
+  assert.equal(answer.status, 200, answer.text);
+  assert.match(answer.json().text, /harbour · police/);
+  assert.equal(answer.json().text.includes('Searching'), false);
+});
+
+test('computer: with no line before the task, a report counts only after the bot worked', async (t) => {
+  withEnv(t, GATEWAY_ENV);
+  fakeGateway(t, {
+    roster: [{ id: 'a', name: 'Chief of Staff' }],
+    before: 500,
+    steps: [
+      { busy: false, tail: 'An old report' },
+      { busy: true, tail: 'An old report' },
+      { busy: false, tail: 'X:\nnoon · fire' },
+    ],
+  });
+  const answer = await pumped(t, route(), SWEEP);
+  assert.equal(answer.status, 200, answer.text);
+  assert.equal(answer.json().text, 'X:\nnoon · fire');
+});
+
+test('computer: a second press for the same bot while one runs is refused', async (t) => {
+  withEnv(t, GATEWAY_ENV);
+  let release;
+  const hold = new Promise((resolve) => (release = resolve));
+  fakeGateway(t, {
+    roster: [{ id: 'a', name: 'Chief of Staff' }],
+    steps: [{ busy: false, tail: 'X:\nnoon · fire' }],
+    hold,
+  });
+  const handler = route();
+  const first = call(handler, SWEEP);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const second = await call(handler, SWEEP);
+  assert.equal(second.status, 409);
+  assert.match(second.json().error, /already on a sweep/);
+  release();
+  assert.equal((await first).status, 200);
+});
+
+test('computer: a long transcript tail is read whole', async (t) => {
+  withEnv(t, GATEWAY_ENV);
+  const report = 'X:\n' + 'harbour · police\n'.repeat(1500);
+  fakeGateway(t, {
+    roster: [{ id: 'a', name: 'Chief of Staff' }],
+    steps: [{ busy: false, tail: report }],
+  });
+  const answer = await call(route(), SWEEP);
+  assert.equal(answer.status, 200, answer.text);
+  assert.match(answer.json().text, /^X:\nharbour · police/);
+});
+
+test('status: a computer changed by hand after POWER UP saved it is not offered', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-swarm-status-'));
+  fs.mkdirSync(path.join(root, 'config'));
+  t.after(() => {
+    bindLocalIntegrityRoot('');
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  withEnv(t, GATEWAY_ENV);
+  noteLocalProvidersSaved(
+    ['GROK_BOT_GATEWAY_URL', 'GROK_BOT_GATEWAY_TOKEN'],
+    root,
+  );
+  bindLocalIntegrityRoot(root);
+  const ask = () =>
+    call(route(), {
+      url: '/status',
+      method: 'GET',
+      body: '',
+      headers: { host: 'localhost:4173' },
+    });
+  assert.equal((await ask()).json().xai.computer, true);
+  process.env.GROK_BOT_GATEWAY_URL = 'http://127.0.0.1:1341';
+  assert.equal((await ask()).json().xai.computer, false);
 });

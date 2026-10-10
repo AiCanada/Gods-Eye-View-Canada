@@ -1,11 +1,13 @@
 /**
- * Bot swarms for Social Media Analysis: one bot per platform, each one
- * request to Grok or OpenAI that searches with the provider's own search
- * tool, all sent at once, on the swarm's own key. With no Grok Bot key the
- * Grok swarm hands one task to the Chief of Staff bot in the Grok Bot
- * desktop app instead. No DOM and no network: every request and that task
- * are built here, and every answer is read here. A bot reads public posts
- * and public pages only. Nothing here signs in anywhere.
+ * Bot swarms for Social Media Analysis, Outbreak SOCIAL SEARCH, and Ultra:
+ * one bot per platform, each one request to Grok or OpenAI that searches
+ * with the provider's own search tool, all sent at once, on the swarm's
+ * own key. A missing Grok Bot key is a 501 from the API unless GROK BOT
+ * SWARM uses the Grok Bot computer instead. The Chief of Staff hand-off
+ * planner stays for that computer and for POST /api/social/swarm/chief-of-staff.
+ * No DOM and no network: every request and that task are built here, and
+ * every answer is read here. A bot reads public posts and public pages
+ * only. Nothing here signs in anywhere.
  */
 import { SOCIAL_PUBLIC_SITES, cleanPlace } from './socialMedia.js';
 
@@ -72,6 +74,16 @@ export const SOCIAL_SWARM_BOTS = Object.freeze([
     domains: Object.freeze([]),
   }),
 ]);
+
+/** The 501 when GROK BOT SWARM has neither an xAI key nor a computer. */
+export const GROK_BOT_UNCONFIGURED =
+  'No GROK BOT key yet. Add it in POWER UP → GROK BOT, or your Grok Bot computer in POWER UP → GROK BOT — COMPUTER.';
+
+/** One log line when the sweep went to the Chief of Staff bot as a whole. */
+export const SOCIAL_SWARM_CHIEF_BOT = Object.freeze({
+  id: 'chief',
+  label: 'Chief of Staff',
+});
 
 /** What every bot looks for when the instructions box is empty. */
 export const SOCIAL_SWARM_DEFAULT_PURPOSE =
@@ -330,6 +342,47 @@ export function readSwarmAnswer(data) {
     text: cleanText(parts.join('\n'), ANSWER_MAX),
     sources: [...sources].map(([url, title]) => ({ url, title })),
   };
+}
+
+const HANDOFF_SECTION_HEAD =
+  /^(?:#{1,6}\s*|\*\*|__)?\s*(X|Facebook|Instagram|Threads|TikTok|Truth Social|Local news)\s*(?:\*\*|__)?\s*:?\s*$/i;
+
+/**
+ * Split a Chief of Staff report into one entry per platform. Headings are
+ * the platform names the task asked for. No heading means no sections.
+ *
+ * @returns {{bot: object, text: string}[]}
+ */
+export function readSwarmHandoffSections(text) {
+  const source = String(text ?? '')
+    .replace(/\r\n/g, '\n')
+    .trim();
+  if (!source) return [];
+  const byLabel = new Map(
+    SOCIAL_SWARM_BOTS.map((bot) => [bot.label.toLowerCase(), bot]),
+  );
+  const sections = [];
+  let current = null;
+  let buf = [];
+  const flush = () => {
+    if (!current) return;
+    sections.push({
+      bot: current,
+      text: buf.join('\n').trim() || 'NOTHING FOUND',
+    });
+    buf = [];
+  };
+  for (const line of source.split('\n')) {
+    const match = HANDOFF_SECTION_HEAD.exec(line.trim());
+    if (match) {
+      flush();
+      current = byLabel.get(match[1].toLowerCase()) || null;
+      continue;
+    }
+    if (current) buf.push(line);
+  }
+  flush();
+  return sections;
 }
 
 /** Whether a bot came back empty-handed. */

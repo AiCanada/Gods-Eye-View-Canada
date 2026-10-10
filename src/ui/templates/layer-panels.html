@@ -276,6 +276,16 @@
         </select>
         <button id="ultra-find" class="scene-btn" type="button" disabled title="Under development">Find Ultra Help (under development)</button>
       </div>
+      <!-- GROK BOT SWARM: seven bots on GROK_BOT_API_KEY for the phone's last
+           fix. Answers land in this log. Without the key, the Grok Bot
+           computer (POWER UP), else the copied task and Grok Bot opened. -->
+      <div class="cctv-summary-label">GROK BOT SWARM</div>
+      <textarea id="ultra-swarm-instructions" class="ask-input social-query" rows="3" maxlength="1000" autocomplete="off" aria-label="Grok bot instructions" placeholder="Grok bot instructions. Leave empty for the default: threat incidents near the phone's last fix."></textarea>
+      <div class="cctv-controls">
+        <button id="ultra-swarm-run" class="scene-btn" type="button">GROK BOT SWARM</button>
+      </div>
+      <div id="ultra-swarm-status" class="ask-status" role="status" aria-live="polite"></div>
+      <div id="ultra-swarm-output" class="ask-output" role="status" aria-live="polite" tabindex="0"></div>
       <div class="cctv-summary-label">PREDEFINED HELP #</div>
       <form id="ultra-contact" class="cctv-controls ultra-contact">
         <input id="ultra-contact-label" type="text" placeholder="Helper name" aria-label="Helper name" autocomplete="off" />
@@ -547,7 +557,7 @@
             <option value="x-checkin">X check-ins</option>
           </select>
         </div>
-        <!-- Bot swarms: one bot per platform, each a single request with the provider's own search, all sent at once on the swarm's own key in POWER UP (GROK BOT, OPENAI DOTS). With no Grok Bot key, GROK BOT SWARM hands its task to the Chief of Staff bot in the Grok Bot desktop app. No login is kept here. -->
+        <!-- Bot swarms: one bot per platform, each a single request with the provider's own search, all sent at once on the swarm's own key in POWER UP (GROK BOT, OPENAI DOTS). Answers land in this log. No login is kept here. -->
         <div class="cctv-summary-label">GROK BOT SWARM</div>
         <textarea id="social-swarm-xai-instructions" class="ask-input social-query" rows="3" maxlength="1000" autocomplete="off" aria-label="Grok bot instructions" placeholder="Grok bot instructions. Leave empty for the default: threat incidents near this map place."></textarea>
         <div class="cctv-controls">

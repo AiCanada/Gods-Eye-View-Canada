@@ -106,6 +106,16 @@
   Thanks to [Shayan Khan](https://github.com/devv-shayan) for #621 and
   [TheSmokeDev](https://github.com/TheSmokeDev) for the credential handling
   from #653.
+- GROK BOT SWARM now sends from GEVC and writes the answers in GEVC. Social
+  Media GROK BOT SWARM, Outbreak SOCIAL SEARCH (Grok Bot), and the new Ultra
+  GROK BOT SWARM button each POST seven bots on `GROK_BOT_API_KEY` and put
+  every report in that panel's log. Without that key, POWER UP → GROK BOT —
+  COMPUTER (`GROK_BOT_GATEWAY_URL` and `GROK_BOT_GATEWAY_TOKEN`, usually
+  `http://127.0.0.1:1340`) sends the same sweep to a bot on your Grok Bot
+  computer and writes its report in the panel. Without a key or a computer
+  the press copies the Chief of Staff task, opens Grok Bot, and keeps the
+  task in the log. The press does not POST the Chief of Staff webhook.
+  OPEN GROK BOT stays a manual opener.
 
 - Stdio servers from one install share a panel key so a page read from one
   process can make requests through another. Concurrent malformed-key repairs
