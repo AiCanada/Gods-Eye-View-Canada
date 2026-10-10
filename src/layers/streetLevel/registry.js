@@ -86,8 +86,8 @@ const ID_GRAMMAR = /^[a-z][a-z0-9-]*$/;
  * @returns {ReadonlyArray<StreetLevelProvider>}
  */
 export function validateProviders(providers) {
-  if (!Array.isArray(providers) || providers.length === 0)
-    throw new TypeError('Street Level needs at least one imagery provider');
+  if (!Array.isArray(providers))
+    throw new TypeError('Street Level providers must be an array');
   const ids = new Set();
   const prefixes = [];
   for (const provider of providers) {
