@@ -228,6 +228,7 @@ export class LayerLifecycle {
 
   _normalizedStats(entry) {
     const moduleStats = this._moduleStats(entry);
+    const availability = entry.module.getSourceAvailability?.();
     const lifecycleLoading =
       entry.lifecycleState === 'enabling' ||
       entry.lifecycleState === 'disabling';
@@ -235,6 +236,13 @@ export class LayerLifecycle {
       count: 0,
       lastUpdate: null,
       ...moduleStats,
+      ...(availability?.available === false
+        ? {
+            status: 'unavailable',
+            sourceUnavailable: true,
+            error: availability.reason,
+          }
+        : {}),
       loading: lifecycleLoading || moduleStats.loading === true,
       refreshing: entry.refreshing || moduleStats.refreshing === true,
       managerRefreshError: entry.managerRefreshError,
@@ -2283,6 +2291,11 @@ export class LayerLifecycle {
   }
 
   async _visibilityBlockReason(change) {
+    const availability = this.layers
+      .get(change.layerId)
+      ?.module.getSourceAvailability?.();
+    if (change.enabled && availability?.available === false)
+      return availability.reason || 'Data source unavailable';
     for (const callback of this._visibilityGuards) {
       try {
         const result = await callback(change);

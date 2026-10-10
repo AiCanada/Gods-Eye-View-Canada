@@ -1,5 +1,9 @@
 # Changelog
 
+- Application source configuration accepts replacements and explicit removal.
+  Missing catalog feeds leave their layers unavailable without blocking startup
+  or making fallback requests; malformed supplied feeds remain configuration errors.
+
 - Street Level providers are optional in application composition. Omitting a
   Mapillary source no longer prevents startup; callers can inject a different
   provider list or an empty list without changing layer identities or share links.

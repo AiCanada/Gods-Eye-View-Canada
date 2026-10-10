@@ -117,7 +117,7 @@ test('invalid or already cancelled construction fails before classification can 
   assert.throws(
     () =>
       createApplicationCatalog({
-        sources: {},
+        sources: { flights: {} },
         signal: lifetime.signal,
         surface: fixtureSurface(lifetime.signal),
       }),
