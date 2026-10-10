@@ -1,4 +1,4 @@
-import { normalizeIdSwitches } from './idSwitches.js';
+import { normalizeIdSwitches, patchRequestedIdSwitches } from './idSwitches.js';
 import reservationRows from './layerStateTokenReservations.json' with { type: 'json' };
 
 const VALID_DISPOSITIONS = new Set([
@@ -416,6 +416,7 @@ const OPTION_GROUPS = Object.freeze({
     booleanOption('mapillary', 'm', true),
     Object.freeze({
       key: 'providerSwitches',
+      patchRequested: patchRequestedIdSwitches,
       token: 'r',
       defaultValue: '',
       normalize: (value) => normalizeIdSwitches(value, ['mapillary']),

@@ -45,3 +45,19 @@ export function decodeIdSwitches(value) {
       : [],
   );
 }
+
+/** Persist only explicitly requested switch IDs, not unrelated live changes. */
+export function patchRequestedIdSwitches(previous, applied, requested) {
+  const current = decodeIdSwitches(applied);
+  const next = new Map(
+    [...decodeIdSwitches(previous)].filter(([id]) => current.has(id)),
+  );
+  let changed = false;
+  for (const [id, on] of current) {
+    if (Object.hasOwn(requested, id) && typeof requested[id] === 'boolean') {
+      next.set(id, on);
+      changed = true;
+    }
+  }
+  return changed ? encodeIdSwitches(next) : undefined;
+}

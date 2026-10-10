@@ -31,7 +31,9 @@ stable. Custom provider switches use the `r` option (`example-1*panoramax-0`),
 with URL-safe separators and a shared layer-neutral boolean-switch codec, sorted by provider ID rather
 than registration order, and round-trip through links and stored state. A receiver
 applies only switches for its registered providers; absent custom switches leave
-current defaults unchanged. The custom switch field is bounded to 256 characters;
+current defaults unchanged. Explicit provider toggles persist only their requested
+switch IDs through the state coordinator; unrelated live values remain transient.
+The custom switch field is bounded to 256 characters;
 provider registration rejects compositions that cannot fit rather than truncating
 identities. A malformed or duplicate entry invalidates the complete custom-switch
 field. Existing whole-link size limits still apply.

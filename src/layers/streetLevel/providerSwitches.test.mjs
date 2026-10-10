@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { encodeParams, decodeParams } from './params.js';
 import {
   normalizeIdSwitches,
+  patchRequestedIdSwitches,
   decodeIdSwitches,
   encodeIdSwitches,
 } from '../../data/idSwitches.js';
@@ -136,4 +137,17 @@ test('neutral switch codec preserves hyphens and numeric suffixes in IDs', () =>
   const decoded = decodeIdSwitches(encoded);
   for (const [id, on] of switches) assert.equal(decoded.get(id), on);
   assert.equal(decodeIdSwitches('valid-1*broken').size, 0);
+});
+
+test('editing a receiving composition drops unknown IDs before enforcing the share bound', () => {
+  const previous = `${'x'.repeat(254)}-1`;
+  assert.equal(normalizeIdSwitches(previous), previous);
+  assert.equal(
+    patchRequestedIdSwitches(previous, 'alpha-0*beta-0', { alpha: false }),
+    'alpha-0',
+  );
+  assert.equal(
+    patchRequestedIdSwitches(previous, 'alpha-0', { pano: 'flat' }),
+    undefined,
+  );
 });
