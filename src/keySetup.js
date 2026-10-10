@@ -2,6 +2,10 @@ import { createSurfaceKeyboard } from './ui/surfaceKeyboard.js';
 import { initPrivateCameraSetup } from './privateCamerasSetup.js';
 import { initDeviceFeedSetup } from './deviceFeedsSetup.js';
 import { initRoadCctvKeysSetup } from './roadCctvKeysSetup.js';
+import {
+  readStoredCloudVoiceAuthMode,
+  writeStoredCloudVoiceAuthMode,
+} from './voice/cloudVoiceAuth.js';
 
 /**
  * The POWER UP surface — paste a key, get a power.
@@ -60,6 +64,52 @@ export function collectKeyUpdates(fields) {
   return updates;
 }
 
+function sleepWithSignal(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+export async function waitForChatGptOAuth({
+  fetchImpl,
+  signal,
+  timeoutMs = 120_000,
+  pollMs = 1_000,
+  now = () => Date.now(),
+  sleep = sleepWithSignal,
+} = {}) {
+  const deadline = now() + Math.max(0, timeoutMs);
+  while (!signal?.aborted && now() <= deadline) {
+    const response = await fetchImpl('/api/realtime/oauth-status', {
+      cache: 'no-store',
+      signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (signal?.aborted) return false;
+    if (response.ok && payload.available) return true;
+    if (!response.ok || payload.loginFailed) {
+      throw new Error(
+        payload.error || 'Could not check ChatGPT sign-in. Try again.',
+      );
+    }
+    if (now() >= deadline) break;
+    await sleep(Math.max(0, pollMs), signal);
+  }
+  return false;
+}
+
 /**
  * After the FIRST Google key lands, the restart's reload should boot the
  * photoreal default — not faithfully restore the auto-selected keyless OSM
@@ -95,6 +145,21 @@ export function keySetupPlaceholder(key, envVar) {
 }
 
 const TIER_DOTS = Object.freeze({ metered: '🔴', free: '🟡' });
+
+function updateCloudVoiceAuthControl(auth, busy = false) {
+  const mode = readStoredCloudVoiceAuthMode();
+  const state = auth.querySelector('.key-setup-cloud-auth-state');
+  const toggle = auth.querySelector('[data-cloud-voice-auth-toggle]');
+  state.textContent =
+    mode === 'oauth' ? 'VOICE AUTH · CHATGPT OAUTH' : 'VOICE AUTH · API KEY';
+  toggle.textContent = mode === 'oauth' ? 'USE API KEY' : 'USE CHATGPT OAUTH';
+  toggle.title =
+    mode === 'oauth'
+      ? 'Use OPENAI_API_KEY for the next cloud voice session'
+      : 'Use the signed-in local ChatGPT/Codex OAuth session for the next cloud voice session';
+  // Keep the control focusable while the delegated handler blocks repeats.
+  toggle.setAttribute('aria-disabled', String(busy));
+}
 
 /** Build one key row. All content is our own registry text, set via textContent. */
 function buildRow(documentRef, key) {
@@ -210,6 +275,19 @@ function buildRow(documentRef, key) {
     }
     row.append(fields);
   }
+  if (key.id === 'openai') {
+    const auth = documentRef.createElement('div');
+    auth.className = 'key-setup-cloud-auth';
+    const state = documentRef.createElement('span');
+    state.className = 'key-setup-cloud-auth-state';
+    const toggle = documentRef.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'key-setup-cloud-auth-toggle';
+    toggle.dataset.cloudVoiceAuthToggle = 'true';
+    auth.append(state, toggle);
+    updateCloudVoiceAuthControl(auth);
+    row.append(auth);
+  }
   return row;
 }
 
@@ -322,7 +400,13 @@ export async function initKeySetup({
   const statusLine = root.querySelector('[data-key-setup-status]');
   const defaultStatusText = statusLine?.textContent || '';
   let busy = false;
+  let oauthBusy = false;
   let open = false;
+
+  const syncCloudVoiceAuth = () => {
+    for (const auth of rowsHost.querySelectorAll('.key-setup-cloud-auth'))
+      updateCloudVoiceAuthControl(auth, oauthBusy);
+  };
 
   // The sections report what they hold as soon as they know (and again after
   // every save), so the chip counts every power-up, not only the keys.
@@ -354,6 +438,7 @@ export async function initKeySetup({
     }
     if (privateHost) rowsHost.append(privateHost);
     if (deviceHost) rowsHost.append(deviceHost);
+    syncCloudVoiceAuth();
   };
 
   const visible = () =>
@@ -485,6 +570,100 @@ export async function initKeySetup({
   applyButton?.addEventListener('click', onApply);
   // Remove buttons are rendered per row; delegate so re-renders stay wired.
   rowsHost?.addEventListener('click', (event) => {
+    const authButton = event.target?.closest?.(
+      '[data-cloud-voice-auth-toggle]',
+    );
+    if (authButton && !disposed) {
+      if (oauthBusy) return;
+      void (async () => {
+        const current = readStoredCloudVoiceAuthMode();
+        if (current === 'oauth') {
+          writeStoredCloudVoiceAuthMode('api-key');
+          syncCloudVoiceAuth();
+          say('Cloud voice will use OPENAI_API_KEY on the next session.');
+          return;
+        }
+        oauthBusy = true;
+        syncCloudVoiceAuth();
+        say('Checking local ChatGPT OAuth sign-in…');
+        try {
+          const response = await doFetch('/api/realtime/oauth-status', {
+            cache: 'no-store',
+            signal: lifetime.signal,
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (lifetime.signal.aborted) return;
+          if (!response.ok)
+            throw new Error(
+              payload.error || 'Could not check ChatGPT sign-in.',
+            );
+          if (payload.available) {
+            writeStoredCloudVoiceAuthMode('oauth');
+            syncCloudVoiceAuth();
+            say(
+              'ChatGPT OAuth selected for cloud voice. Your API key stays saved and available.',
+            );
+            return;
+          }
+
+          say(
+            payload.code === 'CODEX_OAUTH_REAUTH_REQUIRED'
+              ? 'ChatGPT sign-in expired. Opening sign-in again…'
+              : 'Opening ChatGPT sign-in in your browser…',
+          );
+          const loginResponse = await doFetch('/api/realtime/oauth-login', {
+            method: 'POST',
+            cache: 'no-store',
+            signal: lifetime.signal,
+          });
+          const loginPayload = await loginResponse.json().catch(() => ({}));
+          if (lifetime.signal.aborted) return;
+          if (!loginResponse.ok) {
+            say(
+              loginPayload.error ||
+                payload.error ||
+                'Could not start ChatGPT sign-in on this machine.',
+            );
+            return;
+          }
+          if (loginPayload.available) {
+            writeStoredCloudVoiceAuthMode('oauth');
+            syncCloudVoiceAuth();
+            say(
+              'ChatGPT OAuth selected for cloud voice. Your API key stays saved and available.',
+            );
+            return;
+          }
+
+          say(
+            'Finish ChatGPT sign-in in the browser. Waiting for it to complete…',
+          );
+          const available = await waitForChatGptOAuth({
+            fetchImpl: doFetch,
+            signal: lifetime.signal,
+          });
+          if (lifetime.signal.aborted) return;
+          if (!available) {
+            say(
+              'ChatGPT sign-in timed out. Click USE CHATGPT OAUTH to try again.',
+            );
+            return;
+          }
+          writeStoredCloudVoiceAuthMode('oauth');
+          syncCloudVoiceAuth();
+          say(
+            'ChatGPT sign-in complete. OAuth will be used for the next cloud voice session.',
+          );
+        } catch (error) {
+          if (lifetime.signal.aborted) return;
+          say(`OAuth check failed: ${error?.message || error}`);
+        } finally {
+          oauthBusy = false;
+          if (!disposed) syncCloudVoiceAuth();
+        }
+      })();
+      return;
+    }
     const button = event.target?.closest?.('[data-key-setup-remove]');
     if (disposed || !button || busy) return;
     let envVars = [];

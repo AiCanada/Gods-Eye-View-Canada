@@ -1,3 +1,4 @@
+import { encodeParams, decodeParams } from '../layers/streetLevel/params.js';
 import { readShellSource } from '../testSupport/readShellSource.mjs';
 import { expandApplicationHtml } from '../../build/application-html.js';
 import { readLayerSource } from '../testSupport/readLayerSource.mjs';
@@ -2675,12 +2676,14 @@ test('Street Level: every option round-trips through a share link and stored sta
   state.enabledLayerIds = ['street-level'];
   state.options['street-level'] = {
     mapillary: false,
+    providerSwitches: '',
     pano: 'flat',
     sinceDays: MAX_SINCE_DAYS,
   };
   const decoded = decodeLayerStateParams(new URLSearchParams(encode(state)));
   assert.deepEqual(decoded.options['street-level'], {
     mapillary: false,
+    providerSwitches: '',
     pano: 'flat',
     sinceDays: MAX_SINCE_DAYS,
   });
@@ -2708,6 +2711,7 @@ test('Street Level: the link codec accepts exactly the windows the filter keeps'
 test('Street Level: a link without the provider switch keeps Mapillary on', () => {
   assert.deepEqual(streetLevelOptions(''), {
     mapillary: true,
+    providerSwitches: '',
     pano: 'all',
     sinceDays: 0,
   });
@@ -2717,4 +2721,74 @@ test('Street Level: a link without the provider switch keeps Mapillary on', () =
     createDefaultLayerState().options['street-level'].mapillary,
     true,
   );
+});
+
+test('explicit provider switches reach durable state without adopting unrelated live switches', () => {
+  const manager = new DataLayerManager({});
+  const providers = new Map([
+    ['mapillary', true],
+    ['alpha', true],
+    ['beta', true],
+  ]);
+  const filter = { pano: 'all', sinceDays: 0 };
+  for (const id of REGISTERED_LAYER_IDS) {
+    manager.register(
+      id === 'street-level'
+        ? {
+            ...fakeLayer(id),
+            getParams: () => encodeParams({ providers, filter }),
+            setParams(params) {
+              const decoded = decodeParams(params, {
+                providerIds: providers.keys(),
+                filter,
+              });
+              for (const [id, on] of decoded.providers) providers.set(id, on);
+              return true;
+            },
+          }
+        : fakeLayer(id),
+    );
+  }
+  manager.finalizeRegistrations(LAYER_STATE_REGISTRY);
+  const storage = memoryStorage();
+  const coordinator = new LayerStateCoordinator(manager, shareSink(), {
+    storage,
+  });
+  try {
+    providers.set('beta', false); // Passive state does not belong to the next action.
+    assert.equal(
+      manager.setLayerParams(
+        'street-level',
+        { alpha: false },
+        { origin: 'user' },
+      ),
+      true,
+    );
+    let saved = parseStoredLayerState(storage.getItem(LAYER_STATE_STORAGE_KEY));
+    assert.equal(saved.options['street-level'].providerSwitches, 'alpha-0');
+    const shared = decodeLayerStateParams(new URLSearchParams(encode(saved)));
+    const restored = decodeParams(shared.options['street-level'], {
+      providerIds: ['beta', 'alpha'],
+      filter,
+    });
+    assert.deepEqual([...restored.providers], [['alpha', false]]);
+    manager.setLayerParams('street-level', { beta: true }, { origin: 'user' });
+    saved = parseStoredLayerState(storage.getItem(LAYER_STATE_STORAGE_KEY));
+    assert.equal(
+      saved.options['street-level'].providerSwitches,
+      'alpha-0*beta-1',
+    );
+    manager.setLayerParams(
+      'street-level',
+      { alpha: true },
+      { origin: 'local-restore' },
+    );
+    saved = parseStoredLayerState(storage.getItem(LAYER_STATE_STORAGE_KEY));
+    assert.equal(
+      saved.options['street-level'].providerSwitches,
+      'alpha-0*beta-1',
+    );
+  } finally {
+    coordinator.destroy();
+  }
 });
