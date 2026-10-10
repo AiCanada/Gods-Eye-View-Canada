@@ -7,7 +7,8 @@ visibility lifecycle before initialization. Invalid supplied methods still fail
 construction. `createStandaloneApplication` and `createStandaloneCatalog` accept
 `sources` overrides; unspecified entries retain
 standalone defaults, and null entries explicitly remove a source. Street Level
-continues to accept an explicit provider list. Directions (`getRoute`) and
+continues to accept an explicit provider list. An empty Street Level provider
+list uses the same unavailable lifecycle and disabled layer toggle. Directions (`getRoute`) and
 Recent Imagery (`searchHls`, `getThumbnail`, `getTileTemplate`) use the same source
 configuration boundary. Standalone selects their default adapters; layers retain
 route normalization, imagery selection and rendering. Recent Imagery adapters
@@ -21,7 +22,10 @@ An explicit list replaces the default Mapillary provider; an empty list removes
 all imagery providers. Without that option, Mapillary is registered only when
 `sources.mapillary` is supplied. An absent source leaves Street Level registered
 with a truthful no-provider state, preserving layer controls and share tokens.
-Malformed supplied sources and provider definitions still fail validation.
+Malformed selected sources and provider definitions still fail validation.
+An explicit provider list bypasses the unused Mapillary source, including its
+validation. Layer share identities are preserved; custom provider switches require
+a corresponding serialization contract.
 
 ## God's Eye View in conversations — October 2, 2026
 
