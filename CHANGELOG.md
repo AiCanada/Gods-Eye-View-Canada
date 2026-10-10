@@ -1,5 +1,10 @@
 # Changelog
 
+- Directions and Recent Imagery accept replaceable acquisition sources, including
+  route transport, imagery catalog, thumbnails, tile templates and attribution.
+  Explicitly removing either source leaves its layer unavailable; standalone
+  defaults preserve the existing providers.
+
 - Application source configuration accepts replacements and explicit removal.
   Missing catalog feeds leave their layers unavailable without blocking startup
   or making fallback requests; malformed supplied feeds remain configuration errors.
