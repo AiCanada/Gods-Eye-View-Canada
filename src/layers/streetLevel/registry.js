@@ -1,3 +1,5 @@
+import { encodeProviderSwitches } from './providerSwitches.js';
+
 /**
  * The contract an imagery provider registers with the Street Level layer.
  *
@@ -125,6 +127,8 @@ export function validateProviders(providers) {
     ids.add(provider.id);
     prefixes.push(provider.pickPrefix);
   }
+  // Validate the complete bounded share field once, before any instance exists.
+  encodeProviderSwitches(providers.map(({ id }) => [id, true]));
   return Object.freeze([...providers]);
 }
 

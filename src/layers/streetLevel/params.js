@@ -1,13 +1,20 @@
 import { normalizeFilter } from './filter.js';
+import {
+  encodeProviderSwitches,
+  decodeProviderSwitches,
+} from './providerSwitches.js';
 
 /**
- * Share-link params: one boolean per provider plus the filter. The codec in
- * src/data/layerState.js names the same keys, so a new provider needs one there.
+ * Provider params plus the filter. Custom switches share a stable ID-based
+ * field; Mapillary retains its existing boolean and share token.
  * @param {{providers: Iterable<[string, boolean]>, filter: {pano: string, sinceDays: number}}} input
  */
 export function encodeParams({ providers, filter }) {
   const params = {};
-  for (const [id, on] of providers) params[id] = on === true;
+  const entries = [...providers];
+  for (const [id, on] of entries) params[id] = on === true;
+  const switches = encodeProviderSwitches(entries);
+  if (switches) params.providerSwitches = switches;
   params.pano = filter.pano;
   params.sinceDays = filter.sinceDays;
   return params;
@@ -23,8 +30,12 @@ export function encodeParams({ providers, filter }) {
 export function decodeParams(params, { providerIds, filter }) {
   const providers = new Map();
   const source = params && typeof params === 'object' ? params : {};
-  for (const id of providerIds)
-    if (typeof source[id] === 'boolean') providers.set(id, source[id]);
+  const switches = decodeProviderSwitches(source.providerSwitches);
+  for (const id of providerIds) {
+    if (switches.has(id)) providers.set(id, switches.get(id));
+    else if (Object.hasOwn(source, id) && typeof source[id] === 'boolean')
+      providers.set(id, source[id]);
+  }
   const next = {};
   if ('pano' in source) next.pano = source.pano;
   if ('sinceDays' in source) next.sinceDays = source.sinceDays;

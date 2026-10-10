@@ -2660,12 +2660,14 @@ test('Street Level: every option round-trips through a share link and stored sta
   state.enabledLayerIds = ['street-level'];
   state.options['street-level'] = {
     mapillary: false,
+    providerSwitches: '',
     pano: 'flat',
     sinceDays: MAX_SINCE_DAYS,
   };
   const decoded = decodeLayerStateParams(new URLSearchParams(encode(state)));
   assert.deepEqual(decoded.options['street-level'], {
     mapillary: false,
+    providerSwitches: '',
     pano: 'flat',
     sinceDays: MAX_SINCE_DAYS,
   });
@@ -2693,6 +2695,7 @@ test('Street Level: the link codec accepts exactly the windows the filter keeps'
 test('Street Level: a link without the provider switch keeps Mapillary on', () => {
   assert.deepEqual(streetLevelOptions(''), {
     mapillary: true,
+    providerSwitches: '',
     pano: 'all',
     sinceDays: 0,
   });

@@ -1,3 +1,4 @@
+import { normalizeProviderSwitches } from '../layers/streetLevel/providerSwitches.js';
 import reservationRows from './layerStateTokenReservations.json' with { type: 'json' };
 
 const VALID_DISPOSITIONS = new Set([
@@ -411,8 +412,16 @@ const OPTION_GROUPS = Object.freeze({
     booleanOption('viirs', 'v', false),
   ]),
   'street-level': Object.freeze([
-    // One switch per registered imagery provider (src/app/layers/streetLevel.js).
+    // Preserve the published Mapillary token; custom switches use stable IDs.
     booleanOption('mapillary', 'm', true),
+    Object.freeze({
+      key: 'providerSwitches',
+      token: 'r',
+      defaultValue: '',
+      normalize: normalizeProviderSwitches,
+      encode: normalizeProviderSwitches,
+      decode: normalizeProviderSwitches,
+    }),
     enumOption('pano', 'p', 'all', ['all', 'pano', 'flat'], {
       all: 'a',
       pano: 'p',

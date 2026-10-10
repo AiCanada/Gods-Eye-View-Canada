@@ -1,5 +1,8 @@
 # Changelog
 
+- Custom Street Level provider switches survive share links and stored state
+  using stable provider IDs; existing Mapillary links keep their meaning.
+
 - Directions and Recent Imagery accept replaceable acquisition sources, including
   route transport, imagery catalog, thumbnails, tile templates and attribution.
   Explicitly removing either source leaves its layer unavailable; standalone

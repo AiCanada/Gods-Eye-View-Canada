@@ -24,8 +24,13 @@ all imagery providers. Without that option, Mapillary is registered only when
 with a truthful no-provider state, preserving layer controls and share tokens.
 Malformed selected sources and provider definitions still fail validation.
 An explicit provider list bypasses the unused Mapillary source, including its
-validation. Layer share identities are preserved; custom provider switches require
-a corresponding serialization contract.
+validation. Layer share identities and the legacy Mapillary `m` option remain
+stable. Custom provider switches use the `r` option, sorted by provider ID rather
+than registration order, and round-trip through links and stored state. A receiver
+applies only switches for its registered providers; absent custom switches leave
+current defaults unchanged. The custom switch field is bounded to 256 characters;
+provider registration rejects compositions that cannot fit rather than truncating
+identities. Existing whole-link size limits still apply.
 
 ## God's Eye View in conversations — October 2, 2026
 
