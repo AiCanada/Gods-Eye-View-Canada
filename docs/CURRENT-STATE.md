@@ -10,8 +10,14 @@ construction. `createStandaloneApplication` and `createStandaloneCatalog` accept
 `sources` overrides; unspecified entries retain
 standalone defaults, and null entries explicitly remove a source. Street Level
 continues to accept an explicit provider list. An empty Street Level provider
-list uses the same unavailable lifecycle and disabled layer toggle. Directions and Recent Imagery
-acquisition are still selected by their application constructors.
+list uses the same unavailable lifecycle and disabled layer toggle. Directions (`getRoute`) and
+Recent Imagery (`searchHls`, `getThumbnail`, `getTileTemplate`) use the same source
+configuration boundary. Standalone selects their default adapters; layers retain
+route normalization, imagery selection and rendering. Recent Imagery adapters
+consume the existing HLS/VIIRS product schema and provide their own tile attribution.
+The source factories are exported at `layers/directions/source` and
+`layers/recent-imagery/source`. Configuration is applied at construction time;
+this does not introduce live source replacement.
 
 Application catalog composition accepts an optional `streetLevelProviders` list.
 An explicit list replaces the default Mapillary provider; an empty list removes

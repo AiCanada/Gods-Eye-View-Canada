@@ -133,8 +133,8 @@ export function createApplicationCatalog({
         createApplicationRadio({ surface, source: sources.radio }),
         createApplicationTransit({ surface, source: sources.transit }),
         createApplicationBikeshare({ source: sources.bikeshare }),
-        createApplicationDirections(),
-        createApplicationRecentImagery(),
+        createApplicationDirections({ source: sources.directions }),
+        createApplicationRecentImagery({ source: sources['recent-imagery'] }),
         vessels,
         installations,
         createApplicationAwareness({

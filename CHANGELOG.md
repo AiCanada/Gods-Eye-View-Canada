@@ -1,5 +1,10 @@
 # Changelog
 
+- Directions and Recent Imagery accept replaceable acquisition sources, including
+  route transport, imagery catalog, thumbnails, tile templates and attribution.
+  Explicitly removing either source leaves its layer unavailable; standalone
+  defaults preserve the existing providers.
+
 - Catalog source availability no longer modifies layer objects; unavailable
   tooltips use layer display names.
 
