@@ -82,3 +82,20 @@ test('standalone defaults allow exact replacements and explicit removal, and rej
     /Unknown source/,
   );
 });
+
+test('empty Street Level uses the shared unavailable lifecycle without initialization', async (t) => {
+  const actual = catalog({}, t);
+  const manager = new LayerLifecycle({});
+  manager.register(actual.get('street-level'));
+  assert.equal(await manager.setEnabled('street-level', true), false);
+  assert.equal(manager.layers.get('street-level').initialized, false);
+  const row = manager.getAll()[0];
+  assert.equal(row.stats.status, 'unavailable');
+  assert.equal(row.stats.error, 'No street-level imagery providers configured');
+  assert.equal(await manager.setEnabled('street-level', false), true);
+  const configured = catalog(createStandaloneLayerSources(), t);
+  assert.equal(
+    configured.get('street-level').getSourceAvailability().available,
+    true,
+  );
+});

@@ -1,5 +1,8 @@
 # Changelog
 
+- Street Level with no providers uses the shared unavailable state and refuses
+  activation before initialization, while keeping its layer identity visible.
+
 - Application source configuration accepts replacements and explicit removal.
   Missing catalog feeds leave their layers unavailable without blocking startup
   or making fallback requests; malformed supplied feeds remain configuration errors.

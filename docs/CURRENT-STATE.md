@@ -7,7 +7,8 @@ visibility lifecycle before initialization. Invalid supplied methods still fail
 construction. `createStandaloneApplication` and `createStandaloneCatalog` accept
 `sources` overrides; unspecified entries retain
 standalone defaults, and null entries explicitly remove a source. Street Level
-continues to accept an explicit provider list. Directions and Recent Imagery
+continues to accept an explicit provider list. An empty Street Level provider
+list uses the same unavailable lifecycle and disabled layer toggle. Directions and Recent Imagery
 acquisition are still selected by their application constructors.
 
 Application catalog composition accepts an optional `streetLevelProviders` list.
