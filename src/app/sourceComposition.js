@@ -80,22 +80,29 @@ export function resolveCatalogSources(supplied = {}) {
   return {
     sources,
     isConfigured: (name) => !missing.has(name),
-    bind(layers) {
+    createAvailabilityLookup(layers) {
+      const byId = new Map(layers.map((layer) => [layer.id, layer]));
+      const availability = new Map();
       for (const [name, { layers: ids }] of Object.entries(
         CATALOG_SOURCE_CONTRACTS,
       )) {
         for (const id of ids) {
-          const layer = layers.find((entry) => entry.id === id);
+          const layer = byId.get(id);
           if (!layer) throw new Error(`Missing source consumer: ${id}`);
-          layer.getSourceAvailability = () => ({
-            available: !missing.has(name),
-            source: name,
-            reason: missing.has(name)
-              ? `Data source not configured: ${name}`
-              : null,
-          });
+          availability.set(
+            id,
+            Object.freeze({
+              available: !missing.has(name),
+              source: name,
+              reason: missing.has(name)
+                ? `${layer.name || id}: data source not configured`
+                : null,
+            }),
+          );
         }
       }
+      return (id) =>
+        availability.get(id) ?? byId.get(id)?.getSourceAvailability?.();
     },
   };
 }

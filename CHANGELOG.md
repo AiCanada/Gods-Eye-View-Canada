@@ -1,5 +1,8 @@
 # Changelog
 
+- Catalog source availability no longer modifies layer objects; unavailable
+  tooltips use layer display names.
+
 - Street Level with no providers uses the shared unavailable state and refuses
   activation before initialization, while keeping its layer identity visible.
 
