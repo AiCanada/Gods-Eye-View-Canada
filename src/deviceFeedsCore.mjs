@@ -27,6 +27,27 @@ export const DEVICE_FEEDS_HISTORY_EVENT = 'gev:device-feeds-history';
  * without their path; detail { hidden: [public ids], noPath: [public ids] }.
  */
 export const DEVICE_FEEDS_VISIBLE_EVENT = 'gev:device-feeds-visible';
+/**
+ * The Ultra box tells the Cell layer which saved photos and videos are on the
+ * map, and which one of each is showing now (the box steps and rotates them):
+ * detail { photos: [names], videos: [names], photoIndex, videoIndex }.
+ */
+export const ULTRA_MEDIA_EVENT = 'gev:ultra-media';
+/** This browser's photos and videos ticked for the map (a JSON list of names). */
+export const ULTRA_MEDIA_SELECTED_KEY = 'ultra-media-selected';
+/** A saved photo's or video's address, by its exact name. */
+export function ultraMediaUrl(name) {
+  return `/api/ultra-help/media/${encodeURIComponent(String(name || ''))}`;
+}
+/** Only names the server saves (photo-… or clip-…), never a path. */
+export function ultraMediaNames(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((name) => String(name || ''))
+    .filter((name) =>
+      /^(photo|clip)-\d{8}T\d{6}Z-\d{1,4}\.[a-z0-9]{2,4}$/.test(name),
+    )
+    .slice(0, 200);
+}
 /** This browser's devices left off the map (localStorage, a JSON list of public ids). */
 export const DEVICE_HIDDEN_KEY = 'ultra-cells-hidden';
 /** This browser's devices drawn without their path (localStorage, a JSON list of public ids). */

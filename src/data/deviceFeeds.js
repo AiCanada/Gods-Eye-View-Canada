@@ -15,6 +15,8 @@ import {
   DEVICE_FEEDS_FOCUS_EVENT,
   DEVICE_FEEDS_HISTORY_EVENT,
   DEVICE_FEEDS_VISIBLE_EVENT,
+  ULTRA_MEDIA_EVENT,
+  ultraMediaNames,
   DEVICE_HIDDEN_KEY,
   DEVICE_HISTORY_PERIOD_KEY,
   DEVICE_NO_PATH_KEY,
@@ -26,6 +28,7 @@ import { requestWorldFocus } from '../worldFocus.js';
 import { applyTrackedCameraFrame } from './trackedCamera.js';
 import { refreshTrackedReadout } from './trackedReadout.js';
 import { createDeviceRecorder } from './deviceRecorder.js';
+import { createUltraMediaOverlay, mediaWindow } from './ultraMediaOverlay.js';
 import {
   bindTrackingClickGesture,
   isTrackingClickGesture,
@@ -277,6 +280,7 @@ export function createDeviceFeedsLayer({
   fetchImpl = (...args) => fetch(...args),
   windowRef = typeof window === 'undefined' ? null : window,
   createImage = () => (typeof Image === 'undefined' ? null : new Image()),
+  createMediaOverlay = createUltraMediaOverlay,
   now = () => Date.now(),
   applyFollowFrame = applyTrackedCameraFrame,
   refreshReadout = refreshTrackedReadout,
@@ -301,6 +305,16 @@ export function createDeviceFeedsLayer({
   let _autoShowTimer = null;
   let _onHistory = null;
   let _onVisible = null;
+  let _onMedia = null;
+  /*
+   * The Ultra cell's saved photos and videos on the map (owner ruling,
+   * 2026-10-08): up to three of each beside the cell, as page tiles that can
+   * be resized, double-clicked bigger and smaller, and clicked into the CCTV
+   * viewer (ultraMediaOverlay.js). The Ultra box picks which.
+   */
+  let _media = { photos: [], videos: [], photoIndex: 0, videoIndex: 0 };
+  let _mediaTiles = null;
+  let _removePlaceTiles = null;
   // Ultra cells (or any device) this viewer left off the map. They still
   // record: hiding one is about the map, not about its safety.
   let _hidden = new Set(deviceHiddenIds(hiddenDevices));
@@ -427,6 +441,58 @@ export function createDeviceFeedsLayer({
       }
     }
     return held.image;
+  };
+
+  /** Put the photos and videos the Ultra box picked on the map: three of each at most. */
+  const syncMedia = () => {
+    if (!_mediaTiles) return;
+    if (!_enabled) {
+      _mediaTiles.setMedia({});
+      return;
+    }
+    _mediaTiles.setMedia({
+      photos: mediaWindow(_media.photos, _media.photoIndex),
+      videos: mediaWindow(_media.videos, _media.videoIndex),
+      photoTotal: _media.photos.length,
+      videoTotal: _media.videos.length,
+      photoStart: _media.photoIndex,
+      videoStart: _media.videoIndex,
+    });
+  };
+
+  /** Each frame: the tiles beside the first Ultra cell, while it is in view. */
+  const placeTiles = () => {
+    if (!_mediaTiles || !_viewer) return;
+    const ultra = _enabled
+      ? _latest.find((device) =>
+          ULTRA_PICTURE_PATH.test(device.pictureUrl || ''),
+        )
+      : null;
+    const position = ultra ? _devices.get(ultra.id)?.position : null;
+    let visible = false;
+    let x = 0;
+    let y = 0;
+    if (position) {
+      const camera = _viewer.camera?.positionWC;
+      const inFront =
+        !camera ||
+        new Cesium.EllipsoidalOccluder(
+          Cesium.Ellipsoid.WGS84,
+          camera,
+        ).isPointVisible(position);
+      const screen = inFront
+        ? Cesium.SceneTransforms.worldToWindowCoordinates(
+            _viewer.scene,
+            position,
+          )
+        : null;
+      if (screen) {
+        visible = true;
+        x = screen.x;
+        y = screen.y;
+      }
+    }
+    _mediaTiles.place({ x, y, visible });
   };
 
   let _latest = [];
@@ -793,6 +859,18 @@ export function createDeviceFeedsLayer({
         else layer.update(_viewer).catch(() => {});
       };
       windowRef.addEventListener(DEVICE_FEEDS_VISIBLE_EVENT, _onVisible);
+      _onMedia = (event) => {
+        const detail = event?.detail || {};
+        _media = {
+          photos: ultraMediaNames(detail.photos),
+          videos: ultraMediaNames(detail.videos),
+          photoIndex: Math.max(0, Math.floor(Number(detail.photoIndex) || 0)),
+          videoIndex: Math.max(0, Math.floor(Number(detail.videoIndex) || 0)),
+        };
+        syncMedia();
+        if (_enabled) publish();
+      };
+      windowRef.addEventListener(ULTRA_MEDIA_EVENT, _onMedia);
       // A device that is reporting shows on the map by itself: while the layer
       // is off it asks now and then, and comes on once one is live. Switched
       // off by the owner (a click, voice or a tool), it stays off.
@@ -824,6 +902,14 @@ export function createDeviceFeedsLayer({
       _dataSource = new Cesium.CustomDataSource('device-feeds');
       _dataSource.show = false;
       viewer.dataSources.add(_dataSource);
+      if (viewer?.container) {
+        _mediaTiles = createMediaOverlay({
+          container: viewer.container,
+          windowRef,
+        });
+        _removePlaceTiles =
+          viewer.scene?.postRender?.addEventListener?.(placeTiles) || null;
+      }
       _count = 0;
       _lastUpdate = null;
       _lastError = null;
@@ -835,12 +921,14 @@ export function createDeviceFeedsLayer({
       _enabled = true;
       if (_dataSource) _dataSource.show = true;
       overlayHost.setVisible(DEVICE_FEEDS_OVERLAY_SOURCE_ID, true);
+      syncMedia();
       publish();
     },
 
     disable() {
       stopFollow();
       _enabled = false;
+      syncMedia();
       if (_dataSource) _dataSource.show = false;
       overlayHost.clearSource(DEVICE_FEEDS_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(DEVICE_FEEDS_OVERLAY_SOURCE_ID, false);
@@ -924,6 +1012,15 @@ export function createDeviceFeedsLayer({
         windowRef.removeEventListener(DEVICE_FEEDS_VISIBLE_EVENT, _onVisible);
       }
       _onVisible = null;
+      if (_onMedia && windowRef?.removeEventListener) {
+        windowRef.removeEventListener(ULTRA_MEDIA_EVENT, _onMedia);
+      }
+      _onMedia = null;
+      _media = { photos: [], videos: [], photoIndex: 0, videoIndex: 0 };
+      _removePlaceTiles?.();
+      _removePlaceTiles = null;
+      _mediaTiles?.destroy();
+      _mediaTiles = null;
       if (_autoShowTimer !== null) windowRef?.clearInterval?.(_autoShowTimer);
       _autoShowTimer = null;
       _pendingFocusId = null;

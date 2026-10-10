@@ -161,9 +161,6 @@
         <span class="panel-divider"></span>
         <button class="panel-collapse-btn" data-collapse-target="ultra-panel" title="Collapse panel">+</button>
       </div>
-      <div id="ultra-frame-wrap" class="cctv-frame-wrap" hidden>
-        <img id="ultra-frame" alt="Ultra cell camera still" />
-      </div>
       <div id="ultra-status" class="sst-readout" role="status" aria-live="polite">PHONE · WAITING</div>
       <div id="ultra-cam-link" class="sst-readout"></div>
       <!-- Send help: one press releases this phone's position to every token marked NETWORK for four hours (STAND DOWN any time) and hands the phone the plea for the saved helpers. The incident comes from the FIND HELP select. -->
@@ -178,7 +175,6 @@
       <p id="ultra-release-note" class="ultra-note"></p>
       <div id="ultra-release-plea" class="sst-readout" hidden></div>
       <!-- Help messages from token holders sit first under the status line: an incoming plea outranks the camera controls. -->
-      <div class="cctv-summary-label">HELP MESSAGES <span id="ultra-inbox-count"></span></div>
       <div id="ultra-inbox" class="ultra-inbox"></div>
       <div class="cctv-controls ultra-read-row">
         <label class="ultra-match"><input id="ultra-read-aloud" type="checkbox" checked> Read new help messages aloud</label>
@@ -221,19 +217,54 @@
           <option value="samsung-z-fold">Galaxy Z Fold</option>
         </select>
       </div>
-      <div class="cctv-controls">
-        <button id="ultra-cam-front" class="scene-btn" type="button" data-ultra-camera="front">Activate Front Cell Cam</button>
+      <!-- CELL CAMERAS: PHOTO (one still) and VIDEO (live) for each camera
+           this phone model has. Every press also records a clip, kept on
+           this computer (owner ruling, 2026-10-08). -->
+      <div class="cctv-summary-label">CELL CAMERAS</div>
+      <div class="cctv-controls ultra-cam-row" data-ultra-camera-row="front">
+        <span class="ultra-cam-name">Front Cell Cam</span>
+        <button class="scene-btn" type="button" data-ultra-camera="front" data-ultra-mode="photo" title="One still from the Front Cell Cam">TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map">▶</button>
+        <button class="scene-btn" type="button" data-ultra-camera="front" data-ultra-mode="video" title="Live video from the Front Cell Cam">TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map">▶</button>
       </div>
-      <div class="cctv-controls">
-        <button id="ultra-cam-rear" class="scene-btn" type="button" data-ultra-camera="rear">Activate Rear Cell Cam</button>
+      <div class="cctv-controls ultra-cam-row" data-ultra-camera-row="rear">
+        <span class="ultra-cam-name">Rear Cell Cam</span>
+        <button class="scene-btn" type="button" data-ultra-camera="rear" data-ultra-mode="photo" title="One still from the Rear Cell Cam">TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map">▶</button>
+        <button class="scene-btn" type="button" data-ultra-camera="rear" data-ultra-mode="video" title="Live video from the Rear Cell Cam">TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map">▶</button>
       </div>
-      <div class="cctv-controls">
-        <button id="ultra-cam-inner" class="scene-btn" type="button" data-ultra-camera="inner">Activate Inside Fold Cell Cam</button>
+      <div class="cctv-controls ultra-cam-row" data-ultra-camera-row="inner">
+        <span class="ultra-cam-name">Inside Fold Cell Cam</span>
+        <button class="scene-btn" type="button" data-ultra-camera="inner" data-ultra-mode="photo" title="One still from the Inside Fold Cell Cam">TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map">▶</button>
+        <button class="scene-btn" type="button" data-ultra-camera="inner" data-ultra-mode="video" title="Live video from the Inside Fold Cell Cam">TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map">▶</button>
       </div>
-      <div class="cctv-controls" id="ultra-extra-cameras">
-        <button id="ultra-cam-ultrawide" class="scene-btn" type="button" data-ultra-camera="rear-ultrawide" hidden>Activate Rear Ultrawide Cam</button>
-        <button id="ultra-cam-tele" class="scene-btn" type="button" data-ultra-camera="rear-tele" hidden>Activate Rear Telephoto Cam</button>
+      <div id="ultra-extra-cameras">
+      <div class="cctv-controls ultra-cam-row" data-ultra-camera-row="rear-ultrawide" hidden>
+        <span class="ultra-cam-name">Rear Ultrawide Cam</span>
+        <button class="scene-btn" type="button" data-ultra-camera="rear-ultrawide" data-ultra-mode="photo" title="One still from the Rear Ultrawide Cam">TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map">▶</button>
+        <button class="scene-btn" type="button" data-ultra-camera="rear-ultrawide" data-ultra-mode="video" title="Live video from the Rear Ultrawide Cam">TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map">▶</button>
       </div>
+      <div class="cctv-controls ultra-cam-row" data-ultra-camera-row="rear-tele" hidden>
+        <span class="ultra-cam-name">Rear Telephoto Cam</span>
+        <button class="scene-btn" type="button" data-ultra-camera="rear-tele" data-ultra-mode="photo" title="One still from the Rear Telephoto Cam">TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map">▶</button>
+        <button class="scene-btn" type="button" data-ultra-camera="rear-tele" data-ultra-mode="video" title="Live video from the Rear Telephoto Cam">TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map">▶</button>
+      </div>
+      </div>
+      <!-- Photos and videos show on the map only, beside the Ultra cell: a
+           photo card and a separate video card, the size of its live card.
+           Three of each at most. Tick the ones for the map; the ◀ ▶ beside
+           TAKE PHOTO and TAKE VIDEO step through them. Untick PHOTOS ON MAP or
+           VIDEOS ON MAP to take that kind off the map; CCTV in the list still
+           plays them. DELETE takes the ticked
+           ones off this computer, or every one with All ticked; it asks once
+           more first. -->
+      <div class="cctv-controls ultra-media-controls">
+        <label class="ultra-match"><input id="ultra-photos-on-map" type="checkbox" checked> PHOTOS ON MAP <span id="ultra-photo-pos"></span></label>
+        <label class="ultra-match"><input id="ultra-videos-on-map" type="checkbox" checked> VIDEOS ON MAP <span id="ultra-video-pos"></span></label>
+      </div>
+      <div class="cctv-controls ultra-media-controls">
+        <label class="ultra-match"><input id="ultra-media-delete-all" type="checkbox"> All</label>
+        <button id="ultra-media-delete" class="scene-btn" type="button" title="Delete the ticked photos and videos, or all of them with All ticked" disabled>DELETE TICKED</button>
+      </div>
+      <ul id="ultra-media" class="ultra-media" aria-label="Photos and videos from the Ultra cell"></ul>
       <div class="cctv-summary-label">FIND HELP</div>
       <!-- The incident select names the incident SEND HELP sends. Find Ultra Help is under development: its button does nothing yet. -->
       <div class="cctv-controls">
@@ -574,7 +605,13 @@
              ignored. Set ones suggest a HOW CONTAGIOUS level (USE SUGGESTED
              applies it) and go with every language-model and bot request. -->
         <div class="cctv-summary-label">PATHOGEN CHARACTERISTICS (OPTIONAL)</div>
+        <!-- A preset fills every field below with typical published values
+             (illustrative, not definitive); each field stays editable. -->
         <div class="outbreak-profile">
+          <label for="outbreak-preset">Pathogen preset</label>
+          <select id="outbreak-preset" aria-label="Pathogen preset">
+            <option value="">Not set</option>
+          </select>
           <label for="outbreak-transmission">Transmission mode</label>
           <select id="outbreak-transmission" aria-label="Transmission mode">
             <option value="">Not set</option>
@@ -601,6 +638,22 @@
             <option value="medium">Medium</option>
             <option value="high">High</option>
           </select>
+          <label for="outbreak-latent">Latent period (days, infected → infectious)</label>
+          <input id="outbreak-latent" type="number" min="0.1" max="60" step="0.1" placeholder="Not set" aria-label="Latent period (days, infected → infectious)" />
+          <label for="outbreak-infectious">Infectious period (days)</label>
+          <input id="outbreak-infectious" type="number" min="0.5" max="60" step="0.5" placeholder="Not set" aria-label="Infectious period (days)" />
+          <label for="outbreak-asym-pct">Asymptomatic share (%)</label>
+          <input id="outbreak-asym-pct" type="number" min="0" max="95" step="1" placeholder="Not set" aria-label="Asymptomatic share (%)" />
+          <label for="outbreak-asym-relative">Asymptomatic infectiousness (× symptomatic)</label>
+          <input id="outbreak-asym-relative" type="number" min="0" max="1.5" step="0.05" placeholder="Not set" aria-label="Asymptomatic infectiousness (× symptomatic)" />
+          <label for="outbreak-superspreading">Superspreading</label>
+          <select id="outbreak-superspreading" aria-label="Superspreading">
+            <option value="">Not set</option>
+          </select>
+          <label for="outbreak-hospital">Hospitalised (% of symptomatic)</label>
+          <input id="outbreak-hospital" type="number" min="0" max="100" step="0.5" placeholder="Not set" aria-label="Hospitalised (% of symptomatic)" />
+          <label for="outbreak-fatality">Fatality (% of symptomatic)</label>
+          <input id="outbreak-fatality" type="number" min="0" max="100" step="0.05" placeholder="Not set" aria-label="Fatality (% of symptomatic)" />
         </div>
         <!-- HUMAN BEHAVIOR & DEMOGRAPHICS (optional): how quickly the people
              at the outbreak let it spread. Like the pathogen, they suggest a
@@ -651,6 +704,38 @@
             <option value="partial">Partial</option>
             <option value="strong">Strong (past strains, vaccination)</option>
           </select>
+          <label for="outbreak-age">Age structure</label>
+          <select id="outbreak-age" aria-label="Age structure">
+            <option value="">Not set</option>
+          </select>
+          <label for="outbreak-household">Household size</label>
+          <select id="outbreak-household" aria-label="Household size">
+            <option value="">Not set</option>
+          </select>
+          <label for="outbreak-healthcare">Healthcare &amp; surveillance</label>
+          <select id="outbreak-healthcare" aria-label="Healthcare &amp; surveillance">
+            <option value="">Not set</option>
+          </select>
+          <label for="outbreak-response">Public response to reported cases</label>
+          <select id="outbreak-response" aria-label="Public response to reported cases">
+            <option value="">Not set</option>
+          </select>
+          <label for="outbreak-gathering">Mass gathering</label>
+          <select id="outbreak-gathering" aria-label="Mass gathering">
+            <option value="">Not set</option>
+          </select>
+          <label for="outbreak-holiday">Holiday travel</label>
+          <select id="outbreak-holiday" aria-label="Holiday travel">
+            <option value="">Not set</option>
+          </select>
+          <label for="outbreak-transit">Public transit crowding</label>
+          <select id="outbreak-transit" aria-label="Public transit crowding">
+            <option value="">Not set</option>
+          </select>
+          <label for="outbreak-reservoir">Animal reservoir</label>
+          <select id="outbreak-reservoir" aria-label="Animal reservoir">
+            <option value="">Not set</option>
+          </select>
         </div>
         <div class="cctv-controls">
           <p id="outbreak-suggest" class="social-note outbreak-suggest">Set any of these for a suggested HOW CONTAGIOUS level.</p>
@@ -667,13 +752,13 @@
           </select>
           <button id="outbreak-scan" class="scene-btn" type="button">SCAN TRAVEL</button>
         </div>
-        <p id="outbreak-scan-note" class="social-note">Plane: flight history (POWER UP → OPENSKY), else the chosen language model's airline schedules. Train and boat: OpenStreetMap near each location.</p>
+        <p id="outbreak-scan-note" class="social-note">Plane: flight history (POWER UP → OPENSKY), else the chosen language model's airline schedules. Train and boat: OpenStreetMap near each location. Road and train follow the main roads and rail lines from OpenStreetMap: a road lights up dark red and a rail line orange once the spread reaches it; where one seems to end, it carries on along the closest one at the same speed. Roads load farther in steps (500, 2,500 and 8,000 km) so the spread keeps going to the end of the forecast. A circle where they could not be fetched. Red is air, and the road after landing.</p>
         <div class="cctv-summary-label">SPREAD BY TRANSPORT</div>
         <div id="outbreak-modes" class="outbreak-modes">
-          <label class="outbreak-mode" data-mode="plane"><input id="outbreak-mode-plane" type="checkbox" checked aria-label="Show spread by plane" /><span class="outbreak-swatch"></span>Plane · Red · flights, then 100 km by road</label>
-          <label class="outbreak-mode" data-mode="train"><input id="outbreak-mode-train" type="checkbox" checked aria-label="Show spread by train" /><span class="outbreak-swatch"></span>Train · Orange <input id="outbreak-speed-train" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="60" aria-label="Train speed in km/h" /> KM/H</label>
-          <label class="outbreak-mode" data-mode="boat"><input id="outbreak-mode-boat" type="checkbox" checked aria-label="Show spread by boat" /><span class="outbreak-swatch"></span>Boat · Yellow · within 100 km <input id="outbreak-speed-boat" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="38" aria-label="Boat speed in km/h" /> KM/H</label>
-          <label class="outbreak-mode" data-mode="road"><input id="outbreak-mode-road" type="checkbox" checked aria-label="Show spread by road" /><span class="outbreak-swatch"></span>Road · Blue <input id="outbreak-speed-road" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="100" aria-label="Road speed in km/h" /> KM/H</label>
+          <label class="outbreak-mode" data-mode="plane"><input id="outbreak-mode-plane" type="checkbox" checked aria-label="Show spread by plane" /><span class="outbreak-swatch"></span>Plane · Red · flights, then the roads out of each landing airport light up light red: 100 km at road speed, onward at ¼</label>
+          <label class="outbreak-mode" data-mode="train"><input id="outbreak-mode-train" type="checkbox" checked aria-label="Show spread by train" /><span class="outbreak-swatch"></span>Train · Orange · rail lines light up orange once reached <input id="outbreak-speed-train" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="60" aria-label="Train speed in km/h" /> KM/H</label>
+          <label class="outbreak-mode" data-mode="boat"><input id="outbreak-mode-boat" type="checkbox" checked aria-label="Show spread by boat or vehicle" /><span class="outbreak-swatch"></span>Boat or vehicle · Yellow · within 100 km <input id="outbreak-speed-boat" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="38" aria-label="Boat or vehicle speed in km/h" /> KM/H</label>
+          <label class="outbreak-mode" data-mode="road"><input id="outbreak-mode-road" type="checkbox" checked aria-label="Show spread by road" /><span class="outbreak-swatch"></span>Road vehicle · Dark red · main roads light up dark red once reached <input id="outbreak-speed-road" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="100" aria-label="Road speed in km/h" /> KM/H</label>
         </div>
         <!-- HOW CONTAGIOUS: how the spread is drawn in PLAY and MAP FUTURE
              SPREAD, thicker and darker when high, thinner and lighter when
@@ -693,12 +778,74 @@
         <!-- FIND FUTURE SPREAD LOCATIONS (left): a new global news search,
              then two requests to the chosen model (within 24 h, then 24 to
              48 h) from the scan and the news. Pink: 24 h. Violet: 48 h.
-             MAP FUTURE SPREAD (right): plays the present to +48 h. -->
+             MAP FUTURE SPREAD (right): plays the present to +30 days, hourly
+             to +48 h, then every 6 hours. -->
         <div class="cctv-controls outbreak-future-row">
           <button id="outbreak-future" class="scene-btn" type="button">FIND FUTURE SPREAD LOCATIONS</button>
           <button id="outbreak-play-future" class="scene-btn" type="button">MAP FUTURE SPREAD</button>
         </div>
         <ul id="outbreak-forecast" class="outbreak-list" aria-label="Future spread locations within 24 and 48 hours"></ul>
+        <!-- INTERVENTIONS (optional): each starts at the hour given, counted
+             from the scan's start. They change the EPIDEMIC MODEL only. -->
+        <div class="cctv-summary-label">INTERVENTIONS (OPTIONAL)</div>
+        <div class="outbreak-profile">
+          <label for="outbreak-intervention-hour">Interventions start (hours after the scan start)</label>
+          <input id="outbreak-intervention-hour" type="number" min="0" max="720" step="1" placeholder="Not set" aria-label="Interventions start (hours after the scan start)" />
+          <label for="outbreak-travel-ban">Travel restriction (% fewer passengers)</label>
+          <input id="outbreak-travel-ban" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Travel restriction (% fewer passengers)" />
+          <label for="outbreak-exit-screening">Exit screening</label>
+          <select id="outbreak-exit-screening" aria-label="Exit screening">
+            <option value="">Not set</option>
+          </select>
+          <label for="outbreak-entry-screening">Entry screening</label>
+          <select id="outbreak-entry-screening" aria-label="Entry screening">
+            <option value="">Not set</option>
+          </select>
+          <label for="outbreak-quarantine">Quarantine on arrival (days)</label>
+          <input id="outbreak-quarantine" type="number" min="0" max="21" step="1" placeholder="Not set" aria-label="Quarantine on arrival (days)" />
+          <label for="outbreak-lockdown">Lockdown / distancing (% fewer contacts)</label>
+          <input id="outbreak-lockdown" type="number" min="0" max="90" step="5" placeholder="Not set" aria-label="Lockdown / distancing (% fewer contacts)" />
+          <label for="outbreak-tracing">Contact tracing</label>
+          <select id="outbreak-tracing" aria-label="Contact tracing">
+            <option value="">Not set</option>
+          </select>
+        </div>
+        <!-- EPIDEMIC MODEL: a stochastic simulation (src/outbreakEpi.mjs) over
+             the scan's flights and normal air traffic, commuting between
+             nearby cities, and every field above. Each place gets a chance
+             of arrival and an arrival window; the map shades it by that
+             chance at the hour shown, so PLAY and MAP FUTURE SPREAD play it. -->
+        <div class="cctv-summary-label">EPIDEMIC MODEL</div>
+        <div class="cctv-controls outbreak-epi-row">
+          <!-- Each label sits small above its box. -->
+          <div class="outbreak-epi-field">
+            <label for="outbreak-initial-cases" class="outbreak-epi-label">Starting cases</label>
+            <input id="outbreak-initial-cases" class="outbreak-speed" type="number" min="1" max="100000" step="1" placeholder="50" aria-label="Starting cases" title="Infected people at the start" />
+          </div>
+          <div class="outbreak-epi-field">
+            <label for="outbreak-epi-runs" class="outbreak-epi-label">Number of runs</label>
+            <select id="outbreak-epi-runs" aria-label="Number of runs">
+              <option value="50">50 runs</option>
+              <option value="200" selected>200 runs</option>
+              <option value="500">500 runs</option>
+            </select>
+          </div>
+          <div class="outbreak-epi-field">
+            <label for="outbreak-epi-days" class="outbreak-epi-label">Forecast</label>
+            <select id="outbreak-epi-days" aria-label="Forecast">
+              <option value="2" selected>2 days</option>
+              <option value="7">7 days</option>
+              <option value="14">14 days</option>
+              <option value="30">30 days</option>
+            </select>
+          </div>
+          <button id="outbreak-epi-run" class="scene-btn" type="button">RUN EPIDEMIC MODEL</button>
+        </div>
+        <label class="outbreak-mode" data-mode="epidemic"><input id="outbreak-mode-epidemic" type="checkbox" checked aria-label="Show the epidemic model on the map" /><span class="outbreak-swatch"></span>Epidemic model · chance of arrival · commuting</label>
+        <!-- The epidemic curve: infected (teal, with its 5–95 % band),
+             reported (orange) and deaths (red), day by day. -->
+        <div id="outbreak-epi-curve" class="outbreak-epi-curve" hidden></div>
+        <ul id="outbreak-epidemic" class="outbreak-list" aria-label="Epidemic model results"></ul>
         <ul id="outbreak-summary" class="outbreak-list" aria-label="How far each way of travel has reached"></ul>
         <ul id="outbreak-destinations" class="outbreak-list" aria-label="Places reached by plane"></ul>
         <div class="cctv-summary-label">GLOBAL MEDIA SEARCH · LLM</div>

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEVICE_FEEDS_CHANGED_EVENT, DEVICE_FEEDS_FOCUS_EVENT, DEVICE_FEEDS_HISTORY_EVENT, DEVICE_FEEDS_VISIBLE_EVENT, deviceHistoryQuery } from '../deviceFeedsCore.mjs';
+import { DEVICE_FEEDS_CHANGED_EVENT, DEVICE_FEEDS_FOCUS_EVENT, DEVICE_FEEDS_HISTORY_EVENT, DEVICE_FEEDS_VISIBLE_EVENT, ULTRA_MEDIA_EVENT, deviceHistoryQuery } from '../deviceFeedsCore.mjs';
 import { WORLD_FOCUS_REQUEST_EVENT } from '../worldFocus.js';
 import {
   DEVICE_FEEDS_LAYER_ID,
@@ -369,4 +369,49 @@ test('a cell can be on the map without its path, and its path comes back when as
   assert.equal(await layer.update(viewer), true);
   assert.equal(entity('device-feed-trail:device-security-a').show, true);
   layer.destroy(viewer);
+});
+
+test('the Ultra box puts up to three photos and three videos beside the Ultra cell, as tiles placed each frame', async () => {
+  const cell = () => ok([device({ id: 'device-security-ann', kind: 'security', kindLabel: 'PACKAGE', name: 'Ann', pictureUrl: '/api/ultra-help/picture/device-security-ann' })]);
+  const made = [];
+  const createMediaOverlay = ({ container }) => {
+    const overlay = { container, set: [], placed: [], destroyed: false };
+    made.push(overlay);
+    return {
+      setMedia: (media) => overlay.set.push(media),
+      place: (where) => overlay.placed.push(where),
+      destroy: () => (overlay.destroyed = true),
+    };
+  };
+  const { layer, listeners } = fixture({ answers: [cell(), cell()], options: { createMediaOverlay } });
+  const renders = [];
+  const viewer = {
+    container: { id: 'globe' },
+    dataSources: { add() {}, remove() {} },
+    scene: { postRender: { addEventListener: (fn) => { renders.push(fn); return () => renders.splice(renders.indexOf(fn), 1); } } },
+    camera: {},
+  };
+  layer.attachDataManager({ setEnabled: () => Promise.resolve(true), refreshLayer: () => Promise.resolve(true) });
+  layer.init(viewer);
+  layer.enable(viewer);
+  assert.equal(made.length, 1);
+  assert.equal(made[0].container, viewer.container, 'in the globe’s own container');
+  assert.equal(await layer.update(viewer), true);
+  const photos = Array.from({ length: 5 }, (_, i) => `photo-20261008T12000${i}Z-${i}.jpg`);
+  const clips = ['clip-20261008T120200Z-7.webm'];
+  listeners.get(ULTRA_MEDIA_EVENT)({ detail: { photos: [...photos, '../config/ultra-help.json'], videos: clips, photoIndex: 4, videoIndex: 0 } });
+  const shown = made[0].set.at(-1);
+  // Three at most, from the picked one on, wrapping round; nothing unsaved.
+  assert.deepEqual(shown.photos, [photos[4], photos[0], photos[1]]);
+  assert.deepEqual(shown.videos, clips);
+  assert.deepEqual([shown.photoTotal, shown.videoTotal, shown.photoStart], [5, 1, 4]);
+  // Placed after each frame (hidden while the cell is not on screen).
+  assert.equal(renders.length, 1);
+  // Switched off: nothing on the map.
+  layer.disable(viewer);
+  assert.deepEqual(made[0].set.at(-1), {});
+  layer.destroy(viewer);
+  assert.equal(made[0].destroyed, true);
+  assert.equal(renders.length, 0);
+  assert.equal(listeners.has(ULTRA_MEDIA_EVENT), false);
 });

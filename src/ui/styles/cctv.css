@@ -434,3 +434,37 @@
 #cctv-panel.cctv-resizing {
   user-select: none;
 }
+
+/* An Ultra cell photo or video laid over the camera picture
+   (src/ui/cctvUltraMediaView.js); BACK TO CAMERA takes it away. */
+.cctv-ultra-view {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+}
+.cctv-ultra-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.8px;
+  color: #a8f7ff;
+  background: rgba(5, 12, 18, 0.9);
+}
+.cctv-ultra-bar .scene-btn {
+  padding: 2px 6px;
+  font-size: 9px;
+}
+.cctv-ultra-media {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+  background: #000;
+}

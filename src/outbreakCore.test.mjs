@@ -4,6 +4,8 @@ import {
   OUTBREAK_DEFAULT_LOCATIONS,
   OUTBREAK_MODES,
   PLANE_ROAD_KM,
+  SPREAD_MAX_RADIUS_KM,
+  planeRoadKm,
   circlePoints,
   circleTakesPole,
   cleanFlight,
@@ -35,8 +37,11 @@ import {
   PATTERN_DESTINATIONS,
   PATTERN_RANGE_KM,
   TRAFFIC_AIRPORTS_MAX,
+  packTraffic,
+  unpackTraffic,
   LONG_HAUL_RANGE_KM,
   outbreakForecastQuestion,
+  outbreakForecastScene,
   parseForecastLines,
 } from './outbreakCore.mjs';
 
@@ -57,7 +62,7 @@ test('the box starts with Irkutsk and Shelekhov; the four ways of travel have th
       ]),
     ),
     {
-      road: ['Blue', 100],
+      road: ['Dark red', 100],
       train: ['Orange', 60],
       boat: ['Yellow', 38],
       plane: ['Red', 100],
@@ -79,16 +84,20 @@ test('the time menu runs from hour 1 to the present, then into the future', () =
   assert.equal(scanStartMs(now, 2), now - 48 * HOUR);
   assert.equal(presentHour(START, now), 49);
   const options = outbreakHourOptions(START, now);
-  assert.equal(options.length, 97);
+  // 49 hours to the present, 48 hourly, then every 6 h to +30 days.
+  assert.equal(options.length, 49 + 48 + 112);
   assert.match(options[0].label, /^Hour 1 · 04 09:00 UTC$/);
   assert.match(options[48].label, /^Present · hour 49/);
   assert.deepEqual(
-    options.slice(49).map((o) => o.value),
+    options.slice(49, 97).map((o) => o.value),
     Array.from({ length: 48 }, (_, i) => 50 + i),
     'every hour to +48 h, for MAP FUTURE SPREAD',
   );
   assert.ok(options.slice(49).every((o) => o.future));
-  assert.match(options.at(-1).label, /^Future · \+48 h/);
+  assert.match(options[96].label, /^Future · \+48 h/);
+  assert.match(options[97].label, /^Future · \+2 d 6 h/);
+  assert.equal(options.at(-1).value, 49 + 30 * 24);
+  assert.match(options.at(-1).label, /^Future · \+30 d · /);
 });
 
 test('each way of travel reaches speed × hours; boat only near water, train only near a station, both when unknown', () => {
@@ -126,7 +135,7 @@ test('each way of travel reaches speed × hours; boat only near water, train onl
   );
 });
 
-test('a flight marks its destination once it lands, which then spreads at most 100 km by road', () => {
+test('a flight marks its destination once it lands; it spreads 100 km at road speed, then on at a quarter of it', () => {
   const flight = cleanFlight({
     from: { code: 'UIII', lat: 52.268, lon: 104.389 },
     to: { code: 'UUEE', name: 'Sheremetyevo', lat: 55.97, lon: 37.41 },
@@ -141,8 +150,15 @@ test('a flight marks its destination once it lands, which then spreads at most 1
     [false, 0],
     'in the air',
   );
-  assert.equal(at(7.5).rings[0].radiusKm, 50);
-  assert.equal(at(30).rings[0].radiusKm, PLANE_ROAD_KM);
+  // Landed: its dot, and no circle round it (the roads out of it light up).
+  assert.equal(at(7.5).destinations.length, 1);
+  assert.equal(at(30).rings.length, 0);
+  // How far by road after landing: 100 km in the first hour at 100 km/h,
+  // then 25 km/h with no stop.
+  assert.equal(planeRoadKm(100, 0.5), 50);
+  assert.equal(planeRoadKm(100, 1), PLANE_ROAD_KM);
+  assert.equal(planeRoadKm(100, 23), PLANE_ROAD_KM + 25 * 22);
+  assert.equal(planeRoadKm(60, 4), 100 + 15 * (4 - 100 / 60));
   assert.match(
     spreadSummary(at(30)).join('\n'),
     /Plane \(Red\): 1 destination reached/,
@@ -385,7 +401,7 @@ test('normal traffic: a large airport flies to more and farther places than a me
   assert.equal(large.length, PATTERN_DESTINATIONS.L);
   assert.equal(medium.length, PATTERN_DESTINATIONS.M);
   assert.ok(medium.every((a) => distanceKm(home, a) <= PATTERN_RANGE_KM.M));
-  assert.equal(TRAFFIC_AIRPORTS_MAX, 888);
+  assert.equal(TRAFFIC_AIRPORTS_MAX, Infinity, 'no cap on airports reached');
 });
 
 test('HOW CONTAGIOUS draws high thicker and darker, low thinner and lighter; the middle as before', () => {
@@ -716,4 +732,181 @@ test('population density runs in bands of people, from a village to a megacity',
     {},
     'the old choices are gone',
   );
+});
+
+test('the epidemic model reaches the forecast and the suggested level', () => {
+  assert.doesNotMatch(outbreakForecastQuestion(24), /epidemicModel/);
+  assert.match(
+    outbreakForecastQuestion(24, '', {}, { epidemic: true }),
+    /SCENE\.outbreakForecast\.epidemicModel/,
+  );
+  const scene = outbreakForecastScene({
+    locations: [{ name: 'Irkutsk' }],
+    spread: { destinations: [], rings: [] },
+    speeds: {},
+    flights: [],
+    candidates: [],
+    articles: [],
+    epidemic: ['R0 2 · R now 1.8', 'UUEE Sheremetyevo: 80 %'],
+  });
+  assert.deepEqual(scene.outbreakForecast.epidemicModel, [
+    'R0 2 · R now 1.8',
+    'UUEE Sheremetyevo: 80 %',
+  ]);
+  const without = outbreakForecastScene({
+    locations: [],
+    spread: { destinations: [], rings: [] },
+    speeds: {},
+    flights: [],
+    candidates: [],
+    articles: [],
+  });
+  assert.equal('epidemicModel' in without.outbreakForecast, false);
+  const base = suggestedContagion({ r0: 2 }).level;
+  const crowded = suggestedContagion({
+    r0: 2,
+    superspreading: 'high',
+    gathering: 'major',
+    asymptomaticPct: 50,
+  });
+  assert.equal(crowded.level, Math.min(110, base + 25));
+  assert.ok(crowded.parts.some((part) => part.label === 'gathering major'));
+  assert.ok(suggestedContagion({ r0: 2, healthcare: 'high' }).level < base);
+});
+
+test('the assumed traffic travels packed and comes back as the same flights', () => {
+  const startMs = Date.UTC(2026, 9, 7);
+  const a = {
+    code: 'UIII',
+    name: 'Irkutsk',
+    lat: 52.27,
+    lon: 104.39,
+    continent: 'AS',
+  };
+  const b = {
+    code: 'UUEE',
+    name: 'Sheremetyevo',
+    lat: 55.97,
+    lon: 37.41,
+    continent: 'EU',
+  };
+  const flights = [
+    {
+      from: a,
+      to: b,
+      departMs: startMs + 90 * 60_000,
+      arriveMs: startMs + 450 * 60_000,
+      hop: 3,
+      assumed: true,
+      source: 'Normal air traffic (assumed)',
+    },
+    {
+      from: b,
+      to: a,
+      departMs: startMs + 600 * 60_000,
+      arriveMs: startMs + 960 * 60_000,
+      hop: 3,
+      assumed: true,
+      source: 'Daily schedule (assumed)',
+    },
+  ];
+  const packed = packTraffic(
+    { flights, airportsReached: 2, capped: false, infectedAfterHours: 1 },
+    startMs,
+  );
+  assert.equal(packed.airports.length, 2, 'each airport once');
+  assert.equal(packed.flights.length, 10, 'five numbers a flight');
+  assert.deepEqual(unpackTraffic(packed), flights);
+  assert.equal(packed.airportsReached, 2);
+  // An unpacked answer is read as it is.
+  assert.deepEqual(unpackTraffic({ flights }), flights);
+});
+
+test('with the main roads and rail lines known, road and train follow them instead of a circle', () => {
+  const location = { id: 'irk', name: 'Irkutsk', lat: 52.29, lon: 104.3 };
+  const spread = outbreakSpread({
+    locations: [location],
+    surroundings: { irk: { rail: true, water: false } },
+    networks: { irk: { road: true, rail: true } },
+    startMs: START,
+    hour: 3,
+  });
+  assert.deepEqual(
+    spread.reaches.map((r) => [r.mode, r.network, r.locationId, r.km]),
+    [
+      ['road', 'road', 'irk', 300],
+      ['train', 'rail', 'irk', 180],
+    ],
+  );
+  assert.equal(
+    spread.rings.some((r) => r.mode === 'road' || r.mode === 'train'),
+    false,
+  );
+  assert.match(
+    spreadSummary(spread).join('\n'),
+    /Road \(100 km\/h\): 300 km along the main roads, dark red once reached/,
+  );
+  assert.match(
+    spreadSummary(spread).join('\n'),
+    /Train \(60 km\/h\): 180 km along the rail lines/,
+  );
+  // Not known: the circle as before.
+  const circle = outbreakSpread({
+    locations: [location],
+    startMs: START,
+    hour: 3,
+  });
+  assert.equal(circle.reaches.length, 0);
+  assert.ok(circle.rings.some((r) => r.mode === 'road' && r.radiusKm === 300));
+  assert.equal(OUTBREAK_MODES.boat.label, 'Boat or vehicle');
+});
+
+test('with the roads after landing known, no red circle round each landing airport', () => {
+  const flight = cleanFlight({
+    from: { code: 'UIII', lat: 52.268, lon: 104.389 },
+    to: { code: 'UUEE', name: 'Sheremetyevo', lat: 55.97, lon: 37.41 },
+    departMs: START + HOUR,
+    arriveMs: START + 7 * HOUR,
+  });
+  const at = (airRoads) =>
+    outbreakSpread({
+      locations: [],
+      flights: [flight],
+      startMs: START,
+      hour: 30,
+      airRoads,
+    });
+  // No circle either way: before the roads load, only the dot.
+  assert.equal(at(false).rings.filter((r) => r.mode === 'plane').length, 0);
+  const roads = at(true);
+  assert.equal(roads.rings.filter((r) => r.mode === 'plane').length, 0);
+  assert.equal(roads.airRoads, true);
+  assert.equal(roads.destinations.length, 1, 'the landing dot stays');
+  assert.match(
+    spreadSummary(roads).join('\n'),
+    /roads out of each light up light red/,
+  );
+});
+
+test('each landing airport counts the infected flights that have landed there by the hour', () => {
+  const flight = (departH, code = 'UUEE') =>
+    cleanFlight({
+      from: { code: 'UIII', lat: 52.268, lon: 104.389 },
+      to: { code, lat: 55.97, lon: 37.41 },
+      departMs: START + departH * HOUR,
+      arriveMs: START + (departH + 6) * HOUR,
+    });
+  const flights = [flight(1), flight(25), flight(49), flight(2, 'UNNT')];
+  const at = (hour) =>
+    Object.fromEntries(
+      outbreakSpread({
+        locations: [],
+        flights,
+        airports: ['UIII'],
+        startMs: START,
+        hour,
+      }).destinations.map((d) => [d.code, d.landings]),
+    );
+  assert.deepEqual(at(10), { UUEE: 1, UNNT: 1 });
+  assert.deepEqual(at(60), { UUEE: 3, UNNT: 1 });
 });

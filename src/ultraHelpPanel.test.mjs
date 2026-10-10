@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import {
   applyUltraHelpStatus,
   initUltraHelpPanel,
+  paintMedia,
   splitUltraHandout,
   ultraNeedsLine,
 } from './ultraHelpPanel.js';
@@ -3995,6 +3996,181 @@ test('RECORD WITHIN: each Ultra cell chooses how far around it is recorded, up t
       selects().map((select) => select.value),
       ['25', 'off'],
     );
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('the photos and videos list: newest first, each with an OPEN link to its own file', () => {
+  const made = [];
+  const element = () => {
+    const node = {
+      dataset: {},
+      children: [],
+      textContent: '',
+      appendChild(child) {
+        node.children.push(child);
+      },
+    };
+    made.push(node);
+    return node;
+  };
+  const list = { rows: [], replaceChildren: (...rows) => (list.rows = rows) };
+  const documentRef = {
+    getElementById: (id) => (id === 'ultra-media' ? list : null),
+    createElement: element,
+  };
+  paintMedia(documentRef, [
+    {
+      name: 'clip-20261008T120000Z-2.webm',
+      kind: 'clip',
+      at: Date.UTC(2026, 9, 8, 12),
+      bytes: 3_500_000,
+    },
+    {
+      name: 'photo-20261008T115900Z-1.jpg',
+      kind: 'photo',
+      at: Date.UTC(2026, 9, 8, 11, 59),
+      bytes: 40_000,
+    },
+  ]);
+  assert.equal(list.rows.length, 2);
+  const [tick, label, view, open] = list.rows[0].children;
+  assert.deepEqual(
+    [
+      view.textContent,
+      view.dataset.ultraMediaView,
+      view.dataset.ultraMediaKind,
+    ],
+    ['CCTV', 'clip-20261008T120000Z-2.webm', 'clip'],
+  );
+  assert.equal(view.className, 'ultra-media-view', 'the small CCTV button');
+  assert.equal(tick.type, 'checkbox');
+  assert.equal(tick.dataset.ultraMediaName, 'clip-20261008T120000Z-2.webm');
+  assert.match(label.textContent, /^VIDEO · .* · 3\.3 MB$/);
+  assert.equal(open.textContent, 'OPEN');
+  assert.equal(open.href, '/api/ultra-help/media/clip-20261008T120000Z-2.webm');
+  assert.equal(open.target, '_blank');
+  assert.match(list.rows[1].children[1].textContent, /^PHOTO · .* · <0\.1 MB$/);
+});
+
+test('DELETE: the ticked photos and videos, or every one with All ticked, after a second press', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const add = (tag, id) => {
+    const node = documentRef.createElement(tag);
+    node.id = id;
+    panel.appendChild(node);
+    return node;
+  };
+  add('ul', 'ultra-media');
+  const all = add('input', 'ultra-media-delete-all');
+  const button = add('button', 'ultra-media-delete');
+  let items = [
+    { name: 'photo-20261008T120000Z-1.jpg', kind: 'photo', at: 2, bytes: 9 },
+    { name: 'clip-20261008T120100Z-2.webm', kind: 'clip', at: 1, bytes: 9 },
+    { name: 'photo-20261007T120000Z-3.jpg', kind: 'photo', at: 0, bytes: 9 },
+  ];
+  const deletes = [];
+  const fetchImpl = async (url, options = {}) => {
+    if (url === '/api/ultra-help/media')
+      return { ok: true, json: async () => ({ items }) };
+    if (url === '/api/ultra-help/media/delete') {
+      const body = JSON.parse(options.body);
+      deletes.push(body);
+      const gone = body.all ? items.map((i) => i.name) : body.names;
+      items = items.filter((item) => !gone.includes(item.name));
+      return { ok: true, json: async () => ({ deleted: gone, items }) };
+    }
+    return { ok: true, json: async () => ({ tokens: [], packages: [] }) };
+  };
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef: fakeWindow(),
+  });
+  try {
+    await settle();
+    await settle();
+    // The newest photo and the newest video are ticked on a first visit.
+    assert.equal(button.textContent, 'DELETE TICKED 2');
+    assert.equal(button.disabled, false);
+    panel.dispatch('click', { target: button });
+    assert.equal(button.textContent, 'SURE? DELETE 2');
+    assert.deepEqual(deletes, [], 'the first press only asks');
+    panel.dispatch('click', { target: button });
+    await settle();
+    await settle();
+    assert.deepEqual(deletes, [
+      {
+        names: ['photo-20261008T120000Z-1.jpg', 'clip-20261008T120100Z-2.webm'],
+      },
+    ]);
+    assert.deepEqual(
+      items.map((item) => item.name),
+      ['photo-20261007T120000Z-3.jpg'],
+    );
+    // All ticked: every one, whether ticked or not.
+    all.checked = true;
+    panel.dispatch('change', { target: all });
+    assert.equal(button.textContent, 'DELETE ALL 1');
+    panel.dispatch('click', { target: button });
+    panel.dispatch('click', { target: button });
+    await settle();
+    await settle();
+    assert.deepEqual(deletes.at(-1), { all: true });
+    assert.deepEqual(items, []);
+    assert.equal(all.checked, false, 'All is unticked after a delete');
+    assert.equal(button.disabled, true);
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('PHOTOS ON MAP and VIDEOS ON MAP: unticked, that kind leaves the map; the list keeps it', async () => {
+  const { documentRef, panel } = installFakeDocument();
+  const add = (tag, id, extra = {}) => {
+    const node = documentRef.createElement(tag);
+    node.id = id;
+    Object.assign(node, extra);
+    panel.appendChild(node);
+    return node;
+  };
+  const list = add('ul', 'ultra-media');
+  const photosBox = add('input', 'ultra-photos-on-map', { checked: true });
+  const videosBox = add('input', 'ultra-videos-on-map', { checked: true });
+  const photoPos = add('span', 'ultra-photo-pos');
+  const items = [
+    { name: 'photo-20261008T120000Z-1.jpg', kind: 'photo', at: 2, bytes: 9 },
+    { name: 'clip-20261008T120100Z-2.webm', kind: 'clip', at: 1, bytes: 9 },
+  ];
+  const fetchImpl = async (url) =>
+    url === '/api/ultra-help/media'
+      ? { ok: true, json: async () => ({ items }) }
+      : { ok: true, json: async () => ({ tokens: [], packages: [] }) };
+  const windowRef = fakeWindow();
+  const media = () =>
+    windowRef.dispatched
+      .filter((event) => event.type === 'gev:ultra-media')
+      .at(-1)?.detail;
+  const handle = initUltraHelpPanel({ documentRef, fetchImpl, windowRef });
+  try {
+    await settle();
+    await settle();
+    assert.deepEqual(
+      [media().photos, media().videos],
+      [[items[0].name], [items[1].name]],
+    );
+    photosBox.checked = false;
+    panel.dispatch('change', { target: photosBox });
+    assert.deepEqual([media().photos, media().videos], [[], [items[1].name]]);
+    assert.equal(photoPos.textContent, 'ALL 1', 'still counted');
+    assert.equal(list.children.length, 2, 'still listed, CCTV still shows it');
+    videosBox.checked = false;
+    panel.dispatch('change', { target: videosBox });
+    assert.deepEqual([media().photos, media().videos], [[], []]);
+    photosBox.checked = true;
+    panel.dispatch('change', { target: photosBox });
+    assert.deepEqual(media().photos, [items[0].name]);
   } finally {
     handle.destroy();
   }

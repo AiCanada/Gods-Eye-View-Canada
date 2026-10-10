@@ -109,6 +109,7 @@ function deferredSource() {
 }
 
 function setup({
+  overviewDots = false,
   surface = 'draped',
   groundCaster = null,
   meshSampler = null,
@@ -145,7 +146,7 @@ function setup({
     },
     sequence: { selectedId: null },
   };
-  const coverage = createCoverage({ state, source });
+  const coverage = createCoverage({ state, source, overviewDots });
   const bytes = encodeCoverageTile(centre.tile, {
     sequences: [
       {
@@ -291,8 +292,8 @@ test('panning off a tile that is still loading stops counting it as loading', as
   coverage.clear();
 });
 
-test('zoom 0 is a zoom: the whole-earth view still shows coverage', () => {
-  const { viewer, source, state, coverage } = setup();
+test('with the overview dots on, zoom 0 is a zoom: the whole-earth view still shows coverage', () => {
+  const { viewer, source, state, coverage } = setup({ overviewDots: true });
   viewer.view.height = 20_000_000;
   coverage.refresh();
   assert.equal(state.coverage.zoom, 0);
@@ -352,7 +353,7 @@ test('a rate limit keeps the drawn tiles and asks again once the wait is over', 
 });
 
 test('overview points behind the horizon are hidden, not drawn through the globe', async () => {
-  const { viewer, source, state, coverage } = setup();
+  const { viewer, source, state, coverage } = setup({ overviewDots: true });
   const { view } = viewer;
   view.height = 20_000_000;
   Object.defineProperty(viewer.camera, 'positionWC', {
@@ -732,7 +733,9 @@ test('a street view toward the horizon ranks only the ground within range', () =
 });
 
 test('a selection cleared while the old zoom is still shown uncolours its lines', async () => {
-  const { viewer, source, state, coverage, bytes } = setup();
+  const { viewer, source, state, coverage, bytes } = setup({
+    overviewDots: true,
+  });
   coverage.refresh();
   source.calls[0].resolve(bytes);
   await settle();
@@ -757,7 +760,9 @@ test('a selection cleared while the old zoom is still shown uncolours its lines'
 });
 
 test('a selection made while the old zoom is still building is applied once it is ready', async () => {
-  const { viewer, source, state, coverage, bytes } = setup();
+  const { viewer, source, state, coverage, bytes } = setup({
+    overviewDots: true,
+  });
   coverage.refresh();
   source.calls[0].resolve(bytes);
   await settle();
@@ -985,5 +990,18 @@ test('lines a partial terrain lookup left draped are cast once the terrain recov
   await settle();
   assert.equal(prepares, 3, 'the next refresh tries the draped line again');
   assert.deepEqual([entry.castLines, entry.drapedLines], [2, 0], 'all cast');
+  coverage.clear();
+});
+
+test('from orbit no green overview dots are drawn or fetched; zooming in still brings the lines', async () => {
+  const { viewer, source, state, coverage } = setup();
+  viewer.view.height = 20_000_000;
+  coverage.refresh();
+  assert.equal(source.calls.length, 0, 'no overview tile is fetched');
+  assert.equal(state.coverage.tiles.size, 0, 'nothing is drawn');
+  assert.match(state.coverage.hint, /Zoom in/);
+  viewer.view.height = 900;
+  coverage.refresh();
+  assert.ok(source.calls.length > 0, 'street zooms ask for the coverage lines');
   coverage.clear();
 });

@@ -2403,6 +2403,8 @@
       "src/socialSwarm.mjs",
       "src/socialMediaPanel.js",
       "src/outbreakCore.mjs",
+      "src/outbreakEpi.mjs",
+      "src/outbreakNetwork.mjs",
       "src/outbreakPanel.js",
       "src/data/outbreak.js",
       "src/layers/cctv/lookup.js",
@@ -2427,6 +2429,8 @@
       "src/data/cctvCardAlign.js",
       "src/data/deviceRecorder.js",
       "src/data/deviceFeeds.js",
+      "src/data/ultraMediaOverlay.js",
+      "src/ui/cctvUltraMediaView.js",
       "src/layers/traffic/locationSwitch.js",
       "src/ui/cctvPanelResize.js",
       "src/layers/flights/locationSwitch.js",
@@ -2952,6 +2956,8 @@
       "src/deviceFeedsCore.mjs",
       "src/data/deviceRecorder.js",
       "src/data/deviceFeeds.js",
+      "src/data/ultraMediaOverlay.js",
+      "src/ui/cctvUltraMediaView.js",
       "src/data/cctvThumbnailTraffic.js",
       "src/data/cctvCityMatch.js",
       "src/layers/cctv/lookup.js",
@@ -2972,7 +2978,9 @@
       "src/data/cctvPrivateMove.js",
       "src/data/privateCctv.js",
       "src/data/outbreak.js",
-      "src/outbreakCore.mjs"
+      "src/outbreakCore.mjs",
+      "src/outbreakEpi.mjs",
+      "src/outbreakNetwork.mjs"
     ],
     "external": [
       "hls.js",

@@ -6,7 +6,7 @@
   --outbreak-plane: #ff2a2a;
   --outbreak-train: #ff8c1a;
   --outbreak-boat: #ffd21a;
-  --outbreak-road: #2f7bff;
+  --outbreak-road: #a3121b;
 }
 
 /* The box's name is longer than the box is wide: it wraps onto a second
@@ -110,6 +110,50 @@
 
 #outbreak-panel .outbreak-mode[data-mode='road'] .outbreak-swatch {
   color: var(--outbreak-road);
+}
+
+/* EPIDEMIC MODEL: teal dots (chance of arrival), purple commuting lines. */
+#outbreak-panel .outbreak-mode[data-mode='epidemic'] .outbreak-swatch {
+  color: #19e6b0;
+}
+
+/* Starting cases and Number of runs: a small label above each box, side by
+   side, with RUN EPIDEMIC MODEL level with the boxes. */
+#outbreak-panel .outbreak-epi-row {
+  align-items: flex-end;
+}
+
+#outbreak-panel .outbreak-epi-curve {
+  margin: 4px 0;
+}
+
+#outbreak-panel .outbreak-epi-curve svg {
+  display: block;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 3px;
+}
+
+#outbreak-panel .outbreak-epi-legend {
+  margin: 2px 0 0;
+  font-size: 9px;
+  opacity: 0.85;
+}
+
+#outbreak-panel .outbreak-epi-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#outbreak-panel .outbreak-epi-label {
+  font-size: 9px;
+  letter-spacing: 0.3px;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+#outbreak-panel .outbreak-epi-row .outbreak-speed {
+  width: 64px;
 }
 
 #outbreak-panel .outbreak-mode input[type='checkbox'] {

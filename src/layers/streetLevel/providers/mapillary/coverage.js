@@ -23,6 +23,7 @@ import {
   COVERAGE_MAX_SEQUENCES,
   COVERAGE_MAX_TILES,
   COVERAGE_MOVE_DEBOUNCE_MS,
+  COVERAGE_OVERVIEW_DOTS,
   COVERAGE_OVERVIEW_MAX_TILES,
   COVERAGE_OVERVIEW_POINT_PX,
   KEY_REJECTED_MESSAGE,
@@ -99,7 +100,11 @@ export function meshBoxInRange(box, centre) {
  * first, then swapped for lines cast to the bare earth (draped lines would
  * land on roofs), so coverage never waits on terrain heights.
  */
-export function createCoverage({ state, source }) {
+export function createCoverage({
+  state,
+  source,
+  overviewDots = COVERAGE_OVERVIEW_DOTS,
+}) {
   const { render } = state.services;
 
   function requestRender() {
@@ -670,6 +675,14 @@ export function createCoverage({ state, source }) {
     const overviewZoom = sequenceZoom ? null : overviewZoomForHeight(height);
     const zoom = sequenceZoom ?? overviewZoom;
     const kind = sequenceZoom ? 'sequence' : 'overview';
+    // The green overview dots are off (owner ruling, 2026-10-09): from
+    // orbit nothing is drawn or fetched; the coverage lines show on zooming in.
+    if (kind === 'overview' && !overviewDots) {
+      state.coverage.hint = 'Zoom in to see street-level coverage lines';
+      clear();
+      notify();
+      return;
+    }
     // At street zooms the rays meet the ground where it really is (1,600 m up
     // in Denver; Google 3D hides the globe) and stop short of the horizon.
     const ranged =

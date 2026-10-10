@@ -35,6 +35,12 @@ export const COVERAGE_MOVE_DEBOUNCE_MS = 320;
 export const COVERAGE_MAX_TILES = 9;
 /** Overview (z0–5) coverage points seen from orbit. */
 export const COVERAGE_OVERVIEW_MAX_TILES = 16;
+/**
+ * Whether the overview points are drawn at all: off (owner ruling,
+ * 2026-10-09), so no green dots cover the globe from orbit. Street zooms
+ * still draw the coverage lines.
+ */
+export const COVERAGE_OVERVIEW_DOTS = false;
 /** Shown when Mapillary refuses the server's token (401/403). */
 export const KEY_REJECTED_MESSAGE =
   'Mapillary rejected MAPILLARY_CLIENT_TOKEN — replace it in Provider Settings';

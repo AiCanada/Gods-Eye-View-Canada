@@ -73,9 +73,40 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
   );
   assert.match(panel, /panel-collapsible collapsed/);
   assert.match(panel, /ULTRA SECURITY PACKAGE/);
-  assert.match(html, /Activate Front Cell Cam/);
-  assert.match(html, /Activate Rear Cell Cam/);
-  assert.match(html, /Activate Inside Fold Cell Cam/);
+  // CELL CAMERAS: each camera has PHOTO and VIDEO, and either press records
+  // a clip as well (owner ruling, 2026-10-08): no RECORD and no USB button.
+  for (const [role, name] of [
+    ['front', 'Front Cell Cam'],
+    ['rear', 'Rear Cell Cam'],
+    ['inner', 'Inside Fold Cell Cam'],
+    ['rear-ultrawide', 'Rear Ultrawide Cam'],
+    ['rear-tele', 'Rear Telephoto Cam'],
+  ]) {
+    assert.match(
+      html,
+      new RegExp(
+        `data-ultra-camera-row="${role}"[^>]*>\\s*<span class="ultra-cam-name">${name}</span>`,
+      ),
+    );
+    for (const mode of ['photo', 'video'])
+      assert.match(
+        html,
+        new RegExp(`data-ultra-camera="${role}" data-ultra-mode="${mode}"`),
+      );
+  }
+  assert.doesNotMatch(html, /data-ultra-mode="record"|id="ultra-usb"/);
+  // Pictures and videos show on the map only, never in the box itself.
+  const ultraBox = html.slice(
+    html.indexOf('id="ultra-panel"'),
+    html.indexOf('id="social-panel"'),
+  );
+  assert.ok(ultraBox.length > 1000);
+  assert.doesNotMatch(ultraBox, /<img|<video/);
+  assert.doesNotMatch(
+    ultraBox,
+    /ultra-(photo|video)-rotate|> Rotate</,
+    'no Rotate tick',
+  );
   assert.doesNotMatch(html, /Activate Ultra /);
   // Find Ultra Help is under development: one disabled button, and no
   // search list, message box or Send Ultra Help.
@@ -92,7 +123,6 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
     html.indexOf('id="right-context-rail"'),
   );
   for (const id of [
-    'ultra-inbox-count',
     'ultra-inbox',
     'ultra-read-aloud',
     'ultra-outbound-note',
@@ -167,7 +197,7 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
       `#${id} belongs to the Ultra box`,
     );
   }
-  assert.match(box, /HELP MESSAGES/);
+  assert.doesNotMatch(box, /HELP MESSAGES/, 'no HELP MESSAGES heading');
   assert.match(box, /SHARE ENCRYPTED ULTRA TOKENS/);
   for (const label of [
     'SEND HELP',
@@ -181,7 +211,7 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
     assert.ok(box.includes(label), `${label} is in the Ultra box`);
   }
   assert.ok(
-    box.indexOf('id="ultra-release"') < box.indexOf('HELP MESSAGES'),
+    box.indexOf('id="ultra-release"') < box.indexOf('id="ultra-inbox"'),
     'SEND HELP sits before the help messages',
   );
   assert.ok(

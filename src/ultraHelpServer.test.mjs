@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 import { DEVICE_FEED_STORE, DEVICE_RECORDING_DIR } from './deviceFeedsCore.mjs';
 import { ULTRA_NETWORK_TICK_MS } from '../server/shared/ultraNetwork.mjs';
 import {
@@ -8285,4 +8285,117 @@ test('a fix from the phone link is handed to the device layer, so its pin and pa
     onUltraPhoneFix(null);
     clock.restore();
   }
+});
+
+test('PHOTO and VIDEO: the phone keeps a still and a clip; the box lists and serves them', async () => {
+  const { request, post, plugin, root } = setup();
+  noteUltraPosition({
+    key: VAN_KEY,
+    name: 'Van 7',
+    lat: 45.27,
+    lon: -66.06,
+    at: Date.now(),
+  });
+  // Each button sends its mode with the camera; no mode is VIDEO.
+  const photo = await post('/camera', { role: 'rear', mode: 'photo' });
+  assert.equal(photo.status, 200, photo.text);
+  assert.deepEqual(
+    [photo.json().pending.mode, photo.json().pending.label],
+    ['photo', 'Activate Rear Cell Cam · PHOTO'],
+  );
+  assert.equal((await phone(`/ultra/${VAN_KEY}`)).json().command.mode, 'photo');
+  await post('/camera', { role: 'front' });
+  assert.equal((await phone(`/ultra/${VAN_KEY}`)).json().command.mode, 'video');
+  // There is no RECORD mode: every press records; an unknown mode is VIDEO.
+  await post('/camera', { role: 'front', mode: 'record' });
+  assert.equal((await phone(`/ultra/${VAN_KEY}`)).json().command.mode, 'video');
+
+  // The phone sends a still and a clip; only real ones are kept.
+  const still = await phone(`/ultra/${VAN_KEY}/photo`, {
+    method: 'POST',
+    headers: { 'content-type': 'image/jpeg' },
+    body: Buffer.concat([JPEG_START, Buffer.from('STILL')]),
+  });
+  assert.equal(still.status, 200, still.text);
+  const notPhoto = await phone(`/ultra/${VAN_KEY}/photo`, {
+    method: 'POST',
+    headers: { 'content-type': 'image/jpeg' },
+    body: Buffer.from('not a jpeg'),
+  });
+  assert.equal(notPhoto.status, 415);
+  const clip = await phone(`/ultra/${VAN_KEY}/clip`, {
+    method: 'POST',
+    headers: { 'content-type': 'video/webm' },
+    body: Buffer.from('WEBM-CLIP'),
+  });
+  assert.equal(clip.status, 200, clip.text);
+  const notClip = await phone(`/ultra/${VAN_KEY}/clip`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/html' },
+    body: Buffer.from('<script>'),
+  });
+  assert.equal(notClip.status, 415);
+  const stranger = await phone(`/ultra/${'b'.repeat(40)}/photo`, {
+    method: 'POST',
+    headers: { 'content-type': 'image/jpeg' },
+    body: Buffer.concat([JPEG_START, Buffer.from('X')]),
+  });
+  assert.equal(stranger.status, 404, 'only a paired phone may send');
+
+  // Kept on this computer, never in the repository's tracked files.
+  const saved = fs.readdirSync(path.join(root, 'config', 'ultra-media'));
+  assert.equal(saved.length, 2);
+  const items = (await request('/media')).json().items;
+  assert.deepEqual(items.map((item) => item.kind).sort(), ['clip', 'photo']);
+  assert.ok((await request('/photo')).text.endsWith('STILL'));
+
+  // Served by exact name only, streamed.
+  const uses = [];
+  plugin.configureServer({
+    middlewares: { use: (...args) => uses.push(args) },
+  });
+  const handler = uses.find((args) => args[0] === '/api/ultra-help')[1];
+  const serve = (name) =>
+    new Promise((resolve) => {
+      const res = new PassThrough();
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.writeHead = (status, headers = {}) =>
+        Object.assign(res, { status, headers });
+      res.on('end', () =>
+        resolve({
+          status: res.status,
+          headers: res.headers,
+          text: Buffer.concat(chunks).toString(),
+        }),
+      );
+      const plain = res.end.bind(res);
+      res.end = (chunk) => plain(chunk);
+      handler(fakeRequest(`/media/${name}`), res);
+    });
+  const clipName = items.find((item) => item.kind === 'clip').name;
+  const served = await serve(clipName);
+  assert.equal(served.status, 200);
+  assert.equal(served.headers['Content-Type'], 'video/webm');
+  assert.equal(served.text, 'WEBM-CLIP');
+  assert.equal((await request('/media/ultra-help.json')).status, 404);
+  assert.equal((await request('/media/..%2Fultra-help.json')).status, 404);
+
+  // DELETE: just the names given (only saved names), or every one.
+  assert.equal((await post('/media/delete', {})).status, 400);
+  const one = await post('/media/delete', {
+    names: [clipName, '../ultra-help.json'],
+  });
+  assert.equal(one.status, 200, one.text);
+  assert.deepEqual(one.json().deleted, [clipName]);
+  assert.deepEqual(
+    one.json().items.map((item) => item.kind),
+    ['photo'],
+  );
+  const every = await post('/media/delete', { all: true });
+  assert.equal(every.json().deleted.length, 1);
+  assert.deepEqual(
+    fs.readdirSync(path.join(root, 'config', 'ultra-media')),
+    [],
+  );
 });

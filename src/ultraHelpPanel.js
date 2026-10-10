@@ -13,6 +13,8 @@
  * events. The desktop still never sends an SMS itself: the relay lives in
  * the server, behind explicit keys, and this box only reads its outcome.
  */
+import { ULTRA_MEDIA_VIEW_EVENT } from './data/ultraMediaOverlay.js';
+import { showUltraMediaInCctv } from './ui/cctvUltraMediaView.js';
 import {
   ultraCameraRole,
   ultraCustomSkillList,
@@ -32,6 +34,9 @@ import {
   DEVICE_RECORD_RADIUS_OPTIONS_KM,
   deviceHiddenIds,
   deviceHistoryPeriod,
+  ULTRA_MEDIA_EVENT,
+  ULTRA_MEDIA_SELECTED_KEY,
+  ultraMediaNames,
 } from './deviceFeedsCore.mjs';
 /** Where a new Ultra cell is saved: the same route POWER UP's devices use. */
 const DEVICE_CONFIG_ENDPOINT = '/api/device-feeds/config';
@@ -142,6 +147,14 @@ const MINT_LABEL = Object.freeze({
   done: 'GENERATED',
 });
 const MINT_DONE_MS = 2_000;
+/** DELETE asks once; a second press within this long deletes. */
+const ULTRA_MEDIA_DELETE_CONFIRM_MS = 4_000;
+/** This browser's PHOTOS ON MAP and VIDEOS ON MAP ticks: {photos, videos}. */
+const ULTRA_MEDIA_ON_MAP_KEY = 'ultra-media-on-map';
+const MEDIA_ON_MAP_BOXES = Object.freeze({
+  photos: 'ultra-photos-on-map',
+  videos: 'ultra-videos-on-map',
+});
 
 /* The ADD form's own placeholders, restored when RENAME lets go of it. A
  * handout is two things now, an address and a token, never one link. */
@@ -1162,21 +1175,72 @@ function paintNetwork(documentRef, status, now = Date.now()) {
   if (test) test.disabled = !configured || !status?.ownerNumber;
 }
 
+/** A stored JSON list, or [] for anything else. */
+function parseList(text) {
+  try {
+    const value = JSON.parse(String(text || '[]'));
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The saved photos and videos: kind, time, size and an OPEN link each. */
+export function paintMedia(documentRef, items, selected = new Set()) {
+  const list = byId(documentRef, 'ultra-media');
+  if (!list) return;
+  const rows = (Array.isArray(items) ? items : []).slice(0, 12).map((item) => {
+    const li = documentRef.createElement('li');
+    const tick = documentRef.createElement('input');
+    tick.type = 'checkbox';
+    tick.checked = selected.has(item.name);
+    tick.dataset.ultraMediaName = item.name;
+    tick.title = 'Show this one on the map';
+    li.appendChild(tick);
+    const when = new Date(item.at);
+    const label = documentRef.createElement('span');
+    const megabytes = (Number(item.bytes) || 0) / (1024 * 1024);
+    label.textContent = `${item.kind === 'clip' ? 'VIDEO' : 'PHOTO'} · ${
+      Number.isNaN(when.getTime()) ? '' : when.toLocaleString()
+    } · ${megabytes >= 0.1 ? megabytes.toFixed(1) : '<0.1'} MB`;
+    const view = documentRef.createElement('button');
+    view.type = 'button';
+    view.className = 'ultra-media-view';
+    view.textContent = 'CCTV';
+    view.title = 'Show this one in the CCTV viewer';
+    view.dataset.ultraMediaView = item.name;
+    view.dataset.ultraMediaKind = item.kind;
+    const open = documentRef.createElement('a');
+    open.href = `/api/ultra-help/media/${encodeURIComponent(item.name)}`;
+    open.target = '_blank';
+    open.rel = 'noopener';
+    open.textContent = 'OPEN';
+    li.appendChild(label);
+    li.appendChild(view);
+    li.appendChild(open);
+    return li;
+  });
+  list.replaceChildren(...rows);
+}
+
 export function applyUltraHelpStatus(documentRef, status) {
   const model = byId(documentRef, 'ultra-model');
   if (model && status?.model?.id && model.value !== status.model.id) {
     model.value = status.model.id;
   }
   const modelId = model?.value || status?.model?.id || 'samsung-s22-ultra';
-  for (const button of documentRef.querySelectorAll('[data-ultra-camera]')) {
-    const role = button.dataset.ultraCamera;
+  // One row per camera (PHOTO, VIDEO, RECORD), shown when the model has it.
+  for (const row of documentRef.querySelectorAll('[data-ultra-camera-row]')) {
+    const role = row.dataset.ultraCameraRow;
     const offered = Boolean(ultraCameraRole(modelId, role));
     const always = role === 'front' || role === 'rear';
-    button.hidden = !always && !offered;
+    row.hidden = !always && !offered;
   }
   const extras = byId(documentRef, 'ultra-extra-cameras');
   if (extras) {
-    extras.hidden = !extras.querySelector('[data-ultra-camera]:not([hidden])');
+    extras.hidden = !extras.querySelector(
+      '[data-ultra-camera-row]:not([hidden])',
+    );
   }
   const statusLine = byId(documentRef, 'ultra-status');
   if (statusLine) {
@@ -1202,28 +1266,8 @@ export function applyUltraHelpStatus(documentRef, status) {
       statusLine.textContent = 'PHONE · WAITING FOR A REPORT';
     }
   }
-  const frame = byId(documentRef, 'ultra-frame');
-  const wrap = byId(documentRef, 'ultra-frame-wrap');
-  if (frame && wrap && frame.dataset.polling !== '1') {
-    frame.dataset.polling = '1';
-    let busy = false;
-    const tick = () => {
-      if (busy) return;
-      busy = true;
-      const probe = new Image();
-      probe.onload = () => {
-        frame.src = probe.src;
-        wrap.hidden = false;
-        busy = false;
-      };
-      probe.onerror = () => {
-        busy = false;
-      };
-      probe.src = `/api/ultra-help/picture?t=${Date.now()}`;
-    };
-    tick();
-    frame._ultraTick = setInterval(tick, 100);
-  }
+  // The phone's live picture shows on the map only (the Cell layer's card),
+  // never in this box (owner ruling, 2026-10-08).
   const link = byId(documentRef, 'ultra-cam-link');
   if (link) {
     const rows = [];
@@ -1864,8 +1908,32 @@ export function initUltraHelpPanel({
   const onClick = (event) => {
     const target = event.target;
     const camera = target?.closest?.('[data-ultra-camera]');
-    if (camera && !camera.hidden) {
-      void post('camera', { role: camera.dataset.ultraCamera });
+    const viewItem = target?.closest?.('[data-ultra-media-view]');
+    if (viewItem) {
+      dispatchWindow(ULTRA_MEDIA_VIEW_EVENT, {
+        name: viewItem.dataset.ultraMediaView,
+        kind: viewItem.dataset.ultraMediaKind,
+      });
+      return;
+    }
+    if (target?.id === 'ultra-media-delete') {
+      void deleteMedia();
+      return;
+    }
+    const step = target?.closest?.('[data-ultra-media-step]');
+    if (step) {
+      stepMedia(
+        step.dataset.ultraMediaStep,
+        Number(step.dataset.ultraMediaDir) || 1,
+      );
+      return;
+    }
+    if (camera && !camera.closest?.('[data-ultra-camera-row]')?.hidden) {
+      void post('camera', {
+        role: camera.dataset.ultraCamera,
+        mode: camera.dataset.ultraMode || 'video',
+      });
+      setTimeout(() => void loadMedia(), 4000);
       return;
     }
     const id = target?.id;
@@ -2132,6 +2200,24 @@ export function initUltraHelpPanel({
       void saveCellRecord(event.target);
       return;
     }
+    if (Object.values(MEDIA_ON_MAP_BOXES).includes(event.target?.id)) {
+      saveOnMap();
+      sendMedia();
+      return;
+    }
+    if (event.target?.id === 'ultra-media-delete-all') {
+      disarmDelete();
+      return;
+    }
+    const mediaName = event.target?.dataset?.ultraMediaName;
+    if (mediaName) {
+      if (event.target.checked) selectedMedia.add(mediaName);
+      else selectedMedia.delete(mediaName);
+      saveSelection();
+      disarmDelete();
+      sendMedia();
+      return;
+    }
     const pathId = event.target?.dataset?.ultraCellPath;
     if (pathId) {
       if (event.target.checked === false) noPathCells.add(pathId);
@@ -2374,18 +2460,214 @@ export function initUltraHelpPanel({
       }
     }
   };
+  /* The photos and videos the phone sent, newest first. The ticked ones are
+   * on the map beside the Ultra cell (the Cell layer draws them); this box
+   * says which, and which one of each shows now. */
+  let mediaItems = [];
+  let knownMedia = null;
+  const mediaIndex = { photos: 0, videos: 0 };
+  let storedSelection = null;
+  try {
+    storedSelection = windowRef?.localStorage?.getItem(
+      ULTRA_MEDIA_SELECTED_KEY,
+    );
+  } catch {
+    storedSelection = null;
+  }
+  const selectedMedia = new Set(ultraMediaNames(parseList(storedSelection)));
+  const saveSelection = () => {
+    try {
+      windowRef?.localStorage?.setItem(
+        ULTRA_MEDIA_SELECTED_KEY,
+        JSON.stringify([...selectedMedia]),
+      );
+    } catch {
+      /* This browser keeps nothing: the choice lasts this visit. */
+    }
+  };
+  const ticked = (kind) =>
+    mediaItems
+      .filter((item) => item.kind === kind && selectedMedia.has(item.name))
+      .map((item) => item.name);
+  // Nothing ticked is where the map starts, so it is never announced.
+  let lastMediaSaid = JSON.stringify({
+    photos: [],
+    videos: [],
+    photoIndex: 0,
+    videoIndex: 0,
+  });
+  // PHOTOS ON MAP and VIDEOS ON MAP: unticked, that kind leaves the map
+  // (the list and its CCTV button still show them). Kept in this browser.
+  try {
+    const kept = JSON.parse(
+      windowRef?.localStorage?.getItem(ULTRA_MEDIA_ON_MAP_KEY) || '{}',
+    );
+    for (const [key, id] of Object.entries(MEDIA_ON_MAP_BOXES)) {
+      const box = byId(documentRef, id);
+      if (box && kept?.[key] === false) box.checked = false;
+    }
+  } catch {
+    /* Both on the map. */
+  }
+  const onMap = (key) =>
+    byId(documentRef, MEDIA_ON_MAP_BOXES[key])?.checked !== false;
+  const saveOnMap = () => {
+    try {
+      windowRef?.localStorage?.setItem(
+        ULTRA_MEDIA_ON_MAP_KEY,
+        JSON.stringify({ photos: onMap('photos'), videos: onMap('videos') }),
+      );
+    } catch {
+      /* The choice lasts this visit. */
+    }
+  };
+  const sendMedia = () => {
+    const photos = ticked('photo');
+    const videos = ticked('clip');
+    for (const [key, list] of [
+      ['photos', photos],
+      ['videos', videos],
+    ])
+      mediaIndex[key] = list.length
+        ? ((mediaIndex[key] % list.length) + list.length) % list.length
+        : 0;
+    // Three of each are on the map at once: say which ones, of how many.
+    const position = (list, index) => {
+      if (!list.length) return 'NONE TICKED';
+      if (list.length <= 3) return `ALL ${list.length}`;
+      const last = ((index + 2) % list.length) + 1;
+      return `${index + 1}–${last} OF ${list.length}`;
+    };
+    const photoPos = byId(documentRef, 'ultra-photo-pos');
+    if (photoPos) photoPos.textContent = position(photos, mediaIndex.photos);
+    const videoPos = byId(documentRef, 'ultra-video-pos');
+    if (videoPos) videoPos.textContent = position(videos, mediaIndex.videos);
+    paintDelete();
+    const detail = {
+      photos: onMap('photos') ? photos : [],
+      videos: onMap('videos') ? videos : [],
+      photoIndex: mediaIndex.photos,
+      videoIndex: mediaIndex.videos,
+    };
+    // Told only when something changed: the list is read every few seconds.
+    const said = JSON.stringify(detail);
+    if (said === lastMediaSaid) return;
+    lastMediaSaid = said;
+    dispatchWindow(ULTRA_MEDIA_EVENT, detail);
+  };
+  /* DELETE: the ticked ones, or every one with All ticked. The first press
+   * asks; a second press within a few seconds deletes. */
+  let deleteArmed = null;
+  const deleteTargets = () =>
+    byId(documentRef, 'ultra-media-delete-all')?.checked
+      ? mediaItems.map((item) => item.name)
+      : mediaItems
+          .filter((item) => selectedMedia.has(item.name))
+          .map((item) => item.name);
+  const paintDelete = () => {
+    const button = byId(documentRef, 'ultra-media-delete');
+    if (!button) return;
+    const all = Boolean(byId(documentRef, 'ultra-media-delete-all')?.checked);
+    const count = deleteTargets().length;
+    button.disabled = count === 0;
+    button.textContent = deleteArmed
+      ? `SURE? DELETE ${count}`
+      : `DELETE ${all ? 'ALL' : 'TICKED'}${count ? ` ${count}` : ''}`;
+  };
+  const disarmDelete = () => {
+    if (deleteArmed) clearTimeout(deleteArmed);
+    deleteArmed = null;
+    paintDelete();
+  };
+  const deleteMedia = async () => {
+    const all = Boolean(byId(documentRef, 'ultra-media-delete-all')?.checked);
+    const names = deleteTargets();
+    if (!names.length) return disarmDelete();
+    if (!deleteArmed) {
+      deleteArmed = setTimeout(disarmDelete, ULTRA_MEDIA_DELETE_CONFIRM_MS);
+      paintDelete();
+      return;
+    }
+    disarmDelete();
+    try {
+      const response = await fetchImpl('/api/ultra-help/media/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(all ? { all: true } : { names }),
+      });
+      if (!response.ok) {
+        say('DELETE refused');
+        return;
+      }
+      const deleted = (await response.json())?.deleted || [];
+      say(`DELETED ${deleted.length}`);
+    } catch {
+      say('DELETE: no answer from the dev server');
+      return;
+    }
+    const box = byId(documentRef, 'ultra-media-delete-all');
+    if (box) box.checked = false;
+    await loadMedia();
+  };
+  const stepMedia = (key, dir) => {
+    mediaIndex[key] += dir;
+    sendMedia();
+  };
+  /* A photo or video clicked on the map, or CCTV in the list: the CCTV viewer. */
+  const onViewMedia = (event) =>
+    showUltraMediaInCctv(documentRef, event?.detail || {});
+  windowRef?.addEventListener?.(ULTRA_MEDIA_VIEW_EVENT, onViewMedia);
+  const loadMedia = async () => {
+    let items = [];
+    try {
+      const response = await fetchImpl('/api/ultra-help/media', {
+        cache: 'no-store',
+        signal,
+      });
+      if (!response.ok || disposed) return;
+      items = (await response.json())?.items || [];
+    } catch {
+      return;
+    }
+    mediaItems = items;
+    const names = new Set(items.map((item) => item.name));
+    // The newest photo and the newest video go on the map as they arrive
+    // (and on a first visit with nothing chosen yet); the rest are the
+    // owner's to tick.
+    for (const kind of ['photo', 'clip']) {
+      const newest = items.find((item) => item.kind === kind);
+      if (!newest) continue;
+      const arrived = knownMedia && !knownMedia.has(newest.name);
+      const firstVisit = !knownMedia && !storedSelection;
+      if (arrived || firstVisit) {
+        selectedMedia.add(newest.name);
+        // Show the new one now: it is first in the list.
+        mediaIndex[kind === 'photo' ? 'photos' : 'videos'] = 0;
+      }
+    }
+    knownMedia = names;
+    for (const name of [...selectedMedia])
+      if (!names.has(name)) selectedMedia.delete(name);
+    saveSelection();
+    paintMedia(documentRef, items, selectedMedia);
+    sendMedia();
+  };
   void load();
+  void loadMedia();
+  let mediaTick = 0;
   const refreshStatus = setInterval(() => {
     void load();
+    mediaTick += 1;
+    if (mediaTick % 3 === 0) void loadMedia();
   }, 3000);
   return {
     destroy() {
       disposed = true;
       clearInterval(refreshStatus);
+      windowRef?.removeEventListener?.(ULTRA_MEDIA_VIEW_EVENT, onViewMedia);
+      if (deleteArmed) clearTimeout(deleteArmed);
       clearTimeout(mintLabelTimer);
       for (const entry of copyTimers.values()) clearTimeout(entry?.timer);
-      const frame = byId(documentRef, 'ultra-frame');
-      if (frame?._ultraTick) clearInterval(frame._ultraTick);
       panel.removeEventListener('click', onClick);
       panel.removeEventListener('change', onChange);
       panel.removeEventListener('input', onCustomSkill);

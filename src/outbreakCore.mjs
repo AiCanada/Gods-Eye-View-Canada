@@ -8,8 +8,8 @@
  * The prediction is deliberately simple (owner's spec, 2026-10-06):
  *  - Plane (red): every flight that left an outbreak airport since the scan
  *    began, and every connecting or onward flight out of those destinations,
- *    marks its destination. From a destination it carries on by road for at
- *    most PLANE_ROAD_KM.
+ *    marks its destination. From a destination it carries on by road: the
+ *    first PLANE_ROAD_KM at road speed, then on at a quarter of it.
  *  - Train (orange): the area's average train speed, only where a railway
  *    station is near the outbreak.
  *  - Boat (yellow): 38 km/h, only where water traffic is within 100 km.
@@ -52,8 +52,23 @@ export const OUTBREAK_DEFAULT_LOCATIONS = Object.freeze([
 /** How many days back the travel history is scanned from. */
 export const OUTBREAK_SCAN_DAYS_DEFAULT = 2;
 export const OUTBREAK_SCAN_DAY_OPTIONS = Object.freeze([1, 2, 3, 5, 7]);
-/** By road from a destination reached by plane, at most this far. */
+/**
+ * By road from a destination reached by plane: the first PLANE_ROAD_KM at
+ * road speed, then on with no limit at PLANE_ROAD_ONWARD_SHARE of it (owner
+ * ruling, 2026-10-09: the 100 km stop is gone), slower local and onward
+ * travel past the airport's own area.
+ */
 export const PLANE_ROAD_KM = 100;
+export const PLANE_ROAD_ONWARD_SHARE = 0.25;
+
+/** How far by road from a destination after `hours` on the ground. */
+export function planeRoadKm(roadKmh, hours) {
+  const h = Math.max(0, Number(hours) || 0);
+  const fast = Math.max(1, Number(roadKmh) || 0);
+  const firstLegHours = PLANE_ROAD_KM / fast;
+  if (h <= firstLegHours) return fast * h;
+  return PLANE_ROAD_KM + fast * PLANE_ROAD_ONWARD_SHARE * (h - firstLegHours);
+}
 /** A boat only carries it where water traffic is this close. */
 export const BOAT_REACH_KM = 100;
 /** A train only carries it where a station is this close. */
@@ -75,8 +90,9 @@ export const OUTBREAK_MODES = Object.freeze({
   road: Object.freeze({
     id: 'road',
     label: 'Road',
-    colorName: 'Blue',
-    color: '#2f7bff',
+    // Road travel is dark red (owner ruling, 2026-10-09; it was blue).
+    colorName: 'Dark red',
+    color: '#a3121b',
     speedKmh: 100,
   }),
   train: Object.freeze({
@@ -88,7 +104,7 @@ export const OUTBREAK_MODES = Object.freeze({
   }),
   boat: Object.freeze({
     id: 'boat',
-    label: 'Boat',
+    label: 'Boat or vehicle',
     colorName: 'Yellow',
     color: '#ffd21a',
     speedKmh: 38,
@@ -293,11 +309,18 @@ export function contagionStyle(value) {
   };
 }
 
-/** The hours past the present the time menu offers: every hour to +48 h,
- * so MAP FUTURE SPREAD can step through them. */
-export const OUTBREAK_FUTURE_HOURS = Object.freeze(
-  Array.from({ length: 48 }, (_, i) => i + 1),
-);
+/** How far ahead the time menu and MAP FUTURE SPREAD go: 30 days (owner
+ * ruling, 2026-10-09), as far as the EPIDEMIC MODEL looks. */
+export const OUTBREAK_FUTURE_DAYS = 30;
+/** The hours past the present the time menu offers, and MAP FUTURE SPREAD
+ * steps through: every hour to +48 h, then every 6 hours to +30 days. */
+export const OUTBREAK_FUTURE_HOURS = Object.freeze([
+  ...Array.from({ length: 48 }, (_, i) => i + 1),
+  ...Array.from(
+    { length: (OUTBREAK_FUTURE_DAYS * 24 - 48) / 6 },
+    (_, i) => 54 + i * 6,
+  ),
+]);
 /** FUTURE SPREAD LOCATIONS asks for these two windows, in this order. */
 export const OUTBREAK_FORECAST_WINDOWS = Object.freeze([24, 48]);
 /** Every outbreak question may answer at the route's ceiling: a reasoning
@@ -327,7 +350,7 @@ export function outbreakHourOptions(startMs, nowMs) {
     options.push({
       value: hour,
       future: true,
-      label: `Future · +${ahead} h · ${clock}`,
+      label: `Future · +${ahead <= 48 ? `${ahead} h` : `${Math.floor(ahead / 24)} d${ahead % 24 ? ` ${ahead % 24} h` : ''}`} · ${clock}`,
     });
   }
   return options;
@@ -424,7 +447,11 @@ function clampRadius(km) {
  *   without them, where the scan's first flights left from.
  * @param {?number} input.present The present hour. Past it, a place
  *   forecast within 48 h shows only from 24 h after the present on.
- * @returns {{atMs: number, hour: number, rings: object[], routes: object[], origins: object[], destinations: object[]}}
+ * @param {object} [input.networks] By location id: {road: true, rail: true}
+ *   where that location's main roads or rail lines are known
+ *   (outbreakNetwork.mjs). Then the spread follows them (a reach along the
+ *   network) instead of a circle; without them, the circle as before.
+ * @returns {{atMs: number, hour: number, rings: object[], reaches: object[], routes: object[], origins: object[], destinations: object[]}}
  */
 export function outbreakSpread({
   locations = [],
@@ -436,6 +463,8 @@ export function outbreakSpread({
   present = null,
   contagion = OUTBREAK_CONTAGION_DEFAULT,
   airports = [],
+  networks = {},
+  airRoads = false,
   startMs,
   hour,
 }) {
@@ -443,10 +472,25 @@ export function outbreakSpread({
   const atMs = startMs + h * HOUR_MS;
   const on = (mode) => shown?.[mode] !== false;
   const rings = [];
+  // Along the roads and rail lines: how far, by location and mode.
+  const reaches = [];
   const speed = (mode) => cleanSpeed(mode, speeds?.[mode]);
   for (const location of locations) {
     const around = surroundings?.[location.id] || {};
-    const reach = (mode) =>
+    const known = networks?.[location.id] || {};
+    const reach = (mode) => {
+      // Road follows the main roads, train the rail lines, where known.
+      const network = mode === 'train' ? 'rail' : mode;
+      if ((mode === 'road' || mode === 'train') && known[network]) {
+        reaches.push({
+          mode,
+          network,
+          locationId: location.id,
+          from: location.name,
+          km: Math.round(speed(mode) * h * 10) / 10,
+        });
+        return;
+      }
       rings.push({
         mode,
         color: OUTBREAK_MODES[mode].color,
@@ -455,6 +499,7 @@ export function outbreakSpread({
         radiusKm: clampRadius(speed(mode) * h),
         from: location.name,
       });
+    };
     if (on('road')) reach('road');
     // Unknown (the scan could not ask) counts as there: better drawn than missed.
     if (on('train') && around.rail !== false) reach('train');
@@ -495,36 +540,30 @@ export function outbreakSpread({
     });
     if (!landed) continue;
     const there = reached.get(flight.to.code);
+    // Every infected flight that has landed there, for the dot's size.
+    const landings = (there?.landings || 0) + 1;
     if (!there || flight.arriveMs < there.arriveMs)
       reached.set(flight.to.code, {
         ...flight.to,
         arriveMs: flight.arriveMs,
         hop: flight.hop,
         future: Boolean(flight.future),
+        landings,
       });
+    else there.landings = landings;
   }
   const destinations = [...reached.values()].sort(
     (a, b) => a.arriveMs - b.arriveMs,
   );
-  if (on('plane')) {
-    for (const place of destinations) {
-      const hoursOnGround = (atMs - place.arriveMs) / HOUR_MS;
-      rings.push({
-        mode: 'plane',
-        color: OUTBREAK_MODES.plane.color,
-        lat: place.lat,
-        lon: place.lon,
-        radiusKm: clampRadius(
-          Math.min(PLANE_ROAD_KM, speed('road') * hoursOnGround),
-        ),
-        from: place.name || place.code,
-      });
-    }
-  }
+  // No circle round a landing airport (owner ruling, 2026-10-09): the roads
+  // out of it light up instead, and until they load only its red dot shows.
   return {
     atMs,
     hour: h,
     rings: rings.filter((ring) => ring.radiusKm > 0),
+    reaches,
+    // The roads out of the landing airports: lit by this hour on the map.
+    airRoads: Boolean(airRoads) && on('plane'),
     // The scan's own flights first, then long-haul ones (so other continents
     // always show), then the rest by when they first left:
     // the map draws only so many lines.
@@ -609,7 +648,17 @@ export function spreadSummary(spread, speeds = {}) {
     const spec = OUTBREAK_MODES[mode];
     if (mode === 'plane') {
       lines.push(
-        `${spec.label} (${spec.colorName}): ${spread.destinations.length} destination${spread.destinations.length === 1 ? '' : 's'} reached · up to ${Math.round(widest('plane'))} km by road from each`,
+        `${spec.label} (${spec.colorName}): ${spread.destinations.length} destination${spread.destinations.length === 1 ? '' : 's'} reached · ${spread.airRoads ? 'roads out of each light up light red from its landing' : 'the roads out of each are loading'}`,
+      );
+      continue;
+    }
+    // Along the main roads or rail lines, where they are known.
+    const along = (spread.reaches || [])
+      .filter((r) => r.mode === mode)
+      .reduce((max, r) => Math.max(max, r.km), 0);
+    if (along > 0) {
+      lines.push(
+        `${spec.label} (${cleanSpeed(mode, speeds[mode])} km/h): ${Math.round(along)} km along the ${mode === 'train' ? 'rail lines, orange once reached' : 'main roads, dark red once reached'}`,
       );
       continue;
     }
@@ -905,6 +954,16 @@ export const HUMAN_FACTORS = Object.freeze([
   }),
 ]);
 
+/** What the EPIDEMIC MODEL's menus add to the suggested level, by choice. */
+export const EPI_SUGGESTION_DELTAS = Object.freeze({
+  superspreading: Object.freeze({ medium: 2, high: 5 }),
+  gathering: Object.freeze({ regional: 4, major: 8 }),
+  holiday: Object.freeze({ holiday: 3 }),
+  transit: Object.freeze({ low: -2, high: 4 }),
+  household: Object.freeze({ small: -2, large: 3 }),
+  healthcare: Object.freeze({ low: 5, high: -5 }),
+});
+
 /** The profile as kept: only the fields that are set, each valid. */
 export function cleanProfile(raw) {
   const out = {};
@@ -934,12 +993,33 @@ export function cleanProfile(raw) {
  *  - R0: 12 a whole step from 1.5, from -25 to +35 (R0 3 is +18);
  *  - spreads without symptoms +15, does not -10;
  *  - incubation: over 7 days +10, 3 to 7 days +5;
- *  - mutation: high +10, medium +5.
+ *  - mutation: high +10, medium +5;
+ *  - the EPIDEMIC MODEL's fields (src/outbreakEpi.mjs), lightly: a large
+ *    asymptomatic share, superspreading, crowds and holiday travel add;
+ *    strong healthcare takes away (EPI_SUGGESTION_DELTAS).
  * Past HIGH (100) it reaches ZERO HOUR (110).
  */
 export function suggestedContagion(profile) {
   const p = cleanProfile(profile);
   const parts = [];
+  // The epidemic model's own fields are read as given: cleanProfile keeps
+  // only the outbreak box's.
+  for (const [key, deltas] of Object.entries(EPI_SUGGESTION_DELTAS)) {
+    const id = profile?.[key];
+    if (typeof id === 'string' && deltas[id])
+      parts.push({ label: `${key} ${id}`, delta: deltas[id] });
+  }
+  const asymPct = Number(profile?.asymptomaticPct);
+  if (
+    profile?.asymptomaticPct !== undefined &&
+    profile?.asymptomaticPct !== '' &&
+    Number.isFinite(asymPct) &&
+    !p.asymptomatic
+  )
+    parts.push({
+      label: `asymptomatic ${asymPct} %`,
+      delta: asymPct >= 40 ? 10 : asymPct >= 20 ? 5 : 0,
+    });
   const mode = TRANSMISSION_MODES.find((m) => m.id === p.transmission);
   if (mode) parts.push({ label: mode.label, delta: mode.delta });
   if (p.r0 !== undefined)
@@ -1147,7 +1227,7 @@ export function candidateLine(airport) {
  *    large airport's PATTERN_DESTINATIONS.L likeliest destinations and a
  *    medium one's PATTERN_DESTINATIONS.M, each once a day.
  * Each airport reached starts its own departures the same way, to the end
- * of the window, up to TRAFFIC_AIRPORTS_MAX airports.
+ * of the window, every airport it reaches (no cap).
  * ------------------------------------------------------------------------- */
 
 /**
@@ -1174,9 +1254,14 @@ export function airportInfectedAfterHours(contagion) {
   const t = level / OUTBREAK_CONTAGION_HIGH;
   return Math.round((low - (low - high) * t) * 10) / 10;
 }
-export const TRAFFIC_AIRPORTS_MAX = 888;
-/** A backstop well past what 888 airports fly in the window. */
-export const TRAFFIC_FLIGHTS_MAX = 60_000;
+/**
+ * No cap on the airports the outbreak reaches (owner ruling, 2026-10-09;
+ * it was 888): every scheduled large and medium airport in the world can be
+ * reached, about 3,300.
+ */
+export const TRAFFIC_AIRPORTS_MAX = Infinity;
+/** No cap on the flights either: a cap there would cap the airports. */
+export const TRAFFIC_FLIGHTS_MAX = Infinity;
 /** Hours past the present the traffic is worked out to. */
 export const FUTURE_FLIGHT_HOURS = 48;
 /** How many destinations normal traffic flies to, by airport size. */
@@ -1191,7 +1276,7 @@ export const LONG_HAUL_KM = 3000;
 const DAY_MS = 24 * HOUR_MS;
 
 /** A number 0..n-1 that is always the same for the same text. */
-function stableIndex(text, n) {
+export function stableIndex(text, n) {
   let h = 2166136261;
   for (let i = 0; i < text.length; i += 1) {
     h ^= text.charCodeAt(i);
@@ -1260,6 +1345,71 @@ function nextAt(fromMs, timeOfDayMs) {
   let at = dayStart + timeOfDayMs;
   if (at < fromMs) at += DAY_MS;
   return at;
+}
+
+/**
+ * simulateAirTraffic's answer packed for the page: with no cap on airports
+ * it can be 50,000+ flights, so each airport is listed once and each flight
+ * is five numbers (from, to, minutes after `startMs`, minutes in the air,
+ * which source), about a tenth of the size of whole flight objects.
+ */
+export function packTraffic(result, startMs) {
+  const airports = [];
+  const at = new Map();
+  const sources = [];
+  const placeOf = (a) => {
+    if (!at.has(a.code)) {
+      at.set(a.code, airports.length);
+      airports.push([a.code, a.name || '', a.lat, a.lon, a.continent || '']);
+    }
+    return at.get(a.code);
+  };
+  const flights = [];
+  for (const f of result?.flights || []) {
+    let source = sources.indexOf(f.source || '');
+    if (source < 0) source = sources.push(f.source || '') - 1;
+    flights.push(
+      placeOf(f.from),
+      placeOf(f.to),
+      Math.round((f.departMs - startMs) / 60_000),
+      Math.max(1, Math.round((f.arriveMs - f.departMs) / 60_000)),
+      source,
+    );
+  }
+  return {
+    packed: 1,
+    startMs,
+    airports,
+    sources,
+    flights,
+    airportsReached: result?.airportsReached ?? airports.length,
+    capped: Boolean(result?.capped),
+    infectedAfterHours: result?.infectedAfterHours,
+  };
+}
+
+/** packTraffic's answer back into flights (cleanFlight's shape). */
+export function unpackTraffic(data) {
+  if (!data?.packed) return Array.isArray(data?.flights) ? data.flights : [];
+  const place = (i) => {
+    const [code, name, lat, lon, continent] = data.airports?.[i] || [];
+    return { code, name, lat, lon, continent };
+  };
+  const out = [];
+  const list = Array.isArray(data.flights) ? data.flights : [];
+  for (let i = 0; i + 4 < list.length; i += 5) {
+    const departMs = data.startMs + list[i + 2] * 60_000;
+    out.push({
+      from: place(list[i]),
+      to: place(list[i + 1]),
+      departMs,
+      arriveMs: departMs + list[i + 3] * 60_000,
+      hop: 3,
+      assumed: true,
+      source: data.sources?.[list[i + 4]] || '',
+    });
+  }
+  return out;
 }
 
 /**
@@ -1424,6 +1574,7 @@ export function outbreakForecastScene({
   candidates,
   articles,
   within24 = [],
+  epidemic = [],
 }) {
   return {
     outbreakForecast: {
@@ -1449,13 +1600,19 @@ export function outbreakForecastScene({
       ...(within24.length
         ? { predictedWithin24h: within24.map((f) => f.place) }
         : {}),
+      ...(epidemic.length ? { epidemicModel: epidemic.slice(0, 30) } : {}),
     },
     outbreakNews: articles.slice(0, 60),
   };
 }
 
 /** The question for one forecast window. */
-export function outbreakForecastQuestion(within, keywords = '', profile = {}) {
+export function outbreakForecastQuestion(
+  within,
+  keywords = '',
+  profile = {},
+  { epidemic = false } = {},
+) {
   const topic = cleanLine(keywords, 80);
   return [
     `Predict where the outbreak${topic ? ` (${topic})` : ''} in SCENE.outbreakForecast.outbreakLocations is most likely to be reported next,`,
@@ -1466,6 +1623,9 @@ export function outbreakForecastQuestion(within, keywords = '', profile = {}) {
       ? `${profileText(profile)} Weigh it: faster, airborne or symptom-free spread, and a longer incubation (more travel before anyone is ill), reach more places sooner.`
       : '',
     'Reason from the flights (reachedByPlane, flightRoutes, and scheduledNext48h: the flights expected to leave the airports in the next 48 hours, taken to fly daily), how far each way of travel has reached (reachNow), and the news in SCENE.outbreakNews.',
+    epidemic
+      ? 'SCENE.outbreakForecast.epidemicModel is a stochastic epidemic simulation over the same flights: each place with its chance of arrival and its median (5–95 %) arrival time, and the effective distance along the air network (smaller is sooner). Weigh it heavily, and prefer its likeliest places when the news is silent.'
+      : '',
     'Name only places from SCENE.outbreakForecast.candidates or places named in SCENE.outbreakNews, and none of the outbreak locations.',
     'Answer with at most 12 lines, most likely first, and nothing else, each written: PLACE, COUNTRY | AIRPORT CODE or - | HIGH, MEDIUM or LOW | why, in a few words.',
     'If nothing supports a prediction, answer exactly: NONE.',

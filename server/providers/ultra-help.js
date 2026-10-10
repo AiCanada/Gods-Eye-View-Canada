@@ -3165,6 +3165,8 @@ function cameraPage() {
 <video id="view" autoplay playsinline muted></video>
 <p id="status">Starting the rear camera… nothing to press here; the map switches cameras from the Ultra box.</p>
 <p><input id="file" type="file" accept="image/*" capture="environment"> Use this if the live camera is blocked.</p>
+<p id="askRow" hidden><button id="askBtn" type="button"></button><input id="askPhoto" type="file" accept="image/*" hidden><input id="askVideo" type="file" accept="video/*" hidden></p>
+<p id="recRow" hidden><button id="recStop" type="button">STOP RECORDING</button> <span id="recState"></span></p>
 <p>Keep this page open: it sends the position every few seconds while it is on screen.</p>
 <script>
 const status = document.getElementById('status');
@@ -3600,6 +3602,74 @@ async function start(next) {
     status.textContent = 'Camera blocked: ' + (error && error.message ? error.message : 'unavailable') + '. Use the file button.';
   }
 }
+// ---- PHOTO and RECORD -------------------------------------------------------
+// With a live camera (this page on https or on localhost through USB) the
+// still and the clip are taken here; without one, the phone's own camera app
+// is opened by one tap, since a browser opens it only for a tap.
+const RECORD_MAX_MS = 30000;
+let recorder = null;
+async function postTo(path, blob) {
+  try {
+    const response = await fetch(root + path, { method: 'POST', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob });
+    return response.ok;
+  } catch { return false; }
+}
+function ask(kind, next) {
+  const input = document.getElementById(kind === 'photo' ? 'askPhoto' : 'askVideo');
+  input.setAttribute('capture', facing(next));
+  const button = document.getElementById('askBtn');
+  button.textContent = (kind === 'photo' ? 'TAKE ' : 'RECORD ') + String(next).toUpperCase() + (kind === 'photo' ? ' PHOTO' : ' VIDEO');
+  document.getElementById('askRow').hidden = false;
+  status.textContent = 'The Ultra box asks for a ' + (kind === 'photo' ? 'photo' : 'video') + ': tap the button.';
+  button.onclick = () => input.click();
+  input.onchange = async () => {
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    document.getElementById('askRow').hidden = true;
+    status.textContent = 'Sending to the Ultra box…';
+    const ok = await postTo(kind === 'photo' ? '/photo' : '/clip', file);
+    status.textContent = ok ? 'Sent to the Ultra box.' : 'Not sent; try again.';
+  };
+}
+function live() { return Boolean(window.isSecureContext && navigator.mediaDevices); }
+async function ready(next) {
+  if (next !== role || !view.srcObject) await start(next);
+  for (let i = 0; i < 40 && !view.videoWidth; i++) await new Promise((r) => setTimeout(r, 100));
+  return Boolean(view.videoWidth);
+}
+async function snap(next) {
+  if (!live() || !(await ready(next))) return ask('photo', next);
+  const canvas = document.createElement('canvas');
+  canvas.width = view.videoWidth;
+  canvas.height = view.videoHeight;
+  canvas.getContext('2d').drawImage(view, 0, 0);
+  canvas.toBlob(async (blob) => {
+    if (!blob) return ask('photo', next);
+    status.textContent = (await postTo('/photo', blob)) ? 'Photo sent · ' + next : 'Photo not sent; try again.';
+  }, 'image/jpeg', 0.9);
+}
+async function record(next) {
+  if (typeof MediaRecorder === 'undefined' || !(await ready(next))) return;
+  if (recorder && recorder.state === 'recording') recorder.stop();
+  const chunks = [];
+  const type = ['video/webm;codecs=vp9', 'video/webm', 'video/mp4'].find((t) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+  recorder = new MediaRecorder(view.srcObject, type ? { mimeType: type } : undefined);
+  recorder.ondataavailable = (event) => { if (event.data && event.data.size) chunks.push(event.data); };
+  recorder.onstop = async () => {
+    document.getElementById('recRow').hidden = true;
+    const blob = new Blob(chunks, { type: (recorder.mimeType || 'video/webm').split(';')[0] });
+    status.textContent = 'Sending the video to the Ultra box…';
+    status.textContent = (await postTo('/clip', blob)) ? 'Video sent · ' + next : 'Video not sent; try again.';
+  };
+  recorder.start(1000);
+  document.getElementById('recRow').hidden = false;
+  document.getElementById('recState').textContent = 'Recording ' + next + ' · up to ' + RECORD_MAX_MS / 1000 + ' s';
+  const mine = recorder;
+  setTimeout(() => { if (mine.state === 'recording') mine.stop(); }, RECORD_MAX_MS);
+}
+const recStop = document.getElementById('recStop');
+if (recStop) recStop.addEventListener('click', () => { if (recorder && recorder.state === 'recording') recorder.stop(); });
 async function postFrame(blob) {
   if (!blob || sending) return;
   sending = true;
@@ -3621,7 +3691,14 @@ setInterval(async () => {
     if (mine > pressSeq) paintRelease(body.release || null);
     // A help message next, so a camera switch in the same answer never masks it.
     if (Array.isArray(body.notify)) body.notify.forEach(show);
-    if (body.command && body.command.kind === 'camera' && body.command.role !== role) await start(body.command.role);
+    if (body.command && body.command.kind === 'camera') {
+      // PHOTO or VIDEO, and either one records a clip as well.
+      const next = body.command.role;
+      if (body.command.mode === 'photo') await snap(next);
+      else if (next !== role || !view.srcObject) await start(next);
+      if (live() && view.srcObject) await record(next);
+      else if (body.command.mode !== 'photo') ask('video', next);
+    }
     else if (body.command && body.command.kind === 'sms') showSms(body.command);
   } catch { /* Keep the camera we already have. */ }
 }, 1000);
@@ -4178,6 +4255,199 @@ function pictureType(declared, bytes) {
   return '';
 }
 
+/* ---------------------------------------------------------------------------
+ * PHOTO and VIDEO (owner ruling, 2026-10-08): each camera has PHOTO (one
+ * still) and VIDEO (the live picture), and every press also records a clip.
+ * The phone posts the still to /ultra/<key>/photo and the clip to
+ * /ultra/<key>/clip; both are
+ * kept on this computer under config/ultra-media/, never in the repository,
+ * and listed for the box by GET /api/ultra-help/media.
+ * ------------------------------------------------------------------------- */
+const mediaDir = () => path.join(sourceRoot, 'config', 'ultra-media');
+const ULTRA_PHOTO_MAX_BYTES = 20 * 1024 * 1024;
+const ULTRA_CLIP_MAX_BYTES = 300 * 1024 * 1024;
+const PHOTO_LIMIT = Object.freeze({ max: 12, windowMs: 60_000 });
+const CLIP_LIMIT = Object.freeze({ max: 6, windowMs: 60_000 });
+const photoBuckets = new Map();
+const clipBuckets = new Map();
+/** The newest still from each phone, for the box. */
+const stills = shared('stills', () => new Map());
+const PHOTO_EXTENSIONS = Object.freeze({
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+});
+const CLIP_EXTENSIONS = Object.freeze({
+  'video/webm': 'webm',
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/3gpp': '3gp',
+  'video/x-matroska': 'mkv',
+});
+const MEDIA_NAME =
+  /^(photo|clip)-(\d{8}T\d{6}Z)-(\d{1,4})\.(jpg|png|webp|webm|mp4|mov|3gp|mkv)$/;
+const MEDIA_TYPES = Object.freeze({
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  webm: 'video/webm',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+  '3gp': 'video/3gpp',
+  mkv: 'video/x-matroska',
+});
+let mediaSerial = 0;
+
+/** A new file name: kind, UTC time to the second, and a counter. */
+function mediaName(kind, extension, now = Date.now()) {
+  const stamp = new Date(now).toISOString().replace(/[-:]/g, '').slice(0, 15);
+  mediaSerial = (mediaSerial + 1) % 10_000;
+  return `${kind}-${stamp}Z-${mediaSerial}.${extension}`;
+}
+
+/** The saved photos and clips, newest first. */
+export function listUltraMedia(limit = 40) {
+  let names = [];
+  try {
+    names = fs.readdirSync(mediaDir());
+  } catch {
+    return [];
+  }
+  const items = [];
+  for (const name of names) {
+    const match = MEDIA_NAME.exec(name);
+    if (!match) continue;
+    try {
+      const stat = fs.statSync(path.join(mediaDir(), name));
+      items.push({
+        name,
+        kind: match[1],
+        at: stat.mtimeMs,
+        bytes: stat.size,
+        type: MEDIA_TYPES[match[4]],
+      });
+    } catch {
+      /* gone meanwhile */
+    }
+  }
+  return items.sort((a, b) => b.at - a.at).slice(0, limit);
+}
+
+/** A saved photo or clip by its exact name, or null. */
+function readUltraMediaPath(name) {
+  const match = MEDIA_NAME.exec(String(name || ''));
+  if (!match) return null;
+  const file = path.join(mediaDir(), match[0]);
+  try {
+    return fs.statSync(file).isFile()
+      ? { file, type: MEDIA_TYPES[match[4]], size: fs.statSync(file).size }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Delete saved photos and clips: every one (all), or just the names given.
+ * Only names the server saves are touched, inside config/ultra-media/.
+ * @returns {string[]} The names deleted.
+ */
+export function deleteUltraMedia({ all = false, names = [] } = {}) {
+  const wanted = all
+    ? listUltraMedia(Infinity).map((item) => item.name)
+    : (Array.isArray(names) ? names : []).slice(0, 200);
+  const deleted = [];
+  for (const name of new Set(wanted)) {
+    const found = readUltraMediaPath(name);
+    if (!found) continue;
+    try {
+      fs.unlinkSync(found.file);
+      deleted.push(path.basename(found.file));
+    } catch {
+      /* gone meanwhile */
+    }
+  }
+  return deleted;
+}
+
+/** A still from the phone: checked, kept, and shown in the box. */
+async function receiveUltraPhoto(req, res, key) {
+  if (!allowUltraRequest(photoBuckets, key, Date.now(), PHOTO_LIMIT)) {
+    json(res, 429, 'Wait', 'text/plain');
+    return;
+  }
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > ULTRA_PHOTO_MAX_BYTES) {
+      json(res, 413, 'Too large', 'text/plain');
+      return;
+    }
+    chunks.push(chunk);
+  }
+  const bytes = Buffer.concat(chunks);
+  const type = pictureType(req.headers?.['content-type'], bytes);
+  if (!type) {
+    json(res, 415, 'Not a photo', 'text/plain');
+    return;
+  }
+  const name = mediaName('photo', PHOTO_EXTENSIONS[type]);
+  fs.mkdirSync(mediaDir(), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(mediaDir(), name), bytes, { mode: 0o600 });
+  stills.set(key, { bytes, type, at: Date.now(), name });
+  json(res, 200, 'kept', 'text/plain');
+}
+
+/** A clip from the phone, written straight to disk as it arrives. */
+async function receiveUltraClip(req, res, key) {
+  if (!allowUltraRequest(clipBuckets, key, Date.now(), CLIP_LIMIT)) {
+    json(res, 429, 'Wait', 'text/plain');
+    return;
+  }
+  const declared = String(req.headers?.['content-type'] || '')
+    .split(';')[0]
+    .trim()
+    .toLowerCase();
+  const extension = CLIP_EXTENSIONS[declared];
+  if (!extension) {
+    json(res, 415, 'Not a video', 'text/plain');
+    return;
+  }
+  fs.mkdirSync(mediaDir(), { recursive: true, mode: 0o700 });
+  const name = mediaName('clip', extension);
+  const final = path.join(mediaDir(), name);
+  const partial = `${final}.part`;
+  const out = fs.createWriteStream(partial, { mode: 0o600 });
+  let total = 0;
+  let tooLarge = false;
+  try {
+    for await (const chunk of req) {
+      total += chunk.length;
+      if (total > ULTRA_CLIP_MAX_BYTES) {
+        tooLarge = true;
+        break;
+      }
+      if (!out.write(chunk))
+        await new Promise((resolve) => out.once('drain', resolve));
+    }
+  } finally {
+    await new Promise((resolve) => out.end(resolve));
+  }
+  if (tooLarge || total === 0) {
+    fs.rmSync(partial, { force: true });
+    json(
+      res,
+      tooLarge ? 413 : 400,
+      tooLarge ? 'Too large' : 'Empty',
+      'text/plain',
+    );
+    return;
+  }
+  fs.renameSync(partial, final);
+  json(res, 200, 'kept', 'text/plain');
+}
+
 function publishFrame(key, bytes, type = 'image/jpeg') {
   pictures.set(key, { bytes, type, at: Date.now() });
   // A viewer of one package sees only that package's phone; the plain stream
@@ -4536,6 +4806,14 @@ export async function handleUltraPhone(req, res, url) {
       }
       json(res, 500, 'Ultra help failed', 'text/plain');
     }
+    return;
+  }
+  if (parts[2] === 'photo' && req.method === 'POST' && parts.length === 3) {
+    await receiveUltraPhoto(req, res, key);
+    return;
+  }
+  if (parts[2] === 'clip' && req.method === 'POST' && parts.length === 3) {
+    await receiveUltraClip(req, res, key);
     return;
   }
   if (parts[2] === 'picture' && req.method === 'POST') {
@@ -5700,6 +5978,38 @@ export function ultraHelpProxy({
           json(res, 200, picture.bytes, picture.type);
           return;
         }
+        if (req.method === 'GET' && pathName === '/media') {
+          json(res, 200, { items: listUltraMedia() });
+          return;
+        }
+        const mediaPath = /^\/media\/([A-Za-z0-9.-]{1,80})$/.exec(pathName);
+        if (req.method === 'GET' && mediaPath) {
+          const found = readUltraMediaPath(mediaPath[1]);
+          if (!found) {
+            json(res, 404, { error: 'No such photo or video' });
+            return;
+          }
+          res.writeHead(200, {
+            ...SECURITY_HEADERS,
+            'Content-Type': found.type,
+            'Content-Length': String(found.size),
+            'Cache-Control': 'no-store',
+            'Content-Disposition': 'inline',
+          });
+          fs.createReadStream(found.file).pipe(res);
+          return;
+        }
+        if (req.method === 'GET' && pathName === '/photo') {
+          const still =
+            stills.get(latestPosition()?.key || '') ||
+            [...stills.values()].sort((a, b) => b.at - a.at)[0];
+          if (!still) {
+            json(res, 404, { error: 'No photo yet' });
+            return;
+          }
+          json(res, 200, still.bytes, still.type);
+          return;
+        }
         let body = null;
         if (req.method === 'POST') {
           const { overflowed, text } = await readBody(req, OWNER_BODY_LIMIT);
@@ -5712,6 +6022,18 @@ export function ultraHelpProxy({
             json(res, 400, { error: 'Bad JSON' });
             return;
           }
+        }
+        if (req.method === 'POST' && pathName === '/media/delete') {
+          if (body.all !== true && !Array.isArray(body.names)) {
+            json(res, 400, { error: 'Say all, or which names' });
+            return;
+          }
+          const deleted = deleteUltraMedia({
+            all: body.all === true,
+            names: body.names,
+          });
+          json(res, 200, { deleted, items: listUltraMedia() });
+          return;
         }
         if (req.method === 'POST' && pathName === '/model') {
           store.modelId = ultraPhoneModel(body.modelId).id;
@@ -5761,10 +6083,14 @@ export function ultraHelpProxy({
             });
             return;
           }
+          // PHOTO (one still) or VIDEO (the live picture); the phone records
+          // a clip with either (owner ruling, 2026-10-08).
+          const mode = body.mode === 'photo' ? 'photo' : 'video';
           commands.set(fix.key, {
             kind: 'camera',
             role: role.id,
-            label: role.label,
+            mode,
+            label: `${role.label} · ${mode.toUpperCase()}`,
             at: Date.now(),
           });
           if (!known.livePicture && !pictures.has(fix.key)) {
