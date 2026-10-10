@@ -173,9 +173,11 @@ export function createApplicationCatalog({
       ],
       metadata,
     );
-    sourceComposition.bind(catalog.layers);
     return Object.freeze({
       ...catalog,
+      getSourceAvailability: sourceComposition.createAvailabilityLookup(
+        catalog.layers,
+      ),
       militaryRegistry,
       surface,
       weatherClock,
