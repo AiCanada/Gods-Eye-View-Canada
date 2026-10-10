@@ -1,5 +1,8 @@
 # Changelog
 
+- Treat explicitly current, complete empty vessel coverage as a successful update,
+  clearing obsolete contacts while retaining stale or incomplete snapshots.
+
 - Custom Street Level provider switches survive share links and stored state
   using URL-safe stable provider IDs and a shared boolean-switch codec; existing
   Mapillary links keep their meaning. Explicit provider toggles reach durable
