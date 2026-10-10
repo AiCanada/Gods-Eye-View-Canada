@@ -3,7 +3,9 @@
 Catalog source contracts and their consuming layers are declared in
 `src/app/sourceComposition.js`. Omitted or null acquisition sources preserve layer
 registration and serialization, report unavailable, and are refused by the existing
-visibility lifecycle before initialization. Invalid supplied methods still fail
+visibility lifecycle before initialization. Availability is held in an explicit
+catalog lookup supplied to the lifecycle, without modifying layer instances;
+unavailable reasons use the layer display name. Invalid supplied methods still fail
 construction. `createStandaloneApplication` and `createStandaloneCatalog` accept
 `sources` overrides; unspecified entries retain
 standalone defaults, and null entries explicitly remove a source. Street Level

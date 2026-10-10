@@ -30,7 +30,7 @@ test('every acquisition source can be omitted without losing catalog membership'
     const actual = catalog(sources, t);
     assert.deepEqual(actual.metadata, baseline.metadata, name);
     for (const id of CATALOG_SOURCE_CONTRACTS[name].layers) {
-      assert.equal(actual.get(id).getSourceAvailability().available, false, id);
+      assert.equal(actual.getSourceAvailability(id).available, false, id);
     }
   }
 });
@@ -38,7 +38,10 @@ test('every acquisition source can be omitted without losing catalog membership'
 test('all acquisition sources may be absent, and enable fails before initializing or fetching', async (t) => {
   const actual = catalog({}, t);
   assert.equal(actual.layers.length, 30);
-  const manager = new LayerLifecycle({});
+  const manager = new LayerLifecycle(
+    {},
+    { getSourceAvailability: actual.getSourceAvailability },
+  );
   for (const layer of actual.layers) manager.register(layer);
   for (const { layers: ids } of Object.values(CATALOG_SOURCE_CONTRACTS)) {
     for (const id of ids) {
@@ -47,7 +50,7 @@ test('all acquisition sources may be absent, and enable fails before initializin
       const row = manager.getAll().find((entry) => entry.id === id);
       assert.equal(row.enabled, false);
       assert.equal(row.stats.status, 'unavailable');
-      assert.match(row.stats.error, /not configured/);
+      assert.match(row.stats.error, /data source not configured/);
     }
   }
 });
@@ -85,7 +88,10 @@ test('standalone defaults allow exact replacements and explicit removal, and rej
 
 test('empty Street Level uses the shared unavailable lifecycle without initialization', async (t) => {
   const actual = catalog({}, t);
-  const manager = new LayerLifecycle({});
+  const manager = new LayerLifecycle(
+    {},
+    { getSourceAvailability: actual.getSourceAvailability },
+  );
   manager.register(actual.get('street-level'));
   assert.equal(await manager.setEnabled('street-level', true), false);
   assert.equal(manager.layers.get('street-level').initialized, false);
@@ -98,4 +104,53 @@ test('empty Street Level uses the shared unavailable lifecycle without initializ
     configured.get('street-level').getSourceAvailability().available,
     true,
   );
+});
+
+test('availability lookup accepts frozen layers and uses their display names', () => {
+  const composition = resolveCatalogSources({});
+  const layers = Object.values(CATALOG_SOURCE_CONTRACTS)
+    .flatMap(({ layers }) => layers)
+    .map((id) =>
+      Object.freeze({
+        id,
+        name: id === 'fire-perimeters' ? 'Fire perimeters' : id,
+      }),
+    );
+  const lookup = composition.createAvailabilityLookup(layers);
+  assert.equal(
+    lookup('fire-perimeters').reason,
+    'Fire perimeters: data source not configured',
+  );
+  assert.equal(Object.hasOwn(layers[0], 'getSourceAvailability'), false);
+  const manager = new LayerLifecycle({}, { getSourceAvailability: lookup });
+  manager.register(layers.find(({ id }) => id === 'fire-perimeters'));
+  assert.equal(
+    manager.getAll()[0].stats.error,
+    'Fire perimeters: data source not configured',
+  );
+});
+
+test('absent military acquisition does not poll, suppress flights, or erase supplied classification', async (t) => {
+  let fetches = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    fetches++;
+    throw new Error('Unexpected fallback acquisition');
+  });
+  const actual = catalog(createStandaloneLayerSources({ military: null }), t);
+  const registry = actual.militaryRegistry;
+  assert.equal(actual.getSourceAvailability('flights').available, true);
+  assert.equal(registry.isMilitaryLayerActive(), false);
+  assert.equal(registry.isMilitaryIcao('abc123'), false);
+  registry.registerMilitaryIcaos([' ABC123 ']);
+  await registry.refreshMilitaryRegistryIfStale();
+  assert.equal(registry.isMilitaryIcao('abc123'), true);
+  assert.equal(registry.isMilitaryIcao('def456'), false);
+  const manager = new LayerLifecycle(
+    {},
+    { getSourceAvailability: actual.getSourceAvailability },
+  );
+  manager.register(actual.get('military'));
+  assert.equal(await manager.setEnabled('military', true), false);
+  assert.equal(registry.isMilitaryLayerActive(), false);
+  assert.equal(fetches, 0);
 });

@@ -74,7 +74,11 @@ function refreshFailureFromStats(stats, label) {
  * for real-time data overlays on the CesiumJS globe.
  */
 export class LayerLifecycle {
-  constructor(viewer, { allowQaRegistration = false } = {}) {
+  constructor(
+    viewer,
+    { allowQaRegistration = false, getSourceAvailability } = {},
+  ) {
+    this._catalogSourceAvailability = getSourceAvailability;
     this.viewer = viewer;
     this._activityListeners = new Set();
     this.layers = new Map(); // id → { module, enabled, initialized, intervalId, lifecycleState, lifecycleUncertain }
@@ -228,7 +232,7 @@ export class LayerLifecycle {
 
   _normalizedStats(entry) {
     const moduleStats = this._moduleStats(entry);
-    const availability = entry.module.getSourceAvailability?.();
+    const availability = this._sourceAvailability(entry.module.id);
     const lifecycleLoading =
       entry.lifecycleState === 'enabling' ||
       entry.lifecycleState === 'disabling';
@@ -2290,10 +2294,15 @@ export class LayerLifecycle {
     }
   }
 
+  _sourceAvailability(layerId) {
+    return (
+      this._catalogSourceAvailability?.(layerId) ??
+      this.layers.get(layerId)?.module.getSourceAvailability?.()
+    );
+  }
+
   async _visibilityBlockReason(change) {
-    const availability = this.layers
-      .get(change.layerId)
-      ?.module.getSourceAvailability?.();
+    const availability = this._sourceAvailability(change.layerId);
     if (change.enabled && availability?.available === false)
       return availability.reason || 'Data source unavailable';
     for (const callback of this._visibilityGuards) {
