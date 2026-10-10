@@ -27,12 +27,14 @@ with a truthful no-provider state, preserving layer controls and share tokens.
 Malformed selected sources and provider definitions still fail validation.
 An explicit provider list bypasses the unused Mapillary source, including its
 validation. Layer share identities and the legacy Mapillary `m` option remain
-stable. Custom provider switches use the `r` option, sorted by provider ID rather
+stable. Custom provider switches use the `r` option (`example-1*panoramax-0`),
+with URL-safe separators and a shared layer-neutral boolean-switch codec, sorted by provider ID rather
 than registration order, and round-trip through links and stored state. A receiver
 applies only switches for its registered providers; absent custom switches leave
 current defaults unchanged. The custom switch field is bounded to 256 characters;
 provider registration rejects compositions that cannot fit rather than truncating
-identities. Existing whole-link size limits still apply.
+identities. A malformed or duplicate entry invalidates the complete custom-switch
+field. Existing whole-link size limits still apply.
 
 ## God's Eye View in conversations — October 2, 2026
 

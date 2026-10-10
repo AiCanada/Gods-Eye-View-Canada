@@ -1,7 +1,8 @@
 # Changelog
 
 - Custom Street Level provider switches survive share links and stored state
-  using stable provider IDs; existing Mapillary links keep their meaning.
+  using URL-safe stable provider IDs and a shared boolean-switch codec; existing
+  Mapillary links keep their meaning.
 
 - Directions and Recent Imagery accept replaceable acquisition sources, including
   route transport, imagery catalog, thumbnails, tile templates and attribution.

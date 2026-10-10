@@ -1,8 +1,5 @@
 import { normalizeFilter } from './filter.js';
-import {
-  encodeProviderSwitches,
-  decodeProviderSwitches,
-} from './providerSwitches.js';
+import { encodeIdSwitches, decodeIdSwitches } from '../../data/idSwitches.js';
 
 /**
  * Provider params plus the filter. Custom switches share a stable ID-based
@@ -13,7 +10,9 @@ export function encodeParams({ providers, filter }) {
   const params = {};
   const entries = [...providers];
   for (const [id, on] of entries) params[id] = on === true;
-  const switches = encodeProviderSwitches(entries);
+  const switches = encodeIdSwitches(
+    entries.filter(([id]) => id !== 'mapillary'),
+  );
   if (switches) params.providerSwitches = switches;
   params.pano = filter.pano;
   params.sinceDays = filter.sinceDays;
@@ -30,7 +29,8 @@ export function encodeParams({ providers, filter }) {
 export function decodeParams(params, { providerIds, filter }) {
   const providers = new Map();
   const source = params && typeof params === 'object' ? params : {};
-  const switches = decodeProviderSwitches(source.providerSwitches);
+  const switches = decodeIdSwitches(source.providerSwitches);
+  switches.delete('mapillary');
   for (const id of providerIds) {
     if (switches.has(id)) providers.set(id, switches.get(id));
     else if (Object.hasOwn(source, id) && typeof source[id] === 'boolean')

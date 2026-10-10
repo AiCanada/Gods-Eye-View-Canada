@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeParams, decodeParams } from './params.js';
 import {
-  normalizeProviderSwitches,
-  encodeProviderSwitches,
-} from './providerSwitches.js';
+  normalizeIdSwitches,
+  decodeIdSwitches,
+  encodeIdSwitches,
+} from '../../data/idSwitches.js';
 import {
   createDefaultLayerState,
   encodeLayerStateParams,
@@ -24,7 +25,7 @@ test('custom switches survive sharing and storage without depending on provider 
     ['mapillary', false],
   ];
   const options = encodeParams({ providers, filter });
-  assert.equal(options.providerSwitches, 'example=1,panoramax=0');
+  assert.equal(options.providerSwitches, 'example-1*panoramax-0');
   assert.equal(
     encodeParams({ providers: [...providers].reverse(), filter })
       .providerSwitches,
@@ -36,7 +37,11 @@ test('custom switches survive sharing and storage without depending on provider 
   const params = new URLSearchParams({ v: '2' });
   encodeLayerStateParams(params, state);
   assert.match(params.get('lo'), /0\.m\.0/);
-  assert.match(params.get('lo'), /0\.r\.example=1,panoramax=0/);
+  assert.match(params.get('lo'), /0\.r\.example-1\*panoramax-0/);
+  assert.ok(
+    params.toString().includes('0.r.example-1*panoramax-0'),
+    'custom switches need no percent escaping',
+  );
   for (const restored of [
     decodeLayerStateParams(params),
     parseStoredLayerState(serializeStoredLayerState(state)),
@@ -91,31 +96,44 @@ test('legacy links retain Mapillary semantics and leave custom defaults alone', 
 
 test('switches reject ambiguous or oversized fields and cannot override the legacy token', () => {
   for (const value of [
-    'example=0,example=1',
-    'mapillary=0',
-    '__proto__=1',
-    'a=2',
-    'a=1,',
-    'a.b=1',
-    'a_b=0',
-    `${'a'.repeat(255)}=1`,
+    'example-0*example-1',
+    'mapillary-0',
+    '__proto__-1',
+    'a-2',
+    'a-1*',
+    'a.b-1',
+    'a_b-0',
+    `${'a'.repeat(255)}-1`,
     null,
     {},
   ]) {
-    assert.equal(normalizeProviderSwitches(value), null);
+    assert.equal(normalizeIdSwitches(value, ['mapillary']), null);
   }
-  assert.equal(normalizeProviderSwitches('constructor=0'), 'constructor=0');
+  assert.equal(normalizeIdSwitches('constructor-0'), 'constructor-0');
   assert.throws(
-    () => encodeProviderSwitches([['a'.repeat(255), true]]),
-    /oversized/,
+    () => encodeIdSwitches([['a'.repeat(255), true]]),
+    /share-link/,
   );
   assert.throws(
     () => validateProviders([fakeStreetLevelProvider({ id: 'a'.repeat(255) })]),
-    /oversized/,
+    /share-link/,
   );
   const decoded = decodeParams(
-    { providerSwitches: 'mapillary=0', mapillary: true },
+    { providerSwitches: 'mapillary-0', mapillary: true },
     { providerIds: ['mapillary'], filter },
   );
   assert.equal(decoded.providers.get('mapillary'), true);
+});
+
+test('neutral switch codec preserves hyphens and numeric suffixes in IDs', () => {
+  const switches = [
+    ['provider-0', false],
+    ['provider-1', true],
+    ['a-b-c', true],
+  ];
+  const encoded = encodeIdSwitches(switches);
+  assert.equal(encoded, 'a-b-c-1*provider-0-0*provider-1-1');
+  const decoded = decodeIdSwitches(encoded);
+  for (const [id, on] of switches) assert.equal(decoded.get(id), on);
+  assert.equal(decodeIdSwitches('valid-1*broken').size, 0);
 });

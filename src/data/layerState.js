@@ -1,4 +1,4 @@
-import { normalizeProviderSwitches } from '../layers/streetLevel/providerSwitches.js';
+import { normalizeIdSwitches } from './idSwitches.js';
 import reservationRows from './layerStateTokenReservations.json' with { type: 'json' };
 
 const VALID_DISPOSITIONS = new Set([
@@ -418,9 +418,9 @@ const OPTION_GROUPS = Object.freeze({
       key: 'providerSwitches',
       token: 'r',
       defaultValue: '',
-      normalize: normalizeProviderSwitches,
-      encode: normalizeProviderSwitches,
-      decode: normalizeProviderSwitches,
+      normalize: (value) => normalizeIdSwitches(value, ['mapillary']),
+      encode: normalizeIdSwitches,
+      decode: (value) => normalizeIdSwitches(value, ['mapillary']),
     }),
     enumOption('pano', 'p', 'all', ['all', 'pano', 'flat'], {
       all: 'a',
