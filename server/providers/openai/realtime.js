@@ -23,11 +23,25 @@ import {
   readCodexOAuthAccessToken,
   createCodexOAuthLogin,
 } from './codex-auth.js';
+import {
+  isOwnerDeviceRequest,
+  isSharingEnabled,
+} from '../../../src/keySetupCore.mjs';
 
 const LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
+/**
+ * This machine, or the owner's own device through the tailnet mirror (Mirror
+ * of PC GEVC on Cell): a request the mirror stamped after Tailscale confirmed
+ * the device is signed in as this machine's owner. ChatGPT sign-in still runs
+ * on this machine either way; nothing here deletes or removes anything.
+ * Sharing mode turns the owner-device path off, as it does at the core gate.
+ */
 function isLoopbackRequest(req) {
-  return LOOPBACK_ADDRESSES.has(String(req.socket?.remoteAddress || ''));
+  return (
+    LOOPBACK_ADDRESSES.has(String(req.socket?.remoteAddress || '')) ||
+    (isOwnerDeviceRequest(req) && !isSharingEnabled(process.env))
+  );
 }
 
 function isSameOriginRequest(req) {
@@ -104,7 +118,11 @@ function createRealtimeOAuthLoginHandler({
       );
       return;
     }
-    if (!isSameOriginRequest(req)) {
+    // The owner's device must name its page: an exact same-origin Origin.
+    if (
+      !isSameOriginRequest(req) ||
+      (isOwnerDeviceRequest(req) && !String(req.headers?.origin || '').trim())
+    ) {
       res.statusCode = 403;
       res.end(
         JSON.stringify({

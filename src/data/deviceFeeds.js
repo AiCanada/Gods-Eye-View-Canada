@@ -83,11 +83,25 @@ function storedHistoryPeriod(windowRef) {
   }
 }
 
-/** Whether this page is the dashboard on the PC itself (localhost), where recording happens. */
-export function recordsOnThisMachine(hostname = globalThis.location?.hostname) {
-  const host = String(hostname || '').replace(/^[|]$/g, '');
+/**
+ * Whether this page records: the dashboard on the PC itself (localhost), or
+ * any page the server's `/api/device-feeds/status` names a recorder
+ * (`recorder: true`, as it does for the owner's phone through the mirror).
+ * @param {string} [hostname]
+ * @param {{recorder?: boolean} | null} [status] the server's status answer
+ */
+export function recordsOnThisMachine(
+  hostname = globalThis.location?.hostname,
+  status = null,
+) {
+  if (status?.recorder === true) return true;
+  const host = String(hostname || '').replace(/^\[|\]$/g, '');
   return host === 'localhost' || host === '127.0.0.1' || host === '::1';
 }
+
+const STATUS_URL = '/api/device-feeds/status';
+/** How long a page waits before asking the server again after a failed status read. */
+const RECORDER_ASK_RETRY_MS = 60_000;
 
 const POSITIONS_URL = '/api/device-feeds/positions';
 /** How often a switched-off device layer asks whether a device is reporting. */
@@ -285,7 +299,7 @@ export function createDeviceFeedsLayer({
   applyFollowFrame = applyTrackedCameraFrame,
   refreshReadout = refreshTrackedReadout,
   recorder = null,
-  recordsHere = recordsOnThisMachine,
+  recordsHere = null,
   hitTestOverlay = hitTestWorldOverlay,
   autoShowMs = DEVICE_FEEDS_AUTO_SHOW_MS,
   historyPeriod = storedHistoryPeriod(windowRef),
@@ -293,6 +307,46 @@ export function createDeviceFeedsLayer({
   noPathDevices = storedHiddenDevices(windowRef, DEVICE_NO_PATH_KEY),
 } = {}) {
   const _recorder = recorder || createDeviceRecorder({ fetchImpl, now });
+  // Off the PC (the owner's phone through the mirror), the server says whether
+  // this page records: `recorder` from /api/device-feeds/status, asked once.
+  let _serverRecorder = null;
+  let _recorderAskAt = -Infinity;
+  let _recorderAsking = false;
+  const pageHostname = () =>
+    windowRef?.location?.hostname ?? globalThis.location?.hostname ?? '';
+  const askRecorder = () => {
+    if (_recorderAsking || now() - _recorderAskAt < RECORDER_ASK_RETRY_MS)
+      return;
+    _recorderAsking = true;
+    _recorderAskAt = now();
+    Promise.resolve()
+      .then(() =>
+        fetchImpl(STATUS_URL, {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        }),
+      )
+      .then((response) => (response?.ok ? response.json() : null))
+      .then((status) => {
+        if (status && typeof status === 'object')
+          _serverRecorder = status.recorder === true;
+      })
+      .catch(() => {})
+      .finally(() => {
+        _recorderAsking = false;
+      });
+  };
+  const recordsOnThisPage =
+    typeof recordsHere === 'function'
+      ? recordsHere
+      : () => {
+          const host = pageHostname();
+          if (recordsOnThisMachine(host)) return true;
+          // No page host (a test or a worker): nothing to ask.
+          if (!host) return false;
+          if (_serverRecorder === null) askRecorder();
+          return recordsOnThisMachine(host, { recorder: _serverRecorder });
+        };
   let _viewer = null;
   let _dataSource = null;
   let _dataManager = null;
@@ -967,10 +1021,11 @@ export function createDeviceFeedsLayer({
           ? `${silent} of ${rows.length} not answering`
           : null;
         if (_enabled) syncFollow(rows);
-        // Recording is the PC's job: the server saves only from this machine,
-        // so a phone viewing the dashboard over the tailnet does not try (and
-        // never shows a recording error); the route still draws on it.
-        if (_enabled && recordsHere()) {
+        // The PC records; so does the owner's phone through the mirror once
+        // the server's status names it a recorder. When both pages record, the
+        // server keeps one line per device per interval and answers the
+        // other 429, which is not an error here.
+        if (_enabled && recordsOnThisPage()) {
           // Not awaited: a slow save never holds up the next position.
           _recorder
             .tick(allRows, _dataManager, {
@@ -978,7 +1033,11 @@ export function createDeviceFeedsLayer({
               skip: DEVICE_FEEDS_RECORD_SKIP_LAYERS,
             })
             .then((results) => {
-              if (results.some((result) => result.error))
+              if (
+                results.some(
+                  (result) => result.error && result.error !== 'HTTP 429',
+                )
+              )
                 _lastError = _lastError || 'Recording could not be saved';
             })
             .catch(() => {});

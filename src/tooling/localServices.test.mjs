@@ -26,6 +26,11 @@ import { createDebugLogHandler } from '../../server/providers/openai/debug-log.j
 import { attachVoiceResult } from '../voice/speech.js';
 import { sanitizeDebugValue } from '../voice/realtimeDiagnostics.js';
 import { standaloneVoiceTools } from '../../server/standalone/voiceTools.js';
+import {
+  OWNER_DEVICE_AUTHORITY_HEADER,
+  OWNER_DEVICE_HEADER,
+  setOwnerDeviceToken,
+} from '../keySetupCore.mjs';
 
 function install(plugin, preview = false) {
   const routes = new Map();
@@ -44,6 +49,8 @@ function request(
     origin = 'http://localhost:4173',
     signal,
     remoteAddress = '127.0.0.1',
+    host = 'localhost:4173',
+    headers: extraHeaders = {},
   } = {},
 ) {
   return new Promise((resolve, reject) => {
@@ -52,9 +59,10 @@ function request(
       method,
       url,
       headers: {
-        host: 'localhost:4173',
+        host,
         origin,
         'content-type': 'application/json',
+        ...extraHeaders,
       },
       socket: { remoteAddress },
     });
@@ -445,6 +453,156 @@ test('OAuth status and token minting never expose local OAuth to remote clients'
     403,
   );
   assert.equal(oauthReads, 0);
+});
+
+test('the owner device through the tailnet mirror gets ChatGPT OAuth status, sign-in and voice like the PC', async (t) => {
+  const ownerToken = 'a'.repeat(64);
+  setOwnerDeviceToken(ownerToken);
+  t.after(() => setOwnerDeviceToken(''));
+  const mirror = 'http://100.64.0.1:4173';
+  const owner = {
+    remoteAddress: '100.64.0.10',
+    host: '100.64.0.1:4173',
+    origin: mirror,
+    headers: {
+      [OWNER_DEVICE_HEADER]: ownerToken,
+      [OWNER_DEVICE_AUTHORITY_HEADER]: mirror,
+    },
+  };
+  let starts = 0;
+  const minted = [];
+  const plugin = openAiRealtimeProxy({
+    realtime: {
+      resolveOAuthAccessToken: () => 'fixture-oauth-token',
+      fetchImpl: async (_url, options) => {
+        minted.push(options.headers.Authorization);
+        return Response.json({ value: 'fixture-ephemeral' });
+      },
+      startOAuthLogin: async () => {
+        starts += 1;
+        return { completion: new Promise(() => {}), cancel() {} };
+      },
+    },
+  });
+  t.after(plugin.closeBundle);
+  const routes = install(plugin);
+
+  const status = await request(routes.get('/api/realtime/oauth-status'), owner);
+  assert.equal(status.status, 200);
+  assert.deepEqual(status.json(), { available: true });
+  const token = await request(routes.get('/api/realtime/token'), {
+    ...owner,
+    url: '/?auth=oauth',
+  });
+  assert.equal(token.status, 200);
+  assert.deepEqual(minted, ['Bearer fixture-oauth-token']);
+
+  // Sign-in from the owner device must name its page with an exact Origin.
+  const login = routes.get('/api/realtime/oauth-login');
+  const noOrigin = await request(login, {
+    ...owner,
+    method: 'POST',
+    origin: null,
+  });
+  assert.equal(noOrigin.status, 403);
+  const foreign = await request(login, {
+    ...owner,
+    method: 'POST',
+    origin: 'https://evil.example',
+  });
+  assert.equal(foreign.status, 403);
+  assert.equal(starts, 0);
+
+  // Without a valid stamp, or proxied, the tailnet socket is a stranger.
+  for (const stranger of [
+    { ...owner, headers: {} },
+    {
+      ...owner,
+      headers: { ...owner.headers, [OWNER_DEVICE_HEADER]: 'b'.repeat(64) },
+    },
+    {
+      ...owner,
+      headers: { ...owner.headers, 'x-forwarded-for': '203.0.113.9' },
+    },
+    { ...owner, host: 'evil.example:4173' },
+    { ...owner, remoteAddress: '192.168.1.20' },
+  ])
+    assert.equal(
+      (await request(routes.get('/api/realtime/oauth-status'), stranger))
+        .status,
+      403,
+      JSON.stringify(stranger),
+    );
+  assert.equal(minted.length, 1);
+});
+
+test('sharing mode turns off ChatGPT OAuth for the owner device through the tailnet mirror', async (t) => {
+  const ownerToken = 'c'.repeat(64);
+  setOwnerDeviceToken(ownerToken);
+  t.after(() => setOwnerDeviceToken(''));
+  const before = process.env.PINOKIO_SHARE_CLOUDFLARE;
+  process.env.PINOKIO_SHARE_CLOUDFLARE = '1';
+  t.after(() => {
+    if (before === undefined) delete process.env.PINOKIO_SHARE_CLOUDFLARE;
+    else process.env.PINOKIO_SHARE_CLOUDFLARE = before;
+  });
+  const mirror = 'http://100.64.0.1:4173';
+  const owner = {
+    remoteAddress: '100.64.0.10',
+    host: '100.64.0.1:4173',
+    origin: mirror,
+    headers: {
+      [OWNER_DEVICE_HEADER]: ownerToken,
+      [OWNER_DEVICE_AUTHORITY_HEADER]: mirror,
+    },
+  };
+  let starts = 0;
+  let mints = 0;
+  const plugin = openAiRealtimeProxy({
+    realtime: {
+      resolveOAuthAccessToken: () => 'fixture-oauth-token',
+      fetchImpl: async () => {
+        mints += 1;
+        return Response.json({ value: 'fixture-ephemeral' });
+      },
+      startOAuthLogin: async () => {
+        starts += 1;
+        return { completion: new Promise(() => {}), cancel() {} };
+      },
+    },
+  });
+  t.after(plugin.closeBundle);
+  const routes = install(plugin);
+  assert.equal(
+    (await request(routes.get('/api/realtime/oauth-status'), owner)).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request(routes.get('/api/realtime/oauth-login'), {
+        ...owner,
+        method: 'POST',
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request(routes.get('/api/realtime/token'), {
+        ...owner,
+        url: '/?auth=oauth',
+      })
+    ).status,
+    403,
+  );
+  assert.equal(starts, 0);
+  assert.equal(mints, 0);
+  // With sharing off the same stamp is admitted again.
+  delete process.env.PINOKIO_SHARE_CLOUDFLARE;
+  assert.equal(
+    (await request(routes.get('/api/realtime/oauth-status'), owner)).status,
+    200,
+  );
 });
 
 test('OAuth status reports local sign-in availability without returning the token', async () => {

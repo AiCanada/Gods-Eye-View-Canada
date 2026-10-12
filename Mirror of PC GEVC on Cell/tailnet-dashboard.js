@@ -6,9 +6,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  OWNER_DEVICE_READ_HEADER,
-  setOwnerDeviceReadToken,
+  OWNER_DEVICE_AUTHORITY_HEADER,
+  OWNER_DEVICE_HEADER,
+  isTailnetIPv4,
+  sendOwnerRemovalRefusal,
+  setOwnerDeviceToken,
 } from '../src/keySetupCore.mjs';
+import { hasProxySignals } from '../src/localRequestGate.mjs';
+
+// Moved to the core gate; re-exported so existing imports keep working.
+export { isTailnetIPv4 };
 
 /**
  * Mirror of PC GEVC on Cell: the PC's dashboard on the owner's own phone or
@@ -23,9 +30,13 @@ import {
  * Only the owner's own devices get in: Tailscale is asked who each caller is
  * (`tailscale whois`), and a device signed in as anyone else (another GEVC
  * user's shared machine, say) is refused everything, so nobody else can use
- * this machine's keys through it. The owner's device may READ the PC-only
- * status routes (POWER UP, Social Media, Ultra, private cameras); every change
- * still has to be made on the PC.
+ * this machine's keys through it. Every request from the owner's device is
+ * stamped with this process's in-memory token and the listener's own
+ * authority, so it gets what the PC gets, writes included (writes still need
+ * an exact Origin and JSON). Removing anything stored on the PC stays on the
+ * PC (owner ruling 2026-10-11: "full write access - except delete or
+ * remove"): the mirror refuses an owner's DELETE and the plain removal
+ * routes itself, and the gates behind it refuse the rest.
  *
  * Plain http: the tailnet already encrypts the link. A phone browser treats
  * the page as insecure, so voice, location and camera need the address listed
@@ -38,37 +49,58 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const VIEWPORT_SCRIPT_PATH = '/viewport-mode.js';
 const VIEWPORT_SCRIPT_FILE = path.join(HERE, 'viewport-mode.js');
 
+/** The read-only stamp the mirror used before; still stripped on entry. */
+const LEGACY_OWNER_DEVICE_READ_HEADER = 'x-gev-owner-device-read';
+
+/** Remove every owner-device stamp a caller may have sent. */
+function stripOwnerStamp(headers) {
+  if (!headers) return;
+  delete headers[OWNER_DEVICE_HEADER];
+  delete headers[OWNER_DEVICE_AUTHORITY_HEADER];
+  delete headers[LEGACY_OWNER_DEVICE_READ_HEADER];
+}
+
 /**
- * The PC-only reads the owner's phone may make (GET only). An entry ending
- * in "/" covers what lies under it (one camera's or one device's picture,
- * one device's saved route).
+ * POST routes whose only effect is removing something stored on the PC. The
+ * mirror refuses them for the owner's device before they reach the server
+ * (the routes refuse them too). Lower case, no trailing slash.
  */
-export const OWNER_DEVICE_READ_ROUTES = Object.freeze([
-  '/api/setup/status',
-  '/api/road-cctv-keys',
-  '/api/social/accounts',
-  '/api/ultra-help/status',
-  '/api/ultra-help/picture',
-  '/api/ultra-help/picture/',
-  '/api/private-cams/status',
-  '/api/private-cams/sources',
-  '/api/private-cams/frame/',
-  '/api/device-feeds/status',
-  '/api/device-feeds/positions',
-  '/api/device-feeds/track/',
+export const OWNER_DEVICE_REMOVAL_ROUTES = Object.freeze([
+  '/api/ultra-help/media/delete',
+  '/api/private-cams/relay/unpair',
 ]);
 
-/** True for an address in Tailscale's 100.64.0.0/10 range. */
-export function isTailnetIPv4(address) {
-  const parts = String(address || '')
-    .split('.')
-    .map(Number);
-  if (
-    parts.length !== 4 ||
-    parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)
-  )
-    return false;
-  return parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127;
+/**
+ * Whether the owner's device is asking to delete or remove something stored
+ * on the PC: every DELETE, and a POST to a plain removal route. One DELETE is
+ * not a removal: a road camera's live-stream lease release
+ * (`/api/cctv/media/<id>?lease=...`) only frees the viewer's own in-memory
+ * stream session, and refusing it would hold the PC's stream open.
+ */
+export function ownerRemovalRequest(method, url) {
+  const verb = String(method || '').toUpperCase();
+  if (verb !== 'DELETE' && verb !== 'POST') return false;
+  const raw = String(url || '/');
+  let parsed;
+  try {
+    // Joined, not resolved, so a path starting "//" stays a path.
+    parsed = new URL(
+      raw.startsWith('/') ? `http://localhost${raw}` : raw,
+      'http://localhost',
+    );
+  } catch {
+    return verb === 'DELETE';
+  }
+  const pathname = parsed.pathname
+    .toLowerCase()
+    .replace(/\/{2,}/g, '/')
+    .replace(/\/+$/, '');
+  if (verb === 'DELETE')
+    return !(
+      /^\/api\/cctv\/media\/[^/]+$/.test(pathname) &&
+      parsed.searchParams.has('lease')
+    );
+  return OWNER_DEVICE_REMOVAL_ROUTES.includes(pathname);
 }
 
 /** This machine's tailnet IPv4 address, or '' when Tailscale is not up. */
@@ -87,24 +119,6 @@ export function tailnetAddress(interfaces = os.networkInterfaces()) {
 export function tailnetDashboardEnabled(env = process.env) {
   return /^(?:1|true|yes|on)$/i.test(
     String(env?.[TAILNET_DASHBOARD_ENV] ?? '').trim(),
-  );
-}
-
-/** Whether a GET for this address is one of the owner's status reads. */
-export function ownerReadRoute(method, url) {
-  if (String(method || '').toUpperCase() !== 'GET') return false;
-  let pathname = '';
-  try {
-    pathname = new URL(String(url || '/'), 'http://localhost').pathname;
-  } catch {
-    return false;
-  }
-  if (pathname.includes('..')) return false;
-  const exact = pathname.replace(/\/+$/, '');
-  return OWNER_DEVICE_READ_ROUTES.some((route) =>
-    route.endsWith('/')
-      ? pathname.startsWith(route) && pathname.length > route.length
-      : exact === route,
   );
 }
 
@@ -133,8 +147,9 @@ function runTailscale(args) {
 
 /**
  * Who may come in: a caller signed in to Tailscale as the same user as this
- * machine. Answers are kept for a few minutes; when Tailscale cannot say, the
- * answer is no.
+ * machine, from a single untagged device that does not relay other hosts'
+ * traffic (see nodeIsShared). Answers are kept for a few minutes; when
+ * Tailscale cannot say, the answer is no.
  * @param {{ask?: (args: string[]) => Promise<any>, ttlMs?: number, now?: () => number}} [options]
  */
 export function createOwnerCheck({
@@ -148,7 +163,10 @@ export function createOwnerCheck({
     if (self && now() - self.at < ttlMs) return self.id;
     const status = await ask(['status', '--json']);
     const id = status?.Self?.UserID;
-    self = Number.isFinite(id) ? { id, at: now() } : null;
+    // A tagged PC has no single human owner (every tagged node shares one
+    // user ID), so nobody counts as its owner.
+    const tagged = (status?.Self?.Tags?.length ?? 0) > 0;
+    self = Number.isFinite(id) && !tagged ? { id, at: now() } : null;
     return self?.id ?? null;
   }
   return async function isOwnerDevice(address) {
@@ -162,7 +180,10 @@ export function createOwnerCheck({
     ]);
     const caller = who?.UserProfile?.ID;
     const ok =
-      Number.isFinite(owner) && Number.isFinite(caller) && owner === caller;
+      Number.isFinite(owner) &&
+      Number.isFinite(caller) &&
+      owner === caller &&
+      !nodeIsShared(who?.Node);
     seen.set(ip, { ok, at: now() });
     if (seen.size > 256) seen.delete(seen.keys().next().value);
     return ok;
@@ -170,12 +191,33 @@ export function createOwnerCheck({
 }
 
 /**
- * The tailnet listener's request handler: owners only; a status GET is
- * stamped with the read token; any stamp a caller sent is removed first.
+ * True when a whois node cannot stand for one owner device: it is tagged
+ * (tagged nodes share one user ID), or it relays other hosts' traffic as a
+ * subnet router or exit node (every device behind it would show up as the
+ * owner). An unknown node is treated the same way.
+ * @param {any} node
  */
-export function ownerOnlyHandler({ isOwnerDevice, token, next }) {
+export function nodeIsShared(node) {
+  if (!node || typeof node !== 'object') return true;
+  if ((node.Tags?.length ?? 0) > 0) return true;
+  if (Array.isArray(node.PrimaryRoutes) && node.PrimaryRoutes.length) {
+    return true;
+  }
+  const own = new Set((node.Addresses || []).map(String));
+  return (node.AllowedIPs || []).some((prefix) => !own.has(String(prefix)));
+}
+
+/**
+ * The tailnet listener's request handler: owners only. Any stamp a caller
+ * sent is removed first; then every request from the owner's device, on any
+ * method and path, is stamped with the token and the listener's authority,
+ * unless it carries proxy headers (those are refused further in). A removal
+ * from the owner's device is refused here with the PC-only message.
+ * @param {{isOwnerDevice: (address: string) => any, token?: string, authority?: string, next: Function}} options
+ */
+export function ownerOnlyHandler({ isOwnerDevice, token, authority, next }) {
   return (req, res) => {
-    delete req.headers[OWNER_DEVICE_READ_HEADER];
+    stripOwnerStamp(req.headers);
     Promise.resolve(isOwnerDevice(req.socket?.remoteAddress))
       .catch(() => false)
       .then((ok) => {
@@ -189,8 +231,16 @@ export function ownerOnlyHandler({ isOwnerDevice, token, next }) {
           );
           return;
         }
-        if (token && ownerReadRoute(req.method, req.url))
-          req.headers[OWNER_DEVICE_READ_HEADER] = token;
+        if (ownerRemovalRequest(req.method, req.url)) {
+          // No message (owner ruling 2026-10-11): the phone leaves the item
+          // as it is, since the PC still has it.
+          sendOwnerRemovalRefusal(res);
+          return;
+        }
+        if (token && authority && !hasProxySignals(req.headers || {})) {
+          req.headers[OWNER_DEVICE_HEADER] = token;
+          req.headers[OWNER_DEVICE_AUTHORITY_HEADER] = authority;
+        }
         next(req, res);
       });
   };
@@ -239,7 +289,7 @@ export function tailnetDashboardPlugin({
       const main = server.httpServer;
       if (!main) return;
       const token = crypto.randomBytes(32).toString('hex');
-      setOwnerDeviceReadToken(token);
+      setOwnerDeviceToken(token);
       const isOwnerDevice = ownerCheck || createOwnerCheck();
       let mirror = null;
       let retry = null;
@@ -266,12 +316,14 @@ export function tailnetDashboardPlugin({
           ownerOnlyHandler({
             isOwnerDevice,
             token,
+            authority: `http://${address}:${port}`,
             next: (req, res) => server.middlewares(req, res),
           }),
         );
         // Live reload: the page's websocket goes to the same handler as on
         // the PC, for the owner's devices only.
         mirror.on('upgrade', (req, socket, head) => {
+          stripOwnerStamp(req.headers);
           Promise.resolve(isOwnerDevice(req.socket?.remoteAddress))
             .catch(() => false)
             .then((ok) => {
@@ -293,7 +345,7 @@ export function tailnetDashboardPlugin({
       main.once('listening', open);
       main.once('close', () => {
         if (retry) clearTimeout(retry);
-        setOwnerDeviceReadToken('');
+        setOwnerDeviceToken('');
         mirror?.close();
       });
     },

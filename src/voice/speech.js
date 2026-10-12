@@ -506,6 +506,10 @@ export function planStepLabel(name, args = {}) {
       return 'Read the view';
     case 'get_current_view_state':
       return 'Check view state';
+    case 'list_ui_controls':
+      return 'Read the controls';
+    case 'use_ui_control':
+      return `${args.action === 'set' ? 'Set' : 'Press'} ${spokenLabel(args.label || args.ref || 'control', 32)}`;
     case 'frame_overhead':
       return `Frame ${spokenLabel(args.target || 'flights', 24)}`;
     default:

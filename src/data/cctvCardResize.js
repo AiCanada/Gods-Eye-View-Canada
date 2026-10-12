@@ -20,6 +20,19 @@ export const CCTV_CARD_SCALE_STORAGE_KEY = 'gev.cctv.cardScale';
 export const CCTV_CARD_CORNER_GRAB_PX = 20;
 /** A press that moves less than this is a click, not a drag. */
 const CLICK_TRAVEL_PX = 5;
+/** Two taps on the badge within this long are a double-tap. */
+const DOUBLE_TAP_MS = 300;
+/** The second tap of a double-tap lands within this of the first. */
+const DOUBLE_TAP_SLOP_PX = 24;
+
+/** An event's time, on the same clock for taps and double-clicks. */
+function eventTime(event) {
+  if (Number.isFinite(event?.timeStamp) && event.timeStamp > 0)
+    return event.timeStamp;
+  return typeof performance !== 'undefined' && performance.now
+    ? performance.now()
+    : Date.now();
+}
 
 /** A usable card scale, or 1 for anything that is not a number. */
 export function clampCardScale(value) {
@@ -143,6 +156,11 @@ export function bindCctvCardResize({
   if (!canvas || !container || typeof hitTest !== 'function') return () => {};
   let press = null;
   let cursorOwned = false;
+  /** The last finger tap on a badge, and the last double-tap there. */
+  let lastBadgeTap = null;
+  let badgeDoubleTapAt = -Infinity;
+  /** The finger of a double-tap's second tap, held back from the globe. */
+  let secondTap = null;
 
   const local = (event) => {
     const bounds = canvas.getBoundingClientRect();
@@ -176,6 +194,25 @@ export function bindCctvCardResize({
   const onDown = (event) => {
     if (press || event.button !== 0 || !isEnabled()) return;
     const { x, y } = local(event);
+    if (event.pointerType === 'touch' && lastBadgeTap) {
+      // The first tap stepped the size and may have grown the card out from
+      // under the finger. The second tap of a double-tap is held back, so it
+      // neither selects the camera nor zooms the globe: the same as the
+      // double-click the badge already swallows.
+      const at = eventTime(event);
+      const tap = lastBadgeTap;
+      lastBadgeTap = null;
+      if (
+        at - tap.at <= DOUBLE_TAP_MS &&
+        Math.hypot(x - tap.x, y - tap.y) <= DOUBLE_TAP_SLOP_PX
+      ) {
+        badgeDoubleTapAt = at;
+        secondTap = event.pointerId;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
     const found = cornerAt(x, y);
     if (!found) return;
     const { hit, corner } = found;
@@ -198,6 +235,11 @@ export function bindCctvCardResize({
     onDragStart?.();
   };
   const onMove = (event) => {
+    if (secondTap !== null && event.pointerId === secondTap) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const { x, y } = local(event);
     if (press) {
       event.preventDefault();
@@ -215,6 +257,12 @@ export function bindCctvCardResize({
     setCursor(isEnabled() ? cornerAt(x, y)?.corner || null : null);
   };
   const onUp = (event) => {
+    if (secondTap !== null && event.pointerId === secondTap) {
+      secondTap = null;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (!press || event.pointerId !== press.pointerId) return;
     event.preventDefault();
     event.stopPropagation();
@@ -227,12 +275,31 @@ export function bindCctvCardResize({
     // (Only the badge steps; a plain corner that was merely clicked changes nothing.)
     if (!press.dragged && press.corner === 'se')
       setScale(nextCardSizeStep(press.startScale));
+    if (
+      !press.dragged &&
+      press.corner === 'se' &&
+      event.pointerType === 'touch' &&
+      event.type !== 'pointercancel'
+    ) {
+      // Remembered for the second tap of a double-tap (see onDown).
+      lastBadgeTap = {
+        at: eventTime(event),
+        x: press.startX,
+        y: press.startY,
+      };
+    }
     press = null;
     saveCardScale(getScale(), storage);
     onDragEnd?.();
   };
   const swallowClick = (event) => {
     if (!isEnabled()) return;
+    if (eventTime(event) - badgeDoubleTapAt <= DOUBLE_TAP_MS * 2) {
+      badgeDoubleTapAt = -Infinity;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const { x, y } = local(event);
     if (!badgeAt(x, y)) return;
     event.preventDefault();

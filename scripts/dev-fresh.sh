@@ -249,6 +249,18 @@ if ! grep -q "return createApplicationCatalog(" "$SOURCE_ROOT/src/standalone/cat
 fi
 
 echo "Stopping all existing God's Eye View dev servers..."
+# The supervisor (npm run dev -> node scripts/dev-server.mjs) runs with a
+# relative path, so it is found by the pid it records, not by its command
+# line; the absolute pattern below still covers a supervisor started by hand.
+# It goes before Vite so it cannot relaunch the server mid-sweep.
+PID_RECORD="${ROOT_DIR}/node_modules/.vite/gev-dev-server.pid"
+if [[ -f "${PID_RECORD}" ]] && command -v node >/dev/null 2>&1; then
+  SUPERVISOR_PID="$(node -e 'try{const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const p=parseInt(r.supervisorPid,10);if(Number.isInteger(p)&&p>0)process.stdout.write(String(p))}catch{}' -- "${PID_RECORD}" 2>/dev/null || true)"
+  if [[ -n "${SUPERVISOR_PID}" ]]; then
+    kill "${SUPERVISOR_PID}" >/dev/null 2>&1 || true
+  fi
+fi
+pkill -f "${ROOT_DIR}/scripts/dev-server.mjs" >/dev/null 2>&1 || true
 pkill -f "${ROOT_DIR}/node_modules/.bin/vite" >/dev/null 2>&1 || true
 pkill -f "${ROOT_DIR}/node_modules/vite/bin/vite.js" >/dev/null 2>&1 || true
 

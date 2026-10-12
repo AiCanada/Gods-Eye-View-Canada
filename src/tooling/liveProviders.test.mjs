@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { promises as fsp } from 'node:fs';
 import { WebSocketServer } from 'ws';
 import { setTimeout as delay } from 'node:timers/promises';
 import * as providers from '../../server/providers/live.js';
@@ -434,4 +435,67 @@ test('track backfill proxy returns 502 on an oversized upstream body and caches 
   const res2 = await tracks('/api/flights/track', '?icao24=def456');
   assert.equal(res2.statusCode, 502);
   assert.equal(callCount, 1);
+});
+
+test('adsbdb proxies built by re-evaluated module copies share one cache and one flush timer', async (t) => {
+  // Vite re-bundles the config on an in-process restart, which evaluates
+  // this module again and builds the proxy again: the `?copy=` import is such
+  // a fresh evaluation, beside the copy the live entry imports.
+  delete globalThis.__GEV_ADSBDB_CACHE;
+  t.mock.method(fsp, 'readFile', async () => {
+    throw Error('no disk cache');
+  });
+  t.mock.method(fsp, 'writeFile', async () => {});
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    calls++;
+    assert.equal(url, 'https://api.adsbdb.com/v0/aircraft/abcdef');
+    return Response.json({
+      response: {
+        aircraft: {
+          icao_type: 'B738',
+          manufacturer: 'Boeing',
+          type: '737-800',
+          registration: 'C-FXTR',
+        },
+      },
+    });
+  });
+  try {
+    const href = new URL(
+      '../../server/providers/aircraft/enrichment.js',
+      import.meta.url,
+    ).href;
+    const restarted = await import(`${href}?copy=restart`);
+    assert.notEqual(restarted.adsbdbProxy, providers.adsbdbProxy);
+    const first = install(providers.adsbdbProxy());
+    const shared = globalThis.__GEV_ADSBDB_CACHE;
+    assert.ok(shared, 'the factory creates the shared state');
+    const again = install(restarted.adsbdbProxy());
+    assert.equal(globalThis.__GEV_ADSBDB_CACHE, shared, 'one state object');
+    const expected = {
+      found: true,
+      typeCode: 'B738',
+      typeName: 'Boeing 737-800',
+      registration: 'C-FXTR',
+    };
+    assert.deepEqual(
+      JSON.parse((await first('/api/adsbdb', '/type/abcdef')).body),
+      expected,
+    );
+    assert.equal(calls, 1);
+    const timer = shared.flushTimer;
+    assert.ok(timer, 'the first request starts the flush timer');
+    assert.deepEqual(
+      JSON.parse((await again('/api/adsbdb', '/type/abcdef')).body),
+      expected,
+    );
+    assert.equal(calls, 1, 'the restarted proxy serves from the shared cache');
+    assert.equal(globalThis.__GEV_ADSBDB_CACHE, shared);
+    assert.equal(shared.flushTimer, timer, 'one flush timer for the process');
+    assert.equal(Object.keys(shared.cache.aircraft).length, 1);
+  } finally {
+    clearInterval(globalThis.__GEV_ADSBDB_CACHE?.flushTimer);
+    delete globalThis.__GEV_ADSBDB_CACHE;
+  }
 });

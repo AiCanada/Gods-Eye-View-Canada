@@ -620,4 +620,14 @@ export const ACTION_DESCRIPTIONS = {
       'Predict the next pass in 24 hours for one satellite in the loaded catalog, identified by exact NORAD ID or name. Ambiguous names return candidates: ask for a choice rather than selecting one. Defaults to geometric passes; visibleOnly requires estimated illumination and a dark observer sky, which does not guarantee naked-eye visibility. Uses camera location unless coordinates are supplied.',
     $position: 1,
   },
+  list_ui_controls: {
+    description:
+      'Read-only: on-screen controls with ref, label, kind, panel and value. panelId includes a collapsed panel.',
+    $position: 1,
+  },
+  use_ui_control: {
+    description:
+      'Press, toggle or set any on-screen control by label or ref; opens its panel. value: option, on/off, number or text.',
+    $position: 1,
+  },
 };

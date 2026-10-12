@@ -5,6 +5,8 @@ import {
   keySetupStatus,
   validateKeySetupUpdates,
   upsertDotenvValues,
+  keySetupUpdatesRemove,
+  sendOwnerRemovalRefusal,
 } from '../../src/keySetupCore.mjs';
 import { defaultSourceRoot } from '../providers/common/source-root.js';
 import path from 'node:path';
@@ -88,6 +90,17 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot, onEnvSaved } = {}) {
     res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
     res.end(JSON.stringify(payload));
   };
+  // An owner device's removal: refused with no message (the key stays).
+  const refuseOwnerRemoval = (res) =>
+    sendOwnerRemovalRefusal(res, {
+      'X-Frame-Options': 'DENY',
+      'Content-Security-Policy': "frame-ancestors 'none'",
+    });
+  // A refused admission: an owner device's removal says nothing.
+  const refuseAdmission = (res, admission) =>
+    admission.removal === true
+      ? refuseOwnerRemoval(res)
+      : respond(res, admission.status, { error: admission.error });
   // Which store this launch owns. A Pinokio-managed launch (marker set by
   // scripts/pinokio-start.mjs) writes the app-scoped pinokio/ENVIRONMENT that
   // applyPinokioEnvironment() treats as authoritative; every other launch
@@ -204,16 +217,14 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot, onEnvSaved } = {}) {
         if (req.method !== 'GET')
           return respond(res, 405, { error: 'Method not allowed' });
         const admission = admit(req);
-        if (!admission.ok)
-          return respond(res, admission.status, { error: admission.error });
+        if (!admission.ok) return refuseAdmission(res, admission);
         respond(res, 200, providerStatus());
       });
       server.middlewares.use('/api/setup/keys', (req, res) => {
         if (req.method !== 'POST')
           return respond(res, 405, { error: 'Method not allowed' });
         const admission = admit(req);
-        if (!admission.ok)
-          return respond(res, admission.status, { error: admission.error });
+        if (!admission.ok) return refuseAdmission(res, admission);
         let body = '';
         let overflowed = false;
         req.on('data', (chunk) => {
@@ -234,6 +245,13 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot, onEnvSaved } = {}) {
           }
           const verdict = validateKeySetupUpdates(parsed);
           if (!verdict.ok) return respond(res, 400, { error: verdict.error });
+          // The owner's phone may save keys, but removing one stays on the PC.
+          if (
+            admission.ownerDevice === true &&
+            keySetupUpdatesRemove(verdict.updates)
+          ) {
+            return refuseOwnerRemoval(res);
+          }
           // Neither a replace NOR a removal may touch an externally-supplied
           // credential (shell env, Keychain, another workflow). This backs the
           // UI's read-only "configured externally" state with a real contract —

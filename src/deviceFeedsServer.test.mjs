@@ -17,6 +17,23 @@ import {
   fetchDeviceResource,
   isDeviceFeedStoreRequest,
 } from '../server/providers/device-feeds.js';
+import {
+  OWNER_DEVICE_AUTHORITY_HEADER,
+  OWNER_DEVICE_HEADER,
+  OWNER_DEVICE_REMOVAL_HEADER,
+  setOwnerDeviceToken,
+} from './keySetupCore.mjs';
+
+/** An owner removal's refusal: 403, the marker and the exact body, no message. */
+function assertPcOnly(answer, label) {
+  assert.equal(answer.status, 403, label);
+  const marker = Object.entries(answer.headers || {}).find(
+    ([name]) => name.toLowerCase() === OWNER_DEVICE_REMOVAL_HEADER,
+  );
+  assert.equal(marker?.[1], 'pc-only', label);
+  assert.equal(answer.bytes.toString('utf8'), '{"removal":"pc-only"}', label);
+  assert.equal(Object.hasOwn(answer.json(), 'error'), false, label);
+}
 
 const PAGE_ORIGIN = 'http://localhost:4173';
 const pageHeaders = (extra = {}) => ({
@@ -233,6 +250,193 @@ test('only this machine, only this page', async () => {
       })
     ).status,
     404,
+  );
+});
+
+test("the owner's phone adds, edits and records devices but never removes one; the PC still removes", async (t) => {
+  const OWNER_TOKEN = '7'.repeat(64);
+  const MIRROR = 'http://100.64.0.1:4173';
+  setOwnerDeviceToken(OWNER_TOKEN);
+  t.after(() => setOwnerDeviceToken(''));
+  const root = tempRoot();
+  const { request } = harness(
+    deviceFeedsProxy({
+      sourceRoot: root,
+      fetchImpl: async () =>
+        jsonAnswer([{ latitude: 45.27, longitude: -66.06 }]),
+    }),
+  );
+  // Placeholder tailnet addresses: the mirror's Host, Origin and stamp.
+  const stamp = {
+    host: '100.64.0.1:4173',
+    [OWNER_DEVICE_HEADER]: OWNER_TOKEN,
+    [OWNER_DEVICE_AUTHORITY_HEADER]: MIRROR,
+  };
+  const fromPhone = (url, options = {}) =>
+    request(url, {
+      remoteAddress: '100.64.0.10',
+      ...options,
+      headers: pageHeaders({ origin: MIRROR, ...stamp, ...options.headers }),
+    });
+  const tracker = {
+    kind: 'tracker',
+    name: 'Van',
+    method: 'traccar',
+    url: 'https://gps.example.com/',
+  };
+  const added = await fromPhone('/config', { method: 'POST', body: tracker });
+  assert.equal(added.status, 200, added.bytes.toString());
+  assert.equal(added.json().feedId, 'tracker-van');
+  const edited = await fromPhone('/config', {
+    method: 'POST',
+    body: { ...tracker, id: 'tracker-van', name: 'Work van', record: true },
+  });
+  assert.equal(edited.status, 200, edited.bytes.toString());
+  const status = await fromPhone('/status');
+  assert.equal(status.status, 200);
+  // The phone is a recorder too, as the PC's own page is.
+  assert.equal(status.json().recorder, true);
+  assert.equal(
+    status.json().kinds.find((kind) => kind.id === 'tracker').feeds[0].name,
+    'Work van',
+  );
+  assert.equal((await fromPhone('/positions')).status, 200);
+  assert.equal((await fromPhone('/track/device-tracker-van')).status, 200);
+
+  const refused = await fromPhone('/config', {
+    method: 'POST',
+    body: { removeFeedId: 'tracker-van' },
+  });
+  assertPcOnly(refused, 'removing a device');
+  // An HTTP DELETE is refused by the gate itself, with no message either.
+  assertPcOnly(
+    await fromPhone('/config', {
+      method: 'DELETE',
+      body: { removeFeedId: 'tracker-van' },
+    }),
+    'an HTTP DELETE',
+  );
+  const onDisk = JSON.parse(
+    fs.readFileSync(path.join(root, DEVICE_FEED_STORE), 'utf8'),
+  );
+  assert.deepEqual(
+    onDisk.feeds.map((feed) => feed.id),
+    ['tracker-van'],
+    'the device is still saved',
+  );
+  // Without the mirror's stamp the same phone is a stranger.
+  assert.equal(
+    (
+      await request('/status', {
+        remoteAddress: '100.64.0.10',
+        headers: pageHeaders({ origin: MIRROR, host: '100.64.0.1:4173' }),
+      })
+    ).status,
+    403,
+  );
+  // The PC's own page still removes it, and still records.
+  const pcStatus = await request('/status', {
+    headers: { 'sec-fetch-site': 'same-origin' },
+  });
+  assert.equal(pcStatus.json().recorder, true);
+  const removed = await request('/config', {
+    method: 'POST',
+    headers: pageHeaders(),
+    body: { removeFeedId: 'tracker-van' },
+  });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(root, DEVICE_FEED_STORE), 'utf8'))
+      .feeds,
+    [],
+  );
+});
+
+test("the owner's phone never clears a device's saved login or report key; a new key and the PC still may", async (t) => {
+  const OWNER_TOKEN = '8'.repeat(64);
+  const MIRROR = 'http://100.64.0.1:4173';
+  setOwnerDeviceToken(OWNER_TOKEN);
+  t.after(() => setOwnerDeviceToken(''));
+  const root = tempRoot();
+  const store = path.join(root, DEVICE_FEED_STORE);
+  const { request } = harness(
+    deviceFeedsProxy({
+      sourceRoot: root,
+      fetchImpl: async () =>
+        jsonAnswer([{ latitude: 45.27, longitude: -66.06 }]),
+    }),
+  );
+  const fromPhone = (body) =>
+    request('/config', {
+      method: 'POST',
+      remoteAddress: '100.64.0.10',
+      body,
+      headers: pageHeaders({
+        origin: MIRROR,
+        host: '100.64.0.1:4173',
+        [OWNER_DEVICE_HEADER]: OWNER_TOKEN,
+        [OWNER_DEVICE_AUTHORITY_HEADER]: MIRROR,
+      }),
+    });
+  const tracker = {
+    kind: 'tracker',
+    name: 'Van',
+    method: 'traccar',
+    url: 'https://gps.example.com/',
+    auth: 'basic',
+    username: 'me',
+    password: 'secret',
+  };
+  const added = await fromPhone(tracker);
+  assert.equal(added.status, 200, added.bytes.toString());
+  const reporter = { kind: 'tracker', name: 'Phone', method: 'report-in' };
+  const reported = await fromPhone(reporter);
+  assert.equal(reported.status, 200, reported.bytes.toString());
+  const saved = fs.readFileSync(store, 'utf8');
+
+  const cleared = await fromPhone({
+    ...tracker,
+    id: 'tracker-van',
+    auth: 'none',
+    password: null,
+  });
+  assertPcOnly(cleared, 'clearing a saved password');
+  const switched = await fromPhone({
+    ...reporter,
+    id: 'tracker-phone',
+    method: 'traccar',
+    url: 'https://gps.example.com/',
+  });
+  assertPcOnly(switched, 'the report key would be dropped');
+  assert.equal(fs.readFileSync(store, 'utf8'), saved, 'nothing written');
+
+  // A new report key replaces the old one: an overwrite, not a removal.
+  const before = JSON.parse(saved).feeds.find(
+    (feed) => feed.id === 'tracker-phone',
+  ).reportKey;
+  const renewed = await fromPhone({
+    ...reporter,
+    id: 'tracker-phone',
+    newReportKey: true,
+  });
+  assert.equal(renewed.status, 200, renewed.bytes.toString());
+  const after = JSON.parse(fs.readFileSync(store, 'utf8')).feeds.find(
+    (feed) => feed.id === 'tracker-phone',
+  ).reportKey;
+  assert.ok(after && after !== before);
+
+  // The PC's own page may still clear the password.
+  const pc = await request('/config', {
+    method: 'POST',
+    headers: pageHeaders(),
+    body: { ...tracker, id: 'tracker-van', auth: 'none', password: null },
+  });
+  assert.equal(pc.status, 200, pc.bytes.toString());
+  assert.equal(
+    JSON.parse(fs.readFileSync(store, 'utf8')).feeds.find(
+      (feed) => feed.id === 'tracker-van',
+    ).password,
+    '',
   );
 });
 
@@ -999,7 +1203,7 @@ test('the saved route comes back as points, oldest first, thinned, positions onl
     (await request('/track/device-tracker-van', { remoteAddress: '10.66.0.2' }))
       .status,
     403,
-    'loopback only, like positions',
+    "loopback or the owner's device, like positions",
   );
 
   // The poll tells the map a recording exists and when it last grew.

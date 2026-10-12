@@ -14,6 +14,12 @@ import {
   removeSocialLogin,
   saveSocialLogin,
 } from '../server/shared/socialAccounts.mjs';
+import {
+  OWNER_DEVICE_AUTHORITY_HEADER,
+  OWNER_DEVICE_HEADER,
+  OWNER_DEVICE_REMOVAL_HEADER,
+  setOwnerDeviceToken,
+} from './keySetupCore.mjs';
 
 const USER_ID = 'river.operator.handle';
 const SECRET = 's3al-check-value-not-a-platform-login';
@@ -217,7 +223,7 @@ test('the accounts route never returns the password', async (t) => {
   );
 });
 
-test('the accounts route takes a save only from this machine and this page', async (t) => {
+test('the accounts route takes a save only from this machine, the owner phone and this page', async (t) => {
   const root = tempRoot();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const handler = install(socialAccountsProxy({ sourceRoot: root })).get('/api/social/accounts');
@@ -251,6 +257,56 @@ test('the accounts route takes a save only from this machine and this page', asy
     (await request(handler)).json().accounts.map((row) => row.platform),
     ['x'],
   );
+});
+
+test('the owner phone saves and edits a login but never removes one; the PC still removes', async (t) => {
+  const root = tempRoot();
+  const OWNER_TOKEN = 'e'.repeat(64);
+  const MIRROR = 'http://100.64.0.1:4173';
+  setOwnerDeviceToken(OWNER_TOKEN);
+  t.after(() => {
+    setOwnerDeviceToken('');
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const handler = install(socialAccountsProxy({ sourceRoot: root })).get('/api/social/accounts');
+  // Placeholder tailnet addresses only: the mirror's Host, Origin and stamp.
+  const phone = {
+    host: '100.64.0.1:4173',
+    origin: MIRROR,
+    'content-type': 'application/json',
+    [OWNER_DEVICE_HEADER]: OWNER_TOKEN,
+    [OWNER_DEVICE_AUTHORITY_HEADER]: MIRROR,
+  };
+  const fromPhone = (options = {}) =>
+    request(handler, { headers: phone, remoteAddress: '100.64.0.10', ...options });
+  const saved = await fromPhone({
+    method: 'POST',
+    body: JSON.stringify({ platform: 'x', userId: USER_ID, password: SECRET }),
+  });
+  assert.equal(saved.status, 200, saved.body);
+  assert.equal(saved.body.includes(SECRET), false);
+  const edited = await fromPhone({
+    method: 'POST',
+    body: JSON.stringify({ platform: 'x', userId: 'river.second.handle', password: SECRET }),
+  });
+  assert.equal(edited.status, 200, edited.body);
+  assert.equal(edited.json().userId, 'river.second.handle');
+  const listed = await fromPhone();
+  assert.equal(listed.status, 200);
+  assert.deepEqual(listed.json().accounts.map((row) => row.platform), ['x']);
+  const refused = await fromPhone({ method: 'DELETE', body: JSON.stringify({ platform: 'x' }) });
+  // Refused with no message: the marker header and the exact body.
+  assert.equal(refused.status, 403);
+  assert.equal(refused.headers[OWNER_DEVICE_REMOVAL_HEADER], 'pc-only');
+  assert.equal(refused.body, '{"removal":"pc-only"}');
+  assert.equal(Object.hasOwn(refused.json(), 'error'), false);
+  assert.equal(openSocialLogin(root, 'x').userId, 'river.second.handle', 'the login is still saved');
+  // Without the mirror's stamp the same phone is a stranger.
+  const { [OWNER_DEVICE_HEADER]: _token, ...unstamped } = phone;
+  assert.equal((await fromPhone({ headers: unstamped })).status, 403);
+  const removed = await request(handler, { method: 'DELETE', body: JSON.stringify({ platform: 'x' }) });
+  assert.equal(removed.status, 200);
+  assert.deepEqual((await request(handler)).json().accounts, []);
 });
 
 test('an API key is sealed beside the login, saved alone or with it, and never listed', () => {

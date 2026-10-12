@@ -223,6 +223,16 @@ function streamingMessage(mode) {
     : 'Receiving broadcast FM';
 }
 
+// Chrome gives no location on a plain http page such as the phone mirror.
+const INSECURE_ORIGIN_HINT =
+  'Allow this address under chrome://flags Insecure origins treated as secure (see Mirror README).';
+
+function withInsecureOriginHint(message) {
+  return globalThis.isSecureContext === false
+    ? `${message}. ${INSECURE_ORIGIN_HINT}`
+    : message;
+}
+
 /**
  * Browser-local RTL-SDR session shared by the FM controls and the Local ADS-B
  * layer. `state.aircraft` holds source-agnostic records from
@@ -1268,7 +1278,7 @@ export class SdrController {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       this._setState({
         locationStatus: 'unavailable',
-        message: 'Browser location is unavailable',
+        message: withInsecureOriginHint('Browser location is unavailable'),
       });
       return false;
     }
@@ -1295,7 +1305,7 @@ export class SdrController {
       console.warn('[SDR] Receiver location failed:', error);
       this._setState({
         locationStatus: 'denied',
-        message: 'Receiver location was not granted',
+        message: withInsecureOriginHint('Receiver location was not granted'),
       });
       return false;
     }

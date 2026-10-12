@@ -43,6 +43,14 @@ import {
   outbreakForecastQuestion,
   outbreakForecastScene,
   parseForecastLines,
+  OUTBREAK_FORECAST_BOUNDS,
+  OUTBREAK_FORECAST_HORIZONS,
+  OUTBREAK_FORECAST_WINDOWS,
+  cleanForecastHorizon,
+  cleanForecastWithin,
+  forecastWindowLabel,
+  forecastWindowStart,
+  forecastWindows,
 } from './outbreakCore.mjs';
 
 const HOUR = 3_600_000;
@@ -121,6 +129,21 @@ test('each way of travel reaches speed × hours; boat only near water, train onl
   assert.deepEqual(
     dry.rings.map((r) => r.mode),
     ['road'],
+  );
+  // No station found, but a rail network starts near (the world rail,
+  // owner ruling 2026-10-12): the train reaches along it all the same.
+  const railed = outbreakSpread({
+    locations: [irkutsk],
+    surroundings: { irkutsk: { rail: false, water: false } },
+    networks: { irkutsk: { rail: true } },
+    speeds: { train: 60 },
+    startMs: START,
+    hour: 48,
+  });
+  assert.deepEqual(
+    railed.reaches.map((r) => [r.mode, r.km]),
+    [['train', 2880]],
+    'along the rail, uncut: 48 h at 60 km/h',
   );
   const hidden = outbreakSpread({
     locations: [irkutsk],
@@ -294,6 +317,126 @@ test('past the present, a place forecast within 48 h shows only from +24 h on', 
     ['Ulan-Ude, Russia', 'Chita, Russia'],
     '+24 h: both',
   );
+});
+
+test('FUTURE SPREAD LOCATIONS reaches up to 30 days in windows, each asked for after the last', () => {
+  assert.deepEqual(
+    OUTBREAK_FORECAST_HORIZONS,
+    [24, 48, 72, 120, 168, 336, 504, 720],
+  );
+  assert.deepEqual(OUTBREAK_FORECAST_BOUNDS, [24, 48, 72, 168, 336, 720]);
+  assert.deepEqual(
+    OUTBREAK_FORECAST_WINDOWS,
+    [24, 48, 72, 168, 336, 720],
+    'the default reaches the full 30 days',
+  );
+  assert.equal(cleanForecastHorizon(undefined), 720);
+  assert.equal(cleanForecastHorizon('720'), 720);
+  assert.equal(cleanForecastHorizon(1000), 720);
+  assert.deepEqual(forecastWindows(24), [24]);
+  assert.deepEqual(forecastWindows(120), [24, 48, 72, 120]);
+  assert.deepEqual(forecastWindows(504), [24, 48, 72, 168, 336, 504]);
+  assert.deepEqual(forecastWindows(720), [24, 48, 72, 168, 336, 720]);
+  assert.deepEqual(
+    [undefined, null, 0, -5, 'x', 24, 36, 48, 100, 168, 9999].map(
+      cleanForecastWithin,
+    ),
+    [24, 24, 24, 24, 24, 24, 48, 48, 120, 168, 720],
+  );
+  assert.deepEqual(
+    [24, 48, 72, 120, 168, 504, 720].map(forecastWindowStart),
+    [0, 24, 48, 72, 72, 336, 336],
+  );
+  assert.deepEqual([24, 48, 72, 168, 720].map(forecastWindowLabel), [
+    '24 H',
+    '48 H',
+    '3 D',
+    '7 D',
+    '30 D',
+  ]);
+
+  assert.doesNotMatch(outbreakForecastQuestion(48), /less certain/);
+  assert.doesNotMatch(outbreakForecastQuestion(48), /to the end of the period/);
+  const three = outbreakForecastQuestion(72);
+  assert.match(three, /in the period 48 hours to 3 days from now./);
+  assert.match(
+    three,
+    /SCENE.outbreakForecast.predictedEarlier lists the places already predicted/,
+  );
+  assert.match(three, /much less certain/);
+  assert.match(three, /each route taken to fly daily to the end of the period/);
+  assert.match(
+    outbreakForecastQuestion(168),
+    /in the period 3 to 7 days from now/,
+  );
+  assert.match(
+    outbreakForecastQuestion(720),
+    /in the period 14 to 30 days from now/,
+  );
+  assert.match(
+    outbreakForecastQuestion(720, '', {}, { from: 0 }),
+    /within the next 30 days./,
+  );
+  assert.match(
+    outbreakForecastQuestion(504, '', {}, { from: 168 }),
+    /in the period 7 to 21 days from now/,
+  );
+
+  const rows = parseForecastLines('Chita, Russia | UITA | LOW | flights', 168);
+  assert.equal(rows[0].within, 168);
+  assert.equal(
+    parseForecastLines('Chita, Russia | UITA | LOW | x', undefined)[0].within,
+    24,
+  );
+  assert.equal(
+    parseForecastLines('Chita, Russia | UITA | LOW | x', 5000)[0].within,
+    720,
+  );
+
+  const scene = outbreakForecastScene({
+    locations: [{ name: 'Irkutsk' }],
+    spread: { destinations: [], rings: [] },
+    speeds: {},
+    flights: [],
+    candidates: [],
+    articles: [],
+    earlier: [{ place: 'Ulan-Ude, Russia' }, { place: 'Chita, Russia' }],
+  });
+  assert.deepEqual(scene.outbreakForecast.predictedEarlier, [
+    'Ulan-Ude, Russia',
+    'Chita, Russia',
+  ]);
+  assert.equal('predictedWithin24h' in scene.outbreakForecast, false);
+});
+
+test('past the present, a place forecast within 7 days shows only from +3 days on, and old saves still draw', () => {
+  const forecast = [
+    { name: 'Ulan-Ude, Russia', lat: 51.83, lon: 107.6, within: 24 },
+    { name: 'Chita, Russia', lat: 52.03, lon: 113.5, within: 48 },
+    { name: 'Moscow, Russia', lat: 55.75, lon: 37.62, within: 168 },
+    { name: 'Tomsk, Russia', lat: 56.5, lon: 84.97, within: 720 },
+    { name: 'Omsk, Russia', lat: 54.99, lon: 73.37 },
+  ];
+  const at = (hour) =>
+    outbreakSpread({
+      locations: [],
+      forecast,
+      present: 49,
+      startMs: START,
+      hour,
+    }).forecast.map((f) => [f.name, f.within]);
+  assert.deepEqual(at(49).length, 5, 'the present shows them all');
+  assert.deepEqual(at(49).at(-1), ['Omsk, Russia', 24], 'no window is 24 h');
+  assert.deepEqual(
+    at(49 + 71).map(([name]) => name),
+    ['Ulan-Ude, Russia', 'Chita, Russia', 'Omsk, Russia'],
+  );
+  assert.deepEqual(
+    at(49 + 72).map(([name]) => name),
+    ['Ulan-Ude, Russia', 'Chita, Russia', 'Moscow, Russia', 'Omsk, Russia'],
+  );
+  assert.equal(at(49 + 335).length, 4);
+  assert.equal(at(49 + 336).length, 5, '+14 days: the 30-day place too');
 });
 
 test('an airport that has had it an hour sends it out on every flight: its scanned routes daily, or normal traffic with no data', () => {
@@ -884,8 +1027,40 @@ test('with the roads after landing known, no red circle round each landing airpo
   assert.equal(roads.destinations.length, 1, 'the landing dot stays');
   assert.match(
     spreadSummary(roads).join('\n'),
-    /roads out of each light up light red/,
+    /roads out of each light up green/,
   );
+});
+
+test('the rail after landing is lit only with planes and trains both shown', () => {
+  const flight = cleanFlight({
+    from: { code: 'UIII', lat: 52.268, lon: 104.389 },
+    to: { code: 'LFPG', name: 'Charles de Gaulle', lat: 49.01, lon: 2.55 },
+    departMs: START + HOUR,
+    arriveMs: START + 10 * HOUR,
+  });
+  const at = (airRails, shown = {}) =>
+    outbreakSpread({
+      locations: [],
+      flights: [flight],
+      startMs: START,
+      hour: 30,
+      airRoads: true,
+      airRails,
+      shown,
+    });
+  const both = at(true);
+  assert.equal(both.airRails, true);
+  assert.equal(both.airRoads, true, 'the roads after landing unchanged');
+  assert.match(
+    spreadSummary(both).join('\n'),
+    /rail lines out of each light up orange/,
+  );
+  assert.equal(at(false).airRails, false, 'not known yet');
+  assert.equal(at(undefined).airRails, false, 'not passed');
+  assert.equal(at(true, { train: false }).airRails, false, 'trains hidden');
+  assert.equal(at(true, { train: false }).airRoads, true);
+  assert.equal(at(true, { plane: false }).airRails, false, 'planes hidden');
+  assert.doesNotMatch(spreadSummary(at(false)).join('\n'), /rail lines out/);
 });
 
 test('each landing airport counts the infected flights that have landed there by the hour', () => {

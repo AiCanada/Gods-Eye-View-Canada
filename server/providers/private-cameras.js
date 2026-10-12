@@ -9,7 +9,10 @@ import {
   randomInt,
   timingSafeEqual,
 } from 'node:crypto';
-import { admitKeySetupRequest } from '../../src/keySetupCore.mjs';
+import {
+  admitKeySetupRequest,
+  sendOwnerRemovalRefusal,
+} from '../../src/keySetupCore.mjs';
 import { replaceCredentialStore } from '../shared/keySetupHardening.mjs';
 import {
   applyPrivateCameraUpdate,
@@ -448,6 +451,43 @@ export function privateFetchSiteAllowed(headers = {}) {
 }
 
 /**
+ * Stored fields whose loss is a removal: logins, the certificate pin and the
+ * relay pairing.
+ */
+const PRIVATE_CAMERA_REMOVABLE_FIELDS = [
+  'token',
+  'password',
+  'username',
+  'tlsFingerprint',
+  'relayExtensionId',
+  'relaySecretHash',
+];
+
+/**
+ * Whether saving `next` over `previous` would delete or remove something
+ * stored on this machine: a site, a camera of a site, a saved login (token,
+ * username or password), a pinned certificate fingerprint, or a relay pairing. Adding, editing and overwriting with a new
+ * value are not removals. Used to keep removals on the PC for the owner's
+ * device (owner ruling 2026-10-11: "full write access - except delete or
+ * remove anything on pc server").
+ */
+export function privateCameraUpdateRemoves(previous, next) {
+  const before = normalizePrivateCameraConfig(previous).sites;
+  const after = new Map(
+    normalizePrivateCameraConfig(next).sites.map((site) => [site.id, site]),
+  );
+  for (const site of before) {
+    const kept = after.get(site.id);
+    if (!kept) return true;
+    const cameraIds = new Set(kept.cameras.map((camera) => camera.id));
+    if (site.cameras.some((camera) => !cameraIds.has(camera.id))) return true;
+    for (const field of PRIVATE_CAMERA_REMOVABLE_FIELDS)
+      if (site[field] && !kept[field]) return true;
+  }
+  return false;
+}
+
+/**
  * Admission for the GEV Private_CCTV_Feed Relay's own routes. Locality is exactly the
  * Provider Settings gate (loopback socket, local Host, no proxy or forwarding
  * headers, no sharing mode). On top of that only a browser extension's service
@@ -470,7 +510,7 @@ export function admitRelayRequest(req) {
     return {
       ok: false,
       status: locality.status,
-      error: locality.error.replace(
+      error: String(locality.error || 'Refused').replace(
         'Provider Settings',
         'The Private_CCTV_Feed relay',
       ),
@@ -480,6 +520,10 @@ export function admitRelayRequest(req) {
     status: 403,
     error: 'The Private_CCTV_Feed relay answers only its browser extension',
   };
+  // The extension runs on this machine. The owner's phone through the tailnet
+  // mirror is never it: a page it navigates to straight away is labelled
+  // Sec-Fetch-Site none and carries no Origin, which the GET rule below admits.
+  if (locality.ownerDevice) return refused;
   if (headers['sec-fetch-site'] !== 'none') return refused;
   const origin = headers.origin;
   const match =
@@ -857,6 +901,13 @@ export function privateCamerasProxy({
     });
     res.end(JSON.stringify(payload));
   };
+  /** An owner device's removal: refused with no message, the item stays. */
+  const refuseOwnerRemoval = (res) =>
+    sendOwnerRemovalRefusal(res, {
+      ...SECURITY_HEADERS,
+      'X-Frame-Options': 'DENY',
+      'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+    });
 
   /** Answer a relay request without reading its body: the connection is dropped, not drained. */
   const relayRefuse = (req, res, status, payload) => {
@@ -1375,6 +1426,8 @@ export function privateCamerasProxy({
         proxyHeaders: req.headers || {},
         env: process.env,
       });
+      if (!admission.ok && admission.removal === true)
+        return refuseOwnerRemoval(res);
       if (!admission.ok)
         return respondJson(res, admission.status, {
           error: admission.error.replace(
@@ -1410,6 +1463,12 @@ export function privateCamerasProxy({
           const verdict = applyPrivateCameraUpdate(read.value, previous);
           if (!verdict.ok)
             return respondJson(res, 400, { error: verdict.error });
+          // Removing a site, a camera, a saved login or a pairing stays on the PC.
+          if (
+            admission.ownerDevice &&
+            privateCameraUpdateRemoves(previous, verdict.config)
+          )
+            return refuseOwnerRemoval(res);
           saveConfig(verdict.config);
           failures.clear();
           forgetRelayChanges(previous, verdict.config);
@@ -1491,6 +1550,8 @@ export function privateCamerasProxy({
           });
         }
         if (url.pathname === '/relay/unpair' && req.method === 'POST') {
+          // Unpairing removes the saved pairing: done on the PC only.
+          if (admission.ownerDevice) return refuseOwnerRemoval(res);
           if (!allowEdit)
             return respondJson(res, 403, {
               error:

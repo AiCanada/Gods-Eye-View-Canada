@@ -19,6 +19,11 @@
  */
 
 import { DEVICE_FEEDS_CHANGED_EVENT } from './deviceFeedsCore.mjs';
+import {
+  isOwnerRemovalRefusal,
+  noteOwnerRemovalRefusal,
+  watchOwnerRemoval,
+} from './ui/ownerRemoval.js';
 
 export { DEVICE_FEEDS_CHANGED_EVENT };
 
@@ -217,14 +222,23 @@ export function initDeviceFeedSetup({
   };
 
   const post = async (body) => {
-    const response = await doFetch(CONFIG_ENDPOINT, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: lifetime.signal,
-    });
+    const response = await watchOwnerRemoval(
+      doFetch(CONFIG_ENDPOINT, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: lifetime.signal,
+      }),
+    );
     const payload = await response.json().catch(() => ({}));
+    if (isOwnerRemovalRefusal(response, payload)) {
+      // Only the PC removes: callers put the note back and say nothing.
+      noteOwnerRemovalRefusal();
+      const refused = new Error('');
+      refused.ownerRemoval = true;
+      throw refused;
+    }
     if (!response.ok)
       throw new Error(payload.error || `HTTP ${response.status}`);
     return payload;
@@ -522,6 +536,7 @@ export function initDeviceFeedSetup({
 
     saveButton.addEventListener('click', async () => {
       if (saveButton.disabled) return;
+      const before = note.textContent;
       note.textContent = 'Saving…';
       saveButton.disabled = true;
       try {
@@ -558,7 +573,11 @@ export function initDeviceFeedSetup({
         render(payload.status);
         announce(payload.status);
       } catch (error) {
-        note.textContent = error?.message || 'Not saved';
+        // The owner's phone: what is saved stays saved, and the note is as it
+        // was. What was typed stays in the fields.
+        note.textContent = error?.ownerRemoval
+          ? before
+          : error?.message || 'Not saved';
         saveButton.disabled = false;
       }
     });
@@ -598,13 +617,17 @@ export function initDeviceFeedSetup({
         )
       )
         return;
+      const before = note.textContent;
       note.textContent = 'Removing…';
       try {
         const payload = await post({ removeFeedId: feed.id });
         render(payload.status);
         announce(payload.status);
       } catch (error) {
-        note.textContent = error?.message || 'Not removed';
+        // The owner's phone: the device stays and the note is as it was.
+        note.textContent = error?.ownerRemoval
+          ? before
+          : error?.message || 'Not removed';
       }
     });
 

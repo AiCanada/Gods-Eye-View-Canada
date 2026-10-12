@@ -1955,7 +1955,8 @@ export class SceneDirector {
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(url);
+    // Revoke later, not now: a phone may still be reading the blob.
+    globalThis.setTimeout(() => URL.revokeObjectURL(url), 1000);
     this._presentation.status = 'Project exported';
     this._publish({ type: 'project-exported', project: this._project });
   }
@@ -2046,7 +2047,8 @@ export class SceneDirector {
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(url);
+    // Revoke later, not now: a phone may still be reading the blob.
+    globalThis.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   /**

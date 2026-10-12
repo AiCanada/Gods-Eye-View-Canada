@@ -9,6 +9,7 @@ import {
 import { localProviderPlugins } from '../providers/local.js';
 import { localMcpPlugin } from '../mcp/plugin.js';
 import { apiNotFoundPlugin } from './api-not-found.js';
+import { healthPlugin } from './health.js';
 import { routeGuardPlugin } from './route-guard.js';
 import { singleInstancePlugin } from './single-instance.js';
 import { standaloneVoiceTools } from './voiceTools.js';
@@ -30,6 +31,8 @@ export default defineConfig(({ command, mode }) => {
       // Stops the previous dev server of this checkout before the port is taken.
       singleInstancePlugin({ root }),
       routeGuardPlugin(),
+      // `/__gev/health` for the supervisor's liveness probe (dev only).
+      healthPlugin(),
       ...localProviderPlugins({ realtime: { tools: standaloneVoiceTools() } }),
       localMcpPlugin(),
       apiNotFoundPlugin(),

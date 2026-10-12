@@ -14,6 +14,11 @@
  * the server, behind explicit keys, and this box only reads its outcome.
  */
 import { ULTRA_MEDIA_VIEW_EVENT } from './data/ultraMediaOverlay.js';
+import {
+  isOwnerRemovalRefusal,
+  noteOwnerRemovalRefusal,
+  watchOwnerRemoval,
+} from './ui/ownerRemoval.js';
 import { showUltraMediaInCctv } from './ui/cctvUltraMediaView.js';
 import { formatAskLogEntry, prependOutputLog } from './askOverview.js';
 import {
@@ -1466,6 +1471,47 @@ function rememberReadAloud(checked) {
   }
 }
 
+/**
+ * Whether an Ultra panel POST asks to remove something: the client copy of
+ * the server's ultraOwnerRemoval rule. Only these requests are watched for a
+ * pc-only refusal, so a spoken press of any other button (UPDATE, TEST SMS,
+ * SEND HELP) is answered at once rather than held for the server's reply.
+ * A `me` save is always watched: the server strips hidden characters before
+ * it decides whether the name is empty, and that write is local and quick.
+ * @param {string} action
+ * @param {Record<string, unknown> | null | undefined} body
+ * @returns {boolean}
+ */
+export function ultraPostRemoves(action, body) {
+  const ask = body && typeof body === 'object' ? body : {};
+  switch (action) {
+    case 'media/delete':
+      return true;
+    case 'contacts':
+      return Boolean(ask.remove);
+    case 'tokens':
+      if (ask.reset) return true;
+      if (ask.reveal || ask.edit) return false;
+      return Boolean(ask.revoke || ask.remove || ask.purge);
+    case 'network':
+      if (ask.me) return true;
+      if (ask.add) return false;
+      return Boolean(ask.remove);
+    case 'inbox':
+      return Boolean(ask.clear || ask.remove);
+    case 'number':
+      return (
+        ask.number === null ||
+        ask.number === undefined ||
+        String(ask.number).trim() === ''
+      );
+    case 'needs':
+      return ask.needs === null;
+    default:
+      return false;
+  }
+}
+
 export function initUltraHelpPanel({
   documentRef = document,
   fetchImpl = fetch,
@@ -1635,7 +1681,8 @@ export function initUltraHelpPanel({
       pathLabel.appendChild(pathName);
       row.appendChild(pathLabel);
       /* RECORD WITHIN: what this cell saves around it as it moves, up to
-       * 50 km, or nothing. Saved on the PC; read-only on a phone. */
+       * 50 km, or nothing. Read-only only when editing is off on this
+       * server (preview build). */
       const record = documentRef.createElement('select');
       record.className = 'ultra-cell-record';
       record.dataset.ultraCellRecord = cell.id;
@@ -1692,7 +1739,7 @@ export function initUltraHelpPanel({
       note.hidden = !(status?.editable === false || !cells.length);
       note.textContent =
         status?.editable === false
-          ? 'Ultra cells are added on the PC.'
+          ? 'Editing is off on this server (preview build).'
           : 'No Ultra cell yet: name one and press + ADD ULTRA CELL.';
     }
   };
@@ -1815,20 +1862,32 @@ export function initUltraHelpPanel({
     if (disposed) return null;
     let response;
     try {
-      response = await fetchImpl(`/api/ultra-help/${action}`, {
+      const request = fetchImpl(`/api/ultra-help/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      response = await (ultraPostRemoves(action, body)
+        ? watchOwnerRemoval(request)
+        : request);
     } catch {
       return unanswered(action, body);
     }
     if (!response.ok) {
+      /* Only the PC removes: the phone's removal is a quiet no-op,
+       * with no status line and no notice for the poll to repaint. */
+      if (isOwnerRemovalRefusal(response)) return null;
       let error = 'Request refused';
+      let refused = null;
       try {
-        error = (await response.json())?.error || error;
+        refused = await response.json();
+        error = refused?.error || error;
       } catch {
         /* Keep the fallback line. */
+      }
+      if (isOwnerRemovalRefusal(response, refused)) {
+        noteOwnerRemovalRefusal();
+        return null;
       }
       say(error);
       return null;
@@ -2711,12 +2770,27 @@ export function initUltraHelpPanel({
     }
     disarmDelete();
     try {
-      const response = await fetchImpl('/api/ultra-help/media/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(all ? { all: true } : { names }),
-      });
+      const response = await watchOwnerRemoval(
+        fetchImpl('/api/ultra-help/media/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(all ? { all: true } : { names }),
+        }),
+      );
       if (!response.ok) {
+        // Only the PC removes: on the owner's phone this is a quiet
+        // no-op, and the ticks and the DELETE ALL box stay as they were.
+        if (isOwnerRemovalRefusal(response)) return;
+        let refused = null;
+        try {
+          refused = await response.json();
+        } catch {
+          /* Keep the fallback line. */
+        }
+        if (isOwnerRemovalRefusal(response, refused)) {
+          noteOwnerRemovalRefusal();
+          return;
+        }
         say('DELETE refused');
         return;
       }

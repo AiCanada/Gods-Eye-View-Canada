@@ -98,7 +98,11 @@ ends its plea card ages out like any other) — except while this phone's own ca
 is on, when the page never speaks (what it was saying stops) and, for a THREAT,
 never vibrates — before any camera
 command in the same answer is applied. The owner routes (`/api/ultra-help/tokens`,
-`/number`, `/inbox`) answer only this machine and refuse edits under preview.
+`/number`, `/inbox`) answer only this machine or the owner's Tailscale device
+and refuse edits under preview. From the owner's device every removal (media
+delete, token reset, revoke or remove, contact, home-list or inbox removal,
+clearing the number or the HELP DELIVERY default) answers 403 "Removing is
+done on the PC"; adding, editing, minting, SEND HELP and STAND DOWN work.
 `/api/ultra-help/picture` and `/live` are the newest phone's picture and
 stream, for the box. With a package's public id after them
 (`/picture/device-<package id>`, `/live/device-<package id>`) they are that
@@ -296,6 +300,37 @@ check beside one that has a check is still trusted. Replacing the key and then
 saving one section fail-closes the others until they are saved again. A missing
 or invalid key file trusts them, and a save while the key file is invalid
 leaves that section's check off.
+
+## Mirror of PC GEVC on Cell — October 11, 2026
+
+With `GEV_TAILNET_DASHBOARD=1` the dev server also listens on this machine's
+Tailscale IPv4 address (`Mirror of PC GEVC on Cell/tailnet-dashboard.js`).
+Only devices `tailscale whois` names as the owner's account get in; anyone
+else gets 403 and a closed websocket. The mirror removes any caller-sent
+owner stamp, then stamps every owner request with an in-memory 32-byte token
+and its own `http://<tailnet IP>:<port>`. `ownerDeviceAuthority` and
+`isOwnerDeviceRequest` in `src/keySetupCore.mjs` accept that stamp only from a
+tailnet socket whose Host matches, with no proxy headers and no sharing, and
+`admitKeySetupRequest` then returns `ownerDevice: true`. Writes from the
+owner's device need the exact mirror Origin and JSON.
+
+The owner's phone has every PC function: POWER UP keys and logins, road CCTV
+keys, Social Media logins and the Grok Bot hand-off, the Ultra box (tokens,
+contacts, number, home list, SEND HELP, STAND DOWN), private cameras and
+relay approval, device feeds and recording (`/status` reports
+`recorder: true`, and the server keeps one line per device every 10 seconds),
+CCTV alignment saves, ChatGPT OAuth voice and `/mcp`. ChatGPT sign-in and OPEN
+GROK BOT run on the PC. By owner ruling, removing or deleting anything stored
+on the PC stays PC-only: the mirror refuses every owner `DELETE` (except a
+road camera's live-stream lease release, which frees only an in-memory
+session) and `POST` `/api/ultra-help/media/delete` and
+`/api/private-cams/relay/unpair`, and the routes refuse the removals sent as
+saves (a POWER UP key clear, `keySetupUpdatesRemove`; Ultra `ultraOwnerRemoval`, private-camera `privateCameraUpdateRemoves`,
+device `removeFeedId`, the CCTV alignment `DELETE`, and owner MCP tool calls),
+each with 403, the header `X-GEV-Removal: pc-only` and the body
+`{"removal":"pc-only"}` and no error text (owner ruling 2026-10-11: "no
+message"; `sendOwnerRemovalRefusal` in `src/keySetupCore.mjs`). The PC
+loopback path still removes. The private camera relay extension routes still answer only the PC.
 
 ## Observed weather, wind, and cyclones
 
@@ -1231,7 +1266,9 @@ that place, and the question's place line carries the map point too:
 "Current map place: Saint John, New Brunswick (45.2731, -66.0633)." The account route is `GET`, `POST`, and
 `DELETE /api/social/accounts`. It answers only this machine's own page, as
 POWER UP does: a loopback socket, a local Host, an exact local Origin, and JSON
-on a save.
+on a save; or the owner's Tailscale device, which may save and edit a login
+but whose `DELETE` answers 403 with no message (`X-GEV-Removal: pc-only`,
+`{"removal":"pc-only"}`).
 
 Analyze can name all platforms or one of Facebook, Instagram, Threads, X,
 Truth Social, Snapchat, and TikTok. Breaking News is Facebook, Instagram,
@@ -1300,7 +1337,8 @@ Tailscale `100.64.x.x`, or https on a `.ts.net` name). When it is (and its
 settings were not changed by hand since POWER UP saved them), the press
 is one `POST /api/social/swarm/grok-bot`: the Chief of Staff task goes to
 that computer, the box waits for the report, and the report lands in the
-log. Only this machine's own page may call it (POWER UP's gate). BOT picks
+log. Only this machine's own page or the owner's Tailscale device may call
+it (POWER UP's gate). BOT picks
 the bot by id or name (`Chief-of-Staff` matches Chief of Staff); a BOT that
 is not there is refused, never sent to another bot; empty means Chief of
 Staff, else the first bot. A report counts only once the bot has stopped
@@ -1328,6 +1366,55 @@ only on a request it will send (14 bots a minute from one address), refuses a
 key whose check failed (`grokBot`, `openaiDots`), gives each bot 150 s, and
 drops a request whose tab closed. OpenAI's dots live in ChatGPT and are not
 started from here.
+
+## Outbreak: every rail line on the globe (owner ruling 2026-10-12)
+
+The Outbreak tab finds every rail line on the globe once, in the background,
+and joins them into one world rail network
+(`server/providers/outbreakRailWorld.js`, `src/outbreakRailWorld.mjs`,
+`buildRailGraph` in `src/outbreakNetwork.mjs`).
+
+- **Start.** The first outbreak request (`/network`, `/air-rails` or
+  `/epidemic`) starts the job, never the server's boot, and no request waits
+  for it. The app turns it on with `outbreakProxy({ railWorld: true })`.
+- **Sweep.** Every zoom-8 OpenFreeMap tile that touches land is swept, about
+  20,000 from Natural Earth's countries, one tile wider all round. Antarctica
+  and everything south of 60° S are left out. Tiles nearest the outbreak go
+  first. Every fetch goes through the outbreak tile store, at most 6 at once,
+  with the page's own requests ahead of the sweep. The store asks for the
+  TileJSON once for every tile waiting on it.
+- **Never fetched twice.** A tile the store already has on disk, however old,
+  is never fetched again. Each tile's rail goes into its own extract with no
+  expiry, `.gev-cache/outbreak/rail-world/z8/{x}_{y}.json`, so the 30-day
+  tile expiry never downloads the world again. Empty (204 or 404) tiles are
+  kept too. A failed tile is asked again after 5, 30, then 120 minutes. A
+  restart resumes from the extracts and
+  `.gev-cache/outbreak/rail-world/progress.json`.
+- **Build.** A worker thread with no time limit builds the network from the
+  extracts. It writes `.gev-cache/outbreak/net-built/rail-world-v1-<time>.bin`
+  (packed typed arrays) with a `.json` beside it (km by country and by
+  continent), and the last two builds are kept. When the store fetches a tile
+  again for its own reasons, the extract is updated and a new build follows,
+  at most once every 10 minutes.
+- **Status.** `GET /api/outbreak/rail-world/status` gives `state` (idle,
+  sweeping, building, ready, error, or off without the job), `tilesTotal`,
+  `tilesDone`, `tilesCached`, `tilesFetched`, `tilesFailed`, `railKm`,
+  `byContinent`, `builtAt` and `version`. The panel shows it in the status
+  line every 10 s until it is built, then logs it once.
+- **Answers once built.**
+  - `/network?mode=rail` answers along the whole world network
+    (`world: true`, `radiusKm: null`, disk key `rail3-world-v1-<build>-…`),
+    with the zoom-10 lines within 100 km of the location laid over it.
+  - `/air-rails` seeds every landing (`skippedLandings: 0`, no tile budget).
+    It lays the zoom-10 lines over the landings that have no world rail
+    within 60 km, within the same `AIR_RAILS_MAX_TILES`.
+  - `/epidemic` adds the towns on the rail as places and the daily rail
+    routes (docs/outbreak-epidemic-model.md, Rail travel).
+  - `GET /api/outbreak/rail-world/tile/{z}/{x}/{y}` (zoom 2 to 6) feeds the
+    map's faint orange world rail layer, loaded by view.
+- **Fallbacks.** Until the network is built, every path answers as before:
+  the rail within 500 km, the rail within 200 km of landings (7,000 tiles),
+  and the epidemic without rail (`railSource: 'pending'`).
 
 ## Scene control ownership
 

@@ -23,6 +23,15 @@
  *   POST /api/outbreak/air-roads   the roads out of every airport the
  *        outbreak lands at, each lit from its landing hour: fast for the
  *        first 100 km, then slower (src/outbreakNetwork.mjs, timed)
+ *   POST /api/outbreak/air-rails   the rail lines round every airport the
+ *        outbreak lands at, timed the same way at train speed, so the rail
+ *        lights up after a flight too (the tiles carry rail only up close)
+ *   GET /api/outbreak/rail-world/status   how far the world rail has got
+ *        (owner ruling 2026-10-12: every rail line on the globe, found once
+ *        in the background, outbreakRailWorld.js); once it is built the rail
+ *        above answers along the whole world's network
+ *   GET /api/outbreak/rail-world/tile/z/x/y   the world rail's lines for
+ *        the map's world rail layer (zoom 2 to 6)
  *   POST /api/outbreak/traffic   the assumed air traffic beyond the scan
  *   POST /api/outbreak/epidemic  the EPIDEMIC MODEL (src/outbreakEpi.mjs):
  *        a stochastic ensemble over the same flights, with each airport's
@@ -67,7 +76,9 @@ import {
 import {
   EPIDEMIC_BUDGET_MS,
   EPIDEMIC_RUNS_DEFAULT,
+  RAIL_TRAVEL,
   buildEpidemicNodes,
+  railCountryVolumes,
   cleanEpiProfile,
   effectiveDistances,
   epiParameters,
@@ -75,16 +86,25 @@ import {
   seedFromText,
   worldAirRoutes,
 } from '../../src/outbreakEpi.mjs';
+import { sensitivityTornado } from '../../src/outbreakEpiSensitivity.mjs';
 import {
   NETWORK_JOIN_KM,
   NETWORK_PRIMARY_KM,
   NETWORK_ROAD_LEVELS,
   NETWORK_RADIUS_KM,
   NETWORK_START_KM,
+  NETWORK_TILE_ZOOM,
   buildTransportNetwork,
   networkTiles,
+  tileBounds,
   tileDistanceKm,
 } from '../../src/outbreakNetwork.mjs';
+import {
+  RAIL_WORLD_VERSION,
+  continentOf,
+} from '../../src/outbreakRailWorld.mjs';
+import { railWorldJob } from './outbreakRailWorld.js';
+import { unpackRailRoutes } from './outbreakRailWorldTasks.mjs';
 
 const AIRPORTS_URL =
   'https://davidmegginson.github.io/ourairports-data/airports.csv';
@@ -115,7 +135,19 @@ const CITIES_FILE = 'cities500.txt';
 const CITIES_TIMEOUT_MS = 180_000;
 /** The worker is stopped past this, whatever it was doing. */
 const EPIDEMIC_HARD_MS = EPIDEMIC_BUDGET_MS + 15_000;
+/**
+ * The model's own deadline sits this far under the hard stop, measured from
+ * the worker's start: time enough to sum up and post a cut-short result
+ * instead of none at all.
+ */
+const EPIDEMIC_ABORT_MARGIN_MS = 8_000;
 const EPIDEMIC_CACHE_MAX = 8;
+/**
+ * Commuting link sets kept by their list of places: working them out over
+ * 200,000 places is the one slow setup step, and the same places come back
+ * whenever the question changes but the airports and towns do not.
+ */
+export const LINKS_CACHE_MAX = 4;
 /** The roads out of each landing airport: this far, from coarse tiles. */
 const AIR_ROADS_RADIUS_KM = 400;
 /** Coarse tiles: the roads after landings span every continent. */
@@ -129,6 +161,102 @@ export function inNorthAmerica(point) {
 }
 /** At most this many landings in one request. */
 const AIR_ROADS_MAX = 4000;
+/** The rail lines round each landing airport: this far. */
+const AIR_RAILS_RADIUS_KM = 200;
+/** Rail lines are only in the tiles up close: the network's own zoom. */
+const AIR_RAILS_ZOOM = NETWORK_TILE_ZOOM;
+/**
+ * At most this many fine tiles in one request, shared out by
+ * chooseAirRailTiles so every region landed in gets its share. It was 400
+ * (owner report, 2026-10-12: rail in Europe, the USA, Canada and Mexico
+ * still not lit): a one-day scan out of Irkutsk lands at 965 airports, which
+ * need 2,596 tiles for 60 km round each and 6,476 for the full 200 km, so
+ * 400 kept 115 landings and left 850 out. Tiles are kept on disk thirty
+ * days; with them kept, the 965 landings build in about 7 s (783,452 km of
+ * rail, smaller than the roads after landing).
+ */
+export const AIR_RAILS_MAX_TILES = 7000;
+/**
+ * First every landing region's rail near its airport: the tiles this close,
+ * the reach a landing starts the rail from (OUTBREAK_AIRPORT_KM), about 2 to
+ * 6 tiles each; then, as the budget allows, the full AIR_RAILS_RADIUS_KM.
+ */
+const AIR_RAILS_CORE_KM = OUTBREAK_AIRPORT_KM;
+/**
+ * The landings taken in rounds: the earliest landing in each cell of this
+ * many degrees first, then finer cells, then every other landing (0), each
+ * round in landing order. So 30 landings in Asia before the first in Paris
+ * still leave Paris its tiles (owner report, 2026-10-12: rail in Europe, the
+ * USA, Canada and Mexico never lit when the outbreak started in Asia).
+ */
+const AIR_RAILS_CELL_ROUNDS = [30, 10, 5, 0];
+/**
+ * The rail after a landing slows past PLANE_ROAD_KM to this share of train
+ * speed, the road rule. Proposed with the world rail (owner ruling
+ * 2026-10-12): 1, so a train keeps train speed along the line; kept at the
+ * road share until the owner rules.
+ */
+export const AIR_RAILS_ONWARD_SHARE = PLANE_ROAD_ONWARD_SHARE;
+
+/**
+ * Which landings' rail to fetch, within `maxTiles` fine tiles. The landings
+ * are put in order by the cell rounds (one per region first, earliest
+ * first); each in turn gets the tiles within `coreKm` if they fit, and a
+ * landing that does not fit is passed over, not the end of the list. Then
+ * the kept landings, in the same order, grow to `radiusKm` while tiles
+ * remain. A landing whose tiles are all taken already costs nothing.
+ *
+ * @param {{lat: number, lon: number, hour: number}[]} landings
+ * @returns {{sources: object[], skipped: number, tiles: object[]}} The kept
+ *   landings in landing order, how many were left out, and the tiles.
+ */
+export function chooseAirRailTiles(
+  landings,
+  {
+    maxTiles = AIR_RAILS_MAX_TILES,
+    coreKm = AIR_RAILS_CORE_KM,
+    radiusKm = AIR_RAILS_RADIUS_KM,
+    zoom = AIR_RAILS_ZOOM,
+    rounds = AIR_RAILS_CELL_ROUNDS,
+  } = {},
+) {
+  const ordered = [...landings].sort((a, b) => a.hour - b.hour);
+  const order = [];
+  const placed = new Set();
+  for (const deg of rounds) {
+    const cells = new Set();
+    for (let i = 0; i < ordered.length; i += 1) {
+      if (placed.has(i)) continue;
+      const d = ordered[i];
+      if (deg) {
+        const cell = `${Math.floor(d.lat / deg)},${Math.floor(d.lon / deg)}`;
+        if (cells.has(cell)) continue;
+        cells.add(cell);
+      }
+      placed.add(i);
+      order.push(i);
+    }
+  }
+  const tiles = new Map();
+  const keyOf = (tile) => `${tile.z}/${tile.x}/${tile.y}`;
+  const take = (list) => {
+    const added = list.filter((tile) => !tiles.has(keyOf(tile)));
+    if (tiles.size + added.length > maxTiles) return false;
+    for (const tile of added) tiles.set(keyOf(tile), tile);
+    return true;
+  };
+  const kept = order.filter((i) =>
+    take(networkTiles(ordered[i], coreKm, zoom)),
+  );
+  for (const i of kept) take(networkTiles(ordered[i], radiusKm, zoom));
+  return {
+    sources: [...kept].sort((a, b) => a - b).map((i) => ordered[i]),
+    skipped: ordered.length - kept.length,
+    tiles: [...tiles.values()],
+  };
+}
+/** Rail after landings kept in memory: this many answers. */
+const AIR_RAILS_CACHE_MAX = 6;
 /** The EPIDEMIC MODEL looks up to 40 days ahead (the box offers 2 to 30). */
 const EPIDEMIC_WINDOW_MAX_MS = 40 * 86_400_000;
 
@@ -492,29 +620,119 @@ export function cityTable({
 }
 
 /**
+ * The commuting links as three flat arrays, so they cross a worker boundary
+ * by transfer instead of a copy of 200,000 small objects: node `i`'s links
+ * are `j[offsets[i] .. offsets[i + 1])` with their shares alongside.
+ *
+ * @param {{j: number, share: number}[][]} links By node index.
+ * @returns {{offsets: Int32Array, j: Int32Array, share: Float64Array}}
+ */
+export function packLinks(links) {
+  const n = links.length;
+  const offsets = new Int32Array(n + 1);
+  for (let i = 0; i < n; i += 1)
+    offsets[i + 1] = offsets[i] + (links[i] ? links[i].length : 0);
+  const m = offsets[n];
+  const j = new Int32Array(m);
+  const share = new Float64Array(m);
+  for (let i = 0; i < n; i += 1) {
+    let k = offsets[i];
+    for (const link of links[i] || []) {
+      j[k] = link.j;
+      share[k] = link.share;
+      k += 1;
+    }
+  }
+  return { offsets, j, share };
+}
+
+/** The object form `simulateEpidemic` reads, back from the packed arrays. */
+export function unpackLinks({ offsets, j, share }) {
+  const n = offsets.length - 1;
+  const links = new Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const list = [];
+    for (let k = offsets[i]; k < offsets[i + 1]; k += 1)
+      list.push({ j: j[k], share: share[k] });
+    links[i] = list;
+  }
+  return links;
+}
+
+/** Packed links, or null: an array is the object form and gets packed. */
+function packedLinksOf(links) {
+  if (Array.isArray(links)) return packLinks(links);
+  if (links?.offsets && links.j && links.share) return links;
+  return null;
+}
+
+/**
  * Run the ensemble in a worker thread, stopped if it overruns. The worker
  * imports the model from the repository by its path, so this works whether or
- * not Vite bundles the server code.
+ * not Vite bundles the server code. Commuting links ride in and out packed
+ * (`packLinks`) by transfer: given none, the worker works them out and hands
+ * them to `onLinks` beside the result, so the route can keep them.
  */
 export function runEpidemicInWorker(
   input,
-  { sourceRoot = process.cwd() } = {},
+  { sourceRoot = process.cwd(), onLinks } = {},
 ) {
   const model = pathToFileURL(
     path.join(sourceRoot, 'src', 'outbreakEpi.mjs'),
   ).href;
+  const { links: given, ...rest } = input;
+  const links = packedLinksOf(given);
+  // One absolute deadline for the whole call (both arms of a comparison).
+  const deadlineMs = Number.isFinite(rest.deadlineMs)
+    ? rest.deadlineMs
+    : Date.now() + EPIDEMIC_HARD_MS - EPIDEMIC_ABORT_MARGIN_MS;
   const code = [
     "const { parentPort, workerData } = require('node:worker_threads');",
     'import(workerData.model)',
-    '  .then(({ simulateEpidemic }) =>',
-    '    parentPort.postMessage({ ok: true, result: simulateEpidemic(workerData.input) }))',
+    '  .then(({ simulateEpidemic, gravityLinks }) => {',
+    '    const { input, links: packed } = workerData;',
+    '    let links;',
+    '    if (packed) {',
+    '      const { offsets, j, share } = packed;',
+    '      links = new Array(offsets.length - 1);',
+    '      for (let i = 0; i < links.length; i += 1) {',
+    '        const list = [];',
+    '        for (let k = offsets[i]; k < offsets[i + 1]; k += 1)',
+    '          list.push({ j: j[k], share: share[k] });',
+    '        links[i] = list;',
+    '      }',
+    '    } else links = gravityLinks(input.nodes);',
+    '    const result = simulateEpidemic({ ...input, links });',
+    '    if (packed) {',
+    '      parentPort.postMessage({ ok: true, result, links: null });',
+    '      return;',
+    '    }',
+    '    const offsets = new Int32Array(links.length + 1);',
+    '    for (let i = 0; i < links.length; i += 1)',
+    '      offsets[i + 1] = offsets[i] + links[i].length;',
+    '    const j = new Int32Array(offsets[links.length]);',
+    '    const share = new Float64Array(offsets[links.length]);',
+    '    for (let i = 0, k = 0; i < links.length; i += 1)',
+    '      for (const link of links[i]) {',
+    '        j[k] = link.j;',
+    '        share[k] = link.share;',
+    '        k += 1;',
+    '      }',
+    '    parentPort.postMessage(',
+    '      { ok: true, result, links: { offsets, j, share } },',
+    '      [offsets.buffer, j.buffer, share.buffer],',
+    '    );',
+    '  })',
     '  .catch((error) =>',
     '    parentPort.postMessage({ ok: false, error: String((error && error.message) || error) }));',
   ].join('\n');
   return new Promise((resolve, reject) => {
     const worker = new Worker(code, {
       eval: true,
-      workerData: { model, input },
+      workerData: { model, input: { ...rest, deadlineMs }, links },
+      transferList: links
+        ? [links.offsets.buffer, links.j.buffer, links.share.buffer]
+        : [],
     });
     const timer = setTimeout(() => {
       worker.terminate();
@@ -523,8 +741,11 @@ export function runEpidemicInWorker(
     worker.once('message', (message) => {
       clearTimeout(timer);
       worker.terminate();
-      if (message?.ok) resolve(message.result);
-      else reject(new Error(message?.error || 'The epidemic model failed.'));
+      if (message?.ok) {
+        if (message.links && typeof onLinks === 'function')
+          onLinks(message.links);
+        resolve(message.result);
+      } else reject(new Error(message?.error || 'The epidemic model failed.'));
     });
     worker.once('error', (error) => {
       clearTimeout(timer);
@@ -544,8 +765,31 @@ const NETWORK_TILE_BYTES = 8 * 1024 * 1024;
 const NETWORK_TIMEOUT_MS = 20_000;
 /** OpenFreeMap is a CDN: a few tiles at once is polite and quick. */
 const NETWORK_TILES_AT_ONCE = 6;
+/** After a failed TileJSON, no tile is asked for this long (2026-10-12). */
+const NETWORK_TILEJSON_COOLOFF_MS = 2 * 60_000;
+/**
+ * OpenFreeMap asked us to slow down (a 429 or a 5xx, or no answer at all):
+ * no tile is asked for this long, doubled each time in a row, up to the
+ * most; a Retry-After of its own is kept instead (2026-10-12).
+ */
+const NETWORK_BACKOFF_MS = Object.freeze({ first: 30_000, most: 30 * 60_000 });
+
+/** A Retry-After header in ms from now (seconds or a date), or null. */
+export function retryAfterMs(value, nowMs = Date.now()) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  if (/^\d+$/.test(text)) return Number(text) * 1000;
+  const at = Date.parse(text);
+  return Number.isFinite(at) ? Math.max(0, at - nowMs) : null;
+}
 const NETWORK_USER_AGENT =
   'gods-eye-view-outbreak/1.0 (+https://github.com/bilawalsidhu/gods-eye-view)';
+/**
+ * Where the coarse tiles have no rail near an outbreak location: the tiles
+ * of this zoom within this far stand in for the coarse ones there (16 for
+ * each), as they carry every rail line, not only the main ones.
+ */
+const NETWORK_RAIL_FINE = Object.freeze({ zoom: 10, radiusKm: 100 });
 /** OpenMapTiles classes kept: the main roads, and main-line rail. */
 const NETWORK_ROAD_CLASSES = new Set(['motorway', 'trunk', 'primary']);
 
@@ -605,72 +849,174 @@ export function readTransportTile(bytes, { z, x, y }) {
 /**
  * Tiles of transportation lines: from memory, then disk (thirty days), then
  * OpenFreeMap (the tile address from its TileJSON, never another host).
+ *
+ * Owner ruling 2026-10-12 (every rail line on the globe): at most
+ * NETWORK_TILES_AT_ONCE fetches at once from this store, whoever asks; the
+ * world rail sweep's (`background`) wait behind the page's own. The
+ * TileJSON is asked once for every tile waiting on it, not once each.
+ * `cached` reads a tile's disk copy whatever its age (the sweep never
+ * fetches a tile it already has), and `onFetched` hears of every tile
+ * fetched, so the world rail keeps up with a refreshed tile.
  */
 export function networkTileStore({
   cacheDir = path.join(process.cwd(), '.gev-cache', 'outbreak', 'net'),
   fetchImpl = globalThis.fetch,
   now = Date.now,
+  atOnce = NETWORK_TILES_AT_ONCE,
+  onFetched = null,
 } = {}) {
   const memory = new Map();
   const loading = new Map();
   let template = null;
   let templateAt = 0;
+  let templateJob = null;
+  // A failed TileJSON is not asked again before this (2026-10-12).
+  let templateRetryAt = 0;
+  // Told to wait: no tile is asked for before this, and the wait so far.
+  let waitUntil = 0;
+  let backoffMs = 0;
+  let listener = onFetched;
   const fileOf = (key) => path.join(cacheDir, `${key}.json`);
+  const pausedUntil = () => Math.max(waitUntil, template ? 0 : templateRetryAt);
+  const slowDown = (response = null) => {
+    backoffMs = Math.min(
+      NETWORK_BACKOFF_MS.most,
+      backoffMs ? backoffMs * 2 : NETWORK_BACKOFF_MS.first,
+    );
+    const asked = retryAfterMs(response?.headers?.get?.('retry-after'), now());
+    waitUntil = Math.max(waitUntil, now() + (asked ?? backoffMs));
+  };
   const tileUrl = async (z, x, y) => {
-    if (!template || now() - templateAt > 24 * 3_600_000) {
-      const response = await fetchImpl(NETWORK_TILEJSON_URL, {
-        headers: { 'User-Agent': NETWORK_USER_AGENT },
-        signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
-      });
-      if (!response.ok) throw new Error(`TileJSON HTTP ${response.status}`);
-      const tiles = (await response.json())?.tiles;
-      const first = Array.isArray(tiles) ? String(tiles[0] || '') : '';
-      if (!first.startsWith(NETWORK_TILE_HOST) || !first.includes('{z}'))
-        throw new Error('Unexpected tile address');
-      template = first;
-      templateAt = now();
+    const stale = !template || now() - templateAt > 24 * 3_600_000;
+    if (stale && now() >= templateRetryAt) {
+      templateJob ||= (async () => {
+        const response = await fetchImpl(NETWORK_TILEJSON_URL, {
+          headers: { 'User-Agent': NETWORK_USER_AGENT },
+          signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
+        });
+        if (!response.ok) throw new Error(`TileJSON HTTP ${response.status}`);
+        const tiles = (await response.json())?.tiles;
+        const first = Array.isArray(tiles) ? String(tiles[0] || '') : '';
+        if (!first.startsWith(NETWORK_TILE_HOST) || !first.includes('{z}'))
+          throw new Error('Unexpected tile address');
+        template = first;
+        templateAt = now();
+      })()
+        .catch((error) => {
+          // Every tile waiting on it fails at once, and none asks again
+          // before the cool-off is over (2026-10-12).
+          templateRetryAt = now() + NETWORK_TILEJSON_COOLOFF_MS;
+          throw error;
+        })
+        .finally(() => {
+          templateJob = null;
+        });
+      try {
+        await templateJob;
+      } catch (error) {
+        // A day-old address is kept while a fresh one cannot be had.
+        if (!template) throw error;
+      }
     }
+    if (!template) throw new Error('The tile address is not known yet.');
     return template.replace('{z}', z).replace('{x}', x).replace('{y}', y);
   };
+  // Fetch slots: the page's requests first, the sweep's after.
+  let busy = 0;
+  const waiting = { front: [], back: [] };
+  const slot = (background) =>
+    new Promise((resolve) => {
+      if (busy < atOnce) {
+        busy += 1;
+        resolve();
+      } else (background ? waiting.back : waiting.front).push(resolve);
+    });
+  const release = () => {
+    const next = waiting.front.shift() || waiting.back.shift();
+    if (next) next();
+    else busy -= 1;
+  };
+  const readDisk = (key, maxAgeMs) => {
+    try {
+      const file = fileOf(key);
+      if (now() - fs.statSync(file).mtimeMs <= maxAgeMs)
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      /* Not kept yet. */
+    }
+    return null;
+  };
   return {
+    /** Tell `fn` of every tile fetched from now on: fn(tile, lines). */
+    onFetched(fn) {
+      listener = fn;
+    },
+    /**
+     * Until when no tile is asked for (ms since the epoch; past when none):
+     * a failed TileJSON's cool-off, or OpenFreeMap's ask to wait.
+     */
+    pausedUntil,
+    /** A tile's lines from memory or disk, however old; null if never kept. */
+    cached(tile) {
+      const key = `omt3-${tile.z}-${tile.x}-${tile.y}`;
+      return memory.get(key) || readDisk(key, Infinity);
+    },
     /** The lines of one tile, or null when it could not be fetched. */
-    async lines(tile) {
+    async lines(tile, { background = false } = {}) {
       const key = `omt3-${tile.z}-${tile.x}-${tile.y}`;
       if (memory.has(key)) return memory.get(key);
       if (loading.has(key)) return loading.get(key);
       const job = (async () => {
+        const kept = readDisk(key, NETWORK_CACHE_MS);
+        if (kept) return kept;
+        // Told to wait: nothing is asked for meanwhile, whoever asks.
+        if (pausedUntil() > now()) return null;
+        await slot(background);
         try {
-          const file = fileOf(key);
-          if (now() - fs.statSync(file).mtimeMs <= NETWORK_CACHE_MS)
-            return JSON.parse(fs.readFileSync(file, 'utf8'));
-        } catch {
-          /* Not kept yet. */
-        }
-        try {
-          const response = await fetchImpl(
-            await tileUrl(tile.z, tile.x, tile.y),
-            {
+          if (pausedUntil() > now()) return null;
+          const url = await tileUrl(tile.z, tile.x, tile.y);
+          let response;
+          try {
+            response = await fetchImpl(url, {
               headers: { 'User-Agent': NETWORK_USER_AGENT },
               signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
-            },
-          );
-          if (response.status === 204 || response.status === 404) {
-            const empty = { motorway: [], major: [], primary: [], rail: [] };
-            return empty;
+            });
+          } catch {
+            // No answer at all: the host's trouble, not the tile's.
+            slowDown();
+            return null;
           }
-          if (!response.ok) return null;
-          const bytes = Buffer.from(await response.arrayBuffer());
-          if (bytes.length > NETWORK_TILE_BYTES) return null;
-          const lines = readTransportTile(bytes, tile);
+          let lines;
+          if (response.status === 204 || response.status === 404) {
+            // An empty tile is kept too, so it is not asked for again.
+            lines = { motorway: [], major: [], primary: [], rail: [] };
+          } else {
+            if (response.status === 429 || response.status >= 500) {
+              slowDown(response);
+              return null;
+            }
+            if (!response.ok) return null;
+            const bytes = Buffer.from(await response.arrayBuffer());
+            if (bytes.length > NETWORK_TILE_BYTES) return null;
+            lines = readTransportTile(bytes, tile);
+          }
+          backoffMs = 0;
           try {
             fs.mkdirSync(cacheDir, { recursive: true });
             fs.writeFileSync(fileOf(key), JSON.stringify(lines));
           } catch {
             /* Kept in memory only. */
           }
+          try {
+            listener?.(tile, lines);
+          } catch {
+            /* The listener's trouble is its own. */
+          }
           return lines;
         } catch {
           return null;
+        } finally {
+          release();
         }
       })().finally(() => loading.delete(key));
       loading.set(key, job);
@@ -777,8 +1123,46 @@ function builtNetworkCache(
         /* Kept in memory only. */
       }
     },
+    /**
+     * Remove every kept build whose name starts with `prefix` and not with
+     * `keep` (2026-10-12: the world rail answers of an older world build,
+     * about 7 MB each, are never read again).
+     */
+    prune(prefix, keep) {
+      let names = [];
+      try {
+        names = fs.readdirSync(cacheDir);
+      } catch {
+        return 0;
+      }
+      let removed = 0;
+      for (const name of names) {
+        if (!name.startsWith(prefix) || name.startsWith(keep)) continue;
+        try {
+          fs.rmSync(path.join(cacheDir, name), { force: true });
+          removed += 1;
+        } catch {
+          /* Left for the next build. */
+        }
+      }
+      return removed;
+    },
   };
 }
+
+/** About how many bytes a built network answer holds (its points). */
+export function networkAnswerBytes(result) {
+  let numbers = 0;
+  const count = (lists) => {
+    for (const flat of lists || []) numbers += flat?.length || 0;
+  };
+  const network = result?.network;
+  for (const lists of Object.values(network?.bands || {})) count(lists);
+  count(network?.unreached);
+  return 1024 + numbers * 8;
+}
+/** The rail and road answers kept in memory: at most this many bytes. */
+const NETWORKS_KEPT_BYTES = 64 * 1024 * 1024;
 
 export async function transportNetwork(
   point,
@@ -799,6 +1183,8 @@ export async function transportNetwork(
         }))
       : NETWORK_ROAD_LEVELS.slice(0, Math.max(1, Math.min(3, level)));
   const lines = [];
+  // Rail: each tile's lines, so finer tiles can stand in for some of them.
+  const railByTile = new Map();
   let tileCount = 0;
   let failed = 0;
   for (const step of levels) {
@@ -813,6 +1199,7 @@ export async function transportNetwork(
           return;
         }
         if (mode === 'rail') {
+          railByTile.set(`${batch[k].x}/${batch[k].y}`, found.rail);
           lines.push(...found.rail);
           return;
         }
@@ -834,10 +1221,48 @@ export async function transportNetwork(
       });
     }
   }
-  const network = await build(lines, point, {
+  const options = {
     startKm: NETWORK_START_KM[mode] ?? NETWORK_START_KM.road,
     joinKm: NETWORK_JOIN_KM[mode] ?? NETWORK_JOIN_KM.road,
-  });
+  };
+  let network = await build(lines, point, options);
+  // No rail within reach in the coarse tiles: they carry main lines only.
+  // Near the location, finer tiles stand in for them (owner report,
+  // 2026-10-12: Saint John NB had no rail; its nearest main line in the
+  // coarse tiles is 98 km off, its own line 0.4 km in the finer ones).
+  if (mode === 'rail' && !network) {
+    const inner = networkTiles(
+      point,
+      NETWORK_RAIL_FINE.radiusKm,
+      NETWORK_TILE_ZOOM,
+    );
+    const shift = 2 ** (NETWORK_RAIL_FINE.zoom - NETWORK_TILE_ZOOM);
+    const fine = inner.flatMap((tile) =>
+      Array.from({ length: shift * shift }, (_, i) => ({
+        z: NETWORK_RAIL_FINE.zoom,
+        x: tile.x * shift + (i % shift),
+        y: tile.y * shift + Math.floor(i / shift),
+      })),
+    );
+    tileCount += fine.length;
+    const finer = [];
+    for (let i = 0; i < fine.length; i += NETWORK_TILES_AT_ONCE) {
+      const batch = fine.slice(i, i + NETWORK_TILES_AT_ONCE);
+      for (const found of await Promise.all(
+        batch.map((tile) => store.lines(tile)),
+      )) {
+        if (!found) failed += 1;
+        else finer.push(...found.rail);
+      }
+    }
+    if (finer.length) {
+      const replaced = new Set(inner.map((tile) => `${tile.x}/${tile.y}`));
+      const coarse = [...railByTile]
+        .filter(([key]) => !replaced.has(key))
+        .flatMap(([, found]) => found);
+      network = await build([...finer, ...coarse], point, options);
+    }
+  }
   const last = levels[levels.length - 1];
   return {
     mode,
@@ -847,6 +1272,82 @@ export async function transportNetwork(
     tiles: tileCount,
     failedTiles: failed,
     radiusKm: last.radiusKm,
+    source: 'OpenStreetMap (OpenFreeMap tiles)',
+  };
+}
+
+/**
+ * The finer (zoom-10) rail lines within `radiusKm` of each point, from
+ * the tile store a few at once, at most `maxTiles` tiles, the points taken
+ * in order (owner ruling 2026-10-12: the world rail keeps the finer
+ * branch lines near each source).
+ */
+export async function fineRailLines(
+  points,
+  store,
+  {
+    radiusKm = NETWORK_RAIL_FINE.radiusKm,
+    maxTiles = Infinity,
+    zoom = NETWORK_RAIL_FINE.zoom,
+  } = {},
+) {
+  const tiles = new Map();
+  let left = 0;
+  for (const point of points) {
+    const near = networkTiles(point, radiusKm, zoom);
+    const added = near.filter((t) => !tiles.has(`${t.x}/${t.y}`));
+    if (tiles.size + added.length > maxTiles) {
+      left += 1;
+      continue;
+    }
+    for (const tile of added) tiles.set(`${tile.x}/${tile.y}`, tile);
+  }
+  const list = [...tiles.values()];
+  const lines = [];
+  let failed = 0;
+  for (let i = 0; i < list.length; i += NETWORK_TILES_AT_ONCE) {
+    const batch = list.slice(i, i + NETWORK_TILES_AT_ONCE);
+    for (const found of await Promise.all(
+      batch.map((tile) => store.lines(tile)),
+    )) {
+      if (!found) failed += 1;
+      else lines.push(...(found.rail || []));
+    }
+  }
+  return { lines, tiles: list.length, failed, left };
+}
+
+/**
+ * The rail reach from one outbreak location along the WORLD rail network
+ * (owner ruling 2026-10-12: every rail line on the globe), with the finer
+ * lines within NETWORK_RAIL_FINE.radiusKm laid over it: every source keeps
+ * the branch lines the coarse tiles leave out. The answer has
+ * transportNetwork's shape; `world` says it is the whole world's rail,
+ * with no radius.
+ */
+export async function worldRailNetwork(point, store, railWorld) {
+  const fine = await fineRailLines([point], store);
+  const answer = await railWorld.task({
+    kind: 'network',
+    point,
+    overlay: fine.lines,
+    startKm: NETWORK_START_KM.rail,
+  });
+  // The world's own zoom-8 tiles still missing within the old 500 km
+  // (2026-10-12): failed tiles too, so the answer is not kept as whole.
+  const worldMissing =
+    railWorld.missingNear?.([point], NETWORK_RADIUS_KM.rail) || 0;
+  return {
+    mode: 'rail',
+    level: 1,
+    lastLevel: true,
+    world: true,
+    network: answer.network,
+    tiles: fine.tiles + worldMissing,
+    failedTiles: fine.failed + worldMissing,
+    worldMissingTiles: worldMissing,
+    radiusKm: null,
+    builtAt: railWorld.build()?.builtAt ?? null,
     source: 'OpenStreetMap (OpenFreeMap tiles)',
   };
 }
@@ -1068,6 +1569,24 @@ function pointFrom(params) {
   return validPoint(params.get('lat'), params.get('lon'));
 }
 
+/**
+ * The scan airports the world list does not hold yet, resolved through
+ * `view`. Codes are compared after resolving: an IATA code (YYZ) names the
+ * same airport as its ICAO code (CYYZ), and comparing the raw codes added it
+ * a second time as its own place. Pure.
+ */
+export function scanExtraAirports(known, codes, view) {
+  const seen = new Set(known.map((a) => a.code));
+  const extra = [];
+  for (const code of new Set(codes)) {
+    const airport = view(code);
+    if (!airport || seen.has(airport.code)) continue;
+    seen.add(airport.code);
+    extra.push(airport);
+  }
+  return extra;
+}
+
 function codesFrom(value, max = 40) {
   return [
     ...new Set(
@@ -1089,8 +1608,28 @@ export function outbreakProxy({
   networkStore = networkTileStore(),
   buildNetwork = buildNetworkInWorker,
   builtNetworks = builtNetworkCache(),
+  railWorld: railWorldOption = null,
 } = {}) {
   const fetcher = (...args) => (fetchImpl || globalThis.fetch)(...args);
+  // EVERY RAIL LINE ON THE GLOBE (owner ruling 2026-10-12): `true` makes
+  // the world rail job on this proxy's tile store (the app does; tests pass
+  // their own job or none). Started by the first outbreak request.
+  const railWorld =
+    railWorldOption === true
+      ? railWorldJob({
+          tileStore: networkStore,
+          log: (line) => console.log(`[outbreak] ${line}`),
+        })
+      : railWorldOption || null;
+  if (railWorld && typeof networkStore?.onFetched === 'function')
+    networkStore.onFetched((tile, lines) => railWorld.noteTile(tile, lines));
+  const railWorldStart = (points = []) => {
+    try {
+      railWorld?.start(points);
+    } catch {
+      /* The world rail is a background job: it never fails a request. */
+    }
+  };
   const allow = makeRateLimiter({ windowMs: 60_000, max: 40, globalMax: 80 });
   const allowFlights = makeRateLimiter({
     windowMs: 60_000,
@@ -1102,12 +1641,36 @@ export function outbreakProxy({
     max: 10,
     globalMax: 20,
   });
+  // The rail after landings is asked in the same refresh as the roads after
+  // landings and the traffic: its own budget, so neither starves it.
+  const allowAirRails = makeRateLimiter({
+    windowMs: 60_000,
+    max: 10,
+    globalMax: 20,
+  });
   const allowEpidemic = makeRateLimiter({
     windowMs: 60_000,
     max: 4,
     globalMax: 6,
   });
   const epidemics = new Map();
+  /** Questions being answered right now, by the same key: asked once. */
+  const inFlight = new Map();
+  /**
+   * Commuting links by the list of places they were worked out for, packed
+   * (`packLinks`), newest last; the tables are told apart by identity.
+   */
+  const linksKept = new Map();
+  /** Rail routes by their places, build and speed, as many as the links. */
+  const railKept = new Map();
+  const tableIds = new WeakMap();
+  let tablesSeen = 0;
+  const tableId = (rows) => {
+    if (!tableIds.has(rows)) tableIds.set(rows, (tablesSeen += 1));
+    return tableIds.get(rows);
+  };
+  /** The GeoNames fallback: one empty list, so its links are kept too. */
+  const noCities = [];
   let worldMemo = null;
   /** Every scheduled airport and its normal daily routes, once per table. */
   const world = (index) => {
@@ -1133,7 +1696,47 @@ export function outbreakProxy({
   const news = new Map();
   const surroundings = new Map();
   const networks = new Map();
+  // The answers kept in memory, by their bytes too (2026-10-12: a world
+  // rail answer is about 7 MB), and the world build they were last for.
+  const networkBytes = new Map();
+  let networkBytesTotal = 0;
+  let networksWorldBuild = null;
+  const keepNetwork = (key, result) => {
+    if (networks.has(key)) {
+      networkBytesTotal -= networkBytes.get(key) || 0;
+      networks.delete(key);
+    }
+    const bytes = networkAnswerBytes(result);
+    networks.set(key, result);
+    networkBytes.set(key, bytes);
+    networkBytesTotal += bytes;
+    while (
+      networks.size > 20 ||
+      (networks.size > 1 && networkBytesTotal > NETWORKS_KEPT_BYTES)
+    ) {
+      const oldest = networks.keys().next().value;
+      networkBytesTotal -= networkBytes.get(oldest) || 0;
+      networkBytes.delete(oldest);
+      networks.delete(oldest);
+    }
+  };
+  /** A new world build: the answers of the older ones go, kept or on disk. */
+  const forgetOlderWorldAnswers = (builtAt) => {
+    if (builtAt === networksWorldBuild) return;
+    networksWorldBuild = builtAt;
+    for (const key of [...networks.keys()])
+      if (key.includes('|world-') && !key.endsWith(`|world-${builtAt}`)) {
+        networkBytesTotal -= networkBytes.get(key) || 0;
+        networkBytes.delete(key);
+        networks.delete(key);
+      }
+    builtNetworks.prune?.(
+      'rail4-world-',
+      `rail4-world-v${RAIL_WORLD_VERSION}-${builtAt}-`,
+    );
+  };
   const airRoads = new Map();
+  const airRails = new Map();
 
   /**
    * POST /api/outbreak/traffic: the air traffic that carries the outbreak
@@ -1232,17 +1835,20 @@ export function outbreakProxy({
   /**
    * POST /api/outbreak/air-roads (owner ruling, 2026-10-09): instead of a
    * circle round each airport the outbreak lands at, the motorways and trunk
-   * roads out of it in every direction, lit light red from its landing hour.
+   * roads out of it in every direction, lit green from its landing hour.
    * One network for every landing: each stretch lit by whichever reaches it
    * first. Body: {destinations: [{code, lat, lon, hour}], speedKmh}.
+   *
+   * POST /api/outbreak/air-rails: the same body, for the rail lines round
+   * each landing airport (mode 'rail'), at train speed: airRailsAnswer.
    */
-  async function handleAirRoads(req, res, allowedHosts) {
+  async function handleAirLines(req, res, allowedHosts, mode = 'road') {
     const admission = admitLlmRequestFrom(req, allowedHosts);
     if (!admission.ok) {
       send(res, admission.status, { error: admission.error });
       return;
     }
-    if (!allowTraffic(clientKey(req))) {
+    if (!(mode === 'rail' ? allowAirRails : allowTraffic)(clientKey(req))) {
       send(res, 429, { error: 'Too many requests. Wait a minute.' });
       return;
     }
@@ -1269,6 +1875,10 @@ export function outbreakProxy({
       send(res, 400, { error: 'At least one landing is needed.' });
       return;
     }
+    if (mode === 'rail') {
+      await airRailsAnswer(res, sources, body);
+      return;
+    }
     const speedKmh = Math.max(1, Math.min(1000, Number(body?.speedKmh) || 100));
     const key = JSON.stringify([
       speedKmh,
@@ -1282,7 +1892,7 @@ export function outbreakProxy({
     // Every coarse tile within reach of any landing, once: motorways and
     // trunk roads. Round North American landings also the finer tiles'
     // primary roads (owner ruling, 2026-10-09): many highways there are
-    // primary, and without them the light red roads showed gaps.
+    // primary, and without them the green roads showed gaps.
     const tiles = new Map();
     for (const source of sources) {
       for (const tile of networkTiles(
@@ -1341,6 +1951,148 @@ export function outbreakProxy({
       while (airRoads.size > 6) airRoads.delete(airRoads.keys().next().value);
     }
     send(res, 200, answer);
+  }
+
+  /**
+   * The rail lines round every landing airport (owner report, 2026-10-12:
+   * rail in Europe and North America never lit after the outbreak flew
+   * there; only the roads after landing did). Fine tiles only, as the tiles
+   * carry rail only up close; each stretch lit by whichever landing reaches
+   * it first, timed like the roads after landing at train speed. Up to
+   * AIR_RAILS_MAX_TILES tiles, shared out by chooseAirRailTiles; the
+   * landings left out are counted as skippedLandings, and those with no rail
+   * within OUTBREAK_AIRPORT_KM start nothing (landings less seededLandings).
+   */
+  async function airRailsAnswer(res, landings, body) {
+    const speedKmh = Math.max(1, Math.min(1000, Number(body?.speedKmh) || 60));
+    const ordered = [...landings].sort((a, b) => a.hour - b.hour);
+    railWorldStart(ordered.slice(0, 20));
+    const worldBuild = railWorld?.ready() ? railWorld.build() : null;
+    const key = JSON.stringify([
+      'rail',
+      speedKmh,
+      worldBuild ? `world-${worldBuild.builtAt}` : 'tiles',
+      ordered.map((d) => [d.lat.toFixed(2), d.lon.toFixed(2), d.hour]),
+    ]);
+    const kept = airRails.get(key);
+    if (kept) {
+      send(res, 200, kept);
+      return;
+    }
+    if (worldBuild) {
+      await airRailsWorldAnswer(res, ordered, speedKmh, key);
+      return;
+    }
+    const {
+      sources,
+      skipped: skippedLandings,
+      tiles: list,
+    } = chooseAirRailTiles(ordered);
+    const lines = [];
+    let failed = 0;
+    for (let i = 0; i < list.length; i += NETWORK_TILES_AT_ONCE) {
+      const batch = list.slice(i, i + NETWORK_TILES_AT_ONCE);
+      const found = await Promise.all(
+        batch.map((tile) => networkStore.lines(tile)),
+      );
+      for (const one of found) {
+        if (!one) failed += 1;
+        else lines.push(...(one.rail || []));
+      }
+    }
+    let network = null;
+    try {
+      network = sources.length
+        ? await buildNetwork(lines, sources[0], {
+            sources,
+            timing: {
+              speedKmh,
+              fastKm: PLANE_ROAD_KM,
+              onwardShare: AIR_RAILS_ONWARD_SHARE,
+            },
+            startKm: OUTBREAK_AIRPORT_KM,
+            joinKm: NETWORK_JOIN_KM.rail,
+          })
+        : null;
+    } catch (error) {
+      send(res, 503, { error: error.message || 'The rail did not build.' });
+      return;
+    }
+    const answer = {
+      network,
+      landings: sources.length,
+      seededLandings: network?.seeded ?? 0,
+      skippedLandings,
+      tiles: list.length,
+      failedTiles: failed,
+      radiusKm: AIR_RAILS_RADIUS_KM,
+    };
+    if (!failed) {
+      airRails.set(key, answer);
+      while (airRails.size > AIR_RAILS_CACHE_MAX)
+        airRails.delete(airRails.keys().next().value);
+    }
+    send(res, 200, answer);
+  }
+
+  /**
+   * The rail after landing on the WORLD rail network (owner ruling
+   * 2026-10-12: every rail line on the globe): every landing starts the
+   * rail from the nearest world point within AIR_RAILS_CORE_KM, so none is
+   * left out and no tile budget applies; each stretch is lit by the first
+   * landing to reach it, however far. A landing with no world rail that
+   * close gets the finer (zoom-10) lines round it, within the same
+   * AIR_RAILS_MAX_TILES tiles as before.
+   */
+  async function airRailsWorldAnswer(res, ordered, speedKmh, key) {
+    const bare = ordered.filter((d) => !railWorld.near(d, AIR_RAILS_CORE_KM));
+    const fine = bare.length
+      ? await fineRailLines(bare, networkStore, {
+          radiusKm: AIR_RAILS_CORE_KM,
+          maxTiles: AIR_RAILS_MAX_TILES,
+        })
+      : { lines: [], tiles: 0, failed: 0, left: 0 };
+    let answer;
+    try {
+      answer = await railWorld.task({
+        kind: 'air',
+        sources: ordered.map((d) => ({ lat: d.lat, lon: d.lon, hour: d.hour })),
+        overlay: fine.lines,
+        startKm: AIR_RAILS_CORE_KM,
+        timing: {
+          speedKmh,
+          fastKm: PLANE_ROAD_KM,
+          onwardShare: AIR_RAILS_ONWARD_SHARE,
+        },
+      });
+    } catch (error) {
+      send(res, 503, { error: error.message || 'The rail did not build.' });
+      return;
+    }
+    // The world's own zoom-8 tiles still missing round the landings
+    // (2026-10-12): failed tiles too, so the answer is not kept as whole.
+    const worldMissing =
+      railWorld.missingNear?.(ordered, AIR_RAILS_RADIUS_KM) || 0;
+    const result = {
+      network: answer.network,
+      landings: ordered.length,
+      seededLandings: answer.seeded ?? 0,
+      skippedLandings: 0,
+      fineLandings: bare.length - fine.left,
+      fineLeftOut: fine.left,
+      tiles: fine.tiles + worldMissing,
+      failedTiles: fine.failed + worldMissing,
+      worldMissingTiles: worldMissing,
+      radiusKm: null,
+      world: true,
+      builtAt: railWorld.build()?.builtAt ?? null,
+    };
+    if (!result.failedTiles) {
+      airRails.set(key, result);
+      while (airRails.size > AIR_RAILS_CACHE_MAX)
+        airRails.delete(airRails.keys().next().value);
+    }
+    send(res, 200, result);
   }
 
   async function handleEpidemic(req, res, allowedHosts) {
@@ -1433,6 +2185,9 @@ export function outbreakProxy({
       (body?.outbreakAirports || []).join(','),
       10,
     ).filter((code) => index.get(code));
+    // Turning the comparison on must not move the main result: the seed
+    // leaves `compare` out (the cache key below keeps it).
+    const { compare: _compare, ...seedProfile } = profile;
     const seed =
       Number.isInteger(body?.seed) && body.seed >= 0 && body.seed < 2 ** 32
         ? body.seed
@@ -1442,9 +2197,21 @@ export function outbreakProxy({
               untilMs,
               outbreakAirports,
               locations,
-              profile,
+              seedProfile,
+              // Not `runs`: run r must not depend on how many were asked.
+              scanFlights.map((f) => [f.from.code, f.to.code, f.departMs]),
             ]),
           );
+    // Rail travel (owner ruling 2026-10-12): on unless the box's train is
+    // off, at the box's train speed, from the world rail network once it is
+    // built. Not in the seed: rail on and off run on the same draws.
+    const rail = body?.rail !== false;
+    const railSpeedKmh = Math.max(
+      1,
+      Math.min(1000, Number(body?.speedKmh) || RAIL_TRAVEL.speedKmh),
+    );
+    railWorldStart(locations);
+    const railBuild = rail && railWorld?.ready() ? railWorld.build() : null;
     const key = JSON.stringify([
       startMs,
       untilMs,
@@ -1454,29 +2221,82 @@ export function outbreakProxy({
       runs,
       seed,
       scanFlights.map((f) => [f.from.code, f.to.code, f.departMs]),
+      rail ? railSpeedKmh : 'no rail',
+      railBuild ? `rail-world-v${RAIL_WORLD_VERSION}-${railBuild.builtAt}` : '',
     ]);
     const kept = epidemics.get(key);
     if (kept) {
       send(res, 200, kept);
       return;
     }
+    // The same question while it is being answered: one ensemble, both told.
+    const running = inFlight.get(key);
+    if (running) {
+      const reply = await running;
+      send(res, reply.status, reply.payload);
+      return;
+    }
+    const job = answerEpidemic({
+      index,
+      key,
+      startMs,
+      untilMs,
+      locations,
+      profile,
+      runs,
+      scanFlights,
+      outbreakAirports,
+      seed,
+      view,
+      rail,
+      railSpeedKmh,
+      railBuild,
+    });
+    inFlight.set(key, job);
+    try {
+      const reply = await job;
+      send(res, reply.status, reply.payload);
+    } finally {
+      inFlight.delete(key);
+    }
+  }
+
+  /**
+   * Build the places and flights and run the ensemble, answering with the
+   * reply to send: `{ status, payload }`. Kept apart from the request
+   * parsing so one run can answer every identical question in flight.
+   */
+  async function answerEpidemic({
+    index,
+    key,
+    startMs,
+    untilMs,
+    locations,
+    profile,
+    runs,
+    scanFlights,
+    outbreakAirports,
+    seed,
+    view,
+    rail = false,
+    railSpeedKmh = RAIL_TRAVEL.speedKmh,
+    railBuild = null,
+  }) {
     // The whole world's air network (owner ruling, 2026-10-09: every
     // airport): every airport with scheduled service is a place and flies its
     // normal traffic daily; the scan's real flights fly once each, and daily
     // from then on out of the airports they left.
     const globe = world(index);
-    const known = new Set(globe.airports.map((a) => a.code));
-    const extra = [
-      ...new Set([
+    const extra = scanExtraAirports(
+      globe.airports,
+      [
         ...outbreakAirports,
         ...scanFlights.flatMap((f) => [f.from.code, f.to.code]),
-      ]),
-    ]
-      .filter((code) => !known.has(code))
-      .map(view)
-      .filter(Boolean);
+      ],
+      view,
+    );
     const airports = [...globe.airports, ...extra];
-    let cityRows = [];
+    let cityRows = noCities;
     let populationSource =
       'GeoNames cities and towns over 500 people (CC-BY 4.0)';
     try {
@@ -1485,11 +2305,18 @@ export function outbreakProxy({
       populationSource =
         'Airport size (GeoNames did not load): about 2 million round a large airport, 300,000 round a medium one';
     }
+    // Towns on the world rail are places too, however far from an airport
+    // (owner ruling 2026-10-12).
+    const railGraph = railBuild ? railWorld.graph() : null;
     const { nodes, origins } = buildEpidemicNodes({
       airports,
       cities: cityRows,
       locations,
       profile,
+      railNear: railGraph
+        ? (lat, lon) =>
+            Boolean(railGraph.index.nearest({ lat, lon }, RAIL_REACH_KM))
+        : null,
     });
     const at = new Map(nodes.map((node, i) => [node.id, i]));
     const flights = [];
@@ -1533,58 +2360,167 @@ export function outbreakProxy({
       routes.push({ ...r, from, to });
       flow(r.from, r.to, r.passengers);
     }
-    // Patient zero's own airports start the effective distance.
+    // Rail travel between the places on the world rail (RAIL_TRAVEL, owner
+    // ruling 2026-10-12), worked out in a worker and kept by the places.
+    // Until the world rail is built the model runs as before and says so.
+    let railSource = rail ? (railBuild ? '' : 'pending') : 'off';
+    let railStats = null;
+    let railEstimated = [];
+    if (railBuild) {
+      try {
+        const table = await railWorld.passengerKm();
+        const { pkm, estimated } = railCountryVolumes(
+          table.pkm,
+          railWorld.meta()?.byCountry || {},
+          (code) => continentOf(code),
+        );
+        railEstimated = estimated;
+        const railKey = seedFromText(
+          JSON.stringify([
+            railBuild.builtAt,
+            railSpeedKmh,
+            pkm,
+            nodes.map((node) => [node.id, node.population, node.lat, node.lon]),
+          ]),
+        );
+        let packed = railKept.get(railKey);
+        if (!packed || packed.places !== nodes.length) {
+          packed = await railWorld.task({
+            kind: 'routes',
+            nodes: {
+              id: nodes.map((node) => node.id),
+              lat: Float64Array.from(nodes, (node) => node.lat),
+              lon: Float64Array.from(nodes, (node) => node.lon),
+              population: Float64Array.from(
+                nodes,
+                (node) => node.population || 0,
+              ),
+              country: nodes.map((node) => node.country || ''),
+            },
+            countryPkm: pkm,
+            speedKmh: railSpeedKmh,
+            reachKm: RAIL_REACH_KM,
+          });
+          packed.places = nodes.length;
+          railKept.set(railKey, packed);
+          while (railKept.size > LINKS_CACHE_MAX)
+            railKept.delete(railKept.keys().next().value);
+        }
+        for (const r of unpackRailRoutes(packed.routes)) {
+          if (!(r.from < nodes.length && r.to < nodes.length)) continue;
+          routes.push(r);
+          flow(nodes[r.from].id, nodes[r.to].id, r.passengers);
+        }
+        railStats = packed.stats;
+        railSource = `${RAIL_TRAVEL.volumeSource}${estimated.length ? ` (estimated from the continent's median passenger-km per km of line for ${estimated.length} countries)` : ''}; ${RAIL_TRAVEL.shapeSource}; ${RAIL_TRAVEL.networkSource}`;
+      } catch (error) {
+        railSource = `failed: ${error.message || 'the rail routes did not build'}`;
+      }
+    }
+    // Patient zero's own airports start the effective distance; with rail,
+    // its own town too.
     const sources = [
       ...new Set([
         ...outbreakAirports,
-        ...origins.map((i) => nodes[i].code).filter(Boolean),
+        ...origins
+          .map((i) => nodes[i].code || (railStats ? nodes[i].id : ''))
+          .filter(Boolean),
       ]),
     ];
     const distance = effectiveDistances(flows, sources);
     const params = epiParameters(profile);
+    // Model places carry the table code; the index also knows IATA codes.
+    // The profile (seed and cache key) keeps what was typed.
+    if (params.strain2?.place)
+      params.strain2.place =
+        index.get(params.strain2.place)?.code || params.strain2.place;
+    // The commuting links depend on each place's id, population and
+    // position: the tables, plus the scan's extra airports and patient
+    // zero's own places (whose population follows the density band and
+    // whose position follows the request). The world rail changes them
+    // only through the places on it, which the node list shows already, so
+    // a new rail build keeps them (2026-10-12).
+    const linksKey = seedFromText(
+      JSON.stringify([
+        tableId(index.allScheduled),
+        tableId(cityRows),
+        nodes.map((node) => [node.id, node.population, node.lat, node.lon]),
+      ]),
+    );
+    const kept = linksKept.get(linksKey);
+    // A kept set must fit this node list (a hash collision must not reuse it).
+    const packed =
+      kept && kept.offsets.length === nodes.length + 1 ? kept : undefined;
+    const links = packed
+      ? {
+          offsets: packed.offsets.slice(),
+          j: packed.j.slice(),
+          share: packed.share.slice(),
+        }
+      : undefined;
+    const onLinks = (computed) => {
+      linksKept.set(linksKey, computed);
+      while (linksKept.size > LINKS_CACHE_MAX)
+        linksKept.delete(linksKept.keys().next().value);
+    };
     let result;
     try {
-      result = await runEpidemic({
-        nodes,
-        origins,
-        flights,
-        routes,
-        flown,
-        params,
-        startMs,
-        untilMs,
-        runs,
-        seed,
-      });
+      result = await runEpidemic(
+        {
+          nodes,
+          origins,
+          flights,
+          routes,
+          flown,
+          params,
+          startMs,
+          untilMs,
+          runs,
+          seed,
+          ...(links ? { links } : {}),
+        },
+        { onLinks },
+      );
     } catch (error) {
-      send(res, 503, {
-        error: error.message || 'The epidemic model failed.',
-      });
-      return;
+      return {
+        status: 503,
+        payload: { error: error.message || 'The epidemic model failed.' },
+      };
     }
+    let railCount = 0;
+    for (const r of routes) if (r.mode === 'rail') railCount += 1;
+    const nameOf = (code) => {
+      const i = at.get(code);
+      return index.get(code)?.name || (i === undefined ? '' : nodes[i].name);
+    };
     const answer = {
       ...result,
+      sensitivity: sensitivityTornado(profile),
       populationSource,
       network: {
         places: nodes.length,
         airports: airports.length,
         flights: flights.length,
-        routes: routes.length,
+        routes: routes.length - railCount,
+        railRoutes: railCount,
       },
+      railSource,
+      ...(railStats ? { railStats } : {}),
+      ...(railEstimated.length ? { railEstimated } : {}),
       effectiveDistance: [...distance]
         .filter(([code]) => !sources.includes(code))
         .sort((a, b) => a[1] - b[1])
         .slice(0, 30)
         .map(([code, d]) => ({
           code,
-          name: index.get(code)?.name || code,
+          name: nameOf(code) || code,
           distance: Math.round(d * 100) / 100,
         })),
     };
     epidemics.set(key, answer);
     while (epidemics.size > EPIDEMIC_CACHE_MAX)
       epidemics.delete(epidemics.keys().next().value);
-    send(res, 200, answer);
+    return { status: 200, payload: answer };
   }
 
   async function handle(req, res, allowedHosts) {
@@ -1599,11 +2535,38 @@ export function outbreakProxy({
       return;
     }
     if (route === '/air-roads') {
-      await handleAirRoads(req, res, allowedHosts);
+      await handleAirLines(req, res, allowedHosts, 'road');
+      return;
+    }
+    if (route === '/air-rails') {
+      await handleAirLines(req, res, allowedHosts, 'rail');
       return;
     }
     if (!admitGet(req, res, allowedHosts)) return;
     const params = url.searchParams;
+    // EVERY RAIL LINE ON THE GLOBE (owner ruling 2026-10-12): how far the
+    // world rail has got, and its lines for the map. Both are cheap reads
+    // of what this server holds, polled by the page: same origin only, and
+    // outside the request budget, which the tiles alone would spend.
+    if (route === '/rail-world/status')
+      return send(res, 200, {
+        ...(railWorld
+          ? railWorld.status()
+          : { state: 'off', tilesTotal: 0, tilesDone: 0 }),
+        version: RAIL_WORLD_VERSION,
+      });
+    const tilePath = route.match(/^\/rail-world\/tile\/(\d+)\/(\d+)\/(\d+)$/);
+    if (tilePath) {
+      const [z, x, y] = tilePath.slice(1).map(Number);
+      if (z < 2 || z > 6 || x >= 2 ** z || y >= 2 ** z)
+        return send(res, 400, { error: 'A tile at zoom 2 to 6 is needed.' });
+      const answer = railWorld?.ready()
+        ? railWorld.layerTile(z, x, y, tileBounds(z, x, y))
+        : null;
+      if (!answer)
+        return send(res, 404, { error: 'The world rail is not built yet.' });
+      return send(res, 200, answer);
+    }
     if (!allow(clientKey(req))) {
       send(res, 429, { error: 'Too many requests. Wait a minute.' });
       return;
@@ -1695,19 +2658,32 @@ export function outbreakProxy({
         mode === 'rail'
           ? 1
           : Math.max(1, Math.min(3, Number(params.get('level')) || 1));
-      const key = `${mode}|${level}|${point.lat.toFixed(2)},${point.lon.toFixed(2)}`;
-      const fileKey = `${mode}-L${level}-${point.lat.toFixed(2)}_${point.lon.toFixed(2)}`;
+      if (mode === 'rail') railWorldStart([point]);
+      // The world rail, once built, answers rail (owner ruling 2026-10-12);
+      // until then, the rail within 500 km as before.
+      const worldBuild =
+        mode === 'rail' && railWorld?.ready() ? railWorld.build() : null;
+      const at = `${point.lat.toFixed(2)}_${point.lon.toFixed(2)}`;
+      const key = `${mode}|${level}|${point.lat.toFixed(2)},${point.lon.toFixed(2)}${worldBuild ? `|world-${worldBuild.builtAt}` : ''}`;
+      // rail2: built again since the finer tiles stand in near the point;
+      // rail4: the world rail, by its build, with the rail it cannot reach.
+      const fileKey = worldBuild
+        ? `rail4-world-v${RAIL_WORLD_VERSION}-${worldBuild.builtAt}-${at}`
+        : `${mode === 'rail' ? 'rail2' : mode}-L${level}-${at}`;
+      if (worldBuild) forgetOlderWorldAnswers(worldBuild.builtAt);
       const kept = networks.get(key) || builtNetworks.read(fileKey);
       if (kept) {
-        networks.set(key, kept);
+        keepNetwork(key, kept);
         return send(res, 200, kept);
       }
       let result;
       try {
-        result = await transportNetwork(point, mode, networkStore, {
-          level,
-          build: buildNetwork,
-        });
+        result = worldBuild
+          ? await worldRailNetwork(point, networkStore, railWorld)
+          : await transportNetwork(point, mode, networkStore, {
+              level,
+              build: buildNetwork,
+            });
       } catch (error) {
         return send(res, 502, {
           error: `The ${mode === 'rail' ? 'rail' : 'road'} network did not load: ${error.message}`,
@@ -1720,9 +2696,7 @@ export function outbreakProxy({
       // Kept only when every tile answered: a partial network is asked again.
       if (!result.failedTiles) {
         builtNetworks.write(fileKey, result);
-        networks.set(key, result);
-        while (networks.size > 20)
-          networks.delete(networks.keys().next().value);
+        keepNetwork(key, result);
       }
       return send(res, 200, result);
     }

@@ -21,7 +21,9 @@ import {
   privateCamerasProxy,
   privateFetchSiteAllowed,
   relayPairingCode,
+  privateCameraUpdateRemoves,
 } from '../server/providers/private-cameras.js';
+import { OWNER_DEVICE_AUTHORITY_HEADER, OWNER_DEVICE_HEADER, OWNER_DEVICE_REMOVAL_HEADER, setOwnerDeviceToken } from './keySetupCore.mjs';
 
 test('digest authorization matches the RFC 2617 worked example', () => {
   const challenge = parseDigestChallenge(
@@ -1055,4 +1057,121 @@ test('a changed camera site file is not fetched, and a paired relay still answer
   const opened = await dock();
   assert.equal(opened.headers['X-Private-Camera'], 'live');
   assert.equal(asked.length, 2);
+});
+
+// ---------------------------------------------------------------------------
+// The owner's own phone through the tailnet mirror (owner ruling 2026-10-11:
+// "full write access - except delete or remove anything on pc server").
+// ---------------------------------------------------------------------------
+
+const OWNER_TOKEN = 'e'.repeat(64);
+const MIRROR = 'http://100.64.0.1:4173';
+const ownerHeaders = (extra = {}) => ({
+  host: '100.64.0.1:4173',
+  origin: MIRROR,
+  'content-type': 'application/json',
+  'sec-fetch-site': 'same-origin',
+  [OWNER_DEVICE_HEADER]: OWNER_TOKEN,
+  [OWNER_DEVICE_AUTHORITY_HEADER]: MIRROR,
+  ...extra,
+});
+const OWNER = '100.64.0.10';
+
+test('relay admission refuses the owner device: the extension runs on the PC, never on the phone', (t) => {
+  setOwnerDeviceToken(OWNER_TOKEN);
+  t.after(() => setOwnerDeviceToken(''));
+  // A phone that navigates straight to a relay URL: Sec-Fetch-Site none, no Origin.
+  const navigation = admitRelayRequest({ method: 'GET', headers: ownerHeaders({ origin: undefined, 'content-type': undefined, 'sec-fetch-site': 'none' }), socket: { remoteAddress: OWNER } });
+  assert.deepEqual(navigation, { ok: false, status: 403, error: 'The Private_CCTV_Feed relay answers only its browser extension' });
+  const extensionLike = admitRelayRequest({ method: 'POST', headers: ownerHeaders({ origin: `chrome-extension://${EXTENSION_ID}`, 'sec-fetch-site': 'none' }), socket: { remoteAddress: OWNER } });
+  assert.equal(extensionLike.ok, false);
+  assert.equal(extensionLike.status, 403);
+});
+
+test('the owner device may add, edit, move and pair private cameras, but every removal stays on the PC', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 40_000_000 });
+  setOwnerDeviceToken(OWNER_TOKEN);
+  t.after(() => setOwnerDeviceToken(''));
+  const root = relayRoot(t);
+  // No camera is ever contacted here.
+  const request = relayHarness(privateCamerasProxy({ sourceRoot: root, fetchImpl: async () => assert.fail('no camera is contacted') }));
+  const owner = (url, { headers = {}, ...options } = {}) => request(url, { remoteAddress: OWNER, headers: ownerHeaders(headers), ...options });
+  const save = (body) => owner('/config', { method: 'POST', body });
+  const homeCameras = [{ id: 'front', name: 'Front' }, { id: 'ff', name: 'Ff' }, { id: 'back-yard', name: 'Back Yard' }];
+  const refusedAsRemoval = (answer, label) => {
+    // No message (owner ruling 2026-10-11): the marker header and the exact body.
+    assert.equal(answer.status, 403, `${label}: ${answer.body}`);
+    const marker = Object.entries(answer.headers || {}).find(([name]) => name.toLowerCase() === OWNER_DEVICE_REMOVAL_HEADER);
+    assert.equal(marker?.[1], 'pc-only', label);
+    assert.equal(answer.body, '{"removal":"pc-only"}', label);
+    assert.equal(Object.hasOwn(answer.json(), 'error'), false, label);
+  };
+
+  // Reads.
+  assert.equal((await owner('/status')).status, 200);
+  assert.equal((await owner('/sources')).status, 200);
+  // A forged token or a proxied stamp is a stranger.
+  assert.equal((await request('/sources', { remoteAddress: OWNER, headers: ownerHeaders({ [OWNER_DEVICE_HEADER]: 'f'.repeat(64) }) })).status, 403);
+  assert.equal((await request('/sources', { remoteAddress: OWNER, headers: ownerHeaders({ 'x-forwarded-for': '203.0.113.9' }) })).status, 403);
+
+  // Writes that add, edit, move or overwrite.
+  const moved = await owner('/position', { method: 'POST', body: { id: 'private-shop--dock', lat: 45.001, lon: -66.001 } });
+  assert.equal(moved.status, 200, moved.body);
+  const renamed = await save({ kind: 'home', siteId: 'home', auth: 'relay', name: 'Home Base', cameras: homeCameras });
+  assert.equal(renamed.status, 200, renamed.body);
+  assert.equal(readStore(root).sites[0].name, 'Home Base');
+  const added = await save({ kind: 'home', siteId: 'home', auth: 'relay', cameras: [...homeCameras, { name: 'Garage' }] });
+  assert.equal(added.status, 200, added.body);
+  assert.equal(readStore(root).sites[0].cameras.length, 4);
+  const newPassword = await save({ kind: 'business', siteId: 'shop', password: 'hunter3' });
+  assert.equal(newPassword.status, 200, newPassword.body);
+  assert.equal(readStore(root).sites[1].password, 'hunter3');
+  const newSite = await save({ kind: 'business', name: 'Warehouse', cameras: [{ name: 'Gate', source: 'http://10.0.0.3/snap.jpg' }] });
+  assert.equal(newSite.status, 200, newSite.body);
+
+  // Removals: a camera, a site, a saved login, the relay pairing by a sign-in switch or by unpair.
+  const storeFile = path.join(root, 'config', 'private-cameras.json');
+  const before = fs.readFileSync(storeFile, 'utf8');
+  const allCameras = [...homeCameras, { id: 'garage', name: 'Garage' }];
+  refusedAsRemoval(await save({ kind: 'home', siteId: 'home', auth: 'relay', cameras: homeCameras }), 'removing a camera');
+  refusedAsRemoval(await save({ removeSiteId: 'shop' }), 'removing a site');
+  refusedAsRemoval(await save({ kind: 'business', siteId: 'shop', password: null }), 'clearing a saved password');
+  refusedAsRemoval(
+    await save({ kind: 'home', siteId: 'home', auth: 'token', cameras: allCameras.map((camera) => ({ ...camera, source: `camera.privatecam_${camera.id.replace('-', '_')}` })) }),
+    'a sign-in switch that drops the pairing',
+  );
+  refusedAsRemoval(await owner('/relay/unpair', { method: 'POST', body: { siteId: 'home' } }), 'unpairing the relay');
+  refusedAsRemoval(await owner('/config', { method: 'DELETE', body: { removeSiteId: 'shop' } }), 'an HTTP DELETE');
+  assert.equal(fs.readFileSync(storeFile, 'utf8'), before, 'no refused removal wrote anything');
+  assert.equal(readStore(root).sites[0].relayExtensionId, EXTENSION_ID);
+
+  // The PC itself may still remove.
+  const pcUnpair = await request('/relay/unpair', { method: 'POST', body: { siteId: 'home' }, headers: pageHeaders() });
+  assert.deepEqual([pcUnpair.status, pcUnpair.json()], [200, { ok: true }]);
+
+  // Pairing again is approved from the phone: approving adds a pairing.
+  const pending = secretPair();
+  const asked = await request('/relay/pair-request', { method: 'POST', body: { secretHash: pending.hash }, headers: { ...extensionHeaders({ secret: null }), 'content-type': 'application/json' } });
+  assert.equal(asked.status, 202, asked.body);
+  const approved = await owner('/relay/approve', { method: 'POST', body: { siteId: 'home', code: asked.json().code, extensionId: EXTENSION_ID } });
+  assert.equal(approved.status, 200, approved.body);
+  assert.equal(readStore(root).sites[0].relaySecretHash, pending.hash);
+
+  // The relay's own routes are never the phone's.
+  const navigation = await owner('/relay/pair-status', { headers: { origin: undefined, 'content-type': undefined, 'sec-fetch-site': 'none' } });
+  assert.equal(navigation.status, 403);
+});
+
+test('privateCameraUpdateRemoves names exactly the removals', () => {
+  const site = (fields = {}) => ({ id: 'home', kind: 'home', name: 'Home', auth: 'relay', token: 'tok', password: 'pw', username: 'admin', tlsFingerprint: 'a'.repeat(64), relayExtensionId: EXTENSION_ID, relaySecretHash: RELAY.hash, cameras: [{ id: 'front', name: 'Front', source: '' }], ...fields });
+  const config = (...sites) => ({ version: 2, sites });
+  assert.equal(privateCameraUpdateRemoves(config(site()), config(site())), false);
+  assert.equal(privateCameraUpdateRemoves(config(site()), config(site({ name: 'Renamed', password: 'new' }))), false);
+  assert.equal(privateCameraUpdateRemoves(config(site()), config(site(), site({ id: 'cabin' }))), false, 'adding a site');
+  assert.equal(privateCameraUpdateRemoves(config(site()), config(site({ cameras: [{ id: 'front', name: 'Front', source: '' }, { id: 'side', name: 'Side', source: '' }] }))), false, 'adding a camera');
+  assert.equal(privateCameraUpdateRemoves(config(site()), config()), true, 'a removed site');
+  assert.equal(privateCameraUpdateRemoves(config(site()), config(site({ cameras: [] }))), true, 'a removed camera');
+  assert.equal(privateCameraUpdateRemoves(config(site()), config(site({ tlsFingerprint: 'b'.repeat(64) }))), false, 'a new certificate pin');
+  for (const field of ['token', 'password', 'username', 'tlsFingerprint', 'relayExtensionId', 'relaySecretHash'])
+    assert.equal(privateCameraUpdateRemoves(config(site()), config(site({ [field]: '' }))), true, field);
 });

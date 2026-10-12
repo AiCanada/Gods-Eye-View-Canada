@@ -32,6 +32,11 @@ import {
   selectAnalystRows,
 } from '../data/analystEngine.js';
 import { voiceLayer, voiceLayerAliasMap } from './layerManifest.js';
+import {
+  createUiControlRegistry,
+  listUiControls,
+  useUiControl,
+} from './uiControls.js';
 import { layerFeedState } from '../data/feedState.js';
 import {
   initCameraVerbs,
@@ -99,6 +104,21 @@ const PANEL_ALIASES = new Map([
   ['weather panel', 'weather-panel'],
   ['recent imagery', 'recent-imagery-panel'],
   ['imagery panel', 'recent-imagery-panel'],
+  ['street level', 'street-level-panel'],
+  ['street level panel', 'street-level-panel'],
+  ['ultra', 'ultra-panel'],
+  ['ultra panel', 'ultra-panel'],
+  ['ultra security', 'ultra-panel'],
+  ['ultra security package', 'ultra-panel'],
+  ['social', 'social-panel'],
+  ['social media', 'social-panel'],
+  ['social media analysis', 'social-panel'],
+  ['outbreak', 'outbreak-panel'],
+  ['outbreak panel', 'outbreak-panel'],
+  ['predicted spread', 'outbreak-panel'],
+  ['sea temperature', 'sst-panel'],
+  ['sea surface temperature', 'sst-panel'],
+  ['sst', 'sst-panel'],
 ]);
 
 const PANEL_IDS = new Set([
@@ -113,6 +133,11 @@ const PANEL_IDS = new Set([
   'ask-panel',
   'weather-panel',
   'recent-imagery-panel',
+  'street-level-panel',
+  'ultra-panel',
+  'social-panel',
+  'outbreak-panel',
+  'sst-panel',
 ]);
 const CONTEXT_MODE_ALIASES = new Map([
   ['off', 'off'],
@@ -340,6 +365,9 @@ export function createGevActionRunner({
   searchNavigation = searchAndFlyTo,
   speechBuilders = null,
   deixis = null,
+  uiControls = typeof document === 'undefined'
+    ? null
+    : createUiControlRegistry({ root: document }),
 }) {
   // Voice enable times and analyst follow-up memory belong to this runner.
   // Speech builders turn results into say/display envelopes; callers extend
@@ -1221,6 +1249,19 @@ export function createGevActionRunner({
 
     if (name === 'clear_annotations') {
       return clearAnnotations(annotations);
+    }
+
+    if (name === 'list_ui_controls' || name === 'use_ui_control') {
+      if (!uiControls)
+        return {
+          ok: false,
+          action: name,
+          error: 'On-screen controls are unavailable here.',
+        };
+      if (name === 'list_ui_controls') return listUiControls(uiControls, args);
+      return useUiControl(uiControls, args, {
+        openPanel: (panelId) => setPanelOpen(styleManager, panelId, true),
+      });
     }
 
     throw new Error(`Unknown GEV tool: ${name}`);

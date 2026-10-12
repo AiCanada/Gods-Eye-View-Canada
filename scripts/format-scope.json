@@ -337,6 +337,8 @@
   "src/materialSymbolsSubset.test.mjs",
   "scripts/pinokio-update.mjs",
   "src/pinokioUpdatePreview.test.mjs",
+  "scripts/dev-server.mjs",
+  "src/tooling/devSupervisor.test.mjs",
   "server/providers/cctv/range.js",
   "src/data/cctvMediaRange.test.mjs",
   "src/ui/frameRateMonitor.js",

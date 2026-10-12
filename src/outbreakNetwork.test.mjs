@@ -5,11 +5,25 @@ import {
   bandsReached,
   hourBandOf,
   hourBandStart,
+  buildRailGraph,
   buildTransportNetwork,
+  mergeRailOverlay,
   networkTiles,
+  numberHeap,
+  packRailGraph,
+  railComponents,
+  railDistances,
+  railGraphLinesIn,
+  railGraphPieces,
+  railPathBoxes,
+  railPlaceLinks,
+  railTimedReach,
+  railVertexIndex,
   tileBounds,
   tileDistanceKm,
   tileOf,
+  unpackRailGraph,
+  walkCells,
 } from './outbreakNetwork.mjs';
 
 test('tiles: zoom-8 slippy tiles round a point, nearest first, wrapped at the antimeridian', () => {
@@ -181,4 +195,449 @@ test('timed: roads out of each landing airport, lit by the hour each is first re
     [hourBandStart(5), hourBandStart(50), hourBandStart(82)],
     [5, 60, 288],
   );
+});
+
+test('rail split into pieces is one network: ends 120 km apart and a T-junction end 20 m off a line', () => {
+  // Measured 2026-10-12: the rail round Paris, Chicago, Toronto, Mexico City
+  // and Irkutsk builds whole (nothing unreached); this locks in the joins
+  // that make it so.
+  const kmLon = 111.2 * Math.cos((50 * Math.PI) / 180);
+  const run = (lon0, lat0, dLonKm, dLatKm, km) =>
+    Array.from({ length: km / 5 + 1 }, (_, i) => [
+      lon0 + ((dLonKm * i * 5) / km) * (1 / kmLon),
+      lat0 + ((dLatKm * i * 5) / km) * (1 / 111.2),
+    ]);
+  // West piece: 100 km east from the outbreak.
+  const west = run(0, 50, 100, 0, 100);
+  // East piece: starts 120 km past the west piece's end.
+  const east = run(220 / kmLon, 50, 100, 0, 100);
+  // A branch north whose end sits 20 m off the middle of the west piece
+  // (between two of its points, not on one).
+  const branch = run(52.5 / kmLon, 50 + 0.02 / 111.2, 0, 50, 50);
+  const network = buildTransportNetwork(
+    [west, east, branch],
+    { lat: 50, lon: 0 },
+    { startKm: 30, joinKm: 200 },
+  );
+  assert.ok(network);
+  assert.deepEqual(network.unreached, [], 'every piece reached');
+  assert.ok(Math.abs(network.lengthKm - 250) <= 3, `${network.lengthKm} km`);
+  const points = Object.values(network.bands)
+    .flat()
+    .flatMap((flat) => flat.filter((_, i) => i % 2 === 0));
+  assert.ok(Math.max(...points) > 319 / kmLon, 'the east piece is lit');
+  // Its far end: 100 km, the 120 km gap at the same speed, then 100 km.
+  assert.ok(
+    Math.abs(network.reachedKm - 320) <= 3,
+    `${network.reachedKm} km along`,
+  );
+  const lats = Object.values(network.bands)
+    .flat()
+    .flatMap((flat) => flat.filter((_, i) => i % 2 === 1));
+  assert.ok(Math.max(...lats) > 50 + 49 / 111.2, 'the branch is lit');
+});
+
+/* ---- The world rail network (owner ruling 2026-10-12) ---- */
+
+test('world rail: the packed network measures the same distances as the network round one place', () => {
+  const graph = buildRailGraph(LINES, { joinKm: 200 });
+  const index = railVertexIndex(graph);
+  const start = index.nearest({ lat: 0, lon: 0 }, 30);
+  assert.equal(start[1], 0);
+  const dist = railDistances(graph, [{ vertex: start[0], startKm: 0 }]);
+  let farthest = 0;
+  let unreached = 0;
+  for (const d of dist)
+    if (Number.isFinite(d)) farthest = Math.max(farthest, d);
+    else unreached += 1;
+  const old = buildTransportNetwork(
+    LINES,
+    { lat: 0, lon: 0 },
+    { pieceKm: 5, bandKm: 10, joinKm: 200 },
+  );
+  assert.ok(
+    Math.abs(farthest - old.reachedKm) <= 1,
+    `${farthest} vs ${old.reachedKm}`,
+  );
+  assert.equal(unreached, 2, 'the unconnected road, 330 km off, stays apart');
+  // The pieces, banded as the old answer bands them.
+  const pieces = railGraphPieces(graph, dist);
+  assert.ok(Math.abs(pieces.reachedKm - old.reachedKm) <= 1);
+  assert.deepEqual(
+    Object.keys(pieces.bands)
+      .map(Number)
+      .sort((a, b) => a - b),
+    Object.keys(old.bands)
+      .map(Number)
+      .sort((a, b) => a - b),
+  );
+  assert.deepEqual(
+    pieces.unreached,
+    [],
+    'not asked for: the world layer draws them',
+  );
+  assert.ok(
+    railGraphPieces(graph, dist, { unreached: true }).unreached.length > 0,
+  );
+  assert.ok(Math.abs(graph.lengthKm - old.lengthKm) <= 1);
+});
+
+test('world rail: packed to bytes and back, nothing changes', () => {
+  const graph = buildRailGraph(LINES, {
+    joinKm: 200,
+    countryAt: (lat) => (lat > 1 ? 'BB' : 'AA'),
+  });
+  const bytes = packRailGraph(graph, { version: 1, builtAt: 7 });
+  // A Node Buffer's slice is a view: reading from one must still copy.
+  const back = unpackRailGraph(Buffer.from(bytes));
+  assert.deepEqual(back.meta, { version: 1, builtAt: 7 });
+  for (const name of [
+    'lon',
+    'lat',
+    'offsets',
+    'targets',
+    'edgeKm',
+    'pathOffsets',
+    'pathVerts',
+    'country',
+  ])
+    assert.deepEqual([...back[name]], [...graph[name]], name);
+  assert.deepEqual(back.countries, graph.countries);
+  assert.deepEqual(back.byCountry, graph.byCountry);
+  assert.equal(back.lengthKm, graph.lengthKm);
+  assert.ok(back.byCountry.AA > 0 && back.byCountry.BB > 0);
+  assert.throws(() => unpackRailGraph(new Uint8Array(16)));
+});
+
+test('world rail: points are one by their own latitude, far from any origin', () => {
+  // Two lines meeting at 75° N, one end 30 m east of the other's: one
+  // point at that latitude (0.15 km), where the equator's grid would part
+  // them.
+  const kmLon = 111.2 * Math.cos((75 * Math.PI) / 180);
+  const a = [
+    [10, 75],
+    [10.5, 75],
+  ];
+  const b = [
+    [10.5 + 0.03 / kmLon, 75],
+    [11, 75],
+  ];
+  const graph = buildRailGraph([a, b], { joinKm: 0.001 });
+  assert.equal(graph.lon.length, 3, 'the shared end is one point');
+  const far = buildRailGraph(
+    [
+      a,
+      [
+        [10.5 + 2 / kmLon, 75],
+        [11, 75],
+      ],
+    ],
+    { joinKm: 0.001 },
+  );
+  assert.equal(far.lon.length, 4, '2 km apart: two points');
+  assert.equal(new Set(railComponents(far)).size, 2);
+  assert.equal(new Set(railComponents(graph)).size, 1);
+});
+
+test('world rail: crossings meet, loose ends join up to 200 km, and separate networks join their closest', () => {
+  const graph = buildRailGraph(
+    [
+      // A cross, no shared point.
+      [
+        [0, 0],
+        [1, 0],
+      ],
+      [
+        [0.5, -0.5],
+        [0.5, 0.5],
+      ],
+      // 150 km east of the cross's east end: joined.
+      [
+        [2.35, 0],
+        [3, 0],
+      ],
+      // 300 km north: too far for rail.
+      [
+        [0.5, 3.2],
+        [1, 3.2],
+      ],
+    ],
+    { joinKm: 200 },
+  );
+  const comp = railComponents(graph);
+  const index = railVertexIndex(graph);
+  const at = (lat, lon) => comp[index.nearest({ lat, lon }, 5)[0]];
+  assert.equal(at(0, 0), at(0.5, 0.5), 'the crossing joins the cross');
+  assert.equal(at(0, 0), at(0, 3), 'the loose end joins the line 150 km on');
+  assert.notEqual(at(0, 0), at(3.2, 0.5), '300 km is past the rail join');
+  assert.ok(graph.joinedKm >= 140);
+});
+
+test('world rail: timed from many landings, the same hours as the network round the landings', () => {
+  const road = [
+    [
+      [0, 0],
+      [0.5, 0],
+      [1, 0],
+      [3, 0],
+    ],
+  ];
+  const timing = { speedKmh: 100, fastKm: 100, onwardShare: 0.25 };
+  const sources = [
+    { lat: 0, lon: 0, hour: 0 },
+    { lat: 0, lon: 3, hour: 10 },
+  ];
+  const old = buildTransportNetwork(
+    road,
+    { lat: 0, lon: 0 },
+    { sources, timing },
+  );
+  const graph = buildRailGraph(road);
+  const index = railVertexIndex(graph);
+  const seeds = sources.map((s) => {
+    const [vertex, startKm] = index.nearest(s, 50);
+    return { vertex, startKm, hour: s.hour };
+  });
+  const { time, dist } = railTimedReach(graph, seeds, timing);
+  const pieces = railGraphPieces(graph, time, { dist, timed: true });
+  assert.ok(
+    Math.abs(pieces.reachedKm - old.lastHour) <= 0.2,
+    `${pieces.reachedKm} vs ${old.lastHour}`,
+  );
+  assert.ok(Object.keys(pieces.bands).length > 1);
+});
+
+test('world rail: places joined along the rail, the finer lines laid over, a box of lines, a heap', () => {
+  // A line west to east, 0° to 3°; places at 0°, 1° and 3°.
+  const line = [
+    [0, 0],
+    [1, 0],
+    [2, 0],
+    [3, 0],
+  ];
+  const graph = buildRailGraph([line]);
+  const index = railVertexIndex(graph);
+  const seeds = Int32Array.from(
+    [0, 1, 3],
+    (lon) => index.nearest({ lat: 0, lon }, 5)[0],
+  );
+  const links = railPlaceLinks(graph, seeds);
+  const neighbours = (p) =>
+    [...links.targets.subarray(links.offsets[p], links.offsets[p + 1])].sort();
+  assert.deepEqual(neighbours(0), [1]);
+  assert.deepEqual(neighbours(1), [0, 2]);
+  const k = links.offsets[1] + [...neighbours(1)].indexOf(2);
+  assert.ok(
+    Math.abs(links.km[links.offsets[1] + 1] - 222.4) < 1 ||
+      Math.abs(links.km[k] - 222.4) < 1,
+  );
+  // A branch 40 km north of the line's middle, its end 20 km off it: laid
+  // over, it joins the world at its loose end.
+  const branch = [
+    [1.5, 0.18],
+    [1.5, 0.5],
+  ];
+  const merged = mergeRailOverlay(graph, [branch], { index });
+  assert.equal(merged.lon.length, graph.lon.length + 2);
+  assert.equal(new Set(railComponents(merged)).size, 1);
+  assert.ok(merged.lengthKm > graph.lengthKm);
+  assert.equal(merged.pathOffsets.length, graph.pathOffsets.length + 1);
+  // The lines inside a box, cut at its edges.
+  const inBox = railGraphLinesIn(graph, {
+    west: 0.5,
+    east: 1.5,
+    south: -1,
+    north: 1,
+  });
+  assert.equal(inBox.length, 1);
+  assert.ok(inBox[0][0] <= 0.5 && inBox[0].at(-2) >= 1.5);
+  // With each line's own box, the same lines, and none for a far box.
+  const boxes = railPathBoxes(merged);
+  const box = { west: 0.5, east: 1.5, south: -1, north: 1 };
+  assert.deepEqual(
+    railGraphLinesIn(merged, box, 1, boxes),
+    railGraphLinesIn(merged, box, 1),
+  );
+  assert.deepEqual(
+    railGraphLinesIn(
+      merged,
+      { west: 50, east: 60, south: 10, north: 20 },
+      1,
+      boxes,
+    ),
+    [],
+  );
+  // The heap gives the smallest first.
+  const heap = numberHeap();
+  for (const k2 of [5, 1, 4, 2, 3]) heap.push(k2, k2 * 10);
+  const out = [];
+  while (heap.size) out.push(heap.pop());
+  assert.deepEqual(out, [10, 20, 30, 40, 50]);
+});
+
+/** A closed loop through the points: no loose end, so no end join. */
+const loop = (points) => [...points, points[0]];
+
+test('world rail: a network joins twice across rounds; a cell cut short by a closer find of a sibling is not taken as lonely (2026-10-12)', () => {
+  // R: one corner 5 km from the small loop S, the opposite corner 150 km
+  // from the bigger loop B; nothing else near R.
+  const r = loop([
+    [0, 0],
+    [0.5, 0.3],
+    [1, 0],
+  ]);
+  const s = loop([
+    [-0.05, 0],
+    [-0.1, 0.05],
+    [-0.1, -0.05],
+  ]);
+  const b = loop(
+    Array.from({ length: 10 }, (_, i) => {
+      const a = (i / 10) * 2 * Math.PI;
+      return [2.5 - 0.15 * Math.cos(a), 0.15 * Math.sin(a)];
+    }),
+  );
+  const graph = buildRailGraph([r, s, b], { joinKm: 200 });
+  const comp = railComponents(graph);
+  const index = railVertexIndex(graph);
+  const at = (lat, lon) => comp[index.nearest({ lat, lon }, 1)[0]];
+  assert.equal(at(0, 0), at(0, -0.05), 'R joins S, 5 km off');
+  assert.equal(at(0, 1), at(0, 2.35), 'then R and S join B, 150 km off');
+  assert.equal(new Set(comp).size, 1);
+  assert.ok(graph.joinedKm >= 150, `${graph.joinedKm} km of joins`);
+});
+
+test('world rail: a join refused (open sea) is never made, and the closest join allowed is made instead (2026-10-12)', () => {
+  // A strait along 0.5° N: no join may cross it.
+  const joinOk = (lat1, lon1, lat2) =>
+    Math.min(lat1, lat2) > 0.5 || Math.max(lat1, lat2) < 0.5;
+  const lines = [
+    // The island's line, 111 km south of the far shore's.
+    [
+      [0, 0],
+      [0.5, 0],
+    ],
+    // The far shore.
+    [
+      [0, 1],
+      [0.5, 1],
+    ],
+    // The island's own shore, 150 km east.
+    [
+      [1.85, 0],
+      [2.5, 0],
+    ],
+  ];
+  const graph = buildRailGraph(lines, { joinKm: 200, joinOk });
+  const comp = railComponents(graph);
+  const index = railVertexIndex(graph);
+  const at = (lat, lon) => comp[index.nearest({ lat, lon }, 1)[0]];
+  assert.equal(at(0, 0), at(0, 2.5), 'the join on this side is made');
+  assert.notEqual(at(0, 0), at(1, 0), 'none across the strait');
+  assert.ok(graph.refusedJoins > 0);
+  // Without joinOk every join is allowed, as before.
+  const open = buildRailGraph(lines, { joinKm: 200 });
+  assert.equal(new Set(railComponents(open)).size, 1);
+  assert.equal(open.refusedJoins, 0);
+});
+
+test('world rail: a crossing on a long straight run in the far north is found (2026-10-12)', () => {
+  // At 65° N a 2 km cell is under a km wide: this run spans some 1,500
+  // cells of its box, past the cap that used to skip it.
+  const graph = buildRailGraph(
+    [
+      [
+        [20, 65],
+        [21.5, 65.3],
+      ],
+      [
+        [20.75, 65],
+        [20.75, 65.3],
+      ],
+    ],
+    { joinKm: 0.001 },
+  );
+  assert.equal(graph.lon.length, 5, 'the crossing is a point of its own');
+  const index = railVertexIndex(graph);
+  const [x] = index.nearest({ lat: 65.15, lon: 20.75 }, 1);
+  assert.equal(graph.offsets[x + 1] - graph.offsets[x], 4);
+  assert.equal(new Set(railComponents(graph)).size, 1);
+});
+
+test('walkCells: every cell a segment passes, in order, both cells beside a corner', () => {
+  const cells = [];
+  walkCells(0.5, 0.5, 3.5, 1.9, (x, y) => cells.push([x, y]));
+  assert.deepEqual(cells, [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [2, 1],
+    [3, 1],
+  ]);
+  const diagonal = [];
+  walkCells(0.5, 0.5, 2.5, 2.5, (x, y) => diagonal.push([x, y]));
+  assert.deepEqual(diagonal, [
+    [0, 0],
+    [1, 0],
+    [0, 1],
+    [1, 1],
+    [2, 1],
+    [1, 2],
+    [2, 2],
+  ]);
+  const backwards = [];
+  walkCells(2.5, 0.5, 0.5, 0.5, (x, y) => backwards.push([x, y]));
+  assert.deepEqual(backwards, [
+    [2, 0],
+    [1, 0],
+    [0, 0],
+  ]);
+});
+
+test('world rail: the finer lines laid over count and draw only the branch lines, each point with its country (2026-10-12)', () => {
+  const world = buildRailGraph(
+    [
+      [
+        [0, 0],
+        [1, 0],
+        [2, 0],
+        [3, 0],
+      ],
+    ],
+    { countryAt: () => 'FR' },
+  );
+  const index = railVertexIndex(world);
+  // The finer tiles carry the main line again (one point 55 m off it) and
+  // a branch 0.3° north.
+  const main = [
+    [0.5, 0],
+    [0.75, 0.0005],
+    [1, 0],
+    [1.5, 0],
+  ];
+  const branch = [
+    [1.5, 0],
+    [1.5, 0.3],
+  ];
+  const merged = mergeRailOverlay(world, [main, branch], { index });
+  const branchKm = 0.3 * 111.19;
+  assert.ok(
+    Math.abs(merged.overlayKm - branchKm) < 0.5,
+    `${merged.overlayKm} km`,
+  );
+  assert.ok(Math.abs(merged.lengthKm - world.lengthKm - branchKm) < 0.5);
+  assert.equal(
+    merged.pathOffsets.length,
+    world.pathOffsets.length + 1,
+    'only the branch is drawn again',
+  );
+  for (let v = world.lon.length; v < merged.lon.length; v += 1)
+    assert.equal(merged.countries[merged.country[v]], 'FR');
+  // With countryAt, its own codes.
+  const told = mergeRailOverlay(world, [branch], {
+    index,
+    countryAt: () => 'BE',
+  });
+  assert.equal(told.countries[told.country[told.lon.length - 1]], 'BE');
+  assert.deepEqual(world.countries, ['', 'FR'], 'the world is not changed');
 });

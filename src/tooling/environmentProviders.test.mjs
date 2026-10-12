@@ -32,6 +32,10 @@ function install(plugin) {
   };
 }
 function isolate(t, env = {}) {
+  // The terrain cache is one per process (it outlives a dev-server restart);
+  // each test here installs its own proxy over an empty one.
+  delete globalThis.__GEV_TERRAIN_CACHE;
+  t.after(() => delete globalThis.__GEV_TERRAIN_CACHE);
   for (const [name, value] of Object.entries(env)) {
     const previous = process.env[name];
     t.after(() => {
@@ -294,4 +298,59 @@ test('terrain middleware retains successful chunks around a failure and retries 
     Array.from({ length: 130 }, (_, i) => ({ ellipsoid: i / 100 + 100 })),
   );
   assert.equal(requests.length, 4);
+});
+
+test('terrain proxies built by re-evaluated module copies share one cache, one flush timer and one memory tier', async (t) => {
+  // Vite re-bundles the config on an in-process restart, which evaluates
+  // this module again and builds the proxy again: the `?copy=` import is such
+  // a fresh evaluation, beside the copy imported at the top of this file.
+  delete globalThis.__GEV_TERRAIN_CACHE;
+  t.mock.method(fsp, 'readFile', async () => {
+    throw Error('no disk cache');
+  });
+  t.mock.method(fsp, 'writeFile', async () => {});
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (raw) => {
+    calls++;
+    const points = new URL(raw).searchParams
+      .get('points')
+      .split(';')
+      .map((p) => p.split(',').map(Number));
+    return Response.json({
+      results: points.map(([lon]) => ({ ellipsoid: lon + 100 })),
+    });
+  });
+  try {
+    const href = new URL('../../server/providers/terrain.js', import.meta.url)
+      .href;
+    const restarted = await import(`${href}?copy=restart`);
+    assert.notEqual(restarted.terrainHeightsProxy, terrainHeightsProxy);
+    const first = install(terrainHeightsProxy());
+    const shared = globalThis.__GEV_TERRAIN_CACHE;
+    assert.ok(shared, 'the factory creates the shared state');
+    const again = install(restarted.terrainHeightsProxy());
+    assert.equal(globalThis.__GEV_TERRAIN_CACHE, shared, 'one state object');
+    assert.equal(shared.tiers.size, 1, 'the restarted proxy replaces the tier');
+    assert.deepEqual(json(await first('/?points=1,2')), {
+      results: [{ ellipsoid: 101 }],
+    });
+    assert.equal(calls, 1);
+    const timer = shared.flushTimer;
+    assert.ok(timer, 'the first request starts the flush timer');
+    assert.deepEqual(json(await again('/?points=1,2')), {
+      results: [{ ellipsoid: 101 }],
+    });
+    assert.equal(calls, 1, 'the restarted proxy serves from the shared cache');
+    assert.equal(globalThis.__GEV_TERRAIN_CACHE, shared);
+    assert.equal(shared.flushTimer, timer, 'one flush timer for the process');
+    assert.equal(shared.mem.size, 1);
+    assert.equal(
+      restarted.pruneTerrainMemoryOutside({ latitude: 0, longitude: 0 }, 1),
+      0,
+      'the unpersisted point stays; the one tier answers from either copy',
+    );
+  } finally {
+    clearInterval(globalThis.__GEV_TERRAIN_CACHE?.flushTimer);
+    delete globalThis.__GEV_TERRAIN_CACHE;
+  }
 });

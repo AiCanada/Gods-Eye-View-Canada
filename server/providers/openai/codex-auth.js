@@ -112,13 +112,15 @@ export function resolveCodexExecutable({
   environment = process.env,
   home = os.homedir(),
   access = accessSync,
+  platform = process.platform,
 } = {}) {
   const explicit = String(environment.CODEX_BIN || '').trim();
   if (explicit) return explicit;
 
+  const paths = platform === 'win32' ? path.win32 : path.posix;
   for (const candidate of [
-    path.join(home, '.local', 'bin', 'codex'),
-    path.join(
+    paths.join(home, '.local', 'bin', 'codex'),
+    paths.join(
       home,
       '.codex',
       'packages',
@@ -136,6 +138,98 @@ export function resolveCodexExecutable({
     }
   }
   return 'codex';
+}
+
+/**
+ * An npm `codex.cmd` shim runs `node <its folder>\node_modules\@openai\codex\bin\codex.js`.
+ * Node will not start a .cmd without a shell, so run that script with node
+ * directly: the shim folder's own node.exe when it has one, else this node.
+ */
+function codexShimLaunch(shim, { exists, execPath }) {
+  const folder = path.win32.dirname(shim);
+  const script = path.win32.join(
+    folder,
+    'node_modules',
+    '@openai',
+    'codex',
+    'bin',
+    'codex.js',
+  );
+  if (!exists(script)) return null;
+  const ownNode = path.win32.join(folder, 'node.exe');
+  return { command: exists(ownNode) ? ownNode : execPath, args: [script] };
+}
+
+/**
+ * How to start Codex: `{ command, args }`, with `login` added by the caller.
+ * Elsewhere this is `resolveCodexExecutable`. On Windows the answer is always
+ * an absolute path, so the child's working folder is never searched before
+ * PATH: `CODEX_BIN`, then Codex's own installs, then each absolute PATH folder
+ * for codex.exe or an npm codex.cmd shim. Null when none is found.
+ */
+export function resolveCodexLaunch({
+  environment = process.env,
+  home = os.homedir(),
+  access = accessSync,
+  platform = process.platform,
+  execPath = process.execPath,
+} = {}) {
+  if (platform !== 'win32') {
+    return {
+      command: resolveCodexExecutable({ environment, home, access, platform }),
+      args: [],
+    };
+  }
+  const exists = (file) => {
+    try {
+      access(file, fsConstants.F_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const fromFile = (file) =>
+    /\.(?:cmd|bat)$/i.test(file)
+      ? codexShimLaunch(file, { exists, execPath })
+      : { command: file, args: [] };
+
+  const explicit = String(environment.CODEX_BIN || '').trim();
+  if (explicit) {
+    return path.win32.isAbsolute(explicit) && exists(explicit)
+      ? fromFile(explicit)
+      : null;
+  }
+  for (const candidate of [
+    path.win32.join(
+      home,
+      '.codex',
+      'packages',
+      'standalone',
+      'current',
+      'bin',
+      'codex.exe',
+    ),
+    path.win32.join(home, '.local', 'bin', 'codex.exe'),
+  ]) {
+    if (exists(candidate)) return { command: candidate, args: [] };
+  }
+  const pathValue =
+    Object.entries(environment).find(
+      ([name]) => name.toUpperCase() === 'PATH',
+    )?.[1] || '';
+  for (const raw of String(pathValue).split(';')) {
+    const folder = raw.trim().replace(/^"(.*)"$/, '$1');
+    // A relative PATH entry would resolve against the working folder.
+    if (!folder || !path.win32.isAbsolute(folder)) continue;
+    const exe = path.win32.join(folder, 'codex.exe');
+    if (exists(exe)) return { command: exe, args: [] };
+    const shim = path.win32.join(folder, 'codex.cmd');
+    if (exists(shim)) {
+      const launch = codexShimLaunch(shim, { exists, execPath });
+      if (launch) return launch;
+    }
+  }
+  return null;
 }
 
 // What `codex login` needs to find its home, open a browser and reach OpenAI.
@@ -157,7 +251,10 @@ export function startCodexChatGptLogin({
   spawnImpl = spawn,
   environment = process.env,
   home = os.homedir(),
-  executable = resolveCodexExecutable({ environment, home }),
+  executable,
+  launch = executable
+    ? { command: executable, args: [] }
+    : resolveCodexLaunch({ environment, home }),
 } = {}) {
   // Codex owns its credential storage. An explicit read path must agree with
   // the CLI's write path; never silently sign in to another credential store.
@@ -186,17 +283,23 @@ export function startCodexChatGptLogin({
     const fail = () => {
       reject(
         codexOAuthError(
-          'Could not start ChatGPT sign-in. Check that Codex is installed, or set CODEX_BIN to its executable.',
+          'Could not start ChatGPT sign-in. Check that Codex is installed (npm install -g @openai/codex), or set CODEX_BIN to its full path.',
           'CODEX_OAUTH_LOGIN_FAILED',
         ),
       );
       finish({ exitCode: null });
     };
+    if (!launch?.command) {
+      fail();
+      return;
+    }
     try {
-      child = spawnImpl(executable, ['login'], {
+      child = spawnImpl(launch.command, [...(launch.args || []), 'login'], {
         cwd: home,
         detached: true,
         stdio: 'ignore',
+        // Detached on Windows would open a console window of its own.
+        windowsHide: true,
         env: codexLoginEnvironment(environment, loginHome),
       });
     } catch {

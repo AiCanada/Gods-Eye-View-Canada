@@ -117,8 +117,10 @@
   color: #19e6b0;
 }
 
-/* Starting cases and Number of runs: a small label above each box, side by
-   side, with RUN EPIDEMIC MODEL level with the boxes. */
+/* Starting cases, Number of runs, Forecast and Random seed: a small label
+   above each box, side by side. RUN EPIDEMIC MODEL, DOWNLOAD RESULTS and
+   DOWNLOAD CSV sit on their own row below (.outbreak-epi-actions), with the
+   same buttons and sizes. */
 #outbreak-panel .outbreak-epi-row {
   align-items: flex-end;
 }
@@ -137,6 +139,23 @@
   margin: 2px 0 0;
   font-size: 9px;
   opacity: 0.85;
+}
+
+/* The second legend (peak day, hospital and intensive care) under the first. */
+#outbreak-panel .outbreak-epi-legend + .outbreak-epi-legend {
+  margin-top: 2px;
+  opacity: 0.85;
+}
+
+/* On a narrow phone a button that does not fit drops to the next line
+   (placement only: the buttons keep their size, font and padding). */
+#outbreak-panel .outbreak-epi-actions {
+  flex-wrap: wrap;
+}
+
+/* DOWNLOAD RESULTS and DOWNLOAD CSV wait for a result. */
+#outbreak-panel .outbreak-epi-actions .scene-btn[disabled] {
+  opacity: 0.5;
 }
 
 #outbreak-panel .outbreak-epi-field {

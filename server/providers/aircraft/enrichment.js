@@ -10,30 +10,47 @@ import { promises as fsp } from 'node:fs';
 export function adsbdbProxy() {
   const TTL_MS = 24 * 3600_000;
   const CACHE_PATH = path.join(process.cwd(), '.gev-cache', 'adsbdb.json');
-  let cache = { routes: {}, aircraft: {} };
-  let dirty = false;
-  let loaded = false;
-  const inflight = new Map();
+  /**
+   * Cache state that must outlive an in-process dev-server restart. Vite
+   * evaluates this module afresh on every server.restart() and builds the
+   * proxy again; state held in this closure would then be pinned by its
+   * flush timer while the new proxy started empty beside it (and re-read the
+   * disk file). It lives on globalThis instead, the terrain.js way, filled in
+   * one field at a time so a newer evaluation can add a field the running one
+   * lacks. A process restart still starts it empty.
+   */
+  const SHARED = (globalThis.__GEV_ADSBDB_CACHE ??= {});
+  SHARED.cache ??= { routes: {}, aircraft: {} };
+  SHARED.dirty ??= false;
+  SHARED.loaded ??= false;
+  SHARED.inflight ??= new Map();
+  /** The periodic flush, started by the first request and never a second time. */
+  SHARED.flushTimer ??= null;
 
   async function loadOnce() {
-    if (loaded) return;
-    loaded = true;
+    if (SHARED.loaded) return;
+    SHARED.loaded = true;
     try {
       const parsed = JSON.parse(await fsp.readFile(CACHE_PATH, 'utf8'));
-      cache = { routes: parsed.routes ?? {}, aircraft: parsed.aircraft ?? {} };
+      SHARED.cache = {
+        routes: parsed.routes ?? {},
+        aircraft: parsed.aircraft ?? {},
+      };
     } catch {
       /* first run */
     }
-    setInterval(async () => {
-      if (!dirty) return;
-      dirty = false;
+    // One timer per process: the callback reads the shared state only.
+    SHARED.flushTimer ??= setInterval(async () => {
+      if (!SHARED.dirty) return;
+      SHARED.dirty = false;
       try {
         await fsp.mkdir(path.dirname(CACHE_PATH), { recursive: true });
-        await fsp.writeFile(CACHE_PATH, JSON.stringify(cache), 'utf8');
+        await fsp.writeFile(CACHE_PATH, JSON.stringify(SHARED.cache), 'utf8');
       } catch {
-        dirty = true;
+        SHARED.dirty = true;
       } // retry next tick
-    }, 15_000).unref?.();
+    }, 15_000);
+    SHARED.flushTimer.unref?.();
   }
 
   const fresh = (e) => e && Date.now() - e.at < TTL_MS;
@@ -68,11 +85,12 @@ export function adsbdbProxy() {
   }
 
   function lookup(kind, key) {
-    const store = kind === 'route' ? cache.routes : cache.aircraft;
+    const store =
+      kind === 'route' ? SHARED.cache.routes : SHARED.cache.aircraft;
     if (fresh(store[key])) return Promise.resolve(store[key].data);
     const ik = `${kind}:${key}`;
-    if (!inflight.has(ik)) {
-      inflight.set(
+    if (!SHARED.inflight.has(ik)) {
+      SHARED.inflight.set(
         ik,
         (async () => {
           try {
@@ -87,24 +105,24 @@ export function adsbdbProxy() {
                   ? parseRoute(await res.json())
                   : parseAircraft(await res.json());
               store[key] = { at: Date.now(), data }; // data may be null — negative cache
-              dirty = true;
+              SHARED.dirty = true;
               return data;
             }
             if (res.status === 404) {
               store[key] = { at: Date.now(), data: null }; // known-missing — cache the miss
-              dirty = true;
+              SHARED.dirty = true;
             }
             // other statuses: leave uncached so we retry later
             return fresh(store[key]) ? store[key].data : null;
           } catch {
             return fresh(store[key]) ? store[key].data : null; // network error → stale if any
           } finally {
-            inflight.delete(ik);
+            SHARED.inflight.delete(ik);
           }
         })(),
       );
     }
-    return inflight.get(ik);
+    return SHARED.inflight.get(ik);
   }
 
   const installMiddleware = (server) => {

@@ -231,3 +231,33 @@ test('presentation: stale and unmatched events never reopen the card', () => {
   const both = reduceVoiceCard(first, { type: 'outline', id: 'anno-2', status: 'failed' });
   assert.equal(voiceCardView(both).steps[0].detail, 'Outline unavailable');
 });
+
+test('presentation: a quiet pc-only removal leaves no step and hides the card', () => {
+  const state = fold([
+    { type: 'action-call', name: 'use_ui_control', callId: 'call_q', arguments: { control: 'REMOVE', action: 'press' } },
+    {
+      type: 'action-result',
+      name: 'use_ui_control',
+      callId: 'call_q',
+      result: { ok: true, action: 'use_ui_control', result: 'pressed', say: null, schedule: 'silent', quiet: true },
+    },
+  ]);
+  const view = voiceCardView(state);
+  assert.equal(state.visible, false, 'the card is not shown');
+  assert.deepEqual(state.steps, [], 'no "Press REMOVE" step remains');
+  assert.equal(state.result, null);
+  assert.equal(view.visible, false);
+  assert.deepEqual(view.steps, []);
+});
+
+test('presentation: a quiet result drops only its own step', () => {
+  const state = fold([
+    { type: 'action-call', name: 'set_visual_style', callId: 'call_s', arguments: { style: 'night-vision' } },
+    { type: 'action-result', name: 'set_visual_style', callId: 'call_s', result: { ok: true } },
+    { type: 'action-call', name: 'use_ui_control', callId: 'call_q', arguments: { control: 'REMOVE', action: 'press' } },
+    { type: 'action-result', name: 'use_ui_control', callId: 'call_q', result: { ok: true, say: null, schedule: 'silent', quiet: true } },
+  ]);
+  assert.equal(state.visible, true, 'the earlier step keeps the card');
+  assert.deepEqual(state.steps.map((step) => step.callId), ['call_s']);
+  assert.equal(state.steps[0].status, 'done');
+});

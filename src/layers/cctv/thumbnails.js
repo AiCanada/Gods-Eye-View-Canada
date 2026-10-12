@@ -2,6 +2,11 @@ import * as Cesium from 'cesium';
 import { CCTV_OVERLAY_SOURCE_ID } from '../../data/cctvCards.js';
 import { trafficPlaneSpec } from './projection.js';
 import {
+  isOwnerRemovalRefusal,
+  noteOwnerRemovalRefusal,
+  watchOwnerRemoval,
+} from '../../ui/ownerRemoval.js';
+import {
   PRIVATE_POSITION_ENDPOINT,
   SIGHT_LINE_HIT_JITTER_MS,
   SIGHT_LINE_HIT_TTL_MS,
@@ -434,13 +439,34 @@ export function createThumbnails({
     const session = layerState._alignSession;
     if (!session) return;
     const { id } = session;
-    layerState._thumbAlignments.delete(id);
+    const previous = layerState._thumbAlignments.get(id);
+    // The saved placement stays on the card until the server answers: only
+    // the owner's phone pc-only refusal keeps it exactly as it was.
     endThumbnailAlign();
+    const forget = () => {
+      if (layerState._thumbAlignments.get(id) !== previous) return;
+      layerState._thumbAlignments.delete(id);
+      parts.cards.pushAmbientCardEntries();
+    };
     try {
-      await fetch(`/api/cctv/alignments/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      });
+      const response = await watchOwnerRemoval(
+        fetch(`/api/cctv/alignments/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        }),
+      );
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        if (isOwnerRemovalRefusal(response, body)) {
+          noteOwnerRemovalRefusal();
+          return;
+        }
+        throw new Error(body?.error || `HTTP ${response.status}`);
+      }
+      forget();
     } catch (error) {
+      // Any other refusal, or no answer at all: the reset holds for this
+      // session, as before (a session-only placement is undone on the PC).
+      forget();
       console.warn(
         `[Data:CCTV] saved alignment for ${id} could not be removed:`,
         error?.message || error,

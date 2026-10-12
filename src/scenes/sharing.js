@@ -25,7 +25,8 @@ function download(text, name) {
     link.click();
   } finally {
     link.remove();
-    URL.revokeObjectURL(url);
+    // Revoke later, not now: a phone may still be reading the blob.
+    globalThis.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }
 const subset = (value, keys) =>

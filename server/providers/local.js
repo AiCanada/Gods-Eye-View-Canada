@@ -95,8 +95,9 @@ function localProviderPlugins({ realtime } = {}) {
     // Opens the Grok Bot desktop app for OPEN GROK BOT and the no-key swarm.
     grokBotDesktopProxy(),
     // OUTBREAK LOCATIONS & PREDICTED SPREAD: airports, flight history,
-    // rail and water near an outbreak, and the global media search.
-    outbreakProxy(),
+    // rail and water near an outbreak, and the global media search; every
+    // rail line on the globe, found once in the background (2026-10-12).
+    outbreakProxy({ railWorld: true }),
     // Street Level imagery (upstream): Mapillary tiles, cached.
     mapillaryProxy(),
     keySetupEndpoint({ onEnvSaved: noteOutboundEnvSaved }),

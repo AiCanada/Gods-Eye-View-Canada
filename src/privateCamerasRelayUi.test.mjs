@@ -211,6 +211,19 @@ class FakeElement {
     }
   }
 
+  get nextSibling() {
+    const siblings = this.parentElement?.children || [];
+    return siblings[siblings.indexOf(this) + 1] || null;
+  }
+
+  insertBefore(node, reference) {
+    node.remove();
+    const at = this.children.indexOf(reference);
+    if (at < 0) return this.append(node);
+    node.parentElement = this;
+    this.children.splice(at, 0, node);
+  }
+
   remove() {
     if (!this.parentElement) return;
     this.parentElement.children = this.parentElement.children.filter((child) => child !== this);
@@ -512,4 +525,60 @@ test('POWER UP shows the relay panel, refreshes it in place without touching typ
   await flush();
   assert.equal(server.calls.length, calls, 'no refresh after destroy');
   assert.equal(host.children.length, 0);
+});
+
+test('the owner phone: removals the PC refuses are quiet no-ops that leave every camera, site and pairing as it was', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const documentRef = { createElement: (tag) => new FakeElement(tag) };
+  const dialog = new FakeElement('div');
+  const host = new FakeElement('div');
+  dialog.append(host);
+  const server = fakeServer(statusFixture({ relay: { paired: true, extensionId: EXTENSION_ID } }));
+  // Only the body says so here; the header is the other way the PC marks it.
+  const pcOnly = () => [403, { removal: 'pc-only' }];
+  const setup = initPrivateCameraSetup({ host, documentRef, fetchImpl: server.fetch });
+  try {
+    await flush();
+    const home = host.querySelector('[data-site-id="home"]');
+    const names = () => home.querySelectorAll('.private-cams-cameras .private-cams-camera').map((row) => row.dataset.cameraId);
+    const note = home.querySelector('.private-cams-note');
+    note.textContent = 'Earlier note';
+    assert.deepEqual(names(), ['front', 'ff', 'back-yard']);
+
+    // ✕ on a saved camera, then SAVE SITE: the PC keeps the camera, so it comes back where it was.
+    home.querySelectorAll('.private-cams-remove-camera')[1].click();
+    assert.deepEqual(names(), ['front', 'back-yard'], 'gone until the save answers');
+    server.replies.set('/api/private-cams/config', pcOnly);
+    home.querySelector('.private-cams-actions .private-cams-save').click();
+    await flush();
+    assert.deepEqual(server.calls.at(-1).body.cameras.map((camera) => camera.id), ['front', 'back-yard']);
+    assert.deepEqual(names(), ['front', 'ff', 'back-yard']);
+    assert.equal(note.textContent, 'Earlier note', 'nothing is said');
+    assert.equal(host.querySelector('[data-site-id="home"]'), home, 'the site is not re-rendered');
+
+    // REMOVE SITE: the site stays and nothing is said.
+    home.querySelector('.private-cams-actions .private-cams-remove-site').click();
+    await flush();
+    assert.deepEqual(server.calls.at(-1).body, { removeSiteId: 'home' });
+    assert.equal(host.querySelector('[data-site-id="home"]'), home);
+    assert.equal(note.textContent, 'Earlier note');
+
+    // UNPAIR: the pairing stays and the relay line is as it was.
+    const message = home.querySelector('.private-cams-relay-message');
+    const before = message.textContent;
+    server.replies.set('/api/private-cams/relay/unpair', pcOnly);
+    home.querySelector('.private-cams-relay-unpair').click();
+    await flush();
+    assert.deepEqual(server.calls.find((call) => call.url === '/api/private-cams/relay/unpair').body, { siteId: 'home' });
+    assert.equal(message.textContent, before);
+    assert.ok(home.querySelector('.private-cams-relay-unpair'), 'still paired');
+
+    // Any other refusal keeps its message.
+    server.replies.set('/api/private-cams/config', () => [409, { error: 'That site changed on the PC' }]);
+    home.querySelector('.private-cams-actions .private-cams-remove-site').click();
+    await flush();
+    assert.equal(note.textContent, 'That site changed on the PC');
+  } finally {
+    setup.destroy();
+  }
 });

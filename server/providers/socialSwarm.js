@@ -10,6 +10,7 @@ import { enforceRateLimit, openAiRateLimiter } from './openai/rate-limit.js';
 import {
   admitKeySetupRequest,
   keySetupValueProblem,
+  sendOwnerRemovalRefusal,
 } from '../../src/keySetupCore.mjs';
 import {
   LOCAL_PROVIDER_CHANGED_MESSAGE,
@@ -495,6 +496,10 @@ async function handleGrokBotComputer(
     proxyHeaders: req.headers || {},
     env: process.env,
   });
+  if (!admission.ok && admission.removal === true) {
+    sendOwnerRemovalRefusal(res, HEADERS);
+    return;
+  }
   if (!admission.ok) {
     send(res, admission.status || 403, {
       error: String(admission.error || 'Refused').replace(

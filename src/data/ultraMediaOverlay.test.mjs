@@ -246,3 +246,59 @@ test('the CCTV viewer shows a saved photo or video over the camera, and BACK TO 
   closeUltraMediaInCctv(doc);
   assert.equal(wrap.children.length, 0);
 });
+
+test('on a phone a double-tap sizes a tile as a double-click does, and is not also a click', () => {
+  const doc = fakeDocument();
+  const container = doc.make('div');
+  const timers = [];
+  const dispatched = [];
+  const windowRef = {
+    setTimeout: (fn) => (timers.push(fn), timers.length),
+    clearTimeout: (id) => (timers[id - 1] = null),
+    dispatchEvent: (event) => dispatched.push([event.type, event.detail]),
+  };
+  const stored = new Map();
+  const overlay = createUltraMediaOverlay({
+    container,
+    documentRef: doc,
+    windowRef,
+    storage: {
+      getItem: (k) => stored.get(k) ?? null,
+      setItem: (k, v) => stored.set(k, v),
+    },
+  });
+  const photo = 'photo-20261008T120000Z-1.jpg';
+  overlay.setMedia({ photos: [photo], photoTotal: 1 });
+  const [tile] = overlay.tiles();
+  assert.equal(tile.tile.style.touchAction, 'manipulation');
+  const big = `${Math.round(ULTRA_MEDIA_TILE_W * ULTRA_MEDIA_SCALE_BIG)}px`;
+  const tap = (timeStamp, extra = {}) => {
+    const at = { pointerType: 'touch', clientX: 50, clientY: 40, timeStamp };
+    tile.tile.fire('pointerup', { ...at, ...extra });
+    tile.tile.fire('click', { timeStamp });
+  };
+
+  tap(1000);
+  tap(1150);
+  assert.equal(tile.media.style.width, big, 'bigger');
+  // A browser that also sends dblclick does not size it twice.
+  tile.tile.fire('dblclick', { timeStamp: 1160 });
+  assert.equal(tile.media.style.width, big);
+  timers.filter(Boolean).forEach((fn) => fn());
+  assert.deepEqual(dispatched, [], 'a double-tap is not a tap');
+
+  // Two taps too far apart in time, or in place, are two taps.
+  tap(5000);
+  tap(5600);
+  tap(9000);
+  tap(9100, { clientX: 200 });
+  assert.equal(tile.media.style.width, big, 'unchanged');
+  tap(12000);
+  tap(12200);
+  assert.equal(tile.media.style.width, `${ULTRA_MEDIA_TILE_W}px`, 'smaller');
+
+  // The mouse is as before: its double-click still sizes the tile.
+  tile.tile.fire('dblclick', { timeStamp: 20000 });
+  assert.equal(tile.media.style.width, big);
+  overlay.destroy();
+});

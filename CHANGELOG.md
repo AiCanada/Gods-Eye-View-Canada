@@ -1,5 +1,59 @@
 # Changelog
 
+- Outbreak tab: every rail line on the globe is now found once in the
+  background (OpenFreeMap z8, about 20,000 land tiles, cached on disk, 6 at a
+  time, progress shown) and joined into one world network. Rail lights by
+  reach from every outbreak and every landing across the whole network
+  instead of stopping at 500 km or 200 km, with finer z10 detail kept within
+  100 km; rail an outbreak cannot reach by train is drawn faint grey, so all
+  rail on the globe shows. Roads out of a landing airport light up green. The
+  epidemic model now carries rail travellers between the places
+  rail connects (national rail passenger-km, World Bank; P1P2/D along the
+  line, Zipf 1946), and towns on rail far from airports become places. Until
+  the world network is ready, rail works as before.
+- Outbreak tab: FIND FUTURE SPREAD LOCATIONS now looks the full 30 days ahead
+  by default, in windows (24 h, 48 h, 3, 7, 14 and 30 days), and a menu beside
+  it picks a shorter reach; places past 48 h assume each route flies daily.
+  RUN EPIDEMIC MODEL, DOWNLOAD RESULTS and DOWNLOAD CSV sit on their own row
+  below the model settings, at the same size. The results list, log, CSV and
+  JSON carry every place reached, with no limit, and the whole result is kept
+  across a reload. Only one yellow boat-reach ring shows on the map at a time,
+  as an outline with nothing inside.
+- Outbreak epidemic model: an optional second strain (seeded on a chosen day
+  and airport, with its own transmissibility, severity and cross-immunity,
+  replacing drift and takeover when on), a paired comparison against fewer
+  measures using the same random numbers (infections, deaths and hospital peak
+  averted, with intervals), Rt from the runs on the model's own generation
+  interval, a time limit that now stops a run cleanly instead of failing, a
+  blue ring on the map where beds run short in most runs, and voice that lists
+  every control of one box (up to 150). With the new options unset, results
+  are unchanged.
+
+- Mirror of PC GEVC on Cell: your own phone over Tailscale now has every PC
+  function, writes included: saving POWER UP keys, road CCTV keys and social
+  logins, the Ultra box (tokens, contacts, number, home list, SEND HELP,
+  STAND DOWN), private camera and device settings, CCTV alignment saves,
+  ChatGPT OAuth voice and `/mcp`. The mirror stamps each request from a
+  device Tailscale names as yours with an in-memory token and its own
+  address, and writes still need the exact Origin and JSON. By owner ruling,
+  removing or deleting anything stored on the PC stays PC-only: from the
+  phone it is refused with no message (403, `X-GEV-Removal: pc-only`,
+  `{"removal":"pc-only"}`) and the item stays as it was. On the phone, hold the mic
+  to talk, double-tap where the PC double-clicks, long-press a panel header to
+  move it, and twist two fingers to turn a CCTV thumbnail. Copy falls back
+  when the clipboard is blocked, downloads finish before their link is
+  released, and voice and location errors on a plain-http page point to the
+  chrome://flags setting. Fonts, sizes, buttons and tap areas are unchanged.
+
+- Outbreak epidemic model: hospital and intensive-care occupancy with bed
+  shortages, recovered and waning immunity, vaccination (prior coverage and
+  campaigns), susceptibility variation, per-place restriction triggers with end
+  dates and compliance fatigue, country border policies and imported-vs-local
+  cases, two-way commuting, local departure times, hub transfers, testing
+  capacity, peak and cost lines, Monte-Carlo intervals, a random-seed box and
+  JSON/CSV export. Random streams are now per run, so seeded results differ
+  once from earlier builds.
+
 - Treat explicitly current, complete empty vessel coverage as a successful update,
   clearing obsolete contacts while retaining stale or incomplete snapshots.
 
@@ -94,6 +148,50 @@
   stale, moved-camera, invalid and oversized captures still fail closed.
 
 ## [Unreleased]
+
+- The dev server stays up on its own. `npm run dev` now runs a supervisor
+  (`scripts/dev-server.mjs`) that starts Vite as a child, relaunches it after a
+  crash, a hang or a restart that never came back, and writes every exit with
+  its code, signal and uptime to `.gev-logs/dev-server.log`. It stops cleanly
+  on `q`, Ctrl+C, when another dev server of the same checkout takes over, or
+  after ten launches in a row died inside a minute. On a classic Windows
+  console it turns QuickEdit off for the session, so a click in the window no
+  longer freezes the server (`GEV_DEV_KEEP_QUICKEDIT=1` leaves it alone).
+  `/__gev/health` answers with the pid, uptime, memory, live handles, restart
+  count, listener and AIS store sizes; the supervisor probes it and restarts a
+  server that stops answering for about 70 s (`GEV_DEV_HANG_RESTART=0` turns
+  that off). Each in-process restart leaves its old modules in memory, so once
+  `/__gev/health` reports 30 restarts and 2 GB resident the supervisor
+  relaunches the server right after a good probe (`GEV_DEV_RECYCLE=0` turns
+  that off). An uncaught exception that is a dropped socket is logged and
+  survived; anything else exits 70 for a relaunch. A restart that is not
+  listening 30 s later exits 75 for the same reason. Port 4173 is now strict:
+  a busy port fails the start instead of silently moving to 4174 (`PORT=`
+  chooses another). Provider caches, logs, builds, QA captures, Ultra media
+  and device recordings are no longer watched, and the caches and logs are
+  never served; terrain and aircraft caches survive restarts without stacking
+  timers; the AIS store sweeps every 5 s instead of on every message, with the
+  same rows served, and keeps a vessel's name, type, destination and IMO for a
+  day so a returning vessel has them at once. The log is capped at 8 MB with
+  one older generation kept (`dev-server.log.1`); each exit is one
+  `[dev-server] exited code=… signal=… after …s` line followed by what the
+  supervisor decided. The launcher chain the server watches is now always
+  printed at start, so `GEV_DEV_WATCH_DEBUG=1` is no longer needed.
+  `npm run dev:raw` is the old direct Vite command.
+
+- Voice controls the whole program. Two new tools, use_ui_control and
+  list_ui_controls, press any button, choose any menu option, tick, move a
+  slider or fill a field by its on-screen label, in every box, opening a closed
+  box first. Buttons that delete, clear, reset, send, post or share ask for a
+  spoken yes; key and password fields are never filled by voice; the mic
+  button itself stays out of reach. Open and close now reach the Ask, Street
+  Level, Ultra, Social Media, Outbreak and sea temperature boxes too.
+
+- ChatGPT sign-in for voice now starts on Windows. USE CHATGPT OAUTH ran plain
+  `codex`, which Windows only has as an npm `codex.cmd` shim that Node will not
+  start without a shell. The button now runs Codex's own `codex.exe`, or the
+  shim's `codex.js` with Node, always by full path and with no console
+  window. `CODEX_BIN` on Windows must be a full path.
 
 - Add an experimental ChatGPT/Codex OAuth option for cloud voice in Provider
   Settings. API-key voice remains the default. Local sign-in can start from
@@ -1466,6 +1564,7 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 **Find Ultra Help is under development.** Its button in the Ultra box's FIND HELP section is disabled and reads "Find Ultra Help (under development)". The station search behind it is removed for now, along with the list it filled ("The help search did not answer.", "The cell position is older than 20 minutes. Wait for a fresh fix."), the message box that showed the plea for the phone's street address, and Send Ultra Help. The server no longer answers `/incident` or `/send` (404) and asks no geocoder or station search for them. SEND HELP, STAND DOWN, the plea they send to your token holders and saved helpers, and their own 20-minute fresh-fix rule are unchanged; the incident select stays, because SEND HELP sends the incident it shows.
 
 **17,345 more CCTV cameras from the operators' own lists, and pictures for 3,582 that had none.** A fourth camera pack, `config/cctv_sources.inventory.json`, holds the cameras from the October 1 CCTV inventory export (84,601 camera sites in 17 countries, from state DOTs, cities, 511 systems and national road agencies) that the Canadian, US and international packs did not have:
+
 - 11,125 in the US, among them Illinois and Lake County (2,463), Georgia (2,449), New York City (826), North Dakota (620), all 600 of Alabama's, Houston (565), Seattle (423) and Hawaii (165); 1,559 in Canada, among them Montréal (531) and Toronto's current pictures (516); 1,973 streams in South Korea; 1,453 Finnish weather-camera presets; 626 in Taiwan; 400 in Indonesia; and 209 elsewhere. 14,725 have a still and 2,620 are stream-only.
 - **No duplicates, and nothing left out for standing near another camera.** A camera already held is not written again: the same still or stream address (a site's `www.` name counts as the site), the same operator camera number, the same operator code (`FULT-0036`), or the same name in the same state or province within a kilometre. Cameras close together, and a site's several views, all stay.
 - **Pictures for cameras that had none.** 3,531 US cameras that needed a Road511 lookup now show their operator's picture without a key: 1,523 Minnesota cameras play MnDOT's stream, and Michigan, Texas, Connecticut, New Hampshire, Maine and Vermont cameras show the operator's still. 51 Vigo cameras in the international pack got their stills. Each keeps its id, name and place.
@@ -1482,6 +1581,7 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 **The Social Media box no longer ends with OPEN A LOCATION APP.** The list of seventeen location apps, each with an OPEN button and a note, is gone from the bottom of the box. The same apps open from the ACCOUNTS menu at the top: pick one and press OPEN SITE. Three rows had no twin there: Snap Map's own page and the Facebook and X searches for the map place. Snapchat, Facebook and X open their main sites from that menu. Find Help still names every location app, and its notes are kept for it.
 
 **The bot swarms run on keys of their own, and GROK BOT SWARM works without one.**
+
 - **POWER UP has three new cards.** GROK BOT holds the Grok swarm's own xAI key (`GROK_BOT_API_KEY`) with its MODEL box (`XAI_SWARM_MODEL`, default grok-4.6). OPENAI DOTS holds the OpenAI swarm's own key (`OPENAI_DOTS_API_KEY`) with its MODEL box (`OPENAI_SWARM_MODEL`, default gpt-6-astra). GROK BOT — CHIEF OF STAFF holds a Grok Bot webhook (below). The swarms no longer use the Ask panel's xAI key or voice control's OpenAI key. Without its own key, OPENAI BOT SWARM sends nothing and says where the key goes.
 - **Without a Grok Bot key, GROK BOT SWARM hands its sweep to your Chief of Staff bot** in the Grok Bot desktop app, which manages your other bots. The task is the same seven platforms, place, window and rules, written as one task the Chief of Staff can split among its bots. If its webhook is in POWER UP, each press sends the task there, and its report comes back in Grok Bot. To set this up in Grok Bot, give the Chief of Staff a routine with the trigger When a webhook fires, then paste the routine's Webhook URL and Webhook key into the card. Without a webhook, the press opens Grok Bot from your desktop shortcut (`GROK_BOT_LINK` in `.env`, else Grok Bot's own `grokbot://` link) with the task copied, ready to paste to the Chief of Staff. The task is kept in the log either way. Grok Bot accepts no prompt from another program (its links only open the app, a bot, settings or a sidebar), so the webhook is the only way to send it input automatically.
 - **OPEN GROK BOT** opens the desktop app on this computer. It replaces OPEN GROK, which opened grok.com.
@@ -1489,6 +1589,7 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 - **Safety.** Opening Grok Bot starts a program, so only this computer's own page may ask, the program comes from `.env` and never from the request, and it opens at most once every 3 seconds. The webhook key goes only to an https Grok Bot address (`cursor.sh` or `cursor.com`, `/automations/webhook/<id>`). That address is checked on save and before every send, and a hand edit after a save is refused. Hand-offs are limited to four a minute from one address.
 
 **Ultra hardening from a security review.**
+
 - **The location poll answers the tailnet only.** A token published in a directory file anyone can read was enough, during a call for help, for a phone or laptop on the same Wi-Fi to read your position: the poll answered any address. It now answers a tailnet address (100.64.0.0/10 or fd7a:115c:a1e0::/48), the one tailnet address tailscale serve forwards, or this computer with nothing in between. The request must also name this computer the way a tailnet poll does (a .ts.net name, an address or localhost), so a DNS-rebinding page in a tailnet browser is refused too. Everyone else gets the same 404 as an unknown token, before any budget, file read or log line.
 - **Recorded positions are yours alone.** On a drive where every signed-in account may change files, as a second Windows drive often allows, the phone's daily recordings and its last report took those permissions. Another account on the computer could read where the phone had been, or plant a last report that SEND HELP would publish. The `config/device-recordings` folder is now restricted to your account, SYSTEM and Administrators the first time a process writes to it, and again if it is made anew. Everything in it inherits that, the files already there included. If the Ultra inbox file is deleted while the server runs, it is now made again through the same owner-only path.
 - **A device looping wrong requests can no longer flood the terminal or the server.** A refused report is logged once a minute per address. Forwarding headers are shown only from tailscale serve's own socket, cut to 64 characters. Unknown phone keys are limited to 20 a minute per address, then 429. A key the server last read still gets through, so a phone's new link works while an old tab still asks with the retired key. The report port holds at most 256 connections, and phone keys are compared in constant time.
@@ -1499,12 +1600,14 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 - **Street lookups for a call read at most a megabyte.** A larger answer counts as a failed lookup.
 
 **Social Media hardening.**
+
 - **The paid model and swarm routes refuse a DNS-rebinding page.** `/api/llm/ask`, the voice routes and `/api/social/swarm` compared the page's Origin with the Host, and a page on a name pointed at this computer passes that check. They now answer only a Host this server serves, an exact Origin when one is sent, and a same-origin fetch.
 - **Ask, Overview and Risk Assessment take 20 questions a minute from one address.** A 21st waits a minute (429). Only a question that would be sent counts. `GEV_RATELIMIT_OPENAI_PER_MIN` still applies on top when set.
 - **The public news lookup answers this page only.** Another site's image tag or a rebinding page could make it search from your address and use up the lookup's shared limit. It now refuses a cross-site request and a Host this server does not serve, and its answers are never cached or sniffed.
 - **A phone number is no longer kept as a public handle.** Find My, Bump and Blink log in by phone number. One typed into the handle box would have gone to the news lookup and the model on every press. A handle of seven or more digits, with only phone punctuation between them, is refused, and one saved before is dropped.
 
 **Four device fixes from the code review.**
+
 - **NEW KEY keeps a device's fixed position.** It sent only the key request, and the save read the missing position as "remove it". The JSON paths of a polled device were cleared the same way. A field left out of a save now keeps what is saved. An empty box on the card still clears it.
 - **Two Ultra packages no longer show each other's camera.** Every package's map card used to load the picture of whichever phone reported last. Each card now loads its own phone's picture, from `/api/ultra-help/picture/device-<package id>`. The live stream has the same per-package form, and the Ultra box still shows the newest phone.
 - **A report dated in the future no longer blocks the reports after it.** A phone clock set ahead, or a time read in the wrong unit, made every true report after it look older and get dropped, silently, even after a restart. A future time now counts as now when a report arrives and when a saved report is reloaded, as the Ultra phone link already did.

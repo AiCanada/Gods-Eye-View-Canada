@@ -558,6 +558,17 @@ function audioFormatFromMime(mime) {
   return 'webm';
 }
 
+// Chrome hides the microphone on a plain http page such as the phone mirror.
+const INSECURE_ORIGIN_HINT =
+  'Allow this address under chrome://flags Insecure origins treated as secure (see Mirror README).';
+
+/** The no-microphone error, with the chrome://flags hint on an http page. */
+export function microphoneUnavailableMessage() {
+  return globalThis.isSecureContext === false
+    ? `Microphone support is unavailable on this http page. ${INSECURE_ORIGIN_HINT}`
+    : 'Microphone support is unavailable.';
+}
+
 function blobToBase64(blob) {
   return blob
     .arrayBuffer()
@@ -570,7 +581,7 @@ function classifyFromHost(host) {
 
 async function openMicrophone(host) {
   if (typeof host.getUserMedia !== 'function') {
-    throw new Error('Microphone support is unavailable.');
+    throw new Error(microphoneUnavailableMessage());
   }
   const stream = await host.getUserMedia({
     audio: {
@@ -848,7 +859,9 @@ function startBrowserListener(host, onFinal) {
       host.fail?.(
         new Error(
           code === 'not-allowed'
-            ? 'Microphone permission was denied.'
+            ? globalThis.isSecureContext === false
+              ? `Microphone permission was denied on this http page. ${INSECURE_ORIGIN_HINT}`
+              : 'Microphone permission was denied.'
             : 'Speech recognition failed.',
         ),
       );

@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { admitKeySetupRequest } from '../../src/keySetupCore.mjs';
+import {
+  admitKeySetupRequest,
+  sendOwnerRemovalRefusal,
+} from '../../src/keySetupCore.mjs';
 
 /** The Grok Bot desktop app's own link to its main window. */
 export const GROK_BOT_APP_LINK = 'grokbot://app/v1/open';
@@ -117,6 +120,10 @@ export function grokBotDesktopProxy({
       proxyHeaders: req.headers || {},
       env: process.env,
     });
+    if (!admission.ok && admission.removal === true) {
+      sendOwnerRemovalRefusal(res, HEADERS);
+      return;
+    }
     if (!admission.ok) {
       send(res, admission.status || 403, {
         error: String(admission.error || 'Refused').replace(

@@ -4,6 +4,12 @@ import {
   upsertOverlayEntry,
 } from './overlays/worldOverlay.js';
 import { closestCityForSearch, selectedPlaceLabel } from './locations.js';
+import { copyText } from './ui/copyText.js';
+import {
+  isOwnerRemovalRefusal,
+  noteOwnerRemovalRefusal,
+  watchOwnerRemoval,
+} from './ui/ownerRemoval.js';
 import {
   SOCIAL_ACCOUNT_PLATFORMS,
   SOCIAL_GIG_HELP_NOTE,
@@ -52,6 +58,22 @@ const NEAREST_CITY_WAIT_MS = 25000;
 const GROK_BOT_OPEN_URL = '/api/social/grok-bot/open';
 const CLIENT_TIMEOUT_MARGIN_MS = 10000;
 const DEFAULT_ASK_TIMEOUT_MS = 240000;
+const LOCATION_REFUSED = 'This browser did not share a location.';
+// A plain http page (the phone mirror) gets no location from Chrome.
+const INSECURE_ORIGIN_HINT =
+  'Allow this address under chrome://flags Insecure origins treated as secure (see Mirror README).';
+
+function locationRefusedNote() {
+  return globalThis.isSecureContext === false
+    ? `${LOCATION_REFUSED} ${INSECURE_ORIGIN_HINT}`
+    : LOCATION_REFUSED;
+}
+
+/** True on the PC itself; false on the owner's phone through the mirror. */
+function onThisPc() {
+  const host = globalThis.location?.hostname;
+  return !host || ['localhost', '127.0.0.1', '[::1]'].includes(host);
+}
 
 /**
  * Social Media Analysis. One note, three menus, and the same Ask route the
@@ -209,7 +231,11 @@ export class SocialMediaPanel {
           void this._openGrokBot().then((result) => {
             this._setSwarmStatus(
               swarm,
-              result.ok ? 'GROK BOT OPENED' : result.error,
+              result.ok
+                ? onThisPc()
+                  ? 'GROK BOT OPENED'
+                  : 'GROK BOT OPENED ON THE PC'
+                : result.error,
             );
           });
           return;
@@ -259,7 +285,7 @@ export class SocialMediaPanel {
     if (this._watching) return;
     const geo = this._geolocation;
     if (!geo?.watchPosition) {
-      this._setLocationNote('This browser did not share a location.');
+      this._setLocationNote(locationRefusedNote());
       return;
     }
     this._setLocationNote("Waiting for this device's location.");
@@ -275,14 +301,14 @@ export class SocialMediaPanel {
         },
         () => {
           if (!this._watching) return;
-          this._setLocationNote('This browser did not share a location.');
+          this._setLocationNote(locationRefusedNote());
         },
         { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
       );
     } catch {
       this._watching = false;
       this._watchId = null;
-      this._setLocationNote('This browser did not share a location.');
+      this._setLocationNote(locationRefusedNote());
     }
   }
 
@@ -556,11 +582,9 @@ export class SocialMediaPanel {
       latitude: view.latitude,
       longitude: view.longitude,
       xaiStatus: swarm.provider.id === 'xai' ? keys?.xai : undefined,
-      // False when there is no clipboard here, so the status never says copied.
-      copyText: (text) =>
-        typeof this._clipboard?.writeText === 'function'
-          ? this._clipboard.writeText(text)
-          : false,
+      // The clipboard, then a hidden-textarea copy, then the share sheet; false
+      // when none took it, so the status never says copied.
+      copyText: (text) => copyText(text, { clipboard: this._clipboard }),
       fallbackCity: closestCityForSearch,
       onBot: ({ bot, text, sources, error }) => {
         this._prepend(
@@ -932,13 +956,21 @@ export class SocialMediaPanel {
   async _removeAccount(row) {
     if (row.vault) {
       try {
-        const response = await this._request(ACCOUNTS_URL, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ platform: row.platform }),
-        });
+        const response = await watchOwnerRemoval(
+          this._request(ACCOUNTS_URL, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ platform: row.platform }),
+          }),
+        );
         const data = await response.json().catch(() => null);
         if (!response.ok) {
+          // Only the PC removes: on the owner's phone the login stays
+          // and nothing is said.
+          if (isOwnerRemovalRefusal(response, data)) {
+            noteOwnerRemovalRefusal();
+            return;
+          }
           const error = String(
             data?.error || 'This computer did not remove that login.',
           );

@@ -5,7 +5,8 @@
  * drag on any of its four corners changes its width and height; the left
  * corners also move its left edge. A taller tray shows more rows of location
  * pills, so resizing it is the quick way to see every option at once. The size
- * is a per-browser preference kept in localStorage.
+ * is a per-browser preference kept in localStorage. A double-click on a corner
+ * (a double-tap on a phone) puts the tray back to its own size.
  */
 
 export const LOCATION_PANEL_STORAGE_KEY = 'gev.locations.panelSize';
@@ -21,6 +22,10 @@ const ROW_HEIGHT_PX = 34;
 const MIN_ROWS = 2;
 const MAX_ROWS = 12;
 const CORNERS = Object.freeze(['nw', 'ne', 'sw', 'se']);
+/** Two taps on a corner within this long are a double-tap. */
+const DOUBLE_TAP_MS = 300;
+/** A tap that travels further than this was a drag. */
+const TAP_TRAVEL_PX = 6;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -142,6 +147,7 @@ export function bindLocationPanelResize({
     grip.setAttribute('aria-hidden', 'true');
     grip.title = 'Drag to resize · double-click to reset';
     let drag = null;
+    let lastTap = 0;
 
     const onDown = (event) => {
       if (event.button !== undefined && event.button !== 0) return;
@@ -171,9 +177,27 @@ export function bindLocationPanelResize({
     };
     const onUp = (event) => {
       if (!drag) return;
+      const press = drag;
       drag = null;
       grip.releasePointerCapture?.(event.pointerId);
       if (size) saveLocationPanelSize(size, storage);
+      // A phone may never send dblclick for a double-tap: count the taps.
+      if (event.pointerType !== 'touch' || event.type !== 'pointerup') return;
+      const travel = Math.hypot(
+        event.clientX - press.x,
+        event.clientY - press.y,
+      );
+      if (!(travel <= TAP_TRAVEL_PX)) {
+        lastTap = 0;
+        return;
+      }
+      const at = Number.isFinite(event.timeStamp)
+        ? event.timeStamp
+        : Date.now();
+      if (lastTap && at - lastTap <= DOUBLE_TAP_MS) {
+        lastTap = 0;
+        onReset();
+      } else lastTap = at;
     };
     const onReset = () => {
       size = null;

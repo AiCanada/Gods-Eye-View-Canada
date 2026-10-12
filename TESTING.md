@@ -13,7 +13,11 @@ lists what **✅ pass** looks like and (where it applies) the **❌ old bug** it
 ## Focus/horizon moving evidence
 
 With the Vite development server already running on port 4173, capture all four
-focus/recession scenarios with a deterministic virtual frame clock:
+focus/recession scenarios with a deterministic virtual frame clock. (A dev
+server that stopped on its own leaves the reason in `.gev-logs/dev-server.log`:
+exit code or signal, a takeover by another dev server, or "unresponsive"; and
+`http://localhost:4173/__gev/health` reports restarts, memory and handle
+counts while it runs.)
 
 ```sh
 node scripts/qa-focus-evidence.mjs --url http://localhost:4173 \
@@ -64,7 +68,7 @@ settled and not applicable because no Google 3D tileset is active.
 
 - **URL:** http://localhost:4173 — auto-flies to Austin on load. Give photoreal tiles ~10s.
 - **Voice (the real feature):** click **GEV MIC** (bottom of screen) → wait for **LISTENING** →
-  just talk. It marks the map *as it talks*, without announcing that it's drawing. Click
+  just talk. It marks the map _as it talks_, without announcing that it's drawing. Click
   **STOP** when done. (Needs `OPENAI_API_KEY`; `dev-fresh.sh` injects it from Keychain.)
 - **Console (deterministic, no mic/live-data needed):** open DevTools (**Cmd-Opt-J**) and use:
   - `window.__gevAnnotations.tour()` — self-running narrated SF tour (camera + marks in sequence)
@@ -77,6 +81,7 @@ settled and not applicable because no Google 3D tileset is active.
 ## What changed (the list)
 
 **Live aircraft tracking & camera (Batch D)** — civilian + military, mirrored:
+
 - **R14** warm-up: tracked plane glides immediately (no freeze-then-jump / backward snap),
   via a display-layer reconciliation that smooths any position discontinuity over ~0.9s.
 - **R15** framing: calibrated initial follow distance (altitude-scaled, 3–30 km).
@@ -85,15 +90,17 @@ settled and not applicable because no Google 3D tileset is active.
 - **R13** z-order: screen annotations fade where they'd cover the **tracked** plane + its label.
 
 **Voice annotation — scoping & honesty (Batch B):**
-- **R1** resolver scope: a place name resolves to the *right* thing (building vs neighborhood
+
+- **R1** resolver scope: a place name resolves to the _right_ thing (building vs neighborhood
   vs natural feature vs city) instead of an oversized admin blob.
 - **R2** boundary stitching: complex outlines no longer close with bay-spanning chords.
-- **R6** route honesty: a routing outage draws a *labeled* straight "direct line", never a
+- **R6** route honesty: a routing outage draws a _labeled_ straight "direct line", never a
   silently faked road.
 - **R12** partial honesty: if some targets fail, it says so — no masking partial as success.
 - **R10** cache: transient failures aren't negative-cached for the whole session.
 
 **Annotation rendering & motion (Batch C):**
+
 - **R8** route flow: route dashes **animate** (flow along the path).
 - **R9 / R17** perf: idle annotations stop their animation loop; height cache is bounded.
 - **R11** no-freeze: large/complex boundaries simplify without locking the UI.
@@ -109,27 +116,37 @@ cancellation, hardened Overpass + route proxies. Not much to see by hand (see §
 > If you see no planes, scroll out once — Texas airspace is busy.
 
 **1a · Warm-up smoothness (your issue #1 → R14)**
+
 1. Click a moving plane. 📸 Snap the instant it locks, then watch ~2–3s.
-- ✅ Starts gliding smoothly *immediately*. ❌ *Was:* froze ~1s, then jumped forward.
+
+- ✅ Starts gliding smoothly _immediately_. ❌ _Was:_ froze ~1s, then jumped forward.
 
 **1b · Initial framing (your issue #2 → R15)**
+
 1. On the same lock-on, look at how the camera frames the plane. 📸 Snap the initial view.
-- ✅ Plane + label readable with context, no scrolling. ❌ *Was:* jammed in too tight.
+
+- ✅ Plane + label readable with context, no scrolling. ❌ _Was:_ jammed in too tight.
 
 **1c · Trail glued to the plane (your issue #3 → R16)**
+
 1. Keep tracking ~10s. 📸 Snap the cyan trail while it moves.
-- ✅ Trail tail stays attached to the plane; nothing pokes out *in front* of the nose; no ~1s lag.
-  ❌ *Was:* trail lagged a beat behind.
+
+- ✅ Trail tail stays attached to the plane; nothing pokes out _in front_ of the nose; no ~1s lag.
+  ❌ _Was:_ trail lagged a beat behind.
 
 **1d · Military layer (same fixes, mirrored)**
+
 1. Enable the **Military** layer (left column). Track an **amber** plane. Repeat 1a–1c.
+
 - ✅ Identical smooth behavior.
 
 **1e · Z-order: tracked plane stays on top (→ R13, trickiest to stage)**
-1. While tracking a plane over Austin, GEV MIC: *"annotate downtown Austin."*
+
+1. While tracking a plane over Austin, GEV MIC: _"annotate downtown Austin."_
 2. Orbit/zoom so the plane crosses the annotation's outline or label. 📸 Snap the overlap.
+
 - ✅ The annotation **dims** where it covers the plane/label — plane stays visible on top.
-  ❌ *Was:* the annotation drew over and hid the plane.
+  ❌ _Was:_ the annotation drew over and hid the plane.
 
 ---
 
@@ -138,29 +155,37 @@ cancellation, hardened Overpass + route proxies. Not much to see by hand (see §
 > All from the Austin default view (no camera move needed). Click GEV MIC, then speak.
 
 **2a · Scope: building vs region (→ R1)** — say each, watch what gets outlined:
-- *"annotate the Texas State Capitol"* → ✅ the **Capitol building**, not the whole state.
-- *"annotate Barton Creek"* → ✅ the **creek / greenbelt**, not Barton Creek *Mall* or the city.
-- *"annotate downtown Austin"* → ✅ the **downtown district**, a sensible neighborhood-size area.
-- *"annotate the University of Texas at Austin"* → ✅ the **campus**, not the city.
-- 📸 Snap each outline. ❌ *Was:* incidental names ballooned into giant county/state blobs.
 
-**2b · Classic SF set (optional)** — first say *"take me to San Francisco,"* then:
-- *"annotate the Mission District"* → neighborhood. *"...the Presidio"* → the full former-base
-  outline (not a single point, not a bay-spanning blob → R2). *"...Chinatown"* → the district.
+- _"annotate the Texas State Capitol"_ → ✅ the **Capitol building**, not the whole state.
+- _"annotate Barton Creek"_ → ✅ the **creek / greenbelt**, not Barton Creek _Mall_ or the city.
+- _"annotate downtown Austin"_ → ✅ the **downtown district**, a sensible neighborhood-size area.
+- _"annotate the University of Texas at Austin"_ → ✅ the **campus**, not the city.
+- 📸 Snap each outline. ❌ _Was:_ incidental names ballooned into giant county/state blobs.
+
+**2b · Classic SF set (optional)** — first say _"take me to San Francisco,"_ then:
+
+- _"annotate the Mission District"_ → neighborhood. _"...the Presidio"_ → the full former-base
+  outline (not a single point, not a bay-spanning blob → R2). _"...Chinatown"_ → the district.
 
 **2c · Route honesty (→ R6)**
-1. *"draw a route from Austin-Bergstrom airport to the Texas Capitol."*
+
+1. _"draw a route from Austin-Bergstrom airport to the Texas Capitol."_
+
 - ✅ A real **road** route with a flowing dashed line + a labeled callout.
 - If a route ever comes back as a **straight** line, it should be **labeled** as a direct/approx
-  line (not pretending to be a road). ❌ *Was:* silent fake straight-line "routes."
+  line (not pretending to be a road). ❌ _Was:_ silent fake straight-line "routes."
 
 **2d · Partial-failure honesty (→ R12)**
-1. *"annotate the Texas Capitol and the Flibbergibbet Building."*
+
+1. _"annotate the Texas Capitol and the Flibbergibbet Building."_
+
 - ✅ It annotates the Capitol **and tells you** it couldn't find the other one.
-  ❌ *Was:* reported success and silently dropped the missing one.
+  ❌ _Was:_ reported success and silently dropped the missing one.
 
 **2e · Clear / new-topic race (→ R4)**
-1. *"annotate downtown Austin"* and, right as it starts, *"actually, clear everything."*
+
+1. _"annotate downtown Austin"_ and, right as it starts, _"actually, clear everything."_
+
 - ✅ Marks clear and **stay** cleared (the in-flight one doesn't pop back a second later).
 - Sanity in console: `window.__gevAnnotations.count()` → `0` after a clear.
 
@@ -169,22 +194,30 @@ cancellation, hardened Overpass + route proxies. Not much to see by hand (see §
 ## 3. Annotation rendering & motion (Batch C) — deterministic, no mic
 
 **3a · Full experience (smoke test)**
+
 1. Console: `window.__gevAnnotations.tour()`. 📸 A couple of frames as it runs.
+
 - ✅ Camera flies to SF; Palace highlight → arrow → Presidio **draped** outline → ILM pin →
   Crissy Field **route** appear in sequence; marks stay glued as the camera moves.
 
 **3b · Route dashes animate (→ R8)**
+
 1. During/after `tour()` (or `demo()`), watch the **route** line (Crissy Field shoreline).
-- ✅ The dashes **flow** along the path (animated), not static. ❌ *Was:* dashes never moved.
+
+- ✅ The dashes **flow** along the path (animated), not static. ❌ _Was:_ dashes never moved.
 
 **3c · Draping & persistence**
+
 1. After `demo()`, orbit the camera around the Presidio outline.
+
 - ✅ The footprint **drapes onto** the 3D ground/buildings and conforms; callouts/rings/arrows
   are the hand-drawn SVG style and stay anchored to their real spot.
 
 **3d · Large boundary, no freeze (→ R11)**
+
 1. Console:
    `window.__gevAnnotations.annotate([{type:'area',target:'Travis County, Texas',label:'Travis County',color:'green',footprint:true}],{flyTo:true,persist:true})`
+
 - ✅ The complex county boundary simplifies and draws **without** freezing/janking the UI.
 
 ---
@@ -192,9 +225,10 @@ cancellation, hardened Overpass + route proxies. Not much to see by hand (see §
 ## 4. Robustness / guards (Batch A) — mostly internal
 
 These are server-side / defensive and don't have a clean visual tell. Light checks only:
+
 - Rapid-fire several annotate commands, then a clear — UI should stay responsive and end clean
   (`count()` → `0`).
-- Nothing here should change normal behavior; flag it only if something feels *broken* (stuck
+- Nothing here should change normal behavior; flag it only if something feels _broken_ (stuck
   spinner, marks that won't clear, errors in the console).
 
 ---
@@ -202,11 +236,12 @@ These are server-side / defensive and don't have a clean visual tell. Light chec
 ## 5. General feel — open feedback
 
 While recording, call out anything in these areas — this is the feedback I most want:
+
 - **Tracking feel:** does follow motion feel smooth/natural, or floaty/laggy/overshooting?
 - **Framing:** is the initial tracked view a good "hero" shot, or too close/far?
-- **Annotations:** do outlines land on the *right* thing? Are labels readable / well-placed /
+- **Annotations:** do outlines land on the _right_ thing? Are labels readable / well-placed /
   not overlapping? Does the hand-drawn style read well over photoreal tiles?
-- **Voice:** does it mark things *as it talks* (not after), and confirm only what actually
+- **Voice:** does it mark things _as it talks_ (not after), and confirm only what actually
   happened? Any command it misunderstood?
 - **Anything that looks wrong, janky, or surprising** — screenshot it; that's the gold.
 
@@ -222,6 +257,18 @@ While recording, call out anything in these areas — this is the feedback I mos
 4. Switch to **DE 8 @ Saulsbury Rd**, then back. ✅ Each switch resumes within ~10 s with no stale frame from the previous camera.
 5. Optional: DevTools → Network, filter `media/`. ✅ Playlist responses carry `X-CCTV-Source: hls-pull`; segments return `video/mp2t`.
 
+## 7. Outbreak: every rail line on the globe (owner ruling 2026-10-12)
+
+> The first outbreak request starts the world rail sweep: about 20,000 OpenFreeMap tiles, 6 at once, never a kept tile again. Allow 15 to 30 minutes the first time; later starts read the build from disk. Live API calls need the header `Origin: http://localhost:4173`.
+
+1. **Before it is built.** Add Irkutsk and scan. ✅ The status line reads `World rail: N / M tiles …; rail works as before until it is done.` and moves every 10 s. ✅ `GET /api/outbreak/network?lat=52.29&lon=104.3&mode=rail` answers as before (`radiusKm: 500`, no `world`). ✅ The epidemic model's log says the world rail is still being found.
+2. **The sweep.** Poll `GET /api/outbreak/rail-world/status`. ✅ `tilesDone` rises to `tilesTotal` (less `tilesFailed`). ✅ `tilesFetched` plus `tilesCached` equals `tilesDone`. ✅ The files in `.gev-cache/outbreak/rail-world/z8/` match `tilesDone`. ✅ `state` goes `sweeping` → `building` → `ready`.
+3. **Built.** ✅ `railKm` is about 1.0 to 1.2 million. ✅ `byContinent` is non-zero for AF, AS, EU, NA, SA and OC. ✅ The log has one **WORLD RAIL** entry.
+4. **Rail round a location.** The same `/network` call. ✅ `world: true`, `radiusKm: null`. ✅ `network.reachedKm` is thousands of km, no longer cut at 500. ✅ At 48 h and 60 km/h the orange reach is 2,880 km along the line. Saint John NB: ✅ `startKm` about 0.4 (the zoom-10 lines laid over).
+5. **Rail after landing.** Scan a day out of Irkutsk. ✅ `POST /api/outbreak/air-rails` answers `world: true`, `skippedLandings: 0`. ✅ The lit km by continent are at least what they were before on every continent.
+6. **Epidemic.** Run the model with the train on, then off, on the same seed. ✅ Train on: the log line `Rail: N daily rail routes, … travellers a day (World Bank …)`, more places, and earlier arrival along rail corridors (Irkutsk to Krasnoyarsk). ✅ Train off: the same result as before the change.
+7. **Map.** Zoom out to the whole globe. ✅ Faint orange rail on every continent, sharper as you zoom in (tiles by view). ✅ Reached rail lights brighter orange over it, band by band, as the hour moves. ✅ The console shows no primitive errors.
+
 ## If something looks off
 
 - **Grey globe / slow tiles:** wait a few seconds after a camera flight; photoreal streams in.
@@ -230,7 +277,6 @@ While recording, call out anything in these areas — this is the feedback I mos
 - **No planes:** OpenSky data may be momentarily sparse; scroll out or wait a poll cycle.
 - **No GEV MIC button / voice errors:** `OPENAI_API_KEY` didn't load — use the console API for
   the annotation tests and skip the voice-only ones (§2).
-
 
 ## Browser harness renderers
 

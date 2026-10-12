@@ -112,6 +112,9 @@ export function responseInstructionForToolResult(result) {
   if (result?.action === 'control_radio' && result.radioPlaybackRequested) {
     return 'Briefly confirm any other completed GEV actions, then say “Turning on the radio.” Do not claim Radio is already playing.';
   }
+  if (result?.quiet === true) {
+    return 'That action needs no words: do not confirm, refuse or explain it. Call the next tool if the request needs one; otherwise say nothing.';
+  }
   if (result?.schedule === 'silent') {
     return 'That was a lookup. Continue the request: call the next tool if one is needed, otherwise answer only what was asked, briefly. Do not read the state back.';
   }

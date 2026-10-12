@@ -8,6 +8,11 @@ import {
   grokBotLaunchTarget,
   systemOpener,
 } from '../server/providers/grokBotDesktop.js';
+import {
+  OWNER_DEVICE_AUTHORITY_HEADER,
+  OWNER_DEVICE_HEADER,
+  setOwnerDeviceToken,
+} from './keySetupCore.mjs';
 
 const B = String.fromCharCode(92);
 const win = (...parts) => parts.join(B);
@@ -213,7 +218,7 @@ test('the opener is the system’s own, by its full path, never found on PATH', 
   );
 });
 
-test('open: this machine’s own page only, POST and JSON, and nothing is launched for anyone else', async (t) => {
+test('open: this machine’s own page or the owner phone only, POST and JSON, and nothing is launched for anyone else', async (t) => {
   withEnv(t, {
     GROK_BOT_LINK: SHORTCUT,
     SystemRoot: win('C:', 'Windows'),
@@ -263,6 +268,49 @@ test('open: this machine’s own page only, POST and JSON, and nothing is launch
     assert.equal((await page.call(options)).status, status, what);
   }
   assert.deepEqual(page.spawned, [], 'nothing was opened');
+});
+
+test('open: the owner phone, stamped by the tailnet mirror, opens Grok Bot on the PC', async (t) => {
+  withEnv(t, {
+    GROK_BOT_LINK: SHORTCUT,
+    SystemRoot: win('C:', 'Windows'),
+    PINOKIO_SHARE_VAR: undefined,
+    PINOKIO_SHARE_LOCAL: undefined,
+    PINOKIO_SHARE_CLOUDFLARE: undefined,
+  });
+  const OWNER_TOKEN = '9'.repeat(64);
+  const MIRROR = 'http://100.64.0.1:4173';
+  setOwnerDeviceToken(OWNER_TOKEN);
+  t.after(() => setOwnerDeviceToken(''));
+  // Placeholder tailnet addresses: the mirror's Host, Origin and stamp.
+  const phone = {
+    host: '100.64.0.1:4173',
+    origin: MIRROR,
+    'content-type': 'application/json',
+    [OWNER_DEVICE_HEADER]: OWNER_TOKEN,
+    [OWNER_DEVICE_AUTHORITY_HEADER]: MIRROR,
+  };
+  const page = setup();
+  const { [OWNER_DEVICE_HEADER]: _token, ...unstamped } = phone;
+  const stranger = await page.call({
+    headers: unstamped,
+    remoteAddress: '100.64.0.10',
+  });
+  assert.equal(stranger.status, 403);
+  assert.deepEqual(page.spawned, [], 'nothing was opened for a stranger');
+  const opened = await page.call({
+    headers: phone,
+    remoteAddress: '100.64.0.10',
+  });
+  assert.equal(opened.status, 200);
+  assert.deepEqual(opened.json(), { ok: true, opened: 'shortcut' });
+  assert.deepEqual(page.spawned, [
+    {
+      command: EXPLORER,
+      args: [SHORTCUT],
+      options: { detached: true, stdio: 'ignore', windowsHide: true },
+    },
+  ]);
 });
 
 test('open: the configured shortcut through Explorer, once every few seconds, and never a target from the request', async (t) => {

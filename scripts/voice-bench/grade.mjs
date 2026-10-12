@@ -230,6 +230,7 @@ export const LOOKUP_TOOLS = Object.freeze([
   'get_current_view_state',
   'show_data_layers_menu',
   'set_panel_open',
+  'list_ui_controls',
 ]);
 
 export const REFUSAL_RE =

@@ -11,6 +11,7 @@ import {
   deviceStepMeters,
   extendDeviceTrail,
   normalizeDevicePositions,
+  recordsOnThisMachine,
 } from './deviceFeeds.js';
 import { LAYER_STATE_REGISTRY } from './layerState.js';
 
@@ -414,4 +415,51 @@ test('the Ultra box puts up to three photos and three videos beside the Ultra ce
   assert.equal(made[0].destroyed, true);
   assert.equal(renders.length, 0);
   assert.equal(listeners.has(ULTRA_MEDIA_EVENT), false);
+});
+
+test('recordsOnThisMachine records on the PC, and anywhere the server status names a recorder', () => {
+  assert.equal(recordsOnThisMachine('localhost'), true);
+  assert.equal(recordsOnThisMachine('127.0.0.1'), true);
+  assert.equal(recordsOnThisMachine('[::1]'), true, 'location.hostname brackets IPv6');
+  assert.equal(recordsOnThisMachine('100.64.0.1'), false);
+  assert.equal(recordsOnThisMachine('100.64.0.1', { recorder: false }), false);
+  assert.equal(recordsOnThisMachine('100.64.0.1', { recorder: true }), true);
+  assert.equal(recordsOnThisMachine('', null), false);
+});
+
+test('the owner phone asks the server once whether it records, then records; a 429 from the PC page is not an error', async () => {
+  const asked = [];
+  const ticks = [];
+  const van = { id: 'device-van', kind: 'security', name: 'Van', lat: 45.27, lon: -66.06, live: true, record: true };
+  const layer = createDeviceFeedsLayer({
+    overlayHost: { setEntries() {}, setVisible() {}, clearSource() {} },
+    windowRef: { location: { hostname: '100.64.0.1' }, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => true },
+    createImage: () => null,
+    recorder: {
+      tick: async (rows) => {
+        ticks.push(rows.map((row) => row.id));
+        return [{ id: 'device-van', error: 'HTTP 429' }];
+      },
+      forget() {},
+      stats: () => ({}),
+    },
+    fetchImpl: async (url) => {
+      asked.push(url);
+      if (url === '/api/device-feeds/status')
+        return new Response(JSON.stringify({ editable: true, recorder: true }), { status: 200 });
+      return new Response(JSON.stringify({ devices: [van] }), { status: 200 });
+    },
+  });
+  const viewer = { dataSources: { add: (source) => source, remove: () => true } };
+  layer.init(viewer);
+  layer.enable(viewer);
+  assert.equal(await layer.update(viewer), true);
+  assert.deepEqual(ticks, [], 'not yet: the server has not answered');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(await layer.update(viewer), true);
+  assert.deepEqual(ticks, [['device-van']]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(asked.filter((url) => url === '/api/device-feeds/status').length, 1);
+  assert.equal(layer.getStats().error ?? null, null);
+  layer.destroy(viewer);
 });

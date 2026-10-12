@@ -1718,7 +1718,9 @@ export class StyleManager extends ShellFacade {
           if (this._disposed) return;
           this._showToast(
             error?.code === 1
-              ? 'Location is blocked: allow it for this page in Chrome'
+              ? globalThis.isSecureContext === false
+                ? 'Location is blocked on this http page: allow this address under chrome://flags Insecure origins treated as secure (see Mirror README)'
+                : 'Location is blocked: allow it for this page in Chrome'
               : 'Your location could not be found',
           );
         },

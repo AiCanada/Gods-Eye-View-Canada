@@ -25,11 +25,13 @@ const css = readStylesheet(new URL('../style.css', import.meta.url));
 
 function realtimeTools() { return GEV_REALTIME_TOOLS; }
 
-test('Realtime schema exposes the authoritative 30-tool inventory', () => {
+test('Realtime schema exposes the authoritative 32-tool inventory', () => {
   const tools = realtimeTools();
-  assert.equal(tools.length, 30);
+  assert.equal(tools.length, 32);
   const names = tools.map((tool) => tool.name);
-  assert.equal(new Set(names).size, 30, 'tool names are unique');
+  assert.equal(new Set(names).size, 32, 'tool names are unique');
+  assert.ok(names.includes('list_ui_controls'));
+  assert.ok(names.includes('use_ui_control'));
   assert.ok(names.includes('set_context_mode'));
   assert.ok(names.includes('control_cockpit'));
   assert.ok(names.includes('select_nearest_aircraft'));
@@ -153,7 +155,7 @@ test('the edited existing tools changed exactly as intended', () => {
   const panel = byName.get('set_panel_open');
   assert.deepEqual(
     panel.parameters.properties.panelId.enum,
-    ['data-panel', 'location-bar', 'control-panel', 'cctv-panel', 'radio-panel', 'scene-panel', 'pp-toggles', 'global-context-panel', 'weather-panel', 'recent-imagery-panel'],
+    ['data-panel', 'location-bar', 'control-panel', 'cctv-panel', 'radio-panel', 'scene-panel', 'pp-toggles', 'global-context-panel', 'weather-panel', 'recent-imagery-panel', 'ask-panel', 'street-level-panel', 'ultra-panel', 'social-panel', 'outbreak-panel', 'sst-panel'],
   );
   assert.deepEqual(panel.parameters.required, ['panelId', 'open']);
 
@@ -204,6 +206,9 @@ test('no unchanged Realtime tool definition drifts silently', () => {
     'track_entity',
     // Point-and-ask: 'pointer' sentinels and referent arguments.
     'annotate_map',
+    // 2026-10-10: whole-app voice control.
+    'list_ui_controls',
+    'use_ui_control',
   ]);
   const unchanged = realtimeTools()
     .filter((tool) => !TOUCHED.has(tool.name))

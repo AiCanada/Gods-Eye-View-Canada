@@ -1,6 +1,9 @@
 import { makeRateLimiter, clientKey } from './common/rate-limit.js';
 import { defaultSourceRoot } from './common/source-root.js';
-import { admitKeySetupRequest } from '../../src/keySetupCore.mjs';
+import {
+  admitKeySetupRequest,
+  sendOwnerRemovalRefusal,
+} from '../../src/keySetupCore.mjs';
 import {
   SOCIAL_LOGIN_LOCKED,
   listSocialLogins,
@@ -96,6 +99,11 @@ export function socialAccountsProxy({ sourceRoot = defaultSourceRoot } = {}) {
         proxyHeaders: req.headers || {},
         env: process.env,
       });
+      if (!admitted.ok && admitted.removal === true) {
+        // The owner's phone: removing a login is done on the PC, no message.
+        sendOwnerRemovalRefusal(res, HEADERS);
+        return;
+      }
       if (!admitted.ok) {
         send(res, admitted.status || 403, {
           error: String(admitted.error || 'Refused').replace(

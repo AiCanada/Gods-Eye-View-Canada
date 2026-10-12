@@ -25,6 +25,13 @@ const DRAG_THRESHOLD_PX = 4;
  */
 const DOUBLE_PRESS_MS = 400;
 const DOUBLE_PRESS_SLOP_PX = 6;
+/**
+ * On a phone a finger held still this long on a header picks the panel up;
+ * moving before then is a swipe, and the rail scrolls as before.
+ */
+const TOUCH_HOLD_MS = 400;
+/** A finger drifts a little while it is held; more than this is a swipe. */
+const TOUCH_HOLD_SLOP_PX = 10;
 const VIEWPORT_MARGIN_PX = 6;
 /**
  * Fixed chrome that paints over the rail's stacking context; a floating
@@ -65,7 +72,10 @@ function placeAt(panelEl, left, top) {
   panelEl.style.bottom = 'auto';
 }
 
-/** On a phone the rail scrolls, so a finger on a header is a swipe, not a drag. */
+/**
+ * On a phone the rail scrolls, so a finger on a header is a swipe, not a drag,
+ * until it has been held still (TOUCH_HOLD_MS).
+ */
 function isPrecisePointer(event) {
   const pointerType = event.pointerType || 'mouse';
   return pointerType === 'mouse' || pointerType === 'pen';
@@ -94,6 +104,7 @@ export class PanelPositionControls {
     this._panelZCounter = PANEL_Z_BASE + 10;
     this._draggableResizeObserver = null;
     this._cancelDrag = null;
+    this._cancelTouchHold = null;
     this._portablePanels = new Map();
     this._resizeHandles = [];
     this._dragInitialized = false;
@@ -668,9 +679,14 @@ export class PanelPositionControls {
     });
     let lastPress = null;
     this.listen(handleEl, 'pointerdown', (event) => {
-      if (event.button !== 0 || !isPrecisePointer(event)) return;
+      if (event.button !== 0) return;
       const interactive = event.target.closest?.(INTERACTIVE_SELECTOR);
       if (interactive && !interactive.matches('.panel-collapse-btn')) return;
+      if (!isPrecisePointer(event)) {
+        // A finger: no preventDefault, so a swipe still scrolls the rail.
+        this._armTouchHold(event, handleEl, () => beginDrag(event));
+        return;
+      }
 
       const now = event.timeStamp || performance.now();
       const doublePress =
@@ -687,10 +703,12 @@ export class PanelPositionControls {
         this._resetPanelPosition(panelId);
         return;
       }
-
-      this._cancelDrag?.();
       // A header press must not start a text selection across the page.
       event.preventDefault();
+      beginDrag(event);
+    });
+    const beginDrag = (event) => {
+      this._cancelDrag?.();
       const entry = this._portablePanels.get(panelId);
       let lifted = false;
       let before = null;
@@ -738,7 +756,63 @@ export class PanelPositionControls {
             this._revertPanelGesture(panelId, panelEl, lifted, before);
         },
       });
-    });
+    };
+  }
+
+  /**
+   * Wait for a finger to be held still on a header, then call `onHold` with
+   * the gesture still down. Moving first, lifting, or a cancel gives up. Once
+   * held, the page stops scrolling under the finger until it lifts.
+   */
+  _armTouchHold(event, handleEl, onHold) {
+    this._cancelTouchHold?.();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const pointerId = event.pointerId;
+    const same = (other) =>
+      pointerId === undefined ||
+      other.pointerId === undefined ||
+      other.pointerId === pointerId;
+    let held = false;
+    let timer = null;
+    const move = (moveEvent) => {
+      if (held || !same(moveEvent)) return;
+      const travel = Math.hypot(
+        moveEvent.clientX - startX,
+        moveEvent.clientY - startY,
+      );
+      if (travel > TOUCH_HOLD_SLOP_PX) stop();
+    };
+    const end = (endEvent) => {
+      if (same(endEvent)) stop();
+    };
+    const holdScroll = (touchEvent) => {
+      if (held && touchEvent.cancelable !== false) touchEvent.preventDefault();
+    };
+    // A long press must not open the browser's menu over the header.
+    const menu = (menuEvent) => menuEvent.preventDefault();
+    const stop = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      window.removeEventListener('touchmove', holdScroll, { passive: false });
+      handleEl.removeEventListener('contextmenu', menu);
+      if (this._cancelTouchHold === stop) this._cancelTouchHold = null;
+    };
+    timer = setTimeout(() => {
+      timer = null;
+      if (this.destroyed) return stop();
+      held = true;
+      onHold();
+    }, TOUCH_HOLD_MS);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    window.addEventListener('touchmove', holdScroll, { passive: false });
+    handleEl.addEventListener('contextmenu', menu);
+    this._cancelTouchHold = stop;
   }
 
   /** On pointercancel, restore the panel as the gesture found it; save nothing. */
@@ -772,7 +846,8 @@ export class PanelPositionControls {
   }
 
   _startPanelResize(event, panelId, panelEl, dir, limits) {
-    if (event.button !== 0 || !isPrecisePointer(event)) return;
+    // A finger works the handles too; they already refuse to scroll the page.
+    if (event.button !== 0) return;
     event.preventDefault();
     this._cancelDrag?.();
     // Set once the pointer has travelled: a plain click on an edge must not
@@ -834,6 +909,7 @@ export class PanelPositionControls {
     if (this.destroyed) return;
     this.destroyed = true;
     this._cancelDrag?.();
+    this._cancelTouchHold?.();
     for (const remove of this.removers.splice(0)) remove();
     for (const handle of this._resizeHandles.splice(0)) handle.remove();
     this._draggableResizeObserver?.disconnect();

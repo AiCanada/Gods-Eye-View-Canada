@@ -504,3 +504,51 @@ test('an Ultra cell card has no FOLLOW, RECORD WITHIN, FIXED or CAMERA PICTURE b
     globalThis.window = previousWindow;
   }
 });
+
+test('the owner phone: REMOVE that the PC refuses is a quiet no-op; the device and its note stay', async () => {
+  const server = fakeServer();
+  let refuse = false;
+  const fetchImpl = async (url, options = {}) => {
+    if (refuse && JSON.parse(options.body || '{}').removeFeedId)
+      return new Response(JSON.stringify({ removal: 'pc-only' }), {
+        status: 403,
+        headers: { 'X-GEV-Removal': 'pc-only' },
+      });
+    return server.fetchImpl(url, options);
+  };
+  const host = new FakeElement('div');
+  const previousWindow = globalThis.window;
+  globalThis.window = { dispatchEvent() {} };
+  try {
+    initDeviceFeedSetup({ host, documentRef, fetchImpl });
+    await settle();
+    const tracker = () => byClass(host, 'device-feeds-kind')[3];
+    await byClass(tracker(), 'private-cams-add')[0].fire('click');
+    const draft = byClass(tracker(), 'device-feeds-feed')[0];
+    field(draft, 'name').value = 'Truck';
+    field(draft, 'url').value = 'https://truck.example.com/where';
+    await byClass(draft, 'private-cams-save')[0].fire('click');
+    await settle();
+    assert.equal(server.config().feeds.length, 1);
+
+    refuse = true;
+    const block = byClass(tracker(), 'device-feeds-feed')[0];
+    const note = byClass(block, 'private-cams-note')[0];
+    const before = note.textContent;
+    await byClass(block, 'private-cams-remove-site')[0].fire('click');
+    await settle();
+    assert.equal(note.textContent, before, 'nothing is said');
+    assert.equal(byClass(tracker(), 'device-feeds-feed')[0], block);
+    assert.equal(server.config().feeds.length, 1);
+
+    // Any other refusal keeps its message.
+    refuse = false;
+    server.config().feeds.length = 0;
+    await byClass(block, 'private-cams-remove-site')[0].fire('click');
+    await settle();
+    assert.notEqual(note.textContent, before);
+    assert.notEqual(note.textContent, '');
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});

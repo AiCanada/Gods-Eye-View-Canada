@@ -302,19 +302,67 @@ test('a click on a docked panel’s resize edge leaves it docked and stores noth
   }
 });
 
-test('a touch on the header or an edge does not lift the panel, and the rail can still scroll', () => {
+test('a finger swiping over a header scrolls the rail and lifts nothing', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const f = fixture();
   try {
-    const { panel, handle, edges } = dockedPanel(f, 'street-level-panel');
+    const { panel, handle } = dockedPanel(f, 'street-level-panel');
     const press = pointer(handle, 'pointerdown', { pointerType: 'touch' });
     assert.equal(press.defaultPrevented, false, 'the swipe can scroll');
     pointer(window, 'pointermove', { y: 190, pointerType: 'touch' });
-    pointer(window, 'pointerup', { y: 190, pointerType: 'touch' });
-    pointer(edges.s, 'pointerdown', { y: 500, pointerType: 'touch' });
-    pointer(window, 'pointermove', { y: 600, pointerType: 'touch' });
-    pointer(window, 'pointerup', { y: 600, pointerType: 'touch' });
+    t.mock.timers.tick(1000);
+    pointer(window, 'pointermove', { y: 290, pointerType: 'touch' });
+    pointer(window, 'pointerup', { y: 290, pointerType: 'touch' });
+    // A quick tap that lifts before the hold is not a drag either.
+    pointer(handle, 'pointerdown', { pointerType: 'touch' });
+    t.mock.timers.tick(200);
+    pointer(window, 'pointerup', { pointerType: 'touch' });
+    t.mock.timers.tick(1000);
+    pointer(window, 'pointermove', { y: 290, pointerType: 'touch' });
     assert.equal(panel.classList.contains('panel-floating'), false);
     assert.equal(f.store.has(POSITION_KEY), false);
+  } finally {
+    f.restore();
+  }
+});
+
+test('a finger held still on a header picks the panel up, and the page does not scroll under it', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture();
+  try {
+    const { panel, handle } = dockedPanel(f, 'street-level-panel');
+    pointer(handle, 'pointerdown', { pointerType: 'touch' });
+    pointer(window, 'pointermove', { x: 203, y: 92, pointerType: 'touch' });
+    t.mock.timers.tick(400);
+    const scroll = new Event('touchmove', { cancelable: true });
+    window.dispatchEvent(scroll);
+    assert.equal(scroll.defaultPrevented, true, 'held: no scroll');
+    pointer(window, 'pointermove', { x: 260, y: 140, pointerType: 'touch' });
+    assert.equal(panel.classList.contains('panel-floating'), true, 'lifted');
+    pointer(window, 'pointerup', { x: 260, y: 140, pointerType: 'touch' });
+    assert.equal(JSON.parse(f.store.get(POSITION_KEY)).floating, true);
+    const after = new Event('touchmove', { cancelable: true });
+    window.dispatchEvent(after);
+    assert.equal(after.defaultPrevented, false, 'lifted finger: scrolls again');
+  } finally {
+    f.restore();
+  }
+});
+
+test('a finger on a resize edge resizes the panel, as the mouse does', () => {
+  const f = fixture();
+  try {
+    const { panel, edges } = dockedPanel(f, 'street-level-panel');
+    const press = pointer(edges.s, 'pointerdown', {
+      y: 500,
+      pointerType: 'touch',
+    });
+    assert.equal(press.defaultPrevented, true);
+    pointer(window, 'pointermove', { y: 600, pointerType: 'touch' });
+    pointer(window, 'pointerup', { y: 600, pointerType: 'touch' });
+    assert.equal(panel.classList.contains('panel-floating'), true);
+    assert.equal(panel.style.height, '520px');
+    assert.equal(JSON.parse(f.store.get(POSITION_KEY)).floating, true);
   } finally {
     f.restore();
   }

@@ -18,7 +18,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { admitKeySetupRequest } from '../../src/keySetupCore.mjs';
+import {
+  admitKeySetupRequest,
+  sendOwnerRemovalRefusal,
+} from '../../src/keySetupCore.mjs';
 import {
   credentialFileRestricted,
   replaceCredentialStore,
@@ -4421,18 +4424,40 @@ async function receiveUltraClip(req, res, key) {
   const out = fs.createWriteStream(partial, { mode: 0o600 });
   let total = 0;
   let tooLarge = false;
+  // A disk that fills or a folder that vanishes mid-upload errors the stream;
+  // without a listener that would end the whole server, not this request.
+  let failed = false;
+  out.on('error', () => {
+    failed = true;
+  });
+  // A failed stream never drains, so the wait also settles when it closes.
+  const drained = () =>
+    new Promise((resolve) => {
+      const settle = () => {
+        out.off('drain', settle);
+        out.off('close', settle);
+        resolve();
+      };
+      out.on('drain', settle);
+      out.on('close', settle);
+    });
   try {
     for await (const chunk of req) {
+      if (failed) break;
       total += chunk.length;
       if (total > ULTRA_CLIP_MAX_BYTES) {
         tooLarge = true;
         break;
       }
-      if (!out.write(chunk))
-        await new Promise((resolve) => out.once('drain', resolve));
+      if (!out.write(chunk) && !out.closed) await drained();
     }
   } finally {
     await new Promise((resolve) => out.end(resolve));
+  }
+  if (failed) {
+    fs.rmSync(partial, { force: true });
+    json(res, 500, 'Could not save', 'text/plain');
+    return;
   }
   if (tooLarge || total === 0) {
     fs.rmSync(partial, { force: true });
@@ -5865,6 +5890,50 @@ function inboxAction(body, store, now, answer) {
   return [200, answer(store)];
 }
 
+/**
+ * Whether an owner's POST removes or clears something stored on this PC. The
+ * owner's own phone, through the tailnet mirror, adds, edits, mints, presses
+ * SEND HELP and STAND DOWN, but removing is done on the PC (owner ruling,
+ * 2026-10-11). Each check follows the order its action reads the body, so
+ * an add or an edit that also says remove is still the add or the edit.
+ * @param {string} pathName
+ * @param {unknown} body
+ */
+export function ultraOwnerRemoval(pathName, body) {
+  const ask = body && typeof body === 'object' ? body : {};
+  switch (pathName) {
+    case '/media/delete':
+      return true;
+    case '/contacts':
+      return Boolean(ask.remove);
+    case '/tokens':
+      // RESET deletes the token files and empties the home list; REVOKE,
+      // REMOVE and PURGE take tokens out. REVEAL and EDIT come first.
+      if (ask.reset) return true;
+      if (ask.reveal || ask.edit) return false;
+      return Boolean(ask.revoke || ask.remove || ask.purge);
+    case '/network':
+      // An empty name takes the saved one away; a non-empty name is an edit.
+      if (ask.me) return cleanHelpText(ask.name, ULTRA_HELP_NAME_LIMIT) === '';
+      if (ask.add) return false;
+      return Boolean(ask.remove);
+    case '/inbox':
+      return Boolean(ask.clear || ask.remove);
+    case '/number':
+      // An empty number takes the saved one away.
+      return (
+        ask.number === null ||
+        ask.number === undefined ||
+        String(ask.number).trim() === ''
+      );
+    case '/needs':
+      // null clears the saved HELP DELIVERY default.
+      return ask.needs === null;
+    default:
+      return false;
+  }
+}
+
 export function ultraHelpProxy({
   fetchImpl = (...args) => globalThis.fetch(...args),
   sourceRoot: root = process.cwd(),
@@ -5892,6 +5961,11 @@ export function ultraHelpProxy({
     const answer = (store) => publicStatus(store, { editable: allowEdit });
     return async (req, res) => {
       const admitted = admit(req);
+      if (!admitted.ok && admitted.removal === true) {
+        // An owner device's DELETE: refused with no message.
+        sendOwnerRemovalRefusal(res, SECURITY_HEADERS);
+        return;
+      }
       if (!admitted.ok) {
         json(res, admitted.status || 403, {
           error: String(admitted.error || 'Refused').replace(
@@ -5996,7 +6070,11 @@ export function ultraHelpProxy({
             'Cache-Control': 'no-store',
             'Content-Disposition': 'inline',
           });
-          fs.createReadStream(found.file).pipe(res);
+          // Headers are out, so a file that vanishes or fails mid-read can
+          // only cut the connection; an unlistened error would end the server.
+          const clip = fs.createReadStream(found.file);
+          clip.on('error', () => res.destroy());
+          clip.pipe(res);
           return;
         }
         if (req.method === 'GET' && pathName === '/photo') {
@@ -6020,6 +6098,13 @@ export function ultraHelpProxy({
           body = parseJsonBody(text);
           if (!body) {
             json(res, 400, { error: 'Bad JSON' });
+            return;
+          }
+          if (
+            admitted.ownerDevice === true &&
+            ultraOwnerRemoval(pathName, body)
+          ) {
+            sendOwnerRemovalRefusal(res, SECURITY_HEADERS);
             return;
           }
         }

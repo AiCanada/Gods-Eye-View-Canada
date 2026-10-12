@@ -39,7 +39,9 @@ test('the complete Realtime tool payload pins the manifest-generated layer relea
     // Street Level adds its toggle enum values and generated alias hint.
     // Re-derived 2026-10-07 for the upstream merge: the fork's Canadian city
     // presets and its Cell, Private CCTV and Outbreak layers.
-    '3bf7bdab0cca10e238e4e76d5ce458de60af3f214f025a6c49e63e30d6f809ab',
+    // Re-derived 2026-10-10 for whole-app voice control: list_ui_controls,
+    // use_ui_control and six more set_panel_open boxes.
+    'e99575c7ce099f03c2a21f7bc269600b780da0afab851490f6697745bcf492a9',
   );
 });
 
@@ -97,7 +99,13 @@ test('metadata cannot add tools, fields, types or enum values', () => {
 
 test('all legacy action arguments are byte-identical after removing the deliberate additions', () => {
   const legacy = structuredClone(GEV_ACTION_SCHEMAS).filter(
-    (tool) => !['next_satellite_pass', 'set_cyber_sonar'].includes(tool.name),
+    (tool) =>
+      ![
+        'next_satellite_pass',
+        'set_cyber_sonar',
+        'list_ui_controls',
+        'use_ui_control',
+      ].includes(tool.name),
   );
   // Layer enums are generated from the voice layer manifest and pinned by
   // layerManifest.test.mjs; the two shipped right-rail panels are additive.
@@ -109,7 +117,18 @@ test('all legacy action arguments are byte-identical after removing the delibera
   delete property('analyst_query').layers.items.enum;
   const panels = property('set_panel_open').panelId;
   panels.enum = panels.enum.filter(
-    (id) => !['weather-panel', 'recent-imagery-panel'].includes(id),
+    (id) =>
+      ![
+        'weather-panel',
+        'recent-imagery-panel',
+        // Whole-app voice control opens every right-rail box.
+        'ask-panel',
+        'street-level-panel',
+        'ultra-panel',
+        'social-panel',
+        'outbreak-panel',
+        'sst-panel',
+      ].includes(id),
   );
   // The fork's additive values: the Canadian city presets and the weather
   // layers (wind, radar, satellite, lightning, cyclones).

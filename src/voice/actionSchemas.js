@@ -204,6 +204,12 @@ const schemas = [
             'global-context-panel',
             'weather-panel',
             'recent-imagery-panel',
+            'ask-panel',
+            'street-level-panel',
+            'ultra-panel',
+            'social-panel',
+            'outbreak-panel',
+            'sst-panel',
           ],
         },
         open: {
@@ -918,6 +924,33 @@ const schemas = [
         longitude: { type: 'number', minimum: -180, maximum: 180 },
         minElevationDeg: { type: 'number', minimum: 5, maximum: 60 },
         visibleOnly: { type: 'boolean' },
+      },
+    },
+  },
+  {
+    name: 'list_ui_controls',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        panelId: { type: 'string' },
+        query: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'use_ui_control',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['action'],
+      properties: {
+        ref: { type: 'string' },
+        label: { type: 'string' },
+        action: { type: 'string', enum: ['press', 'set', 'toggle'] },
+        value: { type: 'string', maxLength: 500 },
+        pressEnter: { type: 'boolean' },
+        confirmed: { type: 'boolean' },
       },
     },
   },

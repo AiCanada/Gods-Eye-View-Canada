@@ -18,6 +18,7 @@ import {
   startGrokVoice,
   startTurnVoice,
   voiceProviderLabel,
+  microphoneUnavailableMessage,
   writeStoredVoiceProvider,
 } from './gevVoiceProviders.js';
 
@@ -681,5 +682,18 @@ test('Claude on the mic uses the spoken turn and not the OpenAI realtime call', 
       else globalThis.navigator.mediaDevices = previousMedia;
     }
     installed.restore();
+  }
+});
+
+test('the no-microphone error points an http page at the chrome://flags secure-origin setting', () => {
+  const before = Object.getOwnPropertyDescriptor(globalThis, 'isSecureContext');
+  try {
+    Object.defineProperty(globalThis, 'isSecureContext', { value: false, configurable: true });
+    assert.match(microphoneUnavailableMessage(), /chrome:\/\/flags Insecure origins treated as secure \(see Mirror README\)/);
+    Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });
+    assert.equal(microphoneUnavailableMessage(), 'Microphone support is unavailable.');
+  } finally {
+    if (before) Object.defineProperty(globalThis, 'isSecureContext', before);
+    else delete globalThis.isSecureContext;
   }
 });

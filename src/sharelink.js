@@ -10,6 +10,7 @@ import {
   encodeLayerStateParams,
 } from './data/layerState.js';
 import { STYLE_URL_NAMES } from './view/index.js';
+import { copyText } from './ui/copyText.js';
 
 /**
  * Share Links — URL Hash State Management
@@ -512,12 +513,9 @@ export class ShareLinkManager {
     params.set(SHARE_CREATED_AT_PARAM, String(Math.floor(nowMs / 1000)));
     const copiedUrl = new URL(window.location.href);
     copiedUrl.hash = params.toString();
-    try {
-      await navigator.clipboard.writeText(copiedUrl.href);
-      return true;
-    } catch {
-      return false;
-    }
+    // Falls back to a hidden-textarea copy, then the share sheet, so the
+    // phone mirror (a plain http page with no navigator.clipboard) still copies.
+    return copyText(copiedUrl.href);
   }
 
   _scheduleUpdate() {

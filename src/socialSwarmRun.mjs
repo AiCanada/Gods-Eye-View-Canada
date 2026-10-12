@@ -14,6 +14,7 @@ import {
   swarmBotFoundNothing,
 } from './socialSwarm.mjs';
 import { GROK_BOT_GATEWAY_TOTAL_MS } from './grokBotGateway.mjs';
+import { copyText as defaultCopyText } from './ui/copyText.js';
 
 const SWARM_URL = '/api/social/swarm';
 const SWARM_STATUS_URL = '/api/social/swarm/status';
@@ -91,8 +92,9 @@ async function nearestCityFromServer(request, lat, lon) {
 
 /**
  * Put the task on the clipboard: true only when a clipboard took it. A
- * `copyText` that answers false (no clipboard here) is not a copy; plain
- * http pages have no navigator.clipboard at all.
+ * `copyText` that answers false (no clipboard here) is not a copy. Plain
+ * http pages (the phone mirror) have no navigator.clipboard, so the default
+ * falls back to a hidden-textarea copy and then the share sheet.
  */
 async function writeClipboard(text, copyText) {
   if (typeof copyText === 'function') {
@@ -102,14 +104,8 @@ async function writeClipboard(text, copyText) {
       return false;
     }
   }
-  const clipboard = globalThis.navigator?.clipboard;
-  if (typeof clipboard?.writeText !== 'function') return false;
-  try {
-    await clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
+  // The clipboard, then a hidden-textarea copy, then the share sheet.
+  return defaultCopyText(text);
 }
 
 async function openGrokBot(request) {

@@ -2889,3 +2889,56 @@ test('HELP DELIVERY is posted to the server by SAVE alone, never by opening the 
     destination: 'home',
   });
 });
+
+test('the owner phone: REMOVE on a saved login the PC refuses is a quiet no-op; the login stays', async () => {
+  const answers = [
+    () =>
+      new Response(JSON.stringify({ removal: 'pc-only' }), {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-GEV-Removal': 'pc-only',
+        },
+      }),
+    () =>
+      new Response(JSON.stringify({ error: 'Saved logins are busy' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  ];
+  const deletes = [];
+  const fetch = async (url, init = {}) => {
+    deletes.push({ url, method: init.method, body: JSON.parse(init.body) });
+    return answers.shift()();
+  };
+  const storage = memoryStorage();
+  saveSocialAccount(storage, 'x', '@river');
+  const panel = new SocialMediaPanel(null, {
+    document: { getElementById: () => null },
+    storage,
+    fetch,
+  });
+  const status = { textContent: 'Saved logins: 1' };
+  panel._status = status;
+  const row = { platform: 'x', vault: true };
+  panel._vault = [{ platform: 'x', userId: 'river' }];
+  let renders = 0;
+  panel._renderAccounts = () => {
+    renders += 1;
+  };
+  panel._syncLiveLocation = () => {};
+  await panel._removeAccount(row);
+  assert.deepEqual(deletes, [
+    { url: '/api/social/accounts', method: 'DELETE', body: { platform: 'x' } },
+  ]);
+  assert.equal(status.textContent, 'Saved logins: 1', 'nothing is said');
+  assert.deepEqual(panel._vault, [{ platform: 'x', userId: 'river' }]);
+  assert.deepEqual(readSocialAccounts(storage), [
+    { platform: 'x', handle: 'river' },
+  ]);
+  assert.equal(renders, 0, 'the row is not repainted away');
+  /* Any other refusal still says why. */
+  await panel._removeAccount(row);
+  assert.equal(status.textContent, 'Saved logins are busy');
+  assert.equal(panel._vault.length, 1);
+});

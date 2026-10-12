@@ -25,6 +25,25 @@ test('explicit build inputs preserve browser-only defines, plugin order and loop
   // or scanned for dependencies by this app's dev server.
   assert.ok(config.server.watch.ignored.includes('**/RuView/**'));
   assert.ok(config.server.fs.deny.includes('**/RuView/**'));
+  // A busy port fails the start rather than silently serving the next one.
+  assert.equal(config.server.strictPort, true);
+  // Runtime output and caches are never modules: the watcher skips them.
+  for (const pattern of [
+    '**/.gev-cache/**',
+    '**/.gev-logs/**',
+    '**/dist/**',
+    '**/qa-artifacts/**',
+    '**/qa-shots/**',
+    '**/config/ultra-media/**',
+    '**/config/device-recordings/**',
+  ]) {
+    assert.ok(config.server.watch.ignored.includes(pattern), pattern);
+  }
+  // Logs and caches are also never served: dev-mode sirv skips the dotfile
+  // filter, so only fs.deny keeps .gev-logs/dev-server.log off the network.
+  for (const pattern of ['**/.gev-cache/**', '**/.gev-logs/**']) {
+    assert.ok(config.server.fs.deny.includes(pattern), pattern);
+  }
   // Private camera logins are never static files.
   assert.ok(config.server.fs.deny.includes('**/private-cameras.json'));
   assert.ok(config.server.fs.deny.includes('**/.private-cameras.json.*'));
@@ -125,16 +144,19 @@ test('root config retains existing named exports and standalone provider order',
     assert.equal(compatibility[name], value, name);
   const config = standaloneConfig({ mode: 'test' });
   assert.deepEqual(
-    config.plugins.slice(5, -5).map((plugin) => plugin.name),
+    config.plugins.slice(6, -5).map((plugin) => plugin.name),
     providers.localProviderPlugins().map((plugin) => plugin.name),
   );
   // The single-instance guard stops the previous dev server before anything
   // else runs; the route guard is registered before every provider: it can
   // only wrap routes that are added after it. Host check, Cesium and the
-  // application HTML plugin come first (build/vite.js).
+  // application HTML plugin come first (build/vite.js). The health route
+  // follows the guard and is dev-only.
   assert.equal(config.plugins[0].name, 'host-check');
   assert.equal(config.plugins[3].name, 'dev-single-instance');
   assert.equal(config.plugins[4].name, 'route-guard');
+  assert.equal(config.plugins[5].name, 'gev-health');
+  assert.equal(config.plugins[5].apply, 'serve');
   assert.equal(config.plugins.at(-6).name, 'gev-key-setup');
   // The local MCP route follows every provider and precedes the API fallback.
   assert.equal(config.plugins.at(-5).name, 'local-mcp');

@@ -443,6 +443,10 @@ function mockTerrainDisk(t, points) {
 
 /** A terrain proxy with its periodic flush captured; upstream answers lon + 1000. */
 function terrainFixture(t) {
+  // The terrain cache is a process-wide singleton (shared across in-process
+  // Vite restarts); each fixture needs a fresh one with its own flush timer.
+  delete globalThis.__GEV_TERRAIN_CACHE;
+  t.after(() => delete globalThis.__GEV_TERRAIN_CACHE);
   const fixture = { calls: 0, flush: null, heights: null };
   t.mock.method(globalThis, 'setInterval', (callback) => {
     fixture.flush = callback;

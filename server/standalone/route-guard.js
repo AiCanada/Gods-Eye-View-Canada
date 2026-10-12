@@ -10,10 +10,60 @@
  *
  * It also logs (and survives) unhandled rejections from background work that
  * belongs to no request: catalogue downloads, cache writes, timers.
+ *
+ * Uncaught exceptions are sorted into two kinds. A socket or stream error that
+ * escaped its `'error'` listener (a client that hung up mid-response, an
+ * upstream that reset the connection, a DNS blip) says nothing about the state
+ * of the process, so it is logged and the server keeps running. Anything else
+ * (a TypeError in a timer, EADDRINUSE on a relisten) leaves the process in a
+ * state nobody planned for, and serving from it would be guessing. The stack
+ * is written to stderr synchronously, so a piped log keeps it, and the process
+ * exits with code 70 (EX_SOFTWARE): the dev supervisor relaunches a fresh
+ * server in about a second.
  */
+
+import fs from 'node:fs';
 
 const GUARDED = Symbol.for('gev.routeGuard.guarded');
 const PROCESS_GUARD = Symbol.for('gev.routeGuard.process');
+
+/** Exit code for an uncaught exception the guard does not recognise (EX_SOFTWARE). */
+export const FATAL_EXIT_CODE = 70;
+
+/**
+ * Error codes a long-running server outlives: each names a connection or
+ * stream that is already gone, never process state. EADDRINUSE is deliberately
+ * absent; a server that cannot listen must stop and say so.
+ */
+export const RECOVERABLE_ERROR_CODES = new Set([
+  'EPIPE',
+  'ECONNRESET',
+  'ECONNABORTED',
+  'ETIMEDOUT',
+  'ECONNREFUSED',
+  'EAI_AGAIN',
+  'ENOTFOUND',
+  'ERR_STREAM_PREMATURE_CLOSE',
+  'ERR_STREAM_DESTROYED',
+  'ERR_HTTP_HEADERS_SENT',
+  'ERR_STREAM_WRITE_AFTER_END',
+]);
+
+/** True when an uncaught error is a known connection failure the server can outlive. */
+export function isRecoverableError(error) {
+  return (
+    typeof error?.code === 'string' && RECOVERABLE_ERROR_CODES.has(error.code)
+  );
+}
+
+/** Write to stderr without the event loop: the process is about to exit. */
+function writeFatal(text) {
+  try {
+    fs.writeSync(2, text);
+  } catch {
+    /* stderr is gone; nothing left to tell */
+  }
+}
 
 function describe(error) {
   if (error instanceof Error) return error.stack || error.message;
@@ -88,15 +138,35 @@ export function guardMiddlewares(middlewares, log) {
   Object.defineProperty(middlewares, GUARDED, { value: true });
 }
 
-/** Log unhandled rejections instead of letting them end the process. Once per process. */
+/**
+ * Keep the process alive through unhandled rejections and recoverable
+ * uncaught exceptions; end it (exit 70) on any other uncaught exception.
+ * Once per process: a second call adds no listeners.
+ * @param {NodeJS.EventEmitter} target
+ * @param {(message: string) => void} log
+ * @param {(code: number) => void} exit
+ * @param {(text: string) => void} fatalLog synchronous stderr writer
+ */
 export function guardProcess(
   target = process,
   log = (message) => console.error(message),
+  exit = (code) => process.exit(code),
+  fatalLog = writeFatal,
 ) {
   if (target[PROCESS_GUARD]) return;
   Object.defineProperty(target, PROCESS_GUARD, { value: true });
   target.on('unhandledRejection', (reason) => {
     log(`[Server] unhandled rejection (kept running): ${describe(reason)}`);
+  });
+  target.on('uncaughtException', (error) => {
+    if (isRecoverableError(error)) {
+      log(`[Server] recovered from uncaught ${describe(error)}`);
+      return;
+    }
+    fatalLog(
+      `[Server] uncaught exception, exiting ${FATAL_EXIT_CODE} so the supervisor relaunches: ${describe(error)}\n`,
+    );
+    exit(FATAL_EXIT_CODE);
   });
 }
 

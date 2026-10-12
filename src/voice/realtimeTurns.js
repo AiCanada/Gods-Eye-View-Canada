@@ -419,6 +419,9 @@ export class RealtimeTurns {
     let sentOutput = false;
     let lastResult = null;
     let stopAfterRadioTool = false;
+    // A quiet result (a removal the PC keeps) must not reach the model as a
+    // new turn: its output is still sent, but no response.create follows.
+    let quietBatch = true;
     for (const call of calls) {
       // No per-iteration spend-cap re-check here by design: `calls` holds at
       // most one entry (see the pre-loop gate above), so there is no mid-batch
@@ -637,6 +640,7 @@ export class RealtimeTurns {
         result,
       });
       lastResult = result;
+      quietBatch = quietBatch && result?.quiet === true;
       stopAfterRadioTool =
         stopAfterRadioTool ||
         (shouldStopVoiceAfterRadioTool(result) &&
@@ -658,7 +662,9 @@ export class RealtimeTurns {
       this.stop();
       return;
     }
-    if (sentOutput && this.dc?.readyState === 'open') {
+    if (sentOutput && quietBatch) {
+      this.debugLog('tool.response.muted', { reason: 'quiet' });
+    } else if (sentOutput && this.dc?.readyState === 'open') {
       // The viewport-image send is best-effort context. It must never block the
       // response — a throw here would strand the turn at EXECUTING (M13). Guard
       // it so queueResponseCreate always runs, image or not.

@@ -10,6 +10,12 @@
  * characters. "+ ADD GENERIC ROAD CCTV API KEYS" opens one empty row.
  */
 
+import {
+  isOwnerRemovalRefusal,
+  noteOwnerRemovalRefusal,
+  watchOwnerRemoval,
+} from './ui/ownerRemoval.js';
+
 const ENDPOINT = '/api/road-cctv-keys';
 const DEFAULT_PARAM = 'key';
 
@@ -81,7 +87,7 @@ export async function initRoadCctvKeysSetup({
   let pickers = [];
 
   const request = async (method, body, query = '') => {
-    const response = await doFetch(`${ENDPOINT}${query}`, {
+    const answer = doFetch(`${ENDPOINT}${query}`, {
       method,
       cache: 'no-store',
       ...(body
@@ -91,7 +97,17 @@ export async function initRoadCctvKeysSetup({
           }
         : {}),
     });
+    const response = await (method === 'DELETE'
+      ? watchOwnerRemoval(answer)
+      : answer);
     const data = await response.json().catch(() => null);
+    if (isOwnerRemovalRefusal(response, data)) {
+      // Only the PC removes: the caller keeps quiet.
+      noteOwnerRemovalRefusal();
+      const refused = new Error('');
+      refused.ownerRemoval = true;
+      throw refused;
+    }
     if (!response.ok)
       throw new Error(
         String(data?.error || 'This computer did not keep that key.'),
@@ -222,6 +238,7 @@ export async function initRoadCctvKeysSetup({
           typeof globalThis.confirm !== 'function' ||
           globalThis.confirm('Remove this key from your saved configuration?');
         if (!ok) return;
+        const before = note.textContent;
         note.textContent = 'Removing…';
         try {
           const data = await request('DELETE', { id: row.id });
@@ -230,7 +247,8 @@ export async function initRoadCctvKeysSetup({
             : keys.filter((entry) => entry.id !== row.id);
           paint('Removed.');
         } catch (error) {
-          note.textContent = error.message;
+          // The owner's phone: the key stays and the note is as it was.
+          note.textContent = error?.ownerRemoval ? before : error.message;
         }
       });
       actions.append(remove);

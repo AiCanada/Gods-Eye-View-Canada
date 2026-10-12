@@ -6,17 +6,24 @@
  *  - each way of travel's reach, a coloured circle round where it starts,
  *    filled faintly with two fainter rings inside it so it reads as
  *    radiating outward (a circle that takes in a pole keeps only its rings);
+ *    the boat reach (yellow) is one outline only, with nothing inside it,
+ *    round the newest location that has one (owner ruling, 2026-10-11);
  *  - every flight, a red great-circle line (dashed while in the air, and
  *    for a connecting flight), and a red dot where it landed;
  *  - the EPIDEMIC MODEL (src/outbreakEpi.mjs), when run: a teal dot at each
- *    place, stronger the likelier it has the outbreak by the hour shown and
- *    bigger the more people it infects, and purple dashed commuting lines
- *    between places it has likely reached;
+ *    place, stronger the likelier it has the outbreak by the hour shown (by
+ *    its by-day table where the model sent one) and bigger the more people
+ *    it infects, ringed purple where local restrictions are likely, named
+ *    "first case imported" where a flight most likely brought it, a hollow
+ *    blue ring where beds ran short in most runs by then, and purple
+ *    dashed commuting lines between places it has likely reached;
  *  - the spread by road and by train along the main roads and rail lines
  *    (outbreakNetwork.mjs): faint blue roads and faint orange rail lines,
  *    turning red as the spread reaches them. Each network is drawn once, in
  *    bands of distance along it; a step of the hour only shows or hides
- *    bands, so PLAY stays smooth.
+ *    bands, so PLAY stays smooth;
+ *  - every rail line on the globe (owner ruling 2026-10-12), faint orange
+ *    under the reached rail, once the server's world rail is built.
  * Listed under Other layers; ticking "Display spread on map" in the box
  * switches it on or off, and it says so back on OUTBREAK_SHOWN_EVENT.
  */
@@ -26,13 +33,16 @@ import {
   _shadersPolylineMaterialAppearanceVS,
 } from 'cesium';
 import {
+  OUTBREAK_FORECAST_BOUNDS,
   OUTBREAK_LAYER_ID,
   OUTBREAK_MODEL_EVENT,
   OUTBREAK_REQUEST_EVENT,
   OUTBREAK_SHOWN_EVENT,
   circlePoints,
   circleTakesPole,
+  cleanForecastWithin,
   contagionStyle,
+  forecastWindowLabel,
 } from '../outbreakCore.mjs';
 import { arrivedBy } from '../outbreakEpi.mjs';
 import {
@@ -42,9 +52,28 @@ import {
 } from '../outbreakNetwork.mjs';
 
 const ORIGIN_COLOR = '#e040fb';
-/** FUTURE SPREAD LOCATIONS: within 24 h, and within 48 h. */
-const FORECAST_24_COLOR = '#ff4fd8';
-const FORECAST_48_COLOR = '#b388ff';
+/**
+ * FUTURE SPREAD LOCATIONS, one colour a window: pink for the next 24 h,
+ * violet to 48 h, then cooler blues out to 30 days (never the boat yellow).
+ */
+const FORECAST_COLORS = Object.freeze({
+  24: '#ff4fd8',
+  48: '#b388ff',
+  72: '#8c9eff',
+  168: '#5c9dff',
+  336: '#40c4ff',
+  720: '#64ffda',
+});
+
+/** The colour of a forecast place's window (24 h when unknown; a 5 or
+ * 21 day reach takes the colour of the 7 or 30 day window it falls in). */
+export function forecastColor(within) {
+  const hours = cleanForecastWithin(within);
+  const bound =
+    OUTBREAK_FORECAST_BOUNDS.find((b) => b >= hours) ??
+    OUTBREAK_FORECAST_BOUNDS.at(-1);
+  return FORECAST_COLORS[bound] || FORECAST_COLORS[48];
+}
 /** A flight after the present (a daily route, assumed): a lighter red. */
 const FUTURE_FLIGHT_COLOR = '#ff8a8a';
 /** A flight's line goes this long after it lands (owner ruling, 2026-10-09). */
@@ -82,6 +111,23 @@ const COMMUTE_COLOR = '#9b5cff';
 const COMMUTES_DRAWN_MAX = 120;
 /** Below this chance of arrival by the hour shown, a place is not drawn. */
 const EPIDEMIC_SHOW_MIN = 0.05;
+/** A place's dot is never fainter than this once it may have the outbreak. */
+const EPIDEMIC_ALPHA_MIN = 0.35;
+/**
+ * A place's chance of restrictions (pRestricted) or of a flight bringing its
+ * first case (pImportedFirst) counts from this share of runs.
+ */
+const EPIDEMIC_LIKELY = 0.5;
+/** The label suffix of a place whose first case most likely flew in. */
+const IMPORTED_FIRST_SUFFIX = ' · first case imported';
+/**
+ * EPIDEMIC MODEL: a hollow ring round a place where beds ran short in most
+ * runs by the hour shown. The panel's hospital-curve blue
+ * (EPIDEMIC_CURVE_COLORS.hospital), and larger than every dot (13 px origin,
+ * at most 12 px epidemic dot), so it never hides the dot or its ring.
+ */
+export const BEDS_SHORT_COLOR = '#4a9bff';
+export const BEDS_SHORT_PX = 20;
 
 /**
  * Roads and rail lines are drawn at the circles' height. At 300 m the ground
@@ -97,12 +143,111 @@ const NETWORK_HEIGHT_M = RING_HEIGHT_M;
 const NETWORK_REACHED = Object.freeze({
   road: '#a3121b',
   rail: '#ff8c1a',
-  // The roads after a landing: light red.
-  air: '#ff8080',
+  // The roads after a landing: green (owner ruling 2026-10-12, matched to
+  // the owner's reference photo).
+  air: '#95de97',
+  // The rail round a landing airport: the rail orange.
+  'air-rail': '#ff8c1a',
 });
 const NETWORK_WAITING = '#9aa4b2';
 /** Road and rail lines, in pixels. */
 const NETWORK_LINE_PX = 2.5;
+/**
+ * Rail lines sit a little above the roads and a pixel wider (owner report,
+ * 2026-10-12): the dark red road reach runs ahead of the train's, and where
+ * a rail line runs beside a road the road hid it.
+ */
+const NETWORK_RAIL_LIFT_M = 30;
+const NETWORK_RAIL_EXTRA_PX = 1;
+
+/**
+ * EVERY RAIL LINE ON THE GLOBE (owner ruling 2026-10-12): the world rail
+ * layer, faint rail orange under the reached rail (and a little below it, so
+ * the lit lines are never fought for), from the server's tiles of the world
+ * rail network (GET /api/outbreak/rail-world/tile/z/x/y). Only the tiles in
+ * view are asked for, at a zoom by the camera's height, at most
+ * RAIL_WORLD_TILES_AT_ONCE at a time. The reached rail stays the per-source
+ * networks above it.
+ */
+export const RAIL_WORLD_ALPHA = 0.35;
+const RAIL_WORLD_TILES_AT_ONCE = 6;
+/** Tiles kept built; past this the ones out of view longest go. */
+const RAIL_WORLD_TILES_KEPT = 256;
+const RAIL_WORLD_URL = '/api/outbreak/rail-world/tile';
+
+/** The world rail layer's zoom (2 to 6) for a camera this high, in metres. */
+export function railWorldZoom(heightM) {
+  const km = (Number(heightM) || 0) / 1000;
+  if (km > 6000) return 2;
+  if (km > 2500) return 3;
+  if (km > 1000) return 4;
+  if (km > 400) return 5;
+  return 6;
+}
+
+/**
+ * The tiles at `z` over a view in degrees ({west, south, east, north}; west
+ * past east crosses the antimeridian); the whole world when no view.
+ */
+export function railWorldTilesInView(view, z) {
+  const n = 2 ** z;
+  const colOf = (lon) =>
+    Math.min(n - 1, Math.max(0, Math.floor(((lon + 180) / 360) * n)));
+  const rowOf = (lat) => {
+    const clamped = Math.max(-85.05, Math.min(85.05, lat));
+    const rad = (clamped * Math.PI) / 180;
+    return Math.min(
+      n - 1,
+      Math.max(
+        0,
+        Math.floor(
+          ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n,
+        ),
+      ),
+    );
+  };
+  const box = view || { west: -180, south: -85, east: 180, north: 85 };
+  const spans =
+    box.west <= box.east
+      ? [[colOf(box.west), colOf(box.east)]]
+      : [
+          [colOf(box.west), n - 1],
+          [0, colOf(box.east)],
+        ];
+  const tiles = [];
+  for (let y = rowOf(box.north); y <= rowOf(box.south); y += 1)
+    for (const [from, to] of spans)
+      for (let x = from; x <= to; x += 1) tiles.push({ z, x, y });
+  return tiles;
+}
+
+/** Timed by the hour from each landing: the roads and rail after a flight. */
+export function isAirNetwork(mode) {
+  return mode === 'air' || mode === 'air-rail';
+}
+
+/** A rail network: round an outbreak location or round a landing airport. */
+export function isRailNetwork(mode) {
+  return mode === 'rail' || mode === 'air-rail';
+}
+
+/** The colour a network's pieces light up in, by its mode. */
+export function networkLitColor(mode) {
+  return NETWORK_REACHED[mode] || NETWORK_REACHED.road;
+}
+
+/**
+ * How a network is drawn: rail above the roads, a pixel wider, in its own
+ * collection drawn after theirs, so the roads never hide it.
+ */
+export function networkStyle(mode) {
+  const rail = isRailNetwork(mode);
+  return {
+    heightM: NETWORK_HEIGHT_M + (rail ? NETWORK_RAIL_LIFT_M : 0),
+    widthPx: NETWORK_LINE_PX + (rail ? NETWORK_RAIL_EXTRA_PX : 0),
+    collection: rail ? 'rail' : 'road',
+  };
+}
 /** A piece the spread never reaches: grey for good. */
 const NEVER_LIT = 1e9;
 /**
@@ -141,6 +286,47 @@ czm_material czm_getMaterial(czm_materialInput materialInput)
   return material;
 }`;
 
+/**
+ * EPIDEMIC MODEL: how strong a place's dot is at the hour shown. The model's
+ * by-day table (place.byDay, [pAny, pTen, meanCases] per day, where it sent
+ * one) gives the chance the place has any case by the day shown; without it
+ * the chance of arrival by the hour (share) stands in. Never fainter than
+ * EPIDEMIC_ALPHA_MIN. Every field is optional.
+ * @param {object} place A place of the epidemic model.
+ * @param {number} hour Hours after the model's start.
+ * @param {number} share Chance of arrival by the hour shown (0..1).
+ * @returns {number} The dot's alpha (EPIDEMIC_ALPHA_MIN..1).
+ */
+export function epidemicDotAlpha(place, hour, share) {
+  const byDay = place?.byDay;
+  let chance = share;
+  if (Array.isArray(byDay) && byDay.length) {
+    const day = Math.min(
+      byDay.length - 1,
+      Math.max(0, Math.floor((Number(hour) || 0) / 24)),
+    );
+    const pAny = byDay[day]?.[0];
+    if (Number.isFinite(pAny)) chance = pAny;
+  }
+  return Math.min(1, Math.max(EPIDEMIC_ALPHA_MIN, Number(chance) || 0));
+}
+
+/** EPIDEMIC MODEL: likely under local restrictions (pRestricted, optional). */
+export function epidemicRestricted(place) {
+  return Number(place?.pRestricted) >= EPIDEMIC_LIKELY;
+}
+
+/** EPIDEMIC MODEL: the first case most likely flew in (pImportedFirst, optional). */
+export function epidemicImportedFirst(place) {
+  return Number(place?.pImportedFirst) >= EPIDEMIC_LIKELY;
+}
+
+/** EPIDEMIC MODEL: beds short here in most runs by `hour` (overflowP50, optional). */
+export function epidemicBedsShort(place, hour) {
+  const at = place?.overflowP50;
+  return typeof at === 'number' && Number.isFinite(at) && Number(hour) >= at;
+}
+
 /** A landing airport's red dot, by how many infected flights have landed. */
 export function landingDotPx(landings = 1) {
   const n = Math.max(1, Number(landings) || 1);
@@ -153,11 +339,14 @@ let latest = null;
 let latestEpidemic = null;
 /* The last roads and rail lines the box sent: [{key, locationId, mode, network}]. */
 let latestNetworks = [];
+/* The world rail the box says is built: {builtAt}, or null. */
+let latestRailWorld = null;
 
 /** @returns {object} The layer module. */
 export function createOutbreakLayer({
   windowRef = typeof window === 'undefined' ? null : window,
   now = () => Date.now(),
+  fetchImpl = null,
 } = {}) {
   /** Route key -> when it was first seen landed (wall clock). */
   const landedAt = new Map();
@@ -216,7 +405,11 @@ export function createOutbreakLayer({
     // HOW CONTAGIOUS: thicker and darker when high, thinner and lighter when low.
     const look = contagionStyle(latest.contagion);
     const line = (alpha) => Math.min(1, alpha * look.strength);
+    // Only one yellow (boat) ring at a time (owner ruling, 2026-10-11): the
+    // newest location's. Rings come in locations order, so it is the last.
+    const boatShown = latest.rings.findLast((c) => c.mode === 'boat');
     for (const circle of latest.rings) {
+      if (circle.mode === 'boat' && circle !== boatShown) continue;
       const key = `${circle.mode}|${circle.from}|${circle.lat.toFixed(3)},${circle.lon.toFixed(3)}`;
       const km = Math.round(circle.radiusKm);
       const sig = `${km}|${circle.color}|${look.level}`;
@@ -237,7 +430,8 @@ export function createOutbreakLayer({
       });
       // A plane circle (up to 888 airports, 100 km each) is one ring: the
       // inner rings and fill are for the reach out of the outbreak itself.
-      const plain = circle.mode === 'plane';
+      // The boat ring is an outline only: no inner rings, no colour inside.
+      const plain = circle.mode === 'plane' || circle.mode === 'boat';
       for (const [j, share] of (plain ? [] : [0.33, 0.66]).entries()) {
         out.push({
           id: `outbreak-ring|${key}|${j}`,
@@ -337,9 +531,20 @@ export function createOutbreakLayer({
         }),
       });
     }
-    const dot = (id, name, place, size, css, outline, alpha = 1) => ({
+    // `mark`: anything else the dot's look or name depends on, so a change
+    // of it redraws the dot.
+    const dot = (
       id,
-      sig: `${place.lat},${place.lon}|${css}|${size}|${alpha}`,
+      name,
+      place,
+      size,
+      css,
+      outline,
+      alpha = 1,
+      mark = '',
+    ) => ({
+      id,
+      sig: `${place.lat},${place.lon}|${css}|${size}|${alpha}|${mark}`,
       // Where the horizon test looks: the dot on the ground.
       ground: Cesium.Cartesian3.fromDegrees(place.lon, place.lat),
       make: () => ({
@@ -371,11 +576,11 @@ export function createOutbreakLayer({
         ),
       );
     for (const place of latest.forecast || []) {
-      const css = place.within === 24 ? FORECAST_24_COLOR : FORECAST_48_COLOR;
+      const css = forecastColor(place.within);
       out.push(
         dot(
           `outbreak-forecast|${place.within}|${place.name}`,
-          `FUTURE SPREAD · WITHIN ${place.within} H · ${place.name}`,
+          `FUTURE SPREAD · WITHIN ${forecastWindowLabel(place.within)} · ${place.name}`,
           place,
           11,
           css,
@@ -414,35 +619,59 @@ export function createOutbreakLayer({
         const share = raw > 0 ? Math.max(0.05, Math.round(raw * 20) / 20) : 0;
         if (share >= EPIDEMIC_SHOW_MIN)
           likely.set(`${place.lat},${place.lon}`, share);
-        if (place.origin) continue;
         const label = `EPIDEMIC MODEL · ${place.code ? `${place.code} ` : ''}${place.name}`;
+        // Beds short here in most runs by the hour shown (overflowP50,
+        // optional): a hollow blue ring, origins included, where beds run
+        // short first.
+        if (share > 0 && epidemicBedsShort(place, hour))
+          out.push(
+            dot(
+              `outbreak-beds|${place.id}`,
+              `${label} · beds short from day ${1 + Math.floor(place.overflowP50 / 24)} in most runs`,
+              place,
+              BEDS_SHORT_PX,
+              BEDS_SHORT_COLOR,
+              color(BEDS_SHORT_COLOR, 1),
+              0,
+              `beds|${place.overflowP50}`,
+            ),
+          );
+        if (place.origin) continue;
+        // The model's newer fields are optional: a place without them draws
+        // as before. Most likely brought in by a flight: said in the name.
+        const imported = epidemicImportedFirst(place);
+        const suffix = imported ? IMPORTED_FIRST_SUFFIX : '';
         if (share > 0) {
           const size =
             6 +
             Math.round(
               6 * Math.min(1, Math.log10((place.casesP50 || 0) + 1) / 6),
             );
+          // Likely under local restrictions by the model: a purple ring.
+          const restricted = epidemicRestricted(place);
           out.push(
             dot(
               `outbreak-epidemic|${place.id}`,
-              `${label} · ${Math.round(share * 100)} % by now · ${Math.round(place.pArrive * 100)} % in the window`,
+              `${label} · ${Math.round(share * 100)} % by now · ${Math.round(place.pArrive * 100)} % in the window${suffix}`,
               place,
               size,
               EPIDEMIC_COLOR,
-              Cesium.Color.BLACK,
-              Math.max(0.35, share),
+              restricted ? color(COMMUTE_COLOR, 1) : Cesium.Color.BLACK,
+              epidemicDotAlpha(place, hour, share),
+              `${share}|${restricted ? 'restricted' : ''}|${imported ? 'imported' : ''}`,
             ),
           );
         } else {
           out.push(
             dot(
               `outbreak-epidemic|${place.id}`,
-              `${label} · ahead · ${Math.round(place.pArrive * 100)} % in the window`,
+              `${label} · ahead · ${Math.round(place.pArrive * 100)} % in the window${suffix}`,
               place,
               5,
               EPIDEMIC_COLOR,
               color(EPIDEMIC_COLOR, 0.9),
               0.12,
+              imported ? 'imported' : '',
             ),
           );
         }
@@ -541,9 +770,14 @@ export function createOutbreakLayer({
    * key -> {item, primitive, material, bands, threshold}.
    */
   let _networkRoot = null;
+  // Rail on its own, added after the roads: always drawn on top of them.
+  let _railRoot = null;
+  const rootFor = (mode) =>
+    networkStyle(mode).collection === 'rail' ? _railRoot : _networkRoot;
   const builtNetworks = new Map();
   const buildNetwork = (item) => {
-    const air = item.mode === 'air';
+    const air = isAirNetwork(item.mode);
+    const style = networkStyle(item.mode);
     const bands = Object.keys(item.network.bands || {})
       .map(Number)
       .sort((a, b) => a - b);
@@ -560,13 +794,13 @@ export function createOutbreakLayer({
     const add = (flat, lit) => {
       const withHeights = [];
       for (let i = 0; i + 1 < flat.length; i += 2)
-        withHeights.push(flat[i], flat[i + 1], NETWORK_HEIGHT_M);
+        withHeights.push(flat[i], flat[i + 1], style.heightM);
       if (withHeights.length < 6) return;
       instances.push(
         new Cesium.GeometryInstance({
           geometry: new Cesium.PolylineGeometry({
             positions: Cesium.Cartesian3.fromDegreesArrayHeights(withHeights),
-            width: NETWORK_LINE_PX,
+            width: style.widthPx,
             vertexFormat: Cesium.PolylineMaterialAppearance.VERTEX_FORMAT,
             arcType: Cesium.ArcType.NONE,
           }),
@@ -591,11 +825,10 @@ export function createOutbreakLayer({
       fabric: {
         uniforms: {
           threshold: -1,
-          waitLimit: air ? -1 : NETWORK_WAITING_KM,
-          litColor: color(
-            NETWORK_REACHED[item.mode] || NETWORK_REACHED.road,
-            0.95,
-          ),
+          // The world rail shows every line grey until reached (owner
+          // 2026-10-12: "find all rail on globe"); the rest only near.
+          waitLimit: air ? -1 : item.network.world ? 1e9 : NETWORK_WAITING_KM,
+          litColor: color(networkLitColor(item.mode), 0.95),
           waitColor: color(NETWORK_WAITING, air ? 0 : 0.5),
         },
         source: NETWORK_LIT_MATERIAL,
@@ -614,7 +847,7 @@ export function createOutbreakLayer({
       allowPicking: false,
     });
     primitive.show = false;
-    _networkRoot?.add(primitive);
+    rootFor(item.mode)?.add(primitive);
     return { ...built, primitive, material };
   };
   /** Build new networks, drop gone ones, and set each one's reach. */
@@ -625,7 +858,7 @@ export function createOutbreakLayer({
       const current = latestNetworks.find((item) => item.key === key);
       if (wantedKeys.has(key) && current?.network === built.item.network)
         continue;
-      if (built.primitive) _networkRoot.remove(built.primitive);
+      if (built.primitive) rootFor(built.item.mode)?.remove(built.primitive);
       builtNetworks.delete(key);
     }
     let changed = false;
@@ -637,11 +870,13 @@ export function createOutbreakLayer({
       const built = builtNetworks.get(item.key);
       // The roads after a landing go by the hour shown; the rest by the
       // reach along them from their outbreak location.
-      const air = item.mode === 'air';
+      const air = isAirNetwork(item.mode);
+      const airLit =
+        item.mode === 'air-rail' ? latest?.airRails : latest?.airRoads;
       const reach = !_enabled
         ? null
         : air
-          ? latest?.airRoads
+          ? airLit
             ? latest.hour
             : null
           : (latest?.reaches || []).find(
@@ -664,9 +899,170 @@ export function createOutbreakLayer({
     if (changed) _viewer?.scene?.requestRender?.();
   };
 
+  /*
+   * The world rail layer (owner ruling 2026-10-12): key "z/x/y" -> {z,
+   * primitive, usedAt}; the tiles being fetched; the tiles waiting.
+   */
+  let _railWorldRoot = null;
+  const railWorldTiles = new Map();
+  const railWorldLoading = new Set();
+  let railWorldQueue = [];
+  let railWorldBuiltAt = null;
+  let railWorldShownZoom = null;
+  let removeRailWorldCamera = null;
+  const railWorldView = () => {
+    const camera = _viewer?.camera;
+    const height =
+      camera?.positionCartographic?.height ??
+      _viewer?.scene?.camera?.positionCartographic?.height;
+    const z = railWorldZoom(Number.isFinite(height) ? height : 20_000_000);
+    let view = null;
+    try {
+      const rect = camera?.computeViewRectangle?.();
+      if (rect)
+        view = {
+          west: Cesium.Math.toDegrees(rect.west),
+          south: Cesium.Math.toDegrees(rect.south),
+          east: Cesium.Math.toDegrees(rect.east),
+          north: Cesium.Math.toDegrees(rect.north),
+        };
+    } catch {
+      view = null;
+    }
+    // No view (the sky in sight): the whole world, coarse.
+    return view ? { z, view } : { z: Math.min(z, 3), view: null };
+  };
+  const dropRailWorld = () => {
+    for (const built of railWorldTiles.values())
+      if (built.primitive) _railWorldRoot?.remove(built.primitive);
+    railWorldTiles.clear();
+    railWorldQueue = [];
+  };
+  const buildRailWorldTile = (key, z, lines) => {
+    const built = { z, primitive: null, usedAt: now() };
+    railWorldTiles.set(key, built);
+    if (!_viewer?.scene?.primitives || !_railWorldRoot) return built;
+    const style = networkStyle('rail');
+    const instances = [];
+    for (const flat of lines || []) {
+      const withHeights = [];
+      for (let i = 0; i + 1 < flat.length; i += 2)
+        withHeights.push(flat[i], flat[i + 1], style.heightM - 15);
+      if (withHeights.length < 6) continue;
+      instances.push(
+        new Cesium.GeometryInstance({
+          geometry: new Cesium.PolylineGeometry({
+            positions: Cesium.Cartesian3.fromDegreesArrayHeights(withHeights),
+            width: style.widthPx,
+            vertexFormat: Cesium.PolylineMaterialAppearance.VERTEX_FORMAT,
+            arcType: Cesium.ArcType.NONE,
+          }),
+        }),
+      );
+    }
+    if (!instances.length) return built;
+    built.primitive = new Cesium.Primitive({
+      geometryInstances: instances,
+      appearance: new Cesium.PolylineMaterialAppearance({
+        material: Cesium.Material.fromType('Color', {
+          color: color(NETWORK_REACHED.rail, RAIL_WORLD_ALPHA),
+        }),
+        translucent: true,
+      }),
+      asynchronous: true,
+      releaseGeometryInstances: true,
+      allowPicking: false,
+    });
+    built.primitive.show = false;
+    _railWorldRoot.add(built.primitive);
+    return built;
+  };
+  const pumpRailWorld = () => {
+    const fetcher = fetchImpl || globalThis.fetch;
+    while (
+      railWorldLoading.size < RAIL_WORLD_TILES_AT_ONCE &&
+      railWorldQueue.length &&
+      typeof fetcher === 'function'
+    ) {
+      const tile = railWorldQueue.shift();
+      const key = `${tile.z}/${tile.x}/${tile.y}`;
+      if (railWorldTiles.has(key) || railWorldLoading.has(key)) continue;
+      railWorldLoading.add(key);
+      const builtAt = railWorldBuiltAt;
+      Promise.resolve()
+        .then(() =>
+          fetcher(`${RAIL_WORLD_URL}/${key}`, {
+            credentials: 'same-origin',
+          }),
+        )
+        .then((response) => (response?.ok ? response.json() : null))
+        .catch(() => null)
+        .then((data) => {
+          railWorldLoading.delete(key);
+          // A newer build came meanwhile: this tile is stale.
+          if (builtAt !== railWorldBuiltAt || !_railWorldRoot) return;
+          if (data && Array.isArray(data.lines)) {
+            buildRailWorldTile(key, tile.z, data.lines);
+            showRailWorld();
+            settle();
+          }
+          pumpRailWorld();
+        });
+    }
+  };
+  /** Show the built tiles in view at the camera's zoom; ask for the rest. */
+  const showRailWorld = () => {
+    if (!_railWorldRoot) return;
+    const on = _enabled && Boolean(latestRailWorld);
+    if (latestRailWorld?.builtAt !== railWorldBuiltAt) {
+      dropRailWorld();
+      railWorldBuiltAt = latestRailWorld?.builtAt ?? null;
+    }
+    if (!on) {
+      for (const built of railWorldTiles.values())
+        if (built.primitive) built.primitive.show = false;
+      railWorldQueue = [];
+      railWorldShownZoom = null;
+      return;
+    }
+    const { z, view } = railWorldView();
+    railWorldShownZoom = z;
+    const wanted = new Set();
+    const missing = [];
+    for (const tile of railWorldTilesInView(view, z)) {
+      const key = `${tile.z}/${tile.x}/${tile.y}`;
+      wanted.add(key);
+      if (!railWorldTiles.has(key)) missing.push(tile);
+    }
+    const stamp = now();
+    for (const [key, built] of railWorldTiles) {
+      const show = wanted.has(key);
+      if (show) built.usedAt = stamp;
+      if (built.primitive && built.primitive.show !== show)
+        built.primitive.show = show;
+    }
+    // The tiles out of view longest go past the limit.
+    if (railWorldTiles.size > RAIL_WORLD_TILES_KEPT) {
+      const old = [...railWorldTiles]
+        .filter(([key]) => !wanted.has(key))
+        .sort((a, b) => a[1].usedAt - b[1].usedAt);
+      for (const [key, built] of old.slice(
+        0,
+        railWorldTiles.size - RAIL_WORLD_TILES_KEPT,
+      )) {
+        if (built.primitive) _railWorldRoot.remove(built.primitive);
+        railWorldTiles.delete(key);
+      }
+    }
+    railWorldQueue = missing;
+    pumpRailWorld();
+    _viewer?.scene?.requestRender?.();
+  };
+
   let serial = 0;
   const draw = () => {
     drawNetworks();
+    showRailWorld();
     if (!_dataSource) return;
     const entities = _dataSource.entities;
     const next = wanted();
@@ -713,6 +1109,7 @@ export function createOutbreakLayer({
     }
     if ('epidemic' in detail) latestEpidemic = detail.epidemic || null;
     if (Array.isArray(detail.networks)) latestNetworks = detail.networks;
+    if ('railWorld' in detail) latestRailWorld = detail.railWorld || null;
     if (typeof detail.show === 'boolean' && detail.show !== _enabled) {
       Promise.resolve(
         _dataManager?.setEnabled?.(OUTBREAK_LAYER_ID, detail.show, {
@@ -766,6 +1163,18 @@ export function createOutbreakLayer({
       builtNetworks.clear();
       _networkRoot = new Cesium.PrimitiveCollection();
       viewer?.scene?.primitives?.add?.(_networkRoot);
+      // The world rail between the roads and the reached rail.
+      railWorldTiles.clear();
+      railWorldLoading.clear();
+      railWorldBuiltAt = null;
+      _railWorldRoot = new Cesium.PrimitiveCollection();
+      viewer?.scene?.primitives?.add?.(_railWorldRoot);
+      _railRoot = new Cesium.PrimitiveCollection();
+      viewer?.scene?.primitives?.add?.(_railRoot);
+      removeRailWorldCamera?.();
+      removeRailWorldCamera =
+        viewer?.camera?.moveEnd?.addEventListener?.(() => showRailWorld()) ||
+        null;
     },
 
     enable() {
@@ -809,10 +1218,21 @@ export function createOutbreakLayer({
       try {
         if (_networkRoot)
           (viewer || _viewer)?.scene?.primitives?.remove?.(_networkRoot);
+        if (_railWorldRoot)
+          (viewer || _viewer)?.scene?.primitives?.remove?.(_railWorldRoot);
+        if (_railRoot)
+          (viewer || _viewer)?.scene?.primitives?.remove?.(_railRoot);
       } catch {
         /* viewer already gone */
       }
+      removeRailWorldCamera?.();
+      removeRailWorldCamera = null;
+      railWorldTiles.clear();
+      railWorldLoading.clear();
+      railWorldQueue = [];
       _networkRoot = null;
+      _railWorldRoot = null;
+      _railRoot = null;
       builtNetworks.clear();
       removeHorizonListener?.();
       removeHorizonListener = null;
@@ -823,7 +1243,9 @@ export function createOutbreakLayer({
     /** For tests: each network drawn, with how many bands are red. */
     networkState() {
       return [...builtNetworks].map(([key, built]) => {
-        const start = built.item.mode === 'air' ? hourBandStart : bandStartKm;
+        const start = isAirNetwork(built.item.mode)
+          ? hourBandStart
+          : bandStartKm;
         return {
           key,
           shown: Boolean(built.shown),
@@ -833,6 +1255,20 @@ export function createOutbreakLayer({
             : 0,
         };
       });
+    },
+
+    /** For tests: the world rail layer's zoom and its tiles built and shown. */
+    railWorldState() {
+      const shown = [...railWorldTiles].filter(
+        ([, built]) => built.primitive?.show,
+      );
+      return {
+        on: Boolean(_enabled && latestRailWorld),
+        zoom: railWorldShownZoom,
+        tiles: railWorldTiles.size,
+        shown: shown.map(([key]) => key),
+        loading: railWorldLoading.size,
+      };
     },
 
     getStats() {

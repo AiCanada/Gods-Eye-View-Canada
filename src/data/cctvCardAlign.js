@@ -9,6 +9,14 @@
  *   - Escape cancels; Delete forgets the saved alignment and puts the thumbnail
  *     back where the program places it, upright.
  *
+ * On a phone the same steps go by finger. A long press starts, as the
+ * browser turns it into a right-click. While aligning:
+ *   - drag it with one finger to move it;
+ *   - put a second finger down and twist to rotate it;
+ *   - long-press it again to save;
+ *   - tap anywhere off it to cancel;
+ *   - tap with three fingers to forget the saved alignment.
+ *
  * What is saved is tied to the MAP, not the screen: the ground point under the
  * middle of the picture, and the compass bearing "up the picture" points to.
  * So the thumbnail stays lined up with its road as the view orbits and zooms,
@@ -21,6 +29,14 @@ export const CCTV_ALIGN_STEP_DEG = 2;
 export const CCTV_ALIGN_COARSE_STEP_DEG = 15;
 /** Pointer travel under this is a click, not a drag. */
 const CLICK_TRAVEL_PX = 4;
+/** A finger held still on the thumbnail this long saves it. */
+const TOUCH_LONG_PRESS_MS = 500;
+/** A finger drifts while it is held; more than this is a drag. */
+const TOUCH_SLOP_PX = 10;
+/** A tap is down and up within this long. */
+const TOUCH_TAP_MS = 350;
+/** A twist turns the thumbnail once the fingers have turned this far. */
+const TWIST_MIN_DEG = 0.5;
 
 /** Compass bearing from one point to another, degrees clockwise from north. Pure. */
 export function bearingBetween(lat1, lon1, lat2, lon2) {
@@ -80,6 +96,27 @@ export function bindCctvCardAlign({
   if (!canvas || !container || typeof hitTest !== 'function') return () => {};
   let drag = null;
   let rightDown = null;
+  /** Fingers down on the globe while a thumbnail is being aligned. */
+  const touches = new Map();
+  let longPress = null;
+  let twist = null;
+  let threeTap = null;
+  let offTap = null;
+  /** Until then the browser's long-press right-click is not a right-click. */
+  let quietMenuUntil = 0;
+  const now = () =>
+    typeof performance !== 'undefined' && performance.now
+      ? performance.now()
+      : Date.now();
+  const isTouch = (event) => event.pointerType === 'touch';
+  const fingerAngle = () => {
+    const [a, b] = [...touches.values()];
+    return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+  };
+  const endLongPress = () => {
+    if (longPress?.timer != null) clearTimeout(longPress.timer);
+    longPress = null;
+  };
 
   const local = (event) => {
     const bounds = canvas.getBoundingClientRect();
@@ -112,6 +149,7 @@ export function bindCctvCardAlign({
   const onDown = (event) => {
     if (!isEnabled()) return;
     const { x, y } = local(event);
+    if (isTouch(event) && onTouchDown(event, x, y)) return;
     if (event.button === 2) {
       // Remembered so a right-DRAG (the globe's zoom) is never taken for a right-click.
       rightDown = { x, y, onCard: Boolean(hitTest(x, y)) };
@@ -136,10 +174,130 @@ export function bindCctvCardAlign({
       // Still works while the pointer stays over the globe.
     }
     onDragStart?.();
+    if (isTouch(event)) {
+      // Held still on the thumbnail: save, as the second right-click does.
+      const id = hit.entryId;
+      longPress = {
+        pointerId: event.pointerId,
+        timer: setTimeout(() => {
+          longPress = null;
+          if (!isEnabled() || touches.size !== 1) return;
+          quietMenuUntil = now() + 1500;
+          if (getSession()?.id === id) save();
+        }, TOUCH_LONG_PRESS_MS),
+      };
+    }
+  };
+  /**
+   * The extra fingers of a touch gesture. Returns true when this press is
+   * taken here and the one-finger path must not see it.
+   */
+  const onTouchDown = (event, x, y) => {
+    // The first finger of a new gesture: forget fingers whose lift was lost.
+    if (event.isPrimary === true) touches.clear();
+    if (!getSession()) {
+      touches.clear();
+      return false;
+    }
+    const finger = { x, y, startX: x, startY: y, taken: false };
+    touches.set(event.pointerId, finger);
+    if (touches.size === 1) {
+      offTap = hitSession(x, y)
+        ? null
+        : { pointerId: event.pointerId, x, y, at: now() };
+      threeTap = null;
+      return false;
+    }
+    offTap = null;
+    endLongPress();
+    if (touches.size === 3) {
+      twist = null;
+      threeTap = { at: now(), moved: false };
+    } else if (touches.size === 2 && drag) {
+      // Second finger while the first holds the thumbnail: twist to turn.
+      const first = touches.get(drag.pointerId) || finger;
+      twist = { angle: fingerAngle(), hit: hitSession(first.x, first.y) };
+    }
+    if (drag || twist || threeTap) {
+      finger.taken = true;
+      swallow(event);
+    }
+    // A second finger on the globe stays the globe's (a pinch), and never
+    // starts a thumbnail drag of its own.
+    return true;
+  };
+  const onTouchMove = (event) => {
+    const finger = touches.get(event.pointerId);
+    if (!finger) return false;
+    const { x, y } = local(event);
+    finger.x = x;
+    finger.y = y;
+    const travel = Math.hypot(x - finger.startX, y - finger.startY);
+    if (travel > TOUCH_SLOP_PX) {
+      if (longPress?.pointerId === event.pointerId) endLongPress();
+      if (threeTap) threeTap.moved = true;
+      if (offTap?.pointerId === event.pointerId) offTap = null;
+    }
+    if (twist && touches.size === 2) {
+      swallow(event);
+      const angle = fingerAngle();
+      let delta = angle - twist.angle;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      if (Math.abs(delta) >= TWIST_MIN_DEG) {
+        // Screen y points down, so a clockwise twist is a growing angle,
+        // and a growing bearing turns the thumbnail clockwise too.
+        turn(delta, twist.hit);
+        twist.angle = angle;
+      }
+      return true;
+    }
+    if (finger.taken || threeTap) {
+      swallow(event);
+      return true;
+    }
+    return false;
+  };
+  const onTouchUp = (event) => {
+    const finger = touches.get(event.pointerId);
+    if (!finger) return false;
+    const { x, y } = local(event);
+    touches.delete(event.pointerId);
+    if (longPress?.pointerId === event.pointerId) endLongPress();
+    if (touches.size < 2) twist = null;
+    let taken = finger.taken;
+    if (taken) swallow(event);
+    if (threeTap) {
+      swallow(event);
+      taken = true;
+      if (!touches.size) {
+        const tapped =
+          !threeTap.moved && now() - threeTap.at <= TOUCH_TAP_MS * 2;
+        threeTap = null;
+        if (tapped && getSession() && event.type !== 'pointercancel') reset();
+      }
+    }
+    const tap = offTap;
+    if (tap?.pointerId === event.pointerId) {
+      offTap = null;
+      if (
+        event.type === 'pointerup' &&
+        !touches.size &&
+        now() - tap.at <= TOUCH_TAP_MS &&
+        Math.hypot(x - tap.x, y - tap.y) <= TOUCH_SLOP_PX &&
+        getSession() &&
+        !hitSession(x, y)
+      )
+        cancel();
+    }
+    return taken;
   };
   const onMove = (event) => {
+    if (isTouch(event) && onTouchMove(event)) return;
     if (!drag || event.pointerId !== drag.pointerId) return;
     swallow(event);
+    // Two fingers are turning it; the first one does not also move it.
+    if (twist) return;
     const { x, y } = local(event);
     if (
       !drag.moved &&
@@ -151,6 +309,12 @@ export function bindCctvCardAlign({
     if (ground) update({ lat: ground.lat, lon: ground.lon });
   };
   const onUp = (event) => {
+    if (
+      isTouch(event) &&
+      onTouchUp(event) &&
+      event.pointerId !== drag?.pointerId
+    )
+      return;
     if (!drag || event.pointerId !== drag.pointerId) return;
     swallow(event);
     try {
@@ -163,6 +327,13 @@ export function bindCctvCardAlign({
   };
   const onContextMenu = (event) => {
     if (!isEnabled()) return;
+    // The browser's long-press menu while a finger aligns, or just after a
+    // long press saved: the finger has already said what it meant.
+    if (longPress || twist || threeTap || now() < quietMenuUntil) {
+      if (getSession() || now() < quietMenuUntil) swallow(event);
+      rightDown = null;
+      return;
+    }
     const { x, y } = local(event);
     const press = rightDown;
     rightDown = null;
@@ -241,6 +412,11 @@ export function bindCctvCardAlign({
     container.removeEventListener('click', swallowClick, true);
     container.removeEventListener('dblclick', swallowClick, true);
     keyTarget?.removeEventListener('keydown', onKey, true);
+    endLongPress();
+    touches.clear();
+    twist = null;
+    threeTap = null;
+    offTap = null;
     if (drag) {
       drag = null;
       onDragEnd?.();

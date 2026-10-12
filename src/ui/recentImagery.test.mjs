@@ -259,6 +259,7 @@ function fixture({ fetchImpl, controller = fakeController() } = {}) {
   const splits = [];
   const fetches = [];
   const urls = { created: [], revoked: [] };
+  const pendingRevokes = [];
   const readout = createRecentImageryPanel({
     container: dom.body,
     layer,
@@ -292,6 +293,7 @@ function fixture({ fetchImpl, controller = fakeController() } = {}) {
       return 'blob:export';
     },
     revokeObjectUrl: (url) => urls.revoked.push(url),
+    scheduleRevoke: (revoke) => pendingRevokes.push(revoke),
   });
   const root = readout.root;
   const byId = (id) => root.find((node) => node.id === id);
@@ -330,6 +332,7 @@ function fixture({ fetchImpl, controller = fakeController() } = {}) {
     splits,
     fetches,
     urls,
+    pendingRevokes,
     readout,
     root,
     byId,
@@ -1056,6 +1059,10 @@ test('opacity drives both images; EXPORT downloads the pin or the preview and EX
   assert.equal(await f.readout.exportImage('a'), true);
   assert.match(f.fetches[0], /LAYERS=HLS_S30_Nadir_BRDF_Adjusted_Reflectance/);
   assert.match(f.fetches[0], /WIDTH=1024/);
+  // The blob outlives the click, so a phone can still read it; it is revoked later.
+  assert.deepEqual(f.urls, { created: ['blob:export'], revoked: [] });
+  assert.equal(f.pendingRevokes.length, 1);
+  f.pendingRevokes.splice(0).forEach((revoke) => revoke());
   assert.deepEqual(f.urls, {
     created: ['blob:export'],
     revoked: ['blob:export'],

@@ -87,6 +87,25 @@ function patchStep(state, event, match, patch) {
   return state;
 }
 
+/**
+ * Drop the running step an event belongs to (same matching as patchStep).
+ * Returns the same snapshot when nothing matches.
+ */
+function dropStep(state, event) {
+  for (let index = state.steps.length - 1; index >= 0; index--) {
+    const step = state.steps[index];
+    const sameCall = event.callId
+      ? step.callId === event.callId
+      : !step.callId && step.name === event.name;
+    if (!sameCall || step.status !== 'running') continue;
+    return {
+      ...state,
+      steps: state.steps.filter((_, other) => other !== index),
+    };
+  }
+  return state;
+}
+
 function annotationIds(result) {
   return (Array.isArray(result.items) ? result.items : [])
     .filter((item) => item?.ok && item.outlinePending && item.id)
@@ -180,6 +199,15 @@ export function reduceVoiceCard(state, event) {
     }
     case 'action-result': {
       const result = event.result || {};
+      if (result.quiet === true) {
+        // A removal the PC keeps: no step, no mark, no text. The card hides
+        // unless another step or result is still on it.
+        const next = dropStep(state, event);
+        if (next === state) return state;
+        return next.steps.length || next.result
+          ? next
+          : { ...next, visible: false };
+      }
       const next = patchStep(
         state,
         event,

@@ -14,6 +14,21 @@ import {
 } from './realtimeInputPolicy.js';
 import { shouldPauseRadioForVoice } from './realtimeProtocol.js';
 
+/** How long after a finger leaves a held mic its trailing click is ignored. */
+const TOUCH_CLICK_SUPPRESS_MS = 800;
+
+/** The page marks a phone or tablet on <html data-touch-device="true">. */
+function isTouchDevice() {
+  try {
+    return (
+      typeof document !== 'undefined' &&
+      document.documentElement?.dataset?.touchDevice === 'true'
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Own physical push-to-talk gestures, microphone controls and audio meters. */
 export class RealtimeInput {
   constructor({
@@ -50,6 +65,13 @@ export class RealtimeInput {
     this.shortcutKeyUpHandler = null;
     this.shortcutBlurHandler = null;
     this.shortcutVisibilityHandler = null;
+    this.touchButton = null;
+    this.touchHoldPointerId = null;
+    this.touchClickSuppressUntil = 0;
+    this.touchDownHandler = null;
+    this.touchUpHandler = null;
+    this.touchClickHandler = null;
+    this.touchContextMenuHandler = null;
   }
   get ui() {
     return this.readUi();
@@ -115,26 +137,7 @@ export class RealtimeInput {
         ) {
           this.pushToTalkHoldControl.blur();
         }
-        // Read Radio's claim before pausing it: pausing can change the very
-        // handoff state that decides whether voice may interrupt.
-        const mayInterrupt = this.mayClaimSpeaker?.() ?? true;
-        this.pauseRadioForVoice();
-        this.pushToTalkKeyHeld = true;
-        if (this.isActive()) {
-          // A claimed hold is an explicit request to speak: cut the assistant
-          // off if it is talking. Short taps never reach this point.
-          if (mayInterrupt) this.bargeIn?.();
-          this.beginPointerTurn?.('keydown');
-          this.ui.root.dataset.pushToTalk = 'held';
-          this.setMicrophoneEnabled(true);
-          if (this.status === 'listening')
-            this.setStatus('listening', 'Release Space to send');
-        } else {
-          this.start({ pushToTalk: true });
-          // start() performs a controlled stop() before connecting. Restore the
-          // marker it clears so the UI reflects this still-held gesture.
-          if (this.pushToTalkKeyHeld) this.ui.root.dataset.pushToTalk = 'held';
-        }
+        this.claimPushToTalkHold('Release Space to send');
       }, PUSH_TO_TALK_HOLD_DELAY_MS);
     };
     this.shortcutKeyUpHandler = (event) => {
@@ -156,6 +159,7 @@ export class RealtimeInput {
     };
     this.shortcutBlurHandler = () => {
       this.spaceKeyHeld = false;
+      this.touchHoldPointerId = null;
       this.cancelPushToTalkHold();
       this.releasePushToTalkKey();
       this.resetPushToTalkGesture();
@@ -173,6 +177,100 @@ export class RealtimeInput {
       'visibilitychange',
       this.shortcutVisibilityHandler,
     );
+    this.bindTouchPushToTalk();
+  }
+
+  /**
+   * Holding the mic with a finger is the phone's Space: the same delay, the
+   * same claim and the same release. A short tap still reaches the mic's own
+   * click, so tapping starts and stops an open-mic session as before.
+   */
+  bindTouchPushToTalk() {
+    const button = this.ui?.button;
+    if (!button?.addEventListener || this.touchButton) return;
+    this.touchButton = button;
+    // A finger held on the mic must not turn into a scroll or a zoom, which
+    // would cancel the hold. Look, size and hit area are untouched.
+    if (button.style) button.style.touchAction = 'none';
+    this.touchDownHandler = (event) => {
+      if (event.pointerType !== 'touch' || event.isPrimary === false) return;
+      if (this.spaceKeyHeld || this.touchHoldPointerId !== null) return;
+      // A click-started session is open-mic; a tap on the mic stops it.
+      if (this.isActive() && !this.pushToTalkMode) return;
+      this.touchHoldPointerId = event.pointerId ?? 'touch';
+      this.cancelPushToTalkHold();
+      this.holdPointer?.();
+      const holdGeneration = ++this.pushToTalkHoldGeneration;
+      this.pushToTalkHoldTimer = setTimeout(() => {
+        this.pushToTalkHoldTimer = null;
+        if (holdGeneration !== this.pushToTalkHoldGeneration) return;
+        if (this.touchHoldPointerId === null || this.pushToTalkKeyHeld) return;
+        if (document.visibilityState === 'hidden') return;
+        if (this.isActive() && !this.pushToTalkMode) return;
+        this.claimPushToTalkHold('Release the mic to send');
+      }, PUSH_TO_TALK_HOLD_DELAY_MS);
+    };
+    this.touchUpHandler = (event) => {
+      if (this.touchHoldPointerId === null) return;
+      if ((event.pointerId ?? 'touch') !== this.touchHoldPointerId) return;
+      this.touchHoldPointerId = null;
+      this.cancelPushToTalkHold();
+      if (!this.pushToTalkKeyHeld) {
+        // A short tap: the click that follows works the mic as before.
+        this.releasePointerHold?.();
+        return;
+      }
+      // The click that ends a claimed hold must not also stop the session.
+      this.touchClickSuppressUntil = Date.now() + TOUCH_CLICK_SUPPRESS_MS;
+      this.releasePushToTalkKey();
+    };
+    this.touchClickHandler = (event) => {
+      if (!this.touchClickSuppressUntil) return;
+      const live = Date.now() <= this.touchClickSuppressUntil;
+      const target = event.target;
+      if (live && target !== button && !button.contains?.(target)) return;
+      this.touchClickSuppressUntil = 0;
+      if (!live) return;
+      event.stopImmediatePropagation?.();
+      event.preventDefault?.();
+    };
+    this.touchContextMenuHandler = (event) => {
+      if (this.touchHoldPointerId !== null) event.preventDefault?.();
+    };
+    button.addEventListener('pointerdown', this.touchDownHandler);
+    button.addEventListener('pointerup', this.touchUpHandler);
+    button.addEventListener('pointercancel', this.touchUpHandler);
+    // Capturing on the document runs before the mic's own click listener.
+    document.addEventListener('click', this.touchClickHandler, true);
+    button.addEventListener('contextmenu', this.touchContextMenuHandler);
+  }
+
+  /**
+   * A hold that crossed the delay asks to speak. Space and a finger on the
+   * mic share it; only the release hint differs.
+   * @param {string} releaseHint
+   * @returns {void}
+   */
+  claimPushToTalkHold(releaseHint) {
+    // Read Radio's claim before pausing it: pausing can change the very
+    // handoff state that decides whether voice may interrupt.
+    const mayInterrupt = this.mayClaimSpeaker?.() ?? true;
+    this.pauseRadioForVoice();
+    this.pushToTalkKeyHeld = true;
+    if (this.isActive()) {
+      // A claimed hold is an explicit request to speak: cut the assistant
+      // off if it is talking. Short taps never reach this point.
+      if (mayInterrupt) this.bargeIn?.();
+      this.beginPointerTurn?.('keydown');
+      this.ui.root.dataset.pushToTalk = 'held';
+      this.setMicrophoneEnabled(true);
+      if (this.status === 'listening') this.setStatus('listening', releaseHint);
+    } else {
+      this.start({ pushToTalk: true });
+      // start() performs a controlled stop() before connecting. Restore the
+      // marker it clears so the UI reflects this still-held gesture.
+      if (this.pushToTalkKeyHeld) this.ui.root.dataset.pushToTalk = 'held';
+    }
   }
 
   /** Cancels an unclaimed Space hold before it starts voice. */
@@ -377,10 +475,11 @@ export class RealtimeInput {
     if (!this.ui.buttonLabel) return;
     this.ui.buttonLabel.textContent = 'MIC';
     if (this.ui.helpDetail) {
-      this.ui.helpDetail.textContent = resolveVoiceControlHint(
-        this.pushToTalkMode,
-        this.pushToTalkKeyHeld,
-      );
+      this.ui.helpDetail.textContent = isTouchDevice()
+        ? this.pushToTalkMode && this.pushToTalkKeyHeld
+          ? 'Release the mic to send'
+          : 'Hold the mic to talk'
+        : resolveVoiceControlHint(this.pushToTalkMode, this.pushToTalkKeyHeld);
     }
   }
 
@@ -429,5 +528,19 @@ export class RealtimeInput {
     this.shortcutKeyUpHandler = null;
     this.shortcutBlurHandler = null;
     this.shortcutVisibilityHandler = null;
+    const button = this.touchButton;
+    if (button?.removeEventListener) {
+      button.removeEventListener('pointerdown', this.touchDownHandler);
+      button.removeEventListener('pointerup', this.touchUpHandler);
+      button.removeEventListener('pointercancel', this.touchUpHandler);
+      document.removeEventListener('click', this.touchClickHandler, true);
+      button.removeEventListener('contextmenu', this.touchContextMenuHandler);
+    }
+    this.touchButton = null;
+    this.touchHoldPointerId = null;
+    this.touchDownHandler = null;
+    this.touchUpHandler = null;
+    this.touchClickHandler = null;
+    this.touchContextMenuHandler = null;
   }
 }

@@ -3887,3 +3887,78 @@ test('voice runs app actions itself and other tools through the catalog', async 
   assert.deepEqual(disposals, [['removed']]);
   assert.equal(withToolCatalog(runner, undefined), runner);
 });
+
+test('a quiet tool result (pc-only removal) sends its output but no response.create', async () => {
+  const ui = {
+    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
+    status: { textContent: '' },
+    detail: { textContent: '', title: '' },
+    errorDetail: { textContent: '' },
+  };
+  const runner = async (name) => ({
+    ok: true,
+    action: name,
+    result: 'pressed',
+    say: null,
+    schedule: 'silent',
+    quiet: true,
+  });
+  const controller = new GevRealtimeController({ runner, ui });
+  controller.debugLog = () => {};
+  let visualContext = 0;
+  controller.sendVisualContextIfUseful = async () => {
+    visualContext += 1;
+    return false;
+  };
+  const sent = [];
+  controller.dc = {
+    readyState: 'open',
+    send(message) { sent.push(JSON.parse(message)); },
+    close() {},
+  };
+  const event = (payload) => ({ data: JSON.stringify(payload) });
+  await controller.handleRealtimeEvent(event({ type: 'response.created', response: { id: 'response-quiet' } }));
+  await controller.handleRealtimeEvent(event({
+    type: 'response.function_call_arguments.done',
+    response_id: 'response-quiet',
+    call_id: 'quiet-call',
+    name: 'use_ui_control',
+    arguments: '{"control":"REMOVE","action":"press"}',
+  }));
+  await controller.handleRealtimeEvent(event({ type: 'response.done', response: { id: 'response-quiet', status: 'completed', output: [] } }));
+  const output = sent.find((message) => message.type === 'conversation.item.create');
+  assert.ok(output, 'the function_call_output is still sent');
+  assert.equal(output.item.call_id, 'quiet-call');
+  assert.equal(sent.some((message) => message.type === 'response.create'), false, 'no model turn follows');
+  assert.equal(visualContext, 0);
+});
+
+test('a non-quiet tool result still asks the model for a reply', async () => {
+  const ui = {
+    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
+    status: { textContent: '' },
+    detail: { textContent: '', title: '' },
+    errorDetail: { textContent: '' },
+  };
+  const runner = async (name) => ({ ok: true, action: name, result: 'pressed', say: 'Pressed REMOVE.' });
+  const controller = new GevRealtimeController({ runner, ui });
+  controller.debugLog = () => {};
+  controller.sendVisualContextIfUseful = async () => false;
+  const sent = [];
+  controller.dc = {
+    readyState: 'open',
+    send(message) { sent.push(JSON.parse(message)); },
+    close() {},
+  };
+  const event = (payload) => ({ data: JSON.stringify(payload) });
+  await controller.handleRealtimeEvent(event({ type: 'response.created', response: { id: 'response-loud' } }));
+  await controller.handleRealtimeEvent(event({
+    type: 'response.function_call_arguments.done',
+    response_id: 'response-loud',
+    call_id: 'loud-call',
+    name: 'use_ui_control',
+    arguments: '{"control":"REMOVE","action":"press"}',
+  }));
+  await controller.handleRealtimeEvent(event({ type: 'response.done', response: { id: 'response-loud', status: 'completed', output: [] } }));
+  assert.equal(sent.some((message) => message.type === 'response.create'), true);
+});

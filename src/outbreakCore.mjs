@@ -321,8 +321,76 @@ export const OUTBREAK_FUTURE_HOURS = Object.freeze([
     (_, i) => 54 + i * 6,
   ),
 ]);
-/** FUTURE SPREAD LOCATIONS asks for these two windows, in this order. */
-export const OUTBREAK_FORECAST_WINDOWS = Object.freeze([24, 48]);
+/** How far ahead FIND FUTURE SPREAD LOCATIONS may look, in hours: up to
+ * 30 days (owner ruling, 2026-10-11). 48 h, the old fixed reach, stays the
+ * default. */
+export const OUTBREAK_FORECAST_HORIZONS = Object.freeze([
+  24,
+  48,
+  72,
+  120,
+  168,
+  336,
+  504,
+  OUTBREAK_FUTURE_DAYS * 24,
+]);
+/** Owner ruling 2026-10-11: FIND FUTURE SPREAD LOCATIONS looks the full
+ * 30 days ahead unless a shorter reach is picked from the menu. */
+export const OUTBREAK_FORECAST_DEFAULT_HOURS = OUTBREAK_FUTURE_DAYS * 24;
+/** Where one forecast window ends and the next begins, in hours. A chosen
+ * reach is asked for as the windows up to it, one request each, in order:
+ * 30 days is 24 h, 48 h, 3, 7, 14 and 30 days (six requests). */
+export const OUTBREAK_FORECAST_BOUNDS = Object.freeze([
+  24,
+  48,
+  72,
+  168,
+  336,
+  OUTBREAK_FUTURE_DAYS * 24,
+]);
+
+/** A reach from the menu or a save; anything else is the default, 30 days. */
+export function cleanForecastHorizon(value) {
+  const hours = Number(value);
+  return OUTBREAK_FORECAST_HORIZONS.includes(hours)
+    ? hours
+    : OUTBREAK_FORECAST_DEFAULT_HOURS;
+}
+
+/** The windows FUTURE SPREAD LOCATIONS asks for to reach `horizon` hours:
+ * each bound below it, then the reach itself. */
+export function forecastWindows(horizon) {
+  const hours = cleanForecastHorizon(horizon);
+  return [...OUTBREAK_FORECAST_BOUNDS.filter((b) => b < hours), hours];
+}
+
+/** A forecast place's window end, held to a known reach: a missing one is
+ * 24 h, one past 30 days is 30 days, any other rounds up to the next. */
+export function cleanForecastWithin(value) {
+  const hours = value === null || value === '' ? NaN : Number(value);
+  if (!Number.isFinite(hours) || hours <= 0) return 24;
+  return (
+    OUTBREAK_FORECAST_HORIZONS.find((h) => h >= hours) ??
+    OUTBREAK_FORECAST_HORIZONS.at(-1)
+  );
+}
+
+/** Where the window that ends at `within` begins, in hours from now. */
+export function forecastWindowStart(within) {
+  const end = cleanForecastWithin(within);
+  return Math.max(0, ...OUTBREAK_FORECAST_BOUNDS.filter((b) => b < end));
+}
+
+/** A window end for the box and the map: '48 H' below 3 days, then '7 D'. */
+export function forecastWindowLabel(within) {
+  const hours = cleanForecastWithin(within);
+  return hours < 72 ? `${hours} H` : `${hours / 24} D`;
+}
+
+/** FUTURE SPREAD LOCATIONS asks for these windows by default, in this order. */
+export const OUTBREAK_FORECAST_WINDOWS = Object.freeze(
+  forecastWindows(OUTBREAK_FORECAST_DEFAULT_HOURS),
+);
 /** Every outbreak question may answer at the route's ceiling: a reasoning
  * model spends part of its budget thinking, and a long route list or
  * forecast must not end mid-line. */
@@ -446,11 +514,17 @@ function clampRadius(km) {
  * @param {string[]} [input.airports] The airports at the outbreak locations;
  *   without them, where the scan's first flights left from.
  * @param {?number} input.present The present hour. Past it, a place
- *   forecast within 48 h shows only from 24 h after the present on.
+ *   forecast for a later window shows only from that window's start on
+ *   (forecastWindowStart): within 48 h from 24 h after the present, within
+ *   7 days from 3 days after it.
  * @param {object} [input.networks] By location id: {road: true, rail: true}
  *   where that location's main roads or rail lines are known
  *   (outbreakNetwork.mjs). Then the spread follows them (a reach along the
  *   network) instead of a circle; without them, the circle as before.
+ * @param {boolean} [input.airRoads] The roads out of the landing airports
+ *   are known (POST /api/outbreak/air-roads).
+ * @param {boolean} [input.airRails] The rail lines round the landing
+ *   airports are known (POST /api/outbreak/air-rails).
  * @returns {{atMs: number, hour: number, rings: object[], reaches: object[], routes: object[], origins: object[], destinations: object[]}}
  */
 export function outbreakSpread({
@@ -465,6 +539,7 @@ export function outbreakSpread({
   airports = [],
   networks = {},
   airRoads = false,
+  airRails = false,
   startMs,
   hour,
 }) {
@@ -501,8 +576,11 @@ export function outbreakSpread({
       });
     };
     if (on('road')) reach('road');
-    // Unknown (the scan could not ask) counts as there: better drawn than missed.
-    if (on('train') && around.rail !== false) reach('train');
+    // Unknown (the scan could not ask) counts as there: better drawn than
+    // missed. A rail network found within NETWORK_START_KM of the location
+    // (the world rail, owner ruling 2026-10-12) is rail there too, whatever
+    // OpenStreetMap's station search said.
+    if (on('train') && (around.rail !== false || known.rail)) reach('train');
     if (on('boat') && around.water !== false) reach('boat');
   }
   // A flight carries the outbreak only when the airport it leaves already
@@ -564,6 +642,8 @@ export function outbreakSpread({
     reaches,
     // The roads out of the landing airports: lit by this hour on the map.
     airRoads: Boolean(airRoads) && on('plane'),
+    // The rail lines round the landing airports: lit orange by this hour.
+    airRails: Boolean(airRails) && on('plane') && on('train'),
     // The scan's own flights first, then long-haul ones (so other continents
     // always show), then the rest by when they first left:
     // the map draws only so many lines.
@@ -588,14 +668,13 @@ export function outbreakSpread({
       .filter(
         (f) =>
           !(Number.isFinite(present) && h > present) ||
-          f.within !== 48 ||
-          h >= present + 24,
+          h >= present + forecastWindowStart(f.within),
       )
       .map((f) => ({
         name: cleanLine(f.name),
         lat: f.lat,
         lon: f.lon,
-        within: f.within === 48 ? 48 : 24,
+        within: cleanForecastWithin(f.within),
       })),
   };
 }
@@ -648,7 +727,7 @@ export function spreadSummary(spread, speeds = {}) {
     const spec = OUTBREAK_MODES[mode];
     if (mode === 'plane') {
       lines.push(
-        `${spec.label} (${spec.colorName}): ${spread.destinations.length} destination${spread.destinations.length === 1 ? '' : 's'} reached · ${spread.airRoads ? 'roads out of each light up light red from its landing' : 'the roads out of each are loading'}`,
+        `${spec.label} (${spec.colorName}): ${spread.destinations.length} destination${spread.destinations.length === 1 ? '' : 's'} reached · ${spread.airRoads ? 'roads out of each light up green from its landing' : 'the roads out of each are loading'}${spread.airRails ? ' · rail lines out of each light up orange' : ''}`,
       );
       continue;
     }
@@ -1574,6 +1653,7 @@ export function outbreakForecastScene({
   candidates,
   articles,
   within24 = [],
+  earlier = within24,
   epidemic = [],
 }) {
   return {
@@ -1597,8 +1677,8 @@ export function outbreakForecastScene({
         ),
       reachNow: spreadSummary(spread, speeds),
       candidates: candidates.map(candidateLine),
-      ...(within24.length
-        ? { predictedWithin24h: within24.map((f) => f.place) }
+      ...(earlier.length
+        ? { predictedEarlier: earlier.map((f) => f.place) }
         : {}),
       ...(epidemic.length ? { epidemicModel: epidemic.slice(0, 30) } : {}),
     },
@@ -1606,23 +1686,42 @@ export function outbreakForecastScene({
   };
 }
 
-/** The question for one forecast window. */
+/** A forecast period in words: '24 to 48 hours', '48 hours to 3 days',
+ * '7 to 14 days'. */
+function forecastPeriodText(from, to) {
+  const unit = (hours) => (hours < 72 ? 'hours' : 'days');
+  const amount = (hours) => (hours < 72 ? hours : hours / 24);
+  return unit(from) === unit(to)
+    ? `${amount(from)} to ${amount(to)} ${unit(to)}`
+    : `${amount(from)} ${unit(from)} to ${amount(to)} ${unit(to)}`;
+}
+
+/** The question for one forecast window: from `from` hours (by default the
+ * window bound before `within`) to `within` hours from now. */
 export function outbreakForecastQuestion(
   within,
   keywords = '',
   profile = {},
-  { epidemic = false } = {},
+  { epidemic = false, from } = {},
 ) {
   const topic = cleanLine(keywords, 80);
+  const end = cleanForecastWithin(within);
+  const start = Number.isFinite(from)
+    ? Math.max(0, Math.min(from, end - 1))
+    : forecastWindowStart(end);
+  const span = end < 72 ? `${end} hours` : `${end / 24} days`;
   return [
     `Predict where the outbreak${topic ? ` (${topic})` : ''} in SCENE.outbreakForecast.outbreakLocations is most likely to be reported next,`,
-    within === 48
-      ? 'in the period 24 to 48 hours from now. SCENE.outbreakForecast.predictedWithin24h lists the places already predicted for the first 24 hours: do not repeat them; carry the spread on from them.'
-      : 'within the next 24 hours.',
+    start > 0
+      ? `in the period ${forecastPeriodText(start, end)} from now. SCENE.outbreakForecast.predictedEarlier lists the places already predicted for the earlier periods: do not repeat them; carry the spread on from them.`
+      : `within the next ${span}.`,
+    end > 48
+      ? 'This far ahead the spread is much less certain: rate a place HIGH only when the evidence is strong.'
+      : '',
     profileText(profile)
       ? `${profileText(profile)} Weigh it: faster, airborne or symptom-free spread, and a longer incubation (more travel before anyone is ill), reach more places sooner.`
       : '',
-    'Reason from the flights (reachedByPlane, flightRoutes, and scheduledNext48h: the flights expected to leave the airports in the next 48 hours, taken to fly daily), how far each way of travel has reached (reachNow), and the news in SCENE.outbreakNews.',
+    `Reason from the flights (reachedByPlane, flightRoutes, and scheduledNext48h: the flights expected to leave the airports in the next 48 hours, each route taken to fly daily${end > 48 ? ' to the end of the period' : ''}), how far each way of travel has reached (reachNow), and the news in SCENE.outbreakNews.`,
     epidemic
       ? 'SCENE.outbreakForecast.epidemicModel is a stochastic epidemic simulation over the same flights: each place with its chance of arrival and its median (5–95 %) arrival time, and the effective distance along the air network (smaller is sooner). Weigh it heavily, and prefer its likeliest places when the news is silent.'
       : '',
@@ -1659,7 +1758,7 @@ export function parseForecastLines(text, within, known = []) {
       code: airport,
       likelihood: level,
       reason: cleanLine(reason, 160),
-      within: within === 48 ? 48 : 24,
+      within: cleanForecastWithin(within),
     });
     if (out.length >= 12) break;
   }

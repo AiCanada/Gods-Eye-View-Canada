@@ -11,11 +11,17 @@ import {
 import { haversineKm } from './common/geo.js';
 
 /**
- * Release handles of every installed terrain proxy, registered on install so a
+ * Release handle of the installed terrain proxy, registered on install so a
  * location switch can release far points without reaching into the closure.
- * @type {Set<{prune: (point: {latitude:number, longitude:number}, radiusKm:number) => number}>}
+ * It lives with the cache it releases (globalThis.__GEV_TERRAIN_CACHE, see
+ * terrainHeightsProxy), so a proxy built after an in-process restart replaces
+ * the previous one's handle instead of adding a second one for the same
+ * points. Nothing installed yet reads as no handles.
+ * @returns {Iterable<{prune: (point: {latitude:number, longitude:number}, radiusKm:number) => number}>}
  */
-const _terrainMemoryTiers = new Set();
+function terrainMemoryTiers() {
+  return globalThis.__GEV_TERRAIN_CACHE?.tiers ?? [];
+}
 
 /** 1-degree cell of a canonical `lon,lat` point key: the unit restored from disk. */
 function terrainKeyCell(key) {
@@ -37,7 +43,7 @@ function terrainKeyCell(key) {
 export function pruneTerrainMemoryOutside(
   point,
   radiusKm,
-  tiers = _terrainMemoryTiers,
+  tiers = terrainMemoryTiers(),
 ) {
   const latitude = point?.latitude;
   const longitude = point?.longitude;
@@ -75,22 +81,38 @@ export function terrainHeightsProxy() {
   const UPSTREAM_CHUNK = 64;
   const MAX_POINTS = 2000;
 
+  /**
+   * Cache state that must outlive an in-process dev-server restart. Vite
+   * bundles this file into its config and evaluates it afresh on every
+   * server.restart() (a POWER UP save, an edit under server/), and builds the
+   * proxy again; state held in this closure would then be pinned by its
+   * flush timer while the new proxy started empty beside it, one more timer
+   * and one more copy of the points per restart. It lives on globalThis
+   * instead, the way ultra-help.js keeps its memory, filled in one field at
+   * a time so a newer evaluation can add a field the running one lacks. A
+   * process restart still starts it empty.
+   */
+  const SHARED = (globalThis.__GEV_TERRAIN_CACHE ??= {});
   /** @type {Map<string, {at:number, result:object}>} keyed by canonical 5dp lon/lat. */
-  const mem = new Map();
+  SHARED.mem ??= new Map();
   /** @type {Map<string, Promise<Array<object>>>} single-flight per missing-point subset. */
-  const inflight = new Map();
-  let diskLoaded = false;
-  let diskDirty = false;
+  SHARED.inflight ??= new Map();
+  SHARED.diskLoaded ??= false;
+  SHARED.diskDirty ??= false;
   /**
    * Entry objects known to be on disk exactly as they are in memory. Only
    * these may be released: anything newer would be lost before the next flush.
    * @type {WeakSet<object>}
    */
-  const persisted = new WeakSet();
+  SHARED.persisted ??= new WeakSet();
   /** @type {Set<string>} 1-degree cells with points released from memory but still on disk. */
-  const releasedCells = new Set();
+  SHARED.releasedCells ??= new Set();
   /** Once anything is released, flushes merge into the disk file instead of replacing it. */
-  let releasedAny = false;
+  SHARED.releasedAny ??= false;
+  /** The periodic flush, started by the first request and never a second time. */
+  SHARED.flushTimer ??= null;
+  /** @type {Set<object>} The installed proxy's handle for pruneTerrainMemoryOutside. */
+  SHARED.tiers ??= new Set();
 
   /**
    * Read the stored point map. A missing file reads as empty; an unreadable or
@@ -115,8 +137,8 @@ export function terrainHeightsProxy() {
 
   /** Load the on-disk cache into memory once, lazily (first request only). */
   async function loadDiskOnce() {
-    if (diskLoaded) return;
-    diskLoaded = true;
+    if (SHARED.diskLoaded) return;
+    SHARED.diskLoaded = true;
     try {
       const parsed = JSON.parse(await fsp.readFile(CACHE_PATH, 'utf8'));
       const pointEntries =
@@ -132,8 +154,8 @@ export function terrainHeightsProxy() {
             Number.isFinite(entry.at) &&
             validTerrainResult(entry.result)
           ) {
-            mem.set(key, entry);
-            persisted.add(entry);
+            SHARED.mem.set(key, entry);
+            SHARED.persisted.add(entry);
           }
         }
       } else if (parsed && typeof parsed === 'object') {
@@ -152,21 +174,23 @@ export function terrainHeightsProxy() {
             const result = entry.results[i];
             if (!validTerrainResult(result)) continue;
             const key = terrainPointKey(points[i]);
-            const existing = mem.get(key);
+            const existing = SHARED.mem.get(key);
             if (!existing || entry.at > existing.at)
-              mem.set(key, { at: entry.at, result });
+              SHARED.mem.set(key, { at: entry.at, result });
           }
         }
-        diskDirty = mem.size > 0;
+        SHARED.diskDirty = SHARED.mem.size > 0;
       }
     } catch {
       /* no disk cache yet */
     }
     // Periodic flush, same shape as adsbdbProxy: coalesce writes instead of
-    // hitting disk on every request.
-    setInterval(async () => {
-      if (!diskDirty) return;
-      diskDirty = false;
+    // hitting disk on every request. One per process: a proxy built after a
+    // restart finds the previous one's timer already flushing this cache, and
+    // the callback reads the shared state only, never this closure's.
+    SHARED.flushTimer ??= setInterval(async () => {
+      if (!SHARED.diskDirty) return;
+      SHARED.diskDirty = false;
       // Written beside the live file and renamed over it, so a restore reading
       // during the write, or a crash mid-write, never sees a truncated file.
       // Same directory, so the rename is atomic on POSIX.
@@ -175,23 +199,24 @@ export function terrainHeightsProxy() {
         // After a release the file holds points memory no longer does. Merge
         // them back so a flush never shrinks the disk cache; an unreadable file
         // skips this write rather than replacing it with memory alone.
-        const points = releasedAny ? await readDiskPoints() : {};
+        const points = SHARED.releasedAny ? await readDiskPoints() : {};
         await fsp.mkdir(CACHE_DIR, { recursive: true });
-        const written = [...mem.values()];
-        Object.assign(points, Object.fromEntries(mem.entries()));
+        const written = [...SHARED.mem.values()];
+        Object.assign(points, Object.fromEntries(SHARED.mem.entries()));
         await fsp.writeFile(
           temp,
           JSON.stringify({ version: 2, points }),
           'utf8',
         );
         await fsp.rename(temp, CACHE_PATH);
-        for (const entry of written) persisted.add(entry);
+        for (const entry of written) SHARED.persisted.add(entry);
       } catch (err) {
-        diskDirty = true; // retry next tick
+        SHARED.diskDirty = true; // retry next tick
         await fsp.rm(temp, { force: true }).catch(() => {});
         console.warn('[terrain-heights-proxy] cache write failed');
       }
-    }, 15_000).unref?.();
+    }, 15_000);
+    SHARED.flushTimer.unref?.();
   }
 
   /**
@@ -201,12 +226,13 @@ export function terrainHeightsProxy() {
    * @param {Array<[number, number]>} points
    */
   async function restoreReleasedCells(points) {
-    if (releasedCells.size === 0) return;
+    if (SHARED.releasedCells.size === 0) return;
     const wanted = new Set();
     for (const point of points) {
       const key = terrainPointKey(point);
       const cell = terrainKeyCell(key);
-      if (releasedCells.has(cell) && !mem.has(key)) wanted.add(cell);
+      if (SHARED.releasedCells.has(cell) && !SHARED.mem.has(key))
+        wanted.add(cell);
     }
     if (wanted.size === 0) return;
     let stored;
@@ -217,33 +243,33 @@ export function terrainHeightsProxy() {
     }
     for (const [key, entry] of Object.entries(stored)) {
       if (
-        mem.has(key) ||
+        SHARED.mem.has(key) ||
         !wanted.has(terrainKeyCell(key)) ||
         !entry ||
         !Number.isFinite(entry.at) ||
         !validTerrainResult(entry.result)
       )
         continue;
-      mem.set(key, entry);
-      persisted.add(entry);
+      SHARED.mem.set(key, entry);
+      SHARED.persisted.add(entry);
     }
-    for (const cell of wanted) releasedCells.delete(cell);
+    for (const cell of wanted) SHARED.releasedCells.delete(cell);
   }
 
   /** This proxy's handle for pruneTerrainMemoryOutside. */
   const memoryTier = {
     prune({ latitude, longitude }, radiusKm) {
       let removed = 0;
-      for (const [key, entry] of mem) {
-        if (!persisted.has(entry)) continue;
+      for (const [key, entry] of SHARED.mem) {
+        if (!SHARED.persisted.has(entry)) continue;
         const [lon, lat] = key.split(',').map(Number);
         if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
         if (haversineKm(latitude, longitude, lat, lon) <= radiusKm) continue;
-        mem.delete(key);
-        releasedCells.add(terrainKeyCell(key));
+        SHARED.mem.delete(key);
+        SHARED.releasedCells.add(terrainKeyCell(key));
         removed += 1;
       }
-      if (removed > 0) releasedAny = true;
+      if (removed > 0) SHARED.releasedAny = true;
       return removed;
     },
   };
@@ -288,17 +314,20 @@ export function terrainHeightsProxy() {
   /** Coalesce concurrent requests for the same canonical missing-point list. */
   function fetchMissingSingleFlight(points) {
     const key = points.map(terrainPointKey).join(';');
-    if (!inflight.has(key)) {
+    if (!SHARED.inflight.has(key)) {
       const request = fetchUpstreamAll(points).finally(() => {
-        if (inflight.get(key) === request) inflight.delete(key);
+        if (SHARED.inflight.get(key) === request) SHARED.inflight.delete(key);
       });
-      inflight.set(key, request);
+      SHARED.inflight.set(key, request);
     }
-    return inflight.get(key);
+    return SHARED.inflight.get(key);
   }
 
   const installMiddleware = (server) => {
-    _terrainMemoryTiers.add(memoryTier);
+    // One handle per cache: this proxy takes over from the one a restart
+    // replaced, so a location switch releases the shared points once.
+    SHARED.tiers.clear();
+    SHARED.tiers.add(memoryTier);
     server.middlewares.use('/api/terrain/heights', async (req, res) => {
       const send = (status, bodyObj) => {
         if (res.headersSent) return;
@@ -327,11 +356,11 @@ export function terrainHeightsProxy() {
         await restoreReleasedCells(points);
         const outcome = await resolveTerrainHeightRequest({
           points,
-          cache: mem,
+          cache: SHARED.mem,
           fetchMissing: fetchMissingSingleFlight,
           ttlMs: TTL_MS,
         });
-        if (outcome.cacheChanged) diskDirty = true;
+        if (outcome.cacheChanged) SHARED.diskDirty = true;
         if (outcome.upstreamError) {
           console.warn(
             '[terrain-heights-proxy] refresh incomplete' +

@@ -46,6 +46,43 @@ test('only direct loopback connections to this server are local', () => {
     assert.equal(isLocalMcpRequest(request), false, JSON.stringify(request));
 });
 
+test("the owner's device through the tailnet mirror is local when its stamp, Host, port and Origin agree", () => {
+  const owner = {
+    remoteAddress: '100.64.0.10',
+    localPort: 4173,
+    host: '100.64.0.1:4173',
+    origin: 'http://100.64.0.1:4173',
+    ownerAuthority: 'http://100.64.0.1:4173',
+  };
+  assert.equal(isLocalMcpRequest(owner), true);
+  assert.equal(
+    isLocalMcpRequest({ ...owner, remoteAddress: '::ffff:100.64.0.10' }),
+    true,
+  );
+  // A read needs no Origin; a POST from the owner device always names its page.
+  assert.equal(
+    isLocalMcpRequest({ ...owner, origin: undefined, method: 'GET' }),
+    true,
+  );
+  for (const request of [
+    { ...owner, origin: undefined },
+    { ...owner, origin: undefined, method: 'POST' },
+    { ...owner, localPort: 5173 },
+    { ...owner, host: '100.64.0.1:5173' },
+    { ...owner, host: 'evil.example:4173' },
+    { ...owner, host: '100.64.0.2:4173' },
+    { ...owner, origin: 'https://evil.example' },
+    { ...owner, origin: 'http://100.64.0.1:5173' },
+    // The stamp only counts from a tailnet socket.
+    { ...owner, remoteAddress: '192.168.1.20' },
+    { ...owner, remoteAddress: '127.0.0.1' },
+    { ...owner, ownerAuthority: null },
+    { ...owner, headers: { 'x-forwarded-for': '203.0.113.9' } },
+    { ...owner, env: { PINOKIO_SHARE_LOCAL: 'true' } },
+  ])
+    assert.equal(isLocalMcpRequest(request), false, JSON.stringify(request));
+});
+
 test('the /mcp route answers local MCP requests and refuses others', async (t) => {
   let middleware;
   const created = [];

@@ -3,6 +3,11 @@ import { initPrivateCameraSetup } from './privateCamerasSetup.js';
 import { initDeviceFeedSetup } from './deviceFeedsSetup.js';
 import { initRoadCctvKeysSetup } from './roadCctvKeysSetup.js';
 import {
+  isOwnerRemovalRefusal,
+  noteOwnerRemovalRefusal,
+  watchOwnerRemoval,
+} from './ui/ownerRemoval.js';
+import {
   readStoredCloudVoiceAuthMode,
   writeStoredCloudVoiceAuthMode,
 } from './voice/cloudVoiceAuth.js';
@@ -62,6 +67,12 @@ export function collectKeyUpdates(fields) {
     if (value && field?.envVar) updates[field.envVar] = value;
   }
   return updates;
+}
+
+/** True on the PC itself; false on the owner's phone through the mirror. */
+function onThisPc() {
+  const host = globalThis.location?.hostname;
+  return !host || ['localhost', '127.0.0.1', '[::1]'].includes(host);
 }
 
 function sleepWithSignal(ms, signal) {
@@ -497,16 +508,27 @@ export async function initKeySetup({
     )?.set;
     busy = true;
     applyButton?.setAttribute('aria-disabled', 'true');
+    const before = statusLine ? statusLine.textContent : null;
     say('Saving…');
     try {
-      const response = await doFetch('/api/setup/keys', {
+      const answer = doFetch('/api/setup/keys', {
         method: 'POST',
         signal: lifetime.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       });
+      const response = await (Object.values(updates || {}).includes(null)
+        ? watchOwnerRemoval(answer)
+        : answer);
       const payload = await response.json().catch(() => ({}));
       if (disposed) return;
+      if (isOwnerRemovalRefusal(response, payload)) {
+        // Only the PC removes: on the owner's phone the key stays and
+        // the status line goes back to what it said before.
+        noteOwnerRemovalRefusal();
+        if (statusLine) statusLine.textContent = before ?? defaultStatusText;
+        return;
+      }
       if (!response.ok || !payload.ok) {
         say(payload.error || `Save failed (${response.status}).`);
         return;
@@ -609,7 +631,9 @@ export async function initKeySetup({
           say(
             payload.code === 'CODEX_OAUTH_REAUTH_REQUIRED'
               ? 'ChatGPT sign-in expired. Opening sign-in again…'
-              : 'Opening ChatGPT sign-in in your browser…',
+              : onThisPc()
+                ? 'Opening ChatGPT sign-in in your browser…'
+                : "Opening ChatGPT sign-in on the PC's browser…",
           );
           const loginResponse = await doFetch('/api/realtime/oauth-login', {
             method: 'POST',
@@ -636,7 +660,9 @@ export async function initKeySetup({
           }
 
           say(
-            'Finish ChatGPT sign-in in the browser. Waiting for it to complete…',
+            onThisPc()
+              ? 'Finish ChatGPT sign-in in the browser. Waiting for it to complete…'
+              : "ChatGPT sign-in opened on the PC's browser. Finish it there. Waiting for it to complete…",
           );
           const available = await waitForChatGptOAuth({
             fetchImpl: doFetch,

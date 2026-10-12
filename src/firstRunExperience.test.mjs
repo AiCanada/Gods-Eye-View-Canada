@@ -666,7 +666,13 @@ test('the voice TOOL SCHEMA matches the pinned contract — the mission mapping 
   // Re-pinned again 2026-09-13: the ten largest Canadian metros plus Fort
   // McMurray and Halifax join those enums as preset cities.
   // Re-pinned 2026-09-26: fire perimeters, wind, radar, clouds, lightning, and cyclones.
-  const legacyTools = structuredClone(GEV_REALTIME_TOOLS).filter((tool) => tool.name !== 'set_cyber_sonar');
+  // Whole-app voice control (2026-10-10) adds two tools and six panel ids;
+  // everything else keeps this pin.
+  const legacyTools = structuredClone(GEV_REALTIME_TOOLS).filter(
+    (tool) => !['set_cyber_sonar', 'list_ui_controls', 'use_ui_control'].includes(tool.name),
+  );
+  const panelIds = legacyTools.find((tool) => tool.name === 'set_panel_open').parameters.properties.panelId;
+  panelIds.enum = panelIds.enum.filter((id) => !['ask-panel', 'street-level-panel', 'ultra-panel', 'social-panel', 'outbreak-panel', 'sst-panel'].includes(id));
   const hudLayout = legacyTools.find((tool) => tool.name === 'set_hud').parameters.properties.layout;
   assert.deepEqual(hudLayout.enum, ['tactical', 'operator', 'minimal', 'cyber']);
   // Cyber deliberately adds one layout; first-run missions still change no tools.

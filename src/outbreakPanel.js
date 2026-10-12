@@ -23,7 +23,10 @@
  * New places found are listed for the operator to add; none is added alone.
  * RUN EPIDEMIC MODEL: the server's stochastic simulation (src/outbreakEpi.mjs)
  * over the scan, the pathogen, the people and the interventions; each place's
- * chance of arrival goes to the map with the spread.
+ * chance of arrival goes to the map with the spread. A Random seed box makes
+ * a run repeatable (blank: the server derives one from the inputs); the
+ * result is kept across reloads when it is small enough, and DOWNLOAD RESULTS
+ * / DOWNLOAD CSV save it (src/outbreakEpiExport.mjs).
  */
 import { formatAskLogEntry, prependOutputLog } from './askOverview.js';
 import { geocodeKeyless } from './keylessGeocoder.js';
@@ -34,7 +37,8 @@ import {
   FUTURE_FLIGHT_HOURS,
   CONNECTION_HOURS,
   OUTBREAK_ANSWER_TOKENS,
-  OUTBREAK_FORECAST_WINDOWS,
+  OUTBREAK_FORECAST_BOUNDS,
+  OUTBREAK_FORECAST_HORIZONS,
   OUTBREAK_FUTURE_HOURS,
   OUTBREAK_MODEL_EVENT,
   OUTBREAK_REQUEST_EVENT,
@@ -51,8 +55,13 @@ import {
   suggestedContagion,
   contagionLabel,
   cleanFlight,
+  cleanForecastHorizon,
+  cleanForecastWithin,
   cleanLocation,
   cleanLocations,
+  forecastWindowLabel,
+  forecastWindowStart,
+  forecastWindows,
   cleanSpeed,
   outbreakHourOptions,
   outbreakMediaQuestion,
@@ -81,6 +90,11 @@ import {
   epidemicLines,
   presetValues,
 } from './outbreakEpi.mjs';
+import {
+  epidemicExport,
+  epidemicPlacesCsv,
+  epidemicTotalsCsv,
+} from './outbreakEpiExport.mjs';
 
 const PROVIDERS_URL = '/api/llm/providers';
 const ASK_URL = '/api/llm/ask';
@@ -96,9 +110,202 @@ const PLAY_STEP_MS = 900;
  */
 const EPIDEMIC_TIMEOUT_MS = 90_000;
 /** Raised when OUTBREAK_DEFAULT_PROFILE changes, so it fills in once more. */
-const PROFILE_DEFAULTS_VERSION = 2;
+export const PROFILE_DEFAULTS_VERSION = 3;
 /** How far ahead the epidemic model looks, in days. */
 const EPIDEMIC_FORECAST_DAYS = Object.freeze([2, 7, 14, 30]);
+/**
+ * The curve's hospital and intensive-care lines and the peak-day tick; the
+ * second strain, the comparison run and the Rt line when the result has them.
+ */
+const EPIDEMIC_CURVE_COLORS = Object.freeze({
+  hospital: '#4a9bff',
+  icu: '#9b5cff',
+  peak: '#ffffff',
+  strain2: '#ff6bd6',
+  compare: '#19e6b0',
+  rt: '#c8f04a',
+});
+/** The top of the curve's Rt scale (a higher Rt is drawn at the top). */
+const RT_CURVE_MAX = 3;
+/**
+ * The epidemic result is kept across reloads twice: whole in IndexedDB
+ * (fullResultStore), and trimmed in localStorage as the fallback: the first
+ * 500 places and none of it when the saved JSON would pass 1.5 MB
+ * (localStorage holds about 5 MB for the whole site). A trimmed copy says
+ * how many places the run had (`trimmed`), so the list and the downloads
+ * can say they are short.
+ */
+export const EPIDEMIC_PERSIST_MAX_BYTES = 1_500_000;
+export const EPIDEMIC_PERSIST_PLACES = 500;
+/** What the trimmed result keeps, besides its places. */
+const EPIDEMIC_PERSIST_KEYS = Object.freeze([
+  'startMs',
+  'untilMs',
+  'hours',
+  'runs',
+  'runsAsked',
+  'partial',
+  'seed',
+  'summary',
+  'totals',
+  'commutes',
+  'railTrips',
+  'railRoutes',
+  'railSource',
+  'byDayPlaces',
+  'network',
+  'populationSource',
+  'sensitivity',
+  'counterfactual',
+  'stoppedAt',
+]);
+/** The Random seed box: a whole number the server's rng takes, else auto (null). */
+const SEED_MAX = 2 ** 32;
+
+/** The seed as the box or the saved state has it: an integer in [0, 2^32), else null. */
+export function cleanSeed(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n < SEED_MAX ? n : null;
+}
+
+/**
+ * The epidemic result trimmed for storage, or null when even trimmed it is
+ * too big to keep. The kept places are whole (byDay included where present).
+ */
+export function trimmedEpidemic(data) {
+  if (!data || !Array.isArray(data.places)) return null;
+  const kept = {};
+  for (const key of EPIDEMIC_PERSIST_KEYS)
+    if (data[key] !== undefined) kept[key] = data[key];
+  kept.places = data.places.slice(0, EPIDEMIC_PERSIST_PLACES);
+  // How many places the run had, when some were left out.
+  const total = Number.isFinite(data.trimmed)
+    ? Math.max(data.trimmed, data.places.length)
+    : data.places.length;
+  if (total > kept.places.length) kept.trimmed = total;
+  return JSON.stringify(kept).length > EPIDEMIC_PERSIST_MAX_BYTES ? null : kept;
+}
+
+/** The note for a result that is a trimmed saved copy, else ''. */
+export function epidemicTrimmedNote(result) {
+  const shown = Array.isArray(result?.places) ? result.places.length : 0;
+  return Number.isFinite(result?.trimmed) && result.trimmed > shown
+    ? `Saved result trimmed to ${shown.toLocaleString('en-US')} of ${result.trimmed.toLocaleString('en-US')} places; run again for every place.`
+    : '';
+}
+
+const FULL_RESULT_DB = 'outbreak-epidemic';
+const FULL_RESULT_STORE = 'results';
+
+/**
+ * The whole epidemic result, kept in IndexedDB (no 5 MB localStorage limit):
+ * get(key), put(key, value) and delete(key), each a promise. null when this
+ * browser has no IndexedDB. Every failure rejects; the panel catches it and
+ * falls back to the trimmed copy.
+ */
+export function fullResultStore(idb) {
+  let factory = idb;
+  if (factory === undefined)
+    try {
+      factory = globalThis.indexedDB;
+    } catch {
+      factory = null;
+    }
+  if (!factory || typeof factory.open !== 'function') return null;
+  let opened = null;
+  const open = () =>
+    (opened ||= new Promise((resolve, reject) => {
+      const request = factory.open(FULL_RESULT_DB, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(FULL_RESULT_STORE))
+          request.result.createObjectStore(FULL_RESULT_STORE);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(new Error('IndexedDB blocked'));
+    }).catch((error) => {
+      opened = null;
+      throw error;
+    }));
+  const run = (mode, act) =>
+    open().then(
+      (db) =>
+        new Promise((resolve, reject) => {
+          const tx = db.transaction(FULL_RESULT_STORE, mode);
+          const request = act(tx.objectStore(FULL_RESULT_STORE));
+          tx.oncomplete = () => resolve(request.result);
+          tx.onerror = () => reject(tx.error || request.error);
+          tx.onabort = () => reject(tx.error || new Error('aborted'));
+        }),
+    );
+  return {
+    get: (key) => run('readonly', (store) => store.get(key)),
+    put: (key, value) => run('readwrite', (store) => store.put(value, key)),
+    delete: (key) => run('readwrite', (store) => store.delete(key)),
+  };
+}
+
+/** A whole number with thousands commas (0 when unset). */
+function count(n) {
+  return Math.round(n || 0).toLocaleString('en-US');
+}
+
+/** A share (0-1) as a whole percent. */
+function pct(share) {
+  return Math.round((share || 0) * 100);
+}
+
+/** "N fewer things", or "N more things" when the difference is negative. */
+function fewer(n, noun) {
+  return n >= 0 ? `${count(n)} fewer ${noun}` : `${count(-n)} more ${noun}`;
+}
+
+/** The curve's third legend: Rt, the second strain and the comparison run. */
+function curveExtras(s, cf) {
+  const parts = [];
+  if (s.rtLastP50 !== null && s.rtLastP50 !== undefined)
+    parts.push(
+      `Rt in the runs, day ${s.rtLastDay}: ${s.rtLastP50} (line at 1 = holding steady; generation ${s.generationDays} d)`,
+    );
+  if (s.strain2Day !== undefined)
+    parts.push(
+      s.strain2Seeded
+        ? `second strain ${pct(s.strain2ShareEnd)} % of infections` +
+            (s.takeoverDayP50 !== null && s.takeoverDayP50 !== undefined
+              ? ` · took over on day ${s.takeoverDayP50}`
+              : '')
+        : 'second strain not seeded inside the window',
+    );
+  if (cf?.runs > 0)
+    parts.push(
+      `vs ${cf.label.toLowerCase()}: ${fewer(cf.averted.infectedP50, 'infected')} (5–95 %: ${count(cf.averted.infectedP5)}–${count(cf.averted.infectedP95)}) · ${fewer(cf.averted.deathsP50, 'deaths')}`,
+    );
+  else if (cf?.cut) parts.push('comparison skipped (time limit)');
+  return parts;
+}
+
+/**
+ * EVERY RAIL LINE ON THE GLOBE (owner ruling 2026-10-12): the status line
+ * while the server finds and builds the world rail, polled this often, and
+ * after a failed poll this long.
+ */
+export const RAIL_WORLD_POLL_MS = 10_000;
+const RAIL_WORLD_RETRY_MS = 60_000;
+
+/** The world rail's status as one line of text. */
+export function railWorldLine(status) {
+  const done = count(status?.tilesDone);
+  const total = count(status?.tilesTotal);
+  const km = count(status?.railKm);
+  if (status?.state === 'ready')
+    return `World rail: ${km} km from ${done} map tiles, every continent's.`;
+  if (status?.state === 'building')
+    return `World rail: ${done} / ${total} tiles · joining the lines into one network…`;
+  if (status?.state === 'error')
+    return `World rail: ${status.error || 'failed'}; rail works as before.`;
+  return `World rail: ${done} / ${total} tiles${status?.railKm ? ` · ${km} km` : ''}; rail works as before until it is done.`;
+}
 
 /** Roads come in three levels, each farther; rail in one. */
 const ROAD_LEVELS = 3;
@@ -135,7 +342,7 @@ function timeLabel(ms) {
 export class OutbreakPanel {
   /**
    * @param {object} viewer The Cesium viewer (unused today; kept like the other boxes).
-   * @param {{document?: Document, fetch?: Function, storage?: Storage|null, windowRef?: Window|null, geocode?: Function, now?: Function}} [options]
+   * @param {{document?: Document, fetch?: Function, storage?: Storage|null, resultStore?: object|null, windowRef?: Window|null, geocode?: Function, now?: Function}} [options]
    */
   constructor(viewer, options = {}) {
     this.viewer = viewer;
@@ -154,6 +361,11 @@ export class OutbreakPanel {
               return null;
             }
           })();
+    // The whole epidemic result across reloads (fullResultStore).
+    this._resultStore =
+      options.resultStore !== undefined
+        ? options.resultStore
+        : fullResultStore();
     this._geocode = options.geocode || ((name) => geocodeKeyless(name));
     this._now = options.now || (() => Date.now());
     this._askTimeoutMs = DEFAULT_ASK_TIMEOUT_MS;
@@ -229,6 +441,51 @@ export class OutbreakPanel {
       lockdownPct: byId('outbreak-lockdown'),
       tracing: byId('outbreak-tracing'),
       initialCases: byId('outbreak-initial-cases'),
+      // The hospital pathway, immunity and variants (pathogen grid).
+      hospitalDays: byId('outbreak-hospital-days'),
+      icuPct: byId('outbreak-icu'),
+      admitDelayDays: byId('outbreak-admit-delay'),
+      waningDays: byId('outbreak-waning'),
+      variants: byId('outbreak-variants'),
+      // The second strain, used when variants is 'two-strain'.
+      strain2Day: byId('outbreak-strain2-day'),
+      strain2Cases: byId('outbreak-strain2-cases'),
+      strain2Place: byId('outbreak-strain2-place'),
+      strain2Pct: byId('outbreak-strain2-spread'),
+      strain2SeverityPct: byId('outbreak-strain2-severity'),
+      crossImmunityPct: byId('outbreak-cross-immunity'),
+      // Susceptibility, commuting, transfers, awareness, vaccination, travel
+      // (human grid).
+      heterogeneity: byId('outbreak-heterogeneity'),
+      mixing: byId('outbreak-mixing'),
+      commuteDaySplit: byId('outbreak-commute-day'),
+      clock: byId('outbreak-clock'),
+      transfers: byId('outbreak-transfers'),
+      responseSignal: byId('outbreak-response-signal'),
+      responseReach: byId('outbreak-response-reach'),
+      fatigueDays: byId('outbreak-response-fatigue'),
+      vaccinatedPct: byId('outbreak-vaccinated'),
+      vaccineEfficacyPct: byId('outbreak-vaccine-efficacy'),
+      travelDomesticPct: byId('outbreak-travel-domestic'),
+      travelIntlPct: byId('outbreak-travel-intl'),
+      // Triggers, borders, testing and the campaign (interventions grid).
+      interventionDays: byId('outbreak-intervention-days'),
+      triggerMode: byId('outbreak-trigger-mode'),
+      triggerPer100k: byId('outbreak-trigger-level'),
+      triggerBedShare: byId('outbreak-trigger-beds'),
+      minLockDays: byId('outbreak-min-lock-days'),
+      fatigueHalfDays: byId('outbreak-restriction-fatigue'),
+      lockdownScope: byId('outbreak-lockdown-scope'),
+      borderPolicy: byId('outbreak-border-policy'),
+      borderTrigger: byId('outbreak-border-trigger'),
+      importDetection: byId('outbreak-import-detection'),
+      testsPer1000Day: byId('outbreak-test-capacity'),
+      vaccineStartDay: byId('outbreak-vaccine-start'),
+      vaccinePer1000Day: byId('outbreak-vaccine-pace'),
+      vaccineCoverageMaxPct: byId('outbreak-vaccine-cap'),
+      vaccinePriority: byId('outbreak-vaccine-priority'),
+      // A paired comparison run against fewer measures.
+      compare: byId('outbreak-compare'),
     };
     // The two density menus: people in the area, from HUMAN_FACTORS.
     for (const key of ['density', 'densityNew']) {
@@ -259,7 +516,13 @@ export class OutbreakPanel {
     this._epiList = byId('outbreak-epidemic');
     this._epiDays = byId('outbreak-epi-days');
     this._epiCurve = byId('outbreak-epi-curve');
+    this._epiSeed = byId('outbreak-epi-seed');
+    this._epiDownload = byId('outbreak-epi-download');
+    this._epiCsv = byId('outbreak-epi-csv');
     this._epidemic = null;
+    /** The body of the last run (plus flightCount): saved with the result. */
+    this._lastRequest = null;
+    this._persistWarned = false;
     this._suggest = byId('outbreak-suggest');
     this._useSuggested = byId('outbreak-use-suggested');
     this._summary = byId('outbreak-summary');
@@ -269,6 +532,16 @@ export class OutbreakPanel {
     this._swarm = byId('outbreak-swarm');
     this._socialBtn = byId('outbreak-social');
     this._futureBtn = byId('outbreak-future');
+    // How far ahead FIND FUTURE SPREAD LOCATIONS looks: 24 h to 30 days.
+    this._futureDays = byId('outbreak-future-days');
+    if (this._futureDays && doc && !this._futureDays.children?.length)
+      for (const hours of OUTBREAK_FORECAST_HORIZONS) {
+        const el = doc.createElement('option');
+        el.value = String(hours);
+        el.textContent =
+          hours < 72 ? `Next ${hours} hours` : `Next ${hours / 24} days`;
+        this._futureDays.appendChild(el);
+      }
     this._forecastList = byId('outbreak-forecast');
     this._found = byId('outbreak-found');
     this._status = byId('outbreak-status');
@@ -281,12 +554,18 @@ export class OutbreakPanel {
     }
 
     this._state = this._load();
+    // A result saved before the reload is shown and sent again as it was.
+    this._epidemic = this._state.epidemic;
     this._fillControls();
     this._renderLocations();
     this._renderFound();
     this._renderForecast();
+    this._renderEpidemic();
     this._refresh();
     this._send(this._state.show ? { show: true } : {});
+    if (this._epidemic) this._say(this._epidemicStatus('(saved result)'));
+    // The whole result, when IndexedDB kept it, replaces the trimmed copy.
+    this._restored = this._restoreFullEpidemic();
 
     this._showBox?.addEventListener('change', () => {
       this._state.show = this._showBox.checked;
@@ -372,11 +651,24 @@ export class OutbreakPanel {
           for (const [key, el] of Object.entries(this._profileFields))
             if (el) read[key] = el.value;
           this._state.profile = cleanAllProfile(read);
+          // A fixed seed belongs to one set of inputs: a change lets it go.
+          // The comparison is not one of them (the server's seed ignores it).
+          if (fieldKey !== 'compare') {
+            this._state.epidemicSeed = null;
+            if (this._epiSeed) this._epiSeed.value = '';
+          }
           this._save();
           this._showSuggestion();
         });
     }
     this._epiRunBtn?.addEventListener('click', () => void this._runEpidemic());
+    for (const type of ['change', 'input'])
+      this._epiSeed?.addEventListener(type, () => {
+        this._state.epidemicSeed = cleanSeed(this._epiSeed.value);
+        this._save();
+      });
+    this._epiDownload?.addEventListener('click', () => this._downloadJson());
+    this._epiCsv?.addEventListener('click', () => this._downloadCsv());
     this._epiShow?.addEventListener('change', () => {
       this._state.showEpidemic = this._epiShow.checked;
       this._save();
@@ -395,6 +687,13 @@ export class OutbreakPanel {
       );
     });
     this._futureBtn?.addEventListener('click', () => void this._futureSpread());
+    this._futureDays?.addEventListener('change', () => {
+      this._state.futureHours = cleanForecastHorizon(this._futureDays.value);
+      // Only a reach picked here is kept over the default.
+      this._state.futureHoursChosen = true;
+      this._futureDays.value = String(this._state.futureHours);
+      this._save();
+    });
     this._forecastList?.addEventListener('click', (event) => {
       const index = event?.target?.dataset?.outbreakForecast;
       if (index !== undefined) void this._addForecast(Number(index));
@@ -407,6 +706,9 @@ export class OutbreakPanel {
 
   destroy() {
     this._stopPlay();
+    this._destroyed = true;
+    if (this._railWorldTimer) globalThis.clearTimeout(this._railWorldTimer);
+    this._railWorldTimer = null;
     this._window?.removeEventListener?.(OUTBREAK_SHOWN_EVENT, this._onShown);
     this._window?.removeEventListener?.(
       OUTBREAK_REQUEST_EVENT,
@@ -452,7 +754,12 @@ export class OutbreakPanel {
       profile: cleanAllProfile(
         saved?.profileDefaults === PROFILE_DEFAULTS_VERSION
           ? saved?.profile
-          : { ...OUTBREAK_DEFAULT_PROFILE, ...cleanAllProfile(saved?.profile) },
+          : {
+              ...OUTBREAK_DEFAULT_PROFILE,
+              // The saved preset's own values fill the fields it never had.
+              ...presetValues(saved?.profile?.preset),
+              ...cleanAllProfile(saved?.profile),
+            },
       ),
       profileDefaults: PROFILE_DEFAULTS_VERSION,
       showEpidemic: saved?.showEpidemic !== false,
@@ -462,6 +769,19 @@ export class OutbreakPanel {
       epidemicRuns: [50, 200, 500].includes(Number(saved?.epidemicRuns))
         ? Number(saved.epidemicRuns)
         : 200,
+      // null: the server picks the seed from the inputs.
+      epidemicSeed: Number.isInteger(saved?.epidemicSeed)
+        ? cleanSeed(saved.epidemicSeed)
+        : null,
+      // Which run the whole result in IndexedDB belongs to (fullResultStore).
+      epidemicId: Number.isFinite(saved?.epidemicId) ? saved.epidemicId : null,
+      // The last result, trimmed (trimmedEpidemic); null when none was kept.
+      epidemic:
+        saved?.epidemic &&
+        typeof saved.epidemic === 'object' &&
+        Array.isArray(saved.epidemic.places)
+          ? saved.epidemic
+          : null,
       hour: Number(saved?.hour) || null,
       scan: Number.isFinite(startMs)
         ? {
@@ -481,20 +801,46 @@ export class OutbreakPanel {
           }
         : null,
       found: (Array.isArray(saved?.found) ? saved.found : []).slice(0, 30),
+      // FIND FUTURE SPREAD LOCATIONS' reach in hours: 30 days unless the
+      // person picked another from the menu (a reach saved without that
+      // pick is the old 48 h default and gives way to the new one).
+      futureHours: cleanForecastHorizon(
+        saved?.futureHoursChosen === true ? saved?.futureHours : undefined,
+      ),
+      futureHoursChosen: saved?.futureHoursChosen === true,
+      // At most 12 places a window, six windows to 30 days.
       forecast: (Array.isArray(saved?.forecast) ? saved.forecast : [])
         .filter((f) => Number.isFinite(f?.lat) && Number.isFinite(f?.lon))
-        .slice(0, 24),
+        .slice(0, OUTBREAK_FORECAST_BOUNDS.length * 12)
+        .map((f) => ({ ...f, within: cleanForecastWithin(f.within) })),
     };
   }
 
   _save() {
-    try {
+    const write = () =>
       this._storage?.setItem?.(
         OUTBREAK_STORAGE_KEY,
         JSON.stringify(this._state),
       );
+    try {
+      write();
     } catch {
-      /* This browser is not keeping it; the box still works. */
+      // This browser is not keeping it; the box still works. Most likely
+      // the storage is full: drop the kept epidemic result (the full one
+      // stays in this._epidemic) so the rest of the state still saves.
+      if (!this._state.epidemic) return;
+      this._state.epidemic = null;
+      if (!this._persistWarned) {
+        this._persistWarned = true;
+        console.warn(
+          'Outbreak: storage is full; the epidemic result is not kept across reloads.',
+        );
+      }
+      try {
+        write();
+      } catch {
+        /* Not keeping it. */
+      }
     }
   }
 
@@ -539,6 +885,13 @@ export class OutbreakPanel {
     if (this._epiShow) this._epiShow.checked = this._state.showEpidemic;
     if (this._epiRuns) this._epiRuns.value = String(this._state.epidemicRuns);
     if (this._epiDays) this._epiDays.value = String(this._state.epidemicDays);
+    if (this._futureDays)
+      this._futureDays.value = String(this._state.futureHours);
+    if (this._epiSeed)
+      this._epiSeed.value =
+        this._state.epidemicSeed === null
+          ? ''
+          : String(this._state.epidemicSeed);
     if (this._keywords) this._keywords.value = this._state.keywords;
     if (this._days) this._days.value = String(this._state.days);
     for (const mode of OUTBREAK_MODE_IDS) {
@@ -652,6 +1005,7 @@ export class OutbreakPanel {
       contagion: this._state.contagion,
       networks: this._networksKnown(),
       airRoads: Boolean(this._airRoads?.network),
+      airRails: Boolean(this._airRails?.network),
       startMs,
       hour,
     });
@@ -688,7 +1042,39 @@ export class OutbreakPanel {
         mode: 'air',
         network: this._airRoads.network,
       });
+    if (this._airRails?.network)
+      out.push({
+        key: 'air-rail',
+        locationId: '',
+        mode: 'air-rail',
+        network: this._airRails.network,
+      });
     return out;
+  }
+
+  /**
+   * Every airport the outbreak lands at to the end of the time menu, with
+   * the hour it lands, for the roads and rail after landing.
+   */
+  _landings(startMs) {
+    const last =
+      presentHour(startMs, this._now()) + OUTBREAK_FUTURE_HOURS.at(-1);
+    const spread = outbreakSpread({
+      locations: this._state.locations,
+      flights: this._flights(),
+      speeds: this._state.speeds,
+      surroundings: this._state.scan?.surroundings || {},
+      airports: this._state.scan?.airports || [],
+      contagion: this._state.contagion,
+      startMs,
+      hour: last,
+    });
+    return spread.destinations.map((d) => ({
+      code: d.code,
+      lat: d.lat,
+      lon: d.lon,
+      hour: Math.round(((d.arriveMs - startMs) / 3_600_000) * 10) / 10,
+    }));
   }
 
   /**
@@ -713,24 +1099,7 @@ export class OutbreakPanel {
       !(this._airRoadsRetryAt <= this._now())
     )
       return;
-    const last =
-      presentHour(startMs, this._now()) + OUTBREAK_FUTURE_HOURS.at(-1);
-    const spread = outbreakSpread({
-      locations: this._state.locations,
-      flights: this._flights(),
-      speeds: this._state.speeds,
-      surroundings: this._state.scan?.surroundings || {},
-      airports: this._state.scan?.airports || [],
-      contagion: this._state.contagion,
-      startMs,
-      hour: last,
-    });
-    const destinations = spread.destinations.map((d) => ({
-      code: d.code,
-      lat: d.lat,
-      lon: d.lon,
-      hour: Math.round(((d.arriveMs - startMs) / 3_600_000) * 10) / 10,
-    }));
+    const destinations = this._landings(startMs);
     this._airRoadsCheap = cheap;
     this._airRoadsRetryAt = Infinity;
     if (!destinations.length) return;
@@ -752,7 +1121,7 @@ export class OutbreakPanel {
       if (data.failedTiles) this._airRoadsRetryAt = this._now() + 300_000;
       this._log(
         'ROADS AFTER LANDING',
-        `The roads out of ${data.landings.toLocaleString('en-US')} landing airport${data.landings === 1 ? '' : 's'} (${data.network.lengthKm.toLocaleString('en-US')} km within ${data.radiusKm} km of them) light up light red from each landing: 100 km at road speed, then a quarter of it.${data.failedTiles ? ` ${data.failedTiles} of ${data.tiles} map tiles did not load; asked again later.` : ''}`,
+        `The roads out of ${data.landings.toLocaleString('en-US')} landing airport${data.landings === 1 ? '' : 's'} (${data.network.lengthKm.toLocaleString('en-US')} km within ${data.radiusKm} km of them) light up green from each landing: 100 km at road speed, then a quarter of it.${data.failedTiles ? ` ${data.failedTiles} of ${data.tiles} map tiles did not load; asked again later.` : ''}`,
       );
       this._refresh({ send: true });
     } catch {
@@ -764,10 +1133,134 @@ export class OutbreakPanel {
   }
 
   /**
+   * The rail lines round every airport the outbreak lands at (owner report,
+   * 2026-10-12: rail in Europe and North America never lit after a flight),
+   * lit orange from each landing at train speed. Asked again only when the
+   * flights, the start, the locations or the train speed change; not asked
+   * while trains are hidden.
+   */
+  async _loadAirRails() {
+    if (this._airRailsLoading || !this._state.scan || !this._traffic) return;
+    if (this._state.shown?.train === false) return;
+    const startMs = this._startMs();
+    const cheap = [
+      startMs,
+      this._traffic.flights.length,
+      this._traffic.delay,
+      this._state.speeds.train,
+      this._state.locations.map((l) => l.id).join(','),
+    ].join('|');
+    if (
+      cheap === this._airRailsCheap &&
+      !(this._airRailsRetryAt <= this._now())
+    )
+      return;
+    const destinations = this._landings(startMs);
+    this._airRailsCheap = cheap;
+    this._airRailsRetryAt = Infinity;
+    if (!destinations.length) return;
+    this._airRailsLoading = true;
+    try {
+      const response = await this._request(`${API}/air-rails`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          destinations,
+          speedKmh: this._state.speeds.train,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (response.status === 429) {
+        // Too many requests: a short wait, not five minutes dark.
+        this._airRailsRetryAt = this._now() + 30_000;
+        return;
+      }
+      if (!response.ok || !data)
+        throw new Error(data?.error || `HTTP ${response.status}`);
+      if (data.failedTiles) this._airRailsRetryAt = this._now() + 300_000;
+      // No rail near any landing: nothing to light, and nothing to ask again.
+      this._airRails = data.network ? { network: data.network } : null;
+      if (!data.network) return;
+      this._log(
+        'RAIL AFTER LANDING',
+        data.world
+          ? `The world's rail (${data.network.lengthKm.toLocaleString('en-US')} km) lights up orange from ${count(data.seededLandings)} of ${count(data.landings)} landing airport${data.landings === 1 ? '' : 's'} with rail within reach, along the whole network at train speed.${data.failedTiles ? ` ${data.failedTiles} of ${data.tiles} map tiles did not load; asked again later.` : ''}`
+          : `The rail lines round ${data.landings.toLocaleString('en-US')} landing airport${data.landings === 1 ? '' : 's'} (${data.network.lengthKm.toLocaleString('en-US')} km within ${data.radiusKm} km of them) light up orange from each landing at train speed.${data.skippedLandings ? ` ${data.skippedLandings.toLocaleString('en-US')} later landing${data.skippedLandings === 1 ? '' : 's'} left out.` : ''}${data.failedTiles ? ` ${data.failedTiles} of ${data.tiles} map tiles did not load; asked again later.` : ''}`,
+      );
+      this._refresh({ send: true });
+    } catch {
+      // Asked again in five minutes.
+      this._airRailsRetryAt = this._now() + 300_000;
+    } finally {
+      this._airRailsLoading = false;
+    }
+  }
+
+  /**
+   * EVERY RAIL LINE ON THE GLOBE (owner ruling 2026-10-12): how far the
+   * server's world rail has got. While it finds and builds it, the status
+   * line says so, every RAIL_WORLD_POLL_MS; once it is built, the log says
+   * so once, the rail round each location and after each landing is asked
+   * for again (now the whole world's), and the map draws every rail line.
+   */
+  async _pollRailWorld() {
+    if (this._railWorldPolling || this._destroyed) return;
+    this._railWorldPolling = true;
+    let wait = RAIL_WORLD_RETRY_MS;
+    try {
+      const { response, data } = await this._getJson(
+        `${API}/rail-world/status`,
+      ).catch(() => ({ response: { ok: false }, data: null }));
+      if (!response?.ok || !data?.state) return;
+      const was = this._railWorld;
+      this._railWorld = data;
+      const ours =
+        !this._status?.textContent ||
+        this._status.textContent === this._railWorldSaid;
+      if (data.state === 'off') {
+        this._railWorldDone = true;
+        return;
+      }
+      if (data.state === 'ready') {
+        this._railWorldDone = true;
+        if (ours && this._railWorldSaid) this._say('');
+        if (was?.state === 'ready' && was.builtAt === data.builtAt) return;
+        this._log(
+          'WORLD RAIL',
+          `${railWorldLine(data)} Rail now lights along the whole network from each outbreak location and each landing, and the epidemic model carries rail travellers between the places it joins.`,
+        );
+        // Asked again, now from the whole world's rail.
+        for (const key of [...(this._networks || new Map()).keys()])
+          if (key.endsWith('|rail')) this._networks.delete(key);
+        this._airRailsCheap = null;
+        this._refresh({ send: true });
+        return;
+      }
+      wait = RAIL_WORLD_POLL_MS;
+      const text = railWorldLine(data);
+      if (ours) {
+        this._say(text);
+        this._railWorldSaid = text;
+      }
+    } finally {
+      this._railWorldPolling = false;
+      if (!this._destroyed && !this._railWorldDone) {
+        this._railWorldTimer = globalThis.setTimeout(() => {
+          this._railWorldTimer = null;
+          void this._pollRailWorld();
+        }, wait);
+        // Under Node (the tests) the poll never holds the process open.
+        this._railWorldTimer?.unref?.();
+      }
+    }
+  }
+
+  /**
    * Fetch, in the background and one at a time, the main roads and the rail
    * lines round each outbreak location (rail only where a station is near or
-   * it is unknown). A failure is asked again at most every five minutes; the
-   * circle stands in meanwhile.
+   * it is unknown, or the world rail is built). A failure is asked again at
+   * most every five minutes; the circle stands in meanwhile.
    */
   async _loadNetworks() {
     if (this._networksLoading || !this._state.scan) return;
@@ -777,7 +1270,14 @@ export class OutbreakPanel {
     for (const location of this._state.locations) {
       const around = this._state.scan?.surroundings?.[location.id] || {};
       for (const mode of ['road', 'rail']) {
-        if (mode === 'rail' && around.rail === false) continue;
+        // No station near by OpenStreetMap: rail is still asked for once
+        // the world rail is built, which knows the lines itself.
+        if (
+          mode === 'rail' &&
+          around.rail === false &&
+          this._railWorld?.state !== 'ready'
+        )
+          continue;
         const entry = this._networks.get(`${location.id}|${mode}`);
         if (entry?.retryAt > now) continue;
         // Roads keep spreading to the end of the forecast (owner ruling,
@@ -818,7 +1318,9 @@ export class OutbreakPanel {
           });
           this._log(
             `${mode === 'rail' ? 'RAIL LINES' : 'MAIN ROADS'} · ${location.name}${mode === 'road' ? ` · level ${data.level || level}` : ''}`,
-            `${data.network.lengthKm.toLocaleString('en-US')} km of ${mode === 'rail' ? 'rail line' : 'main road'} within ${data.radiusKm.toLocaleString('en-US')} km, from ${data.network.startKm} km away${data.failedTiles ? ` (${data.failedTiles} of ${data.tiles} map tiles did not load; asked again later)` : ''}. The spread follows it, ${mode === 'rail' ? 'orange' : 'dark red'} once reached.${mode === 'road' && !data.lastLevel ? ' Farther roads are loading.' : ''}`,
+            data.world
+              ? `The world's rail, ${data.network.lengthKm.toLocaleString('en-US')} km, from ${data.network.startKm} km away; ${count(data.network.reachedKm)} km along it at the farthest${data.failedTiles ? ` (${data.failedTiles} of ${data.tiles} map tiles did not load; asked again later)` : ''}. The spread follows it, orange once reached.`
+              : `${data.network.lengthKm.toLocaleString('en-US')} km of ${mode === 'rail' ? 'rail line' : 'main road'} within ${data.radiusKm.toLocaleString('en-US')} km, from ${data.network.startKm} km away${data.failedTiles ? ` (${data.failedTiles} of ${data.tiles} map tiles did not load; asked again later)` : ''}. The spread follows it, ${mode === 'rail' ? 'orange' : 'dark red'} once reached.${mode === 'road' && !data.lastLevel ? ' Farther roads are loading.' : ''}`,
           );
         } else {
           // A farther level that fails keeps the nearer one on the map.
@@ -862,6 +1364,13 @@ export class OutbreakPanel {
                     commutes: this._epidemic.commutes,
                   }
                 : null,
+            // Every rail line on the globe, once the server has built it
+            // (owner ruling 2026-10-12), while trains are shown.
+            railWorld:
+              this._railWorld?.state === 'ready' &&
+              this._state.shown?.train !== false
+                ? { builtAt: this._railWorld.builtAt }
+                : null,
             ...extra,
           },
         }),
@@ -890,10 +1399,15 @@ export class OutbreakPanel {
     ) {
       void this._loadTraffic({ quiet: true });
     }
+    // Every rail line on the globe: how far the server has got.
+    if (this._state.scan && !this._railWorldTimer && !this._railWorldDone)
+      void this._pollRailWorld();
     // The main roads and rail lines round each location, once each.
     if (this._state.scan && !this._networksLoading) void this._loadNetworks();
     if (this._state.scan && this._traffic && !this._airRoadsLoading)
       void this._loadAirRoads();
+    if (this._state.scan && this._traffic && !this._airRailsLoading)
+      void this._loadAirRails();
     this._fillHours();
     const spread = this._spread();
     this._renderSummary(spread);
@@ -966,7 +1480,7 @@ export class OutbreakPanel {
     this._forecastList.replaceChildren(
       ...this._state.forecast.map((row, index) =>
         this._item(
-          `WITHIN ${row.within} H · ${row.name}${row.likelihood ? ` · ${row.likelihood}` : ''}${row.reason ? ` · ${row.reason}` : ''}`,
+          `WITHIN ${forecastWindowLabel(row.within)} · ${row.name}${row.likelihood ? ` · ${row.likelihood}` : ''}${row.reason ? ` · ${row.reason}` : ''}`,
           this._button('+ ADD', { outbreakForecast: String(index) }),
         ),
       ),
@@ -980,7 +1494,7 @@ export class OutbreakPanel {
       name: row.name,
       lat: row.lat,
       lon: row.lon,
-      source: `Future ${row.within} h`,
+      source: `Future ${forecastWindowLabel(row.within).toLowerCase()}`,
     });
     if (!location) return;
     if (this._state.locations.some((l) => l.id === location.id)) {
@@ -1113,6 +1627,9 @@ export class OutbreakPanel {
     this._traffic = null;
     this._trafficRetryAt = 0;
     this._epidemic = null;
+    this._state.epidemic = null;
+    this._dropFullEpidemic();
+    this._lastRequest = null;
     this._renderEpidemic();
     this._state.forecast = [];
     this._state.found = [];
@@ -1561,10 +2078,12 @@ export class OutbreakPanel {
   /* --------------------------------------------------------------------- */
 
   /**
-   * FIND FUTURE SPREAD LOCATIONS: a new global news search, then two requests to
-   * the chosen model: where it is most likely to be reported within 24 h,
-   * then (told those) where in the 24 h after. Each place named is placed by
-   * its airport, else by name, and drawn on the map.
+   * FIND FUTURE SPREAD LOCATIONS: a new global news search, then one request
+   * to the chosen model per window up to the chosen reach (24 h to 30 days;
+   * 30 days by default): where it is most likely to be reported within 24 h,
+   * then (told those) where in 24 to 48 h, then 48 h to 3 days, and so on to
+   * 7, 14 and 30 days. A window the model fails to answer is skipped. Each
+   * place named is placed by its airport, else by name, and drawn on the map.
    */
   async _futureSpread() {
     if (this._busy) {
@@ -1631,49 +2150,78 @@ export class OutbreakPanel {
               ),
           ]
         : [];
+      const horizon = cleanForecastHorizon(
+        this._futureDays?.value ?? this._state.futureHours,
+      );
+      this._state.futureHours = horizon;
+      const windows = forecastWindows(horizon);
       const forecast = [];
-      let within24 = [];
-      for (const within of OUTBREAK_FORECAST_WINDOWS) {
-        this._say(`FUTURE SPREAD · asking the model: within ${within} h…`);
-        const answer = await this._ask(
-          outbreakForecastQuestion(
-            within,
-            this._state.keywords,
-            this._state.profile,
-            { epidemic: epidemic.length > 0 },
-          ),
-          outbreakForecastScene({
-            locations,
-            spread,
-            speeds: this._state.speeds,
-            flights: this._state.scan?.flights || [],
-            futureFlights: this._flights().filter((f) => f.future),
-            candidates,
-            articles,
-            within24,
-            epidemic,
-          }),
+      const earlier = [];
+      const failed = [];
+      let firstError = null;
+      for (const [index, within] of windows.entries()) {
+        const label = forecastWindowLabel(within);
+        const from = forecastWindowStart(within);
+        this._say(
+          `FUTURE SPREAD · asking the model: ${from ? `${forecastWindowLabel(from)} to ` : 'within '}${label}${windows.length > 1 ? ` (${index + 1} of ${windows.length})` : ''}…`,
         );
-        this._log(`FUTURE SPREAD · WITHIN ${within} H · LLM`, answer);
+        let answer;
+        try {
+          answer = await this._ask(
+            outbreakForecastQuestion(
+              within,
+              this._state.keywords,
+              this._state.profile,
+              { epidemic: epidemic.length > 0, from },
+            ),
+            outbreakForecastScene({
+              locations,
+              spread,
+              speeds: this._state.speeds,
+              flights: this._state.scan?.flights || [],
+              futureFlights: this._flights().filter((f) => f.future),
+              candidates,
+              articles,
+              earlier,
+              epidemic,
+            }),
+          );
+        } catch (error) {
+          // One window that fails is skipped; the others still count.
+          firstError ??= error;
+          failed.push(label);
+          this._log(
+            `FUTURE SPREAD · WITHIN ${label}`,
+            `Skipped: ${error?.message || 'the model did not answer'}.`,
+          );
+          continue;
+        }
+        this._log(`FUTURE SPREAD · WITHIN ${label} · LLM`, answer);
         const rows = parseForecastLines(answer, within, [
           ...locations,
           ...forecast.map((f) => ({ name: f.name })),
         ]);
-        if (within === 24) within24 = rows;
+        earlier.push(...rows);
         for (const row of rows) {
           const placed = await this._placeForecast(row, byCode);
           if (placed) forecast.push(placed);
         }
       }
+      if (failed.length === windows.length) throw firstError;
       this._state.forecast = forecast;
       this._renderForecast();
       this._state.show = true;
       if (this._showBox) this._showBox.checked = true;
       this._refresh();
       this._send({ show: true });
-      const soon = forecast.filter((f) => f.within === 24).length;
+      const counts = windows
+        .filter((within) => !failed.includes(forecastWindowLabel(within)))
+        .map(
+          (within) =>
+            `${forecast.filter((f) => f.within === within).length} within ${forecastWindowLabel(within).toLowerCase()}`,
+        );
       this._say(
-        `FUTURE SPREAD DONE · ${soon} within 24 h · ${forecast.length - soon} within 48 h`,
+        `FUTURE SPREAD DONE · ${counts.join(' · ')}${failed.length ? ` · no answer for ${failed.map((l) => l.toLowerCase()).join(', ')}` : ''}`,
       );
     } catch (error) {
       this._say(error?.message || 'The future spread failed.');
@@ -1706,6 +2254,11 @@ export class OutbreakPanel {
       ? Number(this._epiDays.value)
       : this._state.epidemicDays;
     this._state.epidemicDays = days;
+    // The seed box as it stands (blank: the server derives one).
+    const seed = this._epiSeed
+      ? cleanSeed(this._epiSeed.value)
+      : this._state.epidemicSeed;
+    this._state.epidemicSeed = seed;
     this._save();
     this._setBusy('the epidemic model');
     // While it runs: RUNNING MODEL... on the button, with the seconds so far.
@@ -1728,6 +2281,32 @@ export class OutbreakPanel {
       const timer = controller
         ? globalThis.setTimeout(() => controller.abort(), EPIDEMIC_TIMEOUT_MS)
         : null;
+      const body = {
+        startMs: scan.startMs,
+        untilMs,
+        runs,
+        // Only when set: the server derives one from the inputs otherwise.
+        ...(seed === null ? {} : { seed }),
+        outbreakAirports: scan.airports || [],
+        locations: this._state.locations.map((l) => ({
+          id: l.id,
+          name: l.name,
+          lat: l.lat,
+          lon: l.lon,
+        })),
+        flights: (scan.flights || []).map((f) => ({
+          from: f.from.code,
+          to: f.to.code,
+          departMs: f.departMs,
+          arriveMs: f.arriveMs,
+          hop: f.hop,
+        })),
+        profile: this._state.profile,
+        // Rail travel (owner ruling 2026-10-12): at the box's train speed,
+        // and left out only with the train off.
+        speedKmh: this._state.speeds.train,
+        rail: this._state.shown?.train !== false,
+      };
       let response;
       try {
         response = await this._request(`${API}/epidemic`, {
@@ -1735,26 +2314,7 @@ export class OutbreakPanel {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
           ...(controller ? { signal: controller.signal } : {}),
-          body: JSON.stringify({
-            startMs: scan.startMs,
-            untilMs,
-            runs,
-            outbreakAirports: scan.airports || [],
-            locations: this._state.locations.map((l) => ({
-              id: l.id,
-              name: l.name,
-              lat: l.lat,
-              lon: l.lon,
-            })),
-            flights: (scan.flights || []).map((f) => ({
-              from: f.from.code,
-              to: f.to.code,
-              departMs: f.departMs,
-              arriveMs: f.arriveMs,
-              hop: f.hop,
-            })),
-            profile: this._state.profile,
-          }),
+          body: JSON.stringify(body),
         });
       } finally {
         if (timer !== null) globalThis.clearTimeout(timer);
@@ -1763,23 +2323,55 @@ export class OutbreakPanel {
       if (!response.ok || !Array.isArray(data?.places))
         throw new Error(data?.error || `HTTP ${response.status}`);
       this._epidemic = data;
+      this._lastRequest = { ...body, flightCount: body.flights.length };
+      // Kept across reloads when small enough; the full result stays here.
+      this._state.epidemic = trimmedEpidemic(data);
+      this._keepFullEpidemic(data);
+      if (!this._state.epidemic && !this._resultStore && !this._persistWarned) {
+        this._persistWarned = true;
+        console.warn(
+          `Outbreak: the epidemic result is over ${EPIDEMIC_PERSIST_MAX_BYTES.toLocaleString('en-US')} bytes even trimmed and is not kept across reloads.`,
+        );
+      }
       this._renderEpidemic();
+      const sensitivity = Array.isArray(data.sensitivity)
+        ? data.sensitivity
+        : [];
       this._log(
         'EPIDEMIC MODEL',
         [
           // Every place at risk, however many.
           ...epidemicLines(data, { max: Infinity }),
           `Network: ${data.network?.places ?? '?'} places, ${data.network?.flights ?? '?'} scanned flights and ${data.network?.routes ?? '?'} daily routes${data.network?.capped ? ' (capped)' : ''}. People: ${data.populationSource || 'unknown'}.`,
+          ...(data.railSource === 'pending'
+            ? [
+                'Rail: the world rail is still being found; rail travel joins the model once it is built.',
+              ]
+            : data.network?.railRoutes
+              ? [
+                  `Rail: ${count(data.network.railRoutes)} daily rail routes, ${count(data.railStats?.passengersPerDay)} travellers a day (${data.railSource}).`,
+                ]
+              : []),
+          ...(sensitivity.length
+            ? [
+                `What moves R most (one at a time): ${sensitivity
+                  .slice(0, 3)
+                  .map(
+                    (r) =>
+                      `${r.key} ${r.low}–${r.high} → R ${r.rLow}–${r.rHigh}`,
+                  )
+                  .join(' · ')}`,
+              ]
+            : []),
           'A scenario model for exploring, not a forecast of real cases.',
         ].join('\n'),
       );
       this._state.show = true;
       if (this._showBox) this._showBox.checked = true;
+      this._save();
       this._refresh();
       this._send({ show: true });
-      this._say(
-        `EPIDEMIC MODEL DONE · ${data.places.filter((pl) => !pl.origin).length} places at risk · ${data.runs} runs`,
-      );
+      this._say(this._epidemicStatus('DONE'));
     } catch (error) {
       this._say(
         error?.name === 'AbortError'
@@ -1796,19 +2388,191 @@ export class OutbreakPanel {
     }
   }
 
-  /** The model's headline and its likeliest places, under the button. */
+  /** The status line for a result: `how` is DONE or (saved result). */
+  _epidemicStatus(how) {
+    const data = this._epidemic;
+    const atRisk = data.places.filter((pl) => !pl.origin).length;
+    const limit =
+      data.stoppedAt?.run === 0
+        ? ` · time limit: stopped at day ${Math.ceil(data.stoppedAt.hour / 24)} of ${Math.ceil(data.hours / 24)} (try fewer days)`
+        : data.partial && Number.isFinite(data.runsAsked)
+          ? data.counterfactual && data.runs >= data.runsAsked
+            ? // Every main run finished; the comparison was cut.
+              ` · time limit: ${data.counterfactual.runs ?? 0} of ${data.runs} paired runs`
+            : ` · time limit: ${data.runs} of ${data.runsAsked} runs (try 50)`
+          : '';
+    const paired =
+      data.counterfactual?.runs > 0
+        ? ` · ${data.counterfactual.runs} paired runs × 2 arms`
+        : '';
+    return (
+      `EPIDEMIC MODEL ${how} · ${atRisk} places at risk · ${data.runs} runs` +
+      limit +
+      paired
+    );
+  }
+
+  /**
+   * The model's headline and every place at risk, under the buttons. The
+   * rows are built in a fragment and go in at once, so a long list is laid
+   * out once; the panel's own scroll carries it.
+   */
   _renderEpidemic() {
     this._renderCurve();
+    for (const button of [this._epiDownload, this._epiCsv])
+      if (button) button.disabled = !this._epidemic;
     if (!this._epiList || !this._doc) return;
     this._epiList.replaceChildren();
     if (!this._epidemic) return;
-    for (const line of epidemicLines(this._epidemic, { max: 10 }))
-      this._epiList.appendChild(this._item(line));
+    const fragment =
+      typeof this._doc.createDocumentFragment === 'function'
+        ? this._doc.createDocumentFragment()
+        : this._epiList;
+    const note = epidemicTrimmedNote(this._epidemic);
+    for (const line of [
+      ...epidemicLines(this._epidemic, { max: Infinity }),
+      ...(note ? [note] : []),
+    ])
+      fragment.appendChild(this._item(line));
+    if (fragment !== this._epiList) this._epiList.appendChild(fragment);
+  }
+
+  /** DOWNLOAD RESULTS: the result and the request that made it, as JSON. */
+  _downloadJson() {
+    const result = this._epidemic;
+    if (!result) return;
+    const request = this._lastRequest || {
+      startMs: result.startMs,
+      untilMs: result.untilMs,
+      runs: result.runs,
+      seed: result.seed,
+    };
+    this._download(
+      `outbreak-epidemic-${result.seed ?? 'auto'}.json`,
+      JSON.stringify(
+        epidemicExport(result, request, { now: this._now }),
+        null,
+        2,
+      ),
+      'application/json',
+    );
+    const note = epidemicTrimmedNote(result);
+    if (note) this._say(`DOWNLOAD RESULTS: ${note}`);
+  }
+
+  /** DOWNLOAD CSV: the places table, a blank line, then the daily totals. */
+  _downloadCsv() {
+    const result = this._epidemic;
+    if (!result) return;
+    this._download(
+      `outbreak-epidemic-${result.seed ?? 'auto'}.csv`,
+      `${epidemicPlacesCsv(result)}\r\n\r\n${epidemicTotalsCsv(result)}`,
+      'text/csv',
+    );
+    const note = epidemicTrimmedNote(result);
+    if (note) this._say(`DOWNLOAD CSV: ${note}`);
+  }
+
+  /**
+   * Keeps the whole result in IndexedDB under a fresh id, which the state
+   * (localStorage) names, so a reload takes back only this run's result.
+   */
+  _keepFullEpidemic(data) {
+    const id = this._now();
+    this._state.epidemicId = this._resultStore ? id : null;
+    if (!this._resultStore) return Promise.resolve(false);
+    let put;
+    try {
+      put = this._resultStore.put(OUTBREAK_STORAGE_KEY, { id, result: data });
+    } catch (error) {
+      put = Promise.reject(error);
+    }
+    return Promise.resolve(put).then(
+      () => true,
+      () => {
+        // Not kept whole: the trimmed copy is all a reload gets.
+        if (this._state.epidemicId === id) {
+          this._state.epidemicId = null;
+          this._save();
+        }
+        return false;
+      },
+    );
+  }
+
+  _dropFullEpidemic() {
+    this._state.epidemicId = null;
+    try {
+      Promise.resolve(this._resultStore?.delete(OUTBREAK_STORAGE_KEY)).catch(
+        () => {},
+      );
+    } catch {
+      /* Nothing kept. */
+    }
+  }
+
+  /**
+   * After a reload: the whole result from IndexedDB in place of the trimmed
+   * copy (or of none, when it was too big for localStorage). Only the run
+   * the state names, and only while no newer run or CLEAR came since.
+   */
+  async _restoreFullEpidemic() {
+    const id = this._state.epidemicId;
+    if (!this._resultStore || !Number.isFinite(id)) return false;
+    const before = this._epidemic;
+    let record;
+    try {
+      record = await this._resultStore.get(OUTBREAK_STORAGE_KEY);
+    } catch {
+      return false;
+    }
+    if (
+      record?.id !== id ||
+      !Array.isArray(record.result?.places) ||
+      this._state.epidemicId !== id ||
+      this._epidemic !== before
+    )
+      return false;
+    this._epidemic = record.result;
+    this._renderEpidemic();
+    this._send();
+    if (!before) this._say(this._epidemicStatus('(saved result)'));
+    return true;
+  }
+
+  /**
+   * Saves `text` as a file named `name` through a hidden link. Says so when
+   * this is not a browser (no Blob, no object URLs, no elements to make).
+   */
+  _download(name, text, type) {
+    const doc = this._doc;
+    if (
+      typeof Blob === 'undefined' ||
+      typeof URL?.createObjectURL !== 'function' ||
+      typeof doc?.createElement !== 'function'
+    ) {
+      this._say('Downloads need a browser.');
+      return false;
+    }
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const link = doc.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.hidden = true;
+    doc.body?.appendChild?.(link);
+    link.click?.();
+    link.remove?.();
+    // The browser has read the blob by then.
+    globalThis.setTimeout(() => URL.revokeObjectURL?.(url), 1000);
+    this._say(`Saved ${name}.`);
+    return true;
   }
 
   /**
    * The epidemic curve, day by day: infected (teal line, its 5–95 % band
-   * shaded), reported (orange) and deaths (red), on one scale.
+   * shaded), reported (orange), deaths (red), in hospital (blue) and in
+   * intensive care (dashed violet), on one scale; a white tick marks the
+   * median peak day.
    */
   _renderCurve() {
     const box = this._epiCurve;
@@ -1825,7 +2589,14 @@ export class OutbreakPanel {
     const W = 280;
     const H = 90;
     const pad = 4;
-    const max = Math.max(1, ...totals.map((t) => t.p95));
+    const max = Math.max(
+      1,
+      ...totals.map((t) => Math.max(t.p95, t.counterfactualP50 ?? 0)),
+    );
+    // Rt on its own 0 to RT_CURVE_MAX axis, when the result has it.
+    const hasRt = totals.some((t) => Number.isFinite(t.rtP50));
+    const yRt = (v) =>
+      H - pad - ((H - 2 * pad) * Math.min(v, RT_CURVE_MAX)) / RT_CURVE_MAX;
     const x = (i) =>
       pad +
       ((W - 2 * pad) * (totals.length === 1 ? 1 : i)) /
@@ -1846,7 +2617,9 @@ export class OutbreakPanel {
       width: '100%',
       height: H,
       role: 'img',
-      'aria-label': `Epidemic curve over ${totals.length} days: up to ${max.toLocaleString('en-US')} infected`,
+      'aria-label':
+        `Epidemic curve over ${totals.length} days: up to ${max.toLocaleString('en-US')} infected` +
+        (hasRt ? `; Rt line on a 0 to ${RT_CURVE_MAX} scale` : ''),
     });
     const band = [
       ...totals.map((t, i) => `${x(i).toFixed(1)},${y(t.p95).toFixed(1)}`),
@@ -1857,10 +2630,32 @@ export class OutbreakPanel {
     svg.appendChild(
       el('polygon', { points: band, fill: '#19e6b0', 'fill-opacity': 0.18 }),
     );
-    for (const [key, color] of [
+    // A result from before the hospital path draws flat lines, never NaN.
+    for (const [key, color, extra] of [
       ['p50', '#19e6b0'],
       ['reportedP50', '#ffb14a'],
       ['deathsP50', '#ff4a4a'],
+      ['hospitalP50', EPIDEMIC_CURVE_COLORS.hospital],
+      ['icuP50', EPIDEMIC_CURVE_COLORS.icu, { 'stroke-dasharray': '3 2' }],
+      // The second strain and the comparison run, only when the result has them.
+      ...(totals[0].strain2P50 !== undefined
+        ? [
+            [
+              'strain2P50',
+              EPIDEMIC_CURVE_COLORS.strain2,
+              { 'stroke-dasharray': '5 2' },
+            ],
+          ]
+        : []),
+      ...(totals.some((t) => Number.isFinite(t.counterfactualP50))
+        ? [
+            [
+              'counterfactualP50',
+              EPIDEMIC_CURVE_COLORS.compare,
+              { 'stroke-dasharray': '4 3', 'stroke-opacity': 0.7 },
+            ],
+          ]
+        : []),
     ])
       svg.appendChild(
         el('polyline', {
@@ -1868,14 +2663,102 @@ export class OutbreakPanel {
           fill: 'none',
           stroke: color,
           'stroke-width': 1.6,
+          ...(extra || {}),
         }),
       );
+    const summary = this._epidemic?.summary || {};
+    const peakDay = summary.peakDayP50;
+    if (Number.isFinite(peakDay)) {
+      const tick = x(Math.min(totals.length - 1, Math.max(0, peakDay - 1)));
+      svg.appendChild(
+        el('line', {
+          x1: tick.toFixed(1),
+          x2: tick.toFixed(1),
+          y1: pad,
+          y2: H - pad,
+          stroke: EPIDEMIC_CURVE_COLORS.peak,
+          'stroke-width': 0.8,
+          'stroke-opacity': 0.6,
+        }),
+      );
+    }
+    if (hasRt) {
+      // One line per stretch of days that have an Rt, then the Rt = 1 line.
+      let run = [];
+      const flush = () => {
+        if (run.length)
+          svg.appendChild(
+            el('polyline', {
+              points: run.join(' '),
+              fill: 'none',
+              stroke: EPIDEMIC_CURVE_COLORS.rt,
+              'stroke-width': 1.2,
+            }),
+          );
+        run = [];
+      };
+      totals.forEach((t, i) => {
+        if (Number.isFinite(t.rtP50))
+          run.push(`${x(i).toFixed(1)},${yRt(t.rtP50).toFixed(1)}`);
+        else flush();
+      });
+      flush();
+      svg.appendChild(
+        el('line', {
+          x1: pad,
+          x2: W - pad,
+          y1: yRt(1).toFixed(1),
+          y2: yRt(1).toFixed(1),
+          stroke: EPIDEMIC_CURVE_COLORS.rt,
+          'stroke-width': 0.6,
+          'stroke-dasharray': '2 3',
+          'stroke-opacity': 0.6,
+        }),
+      );
+    }
     box.appendChild(svg);
+    const count = (n) => (n ?? 0).toLocaleString('en-US');
     const legend = doc.createElement('p');
     legend.className = 'outbreak-epi-legend';
     const last = totals.at(-1);
-    legend.textContent = `Day ${totals.length}: infected ${last.p50.toLocaleString('en-US')} (5–95 %: ${last.p5.toLocaleString('en-US')}–${last.p95.toLocaleString('en-US')}) · reported ${(last.reportedP50 ?? 0).toLocaleString('en-US')} · deaths ${(last.deathsP50 ?? 0).toLocaleString('en-US')}`;
+    legend.textContent = `Day ${totals.length}: infected ${count(last.p50)} (5–95 %: ${count(last.p5)}–${count(last.p95)}) · reported ${count(last.reportedP50)} · deaths ${count(last.deathsP50)}`;
     box.appendChild(legend);
+    // The second legend: the peak and the hospital load, when the result has them.
+    if (Number.isFinite(peakDay) || last.hospitalP50 !== undefined) {
+      const parts = [];
+      if (Number.isFinite(peakDay)) {
+        const band =
+          Number.isFinite(summary.peakDayP5) &&
+          Number.isFinite(summary.peakDayP95)
+            ? ` (5–95 %: ${summary.peakDayP5}–${summary.peakDayP95})`
+            : '';
+        parts.push(`Peak day ${peakDay}${band}`);
+        if (Number.isFinite(summary.peakNewP50))
+          parts.push(`${count(summary.peakNewP50)} new a day`);
+      }
+      parts.push(`in hospital ${count(last.hospitalP50)}`);
+      parts.push(`intensive care ${count(last.icuP50)}`);
+      if (summary.overflowRuns > 0) {
+        const share = Math.round(summary.overflowRuns * 100);
+        parts.push(
+          Number.isFinite(summary.overflowDayP50)
+            ? `hospitals short of beds from ${timeLabel(this._epidemic.startMs + (summary.overflowDayP50 - 1) * 86_400_000)} in ${share} % of runs`
+            : `hospitals short of beds in ${share} % of runs`,
+        );
+      }
+      const peakLegend = doc.createElement('p');
+      peakLegend.className = 'outbreak-epi-legend';
+      peakLegend.textContent = parts.join(' · ');
+      box.appendChild(peakLegend);
+    }
+    // The third legend: Rt, the second strain and the comparison, when present.
+    const more = curveExtras(summary, this._epidemic?.counterfactual);
+    if (more.length) {
+      const extraLegend = doc.createElement('p');
+      extraLegend.className = 'outbreak-epi-legend';
+      extraLegend.textContent = more.join(' · ');
+      box.appendChild(extraLegend);
+    }
   }
 
   /** A forecast place on the map: by its airport, else by its name. */

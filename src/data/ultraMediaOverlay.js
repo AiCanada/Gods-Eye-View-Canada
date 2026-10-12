@@ -6,7 +6,8 @@
  * screen, not pictures drawn into the globe, so a video plays as a video and
  * each tile can be handled:
  *  - drag its top-right corner to resize it;
- *  - double-click it to make it bigger, and again to make it smaller;
+ *  - double-click it (double-tap on a phone) to make it bigger, and again
+ *    to make it smaller;
  *  - click it once to show it in the CCTV viewer on the right
  *    (ULTRA_MEDIA_VIEW_EVENT).
  * Each tile's size is kept per photo or video in this browser.
@@ -27,6 +28,17 @@ export const ULTRA_MEDIA_SCALES_KEY = 'ultra-media-scales';
 export const ULTRA_MEDIA_VIEW_EVENT = 'gev:ultra-media-view';
 /** How long a click waits to see whether it becomes a double-click. */
 const CLICK_WAIT_MS = 260;
+/** Two taps this close together are one double-tap. */
+const DOUBLE_TAP_SLOP_PX = 24;
+
+/** An event's time, on the same clock for taps, clicks and double-clicks. */
+function eventTime(event) {
+  if (Number.isFinite(event?.timeStamp) && event.timeStamp > 0)
+    return event.timeStamp;
+  return typeof performance !== 'undefined' && performance.now
+    ? performance.now()
+    : Date.now();
+}
 
 /** A usable size, or 1. */
 export function clampMediaScale(value) {
@@ -162,6 +174,8 @@ export function createUltraMediaOverlay({
     tile.appendChild(grip);
     const entry = { name, kind, tile, media, title, grip };
     sizeTile(entry);
+    // A double-tap is ours, not the browser's zoom. Looks are unchanged.
+    if (tile.style) tile.style.touchAction = 'manipulation';
     if (kind === 'clip') media.play?.()?.catch?.(() => {});
 
     // Top-right corner: drag to resize.
@@ -202,8 +216,38 @@ export function createUltraMediaOverlay({
 
     // Double-click: bigger, then smaller. One click: the CCTV viewer.
     let clickTimer = null;
+    let lastTap = null;
+    /** When a finger last double-tapped: its trailing click and dblclick are spent. */
+    let doubleTapAt = -Infinity;
+    const toggleSize = () => {
+      if (clickTimer !== null) windowRef?.clearTimeout?.(clickTimer);
+      clickTimer = null;
+      scales[name] = toggledMediaScale(scales[name]);
+      sizeTile(entry);
+      saveScales();
+    };
+    const spentByDoubleTap = (event) =>
+      eventTime(event) - doubleTapAt <= CLICK_WAIT_MS * 2;
+    // A phone may never send dblclick for a double-tap: count the taps.
+    tile.addEventListener('pointerup', (event) => {
+      if (event.pointerType !== 'touch' || event.target === grip) return;
+      const at = eventTime(event);
+      const near =
+        lastTap &&
+        at - lastTap.at <= CLICK_WAIT_MS &&
+        Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) <=
+          DOUBLE_TAP_SLOP_PX;
+      if (!near) {
+        lastTap = { at, x: event.clientX, y: event.clientY };
+        return;
+      }
+      lastTap = null;
+      doubleTapAt = at;
+      toggleSize();
+    });
     tile.addEventListener('click', (event) => {
       if (event.target === grip) return;
+      if (spentByDoubleTap(event)) return;
       if (clickTimer !== null) return;
       clickTimer = windowRef?.setTimeout?.(() => {
         clickTimer = null;
@@ -218,11 +262,9 @@ export function createUltraMediaOverlay({
     });
     tile.addEventListener('dblclick', (event) => {
       event.preventDefault();
-      if (clickTimer !== null) windowRef?.clearTimeout?.(clickTimer);
-      clickTimer = null;
-      scales[name] = toggledMediaScale(scales[name]);
-      sizeTile(entry);
-      saveScales();
+      // The double-tap already did it.
+      if (spentByDoubleTap(event)) return;
+      toggleSize();
     });
     return entry;
   };

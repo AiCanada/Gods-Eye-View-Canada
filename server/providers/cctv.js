@@ -77,6 +77,10 @@ import {
 } from './common/allowed-hosts.js';
 import { coalesceProxyRequest, readCappedResponseText } from './common/http.js';
 import { clientKey, makeRateLimiter } from './common/rate-limit.js';
+import {
+  isOwnerDeviceRequest,
+  sendOwnerRemovalRefusal,
+} from '../../src/keySetupCore.mjs';
 export { CCTV_FRAME_FETCH_TIMEOUT_MS, fetchCctvImageFromUpstream };
 
 const gzip = promisify(zlib.gzip);
@@ -428,6 +432,9 @@ export function cctvProxy({
    * Saved thumbnail alignments: GET lists them; POST /alignments/<id> saves one
    * ({lat, lon, bearingDeg}); DELETE /alignments/<id> forgets it. Writing
    * changes a tracked file, so it is same-origin only, exactly like a lookup.
+   * The owner's own device through the tailnet mirror may save one but never
+   * forget one: removing anything stored on the PC is done on the PC (owner
+   * ruling 2026-10-11).
    */
   const serveAlignments = async (req, res, url, allowedHosts, snapshot) => {
     const refuse = (status, error, extra = {}) =>
@@ -442,6 +449,11 @@ export function cctvProxy({
     }
     if (req.method !== 'POST' && req.method !== 'DELETE') {
       await refuse(405, 'POST or DELETE only', { Allow: 'POST, DELETE' });
+      return;
+    }
+    if (req.method === 'DELETE' && isOwnerDeviceRequest(req)) {
+      // Refused with no message: the saved alignment stays as it was.
+      sendOwnerRemovalRefusal(res);
       return;
     }
     const headers = req.headers || {};

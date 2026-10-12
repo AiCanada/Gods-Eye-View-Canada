@@ -90,13 +90,32 @@ export function createBrowserViteConfig({
     server: {
       host: host || 'localhost',
       port: parseInt(port, 10) || 4173,
+      // The port is a contract (Pinokio, the README and the supervisor all
+      // assume it): a busy port fails the start instead of silently moving
+      // to the next one. PORT= stays the way to choose another.
+      strictPort: true,
       // A wildcard bind only chooses interfaces; it never disables Vite's
       // Host-header check. LAN hostnames are added explicitly (see
       // build/allowedHosts.js); IP addresses are always accepted.
       allowedHosts: [...allowedHosts],
       // RuView is a separate checkout nested in this folder: this dev server
-      // never watches, scans or serves it.
-      watch: { ignored: ['**/RuView/**'] },
+      // never watches, scans or serves it. The rest are runtime output and
+      // caches (provider caches, logs, builds, QA captures, Ultra media and
+      // device recordings) that are never served as modules: watching them
+      // only costs handles and wakes the watcher on every write. Vite adds
+      // these to its own ignore list; public/ and config/*.json stay watched.
+      watch: {
+        ignored: [
+          '**/RuView/**',
+          '**/.gev-cache/**',
+          '**/.gev-logs/**',
+          '**/dist/**',
+          '**/qa-artifacts/**',
+          '**/qa-shots/**',
+          '**/config/ultra-media/**',
+          '**/config/device-recordings/**',
+        ],
+      },
       fs: {
         deny: [
           '.env',
@@ -105,6 +124,12 @@ export function createBrowserViteConfig({
           '**/.git/**',
           '**/ENVIRONMENT',
           '**/RuView/**',
+          // Runtime output: provider caches and the supervisor/realtime logs
+          // (process ids, launcher chain, absolute paths, provider stacks).
+          // Vite's static server does not skip dotfiles in dev mode, so these
+          // must be denied explicitly; the watch ignores above do not serve.
+          '**/.gev-cache/**',
+          '**/.gev-logs/**',
           // Private camera logins (also refused by that plugin's own guard,
           // which catches the spellings a pattern cannot).
           '**/private-cameras.json',

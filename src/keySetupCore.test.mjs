@@ -11,6 +11,7 @@ import {
   keySetupStatus,
   keySetupRequirement,
   knownKeySetupEnvVars,
+  keySetupUpdatesRemove,
   parseWindowsUserSid,
   upsertDotenvValues,
   validateKeySetupUpdates,
@@ -705,4 +706,258 @@ test('the bot swarms have POWER UP cards of their own: GROK BOT, its Chief of St
   for (const secret of ['xai-SECRET-1', 'aut_7Hq2', 'gbwh-SECRET-2', 'sk-SECRET-3', 'sand-SECRET-4']) {
     assert.equal(flat.includes(secret), false, secret);
   }
+});
+
+// Owner device through the tailnet mirror (owner ruling 2026-10-11): full
+// write access, except deleting or removing anything stored on the PC.
+const OWNER_TOKEN = 'a'.repeat(64);
+const MIRROR = 'http://100.64.0.1:4173';
+
+async function ownerGate() {
+  const core = await import('./keySetupCore.mjs');
+  core.setOwnerDeviceToken(OWNER_TOKEN);
+  const stamp = {
+    [core.OWNER_DEVICE_HEADER]: OWNER_TOKEN,
+    [core.OWNER_DEVICE_AUTHORITY_HEADER]: MIRROR,
+  };
+  const base = {
+    method: 'GET',
+    remoteAddress: '100.64.0.10',
+    hostHeader: '100.64.0.1:4173',
+    proxyHeaders: stamp,
+    env: {},
+  };
+  const write = {
+    ...base,
+    method: 'POST',
+    origin: MIRROR,
+    contentType: 'application/json',
+  };
+  return { core, stamp, base, write };
+}
+
+test('isTailnetIPv4 admits only 100.64.0.0/10 IPv4 literals', async () => {
+  const { isTailnetIPv4 } = await import('./keySetupCore.mjs');
+  assert.equal(isTailnetIPv4('100.64.0.1'), true);
+  assert.equal(isTailnetIPv4('100.127.255.254'), true);
+  assert.equal(isTailnetIPv4('100.63.0.1'), false);
+  assert.equal(isTailnetIPv4('100.128.0.1'), false);
+  assert.equal(isTailnetIPv4('10.0.0.1'), false);
+  assert.equal(isTailnetIPv4('::ffff:100.64.0.1'), false, 'mapped form is stripped by the caller');
+  assert.equal(isTailnetIPv4('100.64.0.256'), false);
+  assert.equal(isTailnetIPv4('100.64.0'), false);
+  assert.equal(isTailnetIPv4(' 100.64.0.1'), false);
+  assert.equal(isTailnetIPv4(''), false);
+});
+
+test('the owner device stamp admits reads and writes, never removals', async () => {
+  const { core, stamp, base, write } = await ownerGate();
+  const { admitKeySetupRequest } = core;
+  assert.equal(core.OWNER_DEVICE_REMOVAL_ERROR, undefined, 'no removal message is exported');
+  assert.equal(core.OWNER_DEVICE_REMOVAL_HEADER, 'x-gev-removal');
+  assert.deepEqual(core.OWNER_DEVICE_REMOVAL_BODY, { removal: 'pc-only' });
+  assert.equal(Object.isFrozen(core.OWNER_DEVICE_REMOVAL_BODY), true);
+  try {
+    assert.deepEqual(admitKeySetupRequest(base), { ok: true, ownerDevice: true }, 'stamped GET');
+    assert.deepEqual(admitKeySetupRequest({ ...base, method: 'HEAD' }), { ok: true, ownerDevice: true });
+    assert.deepEqual(admitKeySetupRequest(write), { ok: true, ownerDevice: true }, 'stamped POST with Origin and JSON');
+    assert.equal(admitKeySetupRequest({ ...write, method: 'PUT' }).ok, true);
+    assert.equal(admitKeySetupRequest({ ...write, method: 'PATCH' }).ok, true);
+    assert.equal(admitKeySetupRequest({ ...base, remoteAddress: '::ffff:100.64.0.10' }).ok, true, 'mapped tailnet socket');
+
+    assert.equal(admitKeySetupRequest({ ...write, origin: undefined }).status, 403, 'POST without Origin');
+    assert.equal(admitKeySetupRequest({ ...write, method: 'PUT', origin: '' }).status, 403, 'PUT without Origin');
+    assert.equal(admitKeySetupRequest({ ...write, origin: 'https://evil.example' }).status, 403, 'foreign Origin');
+    assert.equal(admitKeySetupRequest({ ...write, origin: 'http://localhost:4173' }).status, 403, 'the PC origin is not the mirror origin');
+    assert.equal(admitKeySetupRequest({ ...write, origin: MIRROR + '/x' }).status, 403, 'Origin with a path');
+    assert.equal(admitKeySetupRequest({ ...base, origin: 'https://evil.example' }).status, 403, 'a GET with a foreign Origin');
+    assert.equal(admitKeySetupRequest({ ...write, contentType: 'text/plain' }).status, 415, 'POST with text/plain');
+    assert.equal(admitKeySetupRequest({ ...write, method: 'PATCH', contentType: undefined }).status, 415);
+
+    // The removal rule: every DELETE, with or without Origin or body.
+    const removals = [
+      { ...base, method: 'DELETE' },
+      { ...write, method: 'DELETE' },
+      { ...write, method: 'delete' },
+      { ...write, method: 'DELETE', contentType: undefined, proxyHeaders: { ...stamp, 'content-length': '12' } },
+      { ...write, method: 'DELETE', origin: 'https://evil.example' },
+    ];
+    for (const request of removals) {
+      const verdict = admitKeySetupRequest(request);
+      assert.deepEqual(
+        verdict,
+        { ok: false, status: 403, removal: true },
+        'owner DELETE refused (' + request.method + ', origin ' + request.origin + ')',
+      );
+      assert.equal(Object.hasOwn(verdict, 'error'), false, 'no error text on a removal');
+    }
+
+    // Stamps that must not count.
+    assert.equal(admitKeySetupRequest({ ...write, hostHeader: 'evil.example:4173' }).status, 403, 'foreign Host (DNS rebinding)');
+    assert.equal(admitKeySetupRequest({ ...write, hostHeader: '100.64.0.1:4174' }).status, 403, 'Host on another port');
+    assert.equal(
+      admitKeySetupRequest({ ...write, proxyHeaders: { ...stamp, [core.OWNER_DEVICE_AUTHORITY_HEADER]: 'http://100.64.0.1:5173' } }).status,
+      403,
+      'authority for a different port',
+    );
+    const lan = admitKeySetupRequest({ ...write, remoteAddress: '192.168.1.20' });
+    assert.equal(lan.status, 403);
+    assert.match(lan.error, /answers only the machine running the server/);
+    const loopback = admitKeySetupRequest({ ...write, remoteAddress: '127.0.0.1' });
+    assert.equal(loopback.status, 403, 'a stamp on the loopback socket is not an owner device');
+    assert.match(loopback.error, /local hostnames/);
+    assert.equal(admitKeySetupRequest({ ...write, protocol: 'https:' }).ok, false, 'the mirror is http only');
+    assert.equal(admitKeySetupRequest({ ...write, proxyHeaders: { ...stamp, [core.OWNER_DEVICE_HEADER]: 'b'.repeat(64) } }).ok, false, 'wrong token');
+    assert.equal(admitKeySetupRequest({ ...write, proxyHeaders: { ...stamp, [core.OWNER_DEVICE_HEADER]: OWNER_TOKEN.slice(1) } }).ok, false, 'short token');
+    assert.equal(admitKeySetupRequest({ ...write, proxyHeaders: {} }).ok, false, 'no stamp');
+    assert.equal(
+      admitKeySetupRequest({ ...base, proxyHeaders: { [core.OWNER_DEVICE_READ_HEADER]: OWNER_TOKEN } }).ok,
+      false,
+      'the retired read-only stamp is not honoured',
+    );
+    const proxied = admitKeySetupRequest({ ...write, proxyHeaders: { ...stamp, 'x-forwarded-for': '1.2.3.4' } });
+    assert.equal(proxied.status, 403);
+    assert.match(proxied.error, /proxied/);
+    const sharing = admitKeySetupRequest({ ...write, env: { PINOKIO_SHARE_CLOUDFLARE: '1' } });
+    assert.equal(sharing.status, 403);
+    assert.match(sharing.error, /sharing/);
+    const sharingDelete = admitKeySetupRequest({ ...write, method: 'DELETE', env: { PINOKIO_SHARE_CLOUDFLARE: '1' } });
+    assert.match(sharingDelete.error, /sharing/, 'proxy and sharing refusals still come first');
+
+    core.setOwnerDeviceToken('');
+    assert.equal(admitKeySetupRequest(base).ok, false, 'token unset');
+    core.setOwnerDeviceToken('short');
+    assert.equal(admitKeySetupRequest({ ...base, proxyHeaders: { ...stamp, [core.OWNER_DEVICE_HEADER]: 'short' } }).ok, false, 'a short token turns it off');
+  } finally {
+    core.setOwnerDeviceToken('');
+  }
+});
+
+test('ownerDeviceAuthority accepts only an exact stamped tailnet authority', async () => {
+  const { core, stamp } = await ownerGate();
+  const { ownerDeviceAuthority, OWNER_DEVICE_AUTHORITY_HEADER } = core;
+  const input = { remoteAddress: '100.64.0.10', hostHeader: '100.64.0.1:4173', protocol: 'http:', headers: stamp };
+  try {
+    assert.equal(ownerDeviceAuthority(input), MIRROR);
+    for (const bad of [
+      MIRROR + '/',
+      MIRROR + '/path',
+      'http://user@100.64.0.1:4173',
+      'http://user:pw@100.64.0.1:4173',
+      MIRROR + '?q=1',
+      MIRROR + '#h',
+      'https://100.64.0.1:4173',
+      'http://100.64.0.1',
+      'http://192.168.1.20:4173',
+      'http://evil:1',
+      '',
+    ]) {
+      assert.equal(
+        ownerDeviceAuthority({ ...input, headers: { ...stamp, [OWNER_DEVICE_AUTHORITY_HEADER]: bad } }),
+        null,
+        'authority ' + JSON.stringify(bad) + ' refused',
+      );
+    }
+    assert.equal(ownerDeviceAuthority({ ...input, hostHeader: 'user@100.64.0.1:4173' }), null);
+    assert.equal(ownerDeviceAuthority({ ...input, hostHeader: '' }), null);
+    assert.equal(ownerDeviceAuthority({ ...input, remoteAddress: '100.128.0.1' }), null);
+  } finally {
+    core.setOwnerDeviceToken('');
+  }
+});
+
+test('isOwnerDeviceRequest reads a Node request and refuses proxied ones', async () => {
+  const { core, stamp } = await ownerGate();
+  const req = (headers, remoteAddress = '100.64.0.10', encrypted = false) => ({
+    headers: { host: '100.64.0.1:4173', ...headers },
+    socket: { remoteAddress, encrypted },
+  });
+  try {
+    assert.equal(core.isOwnerDeviceRequest(req(stamp)), true);
+    assert.equal(core.isOwnerDeviceRequest(req(stamp, '::ffff:100.64.0.10')), true);
+    assert.equal(core.isOwnerDeviceRequest(req({ ...stamp, 'x-forwarded-for': '1.2.3.4' })), false);
+    assert.equal(core.isOwnerDeviceRequest(req(stamp, '127.0.0.1')), false);
+    assert.equal(core.isOwnerDeviceRequest(req(stamp, '100.64.0.10', true)), false);
+    assert.equal(core.isOwnerDeviceRequest(req({})), false);
+    assert.equal(core.isOwnerDeviceRequest(undefined), false);
+  } finally {
+    core.setOwnerDeviceToken('');
+  }
+});
+
+test('the PC loopback path is unchanged: it may still remove', async () => {
+  const { core, stamp } = await ownerGate();
+  const { admitKeySetupRequest } = core;
+  const local = { remoteAddress: '127.0.0.1', hostHeader: 'localhost:4173', env: {} };
+  try {
+    assert.deepEqual(admitKeySetupRequest({ ...local, method: 'DELETE' }), { ok: true, ownerDevice: false }, 'loopback DELETE without Origin or body, as today');
+    assert.deepEqual(
+      admitKeySetupRequest({ ...local, method: 'DELETE', origin: 'http://localhost:4173', contentType: 'application/json', proxyHeaders: { 'content-length': '12' } }),
+      { ok: true, ownerDevice: false },
+      'loopback DELETE with Origin and JSON body',
+    );
+    assert.equal(admitKeySetupRequest({ ...local, method: 'DELETE', origin: 'https://evil.example' }).status, 403, 'loopback DELETE with a foreign Origin');
+    assert.deepEqual(admitKeySetupRequest({ ...local, method: 'DELETE', proxyHeaders: stamp }), { ok: true, ownerDevice: false }, 'a stamp on loopback changes nothing');
+    assert.deepEqual(admitKeySetupRequest({ ...local, method: 'GET' }), { ok: true, ownerDevice: false });
+  } finally {
+    core.setOwnerDeviceToken('');
+  }
+});
+
+test('the owner phone may save POWER UP keys but never clear one', () => {
+  assert.equal(keySetupUpdatesRemove({ A: 'x', B: null }), true);
+  assert.equal(keySetupUpdatesRemove({ A: 'x' }), false);
+  assert.equal(keySetupUpdatesRemove({}), false);
+  const source = readFileSync(new URL('../server/standalone/key-setup.js', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /admission\.ownerDevice === true &&\s*keySetupUpdatesRemove\(verdict\.updates\)\s*\)\s*\{\s*return refuseOwnerRemoval\(res\)/,
+  );
+  assert.match(source, /const refuseOwnerRemoval = \(res\) =>\s*sendOwnerRemovalRefusal\(res,/);
+  // A refused admission that is an owner removal says nothing either.
+  assert.match(source, /admission\.removal === true\s*\?\s*refuseOwnerRemoval\(res\)/);
+  assert.doesNotMatch(source, /OWNER_DEVICE_REMOVAL_ERROR|Removing is done on the PC/);
+});
+
+test('an owner removal is refused with no message: 403, the marker header and the exact body', async () => {
+  const core = await import('./keySetupCore.mjs');
+  const fakeResponse = () => {
+    const sent = { status: 0, headers: null, body: '' };
+    return {
+      sent,
+      writeHead(status, headers) {
+        sent.status = status;
+        sent.headers = headers;
+      },
+      end(body) {
+        sent.body = String(body);
+      },
+    };
+  };
+  const plain = fakeResponse();
+  core.sendOwnerRemovalRefusal(plain);
+  assert.equal(plain.sent.status, 403);
+  assert.deepEqual(plain.sent.headers, {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+    'x-gev-removal': 'pc-only',
+  });
+  assert.equal(plain.sent.body, '{"removal":"pc-only"}');
+  assert.equal(Object.hasOwn(JSON.parse(plain.sent.body), 'error'), false);
+
+  // A route's own headers ride along but cannot change the type, caching or marker.
+  const extra = fakeResponse();
+  core.sendOwnerRemovalRefusal(extra, {
+    'X-Frame-Options': 'DENY',
+    'content-type': 'text/plain',
+    'Cache-Control': 'public, max-age=60',
+    'X-GEV-Removal': 'other',
+  });
+  assert.deepEqual(extra.sent.headers, {
+    'X-Frame-Options': 'DENY',
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+    'x-gev-removal': 'pc-only',
+  });
+  assert.equal(extra.sent.body, '{"removal":"pc-only"}');
 });

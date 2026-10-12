@@ -467,6 +467,172 @@ export function isSharingEnabled(env = {}) {
 }
 
 /**
+ * The owner's own phone or tablet through the tailnet dashboard (Mirror of PC
+ * GEVC on Cell). That listener answers only on this machine's tailnet IPv4
+ * address, asks Tailscale who the caller is, and only for a device signed in
+ * as this machine's owner does it stamp the request with two headers: this
+ * process's in-memory token and the listener's own authority
+ * (`http://<tailnet-ip>:<port>`, built from the listener, never the request).
+ * It strips any copy a caller sent before deciding, so the stamp is set only
+ * by the mirror. Writes from the owner device still need an exact Origin and a
+ * JSON body; removing anything stored on this machine stays PC-only (owner
+ * ruling 2026-10-11: "full write access - except delete or remove").
+ */
+export const OWNER_DEVICE_HEADER = 'x-gev-owner-device';
+export const OWNER_DEVICE_AUTHORITY_HEADER = 'x-gev-owner-device-authority';
+/**
+ * An owner device's removal is refused without a message (owner ruling
+ * 2026-10-11: "no message"): 403, this header and this exact body, never an
+ * `error` field, so the phone can leave the item as it is and say nothing.
+ */
+export const OWNER_DEVICE_REMOVAL_HEADER = 'x-gev-removal';
+export const OWNER_DEVICE_REMOVAL_BODY = Object.freeze({ removal: 'pc-only' });
+
+/**
+ * Answer an owner device's removal: 403 with OWNER_DEVICE_REMOVAL_HEADER and
+ * OWNER_DEVICE_REMOVAL_BODY, never any error text. `headers` are a route's
+ * own extra headers (security headers, say); they cannot change the type,
+ * the caching or the marker.
+ * @param {import('node:http').ServerResponse} res
+ * @param {Record<string, string>} [headers]
+ */
+export function sendOwnerRemovalRefusal(res, headers = {}) {
+  const fixed = new Set([
+    'content-type',
+    'cache-control',
+    OWNER_DEVICE_REMOVAL_HEADER,
+  ]);
+  const extra = Object.fromEntries(
+    Object.entries(headers || {}).filter(
+      ([name]) => !fixed.has(String(name).toLowerCase()),
+    ),
+  );
+  res.writeHead(403, {
+    ...extra,
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+    [OWNER_DEVICE_REMOVAL_HEADER]: OWNER_DEVICE_REMOVAL_BODY.removal,
+  });
+  res.end(JSON.stringify(OWNER_DEVICE_REMOVAL_BODY));
+}
+
+/**
+ * The read-only stamp the mirror used before full write access. The gate no
+ * longer honours it; the name stays so the mirror can keep stripping it.
+ * @deprecated use OWNER_DEVICE_HEADER
+ */
+export const OWNER_DEVICE_READ_HEADER = 'x-gev-owner-device-read';
+
+let ownerDeviceToken = '';
+/** Set by the tailnet dashboard at start-up; a short or empty token turns it off. */
+export function setOwnerDeviceToken(token) {
+  ownerDeviceToken =
+    typeof token === 'string' && token.length >= 32 ? token : '';
+}
+/** @deprecated use setOwnerDeviceToken */
+export const setOwnerDeviceReadToken = setOwnerDeviceToken;
+
+/** True for an address in Tailscale's 100.64.0.0/10 range. */
+export function isTailnetIPv4(address) {
+  const text = String(address || '');
+  if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(text)) return false;
+  const parts = text.split('.').map(Number);
+  if (parts.some((n) => n > 255)) return false;
+  return parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127;
+}
+
+function ownerTokenMatches(value) {
+  if (
+    !ownerDeviceToken ||
+    typeof value !== 'string' ||
+    value.length !== ownerDeviceToken.length
+  )
+    return false;
+  let diff = 0;
+  for (let i = 0; i < value.length; i++)
+    diff |= value.charCodeAt(i) ^ ownerDeviceToken.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * The mirror's origin (`http://<tailnet-ip>:<port>`) when this is a request
+ * the mirror stamped for the owner's device, else null. Every one of these
+ * must hold: the token matches; the socket is a tailnet IPv4 address; the
+ * scheme is http; the authority header is exactly `http://<100.64/10>:<port>`
+ * with no user, path, query or hash; and the request's own Host names that
+ * same authority (a DNS-rebinding page carries a foreign Host and fails).
+ */
+export function ownerDeviceAuthority({
+  remoteAddress,
+  hostHeader,
+  protocol = 'http:',
+  headers = {},
+} = {}) {
+  if (!ownerTokenMatches(headers?.[OWNER_DEVICE_HEADER])) return null;
+  const socket = String(remoteAddress || '').replace(/^::ffff:/i, '');
+  if (!isTailnetIPv4(socket)) return null;
+  if (String(protocol || '').toLowerCase() !== 'http:') return null;
+  const stamped = headers?.[OWNER_DEVICE_AUTHORITY_HEADER];
+  if (
+    typeof stamped !== 'string' ||
+    !/^http:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}$/.test(stamped)
+  )
+    return null;
+  let authority;
+  try {
+    const parsed = new URL(stamped);
+    if (
+      parsed.username ||
+      parsed.password ||
+      parsed.pathname !== '/' ||
+      parsed.search ||
+      parsed.hash ||
+      !isTailnetIPv4(parsed.hostname)
+    )
+      return null;
+    authority = parsed.origin;
+  } catch {
+    return null;
+  }
+  const host = String(hostHeader || '')
+    .trim()
+    .toLowerCase();
+  if (!host || /[\s/?#@\\]/.test(host)) return null;
+  try {
+    return new URL(`http://${host}`).origin === authority ? authority : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The same test for gates that hold a Node request rather than the core's
+ * fields. A request carrying proxy headers is never an owner device.
+ * @param {import('node:http').IncomingMessage} req
+ */
+export function isOwnerDeviceRequest(req) {
+  const headers = req?.headers || {};
+  if (hasProxySignals(headers)) return false;
+  return (
+    ownerDeviceAuthority({
+      remoteAddress: req?.socket?.remoteAddress,
+      hostHeader: headers.host,
+      protocol: req?.socket?.encrypted ? 'https:' : 'http:',
+      headers,
+    }) !== null
+  );
+}
+
+/** Whether the request headers announce a body. */
+function requestHasBody(headers = {}) {
+  const length = Number(String(headers['content-length'] ?? '').trim());
+  return (
+    (Number.isFinite(length) && length > 0) ||
+    String(headers['transfer-encoding'] ?? '').trim() !== ''
+  );
+}
+
+/**
  * The admission gate for the Provider Settings endpoints — pure, exported so
  * every refusal below is pinned by a unit assertion rather than a review note.
  *
@@ -475,6 +641,11 @@ export function isSharingEnabled(env = {}) {
  *    outright — a credential-writing endpoint has no business existing on a
  *    shared instance, and tunnel traffic reaches the server FROM loopback, so
  *    the socket check below cannot carry that boundary alone;
+ *  - owner device: the mirror's stamp (see ownerDeviceAuthority) stands in
+ *    for the loopback socket and local Host. It may read and write, but every
+ *    DELETE is refused with `removal: true` and no error text (removing is
+ *    done on the PC; answer it with sendOwnerRemovalRefusal), and any other
+ *    method but GET/HEAD needs an exact Origin and, with a body, JSON;
  *  - loopback socket: refuses LAN peers when the server is bound wide;
  *  - local Host header: tunnel and DNS-rebinding traffic carries a foreign
  *    Host even when the socket says loopback;
@@ -485,34 +656,8 @@ export function isSharingEnabled(env = {}) {
  *    preflight this server never answers, closing the simple-request CSRF
  *    write primitive.
  *
- * @returns {{ok: true} | {ok: false, status: number, error: string}}
+ * @returns {{ok: true, ownerDevice: boolean} | {ok: false, status: number, error: string} | {ok: false, status: 403, removal: true}}
  */
-/**
- * Read access for the owner's own phone or tablet through the tailnet
- * dashboard (Mirror of PC GEVC on Cell). That listener stamps a request with
- * this process's token only after Tailscale confirms the caller is signed in
- * as this machine's owner, only for a GET to a status read, and strips any
- * copy a caller sent. The token lives in memory only; changes stay PC-only.
- */
-export const OWNER_DEVICE_READ_HEADER = 'x-gev-owner-device-read';
-let ownerDeviceReadToken = '';
-/** Set by the tailnet dashboard at start-up; a short or empty token turns it off. */
-export function setOwnerDeviceReadToken(token) {
-  ownerDeviceReadToken =
-    typeof token === 'string' && token.length >= 32 ? token : '';
-}
-function ownerDeviceRead(method, headers) {
-  if (!ownerDeviceReadToken || String(method || '').toUpperCase() !== 'GET')
-    return false;
-  const value = headers?.[OWNER_DEVICE_READ_HEADER];
-  if (typeof value !== 'string' || value.length !== ownerDeviceReadToken.length)
-    return false;
-  let diff = 0;
-  for (let i = 0; i < value.length; i++)
-    diff |= value.charCodeAt(i) ^ ownerDeviceReadToken.charCodeAt(i);
-  return diff === 0;
-}
-
 export function admitKeySetupRequest({
   method,
   remoteAddress,
@@ -551,35 +696,55 @@ export function admitKeySetupRequest({
       error: 'Provider Settings is disabled while sharing is enabled',
     };
   }
-  // The owner's own phone, confirmed by Tailscale, may read (never change).
-  if (ownerDeviceRead(method, proxyHeaders))
-    return { ok: true, ownerDevice: true };
-  if (!LOOPBACK_ADDRESSES.has(String(remoteAddress || ''))) {
-    return {
-      ok: false,
-      status: 403,
-      error: 'Provider Settings answers only the machine running the server',
-    };
+  const verb = String(method || '').toUpperCase();
+  // The owner's own phone, stamped by the mirror after Tailscale confirmed it.
+  const owner = ownerDeviceAuthority({
+    remoteAddress,
+    hostHeader,
+    protocol,
+    headers: proxyHeaders,
+  });
+  let authority = owner;
+  if (owner) {
+    // Full write access, except removing anything stored on the PC. No
+    // error text: the caller answers with sendOwnerRemovalRefusal.
+    if (verb === 'DELETE') {
+      return { ok: false, status: 403, removal: true };
+    }
+  } else {
+    if (!LOOPBACK_ADDRESSES.has(String(remoteAddress || ''))) {
+      return {
+        ok: false,
+        status: 403,
+        error: 'Provider Settings answers only the machine running the server',
+      };
+    }
+    authority = localAuthority(hostHeader, protocol);
+    if (!authority) {
+      return {
+        ok: false,
+        status: 403,
+        error: 'Provider Settings answers only local hostnames',
+      };
+    }
   }
-  const authority = localAuthority(hostHeader, protocol);
-  if (!authority) {
-    return {
-      ok: false,
-      status: 403,
-      error: 'Provider Settings answers only local hostnames',
-    };
-  }
-  if (
-    method === 'POST' &&
-    (origin === undefined || origin === null || origin === '')
-  ) {
+  const originMissing =
+    origin === undefined || origin === null || origin === '';
+  if (originMissing && !owner && method === 'POST') {
     return {
       ok: false,
       status: 403,
       error: 'Provider Settings requires an exact local Origin',
     };
   }
-  if (origin !== undefined && origin !== null && origin !== '') {
+  if (originMissing && owner && verb !== 'GET' && verb !== 'HEAD') {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Provider Settings requires an exact Origin',
+    };
+  }
+  if (!originMissing) {
     let parsedOrigin;
     try {
       parsedOrigin = new URL(String(origin));
@@ -601,8 +766,14 @@ export function admitKeySetupRequest({
       };
     }
   }
+  const needsJson = owner
+    ? verb === 'POST' ||
+      verb === 'PUT' ||
+      verb === 'PATCH' ||
+      (verb !== 'GET' && verb !== 'HEAD' && requestHasBody(proxyHeaders))
+    : method === 'POST';
   if (
-    method === 'POST' &&
+    needsJson &&
     !String(contentType || '')
       .toLowerCase()
       .startsWith('application/json')
@@ -613,7 +784,7 @@ export function admitKeySetupRequest({
       error: 'Content-Type must be application/json',
     };
   }
-  return { ok: true };
+  return { ok: true, ownerDevice: !!owner };
 }
 
 /** @returns {Set<string>} every env var the panel is allowed to write. */
@@ -870,6 +1041,14 @@ export function keySetupStatus(env = {}) {
  * template state for that key.
  * @param {unknown} body Parsed JSON from the request.
  */
+/**
+ * True when validated updates would remove a stored key (a null value comments
+ * it out of the store). The owner's phone may save keys but never remove one.
+ */
+export function keySetupUpdatesRemove(updates) {
+  return Object.values(updates || {}).some((value) => value === null);
+}
+
 export function validateKeySetupUpdates(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return {

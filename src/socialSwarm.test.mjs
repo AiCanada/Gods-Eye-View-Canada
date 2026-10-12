@@ -35,6 +35,11 @@ import {
   bindLocalIntegrityRoot,
   noteLocalProvidersSaved,
 } from '../server/shared/localIntegrity.mjs';
+import {
+  OWNER_DEVICE_AUTHORITY_HEADER,
+  OWNER_DEVICE_HEADER,
+  setOwnerDeviceToken,
+} from './keySetupCore.mjs';
 
 const NOW = new Date('2026-10-01T15:00:00.000Z');
 
@@ -1417,7 +1422,7 @@ const SWEEP = {
   body: { place: 'Halifax', nearestCity: 'Halifax' },
 };
 
-test("computer: only this computer's own page may send the token", async (t) => {
+test("computer: only this computer's own page or the owner phone may send the token", async (t) => {
   withEnv(t, GATEWAY_ENV);
   const sent = fakeGateway(t, {
     roster: [{ id: 'a', name: 'Chief of Staff' }],
@@ -1430,6 +1435,51 @@ test("computer: only this computer's own page may send the token", async (t) => 
   });
   assert.equal(proxied.status, 403);
   assert.equal(sent.length, 0);
+});
+
+test('computer: the owner phone, stamped by the tailnet mirror, runs the hand-off on the PC', async (t) => {
+  withEnv(t, GATEWAY_ENV);
+  const OWNER_TOKEN = 'f'.repeat(64);
+  const MIRROR = 'http://100.64.0.1:4173';
+  setOwnerDeviceToken(OWNER_TOKEN);
+  t.after(() => setOwnerDeviceToken(''));
+  fakeGateway(t, {
+    roster: [{ id: 'a', name: 'Chief of Staff' }],
+    steps: [{ busy: false, tail: 'X:\n14:05 · harbour · police' }],
+  });
+  // Placeholder tailnet addresses: the mirror's Host, Origin and stamp.
+  const phone = {
+    host: '100.64.0.1:4173',
+    origin: MIRROR,
+    'content-type': 'application/json',
+    [OWNER_DEVICE_HEADER]: OWNER_TOKEN,
+    [OWNER_DEVICE_AUTHORITY_HEADER]: MIRROR,
+  };
+  const answer = await pumped(t, route(), {
+    ...SWEEP,
+    headers: phone,
+    remoteAddress: '100.64.0.10',
+  });
+  assert.equal(answer.status, 200, answer.text);
+  assert.match(answer.json().text, /harbour · police/);
+  const { [OWNER_DEVICE_HEADER]: _token, ...unstamped } = phone;
+  const stranger = await call(route(), {
+    ...SWEEP,
+    headers: unstamped,
+    remoteAddress: '100.64.0.10',
+  });
+  assert.equal(stranger.status, 403);
+  // A DELETE from the phone is a removal: refused with no message.
+  const removal = await call(route(), {
+    ...SWEEP,
+    method: 'DELETE',
+    headers: phone,
+    remoteAddress: '100.64.0.10',
+  });
+  assert.equal(removal.status, 403);
+  assert.equal(removal.headers['x-gev-removal'], 'pc-only');
+  assert.equal(removal.text, '{"removal":"pc-only"}');
+  assert.equal(Object.hasOwn(removal.json(), 'error'), false);
 });
 
 test('computer: a BOT name that is not there is a miss, never another bot', async (t) => {

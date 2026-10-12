@@ -17,6 +17,12 @@ import {
 } from '../server/shared/roadCctvKeys.mjs';
 import { roadCctvKeysProxy } from '../server/providers/roadCctvKeys.js';
 import {
+  OWNER_DEVICE_AUTHORITY_HEADER,
+  OWNER_DEVICE_HEADER,
+  OWNER_DEVICE_REMOVAL_HEADER,
+  setOwnerDeviceToken,
+} from './keySetupCore.mjs';
+import {
   fetchCctvImageFromUpstream,
   setRoadCctvKeysRoot,
   setRoadCctvSiteSource,
@@ -187,6 +193,8 @@ function call(
     body = '',
     origin = 'http://localhost:4173',
     remoteAddress = '127.0.0.1',
+    host = 'localhost:4173',
+    headers = {},
   } = {},
 ) {
   return new Promise((resolve, reject) => {
@@ -195,20 +203,24 @@ function call(
       method,
       url,
       headers: {
-        host: 'localhost:4173',
+        host,
         origin,
         'content-type': 'application/json',
+        ...headers,
       },
       socket: { remoteAddress },
     });
     const res = {
       statusCode: 200,
-      writeHead(status) {
+      headers: {},
+      writeHead(status, headers = {}) {
         this.statusCode = status;
+        this.headers = headers;
       },
       end(payload = '') {
         resolve({
           status: this.statusCode,
+          headers: this.headers,
           body: String(payload),
           json: () => JSON.parse(String(payload)),
         });
@@ -249,6 +261,81 @@ test('the route saves from this machine and page only, and never answers with a 
     });
     assert.equal(removed.json().keys.length, 0);
   } finally {
+    setRoadCctvKeysRoot(process.cwd());
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// The owner's own phone through the tailnet mirror: a tailnet socket, the
+// mirror's Host and Origin, and the mirror's stamp (placeholder addresses).
+const OWNER_TOKEN = 'd'.repeat(64);
+const MIRROR = 'http://100.64.0.1:4173';
+const fromOwnerPhone = (options = {}) => ({
+  remoteAddress: '100.64.0.10',
+  host: '100.64.0.1:4173',
+  origin: MIRROR,
+  headers: {
+    [OWNER_DEVICE_HEADER]: OWNER_TOKEN,
+    [OWNER_DEVICE_AUTHORITY_HEADER]: MIRROR,
+  },
+  ...options,
+});
+
+test('the owner phone adds and edits road CCTV keys but never removes one; the PC still removes', async () => {
+  const root = tempRoot();
+  setOwnerDeviceToken(OWNER_TOKEN);
+  try {
+    const routes = new Map();
+    roadCctvKeysProxy({ sourceRoot: root }).configureServer({
+      middlewares: { use: (route, handler) => routes.set(route, handler) },
+    });
+    const handler = routes.get('/api/road-cctv-keys');
+    const added = await call(
+      handler,
+      fromOwnerPhone({
+        method: 'POST',
+        body: JSON.stringify({ host: '511ga.org', apiKey: KEY }),
+      }),
+    );
+    assert.equal(added.status, 200, added.body);
+    assert.equal(added.body.includes(KEY), false);
+    const id = added.json().id;
+    const edited = await call(
+      handler,
+      fromOwnerPhone({
+        method: 'POST',
+        body: JSON.stringify({ id, host: '511ga.org', label: 'Georgia' }),
+      }),
+    );
+    assert.equal(edited.status, 200, edited.body);
+    assert.equal(edited.json().keys[0].label, 'Georgia');
+    const listed = await call(handler, fromOwnerPhone());
+    assert.equal(listed.status, 200, listed.body);
+    assert.equal(listed.json().keys.length, 1);
+    const refused = await call(
+      handler,
+      fromOwnerPhone({ method: 'DELETE', body: JSON.stringify({ id }) }),
+    );
+    // Refused with no message: the marker header and the exact body.
+    assert.equal(refused.status, 403);
+    assert.equal(refused.headers[OWNER_DEVICE_REMOVAL_HEADER], 'pc-only');
+    assert.equal(refused.body, '{"removal":"pc-only"}');
+    assert.equal(Object.hasOwn(refused.json(), 'error'), false);
+    assert.equal(readRoadCctvKeys(root).length, 1, 'the key is still saved');
+    // A phone without the mirror's stamp is still refused outright.
+    const unstamped = await call(
+      handler,
+      fromOwnerPhone({ headers: {}, method: 'POST', body: '{}' }),
+    );
+    assert.equal(unstamped.status, 403);
+    const removed = await call(handler, {
+      method: 'DELETE',
+      body: JSON.stringify({ id }),
+    });
+    assert.equal(removed.status, 200, removed.body);
+    assert.equal(removed.json().keys.length, 0);
+  } finally {
+    setOwnerDeviceToken('');
     setRoadCctvKeysRoot(process.cwd());
     fs.rmSync(root, { recursive: true, force: true });
   }

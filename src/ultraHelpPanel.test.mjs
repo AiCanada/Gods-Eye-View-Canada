@@ -7,7 +7,10 @@ import {
   paintMedia,
   splitUltraHandout,
   ultraNeedsLine,
+  ultraPostRemoves,
 } from './ultraHelpPanel.js';
+import { pendingOwnerRemovals } from './ui/ownerRemoval.js';
+import { ultraOwnerRemoval } from '../server/providers/ultra-help.js';
 import {
   DEVICE_FEEDS_CHANGED_EVENT,
   DEVICE_FEEDS_FOCUS_EVENT,
@@ -4401,6 +4404,269 @@ test('GROK BOT SWARM with no Grok Bot key opens Grok Bot and keeps the task in t
       /GROK BOT SWARM · Chief of Staff/,
     );
     assert.match(byId('ultra-swarm-status').textContent, /GROK BOT OPENED/);
+  } finally {
+    handle.destroy();
+  }
+});
+
+/* Removing is done on the PC: the owner's phone gets 403, the header
+ * X-GEV-Removal: pc-only and {"removal":"pc-only"}, and no text at all. */
+const pcOnlyRemoval = () =>
+  new Response(JSON.stringify({ removal: 'pc-only' }), {
+    status: 403,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-GEV-Removal': 'pc-only',
+    },
+  });
+
+test('the owner phone: a refused contact removal says nothing and keeps the row; another refusal still says why', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const status = {
+    unread: 0,
+    inbox: [],
+    tokens: [],
+    packages: [],
+    contacts: [
+      {
+        id: 'c-0000000000000001',
+        label: 'Ann',
+        number: '+15065550122',
+        kind: 'sms',
+      },
+    ],
+  };
+  let removeAnswer = pcOnlyRemoval;
+  const posts = [];
+  const fetchImpl = async (url, options = {}) => {
+    if (url === '/api/ultra-help/contacts') {
+      posts.push(JSON.parse(options.body));
+      return removeAnswer();
+    }
+    return { ok: true, json: async () => structuredClone(status) };
+  };
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef: fakeWindow(),
+  });
+  try {
+    await settle();
+    await settle();
+    const row = () =>
+      byId('ultra-contacts').querySelector('[data-ultra-remove]');
+    assert.ok(row(), 'the contact is listed');
+    const line = byId('ultra-status').textContent;
+    panel.dispatch('click', { target: row() });
+    await settle();
+    await settle();
+    assert.deepEqual(posts, [{ remove: true, id: 'c-0000000000000001' }]);
+    assert.equal(byId('ultra-status').textContent, line, 'no status line');
+    assert.doesNotMatch(
+      byId('ultra-status').textContent,
+      /Removing is done on the PC|Request refused|403/,
+    );
+    assert.ok(row(), 'the contact stays');
+    /* Any other refusal keeps its message. */
+    removeAnswer = () =>
+      new Response(JSON.stringify({ error: 'No such contact' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    panel.dispatch('click', { target: row() });
+    await settle();
+    await settle();
+    assert.equal(byId('ultra-status').textContent, 'No such contact');
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('the owner phone: a refused DELETE of photos and videos is a quiet no-op; ticks and DELETE ALL stay', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const add = (tag, id) => {
+    const node = documentRef.createElement(tag);
+    node.id = id;
+    panel.appendChild(node);
+    return node;
+  };
+  add('ul', 'ultra-media');
+  const all = add('input', 'ultra-media-delete-all');
+  const button = add('button', 'ultra-media-delete');
+  const items = [
+    { name: 'photo-20261008T120000Z-1.jpg', kind: 'photo', at: 2, bytes: 9 },
+    { name: 'clip-20261008T120100Z-2.webm', kind: 'clip', at: 1, bytes: 9 },
+  ];
+  let deleteAnswer = pcOnlyRemoval;
+  let mediaLoads = 0;
+  const deletes = [];
+  const fetchImpl = async (url, options = {}) => {
+    if (url === '/api/ultra-help/media') {
+      mediaLoads += 1;
+      return { ok: true, json: async () => ({ items }) };
+    }
+    if (url === '/api/ultra-help/media/delete') {
+      deletes.push(JSON.parse(options.body));
+      return deleteAnswer();
+    }
+    return { ok: true, json: async () => ({ tokens: [], packages: [] }) };
+  };
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef: fakeWindow(),
+  });
+  try {
+    await settle();
+    await settle();
+    assert.equal(button.textContent, 'DELETE TICKED 2');
+    const line = byId('ultra-status').textContent;
+    const loads = mediaLoads;
+    const ticks = () =>
+      byId('ultra-media')
+        .querySelectorAll('input')
+        .map((tick) => tick.checked);
+    const ticked = ticks();
+    panel.dispatch('click', { target: button });
+    panel.dispatch('click', { target: button });
+    await settle();
+    await settle();
+    assert.equal(deletes.length, 1);
+    assert.equal(byId('ultra-status').textContent, line, 'nothing is said');
+    assert.equal(mediaLoads, loads, 'the list is not reloaded');
+    assert.deepEqual(ticks(), ticked, 'the ticks stay');
+    assert.equal(button.textContent, 'DELETE TICKED 2');
+    /* DELETE ALL stays ticked too. */
+    all.checked = true;
+    panel.dispatch('change', { target: all });
+    panel.dispatch('click', { target: button });
+    panel.dispatch('click', { target: button });
+    await settle();
+    await settle();
+    assert.deepEqual(deletes.at(-1), { all: true });
+    assert.equal(all.checked, true);
+    assert.equal(byId('ultra-status').textContent, line);
+    /* A refusal that is not the PC's removal rule still says so. */
+    deleteAnswer = () =>
+      new Response(JSON.stringify({}), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    panel.dispatch('click', { target: button });
+    panel.dispatch('click', { target: button });
+    await settle();
+    await settle();
+    assert.equal(byId('ultra-status').textContent, 'DELETE refused');
+    /* Server text never replaces the line, as before. */
+    deleteAnswer = () =>
+      new Response(JSON.stringify({ error: 'Say all, or which names' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    byId('ultra-status').textContent = '';
+    panel.dispatch('click', { target: button });
+    panel.dispatch('click', { target: button });
+    await settle();
+    await settle();
+    assert.equal(byId('ultra-status').textContent, 'DELETE refused');
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('ultraPostRemoves matches the server removal rule (a `me` save is always watched)', () => {
+  const cases = [
+    ['media/delete', { all: true }],
+    ['media/delete', { names: ['a.jpg'] }],
+    ['contacts', { remove: true, id: 'c-1' }],
+    ['contacts', { number: '+15065550122', label: 'Ann' }],
+    ['tokens', { reset: true, confirm: true }],
+    ['tokens', { reveal: true, id: 't' }],
+    ['tokens', { edit: true, id: 't', remove: true }],
+    ['tokens', { revoke: true, id: 't' }],
+    ['tokens', { remove: true, id: 't' }],
+    ['tokens', { purge: true }],
+    ['tokens', { name: 'new' }],
+    ['network', { add: true, address: 'x', token: 'y' }],
+    ['network', { remove: true, id: 'n' }],
+    ['network', { update: true }],
+    ['network', { poll: true }],
+    ['network', { testSms: true }],
+    ['network', { rename: true, id: 'n', name: 'x' }],
+    ['network', { me: true, name: '' }],
+    ['inbox', { clear: true }],
+    ['inbox', { remove: true, id: 'm' }],
+    ['inbox', { read: true, id: 'm' }],
+    ['number', { number: '' }],
+    ['number', { number: null }],
+    ['number', { number: '+15065550122' }],
+    ['needs', { needs: null }],
+    ['needs', { needs: ['food'] }],
+    ['camera', { on: true }],
+    ['release', { standDown: true }],
+    ['model', { modelId: 'x' }],
+  ];
+  for (const [action, body] of cases) {
+    assert.equal(
+      ultraPostRemoves(action, body),
+      ultraOwnerRemoval(`/${action}`, body),
+      `${action} ${JSON.stringify(body)}`,
+    );
+  }
+  assert.equal(ultraPostRemoves('network', { me: true, name: 'Jeff' }), true);
+});
+
+test('Ultra panel: only removal POSTs are watched for a pc-only refusal', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const status = {
+    unread: 0,
+    inbox: [],
+    tokens: [],
+    packages: [],
+    contacts: [
+      {
+        id: 'c-0000000000000001',
+        label: 'Ann',
+        number: '+15065550122',
+        kind: 'sms',
+      },
+    ],
+  };
+  const pendingDuring = {};
+  const fetchImpl = async (url, options = {}) => {
+    if (options.method === 'POST') {
+      const body = JSON.parse(options.body);
+      // Read while the request is still in flight.
+      await Promise.resolve();
+      pendingDuring[body.remove ? 'remove' : Object.keys(body)[0]] =
+        pendingOwnerRemovals();
+      return { ok: true, json: async () => structuredClone(status) };
+    }
+    return { ok: true, json: async () => structuredClone(status) };
+  };
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef: fakeWindow(),
+  });
+  try {
+    await settle();
+    await settle();
+    const before = pendingOwnerRemovals();
+    panel.dispatch('click', { target: byId('ultra-network-update') });
+    await settle();
+    panel.dispatch('click', {
+      target: byId('ultra-contacts').querySelector('[data-ultra-remove]'),
+    });
+    await settle();
+    await settle();
+    assert.equal(
+      pendingDuring.update,
+      before,
+      'UPDATE is not held as a removal',
+    );
+    assert.equal(pendingDuring.remove, before + 1, 'REMOVE is watched');
+    assert.equal(pendingOwnerRemovals(), before);
   } finally {
     handle.destroy();
   }

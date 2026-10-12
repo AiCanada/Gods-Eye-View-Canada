@@ -30,6 +30,11 @@ import {
   normalizePostalCode,
   postalCountry,
 } from './privateCamerasCore.mjs';
+import {
+  isOwnerRemovalRefusal,
+  noteOwnerRemovalRefusal,
+  watchOwnerRemoval,
+} from './ui/ownerRemoval.js';
 
 const STATUS_ENDPOINT = '/api/private-cams/status';
 const CONFIG_ENDPOINT = '/api/private-cams/config';
@@ -489,15 +494,27 @@ export function initPrivateCameraSetup({
     { once: true },
   );
 
+  // Saved camera rows taken off a site's list since its last render.
+  const removedCameraRows = new WeakMap();
+
   const post = async (body, endpoint = CONFIG_ENDPOINT) => {
-    const response = await doFetch(endpoint, {
-      method: 'POST',
-      signal: lifetime.signal,
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    const response = await watchOwnerRemoval(
+      doFetch(endpoint, {
+        method: 'POST',
+        signal: lifetime.signal,
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    );
     const payload = await response.json().catch(() => ({}));
+    if (isOwnerRemovalRefusal(response, payload)) {
+      // Only the PC removes: callers put things back and say nothing.
+      noteOwnerRemovalRefusal();
+      const refused = new Error('');
+      refused.ownerRemoval = true;
+      throw refused;
+    }
     if (!response.ok || !payload.ok)
       throw new Error(payload.error || `Save failed (${response.status})`);
     return payload;
@@ -622,7 +639,16 @@ export function initPrivateCameraSetup({
       'Remove this camera (takes effect on save)',
     );
     remove.setAttribute('aria-label', 'Remove this camera');
-    remove.addEventListener('click', () => row.remove());
+    remove.addEventListener('click', () => {
+      // A saved camera is remembered until the save answers, so a removal
+      // the PC refuses (the owner's phone) can put it back where it was.
+      if (camera.id && row.parentElement === list) {
+        const removed = removedCameraRows.get(list) || [];
+        removed.push({ row, next: row.nextSibling });
+        removedCameraRows.set(list, removed);
+      }
+      row.remove();
+    });
     const source = input(documentRef, { name: 'source' });
     source.dataset.savedSource = camera.source || '';
     source.dataset.privateCctvFeedName =
@@ -795,6 +821,7 @@ export function initPrivateCameraSetup({
       if (!ok) return;
       busy = true;
       syncControls();
+      const before = message.textContent;
       message.textContent = 'Unpairing…';
       try {
         await post({ siteId: site.id }, RELAY_UNPAIR_ENDPOINT);
@@ -802,7 +829,9 @@ export function initPrivateCameraSetup({
           message.textContent =
             'Unpaired. Pair again from the extension options to get pictures.';
       } catch (error) {
-        if (!lifetime.signal.aborted) message.textContent = error.message;
+        // The owner's phone: the pairing stays and the line is as it was.
+        if (!lifetime.signal.aborted)
+          message.textContent = error?.ownerRemoval ? before : error.message;
       } finally {
         busy = false;
         syncControls();
@@ -1153,7 +1182,9 @@ export function initPrivateCameraSetup({
             new CustomEvent('gev:private-cameras-changed'),
           );
         } catch (error) {
-          if (!lifetime.signal.aborted) note.textContent = error.message;
+          // The owner's phone: the site stays and nothing is said.
+          if (!lifetime.signal.aborted && !error?.ownerRemoval)
+            note.textContent = error.message;
         }
       });
       actions.append(removeSite);
@@ -1176,6 +1207,7 @@ export function initPrivateCameraSetup({
       )
         return;
       save.setAttribute('aria-disabled', 'true');
+      const before = note.textContent;
       try {
         const typed = splitSiteLocationQuery(where.value);
         const hasLocation = Boolean(typed.postalCode || typed.address);
@@ -1240,7 +1272,19 @@ export function initPrivateCameraSetup({
         if (savedNote)
           savedNote.textContent = `Saved on this machine only; the camera list is reloading.${savedNote.textContent ? ` ${savedNote.textContent}` : ''}`;
       } catch (error) {
-        if (!lifetime.signal.aborted) note.textContent = error.message;
+        if (lifetime.signal.aborted) return;
+        if (error?.ownerRemoval) {
+          // The owner's phone: the PC keeps every camera, so each one taken
+          // off this list comes back where it was, and the note is as it was.
+          const removed = removedCameraRows.get(list) || [];
+          removedCameraRows.delete(list);
+          for (const { row, next } of removed.reverse()) {
+            if (next && next.parentElement === list)
+              list.insertBefore(row, next);
+            else list.append(row);
+          }
+          note.textContent = before;
+        } else note.textContent = error.message;
       } finally {
         save.setAttribute('aria-disabled', 'false');
       }

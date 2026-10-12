@@ -19,7 +19,7 @@ The golden rule: **secret-bearing API keys stay on the server side.** The dev/pr
 |-----|----------------|--------------------------|
 | `OPENAI_API_KEY` | Server only | Browser fetches a short-lived **ephemeral** Realtime session token from `/api/realtime/token`; the real key never ships |
 | `NVIDIA_API_KEY`, `XAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `CUSTOM_LLM_API_KEY` | Server only | Ask and voice both stay on the server. Grok voice receives a short-lived secret from `/api/llm/voice/session`. Claude, NVIDIA, OpenRouter, and a custom endpoint send transcripts and audio through `/api/llm/voice/*`. The browser never receives those keys |
-| ChatGPT sign-in through Codex (optional, experimental) | Codex's own `auth.json` (`CODEX_HOME`, default `~/.codex`); GEV reads it server-side and never writes or refreshes it | Only after **USE CHATGPT OAUTH** is selected in Provider Settings: the server mints the same ephemeral Realtime token with the ChatGPT access token, for loopback clients only |
+| ChatGPT sign-in through Codex (optional, experimental) | Codex's own `auth.json` (`CODEX_HOME`, default `~/.codex`); GEV reads it server-side and never writes or refreshes it | Only after **USE CHATGPT OAUTH** is selected in Provider Settings: the server mints the same ephemeral Realtime token with the ChatGPT access token, for loopback clients or the owner's Tailscale device only |
 | `AISSTREAM_API_KEY` | Server only | Server holds the AISStream websocket; browser polls the same-origin `/api/vessels` cache |
 | OpenSky OAuth (`OPENSKY_CLIENT_ID/SECRET`) | Server only | Server mints + refreshes the token behind `/api/flights` |
 | `GOOGLE_MAPS_SERVER_API_KEY` (optional, #33) | Server only | Server calls Places (`/api/google/nearby-places`, `/api/google/text-search`) and the Street View fallback with this key; falls back to `GOOGLE_MAPS_API_KEY` when unset |
@@ -78,7 +78,7 @@ The data proxies under `server/providers/` are written so the browser cannot tur
 - **Redacted debug logging.** The voice debug log (`.gev-logs/`, gitignored) strips API keys, bearer tokens, client secrets, and image data URLs before writing.
 - **Cross-site gate on cost/log endpoints.** The cost-bearing (`/api/realtime/token`, `/api/openai/hud-summary`, `/api/google/nearby-places`, `/api/google/text-search`), quota-bearing (`/api/mapillary/*`, with a per-IP limit on tiles) and log (`/api/realtime/debug-log`) endpoints refuse cross-site browser requests: a foreign or opaque `Origin`, a `Sec-Fetch-Site` other than `same-origin`/`none` (this is what blocks an `<img>`/navigation that carries no `Origin`), or any reverse-proxy/CDN forwarding header returns `403`. Non-browser loopback tools (the repo QA harnesses POST the token endpoint with no `Origin`) and the explicit `HOST=0.0.0.0` LAN opt-in keep working — the gate deliberately does not require a loopback remote address; that stricter requirement belongs only to the credential panel (`admitKeySetupRequest`). The Host check (`allowedHosts`, applied by `hostCheckPlugin` ahead of every route, since Vite's own check runs only after plugin middleware) rejects a rebinding `Host` before any handler runs, in every mode, and the gate is defense in depth behind it: the LAN opt-in keeps that check and accepts only IP addresses, `localhost` and names listed in `GEV_ALLOWED_HOSTS`. **Limit:** a name you list there is trusted like the app's own address, so list only names you control.
 - **Full Content-Security-Policy.** The dev and preview servers send a real CSP (`script-src 'self' 'unsafe-eval' blob:` plus the YouTube, Facebook and X scripts the Nepal event's embedded media loads, with a matching `frame-src` for their players and posts: no inline script and no other script origin; `blob:` covers the object URLs Cesium's bundled workers bootstrap through in the built app), alongside the existing `X-Frame-Options: DENY` and `frame-ancestors 'none'`. `'unsafe-eval'` stays because Knockout, bundled inside Cesium's widgets package, resolves the global object with `eval` at load time and the globe does not initialize without it; styles permit `'unsafe-inline'` and Google Fonts because Vite's dev client injects `<style>` elements.
-- **ChatGPT OAuth voice reuses the local Codex sign-in.** `/api/realtime/oauth-status`, `/api/realtime/oauth-login` and `/api/realtime/token?auth=oauth` answer only loopback connections, behind the same cross-site gate as the token endpoint; the login route also refuses a foreign `Origin`. None of them returns the access token. The login route runs `codex login` (or the executable named by `CODEX_BIN`) with an allowlisted environment that leaves out GEV's provider keys, keeps one attempt pending at a time and cancels it after two minutes or when the server stops. **Limits:** any program on this machine that can reach the server can mint Realtime sessions on the signed-in ChatGPT account, as it can with the API key; a local reverse proxy that hides the client's address defeats the loopback check; and OpenAI has not documented this use of Codex credentials for Realtime, so it may stop working or fall outside the account's terms.
+- **ChatGPT OAuth voice reuses the local Codex sign-in.** `/api/realtime/oauth-status`, `/api/realtime/oauth-login` and `/api/realtime/token?auth=oauth` answer only loopback connections or [the owner's Tailscale device](#your-own-phone-over-tailscale-mirror-of-pc-gevc-on-cell), behind the same cross-site gate as the token endpoint; the login route also refuses a foreign `Origin`, and from the owner's device it requires an exact one. `codex login` always runs on the PC, so its sign-in page opens in the PC's browser. None of them returns the access token. The login route runs `codex login` (or the executable named by `CODEX_BIN`) without a shell. On Windows the program is always a full path (`CODEX_BIN` must be one), so the working folder is never searched before PATH, and an npm `codex.cmd` shim is replaced by Node running the shim's own `codex.js`; the window is hidden. It runs with an allowlisted environment that leaves out GEV's provider keys, keeps one attempt pending at a time and cancels it after two minutes or when the server stops. **Limits:** any program on this machine that can reach the server can mint Realtime sessions on the signed-in ChatGPT account, as it can with the API key; a local reverse proxy that hides the client's address defeats the loopback check; and OpenAI has not documented this use of Codex credentials for Realtime, so it may stop working or fall outside the account's terms.
 
 ## Private home and business security cameras
 
@@ -92,13 +92,18 @@ cameras. They are deliberately separate from the public CCTV proxy and catalogue
   sent to the browser (the panel sees only "saved" flags and masked addresses),
   and never enter share links, the area cap or `/api/cctv/sources`.
 - **Browser ↔ server.** Every `/api/private-cams/*` route answers only the
-  machine running the server: the Provider Settings gate refuses LAN peers,
+  machine running the server or the owner's Tailscale device (the relay
+  extension routes answer only the PC; see below): the Provider Settings gate refuses LAN peers,
   tunnels, proxied requests, foreign `Host` headers (DNS rebinding) and any
   sharing mode. Requests another website triggers are refused by Fetch Metadata
   (`Sec-Fetch-Site`), and every response is `Cross-Origin-Resource-Policy:
   same-origin`, `no-store` and `nosniff`, so a page elsewhere can neither embed
   a camera frame nor read the camera list. Saving requires the exact local
-  `Origin` and a JSON body; editing exists only under the dev server.
+  `Origin` and a JSON body; editing exists only under the dev server. The
+  owner's device may add, edit and move cameras and approve a relay pairing,
+  but a save that removes a camera or site, clears a saved password or token,
+  or drops the relay pairing, and `/relay/unpair`, are refused from it ("Removing
+  is done on the PC") and nothing is written.
 - **Server ↔ bridge or camera.** A password or token is never sent over plain
   `http://` beyond the local network (loopback, RFC 1918, link-local, Tailscale
   / CGNAT, `.local` / `.lan` / `.home.arpa` names); anything else must be
@@ -152,7 +157,8 @@ from **GEV Private_CCTV_Feed Relay**, a personal unpacked Chrome extension in
 - **Who can reach the relay routes.** `/api/private-cams/relay/pair-request`,
   `pair-status`, `frame` and `heartbeat` apply the same locality checks as the
   other private camera routes (loopback peer, local `Host`, no proxy headers, no
-  sharing mode). They also require `Sec-Fetch-Site: none`, which a browser never
+  sharing mode) and refuse the owner's Tailscale device, since only the
+  extension on the PC uses them. They also require `Sec-Fetch-Site: none`, which a browser never
   attaches to a request made by a web page, and on every write
   `Origin: chrome-extension://<id>`. No route sends CORS headers and preflight
   `OPTIONS` requests are refused. A local program can forge headers, so headers
@@ -214,7 +220,9 @@ the private cameras' rules:
   handling, however the name is cased, percent-encoded or shortened. A store
   that cannot be read is never overwritten by a save.
 - **Browser ↔ server.** Every `/api/device-feeds/*` route answers only the
-  machine running the server (the Provider Settings gate) and only this page
+  machine running the server or the owner's Tailscale device (the Provider
+  Settings gate; the owner's device may add and edit devices but not remove
+  one) and only this page
   (Fetch Metadata). The card is told "saved" flags and masked addresses, never a
   value; the map layer is told a name, a kind and a position, never an address
   or a login. Devices can be saved only under the dev server.
@@ -234,8 +242,8 @@ the private cameras' rules:
   account (with SYSTEM and Administrators on Windows, 0700 elsewhere) the
   first time a process writes to it, inherited by every file in it, the
   phone's `last-report.json` included, and written only by
-  `POST /api/device-feeds/record/<id>`, which answers this machine and this
-  page only, refuses a device whose RECORD switch is off, saves no more often
+  `POST /api/device-feeds/record/<id>`, which answers this machine (or the
+  owner's Tailscale device) and this page only, refuses a device whose RECORD switch is off, saves no more often
   than every 10 seconds, and re-checks every record against the position the
   SERVER knows for the device. A camera is saved by name and place, never by
   stream address. Removing a device leaves its recordings; delete the folder to
@@ -251,8 +259,8 @@ the private cameras' rules:
 The dev server is a **key broker**: every server-side key above is spendable by anyone who can send HTTP requests to it. That shapes the defaults:
 
 - **Local-only by default.** `./scripts/dev-fresh.sh` (and the Vite config itself) bind to `localhost`, so only your machine can reach the server — and only local names are accepted (`allowedHosts` stays restricted, which also blunts DNS-rebinding tricks). Binding to all interfaces keeps that restriction: IP addresses and `localhost` work, and LAN hostnames must be listed in `GEV_ALLOWED_HOSTS` (for example `GEV_ALLOWED_HOSTS=globe.lan`); suffix and wildcard entries are ignored. `POST /api/cctv/lookup/:id`, `POST /api/location-switch/release`, the model routes (`/api/llm/ask`, `/api/llm/voice/*`), the bot swarms (`/api/social/swarm`) and the public news lookup (`/api/social/public-news`) also check the `Host` against the served hosts themselves (`server/providers/common/allowed-hosts.js`), on top of the Host check that runs ahead of every route. `/api/llm/ask` also takes at most 20 questions a minute from one address without any setting.
-- **Opening Grok Bot starts a program here, so only this machine's own page may ask.** `POST /api/social/grok-bot/open` (OPEN GROK BOT, and GROK BOT SWARM when it has no API key and no computer) uses POWER UP's gate: a loopback socket, a local Host, an exact local Origin, JSON, no proxy headers, never while sharing. It opens only `GROK_BOT_LINK` from `.env` (a `.lnk` or `.exe` on a local drive, never a share or device path) or Grok Bot's own `grokbot://app/v1/open`, never anything the request names, through Explorer under `SystemRoot` (never a program found on `PATH`), at most once every 3 seconds.
-- **The Grok Bot computer token goes only to that computer.** `GROK_BOT_GATEWAY_URL` must be loopback (`127.0.0.1`, `localhost` or `::1`, any port; Grok Bot's own is `http://127.0.0.1:1340`), http to a `100.64.x.x` Tailscale address, or https on a `.ts.net` name, with no user:password, query or path; POWER UP refuses any other address, `POST /api/social/swarm/grok-bot` checks it again before every send, and a hand edit after a POWER UP save fails its integrity check (and `/status` then stops offering the computer). That route sends the saved token, so only this machine's own page may ask: POWER UP's gate (a loopback socket, an exact local Origin, JSON, no proxy headers). It is rate-limited before any lookup, shares the nearest-city cache and limit, runs one sweep per bot at a time, and the token rides only in the `Authorization` header. A refusal is reported without the token: the token is redacted before the text is cut.
+- **Opening Grok Bot starts a program here, so only this machine's own page (or the owner's Tailscale device) may ask.** `POST /api/social/grok-bot/open` (OPEN GROK BOT, and GROK BOT SWARM when it has no API key and no computer) uses POWER UP's gate: a loopback socket, a local Host, an exact local Origin, JSON, no proxy headers, never while sharing (or the owner's device stamped by the mirror, with its exact Origin; the program still opens on the PC). It opens only `GROK_BOT_LINK` from `.env` (a `.lnk` or `.exe` on a local drive, never a share or device path) or Grok Bot's own `grokbot://app/v1/open`, never anything the request names, through Explorer under `SystemRoot` (never a program found on `PATH`), at most once every 3 seconds.
+- **The Grok Bot computer token goes only to that computer.** `GROK_BOT_GATEWAY_URL` must be loopback (`127.0.0.1`, `localhost` or `::1`, any port; Grok Bot's own is `http://127.0.0.1:1340`), http to a `100.64.x.x` Tailscale address, or https on a `.ts.net` name, with no user:password, query or path; POWER UP refuses any other address, `POST /api/social/swarm/grok-bot` checks it again before every send, and a hand edit after a POWER UP save fails its integrity check (and `/status` then stops offering the computer). That route sends the saved token, so only this machine's own page or the owner's Tailscale device may ask: POWER UP's gate (a loopback socket or the owner's stamped device, an exact Origin, JSON, no proxy headers). It is rate-limited before any lookup, shares the nearest-city cache and limit, runs one sweep per bot at a time, and the token rides only in the `Authorization` header. A refusal is reported without the token: the token is redacted before the text is cut.
 - **The Chief of Staff webhook key goes only to Grok Bot.** `GROK_BOT_WEBHOOK_URL` must be https on a `cursor.sh` or `cursor.com` host with the path `/automations/webhook/<id>` and nothing else; POWER UP refuses any other address, the route checks it again before every send, and a hand edit after a POWER UP save fails its integrity check. A refusal from the webhook is reported without the key, and its answer is never passed on. Swarm buttons do not call this route.
 - **LAN exposure is an explicit opt-in**: `HOST=0.0.0.0 ./scripts/dev-fresh.sh`. The launcher prints a prominent warning plus your LAN URL. Understand what opting in means: **every device on that network can drive the proxies and spend your OpenAI / Google / OpenSky / AISStream / TomTom / FIRMS / Road511 quota** for as long as the server runs. Do this only on networks you trust.
 - **App-level throttles (on by default):** `GEV_RATELIMIT_OPENAI_PER_MIN` (default `30`) and `GEV_RATELIMIT_GOOGLE_PER_MIN` (default `120`) — the values the Pinokio build already ships — cap the cost-bearing endpoints per client IP per minute (over-limit requests receive a sanitized `429`). Both defaults sit well above what the app itself generates; set either to exactly `0` to run unthrottled. They are **per-IP, process-local, in-memory guards** — they reset on restart, a caller with several addresses gets a bucket per address, and they are **not billing caps**.
@@ -267,11 +275,65 @@ The dev server is a **key broker**: every server-side key above is spendable by 
   loopback only. Use a separately reviewed authentication proxy for remote
   access and keep provider-side quotas as the spend backstop.
 
+## Your own phone over Tailscale (Mirror of PC GEVC on Cell)
+
+`GEV_TAILNET_DASHBOARD=1` serves the dashboard on this machine's Tailscale
+address for the owner's own phone or tablet
+([Mirror of PC GEVC on Cell](Mirror%20of%20PC%20GEVC%20on%20Cell/README.md)).
+By owner ruling (2026-10-11) that device gets every PC function, writes
+included, except removing or deleting anything stored on the PC.
+
+- **Tailnet IPv4 only.** The second listener binds to the machine's
+  100.64.0.0/10 address alone, never a LAN or public one.
+- **Only the owner's devices.** Each caller's address is checked with
+  `tailscale whois` against the account this machine is signed in to. Answers
+  are cached for 5 minutes, and a lookup that fails counts as no. Anyone
+  else's device is refused every request, and its websockets are closed. A
+  tagged PC has no owner, and a tagged node, subnet router or exit node is
+  never taken for the owner's device, because every node or LAN client behind
+  it would share the owner's identity.
+- **A stamp only the mirror can set.** Every caller-sent
+  `x-gev-owner-device*` header is removed on entry. An owner request is then
+  stamped with a 32-byte random token held only in memory (cleared when the
+  server stops) and the listener's own `http://<tailnet IP>:<port>`, never
+  taken from the request. The gates (`ownerDeviceAuthority` in
+  `src/keySetupCore.mjs`) accept the stamp only from a tailnet socket, with
+  a constant-time token match, over http, and with a Host equal to that
+  authority, so a DNS-rebinding page or a forged header on the loopback
+  listener does not pass.
+- **Writes keep the browser rules.** Every request from the owner's device
+  other than GET and HEAD needs the exact mirror Origin, and POST, PUT, PATCH
+  and any other request with a body need JSON.
+- **Proxies and sharing are refused first.** `x-forwarded-*` and other proxy
+  headers (`tailscale serve`, Funnel) and any sharing mode are refused before
+  the stamp is looked at, and the mirror does not stamp a proxied request.
+- **Removing stays on the PC.** From the owner's device, every DELETE and
+  each of these removals sent as a save is refused silently (owner ruling): it
+  answers 403 with `X-GEV-Removal: pc-only` and the body `{"removal":"pc-only"}`,
+  no error text, the phone shows nothing and keeps the item, and nothing is
+  written: clearing a POWER UP key, road CCTV key and social
+  login removal, Ultra media delete, token reset, revoke and remove, contact,
+  home-list and inbox removal, clearing the owner number or the HELP DELIVERY
+  default, private camera, site, password or token removal and relay unpair,
+  device removal, and forgetting a CCTV alignment. MCP calls from the owner's
+  device are refused the same way. The PC itself may still remove. Releasing
+  a road camera's live-stream lease (`DELETE /api/cctv/media/<id>?lease=...`)
+  frees only an in-memory session and is allowed.
+- **Paths that stay apart.** The private camera relay extension routes answer
+  only the PC, device `/report` stays admitted by device key alone, and the
+  Ultra holder and phone routes stay token-only.
+- **Accepted consequence.** An unlocked phone signed in to your Tailscale
+  account can save POWER UP keys and social logins, press SEND HELP and start
+  programs on the PC (ChatGPT sign-in, OPEN GROK BOT). Keep it locked. A
+  plain TCP forwarder (`tailscale serve --tcp`, socat) on one of your own
+  devices that points at the mirror port still counts as you, so anything
+  that can reach that forwarder gets the same access; do not run one.
+
 ## MCP server and panel
 
 God's Eye View's tools are also served to MCP clients: over stdio (`npm run mcp`) and at `/mcp` on the development and preview servers.
 
-- **`/mcp` answers only direct local requests**: a loopback connection naming a loopback host on the port it reached, a browser `Origin` (when sent) from that same host, no proxy forwarding headers, and launcher sharing off. It accepts only JSON, so a web page cannot post to it cross-site. This is transport safety, not authentication: any program on your machine can use the tools, and some of them spend the same provider quotas as the app.
+- **`/mcp` answers only direct local requests**: a loopback connection naming a loopback host on the port it reached, a browser `Origin` (when sent) from that same host, no proxy forwarding headers, and launcher sharing off. The owner's Tailscale device is also admitted when its Host is the mirror's own address and port and every non-GET request carries that exact Origin; its calls get a server of their own whose tools reach the API over loopback without the stamp and are refused every DELETE, PUT and PATCH and every POST to a route family that can remove stored data. It accepts only JSON, so a web page cannot post to it cross-site. This is transport safety, not authentication: any program on your machine can use the tools, and some of them spend the same provider quotas as the app.
 - **What the panel's requests can reach.** In clients that display MCP Apps, the panel loads the app through the `panel_request` tool, which requests paths on the app's server. It is marked for the panel only and requires a key that each MCP server puts in its panel page, which keeps it from clients that list tools to the model without loading the panel. That key is not access control: any MCP client can read the panel page, key included, and then reach the app's files and data routes through `panel_request`, much as its other tools reach the data. Provider Settings, credential and model endpoints, `/mcp` and the development server's internal routes are refused to every caller.
 - **The panel carries the two browser keys.** The panel build (`npm run build:panel`) includes the same Google Maps key and Cesium ion token as the app, and they run inside the client's panel page, on the client's site. A key restricted by HTTP referrer must also allow that page, or the panel cannot load tiles. To keep the app's own keys narrower, build the panel with separately restricted keys in the environment of `npm run build:panel`.
 - **Embed mode is not framable by default.** `?embed=1` documents keep `X-Frame-Options: DENY` and `frame-ancestors 'none'` unless `GEV_EMBED_FRAME_ANCESTORS` names the pages that may frame them; a framing page can change what the app shows. Other documents can never be framed.

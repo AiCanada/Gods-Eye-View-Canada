@@ -1,4 +1,7 @@
 const DISCONNECT_GRACE_MS = 6000;
+// Chrome hides the microphone on a plain http page such as the phone mirror.
+const INSECURE_ORIGIN_HINT =
+  'Allow this address under chrome://flags Insecure origins treated as secure (see Mirror README).';
 
 function releaseStartResources({ localStream = null, localPc = null } = {}) {
   if (localStream) {
@@ -59,7 +62,12 @@ export class RealtimeConnection {
     this.input.pushToTalkKeyHeld = pushToTalkKeyHeld;
     this.input.spaceKeyHeld = spaceKeyHeld;
     if (!window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) {
-      this.setStatus('error', 'WebRTC microphone support unavailable');
+      this.setStatus(
+        'error',
+        globalThis.isSecureContext === false
+          ? `WebRTC microphone support unavailable on this http page. ${INSECURE_ORIGIN_HINT}`
+          : 'WebRTC microphone support unavailable',
+      );
       return;
     }
 

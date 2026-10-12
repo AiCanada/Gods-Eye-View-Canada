@@ -42,7 +42,10 @@ import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 import { defaultSourceRoot } from './common/source-root.js';
-import { admitKeySetupRequest } from '../../src/keySetupCore.mjs';
+import {
+  admitKeySetupRequest,
+  sendOwnerRemovalRefusal,
+} from '../../src/keySetupCore.mjs';
 import {
   handleUltraPhone,
   noteSecurityFeedsSaved,
@@ -92,6 +95,34 @@ import {
   privateFetchSiteAllowed,
 } from './private-cameras.js';
 import { createMotionJpegScanner } from './cctv/media.js';
+
+/** Saved values whose loss counts as a removal (see deviceFeedUpdateRemoves). */
+const DEVICE_FEED_REMOVABLE_FIELDS = [
+  'password',
+  'token',
+  'url',
+  'pictureUrl',
+  'reportKey',
+];
+
+/**
+ * True when saving `next` over `previous` removes stored data: a device is
+ * gone, or a saved login secret, address or report key is now empty. Adding,
+ * editing and overwriting with a new value (a NEW KEY) are not removals.
+ * @param {{feeds?: object[]}} previous
+ * @param {{feeds?: object[]}} next
+ */
+export function deviceFeedUpdateRemoves(previous, next) {
+  const after = new Map((next?.feeds || []).map((feed) => [feed.id, feed]));
+  for (const feed of previous?.feeds || []) {
+    const kept = after.get(feed.id);
+    if (!kept) return true;
+    for (const field of DEVICE_FEED_REMOVABLE_FIELDS) {
+      if (feed[field] && !kept[field]) return true;
+    }
+  }
+  return false;
+}
 
 export const DEVICE_FEED_TIMEOUT_MS = 8000;
 export const DEVICE_FEED_POSITION_MAX_BYTES = 2 * 1024 * 1024;
@@ -402,6 +433,13 @@ export function deviceFeedsProxy({
     });
     res.end(JSON.stringify(payload));
   };
+  /** An owner device's removal: refused with no message, the item stays. */
+  const refuseOwnerRemoval = (res) =>
+    sendOwnerRemovalRefusal(res, {
+      ...SECURITY_HEADERS,
+      'X-Frame-Options': 'DENY',
+      'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+    });
 
   // ---- recordings ---------------------------------------------------------
   const recordingRoot = path.join(sourceRoot, DEVICE_RECORDING_DIR);
@@ -1443,6 +1481,10 @@ export function deviceFeedsProxy({
           env: process.env,
         });
         if (!admitted.ok) {
+          if (admitted.removal === true) {
+            refuseOwnerRemoval(res);
+            return;
+          }
           respondJson(res, admitted.status || 403, {
             error: String(admitted.error || 'Refused').replace(
               'Provider Settings',
@@ -1457,9 +1499,14 @@ export function deviceFeedsProxy({
         }
         const url = new URL(req.url || '/', 'http://localhost');
         if (url.pathname === '/status' && req.method === 'GET') {
+          // Every admitted page records: the PC's own, and the owner's phone
+          // through the tailnet mirror (the gate admits no one else). Two
+          // pages recording at once save one line per device per
+          // DEVICE_RECORD_MIN_INTERVAL_MS: the second is told 429.
           respondJson(res, 200, {
             ...statusFor(readConfig()),
             editable: allowEdit,
+            recorder: true,
           });
           return;
         }
@@ -1512,12 +1559,19 @@ export function deviceFeedsProxy({
             respondJson(res, 400, { error: 'Invalid JSON' });
             return;
           }
-          const result = applyDeviceFeedUpdate(
-            parsed,
-            readConfig({ strict: true }),
-          );
+          const previous = readConfig({ strict: true });
+          const result = applyDeviceFeedUpdate(parsed, previous);
           if (!result.ok) {
             respondJson(res, 400, { error: result.error });
+            return;
+          }
+          // The owner's phone adds and edits devices; removing one, or its
+          // saved login, address or report key, is done on the PC.
+          if (
+            admitted.ownerDevice === true &&
+            deviceFeedUpdateRemoves(previous, result.config)
+          ) {
+            refuseOwnerRemoval(res);
             return;
           }
           saveConfig(result.config);

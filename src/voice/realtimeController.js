@@ -24,6 +24,7 @@ import {
   startPreparedRadioAfterPlaybackReady,
 } from './realtimeProtocol.js';
 import {
+  microphoneUnavailableMessage,
   nextVoiceProvider,
   readStoredVoiceProvider,
   startProviderVoice,
@@ -302,7 +303,7 @@ export class GevRealtimeController extends RealtimeFacade {
         getUserMedia: (constraints) => {
           const media = globalThis.navigator?.mediaDevices;
           if (typeof media?.getUserMedia !== 'function') {
-            throw new Error('Microphone support is unavailable.');
+            throw new Error(microphoneUnavailableMessage());
           }
           return media.getUserMedia(constraints);
         },

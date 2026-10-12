@@ -27,7 +27,27 @@ import {
   pollUltraNetworkOnce,
   ultraHelpProxy,
   ultraNetworkPins,
+  ultraOwnerRemoval,
 } from '../server/providers/ultra-help.js';
+import {
+  OWNER_DEVICE_AUTHORITY_HEADER,
+  OWNER_DEVICE_HEADER,
+  OWNER_DEVICE_REMOVAL_BODY,
+  OWNER_DEVICE_REMOVAL_HEADER,
+  setOwnerDeviceToken,
+} from './keySetupCore.mjs';
+
+/** An owner removal's refusal: 403, the marker and the exact body, no message. */
+function assertPcOnly(answer, label) {
+  assert.equal(answer.status, 403, `${label} ${answer.text}`);
+  const marker = Object.entries(answer.headers || {}).find(
+    ([name]) => name.toLowerCase() === OWNER_DEVICE_REMOVAL_HEADER,
+  );
+  assert.equal(marker?.[1], 'pc-only', label);
+  assert.equal(answer.text, '{"removal":"pc-only"}', label);
+  assert.deepEqual(answer.json(), { ...OWNER_DEVICE_REMOVAL_BODY }, label);
+  assert.equal(Object.hasOwn(answer.json(), 'error'), false, label);
+}
 
 const PAGE = {
   origin: 'http://localhost:4173',
@@ -1182,7 +1202,7 @@ test('mint refuses a 201st token and keeps the ones already stored', async () =>
   assert.equal((await net(again.revealed.token)).status, 200);
 });
 
-test('owner routes: loopback, local Host, same-origin JSON only; preview is read-only', async () => {
+test("owner routes: loopback or the owner's device, local Host, same-origin JSON only; preview is read-only", async () => {
   const { plugin, request } = setup();
   const refused = async (options, status, pattern) => {
     const answer = await request('/tokens', {
@@ -1247,6 +1267,175 @@ test('owner routes: loopback, local Host, same-origin JSON only; preview is read
   assert.equal(status.status, 200);
   assert.equal(status.json().editable, false);
   assert.equal(status.json().tokens.length, 0);
+});
+
+test('owner phone: every removal is told apart from the add or edit beside it', () => {
+  const removals = [
+    ['/media/delete', { all: true }],
+    ['/media/delete', { names: ['clip.webm'] }],
+    ['/contacts', { remove: true, id: 'other-+15065550100' }],
+    ['/tokens', { reset: true, confirm: true }],
+    ['/tokens', { revoke: true, id: 't1' }],
+    ['/tokens', { remove: true, id: 't1' }],
+    ['/tokens', { purge: true }],
+    ['/network', { remove: true, id: 'n1' }],
+    ['/network', { me: true }],
+    ['/network', { me: true, name: '' }],
+    ['/network', { me: true, name: '  ' }],
+    ['/inbox', { clear: true }],
+    ['/inbox', { remove: true, id: 'm1' }],
+    ['/number', { number: '' }],
+    ['/number', { number: null }],
+    ['/number', {}],
+    ['/needs', { needs: null }],
+  ];
+  for (const [url, body] of removals)
+    assert.equal(
+      ultraOwnerRemoval(url, body),
+      true,
+      `${url} ${JSON.stringify(body)}`,
+    );
+  const allowed = [
+    ['/contacts', { label: 'Dad', number: '+15065550101', kind: 'other' }],
+    ['/tokens', { label: 'Neighbour', network: true }],
+    ['/tokens', { reveal: true, id: 't1' }],
+    // The action reads EDIT before REVOKE or REMOVE, so this is an edit.
+    ['/tokens', { edit: true, remove: true, id: 't1', label: 'X' }],
+    ['/network', { me: true, name: 'Jeff' }],
+    ['/network', { me: true, name: 'Home' }],
+    ['/network', { add: true, remove: true, address: 'x', token: 'y' }],
+    ['/network', { rename: true, id: 'n1', name: 'Mum' }],
+    ['/network', { update: true }],
+    ['/network', { publish: true }],
+    ['/network', { poll: true }],
+    ['/network', { testSms: true }],
+    ['/inbox', { read: true }],
+    ['/number', { number: '+15065550199' }],
+    ['/needs', { needs: { kind: 'food', items: ['water'] } }],
+    ['/model', { modelId: 'generic' }],
+    ['/camera', { role: 'rear' }],
+    ['/release', { incident: 'other' }],
+    ['/release', { standDown: true }],
+  ];
+  for (const [url, body] of allowed)
+    assert.equal(
+      ultraOwnerRemoval(url, body),
+      false,
+      `${url} ${JSON.stringify(body)}`,
+    );
+});
+
+test('owner phone: adds, edits and mints through the tailnet mirror, never removes; the PC still removes', async (t) => {
+  const OWNER_TOKEN = '8'.repeat(64);
+  const MIRROR = 'http://100.64.0.1:4173';
+  setOwnerDeviceToken(OWNER_TOKEN);
+  t.after(() => setOwnerDeviceToken(''));
+  const { post, request } = setup();
+  // Placeholder tailnet addresses: the mirror's Host, Origin and stamp.
+  const phoneHeaders = {
+    ...PAGE,
+    host: '100.64.0.1:4173',
+    origin: MIRROR,
+    [OWNER_DEVICE_HEADER]: OWNER_TOKEN,
+    [OWNER_DEVICE_AUTHORITY_HEADER]: MIRROR,
+  };
+  const fromPhone = (url, body) =>
+    request(url, {
+      remoteAddress: '100.64.0.10',
+      headers: phoneHeaders,
+      ...(body === undefined ? {} : { method: 'POST', body }),
+    });
+  // The PC mints the token the phone then tries to take away.
+  const pcToken = (await mint(post)).revealed;
+
+  // Reads and every add or edit are the PC's.
+  const status = await fromPhone('/status');
+  assert.equal(status.status, 200, status.text);
+  assert.equal(status.json().editable, true);
+  assert.equal((await fromPhone('/media')).status, 200);
+  const minted = await fromPhone('/tokens', {
+    label: 'Phone mint',
+    network: true,
+  });
+  assert.equal(minted.status, 200, minted.text);
+  assert.match(minted.json().revealed.token, ULTRA_TOKEN_PATTERN);
+  const renamed = await fromPhone('/tokens', {
+    edit: true,
+    id: pcToken.id,
+    label: 'Renamed on the phone',
+  });
+  assert.equal(renamed.status, 200, renamed.text);
+  const contact = await fromPhone('/contacts', {
+    label: 'Dad',
+    number: '+15065550101',
+    kind: 'other',
+  });
+  assert.equal(contact.status, 200, contact.text);
+  const contactId = contact.json().contacts[0].id;
+  const number = await fromPhone('/number', { number: '+15065550199' });
+  assert.equal(number.status, 200, number.text);
+  assert.equal(number.json().ownerNumber, '+15065550199');
+  assert.equal(
+    (await fromPhone('/network', { me: true, name: 'Jeff' })).status,
+    200,
+  );
+  assert.equal((await fromPhone('/inbox', { read: true })).status, 200);
+
+  // Every removal is refused, with no message, and nothing is gone.
+  for (const [url, body] of [
+    ['/media/delete', { all: true }],
+    ['/contacts', { remove: true, id: contactId }],
+    ['/tokens', { revoke: true, id: pcToken.id }],
+    ['/tokens', { remove: true, id: pcToken.id }],
+    ['/tokens', { purge: true }],
+    ['/tokens', { reset: true, confirm: true }],
+    ['/network', { remove: true, id: 'any' }],
+    ['/inbox', { clear: true }],
+    ['/inbox', { remove: true, id: 'any' }],
+    ['/number', { number: '' }],
+    ['/needs', { needs: null }],
+  ]) {
+    assertPcOnly(await fromPhone(url, body), url);
+  }
+  // An HTTP DELETE is refused by the gate itself.
+  const deleted = await request('/media', {
+    method: 'DELETE',
+    remoteAddress: '100.64.0.10',
+    headers: phoneHeaders,
+  });
+  assertPcOnly(deleted, 'DELETE /media');
+  const kept = (await request('/status')).json();
+  assert.deepEqual(
+    kept.contacts.map((row) => row.id),
+    [contactId],
+  );
+  assert.equal(kept.ownerNumber, '+15065550199');
+  const row = kept.tokens.find((item) => item.id === pcToken.id);
+  assert.equal(row.revokedAt, null, 'the PC token is still live');
+  assert.equal(row.label, 'Renamed on the phone');
+  assert.equal(kept.tokens.length, 2);
+
+  // Without the mirror's stamp the same phone is a stranger.
+  const { [OWNER_DEVICE_HEADER]: _token, ...unstamped } = phoneHeaders;
+  const stranger = await request('/status', {
+    remoteAddress: '100.64.0.10',
+    headers: unstamped,
+  });
+  assert.equal(stranger.status, 403);
+
+  // The PC still removes.
+  assert.equal(
+    (await post('/tokens', { revoke: true, id: pcToken.id })).status,
+    200,
+  );
+  assert.equal(
+    (await post('/contacts', { remove: true, id: contactId })).json().contacts
+      .length,
+    0,
+  );
+  assert.equal((await post('/number', { number: '' })).json().ownerNumber, '');
+  assert.equal((await post('/media/delete', { all: true })).status, 200);
+  assert.equal((await post('/inbox', { clear: true })).status, 200);
 });
 
 // ---- holder routes --------------------------------------------------------

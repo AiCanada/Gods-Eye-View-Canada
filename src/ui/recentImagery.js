@@ -19,6 +19,8 @@ import {
 } from '../layers/recentImagery/model.js';
 
 const PANEL_ID = 'recent-imagery-panel';
+// A phone browser may still be reading the blob after click() returns.
+const DOWNLOAD_REVOKE_DELAY_MS = 1000;
 const OVERVIEW_MIN_BOX_KM = 25;
 const ESRI_NOTE = 'Imagery on Esri · Google 3D returns when cleared';
 const MODE_LABELS = [
@@ -129,7 +131,7 @@ function findIn(root, predicate) {
 
 /**
  * Mount the readout into the panel body.
- * @param {{ container: HTMLElement, layer: object, viewer?: object, tool?: object, createSplit?: Function, fetchImpl?: typeof fetch, createObjectUrl?: Function, revokeObjectUrl?: Function, requestRender?: Function }} deps
+ * @param {{ container: HTMLElement, layer: object, viewer?: object, tool?: object, createSplit?: Function, fetchImpl?: typeof fetch, createObjectUrl?: Function, revokeObjectUrl?: Function, scheduleRevoke?: (revoke: Function) => void, requestRender?: Function }} deps
  * @returns {{ root: HTMLElement, exportImage: (slot?: 'a' | 'b') => Promise<boolean>, destroy: () => void } | null}
  */
 export function createRecentImageryPanel({
@@ -141,6 +143,8 @@ export function createRecentImageryPanel({
   fetchImpl = globalThis.fetch?.bind(globalThis),
   createObjectUrl = (blob) => URL.createObjectURL(blob),
   revokeObjectUrl = (url) => URL.revokeObjectURL(url),
+  scheduleRevoke = (revoke) =>
+    globalThis.setTimeout(revoke, DOWNLOAD_REVOKE_DELAY_MS),
   requestRender = () => viewer?.scene?.requestRender?.(),
 } = {}) {
   const document = container?.ownerDocument;
@@ -890,7 +894,8 @@ export function createRecentImageryPanel({
         anchor.click();
       } finally {
         anchor.remove();
-        revokeObjectUrl(href);
+        // Revoke later, not now: a phone may still be reading the blob.
+        scheduleRevoke(() => revokeObjectUrl(href));
       }
       return true;
     } catch (error) {
