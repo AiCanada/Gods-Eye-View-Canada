@@ -359,13 +359,17 @@ test("the owner's phone never clears a device's saved login or report key; a new
   t.after(() => setOwnerDeviceToken(''));
   const root = tempRoot();
   const store = path.join(root, DEVICE_FEED_STORE);
-  const { request } = harness(
-    deviceFeedsProxy({
-      sourceRoot: root,
-      fetchImpl: async () =>
-        jsonAnswer([{ latitude: 45.27, longitude: -66.06 }]),
-    }),
-  );
+  // A reporting device opens the report listener: on a free port of its
+  // own, closed after, so the file exits (on CI, where 44173 is free, the
+  // default port stayed open and the run hung until it was cancelled).
+  const plugin = deviceFeedsProxy({
+    sourceRoot: root,
+    reportPort: 0,
+    reportHost: '127.0.0.1',
+    fetchImpl: async () => jsonAnswer([{ latitude: 45.27, longitude: -66.06 }]),
+  });
+  t.after(() => plugin.stopReportListener());
+  const { request } = harness(plugin);
   const fromPhone = (body) =>
     request('/config', {
       method: 'POST',
