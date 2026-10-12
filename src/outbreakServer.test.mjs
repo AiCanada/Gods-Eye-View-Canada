@@ -18,7 +18,6 @@ import {
   hourBandOf,
   networkTiles,
   packRailGraph,
-  railGraphLinesIn,
   railVertexIndex,
   tileOf,
 } from './outbreakNetwork.mjs';
@@ -856,7 +855,7 @@ test('the road and rail networks: lines from the tile store, joined and measured
     asked.some((t) => t.startsWith('5/')) &&
       asked.some((t) => t.startsWith('6/')),
   );
-  assert.ok(kept.has('road-L3-52.29_104.31'));
+  assert.ok(kept.has('road-p3-L3-52.29_104.31'));
   // Rail stays the first level.
   assert.equal(
     (await get('lat=52.287&lon=104.305&mode=rail&level=3')).json.level,
@@ -1240,11 +1239,11 @@ test('the rail after landing: rail lines only, fine tiles, lit from the hour eac
     for (let i = 0; i < flat.length; i += 2)
       assert.ok(flat[i] > 2.4, `a road point drawn: ${flat[i]}`);
   assert.deepEqual(network.unreached, []);
-  // Each piece in the band of the hour its start is reached: 100 km at
-  // train speed, then a quarter of it, from the landing hour.
+  // Each piece in the band of the hour its far end is reached (2026-10-12):
+  // 100 km at train speed, then a quarter of it, from the landing hour.
   const hoursFor = (d) => (d <= 100 ? d / 60 : 100 / 60 + (d - 100) / 15);
   for (const [band, flat] of pieces) {
-    const d = (Math.min(flat[1], flat[flat.length - 1]) - cdg.lat) * 111.2;
+    const d = (Math.max(flat[1], flat[flat.length - 1]) - cdg.lat) * 111.2;
     const near = [d - 1, d + 1].map((x) =>
       hourBandOf(10 + hoursFor(Math.max(0, x))),
     );
@@ -1269,9 +1268,9 @@ test('the rail after landing: rail lines only, fine tiles, lit from the hour eac
             best = best === null ? Number(b) : Math.min(best, Number(b));
     return best;
   };
-  // Pieces after a landing are 100 km long, lit from their first point
-  // reached. The last one (500 to 600 km from CDG): from CDG at hour 10 its
-  // start is reached at 10 + 100/60 + 400/15 = hour 38.3.
+  // Pieces after a landing keep to one hour band (2026-10-12; they were
+  // 100 km long, lit from their first point reached, so the last 100 km
+  // showed from hour 38.3, hours before CDG's spread got there).
   const later = await post({
     destinations: [
       { code: 'B', ...farEnd, hour: 20 },
@@ -1288,10 +1287,9 @@ test('the rail after landing: rail lines only, fine tiles, lit from the hour eac
     ],
     speedKmh: 60,
   });
-  assert.ok(
-    nearEndBand(tooLate) < 40 && nearEndBand(tooLate) >= 36,
-    `lit from CDG first: band ${nearEndBand(tooLate)}`,
-  );
+  // From CDG at hour 10 the far end, about 600 km on, is reached at
+  // 10 + 100/60 + 500/15 = hour 45: the landing there at hour 40 is first.
+  assert.equal(nearEndBand(tooLate), 40, 'lit from the far landing');
 
   // No rail within reach of the landing: no network, still 200.
   const none = await post({
@@ -1610,13 +1608,6 @@ function worldRailFixture(dir, { ready = true } = {}) {
       tasks.push(task.kind);
       return runRailWorldTask(file, task);
     },
-    layerTile: (z, x, y, bounds) => ({
-      z,
-      x,
-      y,
-      lines: railGraphLinesIn(graph, bounds, 1),
-      builtAt: 77,
-    }),
     noteTile() {},
   };
 }
@@ -1649,7 +1640,7 @@ function getFrom(proxy, url) {
   });
 }
 
-test('world rail: the status, the layer tiles, and the rail round a location along the whole network', async () => {
+test('world rail: the status, no map tiles of it, and the rail round a location along the whole network', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'gev-rail-world-'));
   try {
     const asked = [];
@@ -1690,15 +1681,14 @@ test('world rail: the status, the layer tiles, and the rail round a location alo
         .json.state,
       'off',
     );
-    // The layer's tiles: zoom 2 to 6 only.
+    // No tiles of the whole world's rail for the map (owner 2026-10-12,
+    // "no grey on rail lines"): only the rail the spread reaches is drawn.
     const tile = tileOf(54, 98, 3);
     const layer = await getFrom(
       proxy,
       `/rail-world/tile/3/${tile.x}/${tile.y}`,
     );
-    assert.equal(layer.status, 200);
-    assert.ok(layer.json.lines.length > 0);
-    assert.equal((await getFrom(proxy, '/rail-world/tile/7/1/1')).status, 400);
+    assert.equal(layer.status, 404);
     // The rail round Irkutsk: the whole line, past the old 500 km.
     const rail = await getFrom(
       proxy,
@@ -1717,7 +1707,7 @@ test('world rail: the status, the layer tiles, and the rail round a location alo
     assert.deepEqual(rail.json.network.unreached, []);
     // Only the finer tiles near it were asked for: no 500 km of coarse ones.
     assert.ok(asked.length > 0 && asked.every((z) => z === 10));
-    assert.ok(kept.has('rail4-world-v2-77-52.29_104.31'));
+    assert.ok(kept.has('rail5-world-v2-77-p3-52.29_104.31'));
     assert.ok(world.started.length > 0, 'the request started the job');
     // Roads are as before.
     const road = await getFrom(
@@ -1767,9 +1757,8 @@ test('world rail: not built yet, the rail within 500 km answers as before', asyn
     assert.equal(rail.status, 200);
     assert.equal(rail.json.world, undefined);
     assert.equal(rail.json.radiusKm, 500);
-    assert.ok(kept.has('rail2-L1-52.29_104.31'));
+    assert.ok(kept.has('rail2-p3-L1-52.29_104.31'));
     assert.equal(world.tasks.length, 0);
-    assert.equal((await getFrom(proxy, '/rail-world/tile/3/5/2')).status, 404);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -1808,7 +1797,7 @@ test('world rail: world tiles still missing near a source count as failed, so th
     assert.ok(first.json.failedTiles >= 3);
     assert.equal(near[0], 500, 'within the old 500 km');
     assert.equal(kept.size, 0, 'not kept while world tiles are missing');
-    assert.deepEqual(pruned, [['rail4-world-', 'rail4-world-v2-77-']]);
+    assert.deepEqual(pruned, [['rail5-world-', 'rail5-world-v2-77-p3-']]);
     missing = 0;
     const second = await getFrom(proxy, url);
     assert.equal(second.json.failedTiles, 0);

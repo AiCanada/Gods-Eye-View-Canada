@@ -138,18 +138,16 @@ function reachFrom(file, task) {
   const hit = index.nearest(task.point, task.startKm);
   if (!hit) return { network: null };
   const dist = railDistances(graph, [{ vertex: hit[0], startKm: hit[1] }]);
-  // Every rail line on the globe is drawn (owner 2026-10-12: "find all rail
-  // on globe"): rail this place cannot reach by train stays faint grey
-  // until a landing lights it.
-  const { bands, unreached, reachedKm } = railGraphPieces(graph, dist, {
-    unreached: true,
-  });
+  // Rail is never drawn grey (owner 2026-10-12: "no grey on rail lines"),
+  // so rail this place cannot reach by train is not sent.
+  const { bands, lit, reachedKm } = railGraphPieces(graph, dist);
   return {
     network: {
       bandKm: NETWORK_BAND_KM,
       startKm: Math.round(hit[1] * 10) / 10,
       bands,
-      unreached,
+      lit,
+      unreached: [],
       reachedKm: Math.round(reachedKm),
       lengthKm: Math.round(graph.lengthKm || 0),
       overlayKm: Math.round(graph.overlayKm || 0),
@@ -174,7 +172,7 @@ function reachAfterLandings(file, task) {
   }
   if (!seeds.length) return { network: null, seeded: 0 };
   const { time, dist } = railTimedReach(graph, seeds, task.timing);
-  const { bands, reachedKm } = railGraphPieces(graph, time, {
+  const { bands, lit, reachedKm } = railGraphPieces(graph, time, {
     dist,
     timed: true,
   });
@@ -182,6 +180,7 @@ function reachAfterLandings(file, task) {
     network: {
       bandsBy: 'hour',
       bands,
+      lit,
       unreached: [],
       lastHour: Math.round(reachedKm * 10) / 10,
       lengthKm: Math.round(graph.lengthKm || 0),

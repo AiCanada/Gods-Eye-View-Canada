@@ -1,8 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  bandEndKm,
+  bandOf,
+  bandStartKm,
   bandsLitByHour,
   bandsReached,
+  hourBandEnd,
   hourBandOf,
   hourBandStart,
   buildRailGraph,
@@ -13,9 +17,7 @@ import {
   packRailGraph,
   railComponents,
   railDistances,
-  railGraphLinesIn,
   railGraphPieces,
-  railPathBoxes,
   railPlaceLinks,
   railTimedReach,
   railVertexIndex,
@@ -91,7 +93,11 @@ test('the network: joined where lines cross and where one ends near another; dis
     net.unreached.length > 0 && net.unreached.every((flat) => flat[0] >= 3),
     'only the unconnected road never turns red',
   );
-  assert.equal(bandsReached(net, 30), 4);
+  // Bands 0-2 end by 30 km; band 3 (30-40 km) waits for 40 km.
+  assert.equal(bandsReached(net, 30), 3);
+  assert.equal(bandsReached(net, 39.9), 3);
+  assert.equal(bandsReached(net, 40), 4);
+  assert.equal(bandsReached(net, 5), 0, 'nothing a band early');
   assert.equal(bandsReached(net, 0), 0);
   assert.equal(
     buildTransportNetwork(LINES, { lat: 10, lon: 10 }),
@@ -180,9 +186,11 @@ test('timed: roads out of each landing airport, lit by the hour each is first re
   };
   const all = Object.values(net.bands).reduce((n, list) => n + list.length, 0);
   // The first 100 km in an hour; then 25 km/h. The far landing at hour 10
-  // lights its own end first.
-  assert.ok(lit(0.5) > 0 && lit(0.5) < all);
-  assert.ok(lit(10.5) > lit(5), 'the second landing lights its end');
+  // lights its own end first. Each band lights at its end (2026-10-12):
+  // nothing before the first hour is over.
+  assert.equal(lit(0.5), 0, 'nothing lit before its band ends');
+  assert.ok(lit(1) > 0 && lit(1) < all);
+  assert.ok(lit(11) > lit(5), 'the second landing lights its end');
   assert.equal(lit(net.lastHour + 1), all, 'all lit by the last hour');
   // The far end, 333 km from the first landing, at 1 h + 233/25 h = 10.3 h at
   // most, or 10 h from its own landing: lit by hour 11.
@@ -195,6 +203,128 @@ test('timed: roads out of each landing airport, lit by the hour each is first re
     [hourBandStart(5), hourBandStart(50), hourBandStart(82)],
     [5, 60, 288],
   );
+});
+
+test('bands light at their end, never early (owner report 2026-10-12: rail lit before the spread got there)', () => {
+  // A piece first reached at 5.9 h is in band 5, which ends at hour 6: lit
+  // from its start it showed at hour 5, nearly an hour early.
+  assert.equal(hourBandOf(5.9), 5);
+  assert.equal(hourBandEnd(5), 6);
+  assert.deepEqual(
+    [hourBandEnd(47), hourBandEnd(48), hourBandEnd(79), hourBandEnd(80)],
+    [48, 54, 240, 264],
+  );
+  for (const h of [0, 0.4, 1, 5.9, 47.5, 48, 53.9, 100, 239, 241, 500]) {
+    const band = hourBandOf(h);
+    // The end is never before the hour the piece is reached...
+    assert.ok(hourBandEnd(band) > h, `hour ${h}`);
+    // ...and a band is counted lit by an hour only once its end is there.
+    for (let b = 0; b < band + 3; b += 1)
+      assert.equal(b < bandsLitByHour(h), hourBandEnd(b) <= h, `${b} at ${h}`);
+  }
+  assert.equal(bandsLitByHour(0), 0, 'nothing at the start');
+  assert.equal(bandsLitByHour(-1), 0);
+  // The same by distance: a piece 19 km along is in band 1, lit at 20 km.
+  assert.equal(bandOf(19), 1);
+  assert.equal(bandEndKm(1), 20);
+  for (const km of [0, 5, 19, 999, 1000, 1049, 4999, 5000, 5300])
+    assert.ok(bandEndKm(bandOf(km)) > km, `${km} km`);
+  assert.deepEqual(
+    [bandEndKm(99), bandEndKm(100), bandEndKm(179), bandEndKm(180)],
+    [1000, 1050, 5000, 5250],
+  );
+  assert.equal(bandEndKm(3), bandStartKm(4));
+});
+
+test('timed pieces past 100 km are never lit before their far end is reached (2026-10-12)', () => {
+  // A straight line east along the equator from a landing at hour 2: 60 km/h
+  // for the first 100 km, then a quarter of it, 15 km/h, so a 100 km piece
+  // took 6.7 h to cross and its far end lit hours before it was reached.
+  // A point every 5 km, as rail lines come.
+  const kmPerDeg = 111.195;
+  const line = Array.from({ length: 67 }, (_, i) => [(i * 5) / kmPerDeg, 0]);
+  const timing = { speedKmh: 60, fastKm: 100, onwardShare: 0.25 };
+  const hourAt = (lon) => {
+    const km = lon * kmPerDeg;
+    return 2 + (km <= 100 ? km / 60 : 100 / 60 + (km - 100) / 15);
+  };
+  const check = (bands, what, lit) => {
+    let pieces = 0;
+    for (const [band, list] of Object.entries(bands))
+      list.forEach((flat, i) => {
+        pieces += 1;
+        let first = Infinity;
+        let last = -Infinity;
+        for (let i = 0; i < flat.length; i += 2) {
+          const t = hourAt(flat[i]);
+          first = Math.min(first, t);
+          last = Math.max(last, t);
+        }
+        const b = Number(band);
+        // Lit at the band end: never before its far end is reached...
+        assert.ok(
+          last <= hourBandEnd(b) + 0.05,
+          `${what}: band ${b} lit at ${hourBandEnd(b)}, far end at ${last.toFixed(2)} h`,
+        );
+        // ...and never much more than a band late.
+        assert.ok(
+          first >= hourBandStart(b) - 0.6,
+          `${what}: band ${b}, near end at ${first.toFixed(2)} h`,
+        );
+        // Each piece's own hour (owner report 2026-10-12: the spread paused
+        // on the map, a band at a time): in its band, never before its far
+        // end is reached.
+        const at = lit[band][i];
+        assert.ok(
+          at > hourBandStart(b) && at <= hourBandEnd(b),
+          `${what}: piece hour ${at} in band ${b}`,
+        );
+        assert.ok(
+          last <= at + 0.05,
+          `${what}: piece lit at ${at} h, far end at ${last.toFixed(2)} h`,
+        );
+      });
+    return pieces;
+  };
+  const graph = buildRailGraph([line]);
+  const [vertex, startKm] = railVertexIndex(graph).nearest(
+    { lat: 0, lon: 0 },
+    5,
+  );
+  const { time, dist } = railTimedReach(
+    graph,
+    [{ vertex, startKm, hour: 2 }],
+    timing,
+  );
+  const rail = railGraphPieces(graph, time, { dist, timed: true });
+  assert.ok(check(rail.bands, 'rail', rail.lit) > 15, 'cut by the hour band');
+  const road = buildTransportNetwork(
+    [line],
+    { lat: 0, lon: 0 },
+    { sources: [{ lat: 0, lon: 0, hour: 2 }], timing },
+  );
+  assert.ok(check(road.bands, 'road', road.lit) > 15);
+  // Banded by the far end, by distance too: a 5 km piece from 25 km is in
+  // the 30 km band, lit once the reach is 40 km.
+  const byKm = railGraphPieces(
+    graph,
+    railDistances(graph, [{ vertex, startKm: 25 }]),
+  );
+  assert.equal(Math.min(...Object.keys(byKm.bands).map(Number)), 3);
+  // Each piece by its own km, beside its band, so pieces light one by one
+  // as the reach moves through a band.
+  const kms = [];
+  for (const [band, list] of Object.entries(byKm.bands)) {
+    assert.equal(byKm.lit[band].length, list.length, `band ${band}`);
+    for (const km of byKm.lit[band]) {
+      assert.ok(
+        km >= bandStartKm(Number(band)) && km <= bandEndKm(Number(band)),
+        `${km} km in band ${band}`,
+      );
+      kms.push(km);
+    }
+  }
+  assert.ok(new Set(kms).size > Object.keys(byKm.bands).length);
 });
 
 test('rail split into pieces is one network: ends 120 km apart and a T-junction end 20 m off a line', () => {
@@ -442,31 +572,6 @@ test('world rail: places joined along the rail, the finer lines laid over, a box
   assert.equal(new Set(railComponents(merged)).size, 1);
   assert.ok(merged.lengthKm > graph.lengthKm);
   assert.equal(merged.pathOffsets.length, graph.pathOffsets.length + 1);
-  // The lines inside a box, cut at its edges.
-  const inBox = railGraphLinesIn(graph, {
-    west: 0.5,
-    east: 1.5,
-    south: -1,
-    north: 1,
-  });
-  assert.equal(inBox.length, 1);
-  assert.ok(inBox[0][0] <= 0.5 && inBox[0].at(-2) >= 1.5);
-  // With each line's own box, the same lines, and none for a far box.
-  const boxes = railPathBoxes(merged);
-  const box = { west: 0.5, east: 1.5, south: -1, north: 1 };
-  assert.deepEqual(
-    railGraphLinesIn(merged, box, 1, boxes),
-    railGraphLinesIn(merged, box, 1),
-  );
-  assert.deepEqual(
-    railGraphLinesIn(
-      merged,
-      { west: 50, east: 60, south: 10, north: 20 },
-      1,
-      boxes,
-    ),
-    [],
-  );
   // The heap gives the smallest first.
   const heap = numberHeap();
   for (const k2 of [5, 1, 4, 2, 3]) heap.push(k2, k2 * 10);

@@ -21,9 +21,9 @@
  *    (outbreakNetwork.mjs): faint blue roads and faint orange rail lines,
  *    turning red as the spread reaches them. Each network is drawn once, in
  *    bands of distance along it; a step of the hour only shows or hides
- *    bands, so PLAY stays smooth;
- *  - every rail line on the globe (owner ruling 2026-10-12), faint orange
- *    under the reached rail, once the server's world rail is built.
+ *    bands, so PLAY stays smooth. Rail is drawn only where the spread has
+ *    reached it (owner 2026-10-12, "no grey on rail lines"): no backdrop of
+ *    the world's rail, and a band lights only once the reach passes its end.
  * Listed under Other layers; ticking "Display spread on map" in the box
  * switches it on or off, and it says so back on OUTBREAK_SHOWN_EVENT.
  */
@@ -47,8 +47,8 @@ import {
 import { arrivedBy } from '../outbreakEpi.mjs';
 import {
   NETWORK_WAITING_KM,
-  bandStartKm,
-  hourBandStart,
+  bandEndKm,
+  hourBandEnd,
 } from '../outbreakNetwork.mjs';
 
 const ORIGIN_COLOR = '#e040fb';
@@ -138,7 +138,8 @@ const NETWORK_HEIGHT_M = RING_HEIGHT_M;
 /**
  * Colours stay by way of travel (owner ruling, 2026-10-09): red is air and
  * the road after it; a road the spread has reached lights up blue, a rail
- * line orange. Not reached yet: faint grey.
+ * line orange. Not reached yet: faint grey for the roads near the outbreak;
+ * rail not drawn at all (owner 2026-10-12, "no grey on rail lines").
  */
 const NETWORK_REACHED = Object.freeze({
   road: '#a3121b',
@@ -159,67 +160,6 @@ const NETWORK_LINE_PX = 2.5;
  */
 const NETWORK_RAIL_LIFT_M = 30;
 const NETWORK_RAIL_EXTRA_PX = 1;
-
-/**
- * EVERY RAIL LINE ON THE GLOBE (owner ruling 2026-10-12): the world rail
- * layer, faint rail orange under the reached rail (and a little below it, so
- * the lit lines are never fought for), from the server's tiles of the world
- * rail network (GET /api/outbreak/rail-world/tile/z/x/y). Only the tiles in
- * view are asked for, at a zoom by the camera's height, at most
- * RAIL_WORLD_TILES_AT_ONCE at a time. The reached rail stays the per-source
- * networks above it.
- */
-export const RAIL_WORLD_ALPHA = 0.35;
-const RAIL_WORLD_TILES_AT_ONCE = 6;
-/** Tiles kept built; past this the ones out of view longest go. */
-const RAIL_WORLD_TILES_KEPT = 256;
-const RAIL_WORLD_URL = '/api/outbreak/rail-world/tile';
-
-/** The world rail layer's zoom (2 to 6) for a camera this high, in metres. */
-export function railWorldZoom(heightM) {
-  const km = (Number(heightM) || 0) / 1000;
-  if (km > 6000) return 2;
-  if (km > 2500) return 3;
-  if (km > 1000) return 4;
-  if (km > 400) return 5;
-  return 6;
-}
-
-/**
- * The tiles at `z` over a view in degrees ({west, south, east, north}; west
- * past east crosses the antimeridian); the whole world when no view.
- */
-export function railWorldTilesInView(view, z) {
-  const n = 2 ** z;
-  const colOf = (lon) =>
-    Math.min(n - 1, Math.max(0, Math.floor(((lon + 180) / 360) * n)));
-  const rowOf = (lat) => {
-    const clamped = Math.max(-85.05, Math.min(85.05, lat));
-    const rad = (clamped * Math.PI) / 180;
-    return Math.min(
-      n - 1,
-      Math.max(
-        0,
-        Math.floor(
-          ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n,
-        ),
-      ),
-    );
-  };
-  const box = view || { west: -180, south: -85, east: 180, north: 85 };
-  const spans =
-    box.west <= box.east
-      ? [[colOf(box.west), colOf(box.east)]]
-      : [
-          [colOf(box.west), n - 1],
-          [0, colOf(box.east)],
-        ];
-  const tiles = [];
-  for (let y = rowOf(box.north); y <= rowOf(box.south); y += 1)
-    for (const [from, to] of spans)
-      for (let x = from; x <= to; x += 1) tiles.push({ z, x, y });
-  return tiles;
-}
 
 /** Timed by the hour from each landing: the roads and rail after a flight. */
 export function isAirNetwork(mode) {
@@ -250,6 +190,8 @@ export function networkStyle(mode) {
 }
 /** A piece the spread never reaches: grey for good. */
 const NEVER_LIT = 1e9;
+/** How long the lit edge slides to a new reach: most of a PLAY step (900 ms). */
+const NETWORK_SLIDE_MS = 800;
 /**
  * Cesium's own polyline vertex shader, passing each piece's lit-at value
  * (its per-piece `lit` attribute) on to the material.
@@ -285,6 +227,87 @@ czm_material czm_getMaterial(czm_materialInput materialInput)
   material.alpha = c.a;
   return material;
 }`;
+
+/**
+ * Each piece of a network with the reach it lights at: its own, its last
+ * point reached, never before the spread gets there (owner report
+ * 2026-10-12: rail lit at the start of a run), so a band's pieces light one
+ * by one, not all at once (owner report 2026-10-12: the spread paused on the
+ * map). A network kept from before that has no `lit`: each band lights at
+ * its end.
+ * @param {object} network As buildTransportNetwork answers.
+ * @param {boolean} timed By the hour (the roads and rail after a landing).
+ * @returns {Array<[number[], number]>} [flat lon/lat, reach] per piece.
+ */
+export function networkPieces(network, timed) {
+  const out = [];
+  const lit = network?.lit || {};
+  const bands = Object.keys(network?.bands || {})
+    .map(Number)
+    .sort((a, b) => a - b);
+  for (const band of bands) {
+    const end = timed ? hourBandEnd(band) : bandEndKm(band);
+    network.bands[band].forEach((flat, i) => {
+      const at = Number(lit[band]?.[i]);
+      out.push([flat, Number.isFinite(at) && at <= end ? at : end]);
+    });
+  }
+  return out;
+}
+
+/**
+ * The lit edge of a network sliding to a new reach: a step forward moves it
+ * frame by frame over NETWORK_SLIDE_MS, most of a PLAY step, so the spread
+ * moves along the lines instead of jumping (owner report 2026-10-12: the
+ * spread paused on the map). It only ever trails the hour shown, never
+ * leads it. A step back, a first reach, or no animation frames: set at once.
+ * @param {{raf?: Function, now?: Function, ms?: number, onFrame?: Function}} [o]
+ */
+export function thresholdSlider({
+  raf = (fn) => globalThis.requestAnimationFrame?.(fn),
+  now = () => globalThis.performance?.now?.() ?? Date.now(),
+  ms = NETWORK_SLIDE_MS,
+  onFrame = () => {},
+} = {}) {
+  const slides = new Map();
+  let frame = null;
+  const step = () => {
+    frame = null;
+    const t = now();
+    for (const [uniforms, s] of [...slides]) {
+      const f = Math.min(1, (t - s.at) / ms);
+      uniforms.threshold = s.from + f * (s.to - s.from);
+      if (f >= 1) slides.delete(uniforms);
+    }
+    if (slides.size) frame = raf(step) ?? null;
+    onFrame();
+  };
+  return {
+    slide(uniforms, to) {
+      const from = Number(uniforms.threshold);
+      if (!(from >= 0) || !(to > from)) {
+        slides.delete(uniforms);
+        uniforms.threshold = to;
+        return;
+      }
+      slides.set(uniforms, { from, to, at: now() });
+      if (frame === null) {
+        frame = raf(step) ?? null;
+        // No animation frames here (a test, a server): set at once.
+        if (frame === null) {
+          slides.delete(uniforms);
+          uniforms.threshold = to;
+        }
+      }
+    },
+    stop(uniforms) {
+      slides.delete(uniforms);
+    },
+    clear() {
+      slides.clear();
+    },
+  };
+}
 
 /**
  * EPIDEMIC MODEL: how strong a place's dot is at the hour shown. The model's
@@ -339,14 +362,11 @@ let latest = null;
 let latestEpidemic = null;
 /* The last roads and rail lines the box sent: [{key, locationId, mode, network}]. */
 let latestNetworks = [];
-/* The world rail the box says is built: {builtAt}, or null. */
-let latestRailWorld = null;
 
 /** @returns {object} The layer module. */
 export function createOutbreakLayer({
   windowRef = typeof window === 'undefined' ? null : window,
   now = () => Date.now(),
-  fetchImpl = null,
 } = {}) {
   /** Route key -> when it was first seen landed (wall clock). */
   const landedAt = new Map();
@@ -814,22 +834,20 @@ export function createOutbreakLayer({
         }),
       );
     };
-    for (const band of bands)
-      for (const flat of item.network.bands[band])
-        add(flat, air ? hourBandStart(band) : bandStartKm(band));
-    // Never reached: grey for good (not for the roads after a landing).
-    if (!air)
+    for (const [flat, lit] of networkPieces(item.network, air)) add(flat, lit);
+    // Never reached: grey for good (not for the roads after a landing, and
+    // never on rail: owner 2026-10-12, "no grey on rail lines").
+    const rail = isRailNetwork(item.mode);
+    if (!air && !rail)
       for (const flat of item.network.unreached || []) add(flat, NEVER_LIT);
     if (!instances.length) return built;
     const material = new Cesium.Material({
       fabric: {
         uniforms: {
           threshold: -1,
-          // The world rail shows every line grey until reached (owner
-          // 2026-10-12: "find all rail on globe"); the rest only near.
-          waitLimit: air ? -1 : item.network.world ? 1e9 : NETWORK_WAITING_KM,
+          waitLimit: air || rail ? -1 : NETWORK_WAITING_KM,
           litColor: color(networkLitColor(item.mode), 0.95),
-          waitColor: color(NETWORK_WAITING, air ? 0 : 0.5),
+          waitColor: color(NETWORK_WAITING, air || rail ? 0 : 0.5),
         },
         source: NETWORK_LIT_MATERIAL,
       },
@@ -859,6 +877,7 @@ export function createOutbreakLayer({
       if (wantedKeys.has(key) && current?.network === built.item.network)
         continue;
       if (built.primitive) rootFor(built.item.mode)?.remove(built.primitive);
+      if (built.material) slides.stop(built.material.uniforms);
       builtNetworks.delete(key);
     }
     let changed = false;
@@ -893,176 +912,21 @@ export function createOutbreakLayer({
       const threshold = air || reach > 0 ? reach : -1;
       if (!show || threshold === built.threshold) continue;
       built.threshold = threshold;
-      if (built.material) built.material.uniforms.threshold = threshold;
+      if (built.material) slideThreshold(built, threshold);
       changed = true;
     }
     if (changed) _viewer?.scene?.requestRender?.();
   };
-
-  /*
-   * The world rail layer (owner ruling 2026-10-12): key "z/x/y" -> {z,
-   * primitive, usedAt}; the tiles being fetched; the tiles waiting.
-   */
-  let _railWorldRoot = null;
-  const railWorldTiles = new Map();
-  const railWorldLoading = new Set();
-  let railWorldQueue = [];
-  let railWorldBuiltAt = null;
-  let railWorldShownZoom = null;
-  let removeRailWorldCamera = null;
-  const railWorldView = () => {
-    const camera = _viewer?.camera;
-    const height =
-      camera?.positionCartographic?.height ??
-      _viewer?.scene?.camera?.positionCartographic?.height;
-    const z = railWorldZoom(Number.isFinite(height) ? height : 20_000_000);
-    let view = null;
-    try {
-      const rect = camera?.computeViewRectangle?.();
-      if (rect)
-        view = {
-          west: Cesium.Math.toDegrees(rect.west),
-          south: Cesium.Math.toDegrees(rect.south),
-          east: Cesium.Math.toDegrees(rect.east),
-          north: Cesium.Math.toDegrees(rect.north),
-        };
-    } catch {
-      view = null;
-    }
-    // No view (the sky in sight): the whole world, coarse.
-    return view ? { z, view } : { z: Math.min(z, 3), view: null };
-  };
-  const dropRailWorld = () => {
-    for (const built of railWorldTiles.values())
-      if (built.primitive) _railWorldRoot?.remove(built.primitive);
-    railWorldTiles.clear();
-    railWorldQueue = [];
-  };
-  const buildRailWorldTile = (key, z, lines) => {
-    const built = { z, primitive: null, usedAt: now() };
-    railWorldTiles.set(key, built);
-    if (!_viewer?.scene?.primitives || !_railWorldRoot) return built;
-    const style = networkStyle('rail');
-    const instances = [];
-    for (const flat of lines || []) {
-      const withHeights = [];
-      for (let i = 0; i + 1 < flat.length; i += 2)
-        withHeights.push(flat[i], flat[i + 1], style.heightM - 15);
-      if (withHeights.length < 6) continue;
-      instances.push(
-        new Cesium.GeometryInstance({
-          geometry: new Cesium.PolylineGeometry({
-            positions: Cesium.Cartesian3.fromDegreesArrayHeights(withHeights),
-            width: style.widthPx,
-            vertexFormat: Cesium.PolylineMaterialAppearance.VERTEX_FORMAT,
-            arcType: Cesium.ArcType.NONE,
-          }),
-        }),
-      );
-    }
-    if (!instances.length) return built;
-    built.primitive = new Cesium.Primitive({
-      geometryInstances: instances,
-      appearance: new Cesium.PolylineMaterialAppearance({
-        material: Cesium.Material.fromType('Color', {
-          color: color(NETWORK_REACHED.rail, RAIL_WORLD_ALPHA),
-        }),
-        translucent: true,
-      }),
-      asynchronous: true,
-      releaseGeometryInstances: true,
-      allowPicking: false,
-    });
-    built.primitive.show = false;
-    _railWorldRoot.add(built.primitive);
-    return built;
-  };
-  const pumpRailWorld = () => {
-    const fetcher = fetchImpl || globalThis.fetch;
-    while (
-      railWorldLoading.size < RAIL_WORLD_TILES_AT_ONCE &&
-      railWorldQueue.length &&
-      typeof fetcher === 'function'
-    ) {
-      const tile = railWorldQueue.shift();
-      const key = `${tile.z}/${tile.x}/${tile.y}`;
-      if (railWorldTiles.has(key) || railWorldLoading.has(key)) continue;
-      railWorldLoading.add(key);
-      const builtAt = railWorldBuiltAt;
-      Promise.resolve()
-        .then(() =>
-          fetcher(`${RAIL_WORLD_URL}/${key}`, {
-            credentials: 'same-origin',
-          }),
-        )
-        .then((response) => (response?.ok ? response.json() : null))
-        .catch(() => null)
-        .then((data) => {
-          railWorldLoading.delete(key);
-          // A newer build came meanwhile: this tile is stale.
-          if (builtAt !== railWorldBuiltAt || !_railWorldRoot) return;
-          if (data && Array.isArray(data.lines)) {
-            buildRailWorldTile(key, tile.z, data.lines);
-            showRailWorld();
-            settle();
-          }
-          pumpRailWorld();
-        });
-    }
-  };
-  /** Show the built tiles in view at the camera's zoom; ask for the rest. */
-  const showRailWorld = () => {
-    if (!_railWorldRoot) return;
-    const on = _enabled && Boolean(latestRailWorld);
-    if (latestRailWorld?.builtAt !== railWorldBuiltAt) {
-      dropRailWorld();
-      railWorldBuiltAt = latestRailWorld?.builtAt ?? null;
-    }
-    if (!on) {
-      for (const built of railWorldTiles.values())
-        if (built.primitive) built.primitive.show = false;
-      railWorldQueue = [];
-      railWorldShownZoom = null;
-      return;
-    }
-    const { z, view } = railWorldView();
-    railWorldShownZoom = z;
-    const wanted = new Set();
-    const missing = [];
-    for (const tile of railWorldTilesInView(view, z)) {
-      const key = `${tile.z}/${tile.x}/${tile.y}`;
-      wanted.add(key);
-      if (!railWorldTiles.has(key)) missing.push(tile);
-    }
-    const stamp = now();
-    for (const [key, built] of railWorldTiles) {
-      const show = wanted.has(key);
-      if (show) built.usedAt = stamp;
-      if (built.primitive && built.primitive.show !== show)
-        built.primitive.show = show;
-    }
-    // The tiles out of view longest go past the limit.
-    if (railWorldTiles.size > RAIL_WORLD_TILES_KEPT) {
-      const old = [...railWorldTiles]
-        .filter(([key]) => !wanted.has(key))
-        .sort((a, b) => a[1].usedAt - b[1].usedAt);
-      for (const [key, built] of old.slice(
-        0,
-        railWorldTiles.size - RAIL_WORLD_TILES_KEPT,
-      )) {
-        if (built.primitive) _railWorldRoot.remove(built.primitive);
-        railWorldTiles.delete(key);
-      }
-    }
-    railWorldQueue = missing;
-    pumpRailWorld();
-    _viewer?.scene?.requestRender?.();
-  };
+  // A step forward slides the lit edge there (thresholdSlider).
+  const slides = thresholdSlider({
+    onFrame: () => _viewer?.scene?.requestRender?.(),
+  });
+  const slideThreshold = (built, to) =>
+    slides.slide(built.material.uniforms, to);
 
   let serial = 0;
   const draw = () => {
     drawNetworks();
-    showRailWorld();
     if (!_dataSource) return;
     const entities = _dataSource.entities;
     const next = wanted();
@@ -1109,7 +973,6 @@ export function createOutbreakLayer({
     }
     if ('epidemic' in detail) latestEpidemic = detail.epidemic || null;
     if (Array.isArray(detail.networks)) latestNetworks = detail.networks;
-    if ('railWorld' in detail) latestRailWorld = detail.railWorld || null;
     if (typeof detail.show === 'boolean' && detail.show !== _enabled) {
       Promise.resolve(
         _dataManager?.setEnabled?.(OUTBREAK_LAYER_ID, detail.show, {
@@ -1161,20 +1024,11 @@ export function createOutbreakLayer({
       removeHorizonListener =
         viewer?.scene?.preRender?.addEventListener?.(updateHorizon) || null;
       builtNetworks.clear();
+      slides.clear();
       _networkRoot = new Cesium.PrimitiveCollection();
       viewer?.scene?.primitives?.add?.(_networkRoot);
-      // The world rail between the roads and the reached rail.
-      railWorldTiles.clear();
-      railWorldLoading.clear();
-      railWorldBuiltAt = null;
-      _railWorldRoot = new Cesium.PrimitiveCollection();
-      viewer?.scene?.primitives?.add?.(_railWorldRoot);
       _railRoot = new Cesium.PrimitiveCollection();
       viewer?.scene?.primitives?.add?.(_railRoot);
-      removeRailWorldCamera?.();
-      removeRailWorldCamera =
-        viewer?.camera?.moveEnd?.addEventListener?.(() => showRailWorld()) ||
-        null;
     },
 
     enable() {
@@ -1218,22 +1072,15 @@ export function createOutbreakLayer({
       try {
         if (_networkRoot)
           (viewer || _viewer)?.scene?.primitives?.remove?.(_networkRoot);
-        if (_railWorldRoot)
-          (viewer || _viewer)?.scene?.primitives?.remove?.(_railWorldRoot);
         if (_railRoot)
           (viewer || _viewer)?.scene?.primitives?.remove?.(_railRoot);
       } catch {
         /* viewer already gone */
       }
-      removeRailWorldCamera?.();
-      removeRailWorldCamera = null;
-      railWorldTiles.clear();
-      railWorldLoading.clear();
-      railWorldQueue = [];
       _networkRoot = null;
-      _railWorldRoot = null;
       _railRoot = null;
       builtNetworks.clear();
+      slides.clear();
       removeHorizonListener?.();
       removeHorizonListener = null;
       _viewer = null;
@@ -1243,32 +1090,16 @@ export function createOutbreakLayer({
     /** For tests: each network drawn, with how many bands are red. */
     networkState() {
       return [...builtNetworks].map(([key, built]) => {
-        const start = isAirNetwork(built.item.mode)
-          ? hourBandStart
-          : bandStartKm;
+        const end = isAirNetwork(built.item.mode) ? hourBandEnd : bandEndKm;
         return {
           key,
           shown: Boolean(built.shown),
           bands: built.bands.length,
           red: built.shown
-            ? built.bands.filter((b) => start(b) <= built.threshold).length
+            ? built.bands.filter((b) => end(b) <= built.threshold).length
             : 0,
         };
       });
-    },
-
-    /** For tests: the world rail layer's zoom and its tiles built and shown. */
-    railWorldState() {
-      const shown = [...railWorldTiles].filter(
-        ([, built]) => built.primitive?.show,
-      );
-      return {
-        on: Boolean(_enabled && latestRailWorld),
-        zoom: railWorldShownZoom,
-        tiles: railWorldTiles.size,
-        shown: shown.map(([key]) => key),
-        loading: railWorldLoading.size,
-      };
     },
 
     getStats() {

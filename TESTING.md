@@ -267,7 +267,7 @@ While recording, call out anything in these areas — this is the feedback I mos
 4. **Rail round a location.** The same `/network` call. ✅ `world: true`, `radiusKm: null`. ✅ `network.reachedKm` is thousands of km, no longer cut at 500. ✅ At 48 h and 60 km/h the orange reach is 2,880 km along the line. Saint John NB: ✅ `startKm` about 0.4 (the zoom-10 lines laid over).
 5. **Rail after landing.** Scan a day out of Irkutsk. ✅ `POST /api/outbreak/air-rails` answers `world: true`, `skippedLandings: 0`. ✅ The lit km by continent are at least what they were before on every continent.
 6. **Epidemic.** Run the model with the train on, then off, on the same seed. ✅ Train on: the log line `Rail: N daily rail routes, … travellers a day (World Bank …)`, more places, and earlier arrival along rail corridors (Irkutsk to Krasnoyarsk). ✅ Train off: the same result as before the change.
-7. **Map.** Zoom out to the whole globe. ✅ Faint orange rail on every continent, sharper as you zoom in (tiles by view). ✅ Reached rail lights brighter orange over it, band by band, as the hour moves. ✅ The console shows no primitive errors.
+7. **Map.** Scan and pick hour 1. ✅ No orange rail anywhere the train reach or a landing has not got to by then; rail never reached is not drawn at all (no grey, no backdrop). ✅ Reached rail lights orange band by band as the hour moves. ✅ CLEAR DATA leaves no orange rail and no lit roads on the map, ticking Display spread on map included, until a new SCAN TRAVEL brings them back. ✅ The console shows no primitive errors.
 
 ## If something looks off
 

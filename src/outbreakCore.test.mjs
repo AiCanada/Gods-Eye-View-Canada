@@ -145,6 +145,21 @@ test('each way of travel reaches speed × hours; boat only near water, train onl
     [['train', 2880]],
     'along the rail, uncut: 48 h at 60 km/h',
   );
+  // 25 km from the rail (2026-10-12): the spread gets there at road speed
+  // (100 km/h, 0.25 h) before any of the rail is lit.
+  const away = (hour) =>
+    outbreakSpread({
+      locations: [irkutsk],
+      surroundings: { irkutsk: { rail: true, water: false } },
+      networks: { irkutsk: { rail: true, startKm: { rail: 25 } } },
+      speeds: { train: 60, road: 100 },
+      shown: { road: false },
+      startMs: START,
+      hour,
+    }).reaches.map((r) => [r.mode, r.km]);
+  assert.deepEqual(away(0), [['train', 0]], 'nothing at the start');
+  assert.deepEqual(away(0.2), [['train', 0]], 'not at the rail yet');
+  assert.deepEqual(away(1.25), [['train', 60]], 'an hour along it');
   const hidden = outbreakSpread({
     locations: [irkutsk],
     shown: { road: false },
@@ -1084,4 +1099,25 @@ test('each landing airport counts the infected flights that have landed there by
     );
   assert.deepEqual(at(10), { UUEE: 1, UNNT: 1 });
   assert.deepEqual(at(60), { UUEE: 3, UNNT: 1 });
+});
+
+test('a circle keeps growing to the far side of the globe, past the south pole (owner report 2026-10-12)', () => {
+  // Saint John, 45° N: the south pole is about 15,000 km away. The circle
+  // used to stop at 10,000 km, near 45° S.
+  const saintJohn = { id: 'sj', name: 'Saint John', lat: 45.27, lon: -66.06 };
+  const ringAt = (hour) =>
+    outbreakSpread({
+      locations: [saintJohn],
+      surroundings: { sj: { rail: false, water: false } },
+      startMs: START,
+      hour,
+    }).rings.find((r) => r.mode === 'road').radiusKm;
+  assert.ok(ringAt(200) > 15_000, `${ringAt(200)} km`);
+  // The south pole is inside the reach: past half way the circle closes
+  // in on the far side of the globe, south-west of Australia.
+  const toPole = distanceKm(saintJohn, { lat: -90, lon: 0 });
+  assert.ok(toPole > 10_000 && ringAt(200) > toPole, `${toPole} km`);
+  // It stops at the far side of the globe, half the way round.
+  assert.equal(ringAt(720), SPREAD_MAX_RADIUS_KM);
+  assert.ok(Math.abs(SPREAD_MAX_RADIUS_KM - Math.PI * 6371.0088) < 1);
 });

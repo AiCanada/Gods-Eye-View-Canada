@@ -1,16 +1,33 @@
 # Changelog
 
+- Outbreak tab: the spread moves smoothly along the roads and rail on the
+  map, in PLAY and MAP FUTURE SPREAD alike. Each piece of a line lights at
+  the reach its far end is reached at, not all of its band at once (past
+  48 h a band of the roads and rail after a landing spans 6 hours, past 10
+  days a whole day, so the map stood still for several steps and then jumped),
+  and between steps the lit edge slides forward frame by frame instead of
+  jumping. Still never lit before the spread gets there.
+- Outbreak tab: the reach circles keep growing all the way round the globe,
+  past the south pole, closing in on the far side of the Earth, instead of
+  stopping at 10,000 km, a quarter of the way round.
 - Outbreak tab: every rail line on the globe is now found once in the
   background (OpenFreeMap z8, about 20,000 land tiles, cached on disk, 6 at a
   time, progress shown) and joined into one world network. Rail lights by
   reach from every outbreak and every landing across the whole network
   instead of stopping at 500 km or 200 km, with finer z10 detail kept within
-  100 km; rail an outbreak cannot reach by train is drawn faint grey, so all
-  rail on the globe shows. Roads out of a landing airport light up green. The
-  epidemic model now carries rail travellers between the places
-  rail connects (national rail passenger-km, World Bank; P1P2/D along the
-  line, Zipf 1946), and towns on rail far from airports become places. Until
-  the world network is ready, rail works as before.
+  100 km. Rail is drawn only orange once reached: never grey, no backdrop of
+  the world's rail, and each band lights only once the spread has passed it,
+  so no rail shows at the start of a run before the spread gets there; each
+  piece is banded by its far end, and rail and roads after a landing are cut
+  at every hour band, so no part of a piece lights hours early. Rail and
+  roads round an outbreak location start only once the spread has got from
+  the location to them at road speed. CLEAR DATA
+  removes every lit road and rail line, and an air-traffic answer still on
+  its way when it is pressed no longer brings the old flights back. Roads out of a landing airport
+  light up green. The epidemic model now carries rail travellers between the
+  places rail connects (national rail passenger-km, World Bank; P1P2/D along
+  the line, Zipf 1946), and towns on rail far from airports become places.
+  Until the world network is ready, rail works as before.
 - Outbreak tab: FIND FUTURE SPREAD LOCATIONS now looks the full 30 days ahead
   by default, in windows (24 h, 48 h, 3, 7, 14 and 30 days), and a menu beside
   it picks a shorter reach; places past 48 h assume each route flies daily.

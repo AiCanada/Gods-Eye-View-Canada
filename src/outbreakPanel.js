@@ -937,11 +937,15 @@ export class OutbreakPanel {
    * The air traffic beyond the scan (the server's simulateAirTraffic): every
    * departure from an airport that has had the outbreak an hour, the scan's
    * routes flown daily, normal traffic where there is no data, to 48 h past
-   * the present. Asked again once the present has moved on.
+   * the present. Asked again once the present has moved on. An answer that
+   * comes after CLEAR DATA or a new SCAN TRAVEL belongs to the old run and is
+   * dropped (2026-10-12: it brought the old flights and landing dots back).
    */
   async _loadTraffic({ quiet = false } = {}) {
     const scan = this._state.scan;
     if (!scan || this._trafficLoading) return;
+    const run = this._run;
+    const current = () => run === this._run && this._state.scan === scan;
     const nowMs = this._now();
     const untilMs = nowMs + FUTURE_FLIGHT_HOURS * 3_600_000;
     const delay = airportInfectedAfterHours(this._state.contagion);
@@ -966,6 +970,7 @@ export class OutbreakPanel {
         }),
       });
       const data = await response.json().catch(() => null);
+      if (!current()) return;
       if (!response.ok || !Array.isArray(data?.flights))
         throw new Error(data?.error || `HTTP ${response.status}`);
       this._traffic = {
@@ -982,11 +987,12 @@ export class OutbreakPanel {
         );
       this._refresh({ send: true });
     } catch (error) {
+      if (!current()) return;
       // Asked again at most once a minute while the server cannot answer.
       this._trafficRetryAt = this._now() + 60_000;
       if (!quiet) this._log('AIR TRAFFIC', `Not worked out: ${error.message}`);
     } finally {
-      this._trafficLoading = false;
+      if (current()) this._trafficLoading = false;
     }
   }
 
@@ -1015,19 +1021,33 @@ export class OutbreakPanel {
   /* Main roads and rail lines (owner ruling, 2026-10-09)                   */
   /* --------------------------------------------------------------------- */
 
-  /** By location id: {road: true, rail: true} where that network is known. */
+  /**
+   * By location id: {road: true, rail: true} where that network is known,
+   * with startKm {road, rail}: how far the location is from it, so the
+   * reach along it starts only once the spread gets there (2026-10-12).
+   */
   _networksKnown() {
     const known = {};
+    if (!this._state.scan) return known;
     for (const [key, entry] of this._networks || []) {
       if (!entry?.network) continue;
       const [id, mode] = key.split('|');
-      (known[id] ||= {})[mode] = true;
+      const place = (known[id] ||= {});
+      place[mode] = true;
+      const startKm = Number(entry.network.startKm);
+      if (Number.isFinite(startKm) && startKm > 0)
+        (place.startKm ||= {})[mode] = startKm;
     }
     return known;
   }
 
-  /** The networks for the map: every known one for a current location. */
+  /**
+   * The networks for the map: every known one for a current location, and
+   * none without a scan (owner report 2026-10-12: rail stayed lit after
+   * CLEAR DATA).
+   */
   _networksForMap() {
+    if (!this._state.scan) return [];
     const ids = new Set(this._state.locations.map((l) => l.id));
     const out = [];
     for (const [key, entry] of this._networks || []) {
@@ -1104,6 +1124,7 @@ export class OutbreakPanel {
     this._airRoadsRetryAt = Infinity;
     if (!destinations.length) return;
     this._airRoadsLoading = true;
+    const run = this._run;
     try {
       const response = await this._request(`${API}/air-roads`, {
         method: 'POST',
@@ -1115,6 +1136,8 @@ export class OutbreakPanel {
         }),
       });
       const data = await response.json().catch(() => null);
+      // Cleared meanwhile: nothing of the old run comes back.
+      if (run !== this._run) return;
       if (!response.ok || !data?.network)
         throw new Error(data?.error || `HTTP ${response.status}`);
       this._airRoads = { network: data.network };
@@ -1126,9 +1149,9 @@ export class OutbreakPanel {
       this._refresh({ send: true });
     } catch {
       // The red circles stand in; asked again in five minutes.
-      this._airRoadsRetryAt = this._now() + 300_000;
+      if (run === this._run) this._airRoadsRetryAt = this._now() + 300_000;
     } finally {
-      this._airRoadsLoading = false;
+      if (run === this._run) this._airRoadsLoading = false;
     }
   }
 
@@ -1160,6 +1183,7 @@ export class OutbreakPanel {
     this._airRailsRetryAt = Infinity;
     if (!destinations.length) return;
     this._airRailsLoading = true;
+    const run = this._run;
     try {
       const response = await this._request(`${API}/air-rails`, {
         method: 'POST',
@@ -1171,6 +1195,8 @@ export class OutbreakPanel {
         }),
       });
       const data = await response.json().catch(() => null);
+      // Cleared meanwhile: nothing of the old run comes back.
+      if (run !== this._run) return;
       if (response.status === 429) {
         // Too many requests: a short wait, not five minutes dark.
         this._airRailsRetryAt = this._now() + 30_000;
@@ -1191,9 +1217,9 @@ export class OutbreakPanel {
       this._refresh({ send: true });
     } catch {
       // Asked again in five minutes.
-      this._airRailsRetryAt = this._now() + 300_000;
+      if (run === this._run) this._airRailsRetryAt = this._now() + 300_000;
     } finally {
-      this._airRailsLoading = false;
+      if (run === this._run) this._airRailsLoading = false;
     }
   }
 
@@ -1201,8 +1227,9 @@ export class OutbreakPanel {
    * EVERY RAIL LINE ON THE GLOBE (owner ruling 2026-10-12): how far the
    * server's world rail has got. While it finds and builds it, the status
    * line says so, every RAIL_WORLD_POLL_MS; once it is built, the log says
-   * so once, the rail round each location and after each landing is asked
-   * for again (now the whole world's), and the map draws every rail line.
+   * so once, and the rail round each location and after each landing is
+   * asked for again (now the whole world's). The map draws rail only where
+   * the spread reaches it (owner 2026-10-12, "no grey on rail lines").
    */
   async _pollRailWorld() {
     if (this._railWorldPolling || this._destroyed) return;
@@ -1294,6 +1321,7 @@ export class OutbreakPanel {
     // Every location's first level before anyone's farther one.
     wanted.sort((x, y) => x.level - y.level);
     this._networksLoading = true;
+    const run = this._run;
     try {
       for (const { location, mode, level } of wanted) {
         const key = `${location.id}|${mode}`;
@@ -1307,6 +1335,8 @@ export class OutbreakPanel {
         const { response, data } = await this._getJson(
           `${API}/network?${params}`,
         ).catch(() => ({ response: { ok: false }, data: null }));
+        // Cleared meanwhile: nothing of the old run comes back.
+        if (run !== this._run) return;
         if (response.ok && data?.network) {
           this._networks.set(key, {
             mode,
@@ -1335,10 +1365,11 @@ export class OutbreakPanel {
         this._refresh({ send: true });
       }
     } finally {
-      this._networksLoading = false;
+      if (run === this._run) this._networksLoading = false;
     }
     // The next, farther level, now this one is in.
     if (
+      run === this._run &&
       [...this._networks.values()].some(
         (entry) =>
           entry.network &&
@@ -1363,13 +1394,6 @@ export class OutbreakPanel {
                     places: this._epidemic.places,
                     commutes: this._epidemic.commutes,
                   }
-                : null,
-            // Every rail line on the globe, once the server has built it
-            // (owner ruling 2026-10-12), while trains are shown.
-            railWorld:
-              this._railWorld?.state === 'ready' &&
-              this._state.shown?.train !== false
-                ? { builtAt: this._railWorld.builtAt }
                 : null,
             ...extra,
           },
@@ -1626,6 +1650,8 @@ export class OutbreakPanel {
     this._state.scan = null;
     this._traffic = null;
     this._trafficRetryAt = 0;
+    this._trafficLoading = false;
+    this._dropNetworks();
     this._epidemic = null;
     this._state.epidemic = null;
     this._dropFullEpidemic();
@@ -1640,6 +1666,28 @@ export class OutbreakPanel {
     this._refresh();
     this._hideMap();
     this._say('DATA CLEARED · press SCAN TRAVEL for a new run.');
+  }
+
+  /**
+   * Every road and rail line lit, round the outbreak locations and after the
+   * landings, goes with the run (owner report 2026-10-12: rail still showed
+   * infected after CLEAR DATA), and so do their keys and retry times, so the
+   * next SCAN TRAVEL asks for all of them again. An answer still on its way
+   * is dropped when it comes (the run number moves on). The world rail's
+   * status is the server's, not the run's, and stays.
+   */
+  _dropNetworks() {
+    this._run = (this._run || 0) + 1;
+    this._networks = new Map();
+    this._networksLoading = false;
+    this._airRoads = null;
+    this._airRoadsCheap = null;
+    this._airRoadsRetryAt = 0;
+    this._airRoadsLoading = false;
+    this._airRails = null;
+    this._airRailsCheap = null;
+    this._airRailsRetryAt = 0;
+    this._airRailsLoading = false;
   }
 
   _remove(id) {
@@ -1798,6 +1846,9 @@ export class OutbreakPanel {
         airports: this._scanAirports || [],
       };
       this._traffic = null;
+      // A background answer for the old scan may still be out; it is dropped
+      // when it comes, and must not stop this scan asking.
+      this._trafficLoading = false;
       this._say('SCANNING · air traffic out of the airports it reaches…');
       await this._loadTraffic();
       this._state.hour = null;

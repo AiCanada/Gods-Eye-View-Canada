@@ -11,6 +11,7 @@ import {
   trimmedEpidemic,
 } from './outbreakPanel.js';
 import { OUTBREAK_MODEL_EVENT, OUTBREAK_STORAGE_KEY } from './outbreakCore.mjs';
+import { createOutbreakLayer } from './data/outbreak.js';
 import { OUTBREAK_DEFAULT_PROFILE, PATHOGEN_PRESETS } from './outbreakEpi.mjs';
 
 /** Just enough of a page for the box's top row and its log, plus `extra` ids. */
@@ -565,7 +566,9 @@ test('every rail line on the globe: the status line while the server finds it, t
     !asked.includes('rail'),
     'no station, no world rail yet: not asked',
   );
-  assert.equal(page.sent.at(-1).railWorld, null);
+  // The map is never sent the world rail to draw (owner 2026-10-12: rail
+  // showed infected at the start of a run).
+  assert.equal('railWorld' in page.sent.at(-1), false);
   // Built: the next poll says so once, and rail is asked for.
   state = {
     state: 'ready',
@@ -586,10 +589,224 @@ test('every rail line on the globe: the status line while the server finds it, t
   );
   assert.equal(page.nodes.get('outbreak-status').textContent, '');
   const last = page.sent.at(-1);
-  assert.deepEqual(last.railWorld, { builtAt: 5 });
+  assert.equal('railWorld' in last, false, 'no backdrop of every rail line');
   assert.ok(last.networks.some((n) => n.key === 'sj|rail'));
   assert.ok(last.spread.reaches.some((r) => r.mode === 'train'));
   assert.equal(panel._railWorldTimer, null, 'no more polls once built');
+  panel.destroy();
+});
+
+test('CLEAR DATA leaves nothing infected on the map: no rail, roads, air-roads or air-rail until a new SCAN TRAVEL (owner report 2026-10-12)', async () => {
+  const page = fakePage();
+  const now = Date.UTC(2026, 9, 12, 12);
+  const scan = {
+    startMs: now - 48 * 3_600_000,
+    flights: [],
+    surroundings: { irk: { rail: true, water: false } },
+    flightSource: 'test',
+  };
+  page.storage.setItem(
+    OUTBREAK_STORAGE_KEY,
+    JSON.stringify({
+      show: true,
+      locations: [
+        { id: 'irk', name: 'Irkutsk, Russia', lat: 52.29, lon: 104.3 },
+      ],
+      scan,
+    }),
+  );
+  const network = {
+    bandKm: 10,
+    bands: { 0: [[104.3, 52.29, 104.4, 52.29]] },
+    unreached: [],
+    reachedKm: 10,
+    lengthKm: 10,
+    startKm: 0.5,
+  };
+  const timed = { bandsBy: 'hour', bands: { 0: [[37, 56, 37.5, 56]] } };
+  const asked = [];
+  let hold = null;
+  const panel = new OutbreakPanel(null, {
+    document: page.document,
+    windowRef: page.windowRef,
+    storage: page.storage,
+    fetch: async (url) => {
+      if (!String(url).includes('/network?')) throw new Error('offline');
+      const q = new URL(url, 'http://x').searchParams;
+      asked.push(q.get('mode'));
+      if (hold) await hold.promise;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          network,
+          tiles: 1,
+          failedTiles: 0,
+          radiusKm: 500,
+          lastLevel: true,
+        }),
+      };
+    },
+    now: () => now,
+  });
+  await settle();
+  // The roads and rail after the landings, as their loads leave them.
+  panel._airRoads = { network: timed };
+  panel._airRoadsCheap = 'before';
+  panel._airRoadsRetryAt = Infinity;
+  panel._airRails = { network: timed };
+  panel._airRailsCheap = 'before';
+  panel._airRailsRetryAt = Infinity;
+  panel._refresh({ send: true });
+  const before = page.sent.at(-1);
+  assert.deepEqual(before.networks.map((n) => n.key).sort(), [
+    'air',
+    'air-rail',
+    'irk|rail',
+    'irk|road',
+  ]);
+  assert.equal(before.spread.airRails, true);
+  assert.ok(before.spread.reaches.some((r) => r.network === 'rail'));
+
+  // The map layer, fed what the box sent.
+  const listeners = [];
+  const layerWindow = {
+    addEventListener: (type, fn) => listeners.push(fn),
+    removeEventListener() {},
+    dispatchEvent: () => true,
+  };
+  const layer = createOutbreakLayer({ windowRef: layerWindow });
+  const viewer = {
+    dataSources: { add() {}, remove() {} },
+    scene: { requestRender() {} },
+  };
+  layer.attachDataManager({ setEnabled: async () => true });
+  layer.init(viewer);
+  layer.enable();
+  const toLayer = (detail) => {
+    for (const fn of listeners) fn({ detail: { ...detail, show: undefined } });
+  };
+  toLayer(before);
+  assert.ok(layer.networkState().some((n) => n.shown));
+
+  page.nodes.get('outbreak-clear').click();
+  const after = page.sent.at(-1);
+  assert.deepEqual(after.networks, [], 'no air or location networks sent');
+  assert.equal(after.spread.airRoads, false);
+  assert.equal(after.spread.airRails, false);
+  assert.deepEqual(after.spread.reaches, []);
+  assert.equal('railWorld' in after, false);
+  // The layer draws nothing lit, even switched on again.
+  toLayer(after);
+  assert.deepEqual(layer.networkState(), []);
+  page.nodes.get('outbreak-show').checked = true;
+  page.nodes.get('outbreak-show').fire('change');
+  assert.deepEqual(page.sent.at(-1).networks, []);
+  toLayer(page.sent.at(-1));
+  assert.deepEqual(layer.networkState(), []);
+  // Nothing kept to come back: keys and retry times reset too.
+  assert.equal(panel._airRoads, null);
+  assert.equal(panel._airRails, null);
+  assert.equal(panel._networks.size, 0);
+  assert.deepEqual([panel._airRoadsCheap, panel._airRailsCheap], [null, null]);
+  assert.deepEqual([panel._airRoadsRetryAt, panel._airRailsRetryAt], [0, 0]);
+  await settle();
+  assert.deepEqual(page.sent.at(-1).networks, [], 'still nothing, no scan');
+
+  // A new SCAN TRAVEL loads everything again; an answer asked for before a
+  // CLEAR DATA and coming after it is dropped.
+  asked.length = 0;
+  let release;
+  hold = { promise: new Promise((r) => (release = r)) };
+  panel._state.scan = scan;
+  panel._refresh({ send: true });
+  await settle();
+  assert.deepEqual(asked, ['road']);
+  page.nodes.get('outbreak-clear').click();
+  hold = null;
+  release();
+  await settle();
+  assert.equal(panel._networks.size, 0, 'the old answer is dropped');
+  assert.deepEqual(page.sent.at(-1).networks, []);
+  asked.length = 0;
+  panel._state.scan = scan;
+  panel._refresh({ send: true });
+  await settle();
+  assert.deepEqual(asked.sort(), ['rail', 'road']);
+  assert.deepEqual(
+    page.sent
+      .at(-1)
+      .networks.map((n) => n.key)
+      .sort(),
+    ['irk|rail', 'irk|road'],
+  );
+  layer.destroy(viewer);
+  panel.destroy();
+});
+
+test('CLEAR DATA drops an air-traffic answer still on its way: no old flights or landing dots come back (2026-10-12)', async () => {
+  const page = fakePage();
+  const now = Date.UTC(2026, 9, 12, 12);
+  const scan = {
+    startMs: now - 48 * 3_600_000,
+    flights: [],
+    surroundings: {},
+    flightSource: 'test',
+  };
+  page.storage.setItem(
+    OUTBREAK_STORAGE_KEY,
+    JSON.stringify({
+      show: true,
+      locations: [
+        { id: 'irk', name: 'Irkutsk, Russia', lat: 52.29, lon: 104.3 },
+      ],
+      scan,
+    }),
+  );
+  const flight = {
+    from: { code: 'IKT', name: 'Irkutsk', lat: 52.27, lon: 104.39 },
+    to: { code: 'SVO', name: 'Moscow', lat: 55.97, lon: 37.41 },
+    departMs: now - 40 * 3_600_000,
+    arriveMs: now - 34 * 3_600_000,
+    hop: 1,
+  };
+  let release = null;
+  let asked = 0;
+  const panel = new OutbreakPanel(null, {
+    document: page.document,
+    windowRef: page.windowRef,
+    storage: page.storage,
+    fetch: async (url) => {
+      if (!String(url).endsWith('/traffic')) throw new Error('offline');
+      asked += 1;
+      await new Promise((r) => (release = r));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ flights: [flight], airportsReached: 1 }),
+      };
+    },
+    now: () => now,
+  });
+  await settle();
+  assert.equal(asked, 1, 'the background traffic reload is out');
+  assert.ok(!panel._busy, 'not busy, so CLEAR DATA goes ahead');
+  page.nodes.get('outbreak-clear').click();
+  assert.equal(panel._trafficLoading, false);
+  release();
+  await settle();
+  assert.equal(panel._traffic, null, 'the old answer is dropped');
+  assert.deepEqual(panel._flights(), []);
+  page.nodes.get('outbreak-show').checked = true;
+  page.nodes.get('outbreak-show').fire('change');
+  const sent = page.sent.at(-1);
+  assert.deepEqual(sent.networks, []);
+  assert.deepEqual(sent.spread.flights || [], []);
+  assert.equal(
+    JSON.stringify(sent).includes('outbreak-destination'),
+    false,
+    'no REACHED BY PLANE dots',
+  );
   panel.destroy();
 });
 

@@ -16,8 +16,9 @@
  *     .gev-cache/outbreak/net-built/rail-world-v1-<date>.bin (the last two
  *     kept);
  *  3. answers from it: reach along the rail from an outbreak location or
- *     from every landing, the world rail layer's tiles, and the rail
- *     routes of the epidemic model, each in a worker thread.
+ *     from every landing, and the rail routes of the epidemic model, each
+ *     in a worker thread. The map draws only the rail the spread reaches
+ *     (owner 2026-10-12, "no grey on rail lines"): no world rail tiles.
  *
  * Until the network is built every caller falls back to what it did before.
  * A tile that fails is asked again after 5, 30, then 120 minutes, a restart
@@ -42,8 +43,6 @@ import {
   railWorldTiles,
 } from '../../src/outbreakRailWorld.mjs';
 import {
-  railGraphLinesIn,
-  railPathBoxes,
   railVertexIndex,
   tileBounds,
   tileDistanceKm,
@@ -59,8 +58,6 @@ const PKM_URL =
   'https://api.worldbank.org/v2/country/all/indicator/IS.RRS.PASG.KM?format=json&per_page=20000&mrnev=1';
 const PKM_CACHE_MS = 30 * 24 * 3_600_000;
 const PKM_TIMEOUT_MS = 30_000;
-/** The world rail layer's tiles kept in memory. */
-const LAYER_TILES_KEPT = 64;
 
 const COUNTRIES_FILE = path.join(
   'src',
@@ -186,7 +183,6 @@ export function railWorldJob({
   const missing = new Map();
   let built = null; // {file, meta}
   let loaded = null; // {file, graph, index}
-  const layerTiles = new Map();
   let inFlight = 0;
   let maxInFlight = 0;
 
@@ -250,7 +246,6 @@ export function railWorldJob({
       ...(found.meta.byContinent || {}),
     };
     status.builtAt = found.meta.builtAt || null;
-    layerTiles.clear();
   };
 
   /**
@@ -577,7 +572,7 @@ export function railWorldJob({
         scheduleRebuild();
       }
     },
-    /** The world network in this thread (for railNear and the layer tiles). */
+    /** The world network in this thread (for railNear). */
     graph() {
       if (!built) return null;
       if (loaded?.file === built.file) return loaded;
@@ -587,7 +582,6 @@ export function railWorldJob({
           file: built.file,
           graph,
           index: railVertexIndex(graph),
-          boxes: railPathBoxes(graph),
         };
       } catch {
         loaded = null;
@@ -598,29 +592,6 @@ export function railWorldJob({
     near(point, km) {
       const g = job.graph();
       return Boolean(g?.index.nearest(point, km));
-    },
-    /**
-     * The world rail layer's tile: lines in the tile's box, simplified to
-     * about half a pixel at that zoom.
-     */
-    layerTile(z, x, y, bounds) {
-      const g = job.graph();
-      if (!g) return null;
-      const key = `${built.meta.builtAt}|${z}/${x}/${y}`;
-      if (layerTiles.has(key)) {
-        const kept = layerTiles.get(key);
-        layerTiles.delete(key);
-        layerTiles.set(key, kept);
-        return kept;
-      }
-      // Half a pixel of a 256-pixel tile at the equator, in km.
-      const tolKm = (40_075 / 2 ** z / 256) * 0.5;
-      const lines = railGraphLinesIn(g.graph, bounds, tolKm, g.boxes);
-      const answer = { z, x, y, lines, builtAt: built.meta.builtAt };
-      layerTiles.set(key, answer);
-      while (layerTiles.size > LAYER_TILES_KEPT)
-        layerTiles.delete(layerTiles.keys().next().value);
-      return answer;
     },
     /** Run a task against the built network in a worker. */
     task(task, options) {

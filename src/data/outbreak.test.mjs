@@ -5,8 +5,11 @@ import {
   forecastColor,
   isAirNetwork,
   networkLitColor,
+  networkPieces,
   networkStyle,
+  thresholdSlider,
 } from './outbreak.js';
+import { bandEndKm } from '../outbreakNetwork.mjs';
 import {
   OUTBREAK_LAYER_ID,
   OUTBREAK_MODEL_EVENT,
@@ -430,11 +433,19 @@ test('roads and rail lines: drawn faint, turning red band by band as the reach p
         },
       }),
     );
+  // Each band lights once the reach passes its end (2026-10-12), never
+  // a band early: 5 km is not yet the 0 to 10 km band.
   send(5);
   assert.deepEqual(layer.networkState(), [
-    { key: 'irk|road', shown: true, bands: 3, red: 1 },
+    { key: 'irk|road', shown: true, bands: 3, red: 0 },
   ]);
+  send(10);
+  assert.equal(layer.networkState()[0].red, 1);
   send(15);
+  assert.equal(layer.networkState()[0].red, 1);
+  send(20);
+  assert.equal(layer.networkState()[0].red, 2);
+  send(59);
   assert.equal(layer.networkState()[0].red, 2);
   send(60);
   assert.equal(layer.networkState()[0].red, 3);
@@ -596,13 +607,17 @@ test('the rail after landing lights up orange by the hour shown, on top of the r
     bands: 3,
     red: 0,
   });
-  // Red bands: those whose hour band starts by the hour shown.
+  // Red bands: those whose hour band ends by the hour shown (2026-10-12).
   send(11.5);
+  assert.equal(rail().red, 1);
+  send(12);
   assert.equal(rail().red, 2);
   send(18);
+  assert.equal(rail().red, 2, 'band 18 runs to hour 19');
+  send(19);
   assert.equal(rail().red, 3);
   // Known only for the roads: the rail stays off, the roads stay on.
-  send(18, { airRails: false });
+  send(19, { airRails: false });
   assert.equal(rail().shown, false);
   assert.equal(layer.networkState().find((n) => n.key === 'air').shown, true);
   layer.destroy(viewer);
@@ -641,9 +656,9 @@ test('the rail collection is added to the scene after the roads, and both go on 
     },
   };
   layer.init(viewer);
-  // The world rail (owner ruling 2026-10-12) between the roads and the
-  // reached rail, so the lit rail stays on top.
-  assert.equal(added.length, 3, 'roads, the world rail, then rail');
+  // No backdrop of the world's rail (owner 2026-10-12, "no grey on rail
+  // lines"): the roads, then the reached rail on top.
+  assert.equal(added.length, 2, 'roads, then rail');
   layer.destroy(viewer);
   assert.deepEqual(removed, added);
 });
@@ -967,89 +982,181 @@ test('epidemicBedsShort on its own', async () => {
   assert.equal(epidemicBedsShort({ overflowP50: '10' }, 99), false);
 });
 
-test('every rail line on the globe: the world rail layer asks for the tiles in view, six at a time, once each', async () => {
-  const { railWorldZoom, railWorldTilesInView, RAIL_WORLD_ALPHA } =
-    await import('./outbreak.js');
-  assert.equal(RAIL_WORLD_ALPHA, 0.35);
-  assert.deepEqual(
-    [20e6, 4e6, 1.5e6, 6e5, 1e5].map(railWorldZoom),
-    [2, 3, 4, 5, 6],
+test('at the start of a run no rail is lit before the spread reaches it: round a location and after a landing (owner report 2026-10-12)', async () => {
+  const {
+    buildRailGraph,
+    railDistances,
+    railGraphPieces,
+    railTimedReach,
+    railVertexIndex,
+  } = await import('../outbreakNetwork.mjs');
+  const { outbreakSpread } = await import('../outbreakCore.mjs');
+  // A rail line along the equator from 25 km east of the location (and of
+  // the airport) out to about 220 km.
+  const kmEast = (km) => km / 111.2;
+  const line = Array.from({ length: 40 }, (_, i) => [kmEast(25 + i * 5), 0]);
+  const graph = buildRailGraph([line], { countryAt: () => 'XX' });
+  const index = railVertexIndex(graph);
+  const at = { lat: 0, lon: 0 };
+  const hit = index.nearest(at, 30);
+  assert.ok(Math.abs(hit[1] - 25) < 0.5, 'the rail starts 25 km away');
+
+  // Round the location, by km along it from the location.
+  const dist = railDistances(graph, [{ vertex: hit[0], startKm: hit[1] }]);
+  const byKm = railGraphPieces(graph, dist);
+  // After a landing at hour 3, by the hour; 60 km/h for 100 km.
+  const timed = railTimedReach(
+    graph,
+    [{ vertex: hit[0], startKm: hit[1], hour: 3 }],
+    { speedKmh: 60, fastKm: 100, onwardShare: 0.25 },
   );
-  assert.equal(railWorldTilesInView(null, 2).length, 16, 'the whole world');
-  // Over the antimeridian: both sides, nothing between.
-  const across = railWorldTilesInView(
-    { west: 170, south: 50, east: -170, north: 60 },
-    3,
-  );
-  assert.deepEqual([...new Set(across.map((t) => t.x))].sort(), [0, 7]);
+  const byHour = railGraphPieces(graph, timed.time, {
+    dist: timed.dist,
+    timed: true,
+  });
+  assert.ok(Math.min(...Object.keys(byKm.bands).map(Number)) >= 2);
+  assert.equal(Math.min(...Object.keys(byHour.bands).map(Number)), 3);
+
   const windowRef = fakeWindow();
-  const asked = [];
-  let open = 0;
-  let most = 0;
-  const release = [];
-  const fetchImpl = (url) => {
-    asked.push(url);
-    open += 1;
-    most = Math.max(most, open);
-    return new Promise((resolve) => {
-      release.push(() => {
-        open -= 1;
-        resolve({
-          ok: true,
-          json: async () => ({ lines: [[0, 0, 1, 1]] }),
-        });
-      });
-    });
-  };
-  const layer = createOutbreakLayer({ windowRef, fetchImpl });
+  const layer = createOutbreakLayer({ windowRef });
   const viewer = {
     dataSources: { add() {}, remove() {} },
-    camera: {
-      positionCartographic: { height: 20e6 },
-      computeViewRectangle: () => undefined,
-    },
     scene: { requestRender() {} },
   };
   layer.attachDataManager({ setEnabled: async () => true });
   layer.init(viewer);
   layer.enable();
-  const send = (railWorld) =>
+  const startMs = Date.UTC(2026, 9, 12, 0);
+  const send = (hour) => {
+    // The train reach as the box works it out: 20 km/h from the location.
+    const spread = outbreakSpread({
+      locations: [{ id: 'loc', name: 'Here', lat: 0, lon: 0 }],
+      speeds: { train: 20 },
+      shown: { road: false, boat: false },
+      networks: { loc: { rail: true } },
+      airRails: true,
+      startMs,
+      hour,
+    });
     windowRef.dispatchEvent(
       new CustomEvent(OUTBREAK_MODEL_EVENT, {
         detail: {
-          spread: {
-            hour: 1,
-            rings: [],
-            reaches: [],
-            routes: [],
-            origins: [],
-            destinations: [],
-          },
-          networks: [],
-          railWorld,
+          spread,
+          networks: [
+            {
+              key: 'loc|rail',
+              locationId: 'loc',
+              mode: 'rail',
+              network: { bandKm: 10, ...byKm },
+            },
+            {
+              key: 'air-rail',
+              locationId: '',
+              mode: 'air-rail',
+              network: { bandsBy: 'hour', ...byHour },
+            },
+          ],
         },
       }),
     );
-  // Not built yet: nothing asked.
-  send(null);
-  assert.equal(asked.length, 0);
-  send({ builtAt: 1 });
-  assert.equal(layer.railWorldState().zoom, 2);
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(asked.length, 6, 'six at once');
-  while (release.length) {
-    release.shift()();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    return Object.fromEntries(layer.networkState().map((n) => [n.key, n.red]));
+  };
+  // Hour 0 and the first hour: the train has gone 0 and 20 km, short of the
+  // rail 25 km away, and the plane lands only at hour 3. Lit from the band
+  // start, the 20 to 30 km band showed at hour 1.
+  assert.deepEqual(send(0), { 'loc|rail': 0, 'air-rail': 0 });
+  assert.deepEqual(send(1), { 'loc|rail': 0, 'air-rail': 0 });
+  // Hour 3: the train is 60 km along. Each piece is banded by its far end
+  // (2026-10-12), so the 25 to 30 km piece is in the 30 km band: the 30 to
+  // 60 km bands are red. Landed at hour 3, the rail is 25 km on at 60 km/h:
+  // 3.4 h, so not yet at 3.
+  assert.deepEqual(send(3), { 'loc|rail': 3, 'air-rail': 0 });
+  assert.equal(send(4)['air-rail'], 1);
+  // From then on every red band is one the spread has wholly passed.
+  for (let hour = 0; hour <= 40; hour += 1) {
+    const red = send(hour);
+    const reach = 20 * hour;
+    const kmBands = Object.keys(byKm.bands).map(Number);
+    const hourBands = Object.keys(byHour.bands).map(Number);
+    const kmPassed = kmBands.filter(
+      (b) =>
+        // Every piece of the band reached by the train at this hour.
+        byKm.bands[b].length && (b < 100 ? (b + 1) * 10 : Infinity) <= reach,
+    ).length;
+    assert.equal(red['loc|rail'], kmPassed, `km bands at hour ${hour}`);
+    assert.equal(
+      red['air-rail'],
+      hourBands.filter((b) => b + 1 <= hour).length,
+      `hour bands at hour ${hour}`,
+    );
   }
-  assert.equal(asked.length, 16, 'the 16 world tiles at zoom 2');
-  assert.equal(new Set(asked).size, 16, 'each once');
-  assert.ok(most <= 6);
-  assert.ok(
-    asked.every((u) => u.startsWith('/api/outbreak/rail-world/tile/2/')),
-  );
-  assert.equal(layer.railWorldState().tiles, 16);
-  // The same build again asks for nothing more.
-  send({ builtAt: 1 });
-  assert.equal(asked.length, 16);
   layer.destroy(viewer);
+});
+
+test('the spread moves smoothly along the lines: each piece lit by its own reach, the lit edge sliding between steps (owner report 2026-10-12)', async () => {
+  const { buildRailGraph, railDistances, railGraphPieces, railVertexIndex } =
+    await import('../outbreakNetwork.mjs');
+  const kmEast = (km) => km / 111.2;
+  // Points 7 km apart, as real lines are, not on the 10 km band edges.
+  const line = Array.from({ length: 40 }, (_, i) => [kmEast(i * 7), 0]);
+  const graph = buildRailGraph([line], { countryAt: () => 'XX' });
+  const hit = railVertexIndex(graph).nearest({ lat: 0, lon: 0 }, 5);
+  const byKm = railGraphPieces(
+    graph,
+    railDistances(graph, [{ vertex: hit[0], startKm: hit[1] }]),
+  );
+  // Each piece lights at its own km, never before its band's end allows,
+  // so a band's pieces light one by one as the reach moves through it.
+  const pieces = networkPieces(byKm, false);
+  assert.equal(pieces.length, Object.values(byKm.bands).flat().length);
+  const kms = pieces.map(([, km]) => km);
+  assert.ok(new Set(kms).size > Object.keys(byKm.bands).length);
+  for (const [band, list] of Object.entries(byKm.bands))
+    list.forEach((flat, i) =>
+      assert.equal(
+        pieces.find(([f]) => f === flat)[1],
+        byKm.lit[band][i],
+        `band ${band}`,
+      ),
+    );
+  // A network kept from before: each band at its end, as before.
+  const { lit, ...old } = byKm;
+  assert.ok(lit);
+  for (const [flat, km] of networkPieces(old, false)) {
+    const band = Object.keys(byKm.bands).find((b) =>
+      byKm.bands[b].includes(flat),
+    );
+    assert.equal(km, bandEndKm(Number(band)));
+  }
+
+  // The lit edge slides to a new reach over the next frames.
+  const frames = [];
+  let clock = 0;
+  let renders = 0;
+  const slider = thresholdSlider({
+    raf: (fn) => frames.push(fn),
+    now: () => clock,
+    ms: 800,
+    onFrame: () => (renders += 1),
+  });
+  const uniforms = { threshold: -1 };
+  slider.slide(uniforms, 30);
+  assert.equal(uniforms.threshold, 30, 'a first reach: at once');
+  slider.slide(uniforms, 90);
+  assert.equal(uniforms.threshold, 30, 'not jumped');
+  clock = 400;
+  frames.shift()();
+  assert.equal(uniforms.threshold, 60, 'half way at half the time');
+  // Never ahead of the reach shown, and it stops there.
+  clock = 5000;
+  while (frames.length) frames.shift()();
+  assert.equal(uniforms.threshold, 90);
+  assert.ok(renders >= 2, 'the map drawn each frame');
+  // A step back: at once.
+  slider.slide(uniforms, 40);
+  assert.equal(uniforms.threshold, 40);
+  // No animation frames (a test, a server): at once.
+  const still = { threshold: 10 };
+  thresholdSlider({ raf: () => undefined }).slide(still, 50);
+  assert.equal(still.threshold, 50);
 });

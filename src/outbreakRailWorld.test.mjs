@@ -308,9 +308,8 @@ test('the sweep: each tile once, six at a time, kept ones never fetched, a failu
     assert.equal(second.status().tilesDone, all.length);
     assert.ok(second.near({ lat: 48.6, lon: 2.6 }, 30));
     assert.ok(!second.near({ lat: 10, lon: 10 }, 30));
-    // The world rail layer's tile.
-    const layer = second.layerTile(3, 4, 2, tileBounds(3, 4, 2));
-    assert.ok(layer.lines.length > 0);
+    // No map tiles of the whole world's rail (owner 2026-10-12).
+    assert.equal(second.layerTile, undefined);
     // A tile refreshed by the store for its own reasons: a new build later.
     const timers3 = fakeTimers();
     const third = railWorldJob({

@@ -29,9 +29,9 @@
  *   GET /api/outbreak/rail-world/status   how far the world rail has got
  *        (owner ruling 2026-10-12: every rail line on the globe, found once
  *        in the background, outbreakRailWorld.js); once it is built the rail
- *        above answers along the whole world's network
- *   GET /api/outbreak/rail-world/tile/z/x/y   the world rail's lines for
- *        the map's world rail layer (zoom 2 to 6)
+ *        above answers along the whole world's network (the map draws
+ *        only the rail the spread reaches: owner 2026-10-12, "no grey on
+ *        rail lines", so no tiles of the whole world's rail are served)
  *   POST /api/outbreak/traffic   the assumed air traffic beyond the scan
  *   POST /api/outbreak/epidemic  the EPIDEMIC MODEL (src/outbreakEpi.mjs):
  *        a stochastic ensemble over the same flights, with each airport's
@@ -89,6 +89,7 @@ import {
 import { sensitivityTornado } from '../../src/outbreakEpiSensitivity.mjs';
 import {
   NETWORK_JOIN_KM,
+  NETWORK_PIECES_VERSION,
   NETWORK_PRIMARY_KM,
   NETWORK_ROAD_LEVELS,
   NETWORK_RADIUS_KM,
@@ -96,7 +97,6 @@ import {
   NETWORK_TILE_ZOOM,
   buildTransportNetwork,
   networkTiles,
-  tileBounds,
   tileDistanceKm,
 } from '../../src/outbreakNetwork.mjs';
 import {
@@ -1731,8 +1731,8 @@ export function outbreakProxy({
         networks.delete(key);
       }
     builtNetworks.prune?.(
-      'rail4-world-',
-      `rail4-world-v${RAIL_WORLD_VERSION}-${builtAt}-`,
+      'rail5-world-',
+      `rail5-world-v${RAIL_WORLD_VERSION}-${builtAt}-p${NETWORK_PIECES_VERSION}-`,
     );
   };
   const airRoads = new Map();
@@ -2545,9 +2545,8 @@ export function outbreakProxy({
     if (!admitGet(req, res, allowedHosts)) return;
     const params = url.searchParams;
     // EVERY RAIL LINE ON THE GLOBE (owner ruling 2026-10-12): how far the
-    // world rail has got, and its lines for the map. Both are cheap reads
-    // of what this server holds, polled by the page: same origin only, and
-    // outside the request budget, which the tiles alone would spend.
+    // world rail has got. A cheap read of what this server holds, polled by
+    // the page: same origin only, and outside the request budget.
     if (route === '/rail-world/status')
       return send(res, 200, {
         ...(railWorld
@@ -2555,18 +2554,6 @@ export function outbreakProxy({
           : { state: 'off', tilesTotal: 0, tilesDone: 0 }),
         version: RAIL_WORLD_VERSION,
       });
-    const tilePath = route.match(/^\/rail-world\/tile\/(\d+)\/(\d+)\/(\d+)$/);
-    if (tilePath) {
-      const [z, x, y] = tilePath.slice(1).map(Number);
-      if (z < 2 || z > 6 || x >= 2 ** z || y >= 2 ** z)
-        return send(res, 400, { error: 'A tile at zoom 2 to 6 is needed.' });
-      const answer = railWorld?.ready()
-        ? railWorld.layerTile(z, x, y, tileBounds(z, x, y))
-        : null;
-      if (!answer)
-        return send(res, 404, { error: 'The world rail is not built yet.' });
-      return send(res, 200, answer);
-    }
     if (!allow(clientKey(req))) {
       send(res, 429, { error: 'Too many requests. Wait a minute.' });
       return;
@@ -2666,10 +2653,12 @@ export function outbreakProxy({
       const at = `${point.lat.toFixed(2)}_${point.lon.toFixed(2)}`;
       const key = `${mode}|${level}|${point.lat.toFixed(2)},${point.lon.toFixed(2)}${worldBuild ? `|world-${worldBuild.builtAt}` : ''}`;
       // rail2: built again since the finer tiles stand in near the point;
-      // rail4: the world rail, by its build, with the rail it cannot reach.
+      // rail5: the world rail, by its build (rail it cannot reach not sent).
+      // p2: pieces banded by their far end (2026-10-12), built again.
+      const pieces = `p${NETWORK_PIECES_VERSION}`;
       const fileKey = worldBuild
-        ? `rail4-world-v${RAIL_WORLD_VERSION}-${worldBuild.builtAt}-${at}`
-        : `${mode === 'rail' ? 'rail2' : mode}-L${level}-${at}`;
+        ? `rail5-world-v${RAIL_WORLD_VERSION}-${worldBuild.builtAt}-${pieces}-${at}`
+        : `${mode === 'rail' ? 'rail2' : mode}-${pieces}-L${level}-${at}`;
       if (worldBuild) forgetOlderWorldAnswers(worldBuild.builtAt);
       const kept = networks.get(key) || builtNetworks.read(fileKey);
       if (kept) {

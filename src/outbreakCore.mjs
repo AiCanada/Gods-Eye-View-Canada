@@ -73,8 +73,14 @@ export function planeRoadKm(roadKmh, hours) {
 export const BOAT_REACH_KM = 100;
 /** A train only carries it where a station is this close. */
 export const RAIL_REACH_KM = 30;
-/** No circle is drawn larger than this: half the globe is already all of it. */
-export const SPREAD_MAX_RADIUS_KM = 10_000;
+/**
+ * No circle is drawn larger than this: half the Earth's circumference
+ * (pi x 6,371 km), the far side of the globe, where a circle closes on
+ * itself and the reach is the whole Earth. It was 10,000 km, a quarter of
+ * the way round, so a circle stopped part way (owner report 2026-10-12: it
+ * should go all the way to the south pole).
+ */
+export const SPREAD_MAX_RADIUS_KM = 20_015;
 /** Cruise speed and ground time used when a flight has no times of its own. */
 export const FLIGHT_SPEED_KMH = 800;
 export const FLIGHT_GROUND_HOURS = 0.5;
@@ -520,7 +526,11 @@ function clampRadius(km) {
  * @param {object} [input.networks] By location id: {road: true, rail: true}
  *   where that location's main roads or rail lines are known
  *   (outbreakNetwork.mjs). Then the spread follows them (a reach along the
- *   network) instead of a circle; without them, the circle as before.
+ *   network) instead of a circle; without them, the circle as before. An
+ *   optional startKm {road, rail} is how far the location is from that
+ *   network: the spread gets there at road speed first, and only then does
+ *   the reach along it begin (owner report 2026-10-12: rail lit at the
+ *   start of a run, before the spread could have got to it).
  * @param {boolean} [input.airRoads] The roads out of the landing airports
  *   are known (POST /api/outbreak/air-roads).
  * @param {boolean} [input.airRails] The rail lines round the landing
@@ -557,12 +567,15 @@ export function outbreakSpread({
       // Road follows the main roads, train the rail lines, where known.
       const network = mode === 'train' ? 'rail' : mode;
       if ((mode === 'road' || mode === 'train') && known[network]) {
+        // The way to the network, at road speed, before any of it is lit.
+        const toKm = Math.max(0, finite(known.startKm?.[network]) ?? 0);
+        const along = Math.max(0, h - toKm / speed('road'));
         reaches.push({
           mode,
           network,
           locationId: location.id,
           from: location.name,
-          km: Math.round(speed(mode) * h * 10) / 10,
+          km: Math.round(speed(mode) * along * 10) / 10,
         });
         return;
       }

@@ -31,6 +31,15 @@ export const NETWORK_START_KM = Object.freeze({ road: 50, rail: 30 });
 export const NETWORK_TILE_ZOOM = 8;
 export const NETWORK_BAND_KM = 10;
 export const NETWORK_PIECE_KM = 5;
+/**
+ * How pieces are cut and banded; built networks kept on disk carry it in
+ * their name, so a change builds them again. 2 (2026-10-12): a piece is
+ * banded by its last point reached, and a timed piece spans at most an hour
+ * band, so no part of it lights before the spread gets there. 3
+ * (2026-10-12): each piece also carries the reach it lights at (`lit`), so
+ * the map lights piece by piece, not a whole band at once.
+ */
+export const NETWORK_PIECES_VERSION = 3;
 
 /**
  * Roads keep spreading to the end of the forecast (owner ruling, 2026-10-09):
@@ -80,9 +89,25 @@ export function hourBandStart(b) {
   return 240 + (b - 80) * 24;
 }
 
-/** The hour bands lit by `hour`: band numbers below this. */
+/**
+ * Where hour band `b` ends, in hours: the map lights a band only once the
+ * hour shown reaches its end (owner report 2026-10-12: rail lit before the
+ * spread got there). hourBandOf floors, so a piece first reached at 5.9 h is
+ * in band 5; lit from the band start, it showed at hour 5, a band early.
+ */
+export function hourBandEnd(b) {
+  return hourBandStart(b + 1);
+}
+
+/** How many hours the hour band holding `hours` spans: 1, 6 or 24. */
+export function hourBandWidth(hours) {
+  const b = hourBandOf(hours);
+  return hourBandEnd(b) - hourBandStart(b);
+}
+
+/** The hour bands lit by `hour` (each by its end): band numbers below this. */
 export function bandsLitByHour(hour) {
-  return hour >= 0 ? hourBandOf(hour) + 1 : 0;
+  return hour >= 0 ? hourBandOf(hour) : 0;
 }
 
 /** Where band `b` starts, in km along the network. */
@@ -90,6 +115,14 @@ export function bandStartKm(b) {
   if (b < 100) return b * 10;
   if (b < 180) return 1000 + (b - 100) * 50;
   return 5000 + (b - 180) * 250;
+}
+
+/**
+ * Where band `b` ends, in km along the network: lit once the reach gets
+ * there, like the hour bands (2026-10-12), never up to a band early.
+ */
+export function bandEndKm(b) {
+  return bandStartKm(b + 1);
 }
 
 /**
@@ -222,6 +255,100 @@ function blendHours(a, b, f) {
   return Number.isFinite(a) ? a : b;
 }
 
+/**
+ * How many points an edge of the network is cut into: by km (`stepKm`) and,
+ * timed, so no step spans more than half an hour band (2026-10-12: past
+ * 100 km from a landing the onward rail goes at 15 km/h, so a 100 km step
+ * took hours to cross). At most one point every half km.
+ */
+function edgeSteps(length, stepKm, timed, va, vb) {
+  let steps = Math.max(1, Math.ceil(length / stepKm));
+  if (timed && Number.isFinite(va) && Number.isFinite(vb)) {
+    const half = hourBandWidth(Math.min(va, vb)) / 2;
+    steps = Math.max(
+      steps,
+      Math.min(Math.ceil(Math.abs(vb - va) / half), Math.ceil(length / 0.5)),
+    );
+  }
+  return steps;
+}
+
+/**
+ * Cut a line's points ([lon, lat, value]) into pieces and hand each to
+ * `flush(points, value)`. A piece is banded by its last point reached, the
+ * largest value, so the map, lighting each band at its end, never shows part
+ * of a piece before the spread gets there (owner report 2026-10-12: rail lit
+ * hours early; the earliest point of a 100 km piece lit all of it). A piece
+ * with a point never reached is not reached. Pieces end after `cutKm(value)`
+ * km and where reached meets never reached; timed, they also end where the
+ * line crosses from one hour band to the next, so each piece lies in one
+ * band and lights by the end of the band it is reached in.
+ */
+function cutPieces(points, { timed, cutKm, flush, onValue }) {
+  let piece;
+  let run;
+  let hi;
+  let open;
+  const start = (q) => {
+    piece = [q];
+    run = 0;
+    hi = Number.isFinite(q[2]) ? q[2] : -Infinity;
+    open = !Number.isFinite(q[2]);
+  };
+  const add = (q) => {
+    const at = piece[piece.length - 1];
+    run += kmBetween(at[1], at[0], q[1], q[0]);
+    piece.push(q);
+    if (!Number.isFinite(q[2])) open = true;
+    else if (q[2] > hi) hi = q[2];
+  };
+  const end = () => {
+    if (piece.length >= 2)
+      flush(
+        piece.map(([x, y]) => [x, y]),
+        open ? Infinity : hi,
+      );
+  };
+  start(points[0]);
+  for (let k = 1; k < points.length; k += 1) {
+    const prev = points[k - 1];
+    const q = points[k];
+    const d = q[2];
+    const reached = Number.isFinite(d);
+    if (reached) onValue(d);
+    // Reached and never reached: the piece ends at the point before.
+    if (reached !== Number.isFinite(prev[2]) && piece.length >= 2) {
+      end();
+      start(prev);
+    }
+    // Timed, across an hour band's edge: the piece ends on the edge (just
+    // short of it when climbing, so it stays in the band below).
+    if (timed && reached && Number.isFinite(prev[2])) {
+      let v = piece[piece.length - 1][2];
+      for (let guard = 0; guard < 8 && hourBandOf(v) !== hourBandOf(d);) {
+        guard += 1;
+        const band = hourBandOf(v);
+        const up = d > v;
+        const edge = up ? hourBandEnd(band) : hourBandStart(band);
+        const f = (edge - prev[2]) / (d - prev[2]);
+        if (!(f >= 0 && f <= 1)) break;
+        const x = prev[0] + f * (q[0] - prev[0]);
+        const y = prev[1] + f * (q[1] - prev[1]);
+        const below = edge - 1e-9;
+        add([x, y, up ? below : edge]);
+        end();
+        start([x, y, up ? edge : below]);
+        v = up ? edge : below;
+      }
+    }
+    add(q);
+    if (run >= cutKm(d) || k === points.length - 1) {
+      end();
+      start(q);
+    }
+  }
+}
+
 /** Drop points within `tolKm` of the straight line between their neighbours. */
 function simplify(points, tolKm) {
   if (points.length <= 2) return points;
@@ -264,17 +391,20 @@ function simplify(points, tolKm) {
 /**
  * The network as the map draws it: from the nearest point to `origin`, the
  * distance along the lines to every point; each line cut into pieces, each
- * piece in the band of NETWORK_BAND_KM its start is reached in.
+ * piece in the band of NETWORK_BAND_KM its far end is reached in (lit once
+ * the reach passes that band's end, 2026-10-12).
  *
  * @param {[number, number][][]} lines Each a run of [lon, lat] points.
  * @param {{lat: number, lon: number}} origin
  * @returns {?{bandKm: number, startKm: number, bands: Object<string, number[][]>,
- *   unreached: number[][], reachedKm: number, lengthKm: number}} Null when no
- *   part of the network is within `startKm`. reachedKm is the farthest
- *   distance along the network from the start, not the km reached: every
- *   piece in `bands` is reached, those in `unreached` are not; lengthKm is
- *   the sum of every line. Timed (with `sources`): bandsBy 'hour', lastHour,
- *   lengthKm and `seeded`, the sources with a point within `startKm`.
+ *   lit: Object<string, number[]>, unreached: number[][], reachedKm: number,
+ *   lengthKm: number}} `lit`: beside each band, the reach each of its pieces
+ *   lights at. Null when no part of the network is within `startKm`.
+ *   reachedKm is the farthest distance along the network from the start,
+ *   not the km reached: every piece in `bands` is reached, those in
+ *   `unreached` are not; lengthKm is the sum of every line. Timed (with
+ *   `sources`): bandsBy 'hour', lastHour, lengthKm and `seeded`, the sources
+ *   with a point within `startKm`.
  */
 export function buildTransportNetwork(
   lines,
@@ -627,25 +757,30 @@ export function buildTransportNetwork(
   // What each point is banded by: km along, or the hour it is reached.
   const value = timed ? time : dist;
   // Pieces: runs of about `pieceKm` along each line, banded by where the
-  // spread first reaches them.
+  // spread reaches their last point (cutPieces).
   const bands = {};
+  const lit = {};
   const unreached = [];
   let reachedKm = 0;
-  const flush = (points, first) => {
+  const flush = (points, last) => {
     if (points.length < 2) return;
     const flat = [];
     for (const [x, y] of simplify(points, timed ? simplifyKm * 10 : simplifyKm))
       flat.push(Math.round(x * 1e4) / 1e4, Math.round(y * 1e4) / 1e4);
-    if (!Number.isFinite(first)) {
+    if (!Number.isFinite(last)) {
       unreached.push(flat);
       return;
     }
     const band = timed
-      ? hourBandOf(first)
+      ? hourBandOf(last)
       : bandKm === NETWORK_BAND_KM
-        ? bandOf(first)
-        : Math.floor(first / bandKm);
+        ? bandOf(last)
+        : Math.floor(last / bandKm);
     (bands[band] ||= []).push(flat);
+    // The reach this piece lights at, its last point reached: the map
+    // lights each piece by its own, smoothly, not a band at a time (owner
+    // report 2026-10-12: the spread paused on the map).
+    (lit[band] ||= []).push(Math.ceil(last * 100) / 100);
   };
   for (const path of drawn) {
     // Every point of the line with its distance along the network; a long
@@ -655,9 +790,12 @@ export function buildTransportNetwork(
       const a = path[k - 1];
       const b = path[k];
       const length = km(a, b);
-      const steps = Math.max(
-        1,
-        Math.ceil(length / pieceKmAt(Math.min(dist[a], dist[b]), pieceKm)),
+      const steps = edgeSteps(
+        length,
+        pieceKmAt(Math.min(dist[a], dist[b]), pieceKm),
+        timed,
+        value[a],
+        value[b],
       );
       for (let i = 1; i <= steps; i += 1) {
         const f = i / steps;
@@ -672,30 +810,20 @@ export function buildTransportNetwork(
         ]);
       }
     }
-    let piece = [points[0]];
-    let run = 0;
-    for (let k = 1; k < points.length; k += 1) {
-      const [x0, y0] = points[k - 1];
-      const [x1, y1, d] = points[k];
-      run += distanceKm({ lat: y0, lon: x0 }, { lat: y1, lon: x1 });
-      piece.push(points[k]);
-      if (Number.isFinite(d)) reachedKm = Math.max(reachedKm, d);
-      // The roads after landings span continents: long, plain pieces.
-      const cut = timed ? pieceKm * 20 : pieceKmAt(d, pieceKm);
-      if (run >= cut || k === points.length - 1) {
-        flush(
-          piece.map(([x, y]) => [x, y]),
-          Math.min(...piece.map((p) => p[2])),
-        );
-        piece = [points[k]];
-        run = 0;
-      }
-    }
+    // The roads after landings span continents: long, plain pieces, each
+    // at most an hour band.
+    cutPieces(points, {
+      timed,
+      cutKm: (d) => (timed ? pieceKm * 20 : pieceKmAt(d, pieceKm)),
+      flush,
+      onValue: (d) => (reachedKm = Math.max(reachedKm, d)),
+    });
   }
   if (timed)
     return {
       bandsBy: 'hour',
       bands,
+      lit,
       unreached,
       lastHour: Math.round(reachedKm * 10) / 10,
       lengthKm: Math.round(lengthKm),
@@ -705,18 +833,23 @@ export function buildTransportNetwork(
     bandKm,
     startKm: Math.round(startDist * 10) / 10,
     bands,
+    lit,
     unreached,
     reachedKm: Math.round(reachedKm),
     lengthKm: Math.round(lengthKm),
   };
 }
 
-/** The bands reached by `reachKm` along the network: band numbers below this. */
+/**
+ * The bands lit by `reachKm` along the network: band numbers below this. A
+ * band counts once the reach gets to its end, as the map lights it
+ * (2026-10-12), never while the reach is still inside it.
+ */
 export function bandsReached(network, reachKm) {
   if (!network || !(reachKm > 0)) return 0;
   if (network.bandKm && network.bandKm !== NETWORK_BAND_KM)
-    return Math.floor(reachKm / network.bandKm) + 1;
-  return bandOf(reachKm) + 1;
+    return Math.floor(reachKm / network.bandKm);
+  return bandOf(reachKm);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1543,10 +1676,12 @@ export function railTimedReach(
  * The network cut into pieces and banded, as buildTransportNetwork answers:
  * by km along it (`value` the distance) or, timed, by the hour (`value` the
  * hour, `dist` the km). Lines never reached go to `unreached` only when
- * asked: the world's rail away from a reach is drawn by the world layer.
+ * asked: rail is never drawn grey (owner 2026-10-12), so the world's rail
+ * away from a reach is not drawn at all.
  *
- * @returns {{bands: Object<string, number[][]>, unreached: number[][],
- *   reachedKm: number}} reachedKm is the farthest value reached (km, or
+ * @returns {{bands: Object<string, number[][]>, lit: Object<string, number[]>,
+ *   unreached: number[][], reachedKm: number}} `lit` beside each band: the
+ *   value each of its pieces lights at. reachedKm is the farthest value reached (km, or
  *   the last hour when timed).
  */
 export function railGraphPieces(
@@ -1563,20 +1698,25 @@ export function railGraphPieces(
   const { lon, lat, pathOffsets, pathVerts } = graph;
   const km = (a, b) => kmBetween(lat[a], lon[a], lat[b], lon[b]);
   const bands = {};
+  const lit = {};
   const unreached = [];
   let reachedKm = 0;
-  const flush = (points, first) => {
+  const flush = (points, last) => {
     if (points.length < 2) return;
-    if (!Number.isFinite(first) && !keepUnreached) return;
+    if (!Number.isFinite(last) && !keepUnreached) return;
     const flat = [];
     for (const [x, y] of simplify(points, timed ? simplifyKm * 10 : simplifyKm))
       flat.push(Math.round(x * 1e4) / 1e4, Math.round(y * 1e4) / 1e4);
-    if (!Number.isFinite(first)) {
+    if (!Number.isFinite(last)) {
       unreached.push(flat);
       return;
     }
-    const band = timed ? hourBandOf(first) : bandOf(first);
+    const band = timed ? hourBandOf(last) : bandOf(last);
     (bands[band] ||= []).push(flat);
+    // The reach this piece lights at, its last point reached: the map
+    // lights each piece by its own, smoothly, not a band at a time (owner
+    // report 2026-10-12: the spread paused on the map).
+    (lit[band] ||= []).push(Math.ceil(last * 100) / 100);
   };
   for (let p = 0; p + 1 < pathOffsets.length; p += 1) {
     const from = pathOffsets[p];
@@ -1592,9 +1732,12 @@ export function railGraphPieces(
       const a = pathVerts[i - 1];
       const b = pathVerts[i];
       const length = km(a, b);
-      const steps = Math.max(
-        1,
-        Math.ceil(length / pieceKmAt(Math.min(dist[a], dist[b]), pieceKm)),
+      const steps = edgeSteps(
+        length,
+        pieceKmAt(Math.min(dist[a], dist[b]), pieceKm),
+        timed,
+        value[a],
+        value[b],
       );
       for (let s = 1; s <= steps; s += 1) {
         const f = s / steps;
@@ -1609,107 +1752,14 @@ export function railGraphPieces(
         ]);
       }
     }
-    let piece = [points[0]];
-    let run = 0;
-    for (let k = 1; k < points.length; k += 1) {
-      const [x0, y0] = points[k - 1];
-      const [x1, y1, d] = points[k];
-      run += kmBetween(y0, x0, y1, x1);
-      piece.push(points[k]);
-      if (Number.isFinite(d)) reachedKm = Math.max(reachedKm, d);
-      const cut = timed ? pieceKm * 20 : pieceKmAt(d, pieceKm);
-      if (run >= cut || k === points.length - 1) {
-        let least = Infinity;
-        for (const q of piece) if (q[2] < least) least = q[2];
-        flush(
-          piece.map(([x, y]) => [x, y]),
-          least,
-        );
-        piece = [points[k]];
-        run = 0;
-      }
-    }
+    cutPieces(points, {
+      timed,
+      cutKm: (d) => (timed ? pieceKm * 20 : pieceKmAt(d, pieceKm)),
+      flush,
+      onValue: (d) => (reachedKm = Math.max(reachedKm, d)),
+    });
   }
-  return { bands, unreached, reachedKm };
-}
-
-/**
- * Each drawn line's box, [west, south, east, north] by line, so the world
- * rail layer's tiles skip the lines nowhere near them.
- */
-export function railPathBoxes(graph) {
-  const { lon, lat, pathOffsets, pathVerts } = graph;
-  const paths = pathOffsets.length - 1;
-  const boxes = new Float64Array(Math.max(0, paths) * 4);
-  for (let p = 0; p < paths; p += 1) {
-    let west = Infinity;
-    let south = Infinity;
-    let east = -Infinity;
-    let north = -Infinity;
-    for (let i = pathOffsets[p]; i < pathOffsets[p + 1]; i += 1) {
-      const v = pathVerts[i];
-      if (lon[v] < west) west = lon[v];
-      if (lon[v] > east) east = lon[v];
-      if (lat[v] < south) south = lat[v];
-      if (lat[v] > north) north = lat[v];
-    }
-    boxes.set([west, south, east, north], p * 4);
-  }
-  return boxes;
-}
-
-/**
- * The network's lines inside a box, simplified to `tolKm` (the world rail
- * layer's tiles): flat [lon, lat, ...] runs, four decimals. `boxes`
- * (railPathBoxes) skips the lines whose own box misses it.
- */
-export function railGraphLinesIn(graph, box, tolKm = 1, boxes = null) {
-  const { lon, lat, pathOffsets, pathVerts } = graph;
-  const inside = (v) =>
-    lon[v] >= box.west &&
-    lon[v] <= box.east &&
-    lat[v] >= box.south &&
-    lat[v] <= box.north;
-  const out = [];
-  const flush = (run) => {
-    if (run.length < 2) return;
-    const flat = [];
-    for (const [x, y] of simplify(run, tolKm))
-      flat.push(Math.round(x * 1e4) / 1e4, Math.round(y * 1e4) / 1e4);
-    out.push(flat);
-  };
-  for (let p = 0; p + 1 < pathOffsets.length; p += 1) {
-    // A line wholly outside, by its own box with a little room, is skipped
-    // (a point just outside is kept only beside one inside).
-    if (
-      boxes &&
-      (boxes[p * 4] > box.east + 1 ||
-        boxes[p * 4 + 2] < box.west - 1 ||
-        boxes[p * 4 + 1] > box.north + 1 ||
-        boxes[p * 4 + 3] < box.south - 1)
-    )
-      continue;
-    let run = [];
-    for (let i = pathOffsets[p]; i < pathOffsets[p + 1]; i += 1) {
-      const v = pathVerts[i];
-      const prev = i > pathOffsets[p] ? pathVerts[i - 1] : -1;
-      const next = i + 1 < pathOffsets[p + 1] ? pathVerts[i + 1] : -1;
-      // A point just outside is kept when its neighbour is inside, so a
-      // line crossing the edge reaches it.
-      if (
-        inside(v) ||
-        (prev >= 0 && inside(prev)) ||
-        (next >= 0 && inside(next))
-      )
-        run.push([lon[v], lat[v]]);
-      else if (run.length) {
-        flush(run);
-        run = [];
-      }
-    }
-    flush(run);
-  }
-  return out;
+  return { bands, lit, unreached, reachedKm };
 }
 
 /**
