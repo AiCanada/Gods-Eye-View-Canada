@@ -166,7 +166,11 @@ function parseOpenBody(raw) {
 }
 
 function pasteScriptFile(sourceRoot, fileSystem) {
-  const script = path.join(sourceRoot, ...OPENAI_DOTS_PASTE_SCRIPT.split('/'));
+  // Windows only, like the PowerShell path: join with backslashes wherever this runs.
+  const script = path.win32.join(
+    sourceRoot,
+    ...OPENAI_DOTS_PASTE_SCRIPT.split('/'),
+  );
   try {
     return fileSystem.statSync(script).isFile() ? script : '';
   } catch {
