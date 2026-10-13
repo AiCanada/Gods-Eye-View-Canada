@@ -35,7 +35,8 @@ export const SOCIAL_SWARM_PROVIDERS = Object.freeze({
     label: 'OpenAI',
     title: 'OPENAI BOT SWARM',
     keyTitle: 'OPENAI DOTS',
-    // OPEN CHATGPT: the dots live inside ChatGPT.
+    // OPEN CHATGPT opens the ChatGPT desktop app (dots live inside ChatGPT).
+    desktop: true,
     openUrl: 'https://chatgpt.com/',
   }),
 });
@@ -83,6 +84,12 @@ export const GROK_BOT_UNCONFIGURED =
 export const SOCIAL_SWARM_CHIEF_BOT = Object.freeze({
   id: 'chief',
   label: 'Chief of Staff',
+});
+
+/** One log line when the sweep was pasted into ChatGPT (OPENAI DOTS). */
+export const SOCIAL_SWARM_CHATGPT_BOT = Object.freeze({
+  id: 'chatgpt',
+  label: 'ChatGPT',
 });
 
 /** What every bot looks for when the instructions box is empty. */
@@ -238,7 +245,7 @@ export function planSwarmBot({
  * The one task the Chief of Staff bot in the Grok Bot desktop app gets when
  * GROK BOT SWARM has no key of its own: the seven platforms, the place and
  * its nearest city, the window, the rules, and how to report. The same text
- * goes to its webhook routine, or onto the clipboard when Grok Bot is opened
+ * goes to its webhook routine, or is pasted into Grok Bot when it is opened
  * instead. `nearestCity` is the reverse lookup of the map point, or empty:
  * then the bot is asked to find it, since a post names a town, not a point.
  *
@@ -251,6 +258,8 @@ export function planSwarmHandoff({
   latitude,
   longitude,
   now = new Date(),
+  lead = 'Chief of Staff',
+  swarmTitle = 'GROK BOT SWARM',
 } = {}) {
   const scope = swarmScope({ instructions, place, latitude, longitude, now });
   if (!scope.ok) return scope;
@@ -271,7 +280,7 @@ export function planSwarmHandoff({
       : bot.label,
   ).join(', ');
   const text = [
-    'Chief of Staff: run a GROK BOT SWARM sweep of public social media.',
+    `${lead}: run a ${swarmTitle} sweep of public social media.`,
     `Platforms: ${platforms}.`,
     placeLine,
     `Today is ${isoDay(at)}.`,

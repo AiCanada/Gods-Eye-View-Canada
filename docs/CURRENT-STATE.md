@@ -12,8 +12,8 @@ SWARM sits under FIND HELP: a press sends seven bots on `GROK_BOT_API_KEY` for
 the paired phone's last fix (lat/lon; the task names the nearest town) and writes each answer in `#ultra-swarm-output`. It does not fall
 back to the map camera. No fix, a stale one, or one with no time refuses the press. An empty
 instructions box uses the same default as Social Media. Without the key it uses POWER UP → GROK BOT — COMPUTER when that
-card is set, else it copies the Chief of Staff task, opens Grok Bot, and
-keeps the task in the log. CCTV is not
+card is set, else it copies the Chief of Staff task, opens Grok Bot, pastes
+the task into the focused composer, and keeps the task in the log. CCTV is not
 part of this path.
 
 Share encrypted Ultra tokens. The box has HELP MESSAGES under the status line (unread
@@ -134,7 +134,7 @@ than one package is saved; a new press takes the incident from the FIND HELP
 select, EXTEND keeps the call's own; a STAND DOWN with no call on ends nothing,
 and an answer with no call running on the machine puts STOOD DOWN · NO CALL
 FOR HELP IS ON on the status line) and
-HELP NETWORK under SHARE ENCRYPTED ULTRA TOKENS (SAVE MY NAME, SAVE DIRECTORY, PUBLISH MY
+HELP NETWORK under SHARE ENCRYPTED ULTRA TOKENS (CONFIRM ULTRA TOKEN SKILLS sits below the token REMOVE rows and above HELP NETWORK and sends GROK BOT SWARM, OPENAI DOT SWARM, or the Ask-panel LLMs POWER UP has keys for; the Grok Bot computer gets a short Chief of Staff task, and without a key or computer that task is pasted into Grok Bot; without an OPENAI DOTS key that task is pasted into ChatGPT; SAVE MY NAME, SAVE DIRECTORY, PUBLISH MY
 TOKEN, UPDATE HOME LIST, CHECK NOW, ADD TO HOME LIST, rows with RENAME /
 REMOVE, the SMS relay line and TEST SMS); GENERATE NEW TOKEN (it reads GENERATING… while the token is made and GENERATED just after) gains a Network tick and
 token rows a NETWORK ON / NETWORK OFF button, off for anything minted earlier.
@@ -1310,8 +1310,14 @@ is told to search public posts only, report incidents and places rather than
 people, give a link for every item, and answer NOTHING FOUND rather than
 invent one. The button reads SPINNING UP SWARM… until all seven are back; each
 bot's list and links land in the log as it returns, and the status line ends
-with SWARM DONE and the counts. Without its key OPENAI BOT SWARM sends nothing
-and says to add it under POWER UP → OPENAI DOTS.
+with SWARM DONE and the counts. Without its key OPENAI BOT SWARM copies the
+task, opens ChatGPT (`POST /api/social/openai-dots/open` with
+`{ paste: true, text }`), pastes that task into the focused ChatGPT composer
+on Windows and sends it (process names `ChatGPT Classic` and `ChatGPT`;
+EnumWindows because MainWindowHandle is often 0; same topmost / DPI / quoted
+`-File` paste as Grok Bot), and keeps the task in the log. OPEN CHATGPT
+remains a manual opener (the shortcut in `OPENAI_DOTS_LINK`, else
+`chatgpt://`; body `{}`, no paste).
 
 The task's Place line names the nearest city (owner, 2026-10-01: "Include
 nearest city"): the town the map point is in, from
@@ -1349,12 +1355,17 @@ one budget, `GROK_BOT_GATEWAY_TOTAL_MS` (the 180 s wait plus three 20 s
 calls), which the page also waits for, and a second press for the same
 bot while one runs is refused (409). The nearest town comes from the
 shared Nominatim cache and limit, else the page's own gazetteer. When it is not, the press copies the task, opens Grok Bot
-(`POST /api/social/grok-bot/open`), and keeps the task in the log, marked
-as the task so Outbreak does not read it as places found. The status says
-copied only when a clipboard took it. The press
+(`POST /api/social/grok-bot/open` with `{ paste: true, text }`), pastes
+that task into the focused Grok Bot composer on Windows and sends it
+(Grok Bot stays topmost until Ctrl+V so Chrome in front does not eat the
+click; the PowerShell `-File` path is quoted because this repo folder has
+spaces), and
+keeps the task in the log, marked as the task so Outbreak does not read it
+as places found. The status says the task was sent when the paste landed,
+else copied only when a clipboard took it. The press
 does not POST `/api/social/swarm/chief-of-staff`. OPEN GROK BOT remains a
 manual opener (the shortcut in `GROK_BOT_LINK`, else
-`grokbot://app/v1/open`). POWER UP → GROK BOT — CHIEF OF STAFF and that
+`grokbot://app/v1/open`; body `{}`, no paste). POWER UP → GROK BOT — CHIEF OF STAFF and that
 webhook route stay for a Chief of Staff routine; swarm buttons no longer
 call them.
 
@@ -1364,8 +1375,8 @@ DNS-rebinding page whose Origin matches its own Host is refused, an exact
 Origin when one is sent, and a same-origin fetch. The bot route spends a slot
 only on a request it will send (14 bots a minute from one address), refuses a
 key whose check failed (`grokBot`, `openaiDots`), gives each bot 150 s, and
-drops a request whose tab closed. OpenAI's dots live in ChatGPT and are not
-started from here.
+drops a request whose tab closed. OpenAI's dots live in ChatGPT; OPEN
+CHATGPT and a no-key OPENAI BOT SWARM open that desktop app from here.
 
 ## Outbreak: every rail line on the globe (owner ruling 2026-10-12)
 
@@ -1395,12 +1406,20 @@ and joins them into one world rail network
   (packed typed arrays) with a `.json` beside it (km by country and by
   continent), and the last two builds are kept. When the store fetches a tile
   again for its own reasons, the extract is updated and a new build follows,
-  at most once every 10 minutes.
+  at most once every 10 minutes. Segment-segment crossings (`railCrossHits`
+  in `src/outbreakNetwork.mjs`) run on CPU unless the optional CUDA binary
+  `native/outbreak-rail-cuda/rail_cross` is built (`npm run outbreak:rail-cuda`)
+  and `GEV_OUTBREAK_RAIL_CUDA` is not `0`; then pairs at or above
+  `GEV_OUTBREAK_RAIL_CUDA_MIN` (default 4096) run on the GPU. Snap, joins and
+  Dijkstra stay on CPU. A failed spawn falls back to CPU for the rest of the
+  process.
+
 - **Status.** `GET /api/outbreak/rail-world/status` gives `state` (idle,
   sweeping, building, ready, error, or off without the job), `tilesTotal`,
   `tilesDone`, `tilesCached`, `tilesFetched`, `tilesFailed`, `railKm`,
   `byContinent`, `builtAt` and `version`. The panel shows it in the status
-  line every 10 s until it is built, then logs it once.
+  line every 10 s until it is built, and on the travel note when SCAN DONE
+  (or another result) holds the status line, then logs it once.
 - **Answers once built.**
   - `/network?mode=rail` answers along the whole world network
     (`world: true`, `radiusKm: null`, disk key `rail3-world-v1-<build>-…`),
@@ -1419,10 +1438,16 @@ and joins them into one world rail network
   only once the spread has covered the network's `startKm` from the location
   at road speed (`outbreakSpread` networks `startKm`), as the landings' rail
   already did. CLEAR DATA drops every road and rail lit, round the
-  locations and after the landings, until the next SCAN TRAVEL.
+  locations and after the landings. A new SCAN TRAVEL drops them the same
+  way at the start of the scan, so the last run cannot stay on the map.
 - **Fallbacks.** Until the network is built, every path answers as before:
   the rail within 500 km, the rail within 200 km of landings (7,000 tiles),
-  and the epidemic without rail (`railSource: 'pending'`).
+  and the epidemic without rail (`railSource: 'pending'`). Until then the
+  orange train reach is a circle, still growing to the far-side antipode.
+  The yellow boat/vehicle circle stops at the south pole so a northern
+  outbreak such as Irkutsk ends in Antarctica; growing past the pole closed
+  that ring on the antipode (southern Chile for Irkutsk). With the world
+  network, train follows the rail instead of a circle.
 
 ## Scene control ownership
 

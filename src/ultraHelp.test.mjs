@@ -383,5 +383,13 @@ test('needs never coerce a JSON object, and hidden characters are dropped from i
     items: [niceGuy],
     destination: '',
   });
-  assert.match(tokens, /code: 'ng', label: 'Mr\.\/Mrs\. Nice Guy'/);
+  const help = fs.readFileSync(
+    new URL('./ultraHelp.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(help, /code: 'ng', label: 'Mr\.\/Mrs\. Nice Guy'/);
+  assert.match(
+    tokens,
+    /export \{ ULTRA_CUSTOM_SKILL_LIMIT, ULTRA_SKILL_SETS \}/,
+  );
 });

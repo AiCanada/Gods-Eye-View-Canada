@@ -66,3 +66,12 @@ tools/camera-pack/sources/drivebc-webcams.json
 # Your own camera site for the Private_CCTV_Feed relay (never committed).
 config/private_cctv_feed.local.json
 config/ultra-media/
+
+# Optional Outbreak rail-crossing CUDA binary (built on this machine).
+native/outbreak-rail-cuda/rail_cross
+native/outbreak-rail-cuda/rail_cross.exe
+native/outbreak-rail-cuda/*.exp
+native/outbreak-rail-cuda/*.lib
+native/outbreak-rail-cuda/*.obj
+native/outbreak-rail-cuda/*.pdb
+native/outbreak-rail-cuda/*.ilk

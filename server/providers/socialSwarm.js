@@ -25,6 +25,12 @@ import {
   readSwarmHandoffSections,
 } from '../../src/socialSwarm.mjs';
 import {
+  SKILL_CHECK_CHIEF_BOT,
+  planSkillCheckBot,
+  planSkillCheckHandoff,
+  readSkillCheckAnswer,
+} from '../../src/ultraSkillCheck.mjs';
+import {
   GROK_BOT_GATEWAY_ANSWER_BYTES,
   GROK_BOT_GATEWAY_COMMAND_MS,
   GROK_BOT_GATEWAY_DEFAULT_AGENT,
@@ -178,7 +184,38 @@ function upstreamError(data, status, upstream) {
 }
 
 /** One bot: one request to the chosen provider, with its search tool. */
-async function handleSwarmBot(req, res, allow, allowedHosts) {
+/** One Social Media Analysis bot, from the press's body. */
+function planSocialBot(body, providerId, model) {
+  return planSwarmBot({
+    provider: providerId,
+    bot: body.bot,
+    instructions: body.instructions,
+    place: body.place,
+    latitude: body.latitude,
+    longitude: body.longitude,
+    model,
+    now: new Date(),
+  });
+}
+
+/** One CONFIRM ULTRA TOKEN SKILLS bot, from the press's body. */
+function planSkillBot(body, providerId, model) {
+  return planSkillCheckBot({
+    provider: providerId,
+    bot: body.bot,
+    claim: body.claim,
+    model,
+    now: new Date(),
+  });
+}
+
+async function handleSwarmBot(
+  req,
+  res,
+  allow,
+  allowedHosts,
+  planBot = planSocialBot,
+) {
   // A Host this server serves, an exact Origin, JSON: a DNS-rebinding page
   // naming its own host cannot spend the keys or read the answers.
   const admission = admitLlmRequestFrom(req, allowedHosts);
@@ -234,16 +271,7 @@ async function handleSwarmBot(req, res, allow, allowedHosts) {
     });
     return;
   }
-  const plan = planSwarmBot({
-    provider: providerId,
-    bot: body.bot,
-    instructions: body.instructions,
-    place: body.place,
-    latitude: body.latitude,
-    longitude: body.longitude,
-    model: upstream.model,
-    now: new Date(),
-  });
+  const plan = planBot(body, providerId, upstream.model);
   if (!plan.ok) {
     send(res, 400, { error: plan.error, provider: providerId });
     return;
@@ -480,10 +508,83 @@ const computerSweeps = new Set();
  * once the bot has stopped working, and a second press for the same bot
  * while one runs is refused.
  */
+/** GROK BOT SWARM's sweep: the place and its nearest city, one section per platform back. */
+const SWEEP_JOB = Object.freeze({
+  intro:
+    "God's Eye View is sending this GROK BOT SWARM sweep. When you finish, write the full report in this chat.",
+  busy: 'Grok Bot is already on a sweep from this map. Wait for its report, then press again.',
+  async plan(body, req, { allowPlace, cities, placeLookup }) {
+    let nearestCity =
+      typeof body.nearestCity === 'string' ? body.nearestCity : '';
+    const latitude = Number(body.latitude);
+    const longitude = Number(body.longitude);
+    if (
+      !nearestCity &&
+      Number.isFinite(latitude) &&
+      Number.isFinite(longitude) &&
+      Math.abs(latitude) <= 90 &&
+      Math.abs(longitude) <= 180
+    ) {
+      // The nearest-city route's cache and limit: no extra Nominatim calls.
+      const kept = keptCity(cities, latitude, longitude);
+      if (kept != null) nearestCity = kept;
+      else if (allowPlace(clientKey(req))) {
+        nearestCity = await lookUpCity(
+          cities,
+          latitude,
+          longitude,
+          placeLookup,
+        );
+      }
+    }
+    return planSwarmHandoff({
+      instructions: body.instructions,
+      place: body.place,
+      nearestCity,
+      latitude: body.latitude,
+      longitude: body.longitude,
+      now: new Date(),
+    });
+  },
+  answer(reply) {
+    const sections = readSwarmHandoffSections(reply);
+    return {
+      ok: true,
+      via: 'computer',
+      text: reply,
+      sections: sections.map((row) => ({
+        bot: row.bot.id,
+        label: row.bot.label,
+        text: row.text,
+      })),
+    };
+  },
+});
+
+/** CONFIRM ULTRA TOKEN SKILLS: the short Chief of Staff task, read into verdicts. */
+const SKILL_CHECK_JOB = Object.freeze({
+  intro: '',
+  busy: 'Grok Bot is already on a task from this map. Wait for its report, then press again.',
+  async plan(body) {
+    return planSkillCheckHandoff({ claim: body.claim, now: new Date() });
+  },
+  answer(reply, plan) {
+    return {
+      ok: true,
+      via: 'computer',
+      bot: SKILL_CHECK_CHIEF_BOT.id,
+      label: SKILL_CHECK_CHIEF_BOT.label,
+      text: reply,
+      verdicts: readSkillCheckAnswer(reply, plan.skills),
+    };
+  },
+});
+
 async function handleGrokBotComputer(
   req,
   res,
   { allow, allowPlace, cities, fetchImpl, placeLookup },
+  job = SWEEP_JOB,
 ) {
   const startedAt = Date.now();
   const admission = admitKeySetupRequest({
@@ -551,31 +652,10 @@ async function handleGrokBotComputer(
     );
     return;
   }
-  let nearestCity =
-    typeof body.nearestCity === 'string' ? body.nearestCity : '';
-  const latitude = Number(body.latitude);
-  const longitude = Number(body.longitude);
-  if (
-    !nearestCity &&
-    Number.isFinite(latitude) &&
-    Number.isFinite(longitude) &&
-    Math.abs(latitude) <= 90 &&
-    Math.abs(longitude) <= 180
-  ) {
-    // The nearest-city route's cache and limit: no extra Nominatim calls.
-    const kept = keptCity(cities, latitude, longitude);
-    if (kept != null) nearestCity = kept;
-    else if (allowPlace(clientKey(req))) {
-      nearestCity = await lookUpCity(cities, latitude, longitude, placeLookup);
-    }
-  }
-  const plan = planSwarmHandoff({
-    instructions: body.instructions,
-    place: body.place,
-    nearestCity,
-    latitude: body.latitude,
-    longitude: body.longitude,
-    now: new Date(),
+  const plan = await job.plan(body, req, {
+    allowPlace,
+    cities,
+    placeLookup,
   });
   if (!plan.ok) {
     send(res, 400, { error: plan.error });
@@ -640,10 +720,7 @@ async function handleGrokBotComputer(
     const agentId = gatewayAgentId(chosen);
     const key = `${gate.origin} ${agentId}`;
     if (computerSweeps.has(key)) {
-      send(res, 409, {
-        error:
-          'Grok Bot is already on a sweep from this map. Wait for its report, then press again.',
-      });
+      send(res, 409, { error: job.busy });
       return;
     }
     computerSweeps.add(key);
@@ -665,10 +742,7 @@ async function handleGrokBotComputer(
     }
     const sent = await command('sendPrompt', {
       agentId,
-      prompt: [
-        "God's Eye View is sending this GROK BOT SWARM sweep. When you finish, write the full report in this chat.",
-        plan.text,
-      ].join('\n\n'),
+      prompt: [job.intro, plan.text].filter(Boolean).join('\n\n'),
     });
     if (!sendPromptAccepted(sent)) {
       send(res, 502, { error: 'Grok Bot did not take the task.' });
@@ -726,17 +800,7 @@ async function handleGrokBotComputer(
       });
       return;
     }
-    const sections = readSwarmHandoffSections(reply);
-    send(res, 200, {
-      ok: true,
-      via: 'computer',
-      text: reply,
-      sections: sections.map((row) => ({
-        bot: row.bot.id,
-        label: row.bot.label,
-        text: row.text,
-      })),
-    });
+    send(res, 200, job.answer(reply, plan));
   } catch (error) {
     if (disconnect.signal.aborted) return;
     const timedOut =
@@ -906,6 +970,8 @@ async function readCapped(response, limit) {
  *   POST /api/social/swarm — { provider, bot, instructions, place, latitude, longitude }
  *   GET  /api/social/swarm/status — which swarms have a key, the computer, and the Chief of Staff webhook
  *   POST /api/social/swarm/grok-bot — { instructions, place, nearestCity, latitude, longitude }: Grok's task to the computer; the report comes back
+ *   POST /api/social/swarm/skill-check — { provider, bot, claim }: one CONFIRM ULTRA TOKEN SKILLS bot
+ *   POST /api/social/swarm/skill-check/grok-bot — { claim }: the whole check to the Grok Bot computer; verdicts come back
  *   POST /api/social/swarm/chief-of-staff — { instructions, place, nearestCity, latitude, longitude }: Grok's task to that webhook
  *   GET  /api/social/swarm/nearest-city?lat=&lon= — { city } for that task, empty when none
  */
@@ -967,6 +1033,27 @@ export function socialSwarmProxy({
           fetchImpl: fetchImpl || globalThis.fetch,
           placeLookup,
         }).catch(failed('The hand-off failed.'));
+        return;
+      }
+      if (pathName === '/skill-check') {
+        handleSwarmBot(req, res, allow, allowedHosts, planSkillBot).catch(
+          failed(),
+        );
+        return;
+      }
+      if (pathName === '/skill-check/grok-bot') {
+        handleGrokBotComputer(
+          req,
+          res,
+          {
+            allow: allowComputer,
+            allowPlace,
+            cities,
+            fetchImpl: fetchImpl || globalThis.fetch,
+            placeLookup,
+          },
+          SKILL_CHECK_JOB,
+        ).catch(failed('The hand-off failed.'));
         return;
       }
       if (pathName === '/chief-of-staff') {

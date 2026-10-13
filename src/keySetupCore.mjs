@@ -252,14 +252,14 @@ export const KEY_SETUP_KEYS = Object.freeze([
   // seven bots on GROK_BOT_API_KEY (or OPENAI_DOTS_API_KEY). GROK BOT, its
   // computer, and its Chief of Staff webhook share a group. The swarm press
   // uses the API key when it is set; without one it uses the computer, else
-  // it opens Grok Bot with the task copied. The webhook card stays for a
+  // it opens Grok Bot and pastes the task. The webhook card stays for a
   // Chief of Staff routine the swarm buttons do not call.
   Object.freeze({
     id: 'grok-bot',
     group: 'grok-bot',
     title: 'GROK BOT',
     unlocks:
-      'Social Media, Outbreak SOCIAL SEARCH, and Ultra → GROK BOT SWARM: seven bots at once on their own xAI key; answers land in that panel. Without this key, GROK BOT — COMPUTER or a copied task in Grok Bot',
+      'Social Media, Outbreak SOCIAL SEARCH, and Ultra → GROK BOT SWARM: seven bots at once on their own xAI key; answers land in that panel. Without this key, GROK BOT — COMPUTER or Grok Bot with the task pasted to your Chief of Staff',
     getUrl: 'https://console.x.ai/',
     envVars: Object.freeze(['GROK_BOT_API_KEY']),
     optionalEnvVars: Object.freeze([
@@ -304,7 +304,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
     id: 'openai-dots',
     title: 'OPENAI DOTS',
     unlocks:
-      'Social Media → OPENAI BOT SWARM: seven bots at once on their own OpenAI key, apart from voice control',
+      'Social Media, Outbreak SOCIAL SEARCH, and Ultra → OPENAI DOT SWARM: seven bots at once on their own OpenAI key, apart from voice control. Without this key, ChatGPT with the task pasted',
     getUrl: 'https://platform.openai.com/api-keys',
     envVars: Object.freeze(['OPENAI_DOTS_API_KEY']),
     optionalEnvVars: Object.freeze([

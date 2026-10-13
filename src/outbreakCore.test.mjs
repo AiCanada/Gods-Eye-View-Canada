@@ -8,6 +8,7 @@ import {
   planeRoadKm,
   circlePoints,
   circleTakesPole,
+  southPoleKm,
   cleanFlight,
   cleanLocations,
   cleanSpeed,
@@ -1101,6 +1102,18 @@ test('each landing airport counts the infected flights that have landed there by
   assert.deepEqual(at(60), { UUEE: 3, UNNT: 1 });
 });
 
+test('southPoleKm is the meridian to -90°, and never past half the globe', () => {
+  assert.ok(Math.abs(SPREAD_MAX_RADIUS_KM - Math.PI * 6371.0088) < 1);
+  assert.ok(Math.abs(southPoleKm(90) - SPREAD_MAX_RADIUS_KM) < 1);
+  assert.ok(Math.abs(southPoleKm(0) - SPREAD_MAX_RADIUS_KM / 2) < 1);
+  assert.equal(southPoleKm(-90), 0);
+  const irkutskPole = southPoleKm(irkutsk.lat);
+  assert.ok(irkutskPole > 15_000 && irkutskPole < 16_500, `${irkutskPole} km`);
+  assert.ok(
+    Math.abs(irkutskPole - distanceKm(irkutsk, { lat: -90, lon: 0 })) < 1,
+  );
+});
+
 test('a circle keeps growing to the far side of the globe, past the south pole (owner report 2026-10-12)', () => {
   // Saint John, 45° N: the south pole is about 15,000 km away. The circle
   // used to stop at 10,000 km, near 45° S.
@@ -1119,5 +1132,30 @@ test('a circle keeps growing to the far side of the globe, past the south pole (
   assert.ok(toPole > 10_000 && ringAt(200) > toPole, `${toPole} km`);
   // It stops at the far side of the globe, half the way round.
   assert.equal(ringAt(720), SPREAD_MAX_RADIUS_KM);
-  assert.ok(Math.abs(SPREAD_MAX_RADIUS_KM - Math.PI * 6371.0088) < 1);
+});
+
+test('the yellow boat circle from Irkutsk stops in Antarctica; train still closes on the Chile antipode', () => {
+  const spread = outbreakSpread({
+    locations: [irkutsk],
+    surroundings: { irkutsk: { rail: true, water: true } },
+    startMs: START,
+    hour: 720,
+  });
+  const boat = spread.rings.find((r) => r.mode === 'boat');
+  const train = spread.rings.find((r) => r.mode === 'train');
+  const toPole = southPoleKm(irkutsk.lat);
+  assert.equal(boat.color, '#ffd21a');
+  assert.equal(boat.radiusKm, toPole);
+  const pts = circlePoints(irkutsk.lat, irkutsk.lon, boat.radiusKm, 96);
+  const south = Math.min(...pts.map((p) => p.lat));
+  assert.ok(south < -89, `southern edge ${south} (Antarctica)`);
+  const antipodeLat = -irkutsk.lat;
+  const antipodeLon = irkutsk.lon - 180;
+  const onChile = pts.filter(
+    (p) =>
+      Math.abs(p.lat - antipodeLat) < 2 && Math.abs(p.lon - antipodeLon) < 5,
+  );
+  assert.equal(onChile.length, 0, 'must not collapse onto southern Chile');
+  assert.equal(train.color, '#ff8c1a');
+  assert.equal(train.radiusKm, SPREAD_MAX_RADIUS_KM);
 });

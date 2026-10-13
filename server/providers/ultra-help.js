@@ -49,6 +49,7 @@ import {
   ultraPhoneModel,
   ULTRA_PHONE_MODELS,
 } from '../../src/ultraHelp.mjs';
+import { cleanSkillCheckRecord } from '../../src/ultraSkillCheck.mjs';
 import {
   ULTRA_DIRECTORY_BYTES,
   ULTRA_DIRECTORY_TIMEOUT_MS,
@@ -5139,6 +5140,25 @@ async function networkAction(body, store, now, answer) {
 }
 
 async function networkEdit(body, home, store, now, answer) {
+  if (body.readTokenSkills) {
+    // CONFIRM ULTRA TOKEN SKILLS: open a pasted token's skill list with
+    // this machine's key. The token is not stored and is not sent back.
+    const token = String(body.token ?? '').trim();
+    const read = readUltraTokenSkills(token, readTokenKey().key);
+    if (!read) return [400, { error: 'Paste an Ultra Token (uht1.…).' }];
+    return [
+      200,
+      {
+        encrypted: read.encrypted === true,
+        hidden: read.hidden === true,
+        skills: (read.skills || [])
+          .map((item) =>
+            typeof item === 'string' ? item : String(item?.label || ''),
+          )
+          .filter(Boolean),
+      },
+    ];
+  }
   if (body.me) {
     home.me = { name: cleanHelpText(body.name, ULTRA_HELP_NAME_LIMIT) };
     flushNetwork();
@@ -5246,6 +5266,17 @@ async function networkEdit(body, home, store, now, answer) {
     flushNetwork();
     return [200, answer(store)];
   }
+  if (body.skillCheck) {
+    // CONFIRM ULTRA TOKEN SKILLS: the verdicts are kept beside the token,
+    // replacing the last check. Nothing about the person is kept.
+    const entry = home.entries.find((item) => item.id === body.id);
+    if (!entry) return [404, { error: 'No such link' }];
+    const record = cleanSkillCheckRecord({ ...body.record, at: now });
+    if (!record) return [400, { error: 'No verdicts to save' }];
+    entry.skillCheck = record;
+    flushNetwork();
+    return [200, answer(store)];
+  }
   if (body.update) return updateHomeList(home, store, now, answer);
   if (body.publish) return publishToken(home, body, store, now, answer);
   if (body.poll) {
@@ -5281,7 +5312,10 @@ async function networkEdit(body, home, store, now, answer) {
   }
   return [
     400,
-    { error: 'Say me, add, remove, rename, update, publish, poll or testSms' },
+    {
+      error:
+        'Say me, add, remove, rename, skillCheck, readTokenSkills, update, publish, poll or testSms',
+    },
   ];
 }
 

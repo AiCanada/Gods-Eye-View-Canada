@@ -3894,6 +3894,58 @@ test('home list: only tailnet links, sealed, deduplicated, and never in an answe
     name: 'Sam next door',
   });
   assert.equal(renamed.json().network.entries[0].name, 'Sam next door');
+  // CONFIRM ULTRA TOKEN SKILLS: the verdicts are kept beside the token,
+  // stamped with the server's clock; nothing about the person is.
+  const checked = await post('/network', {
+    skillCheck: true,
+    id: entry.id,
+    record: {
+      at: 1,
+      via: 'openai',
+      name: 'Sam Example',
+      verdicts: [
+        {
+          skill: 'Paramedic',
+          verdict: 'confirmed',
+          reason: 'on the register',
+          links: ['https://register.example/1'],
+        },
+      ],
+    },
+  });
+  assert.equal(checked.status, 200, checked.text);
+  const kept = checked.json().network.entries[0].skillCheck;
+  assert.equal(kept.via, 'openai');
+  assert.ok(kept.at > 1, 'the server stamps the time');
+  assert.deepEqual(
+    kept.verdicts.map((row) => [row.skill, row.verdict]),
+    [['Paramedic', 'confirmed']],
+  );
+  assert.equal('name' in kept, false);
+  const onDisk = JSON.parse(
+    fs.readFileSync(file('ultra-network.json'), 'utf8'),
+  );
+  assert.deepEqual(onDisk.entries[0].skillCheck, kept, 'saved on the PC');
+  assert.equal(
+    (
+      await post('/network', {
+        skillCheck: true,
+        id: entry.id,
+        record: { via: 'openai', verdicts: [] },
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await post('/network', {
+        skillCheck: true,
+        id: 'n-0000000000000000',
+        record: kept,
+      })
+    ).status,
+    404,
+  );
   assert.equal(
     (
       await post('/network', {
@@ -3925,7 +3977,7 @@ test('home list: only tailnet links, sealed, deduplicated, and never in an answe
   );
   assert.equal(
     (await post('/network', { nonsense: true })).json().error,
-    'Say me, add, remove, rename, update, publish, poll or testSms',
+    'Say me, add, remove, rename, skillCheck, readTokenSkills, update, publish, poll or testSms',
   );
   // RESET TOKENS empties the list and keeps the owner's own name.
   const reset = await post('/tokens', { reset: true, confirm: true });
@@ -8369,6 +8421,44 @@ test('every catalog skill mints and reveals, Mr./Mrs. Nice Guy among them', asyn
   assert.ok(
     !fs.readFileSync(file('ultra-tokens.json'), 'utf8').includes('Nice'),
   );
+});
+
+test('readTokenSkills opens a pasted Ultra Token and never stores it', async () => {
+  const { post } = setup();
+  const clear = await mint(post, {
+    label: 'Clear',
+    network: true,
+    skills: ['pm'],
+  });
+  const opened = await post('/network', {
+    readTokenSkills: true,
+    token: clear.revealed.token,
+  });
+  assert.equal(opened.status, 200, opened.text);
+  assert.deepEqual(opened.json().skills, ['Paramedic']);
+  assert.equal(opened.json().encrypted, false);
+  assert.equal(
+    JSON.stringify(opened.json()).includes(clear.revealed.token),
+    false,
+  );
+  const sealed = await mint(post, {
+    label: 'Sealed',
+    network: true,
+    skills: ['pm'],
+    encrypt: true,
+  });
+  const decrypted = await post('/network', {
+    readTokenSkills: true,
+    token: sealed.revealed.token,
+  });
+  assert.equal(decrypted.status, 200, decrypted.text);
+  assert.deepEqual(decrypted.json().skills, ['Paramedic']);
+  assert.equal(decrypted.json().encrypted, true);
+  const refused = await post('/network', {
+    readTokenSkills: true,
+    token: 'nope',
+  });
+  assert.equal(refused.status, 400);
 });
 
 test('a token string that cannot be built is a generic failure with its own code, never weak random', async () => {

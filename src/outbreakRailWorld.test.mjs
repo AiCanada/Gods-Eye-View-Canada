@@ -370,7 +370,8 @@ test('the tile store: one TileJSON for 30 cold tiles, six fetches at once, the s
       open -= 1;
       return new Response(null, { status: 404 });
     };
-    let clock = Date.UTC(2026, 9, 12);
+    // Kept tiles carry the real file time, so the clock starts at now.
+    let clock = Date.now();
     const heard = [];
     const store = networkTileStore({
       cacheDir: dir,

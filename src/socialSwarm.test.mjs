@@ -59,6 +59,7 @@ test('seven bots, one per platform, on the platforms the box already names', () 
   assert.equal(SOCIAL_SWARM_PROVIDERS.xai.keyTitle, 'GROK BOT');
   assert.equal(SOCIAL_SWARM_PROVIDERS.openai.keyTitle, 'OPENAI DOTS');
   assert.equal(SOCIAL_SWARM_PROVIDERS.xai.desktop, true);
+  assert.equal(SOCIAL_SWARM_PROVIDERS.openai.desktop, true);
   assert.equal(SOCIAL_SWARM_PROVIDERS.openai.openUrl, 'https://chatgpt.com/');
   for (const provider of Object.values(SOCIAL_SWARM_PROVIDERS)) {
     assert.equal('login' in provider, false);
@@ -1584,4 +1585,100 @@ test('status: a computer changed by hand after POWER UP saved it is not offered'
   assert.equal((await ask()).json().xai.computer, true);
   process.env.GROK_BOT_GATEWAY_URL = 'http://127.0.0.1:1341';
   assert.equal((await ask()).json().xai.computer, false);
+});
+
+// ---- CONFIRM ULTRA TOKEN SKILLS -------------------------------------------
+
+const SKILL_CLAIM = {
+  skills: ['Paramedic', 'Electrician'],
+  name: 'Sam Example',
+  location: 'Halifax, NS',
+  age: 41,
+  sex: 'other',
+  urls: ['https://example.org/sam'],
+  apps: ['LinkedIn'],
+};
+
+test('skill check route: one bot on the swarm key, the rules first, the person only as search help', async (t) => {
+  withEnv(t, { ...KEYLESS, GROK_BOT_API_KEY: 'xai-test-key' });
+  const sent = upstream(t, ANSWERED);
+  const answer = await call(route(), {
+    url: '/skill-check',
+    body: { provider: 'xai', bot: 'registries', claim: SKILL_CLAIM },
+  });
+  assert.equal(answer.status, 200, answer.text);
+  assert.equal(answer.json().bot, 'registries');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].url, 'https://api.x.ai/v1/responses');
+  const [system, user] = sent[0].body.input;
+  assert.match(system.content, /Check only the claimed skills/);
+  assert.match(system.content, /Never write them in your answer/);
+  assert.match(user.content, /Skills claimed: Paramedic; Electrician\./);
+  assert.match(user.content, /Name: Sam Example/);
+  assert.match(user.content, /licence, certification and membership/);
+  assert.deepEqual(sent[0].body.tools, [{ type: 'web_search' }]);
+});
+
+test('skill check route: refused claims cost nothing, and a keyless swarm says add a key', async (t) => {
+  withEnv(t, { ...KEYLESS, GROK_BOT_API_KEY: 'xai-test-key' });
+  const sent = upstream(t, ANSWERED);
+  const noSkills = await call(route(), {
+    url: '/skill-check',
+    body: { provider: 'xai', bot: 'x', claim: { name: 'Sam' } },
+  });
+  assert.equal(noSkills.status, 400);
+  assert.match(noSkills.json().error, /at least one skill/);
+  const noPerson = await call(route(), {
+    url: '/skill-check',
+    body: { provider: 'xai', bot: 'x', claim: { skills: ['Medic'] } },
+  });
+  assert.equal(noPerson.status, 400);
+  const wrongBot = await call(route(), {
+    url: '/skill-check',
+    body: {
+      provider: 'xai',
+      bot: 'named',
+      claim: { skills: ['Medic'], name: 'Sam' },
+    },
+  });
+  assert.equal(wrongBot.status, 400, 'no links or apps: no named-links bot');
+  assert.equal(sent.length, 0);
+  withEnv(t, { GROK_BOT_API_KEY: undefined });
+  const keyless = await call(route(), {
+    url: '/skill-check',
+    body: { provider: 'openai', bot: 'x', claim: SKILL_CLAIM },
+  });
+  assert.equal(keyless.status, 501);
+  assert.equal(keyless.json().unconfigured, true);
+});
+
+test('skill check computer: the whole check goes to Grok Bot and comes back as verdicts', async (t) => {
+  withEnv(t, GATEWAY_ENV);
+  const sent = fakeGateway(t, {
+    roster: [{ id: 'a', name: 'Chief of Staff' }],
+    steps: [
+      {
+        busy: false,
+        tail: 'Paramedic · CONFIRMED · on the provincial register · https://register.example/ns/123\nElectrician · NO CONFIRMATION · nothing found',
+      },
+    ],
+  });
+  const answer = await pumped(t, route(), {
+    url: '/skill-check/grok-bot',
+    body: { claim: SKILL_CLAIM },
+  });
+  assert.equal(answer.status, 200, answer.text);
+  const prompt = sent.find((row) => row.path === '/api/sendPrompt').body.prompt;
+  assert.match(prompt, /CONFIRM ULTRA TOKEN SKILLS check/);
+  assert.match(prompt, /Skills claimed: Paramedic; Electrician/);
+  assert.match(prompt, /Is this token Skill claimed trust worthy\?/);
+  assert.doesNotMatch(prompt, /one combined line/);
+  assert.doesNotMatch(prompt, /Never sign in/);
+  assert.deepEqual(
+    answer.json().verdicts.map((row) => [row.skill, row.verdict]),
+    [
+      ['Paramedic', 'confirmed'],
+      ['Electrician', 'none'],
+    ],
+  );
 });

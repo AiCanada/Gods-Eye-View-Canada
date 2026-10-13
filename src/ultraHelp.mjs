@@ -356,6 +356,30 @@ export function ultraContactKind(value) {
 }
 
 /**
+ * Skill sets the owner can build into a token. The code is what the token
+ * string carries; the label is what the box shows. Custom skills are not in
+ * this list: up to five of those are slugged in beside it, or the token
+ * carries none. ultraTokens.mjs re-exports this same list.
+ */
+export const ULTRA_SKILL_SETS = Object.freeze([
+  Object.freeze({ code: 'dr', label: 'Doctor' }),
+  Object.freeze({ code: 'pm', label: 'Paramedic' }),
+  Object.freeze({ code: 'fr', label: 'First Responder' }),
+  Object.freeze({ code: 'lg', label: 'Lifeguard' }),
+  Object.freeze({ code: 'ff', label: 'Firefighter' }),
+  Object.freeze({ code: 'sr', label: 'Search and Rescue (SAR) Specialist' }),
+  Object.freeze({ code: 'br', label: 'Brave' }),
+  Object.freeze({ code: 'st', label: 'Strong' }),
+  Object.freeze({ code: 'cc', label: 'Crisis Counselor' }),
+  Object.freeze({ code: 'en', label: 'Enforcer' }),
+  Object.freeze({ code: 'ac', label: 'Animal Control' }),
+  Object.freeze({ code: 'hz', label: 'Hazardous Materials (HAZMAT)' }),
+  Object.freeze({ code: 'rg', label: 'Ranger' }),
+  Object.freeze({ code: 'tr', label: 'Transportation' }),
+  Object.freeze({ code: 'ng', label: 'Mr./Mrs. Nice Guy' }),
+]);
+
+/**
  * The slug a custom skill set can occupy inside a token. One source, shared
  * with the token pattern: the dashboard previews this and the minter writes it.
  */

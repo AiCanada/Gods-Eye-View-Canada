@@ -1641,6 +1641,7 @@ function swarmPage({
   const handoffs = [];
   const computers = [];
   const opens = [];
+  const openBodies = [];
   const statusAsks = [];
   const cityAsks = [];
   const copied = [];
@@ -1679,8 +1680,12 @@ function swarmPage({
       computers.push(body);
       return computer(body);
     }
-    if (url === '/api/social/grok-bot/open') {
+    if (
+      url === '/api/social/grok-bot/open' ||
+      url === '/api/social/openai-dots/open'
+    ) {
       opens.push(init.method);
+      openBodies.push(init.body);
       return open();
     }
     throw new Error(`unexpected ${url}`);
@@ -1721,6 +1726,7 @@ function swarmPage({
     handoffs,
     computers,
     opens,
+    openBodies,
     statusAsks,
     cityAsks,
     copied,
@@ -1854,30 +1860,53 @@ test('GROK BOT SWARM spins up on the press and sends one bot per platform at onc
   assert.equal(page.nodes['social-swarm-openai-status'].textContent, '');
 });
 
-test('OPENAI BOT SWARM runs on its own key: without the OPENAI DOTS key it sends nothing and says where it goes', async () => {
+test('OPENAI BOT SWARM with no OPENAI DOTS key copies the task, opens ChatGPT, and pastes it', async () => {
   const page = swarmPage({
-    keys: { xai: { key: false, chiefOfStaff: false }, openai: { key: false } },
+    keys: {
+      xai: { key: false, chiefOfStaff: false, computer: false },
+      openai: { key: false },
+    },
+    city: 'Halifax',
+    point: { latitude: 44.65, longitude: -63.57 },
+    open: () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, opened: 'app-link', pasted: true }),
+    }),
   });
   await settleSwarm();
   page.nodes['social-swarm-openai-instructions'].value =
     'Flooding reports by the harbour';
   page.nodes['social-swarm-openai-run'].click();
+  assert.equal(
+    page.nodes['social-swarm-openai-run'].textContent,
+    'SPINNING UP SWARM…',
+  );
   await settleSwarm();
   assert.equal(page.bots.length, 0);
   assert.deepEqual(page.handoffs, []);
-  assert.deepEqual(page.opens, []);
+  assert.deepEqual(page.opens, ['POST']);
+  const openBody = JSON.parse(page.openBodies[0]);
+  assert.equal(openBody.paste, true);
+  assert.match(openBody.text, /ChatGPT: run a OPENAI DOT SWARM sweep/);
+  assert.match(openBody.text, /Flooding reports by the harbour/);
+  assert.match(page.copied[0], /Flooding reports by the harbour/);
+  assert.match(
+    page.nodes['social-output'].textContent,
+    /OPENAI BOT SWARM · ChatGPT/,
+  );
   assert.equal(
     page.nodes['social-swarm-openai-status'].textContent,
-    'No OPENAI DOTS key yet. Add it in POWER UP → OPENAI DOTS.',
+    'CHATGPT OPENED · task sent to ChatGPT. Its report stays in ChatGPT.',
   );
-  assert.equal(page.nodes['social-output'].textContent, '');
   assert.equal(
     page.nodes['social-swarm-openai-run'].textContent,
     'OPENAI BOT SWARM',
   );
   assert.equal(page.nodes['social-swarm-openai-run'].disabled, false);
-  // When the server cannot say which keys are in, the bots go out and the
-  // first refusal is said once.
+});
+
+test('OPENAI BOT SWARM: when the server cannot say which keys are in, the bots go out and the first refusal is said once', async () => {
   const unknown = swarmPage({
     keys: null,
     answer: () => ({
@@ -1901,7 +1930,7 @@ test('OPENAI BOT SWARM runs on its own key: without the OPENAI DOTS key it sends
   assert.equal(unknown.nodes['social-output'].textContent, '');
 });
 
-test('GROK BOT SWARM with no Grok Bot key copies the task, opens Grok Bot, and keeps the task in the log', async () => {
+test('GROK BOT SWARM with no Grok Bot key copies the task, opens Grok Bot, and pastes it', async () => {
   const page = swarmPage({
     keys: {
       xai: { key: false, chiefOfStaff: true, computer: false },
@@ -1909,6 +1938,11 @@ test('GROK BOT SWARM with no Grok Bot key copies the task, opens Grok Bot, and k
     },
     city: 'Halifax',
     point: { latitude: 44.65, longitude: -63.57 },
+    open: () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, opened: 'shortcut', pasted: true }),
+    }),
   });
   await settleSwarm();
   page.nodes['social-swarm-xai-instructions'].value =
@@ -1923,6 +1957,9 @@ test('GROK BOT SWARM with no Grok Bot key copies the task, opens Grok Bot, and k
   assert.deepEqual(page.handoffs, []);
   assert.deepEqual(page.computers, []);
   assert.deepEqual(page.opens, ['POST']);
+  const openBody = JSON.parse(page.openBodies[0]);
+  assert.equal(openBody.paste, true);
+  assert.match(openBody.text, /Road closures and fires only/);
   assert.match(page.copied[0], /Road closures and fires only/);
   assert.match(
     page.nodes['social-output'].textContent,
@@ -1930,7 +1967,7 @@ test('GROK BOT SWARM with no Grok Bot key copies the task, opens Grok Bot, and k
   );
   assert.equal(
     page.nodes['social-swarm-xai-status'].textContent,
-    'GROK BOT OPENED · paste the task to your Chief of Staff. Its report stays in Grok Bot.',
+    'GROK BOT OPENED · task sent to your Chief of Staff. Its report stays in Grok Bot.',
   );
   assert.equal(
     page.nodes['social-swarm-xai-run'].textContent,
@@ -1954,9 +1991,7 @@ test('GROK BOT SWARM with a Grok Bot computer sends one task and writes the repo
         ok: true,
         via: 'computer',
         text: 'X:\n14:05 · harbour · police',
-        sections: [
-          { bot: 'x', label: 'X', text: '14:05 · harbour · police' },
-        ],
+        sections: [{ bot: 'x', label: 'X', text: '14:05 · harbour · police' }],
       }),
     }),
   });
@@ -1972,10 +2007,7 @@ test('GROK BOT SWARM with a Grok Bot computer sends one task and writes the repo
     page.nodes['social-output'].textContent,
     /GROK BOT SWARM · X · Halifax/,
   );
-  assert.match(
-    page.nodes['social-output'].textContent,
-    /harbour · police/,
-  );
+  assert.match(page.nodes['social-output'].textContent, /harbour · police/);
   assert.match(
     page.nodes['social-swarm-xai-status'].textContent,
     /^SWARM DONE .+ · 1 with reports · 0 found nothing$/,
@@ -1989,12 +2021,20 @@ test('OPEN GROK BOT opens the desktop app, OPEN CHATGPT opens ChatGPT, and no sw
   page.nodes['social-swarm-xai-open'].click();
   await settleSwarm();
   assert.deepEqual(page.opens, ['POST']);
+  assert.equal(page.openBodies[0], '{}');
   assert.equal(
     page.nodes['social-swarm-xai-status'].textContent,
     'GROK BOT OPENED',
   );
   page.nodes['social-swarm-openai-open'].click();
-  assert.deepEqual(opened, ['https://chatgpt.com/']);
+  await settleSwarm();
+  assert.deepEqual(page.opens, ['POST', 'POST']);
+  assert.equal(page.openBodies[1], '{}');
+  assert.equal(
+    page.nodes['social-swarm-openai-status'].textContent,
+    'CHATGPT OPENED',
+  );
+  assert.deepEqual(opened, []);
   // The swarms' login slots are gone: not a platform, not a saved account.
   assert.equal(
     SOCIAL_ACCOUNT_PLATFORMS.some(

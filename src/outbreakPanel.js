@@ -398,6 +398,7 @@ export class OutbreakPanel {
     this._days = byId('outbreak-days');
     this._scanBtn = byId('outbreak-scan');
     this._scanNote = byId('outbreak-scan-note');
+    this._scanNoteText = this._scanNote ? this._scanNote.textContent : '';
     this._hour = byId('outbreak-hour');
     this._playBtn = byId('outbreak-play');
     this._futurePlayBtn = byId('outbreak-play-future');
@@ -800,7 +801,7 @@ export class OutbreakPanel {
               .slice(0, 10),
           }
         : null,
-      found: (Array.isArray(saved?.found) ? saved.found : []).slice(0, 30),
+      found: (Array.isArray(saved?.found) ? saved.found : []).slice(-30),
       // FIND FUTURE SPREAD LOCATIONS' reach in hours: 30 days unless the
       // person picked another from the menu (a reach saved without that
       // pick is the old 48 h default and gives way to the new one).
@@ -1122,7 +1123,13 @@ export class OutbreakPanel {
     const destinations = this._landings(startMs);
     this._airRoadsCheap = cheap;
     this._airRoadsRetryAt = Infinity;
-    if (!destinations.length) return;
+    if (!destinations.length) {
+      if (this._airRoads) {
+        this._airRoads = null;
+        this._refresh({ send: true });
+      }
+      return;
+    }
     this._airRoadsLoading = true;
     const run = this._run;
     try {
@@ -1181,9 +1188,16 @@ export class OutbreakPanel {
     const destinations = this._landings(startMs);
     this._airRailsCheap = cheap;
     this._airRailsRetryAt = Infinity;
-    if (!destinations.length) return;
+    if (!destinations.length) {
+      if (this._airRails) {
+        this._airRails = null;
+        this._refresh({ send: true });
+      }
+      return;
+    }
     this._airRailsLoading = true;
     const run = this._run;
+    const epoch = this._railEpoch || 0;
     try {
       const response = await this._request(`${API}/air-rails`, {
         method: 'POST',
@@ -1195,8 +1209,9 @@ export class OutbreakPanel {
         }),
       });
       const data = await response.json().catch(() => null);
-      // Cleared meanwhile: nothing of the old run comes back.
-      if (run !== this._run) return;
+      // Cleared meanwhile, or the world rail came in: nothing of the old
+      // ask comes back.
+      if (run !== this._run || epoch !== (this._railEpoch || 0)) return;
       if (response.status === 429) {
         // Too many requests: a short wait, not five minutes dark.
         this._airRailsRetryAt = this._now() + 30_000;
@@ -1217,9 +1232,11 @@ export class OutbreakPanel {
       this._refresh({ send: true });
     } catch {
       // Asked again in five minutes.
-      if (run === this._run) this._airRailsRetryAt = this._now() + 300_000;
+      if (run === this._run && epoch === (this._railEpoch || 0))
+        this._airRailsRetryAt = this._now() + 300_000;
     } finally {
-      if (run === this._run) this._airRailsLoading = false;
+      if (run === this._run && epoch === (this._railEpoch || 0))
+        this._airRailsLoading = false;
     }
   }
 
@@ -1247,25 +1264,37 @@ export class OutbreakPanel {
         this._status.textContent === this._railWorldSaid;
       if (data.state === 'off') {
         this._railWorldDone = true;
+        this._restoreScanNote();
         return;
       }
       if (data.state === 'ready') {
         this._railWorldDone = true;
+        this._restoreScanNote();
         if (ours && this._railWorldSaid) this._say('');
         if (was?.state === 'ready' && was.builtAt === data.builtAt) return;
         this._log(
           'WORLD RAIL',
           `${railWorldLine(data)} Rail now lights along the whole network from each outbreak location and each landing, and the epidemic model carries rail travellers between the places it joins.`,
         );
-        // Asked again, now from the whole world's rail.
+        // Asked again, now from the whole world's rail. A load already on
+        // its way is dropped (the epoch moves on) so its local 200 km rail
+        // cannot overwrite the world network, and a new ask is not blocked
+        // by `_networksLoading` / `_airRailsLoading`.
+        this._railEpoch = (this._railEpoch || 0) + 1;
         for (const key of [...(this._networks || new Map()).keys()])
           if (key.endsWith('|rail')) this._networks.delete(key);
+        this._airRails = null;
         this._airRailsCheap = null;
+        this._airRailsLoading = false;
+        this._networksLoading = false;
         this._refresh({ send: true });
         return;
       }
       wait = RAIL_WORLD_POLL_MS;
       const text = railWorldLine(data);
+      // The scan note keeps progress visible while SCAN DONE (or another
+      // result) holds the status line.
+      if (this._scanNote) this._scanNote.textContent = text;
       if (ours) {
         this._say(text);
         this._railWorldSaid = text;
@@ -1322,6 +1351,7 @@ export class OutbreakPanel {
     wanted.sort((x, y) => x.level - y.level);
     this._networksLoading = true;
     const run = this._run;
+    const epoch = this._railEpoch || 0;
     try {
       for (const { location, mode, level } of wanted) {
         const key = `${location.id}|${mode}`;
@@ -1335,8 +1365,9 @@ export class OutbreakPanel {
         const { response, data } = await this._getJson(
           `${API}/network?${params}`,
         ).catch(() => ({ response: { ok: false }, data: null }));
-        // Cleared meanwhile: nothing of the old run comes back.
-        if (run !== this._run) return;
+        // Cleared meanwhile, or the world rail came in: nothing of the old
+        // ask comes back.
+        if (run !== this._run || epoch !== (this._railEpoch || 0)) return;
         if (response.ok && data?.network) {
           this._networks.set(key, {
             mode,
@@ -1365,11 +1396,13 @@ export class OutbreakPanel {
         this._refresh({ send: true });
       }
     } finally {
-      if (run === this._run) this._networksLoading = false;
+      if (run === this._run && epoch === (this._railEpoch || 0))
+        this._networksLoading = false;
     }
-    // The next, farther level, now this one is in.
+    // The next, farther level, now this one is in. World rail becoming
+    // ready also asks again (the epoch moved on; this load returned).
+    if (run !== this._run || epoch !== (this._railEpoch || 0)) return;
     if (
-      run === this._run &&
       [...this._networks.values()].some(
         (entry) =>
           entry.network &&
@@ -1617,12 +1650,6 @@ export class OutbreakPanel {
   }
 
   /**
-   * CLEAR DATA: a new run from scratch. The last run's results go: the scan and
-   * its flights, the assumed air traffic, the future spread places, the new
-   * locations found, the hour picked, the log. The outbreak locations, the
-   * disease name, the speeds, the ticks and HOW CONTAGIOUS stay.
-   */
-  /**
    * CLEAR MAP: the spread leaves the map and every result stays, so ticking
    * "Display spread on map" brings it straight back.
    */
@@ -1641,6 +1668,12 @@ export class OutbreakPanel {
     this._send({ show: false });
   }
 
+  /**
+   * CLEAR DATA: a new run from scratch. The last run's results go: the scan and
+   * its flights, the assumed air traffic, the future spread places, the new
+   * locations found, the hour picked, the log. The outbreak locations, the
+   * disease name, the speeds, the ticks and HOW CONTAGIOUS stay.
+   */
   _clear() {
     if (this._busy) {
       this._say(`Still working: ${this._busy}. Clear once it is done.`);
@@ -1799,14 +1832,25 @@ export class OutbreakPanel {
     }
   }
 
+  _restoreScanNote() {
+    if (this._scanNote && this._scanNoteText !== undefined)
+      this._scanNote.textContent = this._scanNoteText;
+  }
+
   _setBusy(what) {
     this._busy = what;
+    // A long run stops PLAY so the hour cannot reload the last scan's
+    // networks, and greys PLAY / MAP FUTURE SPREAD with the other buttons.
+    if (what) this._stopPlay();
     for (const button of [
       this._scanBtn,
       this._clearBtn,
       this._mediaBtn,
       this._socialBtn,
       this._futureBtn,
+      this._epiRunBtn,
+      this._playBtn,
+      this._futurePlayBtn,
     ])
       if (button) button.disabled = Boolean(what);
   }
@@ -1825,8 +1869,18 @@ export class OutbreakPanel {
       this._say('Add an outbreak location first.');
       return;
     }
-    this._stopPlay();
     this._setBusy('scanning');
+    // A new scan is a new run: drop lit roads and rail, and any answer
+    // still on its way from the last scan (same as CLEAR DATA). The last
+    // scan stays only as `previous` until this one finishes, so PLAY or an
+    // hour change cannot load its networks under the new run number.
+    const previous = this._state.scan;
+    this._state.scan = null;
+    this._dropNetworks();
+    this._traffic = null;
+    this._trafficRetryAt = 0;
+    this._trafficLoading = false;
+    this._send();
     const nowMs = this._now();
     const startMs = scanStartMs(nowMs, this._state.days);
     try {
@@ -1867,6 +1921,10 @@ export class OutbreakPanel {
       );
     } catch (error) {
       this._say(error?.message || 'The scan failed.');
+      if (previous) {
+        this._state.scan = previous;
+        this._refresh({ send: true });
+      }
     } finally {
       this._setBusy('');
     }
@@ -2086,6 +2144,10 @@ export class OutbreakPanel {
    * present to 30 days ahead. Either button stops whichever is running.
    */
   _togglePlay(button, range) {
+    if (this._busy) {
+      this._say(`Still working: ${this._busy}.`);
+      return;
+    }
     const running = this._playTimer !== null;
     const same = this._playing === range;
     if (running) this._stopPlay();
@@ -2946,7 +3008,7 @@ export class OutbreakPanel {
         request: (url, init) => this._request(url, init),
         provider: providerId,
         instructions,
-        place: place.name,
+        place: locations.map((row) => row.name).join('; '),
         latitude: place.lat,
         longitude: place.lon,
         onBot: ({ bot, text, error, task }) => {

@@ -351,6 +351,48 @@
         </div>
       </div>
       <div id="ultra-tokens"></div>
+      <!-- CONFIRM ULTRA TOKEN SKILLS: below the token REMOVE rows, above
+           HELP NETWORK. Paste an Ultra Token to decrypt its skills. -->
+      <div class="cctv-controls">
+        <button id="ultra-skill-check-open" class="scene-btn" type="button">CONFIRM ULTRA TOKEN SKILLS</button>
+      </div>
+      <form id="ultra-skill-check" class="ultra-reveal" hidden>
+        <p id="ultra-skill-check-for" class="ultra-note"></p>
+        <p class="ultra-note">CONFIRMED, NO CONFIRMATION or REJECTED CLAIM, each with its link. Every detail is optional except the skills and a name or link; they help the bots or LLM find the right person.</p>
+        <div class="cctv-controls ultra-contact">
+          <input id="ultra-skill-check-skills" type="text" maxlength="500" placeholder="Paste Ultra Token and decrypt skills from Ultra token to confirm" aria-label="Paste Ultra Token and decrypt skills from Ultra token to confirm" autocomplete="off" spellcheck="false">
+          <input id="ultra-skill-check-name" type="text" maxlength="80" placeholder="Name of token holder" aria-label="Name of token holder" autocomplete="off">
+          <input id="ultra-skill-check-alias" type="text" maxlength="80" placeholder="Alias/AKA" aria-label="Alias or AKA of token holder" autocomplete="off">
+          <input id="ultra-skill-check-location" type="text" maxlength="120" placeholder="Location of token holder" aria-label="Location of token holder" autocomplete="off">
+          <input id="ultra-skill-check-age" type="number" min="13" max="120" step="1" placeholder="Age" aria-label="Age of token holder" autocomplete="off">
+          <select id="ultra-skill-check-sex" aria-label="Male, female or other">
+            <option value="">Male / Female / Other</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+            <option value="other">Other</option>
+          </select>
+          <input id="ultra-skill-check-profession" type="text" maxlength="80" placeholder="Profession" aria-label="Profession of token holder" autocomplete="off">
+        </div>
+        <textarea id="ultra-skill-check-urls" class="ask-input social-query" rows="2" maxlength="1600" autocomplete="off" spellcheck="false" aria-label="URLs of token holder" placeholder="URLs of token holder, one per line (profile, website, licence page)"></textarea>
+        <div id="ultra-skill-check-apps" class="ultra-skills" role="group" aria-label="Apps to search for token holder skills"></div>
+        <div class="cctv-controls">
+          <select id="ultra-skill-check-swarm" aria-label="Which swarm checks the skills">
+            <option value="xai">GROK BOT SWARM</option>
+            <option value="openai">OPENAI DOT SWARM</option>
+            <option value="llm">LLM</option>
+          </select>
+          <button id="ultra-skill-check-run" class="scene-btn" type="submit">CHECK SKILLS</button>
+          <button id="ultra-skill-check-close" class="scene-btn" type="button">CLOSE</button>
+        </div>
+        <p id="ultra-skill-check-status" class="ultra-note" aria-live="polite"></p>
+        <div id="ultra-skill-check-paste" hidden>
+          <textarea id="ultra-skill-check-report" class="ask-input social-query" rows="4" maxlength="8000" autocomplete="off" aria-label="Chief of Staff report" placeholder="Paste the Chief of Staff's report here, then READ REPORT"></textarea>
+          <div class="cctv-controls">
+            <button id="ultra-skill-check-read" class="scene-btn" type="button">READ REPORT</button>
+          </div>
+        </div>
+        <ul id="ultra-skill-check-results" class="ultra-skill-check-results"></ul>
+      </form>
       <!-- Help network: the handouts (tailnet address + Ultra Token) this machine's server polls, the directory the group shares, my published token and the SMS relay. Other people's tokens are never shown here; only hosts are. -->
       <div class="cctv-summary-label">HELP NETWORK <span id="ultra-network-count"></span></div>
       <p id="ultra-network-note" class="ultra-note"></p>

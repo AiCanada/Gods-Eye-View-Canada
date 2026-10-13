@@ -43,6 +43,7 @@ import {
   ultraHelpMessage,
   ultraNeeds,
 } from '../../src/ultraHelp.mjs';
+import { cleanSkillCheckRecord } from '../../src/ultraSkillCheck.mjs';
 
 export const ULTRA_RELEASE_WINDOW_MS = 14_400_000;
 export const ULTRA_CLOCK_MARGIN_MS = 120_000;
@@ -1306,6 +1307,7 @@ export function normalizeUltraNetworkEntry(item) {
     // sealed inside it. Absent on a token that has neither, so an older
     // home list reads exactly as it did.
     ...skillEntryFields(item),
+    ...skillCheckField(item),
     // Only a hand-added link the last pull disagreed with carries it.
     ...(item.directoryDiffers === true ? { directoryDiffers: true } : {}),
     ...(policyMac === undefined ? {} : { policyMac }),
@@ -1326,6 +1328,15 @@ function skillEntryFields(item) {
     ...(skills.length ? { skills } : {}),
     ...(item?.encrypted === true ? { encrypted: true } : {}),
   };
+}
+
+/**
+ * The last CONFIRM ULTRA TOKEN SKILLS check kept beside the token, when
+ * there is one: verdicts and links only, nothing about the person.
+ */
+function skillCheckField(item) {
+  const record = cleanSkillCheckRecord(item?.skillCheck);
+  return record ? { skillCheck: record } : {};
 }
 
 function normalizePublished(item) {
@@ -1397,6 +1408,7 @@ export function ultraNetworkPublicEntry(entry, memory = {}, now = null) {
     moved: entry.moved === true,
     ...(entry.directoryDiffers === true ? { directoryDiffers: true } : {}),
     ...skillEntryFields(entry),
+    ...skillCheckField(entry),
     active,
   };
 }

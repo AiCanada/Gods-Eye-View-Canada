@@ -56,6 +56,7 @@ const NEAREST_CITY_URL = '/api/social/swarm/nearest-city';
 /** The server asks Nominatim for up to 8 s; the box waits a little longer. */
 const NEAREST_CITY_WAIT_MS = 25000;
 const GROK_BOT_OPEN_URL = '/api/social/grok-bot/open';
+const OPENAI_DOTS_OPEN_URL = '/api/social/openai-dots/open';
 const CLIENT_TIMEOUT_MARGIN_MS = 10000;
 const DEFAULT_ASK_TIMEOUT_MS = 240000;
 const LOCATION_REFUSED = 'This browser did not share a location.';
@@ -225,16 +226,18 @@ export class SocialMediaPanel {
       swarm.label = swarm.run.textContent;
       swarm.run.addEventListener('click', () => void this._runSwarm(swarm));
       doc.getElementById(`${prefix}-open`)?.addEventListener('click', () => {
-        // OPEN GROK BOT opens the desktop app on this computer; OPEN CHATGPT
-        // opens ChatGPT, where the dots live.
+        // OPEN GROK BOT and OPEN CHATGPT open the desktop app on this
+        // computer (dots live in ChatGPT). Body `{}`, no paste.
         if (provider.desktop) {
-          void this._openGrokBot().then((result) => {
+          void this._openDesktop(provider).then((result) => {
+            const opened =
+              provider.id === 'openai' ? 'CHATGPT OPENED' : 'GROK BOT OPENED';
             this._setSwarmStatus(
               swarm,
               result.ok
                 ? onThisPc()
-                  ? 'GROK BOT OPENED'
-                  : 'GROK BOT OPENED ON THE PC'
+                  ? opened
+                  : `${opened} ON THE PC`
                 : result.error,
             );
           });
@@ -463,12 +466,12 @@ export class SocialMediaPanel {
 
   /**
    * A press. Each swarm POSTs seven bots on its own key (POWER UP → GROK BOT,
-   * OPENAI DOTS) and writes each answer in this box. Without an OpenAI key
-   * the OpenAI swarm says where it goes. Without a Grok Bot key the Grok
-   * swarm uses the Grok Bot computer when POWER UP has it, else it copies
-   * the task, opens Grok Bot, and keeps the task in the log. When the server
-   * cannot say which keys are in, the bots are sent and each answers for
-   * itself.
+   * OPENAI DOTS) and writes each answer in this box. Without a Grok Bot key
+   * the Grok swarm uses the Grok Bot computer when POWER UP has it, else it
+   * copies the task, opens Grok Bot, and pastes it. Without an OpenAI key
+   * the OpenAI swarm copies the task, opens ChatGPT, and pastes it. When the
+   * server cannot say which keys are in, the bots are sent and each answers
+   * for itself.
    */
   async _runSwarm(swarm) {
     if (swarm.running) {
@@ -491,7 +494,7 @@ export class SocialMediaPanel {
       const place =
         context?.selectedLocation || context?.locality || view.place || '';
       const own = keys?.[swarm.provider.id];
-      if (own && own.key === false && swarm.provider.id !== 'xai') {
+      if (own && own.key === false && !swarm.provider.desktop) {
         this._setSwarmStatus(
           swarm,
           `No ${swarm.provider.keyTitle} key yet. Add it in POWER UP → ${swarm.provider.keyTitle}.`,
@@ -545,11 +548,15 @@ export class SocialMediaPanel {
     }
   }
 
-  /** Open the Grok Bot desktop app on this computer: { ok } or { ok: false, error }. */
-  async _openGrokBot() {
-    const failed = 'Grok Bot could not be opened.';
+  /** Open the Grok Bot or ChatGPT desktop app: { ok } or { ok: false, error }. */
+  async _openDesktop(provider) {
+    const openai = provider?.id === 'openai';
+    const url = openai ? OPENAI_DOTS_OPEN_URL : GROK_BOT_OPEN_URL;
+    const failed = openai
+      ? 'ChatGPT could not be opened.'
+      : 'Grok Bot could not be opened.';
     try {
-      const response = await this._request(GROK_BOT_OPEN_URL, {
+      const response = await this._request(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
@@ -581,7 +588,8 @@ export class SocialMediaPanel {
       place,
       latitude: view.latitude,
       longitude: view.longitude,
-      xaiStatus: swarm.provider.id === 'xai' ? keys?.xai : undefined,
+      xaiStatus: keys?.xai,
+      openaiStatus: keys?.openai,
       // The clipboard, then a hidden-textarea copy, then the share sheet; false
       // when none took it, so the status never says copied.
       copyText: (text) => copyText(text, { clipboard: this._clipboard }),

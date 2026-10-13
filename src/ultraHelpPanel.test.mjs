@@ -312,6 +312,36 @@ function installFakeDocument() {
   make('button', 'ultra-token-copy', reveal, { textContent: 'COPY TOKEN' });
   make('button', 'ultra-token-hide', reveal, { textContent: 'HIDE' });
   make('div', 'ultra-tokens', panel);
+  /* CONFIRM ULTRA TOKEN SKILLS: below token REMOVE rows, above HELP NETWORK. */
+  make('button', 'ultra-skill-check-open', panel, {
+    textContent: 'CONFIRM ULTRA TOKEN SKILLS',
+  });
+  const skillForm = make('form', 'ultra-skill-check', panel, { hidden: true });
+  make('p', 'ultra-skill-check-for', skillForm);
+  for (const id of [
+    'ultra-skill-check-skills',
+    'ultra-skill-check-name',
+    'ultra-skill-check-alias',
+    'ultra-skill-check-location',
+    'ultra-skill-check-age',
+    'ultra-skill-check-profession',
+  ])
+    make('input', id, skillForm);
+  make('div', 'ultra-skill-check-apps', skillForm);
+  make('select', 'ultra-skill-check-sex', skillForm);
+  make('textarea', 'ultra-skill-check-urls', skillForm);
+  make('select', 'ultra-skill-check-swarm', skillForm, { value: 'openai' });
+  make('button', 'ultra-skill-check-run', skillForm, {
+    textContent: 'CHECK SKILLS',
+  });
+  make('button', 'ultra-skill-check-close', skillForm);
+  make('p', 'ultra-skill-check-status', skillForm);
+  const skillPaste = make('div', 'ultra-skill-check-paste', skillForm, {
+    hidden: true,
+  });
+  make('textarea', 'ultra-skill-check-report', skillPaste);
+  make('button', 'ultra-skill-check-read', skillPaste);
+  make('ul', 'ultra-skill-check-results', skillForm);
   /* HELP NETWORK closes the box. */
   const networkHeading = make('div', 'ultra-network-heading', panel, {
     className: 'cctv-summary-label',
@@ -4344,7 +4374,7 @@ test('GROK BOT SWARM with no phone position sends nothing', async () => {
   }
 });
 
-test('GROK BOT SWARM with no Grok Bot key opens Grok Bot and keeps the task in the log', async () => {
+test('GROK BOT SWARM with no Grok Bot key opens Grok Bot and pastes the task', async () => {
   const { documentRef, panel, byId } = installFakeDocument();
   const bots = [];
   const opens = [];
@@ -4376,7 +4406,11 @@ test('GROK BOT SWARM with no Grok Bot key opens Grok Bot and keeps the task in t
     }
     if (url === '/api/social/grok-bot/open') {
       opens.push(options.method);
-      return { ok: true, json: async () => ({ ok: true, opened: 'shortcut' }) };
+      opens.push(JSON.parse(options.body || '{}'));
+      return {
+        ok: true,
+        json: async () => ({ ok: true, opened: 'shortcut', pasted: true }),
+      };
     }
     if (url === '/api/social/swarm') {
       bots.push(JSON.parse(options.body));
@@ -4398,12 +4432,83 @@ test('GROK BOT SWARM with no Grok Bot key opens Grok Bot and keeps the task in t
     panel.dispatch('click', { target: byId('ultra-swarm-run') });
     await settle();
     assert.equal(bots.length, 0);
-    assert.deepEqual(opens, ['POST']);
+    assert.equal(opens[0], 'POST');
+    assert.equal(opens[1].paste, true);
+    assert.match(opens[1].text, /Chief of Staff: run a GROK BOT SWARM sweep/);
     assert.match(
       byId('ultra-swarm-output').textContent,
       /GROK BOT SWARM · Chief of Staff/,
     );
-    assert.match(byId('ultra-swarm-status').textContent, /GROK BOT OPENED/);
+    assert.match(
+      byId('ultra-swarm-status').textContent,
+      /GROK BOT OPENED · task sent to your Chief of Staff/,
+    );
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('CONFIRM ULTRA TOKEN SKILLS with no OPENAI DOTS key opens ChatGPT and pastes the task', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const opens = [];
+  const fetchImpl = async (url, options = {}) => {
+    if (url === '/api/ultra-help/status') {
+      return {
+        ok: true,
+        json: async () => ({
+          unread: 0,
+          inbox: [],
+          tokens: [],
+          packages: [],
+          contacts: [],
+          network: network(),
+        }),
+      };
+    }
+    if (url === '/api/llm/providers') {
+      return { ok: true, json: async () => ({ providers: [] }) };
+    }
+    if (url === '/api/social/swarm/status') {
+      return {
+        ok: true,
+        json: async () => ({
+          xai: { key: false, computer: false },
+          openai: { key: false },
+        }),
+      };
+    }
+    if (url === '/api/social/openai-dots/open') {
+      opens.push(JSON.parse(options.body || '{}'));
+      return {
+        ok: true,
+        json: async () => ({ ok: true, opened: 'app-link', pasted: true }),
+      };
+    }
+    throw new Error(`unexpected ${url}`);
+  };
+  const handle = initUltraHelpPanel({
+    documentRef,
+    fetchImpl,
+    windowRef: fakeWindow(),
+  });
+  try {
+    await settle();
+    panel.dispatch('click', { target: byId('ultra-skill-check-open') });
+    byId('ultra-skill-check-skills').value = 'Paramedic';
+    byId('ultra-skill-check-name').value = 'Sam';
+    byId('ultra-skill-check-swarm').value = 'openai';
+    panel.dispatch('submit', { target: byId('ultra-skill-check') });
+    for (let i = 0; i < 20; i += 1) await settle();
+    assert.equal(opens[0].paste, true);
+    assert.match(
+      opens[0].text,
+      /ChatGPT: run a CONFIRM ULTRA TOKEN SKILLS check/,
+    );
+    assert.equal(byId('ultra-skill-check-paste').hidden, false);
+    assert.match(
+      byId('ultra-skill-check-status').textContent,
+      /CHATGPT OPENED · task sent to ChatGPT/,
+    );
   } finally {
     handle.destroy();
   }
@@ -4670,4 +4775,278 @@ test('Ultra panel: only removal POSTs are watched for a pc-only refusal', async 
   } finally {
     handle.destroy();
   }
+});
+
+test('CONFIRM ULTRA TOKEN SKILLS: the button above HELP NETWORK opens the form, the swarm runs, and the verdicts are shown', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const status = {
+    unread: 0,
+    inbox: [],
+    tokens: [],
+    packages: [],
+    contacts: [],
+    network: network({ entries: [entry({ skills: ['Paramedic'] })] }),
+  };
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url, body });
+    if (url === '/api/social/swarm/skill-check') {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          text:
+            body.bot === 'registries'
+              ? 'Paramedic · CONFIRMED · on the register · https://register.example/1'
+              : 'Paramedic · NO CONFIRMATION · nothing',
+        }),
+      };
+    }
+    return { ok: true, status: 200, json: async () => status };
+  };
+  const handle = initUltraHelpPanel({ documentRef, fetchImpl });
+  try {
+    await settle();
+    const confirmButton = byId('ultra-skill-check-open');
+    assert.equal(confirmButton.textContent, 'CONFIRM ULTRA TOKEN SKILLS');
+    assert.equal(confirmButton.parentElement.id, 'ultra-panel');
+    const tokens = byId('ultra-tokens');
+    assert.equal(
+      panel.children[panel.children.indexOf(tokens) + 1],
+      confirmButton,
+      'the button sits below the token list',
+    );
+    assert.equal(
+      panel.children[panel.children.indexOf(byId('ultra-skill-check')) + 1].id,
+      'ultra-network-heading',
+      'the form sits above HELP NETWORK',
+    );
+    const appLabels = byId('ultra-skill-check-apps')
+      .querySelectorAll('input[type="checkbox"]')
+      .map((input) => input.value);
+    assert.ok(appLabels.includes('LinkedIn'));
+    assert.ok(appLabels.includes('GitHub'));
+    assert.ok(appLabels.includes('Facebook'));
+    const swarm = byId('ultra-skill-check-swarm');
+    assert.deepEqual(
+      swarm.children.map((option) => [option.value, option.textContent]),
+      [
+        ['xai', 'GROK BOT SWARM'],
+        ['openai', 'OPENAI DOT SWARM'],
+        ['llm', 'LLM'],
+      ],
+    );
+    assert.equal(swarm.value, 'openai');
+    panel.dispatch('click', { target: confirmButton });
+    const form = byId('ultra-skill-check');
+    assert.equal(form.hidden, false);
+    assert.equal(form.dataset.ultraSkillEntry, undefined);
+    assert.match(byId('ultra-skill-check-for').textContent, /shown, not kept/);
+    const secret = `uht1.${'A'.repeat(43)}`;
+    byId('ultra-skill-check-skills').value = `${secret}.s.pm`;
+    byId('ultra-skill-check-alias').value = 'Sammy';
+    panel.dispatch('input', { target: byId('ultra-skill-check-skills') });
+    await settle();
+    assert.equal(byId('ultra-skill-check-skills').value, 'Paramedic');
+    assert.equal(byId('ultra-skill-check-alias').value, 'Sammy');
+    byId('ultra-skill-check-name').value = 'Sam';
+    byId('ultra-skill-check-age').value = '41';
+    const linkedin = byId('ultra-skill-check-app-linkedin');
+    const github = byId('ultra-skill-check-app-github');
+    linkedin.checked = true;
+    github.checked = true;
+    panel.dispatch('change', { target: linkedin });
+    panel.dispatch('change', { target: github });
+    calls.length = 0;
+    panel.dispatch('submit', { target: form });
+    for (let i = 0; i < 20; i += 1) await settle();
+    const bots = calls.filter(
+      (row) => row.url === '/api/social/swarm/skill-check',
+    );
+    assert.equal(bots.length, 9, 'named-links bot joins when apps are ticked');
+    assert.equal(bots[0].body.claim.age, 41);
+    assert.deepEqual(bots[0].body.claim.apps, ['LinkedIn', 'GitHub']);
+    assert.equal(
+      calls.some(
+        (row) => row.url === '/api/ultra-help/network' && row.body?.skillCheck,
+      ),
+      false,
+      'verdicts are shown, not kept',
+    );
+    assert.match(
+      byId('ultra-skill-check-status').textContent,
+      /^DONE · 1 CONFIRMED · 0 NO CONFIRMATION · 0 REJECTED CLAIM · shown only, not kept/,
+    );
+    const results = byId('ultra-skill-check-results').children;
+    assert.equal(results.length, 1);
+    assert.equal(results[0].dataset.verdict, 'confirmed');
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('CONFIRM ULTRA TOKEN SKILLS: LLM asks the ready POWER UP models', async () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url, body });
+    if (url === '/api/llm/providers') {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          providers: [
+            { id: 'xai', label: 'xAI Grok', ready: true },
+            { id: 'nvidia', label: 'NVIDIA NIM', ready: true },
+          ],
+        }),
+      };
+    }
+    if (url === '/api/llm/ask') {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          answer:
+            'Paramedic · CONFIRMED · register · https://register.example/1',
+        }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        unread: 0,
+        inbox: [],
+        tokens: [],
+        packages: [],
+        contacts: [],
+        network: network(),
+      }),
+    };
+  };
+  const handle = initUltraHelpPanel({ documentRef, fetchImpl });
+  try {
+    await settle();
+    panel.dispatch('click', { target: byId('ultra-skill-check-open') });
+    byId('ultra-skill-check-skills').value = 'Paramedic';
+    byId('ultra-skill-check-name').value = 'Sam';
+    byId('ultra-skill-check-swarm').value = 'llm';
+    calls.length = 0;
+    panel.dispatch('submit', { target: byId('ultra-skill-check') });
+    for (let i = 0; i < 20; i += 1) await settle();
+    const asks = calls.filter((row) => row.url === '/api/llm/ask');
+    assert.equal(asks.length, 2);
+    assert.deepEqual(asks.map((row) => row.body.provider).sort(), [
+      'nvidia',
+      'xai',
+    ]);
+    assert.match(
+      asks[0].body.question,
+      /Is this token Skill claimed trust worthy\?/,
+    );
+    assert.equal(
+      calls.some((row) => row.url === '/api/social/swarm/skill-check'),
+      false,
+    );
+    assert.match(
+      byId('ultra-skill-check-status').textContent,
+      /^DONE · 1 CONFIRMED · 0 NO CONFIRMATION · 0 REJECTED CLAIM · shown only, not kept/,
+    );
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('CONFIRM ULTRA TOKEN SKILLS: LLM options follow POWER UP Ask keys', async () => {
+  const { documentRef, byId } = installFakeDocument();
+  const fetchImpl = async (url) => {
+    if (url === '/api/llm/providers') {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          providers: [
+            { id: 'xai', label: 'xAI Grok', ready: true },
+            { id: 'nvidia', label: 'NVIDIA NIM', ready: true },
+            { id: 'anthropic', label: 'Anthropic Claude', ready: false },
+          ],
+        }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        unread: 0,
+        inbox: [],
+        tokens: [],
+        packages: [],
+        contacts: [],
+        network: network(),
+      }),
+    };
+  };
+  const handle = initUltraHelpPanel({ documentRef, fetchImpl });
+  try {
+    await settle();
+    const swarm = byId('ultra-skill-check-swarm');
+    assert.deepEqual(
+      swarm.children.map((option) => [option.value, option.textContent]),
+      [
+        ['xai', 'GROK BOT SWARM'],
+        ['openai', 'OPENAI DOT SWARM'],
+        ['llm', 'LLM · ALL'],
+        ['llm:xai', 'LLM · xAI Grok'],
+        ['llm:nvidia', 'LLM · NVIDIA NIM'],
+      ],
+    );
+    assert.equal(swarm.value, 'openai');
+  } finally {
+    handle.destroy();
+  }
+});
+
+test('home-list rows show the last skill check beside the token', () => {
+  const { documentRef, byId } = installFakeDocument();
+  applyUltraHelpStatus(documentRef, {
+    unread: 0,
+    inbox: [],
+    tokens: [],
+    packages: [],
+    contacts: [],
+    network: network({
+      entries: [
+        entry({
+          skills: ['Paramedic', 'Electrician'],
+          skillCheck: {
+            at: NOW,
+            via: 'xai',
+            verdicts: [
+              {
+                skill: 'Paramedic',
+                verdict: 'confirmed',
+                links: ['https://register.example/1'],
+              },
+              {
+                skill: 'Electrician',
+                verdict: 'rejected',
+                links: ['https://trades.example/9'],
+                mixed: true,
+              },
+            ],
+          },
+        }),
+      ],
+    }),
+  });
+  const readout =
+    byId('ultra-network-list').children[0].children[0].textContent;
+  assert.match(
+    readout,
+    /PARAMEDIC: CONFIRMED, ELECTRICIAN: REJECTED CLAIM \(MIXED\) · SKILLS CHECKED /,
+  );
 });

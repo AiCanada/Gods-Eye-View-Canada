@@ -76,16 +76,17 @@ test('runSocialSwarm treats 501 as unconfigured and does not log a bot', async (
   assert.equal(result.failed, 0);
 });
 
-test('runSocialSwarm with no Grok Bot key copies the task, opens Grok Bot, and logs it', async () => {
+test('runSocialSwarm with no Grok Bot key copies the task, opens Grok Bot, and pastes it', async () => {
   const urls = [];
   const copied = [];
+  const opens = [];
   const bots = [];
   const result = await runSocialSwarm({
     xaiStatus: { key: false, computer: false },
     copyText: async (text) => {
       copied.push(text);
     },
-    request: async (url) => {
+    request: async (url, init) => {
       urls.push(String(url).split('?')[0]);
       if (String(url).startsWith('/api/social/swarm/nearest-city')) {
         return {
@@ -95,10 +96,11 @@ test('runSocialSwarm with no Grok Bot key copies the task, opens Grok Bot, and l
         };
       }
       if (url === '/api/social/grok-bot/open') {
+        opens.push(JSON.parse(init.body));
         return {
           ok: true,
           status: 200,
-          json: async () => ({ ok: true, opened: 'shortcut' }),
+          json: async () => ({ ok: true, opened: 'shortcut', pasted: true }),
         };
       }
       throw new Error(`unexpected ${url}`);
@@ -113,10 +115,14 @@ test('runSocialSwarm with no Grok Bot key copies the task, opens Grok Bot, and l
   assert.equal(result.via, 'desktop');
   assert.equal(result.copied, true);
   assert.equal(result.opened, true);
+  assert.equal(result.pasted, true);
   assert.equal(result.unconfigured, '');
   assert.equal(urls.includes('/api/social/swarm'), false);
   assert.equal(urls.includes('/api/social/swarm/grok-bot'), false);
   assert.equal(urls.includes('/api/social/grok-bot/open'), true);
+  assert.equal(opens[0].paste, true);
+  assert.match(opens[0].text, /Chief of Staff: run a GROK BOT SWARM sweep/);
+  assert.match(opens[0].text, /Fires only/);
   assert.match(copied[0], /Chief of Staff: run a GROK BOT SWARM sweep/);
   assert.match(copied[0], /Fires only/);
   assert.equal(bots[0].bot.label, 'Chief of Staff');
@@ -124,7 +130,82 @@ test('runSocialSwarm with no Grok Bot key copies the task, opens Grok Bot, and l
   assert.equal(bots[0].task, true);
   assert.match(
     formatSwarmDesktopStatus(result),
-    /GROK BOT OPENED · paste the task to your Chief of Staff/,
+    /GROK BOT OPENED · task sent to your Chief of Staff/,
+  );
+});
+
+test('formatSwarmDesktopStatus: pasted wins; otherwise the operator pastes', () => {
+  assert.match(
+    formatSwarmDesktopStatus({ opened: true, copied: true, pasted: true }),
+    /task sent to your Chief of Staff/,
+  );
+  assert.match(
+    formatSwarmDesktopStatus({ opened: true, copied: true, pasted: false }),
+    /paste the task to your Chief of Staff/,
+  );
+  assert.match(
+    formatSwarmDesktopStatus({
+      opened: true,
+      copied: true,
+      pasted: true,
+      desktopApp: 'chatgpt',
+    }),
+    /task sent to ChatGPT/,
+  );
+});
+
+test('runSocialSwarm with no OPENAI DOTS key copies the task, opens ChatGPT, and pastes it', async () => {
+  const urls = [];
+  const copied = [];
+  const opens = [];
+  const bots = [];
+  const result = await runSocialSwarm({
+    openaiStatus: { key: false },
+    copyText: async (text) => {
+      copied.push(text);
+    },
+    request: async (url, init) => {
+      urls.push(String(url).split('?')[0]);
+      if (String(url).startsWith('/api/social/swarm/nearest-city')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ city: 'Halifax' }),
+        };
+      }
+      if (url === '/api/social/openai-dots/open') {
+        opens.push(JSON.parse(init.body));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, opened: 'app-link', pasted: true }),
+        };
+      }
+      throw new Error(`unexpected ${url}`);
+    },
+    provider: 'openai',
+    instructions: 'Fires only',
+    place: 'Halifax',
+    latitude: 44.65,
+    longitude: -63.57,
+    onBot: (row) => bots.push(row),
+  });
+  assert.equal(result.via, 'desktop');
+  assert.equal(result.desktopApp, 'chatgpt');
+  assert.equal(result.copied, true);
+  assert.equal(result.opened, true);
+  assert.equal(result.pasted, true);
+  assert.equal(result.unconfigured, '');
+  assert.equal(urls.includes('/api/social/swarm'), false);
+  assert.equal(urls.includes('/api/social/openai-dots/open'), true);
+  assert.equal(opens[0].paste, true);
+  assert.match(opens[0].text, /ChatGPT: run a OPENAI DOT SWARM sweep/);
+  assert.match(opens[0].text, /Fires only/);
+  assert.equal(bots[0].bot.label, 'ChatGPT');
+  assert.equal(bots[0].task, true);
+  assert.match(
+    formatSwarmDesktopStatus(result),
+    /CHATGPT OPENED · task sent to ChatGPT/,
   );
 });
 
@@ -138,7 +219,11 @@ function desktopPress(extra) {
         return { ok: true, status: 200, json: async () => ({ city: '' }) };
       }
       if (url === '/api/social/grok-bot/open') {
-        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, pasted: true }),
+        };
       }
       throw new Error(`unexpected ${url}`);
     },

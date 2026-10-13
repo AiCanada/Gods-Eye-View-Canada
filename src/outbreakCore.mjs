@@ -78,7 +78,9 @@ export const RAIL_REACH_KM = 30;
  * (pi x 6,371 km), the far side of the globe, where a circle closes on
  * itself and the reach is the whole Earth. It was 10,000 km, a quarter of
  * the way round, so a circle stopped part way (owner report 2026-10-12: it
- * should go all the way to the south pole).
+ * should go all the way to the south pole). The yellow boat/vehicle ring is
+ * stopped at the south pole instead: past that it closed on the antipode,
+ * which for Irkutsk is southern Chile.
  */
 export const SPREAD_MAX_RADIUS_KM = 20_015;
 /** Cruise speed and ground time used when a flight has no times of its own. */
@@ -203,6 +205,14 @@ export function circlePoints(lat, lon, radiusKm, steps = 96) {
 export function circleTakesPole(lat, radiusKm) {
   const reachDeg = (radiusKm / EARTH_RADIUS_KM) * (180 / Math.PI);
   return Math.abs(lat) + reachDeg >= 89;
+}
+
+/** Great-circle km from `lat` down the meridian to the south pole. Boat rings stop here. */
+export function southPoleKm(lat) {
+  const φ = finite(lat);
+  if (φ === null) return SPREAD_MAX_RADIUS_KM;
+  const clamped = Math.max(-90, Math.min(90, φ));
+  return ((90 + clamped) * Math.PI * EARTH_RADIUS_KM) / 180;
 }
 
 /** A speed the box accepts: 1 to 1000 km/h, else the mode's default. */
@@ -502,8 +512,12 @@ export function timeScheduleRoutes(routes, startMs, source = 'Schedule') {
   return flights;
 }
 
-function clampRadius(km) {
-  return Math.max(0, Math.min(SPREAD_MAX_RADIUS_KM, km));
+function clampRadius(km, lat, mode) {
+  const cap =
+    mode === 'boat'
+      ? Math.min(SPREAD_MAX_RADIUS_KM, southPoleKm(lat))
+      : SPREAD_MAX_RADIUS_KM;
+  return Math.max(0, Math.min(cap, km));
 }
 
 /**
@@ -584,7 +598,7 @@ export function outbreakSpread({
         color: OUTBREAK_MODES[mode].color,
         lat: location.lat,
         lon: location.lon,
-        radiusKm: clampRadius(speed(mode) * h),
+        radiusKm: clampRadius(speed(mode) * h, location.lat, mode),
         from: location.name,
       });
     };

@@ -38,6 +38,7 @@ import { socialAccountsProxy } from './socialAccounts.js';
 import { roadCctvKeysProxy } from './roadCctvKeys.js';
 import { socialSwarmProxy } from './socialSwarm.js';
 import { grokBotDesktopProxy } from './grokBotDesktop.js';
+import { openaiDotsDesktopProxy } from './openaiDotsDesktop.js';
 import { outbreakProxy } from './outbreak.js';
 
 /**
@@ -94,6 +95,8 @@ function localProviderPlugins({ realtime } = {}) {
     socialSwarmProxy(),
     // Opens the Grok Bot desktop app for OPEN GROK BOT and the no-key swarm.
     grokBotDesktopProxy(),
+    // Opens ChatGPT for OPEN CHATGPT and the no-key OPENAI DOT SWARM.
+    openaiDotsDesktopProxy(),
     // OUTBREAK LOCATIONS & PREDICTED SPREAD: airports, flight history,
     // rail and water near an outbreak, and the global media search; every
     // rail line on the globe, found once in the background (2026-10-12).

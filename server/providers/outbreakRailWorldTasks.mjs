@@ -43,6 +43,7 @@ import {
   railWorldTiles,
 } from '../../src/outbreakRailWorld.mjs';
 import { railRoutes } from '../../src/outbreakEpi.mjs';
+import { tryEnableOutbreakRailCuda } from '../shared/outbreakRailCuda.mjs';
 
 /** The km of line reached, by continent (where both ends are reached). */
 function reachedByContinent(graph, value) {
@@ -76,6 +77,7 @@ function loadGraph(file) {
 }
 
 function buildWorld(file, task) {
+  tryEnableOutbreakRailCuda();
   const countries = JSON.parse(fs.readFileSync(task.countriesFile, 'utf8'));
   // Each point's country by outline where a tile is shared, and no join
   // over open sea (2026-10-12).

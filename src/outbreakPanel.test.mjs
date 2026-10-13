@@ -22,12 +22,23 @@ function fakePage(extraIds = []) {
     const node = {
       id,
       checked: false,
+      disabled: false,
       value: '',
       textContent: '',
       dataset: {},
       children: [],
       appendChild(child) {
         node.children.push(child);
+        return child;
+      },
+      insertBefore(child, before) {
+        if (!before) {
+          node.children.push(child);
+          return child;
+        }
+        const i = node.children.indexOf(before);
+        if (i < 0) node.children.push(child);
+        else node.children.splice(i, 0, child);
         return child;
       },
       replaceChildren(...children) {
@@ -483,7 +494,8 @@ test('every rail line on the globe: the status line while the server finds it, t
     railWorldLine({ state: 'ready', tilesDone: 20000, railKm: 1_100_000 }),
     /^World rail: 1,100,000 km from 20,000 map tiles/,
   );
-  const page = fakePage();
+  const page = fakePage(['outbreak-scan-note']);
+  page.nodes.get('outbreak-scan-note').textContent = 'Plane: flight history.';
   const now = Date.UTC(2026, 9, 12, 12);
   page.storage.setItem(
     OUTBREAK_STORAGE_KEY,
@@ -562,6 +574,10 @@ test('every rail line on the globe: the status line while the server finds it, t
     page.nodes.get('outbreak-status').textContent,
     'World rail: 6,812 / 16,096 tiles · 412,000 km; rail works as before until it is done.',
   );
+  assert.equal(
+    page.nodes.get('outbreak-scan-note').textContent,
+    'World rail: 6,812 / 16,096 tiles · 412,000 km; rail works as before until it is done.',
+  );
   assert.ok(
     !asked.includes('rail'),
     'no station, no world rail yet: not asked',
@@ -588,6 +604,11 @@ test('every rail line on the globe: the status line while the server finds it, t
     /The world's rail, 1,100,000 km, from 0.4 km away/,
   );
   assert.equal(page.nodes.get('outbreak-status').textContent, '');
+  assert.equal(
+    page.nodes.get('outbreak-scan-note').textContent,
+    'Plane: flight history.',
+    'the travel note comes back once the world rail is built',
+  );
   const last = page.sent.at(-1);
   assert.equal('railWorld' in last, false, 'no backdrop of every rail line');
   assert.ok(last.networks.some((n) => n.key === 'sj|rail'));
@@ -810,6 +831,204 @@ test('CLEAR DATA drops an air-traffic answer still on its way: no old flights or
   panel.destroy();
 });
 
+test('SCAN TRAVEL drops leftover roads, rail and air-rail at once, greys PLAY, and a failed scan puts the last run back', async () => {
+  const page = fakePage([
+    'outbreak-scan',
+    'outbreak-play',
+    'outbreak-play-future',
+    'outbreak-epi-run',
+  ]);
+  const now = Date.UTC(2026, 9, 12, 12);
+  const scan = {
+    startMs: now - 48 * 3_600_000,
+    flights: [],
+    surroundings: { irk: { rail: true, water: false } },
+    flightSource: 'test',
+  };
+  page.storage.setItem(
+    OUTBREAK_STORAGE_KEY,
+    JSON.stringify({
+      show: true,
+      locations: [
+        { id: 'irk', name: 'Irkutsk, Russia', lat: 52.29, lon: 104.3 },
+      ],
+      scan,
+    }),
+  );
+  const network = {
+    bandKm: 10,
+    bands: { 0: [[104.3, 52.29, 104.4, 52.29]] },
+    unreached: [],
+    reachedKm: 10,
+    lengthKm: 10,
+    startKm: 0.5,
+  };
+  const timed = { bandsBy: 'hour', bands: { 0: [[37, 56, 37.5, 56]] } };
+  let hold = null;
+  const asked = [];
+  const panel = new OutbreakPanel(null, {
+    document: page.document,
+    windowRef: page.windowRef,
+    storage: page.storage,
+    fetch: async (url) => {
+      const u = String(url);
+      if (u.includes('/surroundings')) {
+        asked.push('surroundings');
+        if (hold) await hold.promise;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            rail: true,
+            water: false,
+            stations: 1,
+            trainKmh: 60,
+          }),
+        };
+      }
+      if (u.includes('/airports/near')) throw new Error('Airports: offline');
+      if (u.includes('/network?')) {
+        asked.push(new URL(u, 'http://x').searchParams.get('mode'));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            network,
+            tiles: 1,
+            failedTiles: 0,
+            radiusKm: 500,
+            lastLevel: true,
+          }),
+        };
+      }
+      if (u.endsWith('/rail-world/status'))
+        return { ok: true, status: 200, json: async () => ({ state: 'off' }) };
+      throw new Error('offline');
+    },
+    now: () => now,
+  });
+  await settle();
+  panel._airRoads = { network: timed };
+  panel._airRails = { network: timed };
+  panel._refresh({ send: true });
+  assert.ok(page.sent.at(-1).networks.some((n) => n.key === 'air-rail'));
+  assert.equal(page.nodes.get('outbreak-play').disabled, false);
+
+  let release;
+  hold = { promise: new Promise((r) => (release = r)) };
+  page.nodes.get('outbreak-scan').click();
+  await settle();
+  const mid = page.sent.at(-1);
+  assert.deepEqual(mid.networks, [], 'leftover roads and rail leave at once');
+  assert.equal(panel._airRails, null);
+  assert.equal(panel._airRoads, null);
+  assert.equal(
+    panel._state.scan,
+    null,
+    'the last scan is held back until this one finishes',
+  );
+  assert.equal(page.nodes.get('outbreak-play').disabled, true);
+  assert.equal(page.nodes.get('outbreak-play-future').disabled, true);
+  assert.equal(page.nodes.get('outbreak-epi-run').disabled, true);
+  assert.match(page.nodes.get('outbreak-status').textContent, /SCANNING/);
+
+  hold = null;
+  release();
+  await settle();
+  assert.match(
+    page.nodes.get('outbreak-status').textContent,
+    /Airports: offline/,
+  );
+  assert.equal(panel._state.scan.startMs, scan.startMs, 'the last run is back');
+  assert.equal(page.nodes.get('outbreak-play').disabled, false);
+  assert.equal(page.nodes.get('outbreak-epi-run').disabled, false);
+  assert.ok(
+    page.sent.at(-1).networks.some((n) => n.key === 'irk|road'),
+    'the last run’s roads load again',
+  );
+  panel.destroy();
+});
+
+test('world rail becoming ready drops an in-flight road ask and loads rail from the whole world', async () => {
+  const page = fakePage();
+  const now = Date.UTC(2026, 9, 12, 12);
+  page.storage.setItem(
+    OUTBREAK_STORAGE_KEY,
+    JSON.stringify({
+      locations: [
+        { id: 'sj', name: 'Saint John, Canada', lat: 45.27, lon: -66.06 },
+      ],
+      scan: {
+        startMs: now - 48 * 3_600_000,
+        flights: [],
+        surroundings: { sj: { rail: false, water: false } },
+        flightSource: 'test',
+      },
+    }),
+  );
+  let state = { state: 'sweeping', tilesDone: 1, tilesTotal: 10, railKm: 1 };
+  let release = null;
+  const asked = [];
+  const panel = new OutbreakPanel(null, {
+    document: page.document,
+    windowRef: page.windowRef,
+    storage: page.storage,
+    fetch: async (url) => {
+      const u = String(url);
+      if (u.endsWith('/rail-world/status'))
+        return { ok: true, status: 200, json: async () => state };
+      if (!u.includes('/network?')) throw new Error('offline');
+      const mode = new URL(u, 'http://x').searchParams.get('mode');
+      asked.push(mode);
+      if (release === null)
+        await new Promise((r) => {
+          release = r;
+        });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          world: mode === 'rail',
+          radiusKm: mode === 'rail' ? null : 500,
+          lastLevel: true,
+          tiles: 1,
+          failedTiles: 0,
+          network: {
+            bandKm: 10,
+            bands: { 0: [[-66.06, 45.27, -66.0, 45.3]] },
+            unreached: [],
+            reachedKm: mode === 'rail' ? 4000 : 10,
+            lengthKm: mode === 'rail' ? 1_100_000 : 10,
+            startKm: 0.4,
+            world: mode === 'rail',
+          },
+        }),
+      };
+    },
+    now: () => now,
+  });
+  await settle();
+  assert.deepEqual(asked, ['road']);
+  assert.ok(!asked.includes('rail'), 'no station, no world rail yet');
+  state = {
+    state: 'ready',
+    tilesDone: 20000,
+    tilesTotal: 20000,
+    railKm: 1_100_000,
+    builtAt: 5,
+  };
+  globalThis.clearTimeout(panel._railWorldTimer);
+  panel._railWorldTimer = null;
+  await panel._pollRailWorld();
+  const go = release;
+  release = undefined;
+  go();
+  await settle();
+  assert.ok(asked.includes('rail'), 'world rail ready: rail is asked');
+  assert.ok(page.sent.at(-1).networks.some((n) => n.key === 'sj|rail'));
+  panel.destroy();
+});
+
 test('SOCIAL SEARCH with no Grok Bot key logs the copied task and finds no places in it', async () => {
   const page = fakePage([
     'outbreak-social',
@@ -817,11 +1036,12 @@ test('SOCIAL SEARCH with no Grok Bot key logs the copied task and finds no place
     'outbreak-found',
   ]);
   page.nodes.get('outbreak-swarm').value = 'xai';
+  const opens = [];
   const panel = new OutbreakPanel(null, {
     document: page.document,
     windowRef: page.windowRef,
     storage: page.storage,
-    fetch: async (url) => {
+    fetch: async (url, init = {}) => {
       if (url === '/api/llm/providers') {
         return { ok: true, json: async () => ({ providers: [] }) };
       }
@@ -842,7 +1062,12 @@ test('SOCIAL SEARCH with no Grok Bot key logs the copied task and finds no place
         };
       }
       if (url === '/api/social/grok-bot/open') {
-        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        opens.push(JSON.parse(init.body || '{}'));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, pasted: true }),
+        };
       }
       throw new Error(`unexpected ${url}`);
     },
@@ -852,8 +1077,76 @@ test('SOCIAL SEARCH with no Grok Bot key logs the copied task and finds no place
   await settle();
   const log = page.nodes.get('outbreak-output').textContent;
   // The task names Irkutsk; it is the task, not a place found.
+  assert.equal(opens[0].paste, true);
+  assert.match(opens[0].text, /Chief of Staff: run a GROK BOT SWARM sweep/);
   assert.match(log, /Chief of Staff: run a GROK BOT SWARM sweep/);
   assert.deepEqual(panel._state.found, []);
+  assert.match(
+    page.nodes.get('outbreak-status').textContent,
+    /task sent to your Chief of Staff/,
+  );
+  assert.doesNotMatch(
+    page.nodes.get('outbreak-status').textContent,
+    /new location/,
+  );
+  panel.destroy();
+});
+
+test('SOCIAL SEARCH with no OPENAI DOTS key logs the copied task and finds no places in it', async () => {
+  const page = fakePage([
+    'outbreak-social',
+    'outbreak-swarm',
+    'outbreak-found',
+  ]);
+  page.nodes.get('outbreak-swarm').value = 'openai';
+  const opens = [];
+  const panel = new OutbreakPanel(null, {
+    document: page.document,
+    windowRef: page.windowRef,
+    storage: page.storage,
+    fetch: async (url, init = {}) => {
+      if (url === '/api/llm/providers') {
+        return { ok: true, json: async () => ({ providers: [] }) };
+      }
+      if (url === '/api/social/swarm/status') {
+        return {
+          ok: true,
+          json: async () => ({
+            xai: { key: false, computer: false },
+            openai: { key: false },
+          }),
+        };
+      }
+      if (String(url).startsWith('/api/social/swarm/nearest-city')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ city: 'Irkutsk' }),
+        };
+      }
+      if (url === '/api/social/openai-dots/open') {
+        opens.push(JSON.parse(init.body || '{}'));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, pasted: true }),
+        };
+      }
+      throw new Error(`unexpected ${url}`);
+    },
+  });
+  await settle();
+  page.nodes.get('outbreak-social').click();
+  await settle();
+  const log = page.nodes.get('outbreak-output').textContent;
+  assert.equal(opens[0].paste, true);
+  assert.match(opens[0].text, /ChatGPT: run a OPENAI DOT SWARM sweep/);
+  assert.match(log, /ChatGPT: run a OPENAI DOT SWARM sweep/);
+  assert.deepEqual(panel._state.found, []);
+  assert.match(
+    page.nodes.get('outbreak-status').textContent,
+    /task sent to ChatGPT/,
+  );
   assert.doesNotMatch(
     page.nodes.get('outbreak-status').textContent,
     /new location/,
@@ -923,7 +1216,7 @@ test('SOCIAL SEARCH with Grok Bot POSTs seven bots and prepends each answer to t
   );
   for (const bot of bots) {
     assert.equal(bot.provider, 'xai');
-    assert.equal(bot.place, 'Irkutsk, Russia');
+    assert.equal(bot.place, 'Irkutsk, Russia; Shelekhov, Russia');
     assert.equal(bot.latitude, 52.287);
     assert.equal(bot.longitude, 104.305);
   }

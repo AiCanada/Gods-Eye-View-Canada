@@ -1005,6 +1005,62 @@ export function walkCells(x0, y0, x1, y1, visit) {
 }
 
 /**
+ * Segment-segment crossings for one packed list of pairs: each pair is
+ * eight degrees (x1,y1,x2,y2,x3,y3,x4,y4). A hit is an interior crossing
+ * (`u` and `w` in (0, 1)). CPU; the world-rail worker may swap this for
+ * CUDA (`setRailCrossHits`) when the optional binary is present.
+ *
+ * @param {Float64Array} xy
+ * @returns {{hit: Uint8Array, u: Float64Array, w: Float64Array}}
+ */
+export function railCrossHitsCpu(xy) {
+  const n = xy.length >> 3;
+  const hit = new Uint8Array(n);
+  const uOut = new Float64Array(n);
+  const wOut = new Float64Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const o = i * 8;
+    const x1 = xy[o];
+    const y1 = xy[o + 1];
+    const x2 = xy[o + 2];
+    const y2 = xy[o + 3];
+    const x3 = xy[o + 4];
+    const y3 = xy[o + 5];
+    const x4 = xy[o + 6];
+    const y4 = xy[o + 7];
+    const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (Math.abs(den) < 1e-15) continue;
+    const u = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den;
+    const w = ((x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)) / den;
+    if (u <= 0 || u >= 1 || w <= 0 || w >= 1) continue;
+    hit[i] = 1;
+    uOut[i] = u;
+    wOut[i] = w;
+  }
+  return { hit, u: uOut, w: wOut };
+}
+
+let railCrossHitsImpl = railCrossHitsCpu;
+
+/** Use `fn` for rail crossings, or the CPU kernel when `fn` is empty. */
+export function setRailCrossHits(fn) {
+  railCrossHitsImpl = typeof fn === 'function' ? fn : railCrossHitsCpu;
+}
+
+/**
+ * Crossings for packed pairs. `xy.length` must be a multiple of 8.
+ *
+ * @param {Float64Array|ArrayLike<number>} xy
+ * @returns {{hit: Uint8Array, u: Float64Array, w: Float64Array}}
+ */
+export function railCrossHits(xy) {
+  const buf = xy instanceof Float64Array ? xy : Float64Array.from(xy || []);
+  if (buf.length % 8 !== 0)
+    throw new TypeError('rail crossings come in eights');
+  return railCrossHitsImpl(buf);
+}
+
+/**
  * Build the world rail network from its lines.
  *
  * @param {[number, number][][]} lines Each a run of [lon, lat] points.
@@ -1139,6 +1195,9 @@ export function buildRailGraph(
       );
     }
   const splits = new Map();
+  const pairS = numbers();
+  const pairT = numbers();
+  const pairXy = numbers();
   for (const [key, list] of cells) {
     if (list.length < 2) continue;
     const cy = Math.floor(key / 400_000) - 50_000;
@@ -1161,24 +1220,38 @@ export function buildRailGraph(
         const c = segA.get(t);
         const d = segB.get(t);
         if (a === c || a === d || b === c || b === d) continue;
-        const x1 = lonAt(a);
-        const y1 = latAt(a);
-        const x2 = lonAt(b);
-        const y2 = latAt(b);
-        const x3 = lonAt(c);
-        const y3 = latAt(c);
-        const x4 = lonAt(d);
-        const y4 = latAt(d);
-        const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-        if (Math.abs(den) < 1e-15) continue;
-        const u = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den;
-        const w = ((x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)) / den;
-        if (u <= 0 || u >= 1 || w <= 0 || w >= 1) continue;
-        const x = vertex(x1 + u * (x2 - x1), y1 + u * (y2 - y1));
-        for (const end of [a, b, c, d]) if (end !== x) link(end, x, km(end, x));
-        (splits.get(s) || splits.set(s, []).get(s)).push([u, x]);
-        (splits.get(t) || splits.set(t, []).get(t)).push([w, x]);
+        pairS.push(s);
+        pairT.push(t);
+        pairXy.push(lonAt(a));
+        pairXy.push(latAt(a));
+        pairXy.push(lonAt(b));
+        pairXy.push(latAt(b));
+        pairXy.push(lonAt(c));
+        pairXy.push(latAt(c));
+        pairXy.push(lonAt(d));
+        pairXy.push(latAt(d));
       }
+  }
+  const xy = pairXy.done(Float64Array);
+  const crossed = railCrossHits(xy);
+  for (let i = 0; i < crossed.hit.length; i += 1) {
+    if (!crossed.hit[i]) continue;
+    const s = pairS.get(i);
+    const t = pairT.get(i);
+    const a = segA.get(s);
+    const b = segB.get(s);
+    const c = segA.get(t);
+    const d = segB.get(t);
+    const o = i * 8;
+    const u = crossed.u[i];
+    const w = crossed.w[i];
+    const x = vertex(
+      xy[o] + u * (xy[o + 2] - xy[o]),
+      xy[o + 1] + u * (xy[o + 3] - xy[o + 1]),
+    );
+    for (const end of [a, b, c, d]) if (end !== x) link(end, x, km(end, x));
+    (splits.get(s) || splits.set(s, []).get(s)).push([u, x]);
+    (splits.get(t) || splits.set(t, []).get(t)).push([w, x]);
   }
   cells.clear();
   tested.clear();

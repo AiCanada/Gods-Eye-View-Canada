@@ -907,6 +907,8 @@
   "server/providers/socialSwarm.js",
   "server/providers/grokBotDesktop.js",
   "src/grokBotDesktop.test.mjs",
+  "server/providers/openaiDotsDesktop.js",
+  "src/openaiDotsDesktop.test.mjs",
   "src/data/weatherProxy.test.mjs",
   "src/director/clock.test.mjs",
   "src/director/timeline.test.mjs",

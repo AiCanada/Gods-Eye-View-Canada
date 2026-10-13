@@ -3769,3 +3769,31 @@ test('a call for help carries its needs to holders, and EXTEND keeps them', asyn
   assert.equal('needs' in quietNeeds, false);
   assert.doesNotMatch(quietNeeds.text, /needed/);
 });
+
+test('a home-list entry keeps its last CONFIRM ULTRA TOKEN SKILLS check, and the owner status shows it', () => {
+  const skillCheck = {
+    at: NOW,
+    via: 'xai',
+    verdicts: [
+      {
+        skill: 'Paramedic',
+        verdict: 'confirmed',
+        reason: 'on the register',
+        links: ['https://register.example/1'],
+        bots: ['Licence registries'],
+      },
+    ],
+  };
+  const checked = entry({ skills: ['Paramedic'], skillCheck });
+  assert.deepEqual(normalizeUltraNetworkEntry(checked), checked);
+  assert.deepEqual(ultraNetworkPublicEntry(checked).skillCheck, skillCheck);
+  // An older home list reads exactly as it did, and an empty check is none.
+  assert.equal('skillCheck' in normalizeUltraNetworkEntry(entry()), false);
+  assert.equal(
+    'skillCheck' in
+      normalizeUltraNetworkEntry(
+        entry({ skillCheck: { at: NOW, via: 'xai', verdicts: [] } }),
+      ),
+    false,
+  );
+});

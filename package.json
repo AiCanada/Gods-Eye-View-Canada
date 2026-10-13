@@ -53,7 +53,8 @@
     "check:boundaries": "node scripts/check-import-directions.mjs && node scripts/check-package-boundaries.mjs",
     "qa:transit": "node scripts/qa-transit.mjs",
     "mcp": "node server/mcp/stdio.js",
-    "private-cctv-feed-relay:install": "node scripts/install-private-cctv-feed-relay.mjs"
+    "private-cctv-feed-relay:install": "node scripts/install-private-cctv-feed-relay.mjs",
+    "outbreak:rail-cuda": "node scripts/build-outbreak-rail-cuda.mjs"
   },
   "dependencies": {
     "@jtarrio/signals": "^0.10.0",

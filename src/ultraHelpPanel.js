@@ -37,6 +37,16 @@ import {
 } from './socialSwarm.mjs';
 import { formatSwarmDesktopStatus, runSocialSwarm } from './socialSwarmRun.mjs';
 import {
+  SKILL_CHECK_APP_OPTIONS,
+  SKILL_CHECK_APPS_MAX,
+  SKILL_CHECK_VERDICTS,
+  cleanSkillCheckClaim,
+  readPastedUltraTokenSkills,
+  skillCheckSwarmChoices,
+  skillVerdictWords,
+} from './ultraSkillCheck.mjs';
+import { readPastedSkillReport, runSkillCheck } from './ultraSkillCheckRun.mjs';
+import {
   DEVICE_FEEDS_CHANGED_EVENT,
   DEVICE_FEEDS_FOCUS_EVENT,
   DEVICE_FEEDS_HISTORY_EVENT,
@@ -332,6 +342,161 @@ function clockTime(at) {
   const when = new Date(at);
   if (!Number.isFinite(when.getTime())) return '--:--';
   return when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/** When a skill check ran: day and time, since it can be weeks old. */
+function checkedWhen(at) {
+  const when = new Date(at);
+  if (!Number.isFinite(when.getTime())) return '';
+  return when.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/**
+ * The CONFIRM ULTRA TOKEN SKILLS verdicts as list rows: the verdict, the
+ * reason, and a link for each public source behind it.
+ */
+export function paintSkillVerdicts(documentRef, list, verdicts) {
+  if (!list) return;
+  const rows = (Array.isArray(verdicts) ? verdicts : []).map((row) => {
+    const li = documentRef.createElement('li');
+    li.dataset.verdict = String(row?.verdict || 'none');
+    const words = documentRef.createElement('span');
+    words.textContent = [skillVerdictWords(row), row?.reason || '']
+      .filter(Boolean)
+      .join(' · ');
+    li.appendChild(words);
+    (Array.isArray(row?.links) ? row.links : []).forEach((url, index) => {
+      const link = documentRef.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = ` SOURCE ${index + 1}`;
+      link.title = url;
+      li.appendChild(link);
+    });
+    return li;
+  });
+  list.replaceChildren(...rows);
+}
+
+function skillCheckAppBoxes(documentRef) {
+  const box = byId(documentRef, 'ultra-skill-check-apps');
+  return Array.from(box?.querySelectorAll?.('input[type="checkbox"]') || []);
+}
+
+/** Fill Apps to search with the known sites, once. */
+function paintSkillCheckApps(documentRef) {
+  const box = byId(documentRef, 'ultra-skill-check-apps');
+  if (!box || box.dataset.ultraAppsReady === '1') return;
+  const heading = documentRef.createElement('span');
+  heading.className = 'cctv-summary-label';
+  heading.textContent = 'Apps to search';
+  const options = SKILL_CHECK_APP_OPTIONS.map((option) => {
+    const label = documentRef.createElement('label');
+    label.className = 'ultra-match';
+    const input = documentRef.createElement('input');
+    input.type = 'checkbox';
+    input.id = `ultra-skill-check-app-${String(option.id).replace(/\s+/g, '-')}`;
+    input.value = option.label;
+    input.dataset.ultraSkillCheckApp = option.id;
+    input.title = `Search ${option.label} for the claimed skills`;
+    const name = documentRef.createElement('span');
+    name.textContent = option.label;
+    label.append(input, name);
+    return label;
+  });
+  box.replaceChildren(heading, ...options);
+  box.dataset.ultraAppsReady = '1';
+}
+
+function syncSkillCheckAppLimit(documentRef) {
+  const boxes = skillCheckAppBoxes(documentRef);
+  const full =
+    boxes.filter((input) => input.checked).length >= SKILL_CHECK_APPS_MAX;
+  for (const input of boxes) {
+    if (!input.checked) input.disabled = full;
+  }
+}
+
+function clearSkillCheckApps(documentRef) {
+  for (const input of skillCheckAppBoxes(documentRef)) input.checked = false;
+  syncSkillCheckAppLimit(documentRef);
+}
+
+function readSkillCheckApps(documentRef) {
+  return skillCheckAppBoxes(documentRef)
+    .filter((input) => input.checked)
+    .map((input) => String(input.value || '').trim())
+    .filter(Boolean)
+    .join(', ');
+}
+
+function skillCheckLlm(provider) {
+  const value = String(provider || '');
+  return value === 'llm' || value.startsWith('llm:');
+}
+
+/** GROK BOT SWARM, OPENAI DOT SWARM, and LLM from POWER UP's Ask roster. */
+function paintSkillCheckSwarm(documentRef, providers) {
+  const select = byId(documentRef, 'ultra-skill-check-swarm');
+  if (!select) return;
+  const current = String(select.value || '');
+  const choices = skillCheckSwarmChoices(providers);
+  const options = choices.map((choice) => {
+    const option = documentRef.createElement('option');
+    option.value = choice.value;
+    option.textContent = choice.label;
+    return option;
+  });
+  select.replaceChildren(...options);
+  const allowed = new Set(choices.map((choice) => choice.value));
+  select.value = allowed.has(current) ? current : 'xai';
+}
+
+async function loadSkillCheckSwarm(documentRef, fetchImpl) {
+  let providers = [];
+  try {
+    const response = await fetchImpl('/api/llm/providers', {
+      headers: { Accept: 'application/json' },
+    });
+    const data = await response?.json?.().catch?.(() => null);
+    providers = Array.isArray(data?.providers) ? data.providers : [];
+  } catch {
+    providers = [];
+  }
+  paintSkillCheckSwarm(documentRef, providers);
+}
+
+/** The CONFIRM ULTRA TOKEN SKILLS form's fields, as typed. */
+export function readSkillCheckForm(documentRef) {
+  const value = (id) => String(byId(documentRef, id)?.value ?? '');
+  return {
+    skills: value('ultra-skill-check-skills'),
+    name: value('ultra-skill-check-name'),
+    alias: value('ultra-skill-check-alias'),
+    location: value('ultra-skill-check-location'),
+    age: value('ultra-skill-check-age'),
+    sex: value('ultra-skill-check-sex'),
+    profession: value('ultra-skill-check-profession'),
+    urls: value('ultra-skill-check-urls').split(/\s*\n\s*/),
+    apps: readSkillCheckApps(documentRef),
+  };
+}
+
+/** "2 CONFIRMED · 1 NO CONFIRMATION · 0 REJECTED CLAIM" */
+export function skillCheckTally(verdicts) {
+  const list = Array.isArray(verdicts) ? verdicts : [];
+  return Object.entries(SKILL_CHECK_VERDICTS)
+    .map(
+      ([id, word]) =>
+        `${list.filter((row) => row?.verdict === id).length} ${word}`,
+    )
+    .join(' · ');
 }
 
 function dayDate(at) {
@@ -1159,6 +1324,12 @@ function paintNetwork(documentRef, status, now = Date.now()) {
       const peerSkills = skillWords(entry.skills);
       if (peerSkills.length) parts.push(peerSkills.join(', '));
       if (entry.encrypted === true) parts.push('ENCRYPTED');
+      /* CONFIRM ULTRA TOKEN SKILLS: the last check kept beside the token. */
+      const check = entry.skillCheck;
+      if (Array.isArray(check?.verdicts) && check.verdicts.length) {
+        parts.push(check.verdicts.map(skillVerdictWords).join(', '));
+        parts.push(`SKILLS CHECKED ${checkedWhen(check.at)}`);
+      }
       const readout = documentRef.createElement('span');
       readout.className = 'sst-readout';
       readout.textContent = parts.filter(Boolean).join(' · ');
@@ -1521,6 +1692,8 @@ export function initUltraHelpPanel({
 } = {}) {
   const panel = documentRef.getElementById?.('ultra-panel');
   if (!panel) return { destroy() {} };
+  paintSkillCheckApps(documentRef);
+  void loadSkillCheckSwarm(documentRef, fetchImpl);
   let disposed = false;
   let latest = null;
   const readAloudBox = byId(documentRef, 'ultra-read-aloud');
@@ -2081,6 +2254,223 @@ export function initUltraHelpPanel({
       }
     }
   };
+  /* CONFIRM ULTRA TOKEN SKILLS. The button below the token REMOVE rows
+   * and above HELP NETWORK opens the form. Paste an Ultra Token to
+   * decrypt its skills. The details typed here go out with the press
+   * and are never kept. */
+  let skillChecking = false;
+  const skillCheckLine = (text) => {
+    const line = byId(documentRef, 'ultra-skill-check-status');
+    if (line) line.textContent = text;
+  };
+  const openSkillCheck = (entry) => {
+    const form = byId(documentRef, 'ultra-skill-check');
+    if (!form) return;
+    paintSkillCheckApps(documentRef);
+    form.hidden = false;
+    if (entry?.id) form.dataset.ultraSkillEntry = entry.id;
+    else delete form.dataset.ultraSkillEntry;
+    delete form.dataset.ultraSkillSkills;
+    const set = (id, value) => {
+      const input = byId(documentRef, id);
+      if (input) input.value = value;
+    };
+    set('ultra-skill-check-skills', skillWords(entry?.skills).join(', '));
+    set('ultra-skill-check-name', entry?.name || '');
+    for (const id of [
+      'ultra-skill-check-alias',
+      'ultra-skill-check-location',
+      'ultra-skill-check-age',
+      'ultra-skill-check-sex',
+      'ultra-skill-check-profession',
+      'ultra-skill-check-urls',
+      'ultra-skill-check-report',
+    ])
+      set(id, '');
+    clearSkillCheckApps(documentRef);
+    const paste = byId(documentRef, 'ultra-skill-check-paste');
+    if (paste) paste.hidden = true;
+    const forLine = byId(documentRef, 'ultra-skill-check-for');
+    if (forLine) {
+      const sealed =
+        entry?.encrypted === true && !skillWords(entry.skills).length
+          ? ' Its skills are encrypted: type the ones they told you.'
+          : '';
+      forLine.textContent = entry
+        ? `FOR ${entry.name || entry.host || 'this token'} · the verdicts are kept beside this token on this PC.${sealed}`
+        : 'The verdicts are shown, not kept.';
+    }
+    paintSkillVerdicts(
+      documentRef,
+      byId(documentRef, 'ultra-skill-check-results'),
+      entry?.skillCheck?.verdicts || [],
+    );
+    skillCheckLine(
+      entry?.skillCheck
+        ? `LAST CHECK ${checkedWhen(entry.skillCheck.at)} · ${skillCheckTally(entry.skillCheck.verdicts)}`
+        : '',
+    );
+    byId(documentRef, 'ultra-skill-check-skills')?.focus?.();
+  };
+  /* Show the verdicts, and keep them beside the token when the form was
+   * opened from its row. */
+  const keepSkillVerdicts = async (via, verdicts, extra = '') => {
+    paintSkillVerdicts(
+      documentRef,
+      byId(documentRef, 'ultra-skill-check-results'),
+      verdicts,
+    );
+    const tally = `${skillCheckTally(verdicts)}${extra}`;
+    const entryId = byId(documentRef, 'ultra-skill-check')?.dataset
+      ?.ultraSkillEntry;
+    if (!entryId) {
+      skillCheckLine(`DONE · ${tally} · shown only, not kept`);
+      return;
+    }
+    const saved = await post('network', {
+      skillCheck: true,
+      id: entryId,
+      record: { via, verdicts },
+    });
+    skillCheckLine(
+      saved
+        ? `DONE · ${tally} · SAVED BESIDE THE TOKEN`
+        : `DONE · ${tally} · NOT SAVED`,
+    );
+  };
+  const fillSkillsFromPastedToken = async () => {
+    const input = byId(documentRef, 'ultra-skill-check-skills');
+    const raw = String(input?.value || '');
+    const pasted = readPastedUltraTokenSkills(raw);
+    if (!pasted) return true;
+    if (pasted.error) {
+      skillCheckLine(pasted.error);
+      return false;
+    }
+    let labels = pasted.skills;
+    if (pasted.encrypted) {
+      const token = raw.replace(/\s+/g, '');
+      let data = null;
+      try {
+        const response = await fetchImpl('/api/ultra-help/network', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ readTokenSkills: true, token }),
+        });
+        data = await response.json().catch(() => null);
+        if (!response.ok) data = null;
+      } catch {
+        data = null;
+      }
+      labels = Array.isArray(data?.skills)
+        ? data.skills.map((item) => String(item || '').trim()).filter(Boolean)
+        : [];
+      if (!labels.length) {
+        skillCheckLine(
+          'Those skills are encrypted. Type the ones they told you, or use CONFIRM ULTRA TOKEN SKILLS on the home-list row.',
+        );
+        return false;
+      }
+    }
+    if (!labels.length) {
+      skillCheckLine('That token names no skills.');
+      return false;
+    }
+    if (input) input.value = labels.join(', ');
+    return true;
+  };
+  const runSkillCheckPress = async () => {
+    if (skillChecking || disposed) return;
+    const form = byId(documentRef, 'ultra-skill-check');
+    if (!(await fillSkillsFromPastedToken())) return;
+    const checked = cleanSkillCheckClaim(readSkillCheckForm(documentRef));
+    if (!checked.ok) {
+      skillCheckLine(checked.error);
+      return;
+    }
+    const run = byId(documentRef, 'ultra-skill-check-run');
+    const label = run?.textContent || 'CHECK SKILLS';
+    skillChecking = true;
+    if (run) {
+      run.disabled = true;
+      run.textContent = 'CHECKING…';
+    }
+    const paste = byId(documentRef, 'ultra-skill-check-paste');
+    if (paste) paste.hidden = true;
+    if (form) delete form.dataset.ultraSkillSkills;
+    const provider = byId(documentRef, 'ultra-skill-check-swarm')?.value;
+    const askingLlm = skillCheckLlm(provider);
+    skillCheckLine(askingLlm ? 'ASKING THE MODEL…' : 'SPINNING UP SWARM…');
+    try {
+      const result = await runSkillCheck({
+        request: fetchImpl,
+        provider,
+        claim: checked.claim,
+        onProgress({ back, total }) {
+          skillCheckLine(
+            askingLlm
+              ? `MODEL OUT · ${back}/${total} BACK`
+              : `SWARM OUT · ${back}/${total} BACK`,
+          );
+        },
+      });
+      if (disposed) return;
+      if (!result.ok) {
+        skillCheckLine(result.error || 'The check did not run.');
+        return;
+      }
+      if (result.via === 'desktop') {
+        if (form) form.dataset.ultraSkillSkills = JSON.stringify(result.skills);
+        if (paste) paste.hidden = false;
+        skillCheckLine(
+          `${formatSwarmDesktopStatus(result)} Paste its report below, then READ REPORT.`,
+        );
+        return;
+      }
+      await keepSkillVerdicts(
+        result.via,
+        result.verdicts,
+        result.failed
+          ? ` · ${result.failed} of ${result.total} bots failed`
+          : '',
+      );
+    } catch {
+      skillCheckLine('The check did not run.');
+    } finally {
+      skillChecking = false;
+      if (run) {
+        run.disabled = false;
+        run.textContent = label;
+      }
+    }
+  };
+  const readSkillReport = async () => {
+    const form = byId(documentRef, 'ultra-skill-check');
+    const box = byId(documentRef, 'ultra-skill-check-report');
+    const text = String(box?.value || '').trim();
+    if (!text) {
+      skillCheckLine("Paste the Chief of Staff's report first.");
+      return;
+    }
+    let skills = [];
+    try {
+      skills = JSON.parse(form?.dataset?.ultraSkillSkills || '[]');
+    } catch {
+      skills = [];
+    }
+    if (!Array.isArray(skills) || !skills.length) {
+      const checked = cleanSkillCheckClaim(readSkillCheckForm(documentRef));
+      skills = checked.ok ? checked.claim.skills : [];
+    }
+    if (!skills.length) {
+      skillCheckLine('Name the skills the report is about first.');
+      return;
+    }
+    const { verdicts } = readPastedSkillReport(text, skills);
+    /* The report is read once and not kept: only the verdicts are. */
+    if (box) box.value = '';
+    await keepSkillVerdicts('pasted', verdicts);
+  };
   const onClick = (event) => {
     const target = event.target;
     const camera = target?.closest?.('[data-ultra-camera]');
@@ -2261,6 +2651,28 @@ export function initUltraHelpPanel({
         remove: true,
         id: inboxRemove.dataset.ultraInboxRemove,
       });
+      return;
+    }
+    if (id === 'ultra-skill-check-open') {
+      openSkillCheck(null);
+      return;
+    }
+    if (id === 'ultra-skill-check-close') {
+      const form = byId(documentRef, 'ultra-skill-check');
+      if (form) form.hidden = true;
+      return;
+    }
+    if (id === 'ultra-skill-check-read') {
+      void readSkillReport();
+      return;
+    }
+    const skillCheck = target?.closest?.('[data-ultra-skill-check]');
+    if (skillCheck) {
+      const entryId = skillCheck.dataset.ultraSkillCheck;
+      openSkillCheck(
+        (latest?.network?.entries || []).find((item) => item?.id === entryId) ||
+          null,
+      );
       return;
     }
     const map = target?.closest?.('[data-ultra-network-map]');
@@ -2454,13 +2866,30 @@ export function initUltraHelpPanel({
     }
     if (String(event.target?.id || '').startsWith('ultra-skill-custom-'))
       paintCustomSkillPreview(documentRef);
+    if (event.target?.dataset?.ultraSkillCheckApp)
+      syncSkillCheckAppLimit(documentRef);
+    if (
+      event.target?.id === 'ultra-skill-check-skills' &&
+      readPastedUltraTokenSkills(event.target.value)
+    )
+      void fillSkillsFromPastedToken();
   };
   const onCustomSkill = (event) => {
     if (String(event.target?.id || '').startsWith('ultra-skill-custom-'))
       paintCustomSkillPreview(documentRef);
+    if (
+      event.target?.id === 'ultra-skill-check-skills' &&
+      readPastedUltraTokenSkills(event.target.value)
+    )
+      void fillSkillsFromPastedToken();
   };
   const onSubmit = (event) => {
     const id = event.target?.id;
+    if (id === 'ultra-skill-check') {
+      event.preventDefault();
+      void runSkillCheckPress();
+      return;
+    }
     if (id === 'ultra-contact') {
       event.preventDefault();
       void post('contacts', {

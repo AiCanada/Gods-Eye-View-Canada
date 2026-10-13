@@ -1,5 +1,83 @@
 # Changelog
 
+- OPENAI BOT SWARM / OPENAI DOT SWARM without an OPENAI DOTS key (Social
+  Media, Outbreak SOCIAL SEARCH, and CONFIRM ULTRA TOKEN SKILLS) copies
+  the ChatGPT task, opens ChatGPT, and pastes it into the focused composer
+  and sends it (`POST /api/social/openai-dots/open` with
+  `{ paste: true, text }`), the same last-resort as GROK BOT SWARM. The
+  server writes the task to the clipboard itself (stdin to
+  `scripts/paste-openai-dots.ps1`). Window hunt covers ChatGPT Classic and
+  ChatGPT (EnumWindows, because MainWindowHandle is often 0). OPEN CHATGPT
+  still posts `{}` and only opens. Swarm buttons still do not POST the
+  Chief of Staff webhook.
+- GROK BOT SWARM without a key or computer (Social Media, Outbreak SOCIAL
+  SEARCH, Ultra, and CONFIRM ULTRA TOKEN SKILLS) still copies the Chief of
+  Staff task and opens Grok Bot, and now pastes that task into the focused
+  Grok Bot composer and sends it (`POST /api/social/grok-bot/open` with
+  `{ paste: true, text }`). The server writes the task to the clipboard
+  itself (stdin to `scripts/paste-grok-bot.ps1`) so a phone-mirror share
+  sheet is not mistaken for the PC clipboard. The paste waits for Grok Bot
+  to come to the front (2.5 s after open, then the window, then the
+  composer) and sends Ctrl+V / Enter with SendInput from an STA PowerShell
+  that is not CREATE_NO_WINDOW (a hidden console cannot inject keys). The
+  PowerShell `-File` path is quoted so a repo folder with spaces still
+  runs the paste script. Grok Bot stays HWND_TOPMOST until after Enter so a
+  Chrome window in front does not eat the click; clicks use SetCursorPos in
+  the same DPI space as the window (150% DPI SendInput ABSOLUTE was landing
+  in the front app). OPEN GROK BOT still
+  posts `{}` and only opens. Swarm buttons still do not POST the Chief of
+  Staff webhook. `grokbot://` links still cannot carry a prompt.
+- Ultra: CONFIRM ULTRA TOKEN SKILLS sends GROK BOT SWARM, OPENAI DOT
+  SWARM, or LLM. LLM asks every ready Ask-panel model POWER UP has a key
+  for (`GET /api/llm/providers`, `POST /api/llm/ask`), or one named model
+  when the list has more than one. The Grok Bot computer / clipboard task
+  is the short Chief of Staff check (sites, today, the person, short
+  rules, and "Is this token Skill claimed trust worthy?"). Per-bot swarm
+  prompts stay the longer public-page rules.
+- Ultra: CONFIRM ULTRA TOKEN SKILLS sits below the token REMOVE rows and
+  above HELP NETWORK. Apps to search are selectable options filled from
+  the known sites (LinkedIn, X, GitHub, Facebook, and the rest).
+- Ultra: CONFIRM ULTRA TOKEN SKILLS takes a pasted Ultra Token and decrypts
+  the skills it carries (a clear `.s.` suffix on this page; an encrypted
+  `.e.` suffix with this machine's token key). The form has Alias/AKA under
+  the name. Verdicts are shown, not kept. The details help the bots or LLM
+  find the right person.
+- Ultra: CONFIRM ULTRA TOKEN SKILLS. The button sits below the token REMOVE
+  rows and above HELP NETWORK. The form takes the skills to check, and optional
+  details to find the right person: name, location, age, male/female/other,
+  profession, their URLs and the apps to search. GROK BOT SWARM or OPENAI DOT
+  SWARM sends one bot each to LinkedIn, X, Facebook, Instagram, Threads,
+  TikTok, licence registries, and news and the web, plus one for their own
+  links and apps (`POST /api/social/swarm/skill-check`). Without a Grok Bot
+  key, the whole check goes to the Grok Bot computer, or the Chief of Staff
+  task is copied and its pasted report is read back. Each skill comes back
+  CONFIRMED, NO CONFIRMATION or REJECTED CLAIM, with the public links behind
+  it. Finding nothing is never a rejection, a verdict with no link counts as
+  nothing found, and a contradiction wins over a confirmation (marked MIXED).
+  The verdicts are shown in the form. A last check kept on a home-list
+  row (`config/ultra-network.json`) still shows on that row. The details typed in
+  are only sent with the press and are never kept. The bots check the
+  claimed skills only, read public pages only, never sign in, and never
+  report anything else about the person; age and sex only tell people with
+  the same name apart. Costs: one search request per bot on the swarm's own
+  key, 8 or 9 a check.
+- Outbreak tab: the yellow boat/vehicle reach circle from a northern
+  outbreak (Irkutsk) stops at the south pole, in Antarctica. Train and road
+  circles are unchanged: they still grow to the far-side antipode. The boat
+  ring used to close on that antipode too, which for Irkutsk is southern
+  Chile.
+- Outbreak world rail: the crossing kernel (where two lines meet) can run on
+  an NVIDIA GPU. `node scripts/build-outbreak-rail-cuda.mjs` (or
+  `npm run outbreak:rail-cuda`) builds `native/outbreak-rail-cuda/rail_cross`
+  when nvcc is present. The world-rail worker uses it for 4096+ pairs; a
+  missing binary, `GEV_OUTBREAK_RAIL_CUDA=0`, or a failed spawn stays on the
+  same CPU path. The rest of the graph (snap, joins, Dijkstra) stays on CPU.
+- Outbreak tab: a new SCAN TRAVEL drops leftover roads, rail and assumed air
+  traffic from the last run at once (the same drop as CLEAR DATA), so they
+  cannot stay on the map or come back under the new run; PLAY and MAP FUTURE
+  SPREAD grey out while a scan, search or epidemic run is working; world-rail
+  progress stays on the travel note while SCAN DONE holds the status line;
+  SOCIAL SEARCH names every outbreak location.
 - Outbreak tab: the spread moves smoothly along the roads and rail on the
   map, in PLAY and MAP FUTURE SPREAD alike. Each piece of a line lights at
   the reach its far end is reached at, not all of its band at once (past

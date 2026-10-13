@@ -1,12 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
 import {
   GROK_BOT_APP_LINK,
   GROK_BOT_OPEN_INTERVAL_MS,
+  GROK_BOT_PASTE_MAX,
+  GROK_BOT_PASTE_SCRIPT,
+  GROK_BOT_PASTE_SETTLE_MS,
+  GROK_BOT_PASTE_TIMEOUT_MS,
   grokBotDesktopProxy,
   grokBotLaunchTarget,
+  grokBotPasteText,
+  pasteIntoGrokBot,
   systemOpener,
+  systemPowershell,
 } from '../server/providers/grokBotDesktop.js';
 import {
   OWNER_DEVICE_AUTHORITY_HEADER,
@@ -25,6 +35,16 @@ const SHORTCUT = win(
   'Grok Bot.lnk',
 );
 const EXPLORER = win('C:', 'Windows', 'explorer.exe');
+const POWERSHELL = win(
+  'C:',
+  'Windows',
+  'System32',
+  'WindowsPowerShell',
+  'v1.0',
+  'powershell.exe',
+);
+const REPO = win('C:', 'repo');
+const PASTE_SCRIPT = win('C:', 'repo', 'scripts', 'paste-grok-bot.ps1');
 
 /** A file system holding only these paths: files, and folders ending in '/'. */
 function filesystem(paths) {
@@ -60,16 +80,30 @@ const LOCAL = {
   'content-type': 'application/json',
 };
 
-function setup({ paths = [SHORTCUT, EXPLORER], platform = 'win32' } = {}) {
+function setup({
+  paths = [SHORTCUT, EXPLORER],
+  platform = 'win32',
+  pasteImpl,
+} = {}) {
   const spawned = [];
+  const pasted = [];
   let clock = 1_000_000;
   const plugin = grokBotDesktopProxy({
     platform,
     fileSystem: filesystem(paths),
     now: () => clock,
+    sleepImpl: async () => {},
+    sourceRoot: REPO,
+    pasteImpl:
+      pasteImpl === undefined
+        ? undefined
+        : async (text) => {
+            pasted.push(text);
+            return pasteImpl(text);
+          },
     spawnImpl: (command, args, options) => {
       spawned.push({ command, args, options });
-      return { on() {}, unref() {} };
+      return { stdin: { write() {}, end() {} }, on() {}, unref() {} };
     },
   });
   let handler = null;
@@ -103,7 +137,7 @@ function setup({ paths = [SHORTCUT, EXPLORER], platform = 'win32' } = {}) {
       };
       handler(req, res);
     });
-  return { call, spawned, tick: (ms) => (clock += ms) };
+  return { call, spawned, pasted, tick: (ms) => (clock += ms) };
 }
 
 test('what is opened: the GROK_BOT_LINK shortcut on a local drive, else Grok Bot’s own link; never a share', () => {
@@ -371,4 +405,280 @@ test('open: a GROK_BOT_LINK that is not a Grok Bot shortcut here, or no opener, 
   const noOpener = await page.call();
   assert.equal(noOpener.status, 503);
   assert.deepEqual(page.spawned, []);
+});
+
+test('paste text: only paste===true and a bounded string; never a named target', () => {
+  assert.equal(
+    grokBotPasteText({ paste: true, text: 'Chief of Staff: go' }),
+    'Chief of Staff: go',
+  );
+  assert.equal(grokBotPasteText({}), '');
+  assert.equal(grokBotPasteText({ paste: true }), '');
+  assert.equal(grokBotPasteText({ paste: 'true', text: 'x' }), '');
+  assert.equal(grokBotPasteText({ paste: true, text: '' }), '');
+  assert.equal(grokBotPasteText({ paste: true, text: 1 }), '');
+  assert.equal(
+    grokBotPasteText({ paste: true, text: 'a'.repeat(GROK_BOT_PASTE_MAX + 1) }),
+    '',
+  );
+  assert.equal(
+    grokBotPasteText({
+      paste: true,
+      text: 'task',
+      target: win('C:', 'Windows', 'System32', 'cmd.exe'),
+      window: 'Notepad',
+      agent: 'other-bot',
+    }),
+    'task',
+  );
+  assert.equal(GROK_BOT_PASTE_SCRIPT, 'scripts/paste-grok-bot.ps1');
+  assert.ok(
+    GROK_BOT_PASTE_SETTLE_MS >= 2000,
+    'Ctrl+V waits for the composer after open',
+  );
+  assert.ok(
+    GROK_BOT_PASTE_TIMEOUT_MS >= GROK_BOT_PASTE_SETTLE_MS + 8000,
+    'the paste script has time to hunt the window and send',
+  );
+});
+
+test('systemPowershell is Windows PowerShell 5.1 under SystemRoot, never PATH', () => {
+  const fileSystem = filesystem([POWERSHELL]);
+  assert.equal(
+    systemPowershell(
+      { SystemRoot: win('C:', 'Windows') },
+      { platform: 'win32', fileSystem },
+    ),
+    POWERSHELL,
+  );
+  assert.equal(
+    systemPowershell(
+      { SystemRoot: win('C:', 'Windows') },
+      { platform: 'linux', fileSystem },
+    ),
+    '',
+  );
+  assert.equal(
+    systemPowershell(
+      { SystemRoot: win('C:', 'Temp'), PATH: win('C:', 'evil') },
+      { platform: 'win32', fileSystem },
+    ),
+    '',
+  );
+});
+
+test('open: OPEN GROK BOT posts {} and does not paste; a named target is still ignored', async (t) => {
+  withEnv(t, {
+    GROK_BOT_LINK: SHORTCUT,
+    SystemRoot: win('C:', 'Windows'),
+    PINOKIO_SHARE_VAR: undefined,
+    PINOKIO_SHARE_LOCAL: undefined,
+    PINOKIO_SHARE_CLOUDFLARE: undefined,
+  });
+  const page = setup({ pasteImpl: () => true });
+  const opened = await page.call({ body: '{}' });
+  assert.equal(opened.status, 200);
+  assert.deepEqual(opened.json(), { ok: true, opened: 'shortcut' });
+  assert.deepEqual(page.pasted, []);
+  assert.equal(page.spawned.length, 1);
+  assert.equal(page.spawned[0].command, EXPLORER);
+});
+
+test('open: paste:true with the task pastes into Grok Bot and ignores a request-named window', async (t) => {
+  withEnv(t, {
+    GROK_BOT_LINK: SHORTCUT,
+    SystemRoot: win('C:', 'Windows'),
+    PINOKIO_SHARE_VAR: undefined,
+    PINOKIO_SHARE_LOCAL: undefined,
+    PINOKIO_SHARE_CLOUDFLARE: undefined,
+  });
+  const page = setup({ pasteImpl: () => true });
+  const task =
+    'Chief of Staff: run a GROK BOT SWARM sweep of public social media.';
+  const opened = await page.call({
+    body: JSON.stringify({
+      paste: true,
+      text: task,
+      target: win('C:', 'Windows', 'System32', 'cmd.exe'),
+      window: 'Notepad',
+    }),
+  });
+  assert.equal(opened.status, 200);
+  assert.deepEqual(opened.json(), {
+    ok: true,
+    opened: 'shortcut',
+    pasted: true,
+  });
+  assert.deepEqual(page.pasted, [task]);
+  assert.equal(page.spawned.length, 1);
+  assert.equal(page.spawned[0].command, EXPLORER);
+  assert.deepEqual(page.spawned[0].args, [SHORTCUT]);
+});
+
+test('open: paste:true without text, or with a too-long task, never pastes the clipboard', async (t) => {
+  withEnv(t, {
+    GROK_BOT_LINK: SHORTCUT,
+    SystemRoot: win('C:', 'Windows'),
+    PINOKIO_SHARE_VAR: undefined,
+    PINOKIO_SHARE_LOCAL: undefined,
+    PINOKIO_SHARE_CLOUDFLARE: undefined,
+  });
+  const page = setup({ pasteImpl: () => true });
+  const missing = await page.call({
+    body: JSON.stringify({ paste: true }),
+  });
+  assert.deepEqual(missing.json(), { ok: true, opened: 'shortcut' });
+  page.tick(GROK_BOT_OPEN_INTERVAL_MS);
+  const empty = await page.call({
+    body: JSON.stringify({ paste: true, text: '' }),
+  });
+  assert.deepEqual(empty.json(), { ok: true, opened: 'shortcut' });
+  page.tick(GROK_BOT_OPEN_INTERVAL_MS);
+  const huge = await page.call({
+    body: JSON.stringify({
+      paste: true,
+      text: 'a'.repeat(GROK_BOT_PASTE_MAX + 1),
+    }),
+  });
+  assert.deepEqual(huge.json(), { ok: true, opened: 'shortcut' });
+  assert.deepEqual(page.pasted, []);
+});
+
+test('open: a failed paste still opens Grok Bot and says pasted false', async (t) => {
+  withEnv(t, {
+    GROK_BOT_LINK: SHORTCUT,
+    SystemRoot: win('C:', 'Windows'),
+    PINOKIO_SHARE_VAR: undefined,
+    PINOKIO_SHARE_LOCAL: undefined,
+    PINOKIO_SHARE_CLOUDFLARE: undefined,
+  });
+  const page = setup({ pasteImpl: () => false });
+  const opened = await page.call({
+    body: JSON.stringify({ paste: true, text: 'task' }),
+  });
+  assert.deepEqual(opened.json(), {
+    ok: true,
+    opened: 'shortcut',
+    pasted: false,
+  });
+  assert.deepEqual(page.pasted, ['task']);
+});
+
+test('open: paste is Windows-only; macOS opens and does not paste', async (t) => {
+  withEnv(t, {
+    GROK_BOT_LINK: undefined,
+    PINOKIO_SHARE_VAR: undefined,
+    PINOKIO_SHARE_LOCAL: undefined,
+    PINOKIO_SHARE_CLOUDFLARE: undefined,
+  });
+  const page = setup({
+    platform: 'darwin',
+    paths: ['/usr/bin/open'],
+  });
+  const opened = await page.call({
+    body: JSON.stringify({ paste: true, text: 'task' }),
+  });
+  assert.deepEqual(opened.json(), {
+    ok: true,
+    opened: 'app-link',
+    pasted: false,
+  });
+  assert.equal(page.spawned.length, 1);
+  assert.equal(page.spawned[0].command, '/usr/bin/open');
+});
+
+test('pasteIntoGrokBot: PowerShell -File the repo script, task on stdin, never argv', async () => {
+  const spawned = [];
+  const fileSystem = filesystem([POWERSHELL, PASTE_SCRIPT]);
+  const ok = await pasteIntoGrokBot('Chief of Staff: go', {
+    platform: 'win32',
+    fileSystem,
+    env: { SystemRoot: win('C:', 'Windows') },
+    sourceRoot: REPO,
+    spawnImpl: (command, args, options) => {
+      const rec = { command, args, options, stdin: '' };
+      spawned.push(rec);
+      return {
+        stdin: {
+          write(chunk) {
+            rec.stdin += String(chunk);
+          },
+          end() {},
+        },
+        on(event, fn) {
+          if (event === 'exit') queueMicrotask(() => fn(0));
+        },
+      };
+    },
+  });
+  assert.equal(ok, true);
+  assert.equal(spawned.length, 1);
+  assert.equal(spawned[0].command, POWERSHELL);
+  assert.deepEqual(spawned[0].args, [
+    '-NoProfile',
+    '-STA',
+    '-NonInteractive',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-WindowStyle',
+    'Hidden',
+    '-File',
+    `"${PASTE_SCRIPT}"`,
+  ]);
+  assert.equal(spawned[0].stdin, 'Chief of Staff: go');
+  assert.equal(spawned[0].args.includes('Chief of Staff: go'), false);
+  assert.deepEqual(spawned[0].options, {
+    stdio: ['pipe', 'ignore', 'pipe'],
+    windowsHide: false,
+    windowsVerbatimArguments: true,
+  });
+});
+
+test('paste-grok-bot.ps1 keeps Grok Bot topmost and clicks in one DPI space', () => {
+  const script = fs.readFileSync(
+    path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      'scripts',
+      'paste-grok-bot.ps1',
+    ),
+    'utf8',
+  );
+  assert.match(script, /WindowFromPoint/);
+  assert.match(script, /SetCursorPos/);
+  assert.match(script, /HWND_TOPMOST/);
+  assert.match(script, /OpenStandardInput/);
+  assert.match(script, /PointBelongsTo/);
+  assert.equal(/\bMOUSEEVENTF_ABSOLUTE\b/.test(script), false);
+  assert.equal(/\bSetProcessDPIAware\b/.test(script), false);
+  assert.equal(/(^|[^A-Za-z])\$pid\s*=/im.test(script), false);
+});
+
+test('pasteIntoGrokBot refuses an empty task, a missing script, and non-Windows', async () => {
+  const spawned = [];
+  const spawnImpl = (command, args, options) => {
+    spawned.push({ command, args, options });
+    return { stdin: { write() {}, end() {} }, on() {} };
+  };
+  const fileSystem = filesystem([POWERSHELL, PASTE_SCRIPT]);
+  const opts = {
+    spawnImpl,
+    platform: 'win32',
+    fileSystem,
+    env: { SystemRoot: win('C:', 'Windows') },
+    sourceRoot: REPO,
+  };
+  assert.equal(await pasteIntoGrokBot('', opts), false);
+  assert.equal(
+    await pasteIntoGrokBot('task', { ...opts, platform: 'darwin' }),
+    false,
+  );
+  assert.equal(
+    await pasteIntoGrokBot('task', {
+      ...opts,
+      fileSystem: filesystem([POWERSHELL]),
+    }),
+    false,
+  );
+  assert.deepEqual(spawned, []);
 });

@@ -15,6 +15,7 @@ import {
   normalizeUltraNumber,
   ULTRA_CUSTOM_SKILL_LIMIT,
   ULTRA_CUSTOM_SLUG_SOURCE,
+  ULTRA_SKILL_SETS,
   ultraCustomSkill,
   ultraCustomSkillList,
   ultraHiddenText,
@@ -22,36 +23,13 @@ import {
   ultraNeeds,
 } from '../../src/ultraHelp.mjs';
 
-export { ULTRA_CUSTOM_SKILL_LIMIT };
+export { ULTRA_CUSTOM_SKILL_LIMIT, ULTRA_SKILL_SETS };
 
 // The sms: link builder is browser-safe and lives in ultraHelp.mjs; the
 // server and the tests reach it from here as well.
 export { ultraHelpSmsLink } from '../../src/ultraHelp.mjs';
 
 export const ULTRA_TOKEN_PREFIX = 'uht1.';
-/**
- * Skill sets the owner can build into a token. The code is what the token
- * string carries; the label is what the box shows. Custom skills are not in
- * this list: up to five of those are slugged in beside it, or the token
- * carries none.
- */
-export const ULTRA_SKILL_SETS = Object.freeze([
-  Object.freeze({ code: 'dr', label: 'Doctor' }),
-  Object.freeze({ code: 'pm', label: 'Paramedic' }),
-  Object.freeze({ code: 'fr', label: 'First Responder' }),
-  Object.freeze({ code: 'lg', label: 'Lifeguard' }),
-  Object.freeze({ code: 'ff', label: 'Firefighter' }),
-  Object.freeze({ code: 'sr', label: 'Search and Rescue (SAR) Specialist' }),
-  Object.freeze({ code: 'br', label: 'Brave' }),
-  Object.freeze({ code: 'st', label: 'Strong' }),
-  Object.freeze({ code: 'cc', label: 'Crisis Counselor' }),
-  Object.freeze({ code: 'en', label: 'Enforcer' }),
-  Object.freeze({ code: 'ac', label: 'Animal Control' }),
-  Object.freeze({ code: 'hz', label: 'Hazardous Materials (HAZMAT)' }),
-  Object.freeze({ code: 'rg', label: 'Ranger' }),
-  Object.freeze({ code: 'tr', label: 'Transportation' }),
-  Object.freeze({ code: 'ng', label: 'Mr./Mrs. Nice Guy' }),
-]);
 const SKILL_CODE_SOURCE =
   '(?:dr|pm|fr|lg|ff|sr|br|st|cc|en|ac|hz|rg|tr|ng|x' +
   ULTRA_CUSTOM_SLUG_SOURCE +

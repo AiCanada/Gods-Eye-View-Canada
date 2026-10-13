@@ -228,7 +228,9 @@
       "server/shared/localIntegrity.mjs",
       "src/deviceFeedsCore.mjs",
       "server/shared/keySetupHardening.mjs",
-      "src/localRequestGate.mjs"
+      "src/localRequestGate.mjs",
+      "src/ultraSkillCheck.mjs",
+      "src/socialMedia.js"
     ],
     "external": []
   },
@@ -2457,7 +2459,9 @@
       "src/layers/traffic/locationSwitch.js",
       "src/ui/cctvPanelResize.js",
       "src/layers/flights/locationSwitch.js",
-      "src/layers/military/locationSwitch.js"
+      "src/layers/military/locationSwitch.js",
+      "src/ultraSkillCheck.mjs",
+      "src/ultraSkillCheckRun.mjs"
     ],
     "external": [
       "hls.js",
