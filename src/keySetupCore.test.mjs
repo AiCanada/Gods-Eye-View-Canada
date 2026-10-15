@@ -10,6 +10,7 @@ import {
   isKeySetupExternallyManaged,
   keySetupStatus,
   keySetupRequirement,
+  keySetupWithAlternatives,
   knownKeySetupEnvVars,
   keySetupUpdatesRemove,
   parseWindowsUserSid,
@@ -960,4 +961,17 @@ test('an owner removal is refused with no message: 403, the marker header and th
     'x-gev-removal': 'pc-only',
   });
   assert.equal(extra.sent.body, '{"removal":"pc-only"}');
+});
+
+test('key guidance can offer another source that works with a key already set', () => {
+  const streetView = { label: 'STREET VIEW', requiresKeyId: 'google-maps' };
+  assert.equal(
+    keySetupWithAlternatives(keySetupRequirement('mapillary'), [streetView]),
+    'Needs MAPILLARY_CLIENT_TOKEN — add it in Provider Settings, or light STREET VIEW to use your Google Maps key',
+  );
+  assert.equal(
+    keySetupWithAlternatives('', [streetView]),
+    'Light STREET VIEW to use your Google Maps key',
+  );
+  assert.equal(keySetupWithAlternatives('Needs X', []), 'Needs X');
 });

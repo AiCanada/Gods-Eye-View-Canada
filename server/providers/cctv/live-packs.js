@@ -19,6 +19,7 @@ import {
   FINLAND_BOX,
   GREATER_LONDON_BOX,
   NORWAY_BOX,
+  NYC_BOX,
   NSW_BOX,
   ONTARIO_BOX,
   TALLINN_BOX,
@@ -43,10 +44,13 @@ import {
   loadCalgarySourcesFromOpenData,
   loadDelDOTSourcesFromOpenData,
   loadVegvesenSourcesFromOpenData,
+  loadNycSourcesFromOpenData,
 } from './sources.js';
 
 /** Env kill switch: unset or anything but "0" means enabled. */
 const envEnabled = (env, name) => String(env[name] ?? '').trim() !== '0';
+/** Opt-in: only "1" enables a pack whose feed needs an operator agreement. */
+const envOptIn = (env, name) => String(env[name] ?? '').trim() === '1';
 
 /** A curated pack file's identity (path, mtime and size), so an edit refetches. */
 function packFileKey(file, sourceRoot) {
@@ -70,7 +74,7 @@ const LIVE_PACK_FORMAT = 'gev-cctv-live/1';
  * its coverage box, its country is enabled, and (Caltrans, TxDOT) it is
  * configured. CCTV_<PACK>_ENABLED=0 turns a pack off (TfL, Ontario, Fintraffic,
  * DriveBC, TxDOT, Tallinn, Tarktee, Warendorf, NSW, Calgary, DelDOT,
- * Vegvesen). `key`
+ * Vegvesen). NYC DOT stays off unless CCTV_NYC_ENABLED=1. `key`
  * names what the download depends on, so a changed setting refetches.
  */
 export const CCTV_LIVE_PACKS = Object.freeze([
@@ -203,6 +207,17 @@ export const CCTV_LIVE_PACKS = Object.freeze([
     enabled: (env) => envEnabled(env, 'CCTV_VEGVESEN_ENABLED'),
     key: (env) => String(env.CCTV_VEGVESEN_URL || 'cctv-simple'),
     load: loadVegvesenSourcesFromOpenData,
+  },
+  {
+    // NYC DOT requires a data-sharing agreement, so the pack is off unless
+    // the operator opts in (see DATA_SOURCES.md).
+    name: 'nyc',
+    country: 'US',
+    region: 'NY',
+    box: NYC_BOX,
+    enabled: (env) => envOptIn(env, 'CCTV_NYC_ENABLED'),
+    key: (env) => String(env.CCTV_NYC_CAMERAS_URL || 'nyctmc'),
+    load: loadNycSourcesFromOpenData,
   },
 ]);
 

@@ -340,6 +340,43 @@ export const VEGVESEN_MAX_CATALOG_BYTES = 8 * 1024 * 1024;
 /** Mainland Norway with its coast and the Finnmark border, for Statens vegvesen. */
 export const NORWAY_BOX = { south: 57.9, north: 71.3, west: 4.4, east: 31.3 };
 
+/** NYC DOT Traffic Management Center cameras: one keyless JSON list for the
+ * five boroughs (~980 cameras). Frames are stills synthesized from each
+ * camera UUID on the city's webcam host — never taken from the payload. */
+export const NYC_CAMERAS_URL = 'https://webcams.nyctmc.org/api/cameras';
+/** The only origin NYC camera frames may come from. The catalog's `imageUrl`
+ * is ignored; the registered path is always this origin plus a validated
+ * UUID plus `/image`. */
+export const NYC_IMAGE_ORIGIN = 'https://webcams.nyctmc.org/api/cameras/';
+export const NYC_IMAGE_URL = (id) => `${NYC_IMAGE_ORIGIN}${id}/image`;
+export const NYC_CAMERA_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const DEFAULT_NYC_MAX_SOURCES = 250;
+/** Hard ceiling on the NYC catalog body. The live list is ~980 rows / ~250 KB;
+ * this only exists so an upstream that streams an unbounded body cannot be
+ * buffered without limit. */
+export const NYC_MAX_CATALOG_BYTES = 4 * 1024 * 1024;
+/** Ground-elevation prior in metres. Matches the New York CITY_POIS prior;
+ * the client's one-shot ground snap corrects it wherever 3D tiles load. */
+export const NYC_GROUND_ELEVATION_M = 10;
+/** Prioritization anchors: one per borough so a cap keeps citywide coverage
+ * rather than Midtown alone. */
+/** Five boroughs, for the NYC DOT pack. Off unless CCTV_NYC_ENABLED=1. */
+export const NYC_BOX = {
+  south: 40.49,
+  north: 40.92,
+  west: -74.26,
+  east: -73.7,
+};
+export const NYC_ANCHORS = [
+  { lat: 40.758, lon: -73.9855 }, // Manhattan (Times Square)
+  { lat: 40.7128, lon: -74.006 }, // Lower Manhattan
+  { lat: 40.6782, lon: -73.9442 }, // Brooklyn
+  { lat: 40.7282, lon: -73.7949 }, // Queens
+  { lat: 40.8448, lon: -73.8648 }, // Bronx
+  { lat: 40.5795, lon: -74.1502 }, // Staten Island
+];
+
 /** DelDOT CCTV: one keyless statewide JSON catalog; live video via RTMP-over-HTTP (rtmpt:80). */
 export const DELDOT_CCTV_URL = 'https://tmc.deldot.gov/json/videocamera.json';
 /** Per-provider catalog-fetch timeout. Bounds a live pack download so one

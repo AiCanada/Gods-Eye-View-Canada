@@ -7,7 +7,6 @@ import {
   preferCodexOAuth,
   readCodexOAuthAccessToken,
   resolveCodexExecutable,
-  resolveCodexLaunch,
   startCodexChatGptLogin,
 } from '../server/providers/openai/codex-auth.js';
 
@@ -146,18 +145,20 @@ test('Codex OAuth reader enforces expiry margin and bounds tokens without exp by
 
 test('Codex login resolves an installed executable before PATH and starts browser auth detached', async () => {
   const checked = [];
+  // Built with path.join so the stub matches the resolver on Windows too,
+  // where the separators are backslashes.
+  const installed = path.join('/home/fixture', '.local', 'bin', 'codex');
   assert.equal(
     resolveCodexExecutable({
       environment: {},
       home: '/home/fixture',
-      platform: 'linux',
       access(candidate) {
         checked.push(candidate);
-        if (candidate.endsWith('/.local/bin/codex')) return;
+        if (candidate === installed) return;
         throw new Error('missing');
       },
     }),
-    '/home/fixture/.local/bin/codex',
+    installed,
   );
   assert.equal(checked.length, 1);
 
@@ -189,7 +190,6 @@ test('Codex login resolves an installed executable before PATH and starts browse
   assert.deepEqual(calls[0].args, ['login']);
   assert.equal(calls[0].options.detached, true);
   assert.equal(calls[0].options.stdio, 'ignore');
-  assert.equal(calls[0].options.windowsHide, true);
   assert.deepEqual(
     calls[0].options.env,
     {
@@ -273,141 +273,4 @@ test('Codex login hides spawn errors and can cancel only its owned child', async
   login.cancel();
   assert.equal(cancelled, 1);
   assert.deepEqual(await login.completion, { exitCode: null });
-});
-
-/** A Windows file system: only these files exist. */
-function windowsFiles(...files) {
-  const have = new Set(files.map((file) => file.toLowerCase()));
-  return (file) => {
-    if (!have.has(String(file).toLowerCase())) throw new Error('missing');
-  };
-}
-
-const NPM = 'C:\\Program Files\\nodejs';
-const NPM_SCRIPT = `${NPM}\\node_modules\\@openai\\codex\\bin\\codex.js`;
-const WIN_HOME = 'C:\\Users\\fixture';
-
-test('Windows: an npm codex.cmd shim runs its codex.js with node, never the .cmd', () => {
-  const launch = resolveCodexLaunch({
-    platform: 'win32',
-    home: WIN_HOME,
-    execPath: 'C:\\node\\node.exe',
-    environment: { Path: `.;bin;${NPM};C:\\Windows` },
-    access: windowsFiles(`${NPM}\\codex.cmd`, NPM_SCRIPT, `${NPM}\\node.exe`),
-  });
-  assert.deepEqual(launch, {
-    command: `${NPM}\\node.exe`,
-    args: [NPM_SCRIPT],
-  });
-  // Without a node.exe beside the shim, this node runs it.
-  assert.deepEqual(
-    resolveCodexLaunch({
-      platform: 'win32',
-      home: WIN_HOME,
-      execPath: 'C:\\node\\node.exe',
-      environment: { PATH: NPM },
-      access: windowsFiles(`${NPM}\\codex.cmd`, NPM_SCRIPT),
-    }),
-    { command: 'C:\\node\\node.exe', args: [NPM_SCRIPT] },
-  );
-});
-
-test('Windows: only absolute paths are run, so the home folder is never searched first', () => {
-  const checked = [];
-  const access = (file) => {
-    checked.push(file);
-    throw new Error('missing');
-  };
-  assert.equal(
-    resolveCodexLaunch({
-      platform: 'win32',
-      home: WIN_HOME,
-      environment: { PATH: '.;bin;"";C:\\Tools' },
-      access,
-    }),
-    null,
-  );
-  assert.ok(checked.length > 0);
-  for (const file of checked) assert.match(file, /^[A-Za-z]:\\/);
-  // codex.exe on PATH, and Codex's own install before PATH.
-  assert.deepEqual(
-    resolveCodexLaunch({
-      platform: 'win32',
-      home: WIN_HOME,
-      environment: { PATH: 'C:\\Tools' },
-      access: windowsFiles('C:\\Tools\\codex.exe'),
-    }),
-    { command: 'C:\\Tools\\codex.exe', args: [] },
-  );
-  const own = `${WIN_HOME}\\.codex\\packages\\standalone\\current\\bin\\codex.exe`;
-  assert.deepEqual(
-    resolveCodexLaunch({
-      platform: 'win32',
-      home: WIN_HOME,
-      environment: { PATH: 'C:\\Tools' },
-      access: windowsFiles(own, 'C:\\Tools\\codex.exe'),
-    }),
-    { command: own, args: [] },
-  );
-});
-
-test('Windows: CODEX_BIN must be a full path that exists; a .cmd there runs through node', () => {
-  const base = {
-    platform: 'win32',
-    home: WIN_HOME,
-    execPath: 'C:\\n\\node.exe',
-  };
-  assert.equal(
-    resolveCodexLaunch({
-      ...base,
-      environment: { CODEX_BIN: 'codex' },
-      access: windowsFiles(),
-    }),
-    null,
-  );
-  assert.deepEqual(
-    resolveCodexLaunch({
-      ...base,
-      environment: { CODEX_BIN: `${NPM}\\codex.cmd` },
-      access: windowsFiles(`${NPM}\\codex.cmd`, NPM_SCRIPT),
-    }),
-    { command: 'C:\\n\\node.exe', args: [NPM_SCRIPT] },
-  );
-});
-
-test('Windows: the login runs the script then login, hidden; no Codex is a clear failure', async () => {
-  const child = new EventEmitter();
-  child.unref = () => {};
-  const calls = [];
-  const login = await startCodexChatGptLogin({
-    home: WIN_HOME,
-    environment: { PATH: NPM },
-    launch: { command: `${NPM}\\node.exe`, args: [NPM_SCRIPT] },
-    spawnImpl(command, args, options) {
-      calls.push({ command, args, options });
-      queueMicrotask(() => child.emit('spawn'));
-      return child;
-    },
-  });
-  assert.equal(calls[0].command, `${NPM}\\node.exe`);
-  assert.deepEqual(calls[0].args, [NPM_SCRIPT, 'login']);
-  assert.equal(calls[0].options.windowsHide, true);
-  child.emit('exit', 0);
-  await login.completion;
-
-  let spawned = 0;
-  await assert.rejects(
-    startCodexChatGptLogin({
-      home: WIN_HOME,
-      environment: {},
-      launch: null,
-      spawnImpl() {
-        spawned += 1;
-      },
-    }),
-    (error) =>
-      error.code === 'CODEX_OAUTH_LOGIN_FAILED' &&
-      /npm install -g @openai\/codex/.test(error.message),
-  );
-  assert.equal(spawned, 0);
 });

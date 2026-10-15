@@ -149,6 +149,39 @@
   JSON/CSV export. Random streams are now per run, so seeded results differ
   once from earlier builds.
 
+- Snow flakes sway within a fixed range instead of drifting sideways faster the
+  longer the app runs; the Wind setting still scales the sway.
+
+- The right rail ignores panels that other CSS hides, such as during an event
+  view, so they no longer force one-panel-at-a-time layout or collapse visible
+  panels. Panels the rail collapses itself are still restored.
+
+- Coordinate searches refuse empty latitude or longitude components instead of navigating to an unintended location.
+
+- Bing Aerial and Bing Labels request HTTPS tiles on HTTP localhost through
+  their ion-backed providers, retaining ion and per-tile attribution without
+  widening the Content Security Policy.
+
+- Add New York City traffic cameras from the NYC DOT Traffic Management Center
+  as an opt-in CCTV pack. NYC DOT requires a data-sharing agreement for the
+  camera feed, so the pack is off unless `CCTV_NYC_ENABLED=1` is set by an
+  operator who holds one; otherwise no request reaches NYC DOT. NYC DOT's
+  requested disclaimer is in the Data attribution popover. The camera list is one keyless JSON request to
+  `webcams.nyctmc.org/api/cameras`; frames are stills synthesized from each
+  camera UUID on that same host, so a catalog field cannot steer the proxy
+  off-host. Offline cameras are dropped. Once enabled, the 250 cameras nearest
+  the five borough cores load and `CCTV_NYC_MAX_SOURCES` changes the cap. The catalog-wide ceiling is
+  unchanged; extra cameras share it round-robin with the other packs.
+
+- Directions no longer shows a truncation notice for a route with exactly 200
+  turns, and a roundabout at the 200th turn keeps its exit distance.
+
+- Weather records keep missing conditions unknown and refuse summaries without a measured temperature.
+
+- Tool string length validation counts Unicode characters correctly, including characters outside the basic multilingual plane.
+
+- Director timeline seeks cross the dateline along the short longitude arc.
+
 - Treat explicitly current, complete empty vessel coverage as a successful update,
   clearing obsolete contacts while retaining stale or incomplete snapshots.
 
@@ -288,6 +321,42 @@
   shim's `codex.js` with Node, always by full path and with no console
   window. `CODEX_BIN` on Windows must be a full path.
 
+- Street Level: KartaView is the third provider, keyless. Light its chip
+  (purple; off by default, one provider at a time) and zoom in below about
+  6 km: the lines are the streets KartaView has photos of (z13–14 tiles from
+  `api.kartaview.org`). A click on a line opens the photo nearest the click
+  without moving the camera, flat or 360° (a small WebGL panorama: drag to
+  look, wheel to zoom), with cones along its drive and ‹ › / ← → to step
+  through it. The caption links to the full-size photo (KartaView's photo
+  pages fail for signed-out visitors), and the globe credits "© KartaView
+  contributors, CC BY-SA 4.0". Share links carry it in the provider
+  switches (`0.m.0_0.r.google-0*kartaview-1`). Archived photos (KartaView
+  answers 409) are skipped by the click and by ‹ ›. Shift+← →, ↑ ↓, + − and
+  pinch look around a 360° photo. The open photo's marker is a purple view
+  cone pointing along the drive (KartaView's own compass headings are often
+  0 or far off). The IMAGERY (ALL / 360° / FLAT) and SINCE filters apply to
+  KartaView as to Mapillary: its lines are filtered by KartaView's own
+  server (its filtered PNG tiles, as a mask over the JSON lines), and the
+  photo a click opens, and the cones, by each photo's projection and upload
+  date. KartaView's SINCE is the upload date (all its server can filter by);
+  a note under the slider says so while KartaView is lit (`sinceBasis:
+  'upload'` in the provider contract).
+  Mapillary's line coverage and sequence cones are now shared by both
+  (`lineCoverage.js`, `sequenceCones.js`).
+
+- Street Level: Google Street View is the second provider. On the Google 3D
+  map (Google's terms keep it off other maps), light its chip (off by
+  default: every panorama is billed to the Google Maps key, which needs the
+  Maps JavaScript API) and click a street, or press OPEN STREET VIEW, to
+  open Google's own panorama in
+  the panel, with its arrows, the address and month in the caption, a link
+  to Google Maps and FOLLOW. Share links carry it in the provider switches
+  (`r.google-1`). One provider is lit at a time (lighting one switches the
+  other off), Mapillary by default since it is free. Street View's panoramas
+  are all 360°, so the IMAGERY and SINCE filters and the legend apply to
+  Mapillary only and hide while GOOGLE STREET VIEW is lit; its globe marker
+  is a Google-blue view cone.
+
 - Add an experimental ChatGPT/Codex OAuth option for cloud voice in Provider
   Settings. API-key voice remains the default. Local sign-in can start from
   the auth button and reports completion, failure, timeout, or expired
@@ -352,6 +421,12 @@
 **HELP DELIVERY for the gig and delivery platforms.** A new section in the Social Media box chooses the help item to be delivered: Medicine (up to two medications), Transportation (from the current location to Home or to Hospital), Food, Liquid or Items (up to two types each, for example a heart defibrillator). SAVE MY DEFAULT keeps the choice as this computer's own default, in this browser only, and fills the form with it next time, so every GEVC user sets their own. Nothing is sent: sending HELP through the delivery and gig platforms is under development, and the section says so.
 
 **API keys and Power Ups in the Social Media box.** Each platform with a public developer API takes an API key beside its user id and password: Facebook (Graph API), Instagram, Threads, X (X API v2), TikTok, Uber (Uber Developers) and Lyft (Lyft Concierge API). Truth Social publishes no API, so it takes a login only. SAVE LOGIN stores what is typed, a login, an API key or both, and keeps whatever was already saved for that platform. The key is sealed with the login in the encrypted store on this computer, never listed or shown again. A button opens the saved sites: its menu picks ID & Pass (the default), API or All, and the button is named for the choice (OPEN ID & PASS SITES, OPEN API SITES, OPEN ALL SAVED SITES). A saved login opens the platform's site, and a saved key opens its developer console. At the top of the box, with no space between, sit the note "Your API Keys, User Id's and Passwords stay encrypted on this computer for integrating AI Tools", a fluorescent-green count such as "1/25 Power Ups Attained", and the heading. The count gives each platform with anything saved one Power Up, even when it has both a login and a key. The location note adds "If allowed by 3rd Party.", and the "Enter looks up public news…" note is gone.
+
+- Live HLS cameras play on a page opened over plain HTTP from another machine
+  (`HOST=0.0.0.0`). The client lease id came from `crypto.randomUUID`, which
+  browsers only expose in secure contexts, so starting a live feed threw
+  before playback. The id now falls back to a v4 UUID built from
+  `crypto.getRandomValues`, which the server's lease check accepts.
 
 ## [0.2.1] — 2026-10-02 — God's Eye View through Your Agent (with security fixes and other features)
 
