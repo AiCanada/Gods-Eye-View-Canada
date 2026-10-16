@@ -31,6 +31,8 @@ const LLM_PROVIDERS = Object.freeze({
     modelDefault: 'moonshotai/kimi-k3',
     // NIM's reasoning models spend tokens thinking before they write anything.
     supportsReasoningEffort: true,
+    // How a model with thinking (MODEL_SAMPLING) is asked to think here.
+    thinking: 'template',
   }),
   xai: Object.freeze({
     id: 'xai',
@@ -49,10 +51,13 @@ const LLM_PROVIDERS = Object.freeze({
     baseUrlDefault: 'https://openrouter.ai/api/v1',
     modelEnv: 'OPENROUTER_MODEL',
     // OpenRouter fronts many vendors, so the model id carries its vendor
-    // prefix. The default is NVIDIA's Nemotron 3 Ultra on OpenRouter's free
-    // tier (owner ruling, 2026-09-27); override with OPENROUTER_MODEL, or pick
-    // another in POWER UP. Kept equal to the POWER UP placeholder by a test.
-    modelDefault: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+    // prefix. The default is NVIDIA's Nemotron 3.5 Super VL on OpenRouter's
+    // free tier, asked the way NVIDIA's own sample call asks it (owner ruling
+    // 2026-10-16, after Nemotron 3 Ultra of 2026-09-27; see MODEL_SAMPLING);
+    // override with OPENROUTER_MODEL, or pick another in POWER UP. Kept equal
+    // to the POWER UP placeholder by a test.
+    modelDefault: 'nvidia/nemotron-3.5-super-vl:free',
+    thinking: 'reasoning',
     // OpenRouter asks callers to identify themselves for its leaderboards.
     extraHeaders: Object.freeze({
       'HTTP-Referer': 'http://localhost:4173',
@@ -86,6 +91,31 @@ const LLM_PROVIDERS = Object.freeze({
     modelDefault: 'claude-fable-5-1',
   }),
 });
+
+/**
+ * How particular models are asked, whichever provider serves them. The owner
+ * set these for Nemotron 3.5 Super VL from NVIDIA's own sample call
+ * (2026-10-16): thinking on, temperature 1, top_p 0.95, seed 42, and 16,384
+ * tokens so the thinking leaves room for the answer. The pattern covers
+ * OpenRouter's ids (free and paid) and NIM's. Every other model keeps the
+ * panel's usual temperature and budget.
+ */
+const MODEL_SAMPLING = Object.freeze([
+  Object.freeze({
+    model: /^nvidia\/nemotron-3\.5-super-vl(?:-120b-a12b)?(?::free)?$/,
+    temperature: 1,
+    topP: 0.95,
+    seed: 42,
+    minTokens: 16384,
+    thinking: true,
+  }),
+]);
+
+/** The owner's settings for this model id, or null for the usual ones. */
+export function llmModelSampling(model) {
+  const id = String(model || '').trim();
+  return MODEL_SAMPLING.find((entry) => entry.model.test(id)) || null;
+}
 
 /** Providers whose id is a real registry key (never an inherited Object member). */
 export function resolveLlmProvider(id) {
@@ -368,6 +398,8 @@ export function buildLlmAskCall(
   env = process.env,
   answerTokens = null,
 ) {
+  const sampling = llmModelSampling(settings.model);
+  const budget = answerTokens ?? llmMaxTokens(env);
   const payload = {
     model: settings.model,
     messages: [
@@ -377,16 +409,29 @@ export function buildLlmAskCall(
         content: `SCENE:\n${JSON.stringify(context ?? {})}\n\nQUESTION:\n${question}`,
       },
     ],
-    max_tokens: answerTokens ?? llmMaxTokens(env),
-    temperature: 0.3,
+    max_tokens: sampling ? Math.max(budget, sampling.minTokens) : budget,
+    temperature: sampling ? sampling.temperature : 0.3,
     stream: false,
   };
+  if (sampling) {
+    payload.top_p = sampling.topP;
+    payload.seed = sampling.seed;
+  }
+  // Thinking is switched on in each provider's own way: OpenRouter's
+  // reasoning field, or the chat template's flag on NIM.
+  if (sampling?.thinking && provider.thinking === 'reasoning') {
+    payload.reasoning = { enabled: true };
+  } else if (sampling?.thinking && provider.thinking === 'template') {
+    payload.chat_template_kwargs = { enable_thinking: true };
+  }
   // Only NIM's reasoning models accept this; sending it elsewhere is a 400, so
   // it is opt-in per provider, and NVIDIA_REASONING_EFFORT=none switches it off
-  // for a NIM model that is not a reasoning model.
+  // for a NIM model that is not a reasoning model. A model whose thinking the
+  // template switches on is not sent it.
   const effort = env.NVIDIA_REASONING_EFFORT ?? 'low';
   if (
     provider.supportsReasoningEffort &&
+    !sampling?.thinking &&
     effort &&
     !/^(none|off|0)$/i.test(String(effort).trim())
   ) {

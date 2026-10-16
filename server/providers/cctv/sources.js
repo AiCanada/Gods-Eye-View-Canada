@@ -41,10 +41,8 @@ import {
   NYC_CAMERAS_URL,
   NYC_IMAGE_URL,
   NYC_CAMERA_ID_RE,
-  DEFAULT_NYC_MAX_SOURCES,
   NYC_MAX_CATALOG_BYTES,
   NYC_GROUND_ELEVATION_M,
-  NYC_ANCHORS,
 } from './constants.js';
 import {
   toFiniteNumber,
@@ -1933,17 +1931,10 @@ export async function loadNycSourcesFromOpenData() {
       seen.add(camera.id);
       cameras.push(camera);
     }
-    const maxRaw = Number(
-      process.env.CCTV_NYC_MAX_SOURCES || DEFAULT_NYC_MAX_SOURCES,
-    );
-    const maxCount = Number.isFinite(maxRaw)
-      ? Math.max(8, Math.min(400, Math.floor(maxRaw)))
-      : DEFAULT_NYC_MAX_SOURCES;
-    const prioritized = prioritizeSources(cameras, maxCount, NYC_ANCHORS);
-    console.log(
-      `[CCTV] Loaded NYC camera sources: ${cameras.length} (using nearest ${prioritized.length})`,
-    );
-    return prioritized;
+    // No pack cap (owner ruling 2026-10-11): every online camera loads, and
+    // the area cap bounds what is served, as for every other pack.
+    console.log(`[CCTV] Loaded NYC camera sources: ${cameras.length}`);
+    return cameras;
   } catch (error) {
     console.warn('[CCTV] NYC camera download error:', error?.message || error);
     return [];

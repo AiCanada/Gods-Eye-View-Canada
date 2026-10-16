@@ -484,6 +484,69 @@ export function cameraRegion(cameras) {
 }
 
 /**
+ * Decode numeric character references ("&#237;", "&#xED;"), the entity form
+ * some camera listings leave in names and links (a Terrassa link ends in
+ * "&#13;"). A reference naming no valid character (NUL, a surrogate, past
+ * U+10FFFF) is left as written, so one bad field cannot fail a catalogue.
+ * Ported from upstream #595.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function decodeNumericEntities(text) {
+  return String(text || '').replace(
+    /&#(?:x([0-9a-f]+)|(\d+));/gi,
+    (match, hex, dec) => {
+      const code = hex ? Number.parseInt(hex, 16) : Number(dec);
+      const valid =
+        code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff);
+      return valid ? String.fromCodePoint(code) : match;
+    },
+  );
+}
+
+const SCT_RENDER_SERVICE =
+  /^https?:\/\/mct\.gencat\.cat\/mct2bo\/RenderService\?(?:[^#]*&)?sctidcam=([A-Za-z0-9_-]+\.(?:gif|jpe?g|png))(?:[&#]|$)/i;
+const TORONTO_COMPARISON_STILL =
+  /^https?:\/\/opendata\.toronto\.ca\/transportation\/tmc\/rescucameraimages\/ComparisonImages\/loc(\d+)[nsew]?\.jpg$/i;
+
+/**
+ * The live frame address for a camera link, where a listing names a dead or
+ * unreachable one:
+ * - entity junk and surrounding whitespace or control characters go;
+ * - Catalonia SCT's `RenderService?sctidcam=<id>` becomes the frame it
+ *   redirects to, `http://mct.gencat.cat/mct2bo/TransitCamera?nom=<id>`.
+ *   Over https that host's TLS never completes with Node
+ *   (`ERR_SSL_DH_KEY_TOO_SMALL`), and the redirect goes to plain http
+ *   anyway, so the direct http frame is the one this runtime can read
+ *   (upstream #595, checked 2026-10-15);
+ * - a Toronto RESCU `ComparisonImages/loc<n><direction>.jpg` is a 2016
+ *   reference still (Last-Modified 2016), not a frame; the camera's live
+ *   view is `CameraImages/loc<n>.jpg`.
+ * Anything else is returned trimmed and otherwise as written.
+ *
+ * @param {unknown} url
+ * @returns {string}
+ */
+export function liveStillUrl(url) {
+  if (typeof url !== 'string') return '';
+  // Control characters are never part of an address (a decoded "&#13;"),
+  // nor is escaped whitespace left trailing it ("?a=1%20&#13;" is "?a=1").
+  // eslint-disable-next-line no-control-regex
+  const text = decodeNumericEntities(url)
+    .replace(/[\u0000-\u001f\u007f]+/g, '')
+    .trim()
+    .replace(/(?:%(?:20|09|0a|0d))+$/i, '');
+  const sct = SCT_RENDER_SERVICE.exec(text);
+  if (sct)
+    return `http://mct.gencat.cat/mct2bo/TransitCamera?nom=${sct[1]}&visualitzacio=imatge`;
+  const toronto = TORONTO_COMPARISON_STILL.exec(text);
+  if (toronto)
+    return `https://opendata.toronto.ca/transportation/tmc/rescucameraimages/CameraImages/loc${toronto[1]}.jpg`;
+  return text;
+}
+
+/**
  * Normalize a raw CCTV source item into a canonical shape with safe defaults.
  *
  * @param {object} item - Raw source from file, env, or Austin Open Data.
@@ -516,8 +579,9 @@ export function normalizeSourceItem(item) {
     mountHeightM: toFiniteNumber(item.mountHeightM),
     groundElevationM: toFiniteNumber(item.groundElevationM),
     feedType: normalizeFeedType(item.feedType || item.type || ''),
-    url: typeof item.url === 'string' ? item.url : '',
-    snapshotUrl: typeof item.snapshotUrl === 'string' ? item.snapshotUrl : '',
+    // A dead or unreachable listing link becomes the camera's live frame.
+    url: liveStillUrl(item.url),
+    snapshotUrl: liveStillUrl(item.snapshotUrl),
     // A camera with no public still names the service that can look one up
     // when the user opens it. Only Road511 is known; anything else is dropped.
     lookup: item.lookup === 'road511' ? 'road511' : '',

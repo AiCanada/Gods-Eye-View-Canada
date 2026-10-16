@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import {
   loadNycSourcesFromOpenData,
@@ -8,8 +11,6 @@ import {
   nycCameraToSource,
 } from '../../server/providers/cctv/sources.js';
 import {
-  DEFAULT_CCTV_MAX_SOURCES,
-  DEFAULT_NYC_MAX_SOURCES,
   NYC_CAMERAS_URL,
   NYC_GROUND_ELEVATION_M,
   NYC_IMAGE_ORIGIN,
@@ -243,117 +244,72 @@ test('the catalog fetch refuses redirects and oversized bodies', async (t) => {
   assert.deepEqual(await loadNycSourcesFromOpenData(), []);
 });
 
-test('a reduced pack cap keeps cameras nearest the borough anchors', async (t) => {
-  t.mock.method(console, 'log', () => {});
-  const saved = process.env.CCTV_NYC_MAX_SOURCES;
-  t.after(() => {
-    if (saved === undefined) delete process.env.CCTV_NYC_MAX_SOURCES;
-    else process.env.CCTV_NYC_MAX_SOURCES = saved;
-  });
-  process.env.CCTV_NYC_MAX_SOURCES = '8';
-  const rows = [
-    // Far southern Staten Island, listed first so only distance can keep them.
-    ...[40.5, 40.505, 40.51, 40.515, 40.52, 40.525].map((lat, i) =>
-      row({
-        id: `aaaaaaaa-bbbb-cccc-dddd-${String(i).padStart(12, '0')}`,
-        latitude: lat,
-        longitude: -74.24,
-        area: 'Staten Island',
-        name: `SI ${i}`,
-      }),
-    ),
-    ...[40.758, 40.757, 40.756, 40.755, 40.754, 40.753].map((lat, i) =>
-      row({
-        id: `bbbbbbbb-cccc-dddd-eeee-${String(i).padStart(12, '0')}`,
-        latitude: lat,
-        longitude: -73.9855,
-        area: 'Manhattan',
-        name: `Midtown ${i}`,
-      }),
-    ),
-  ];
-  t.mock.method(globalThis, 'fetch', async () => Response.json(rows));
-  const cameras = await loadNycSourcesFromOpenData();
-  assert.equal(cameras.length, 8);
-  assert.deepEqual(
-    cameras.map((camera) => camera.city),
-    [
-      'Manhattan',
-      'Manhattan',
-      'Manhattan',
-      'Manhattan',
-      'Manhattan',
-      'Manhattan',
-      'Staten Island',
-      'Staten Island',
-    ],
-    'Midtown fills first; the Staten Island anchor still keeps a share',
-  );
-});
-
 /**
- * Serve the NYC catalog to the NYC endpoint and an empty payload to every
- * other pack, so one catalog refresh exercises the registration without
- * reaching the network.
+ * The NYC lane is a live pack like the others
+ * (server/providers/cctv/live-packs.js): a New York area downloads its
+ * catalog, and only when CCTV_NYC_ENABLED=1, because NYC DOT asks for a
+ * data-sharing agreement. Every other live pack is down here; only NYC
+ * answers.
  */
-const runCatalogWithMockedUpstreams = async (t) => {
-  const requested = [];
+const MANHATTAN = { lat: 40.758, lon: -73.9855, radiusKm: 50 };
+const runCatalogWithNycFlag = async (t, flag) => {
   t.mock.method(console, 'log', () => {});
   t.mock.method(console, 'warn', () => {});
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-cctv-nyc-'));
+  t.after(() => fs.rmSync(sourceRoot, { recursive: true, force: true }));
+  const requested = [];
   t.mock.method(globalThis, 'fetch', async (url) => {
     const href = String(url);
     requested.push(href);
-    if (href === NYC_CAMERAS_URL) {
-      return Response.json([
-        row({ latitude: 40.758, longitude: -73.9855 }),
-        row({
-          id: BROOKLYN_ID,
-          name: 'Atlantic Ave @ Flatbush Ave',
-          latitude: 40.65,
-          longitude: -73.96,
-          area: 'Brooklyn',
-        }),
-      ]);
-    }
-    return Response.json([]);
+    return href === NYC_CAMERAS_URL
+      ? Response.json([
+          row({ latitude: 40.758, longitude: -73.9855 }),
+          row({
+            id: BROOKLYN_ID,
+            name: 'Atlantic Ave @ Flatbush Ave',
+            latitude: 40.65,
+            longitude: -73.96,
+            area: 'Brooklyn',
+          }),
+        ])
+      : new Response('unavailable', { status: 503 });
   });
-  const sources = await createCctvCatalog({ sourceRoot: '/nonexistent' })();
+  const env = {
+    CCTV_SOURCES_FILE: path.join(sourceRoot, 'none.json'),
+    CCTV_COUNTRIES: '*',
+  };
+  if (flag !== undefined) env.CCTV_NYC_ENABLED = flag;
+  const catalog = createCctvCatalog({ sourceRoot, env });
+  assert.equal((await catalog.snapshot()).total, 0, 'nothing at startup');
+  assert.deepEqual(requested, [], 'no download before an area is selected');
+  await catalog.ensureArea(MANHATTAN);
+  const { sources } = await catalog.snapshot();
   return { requested, sources };
-};
-
-/** Run one catalog refresh with CCTV_NYC_ENABLED set to `flag` (undefined
- * leaves it unset), restoring the environment afterwards. */
-const runCatalogWithNycFlag = async (t, flag) => {
-  const saved = { ...process.env };
-  try {
-    delete process.env.CCTV_SOURCES_FILE;
-    delete process.env.CCTV_SOURCES_JSON;
-    if (flag === undefined) delete process.env.CCTV_NYC_ENABLED;
-    else process.env.CCTV_NYC_ENABLED = flag;
-    return await runCatalogWithMockedUpstreams(t);
-  } finally {
-    for (const key of Object.keys(process.env)) {
-      if (!(key in saved)) delete process.env[key];
-    }
-    Object.assign(process.env, saved);
-  }
 };
 
 test('CCTV_NYC_ENABLED=1 wires the NYC lane into the catalog', async (t) => {
   const { requested, sources } = await runCatalogWithNycFlag(t, '1');
-  assert.ok(
-    requested.includes(NYC_CAMERAS_URL),
-    'the catalog refresh invokes the NYC loader',
+  assert.deepEqual(
+    requested,
+    [NYC_CAMERAS_URL],
+    'a New York area downloads the NYC catalog and nothing else',
   );
   assert.deepEqual(
-    sources.filter((s) => s.cityId === 'nyc').map((s) => s.id),
-    [`nyc-${MIDTOWN_ID}`, `nyc-${BROOKLYN_ID}`],
+    sources
+      .filter((s) => s.cityId === 'nyc')
+      .map((s) => s.id)
+      .sort(),
+    [`nyc-${MIDTOWN_ID}`, `nyc-${BROOKLYN_ID}`].sort(),
     'NYC cameras reach the served catalog through the registered lane',
+  );
+  assert.ok(
+    sources.every((s) => s.pack === 'nyc'),
+    'every camera served here is the NYC pack',
   );
 });
 
 // NYC DOT requires a data-sharing agreement for this feed, so an install that
-// has not opted in must never contact it.
+// has not opted in must never contact it, whatever else the flag holds.
 for (const [label, flag] of [
   ['an unset CCTV_NYC_ENABLED', undefined],
   ['an empty CCTV_NYC_ENABLED', ''],
@@ -362,7 +318,6 @@ for (const [label, flag] of [
 ]) {
   test(`${label} makes no NYC request`, async (t) => {
     const { requested, sources } = await runCatalogWithNycFlag(t, flag);
-    assert.ok(requested.length > 0, 'the other packs still refreshed');
     assert.equal(
       requested.some((href) => href.includes('nyctmc.org')),
       false,
@@ -374,11 +329,6 @@ for (const [label, flag] of [
     );
   });
 }
-
-test('the shipped catalog ceiling is not raised to make room for this pack', () => {
-  assert.equal(DEFAULT_CCTV_MAX_SOURCES, 4000);
-  assert.equal(DEFAULT_NYC_MAX_SOURCES, 250);
-});
 
 test('isLikelyNycCoordinate spans the five boroughs and rejects the rest', () => {
   assert.equal(isLikelyNycCoordinate(40.758, -73.9855), true); // Times Square

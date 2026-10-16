@@ -109,6 +109,9 @@ export function createBrowserViteConfig({
         ignored: [
           '**/RuView/**',
           '**/.gev-cache/**',
+          // The AI World data (world tape, datasets, models): written all
+          // the time, thousands of files a day.
+          '**/.gev-data/**',
           '**/.gev-logs/**',
           '**/dist/**',
           '**/qa-artifacts/**',
@@ -131,6 +134,10 @@ export function createBrowserViteConfig({
           // must be denied explicitly; the watch ignores above do not serve.
           '**/.gev-cache/**',
           '**/.gev-logs/**',
+          // The AI World data: recorded feeds, the owner's own devices
+          // (personal class) among them, datasets and models. Only its
+          // /api/ai-world routes read it, never the static server.
+          '**/.gev-data/**',
           // Private camera logins (also refused by that plugin's own guard,
           // which catches the spellings a pattern cannot).
           '**/private-cameras.json',

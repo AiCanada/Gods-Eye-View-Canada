@@ -177,6 +177,25 @@ test('construction is inert; adapters preserve routes, viewport query, cache epo
   assert.equal(track.records[0].ellipsoidAltitudeM, null);
 });
 
+test('a flight snapshot names the OpenSky auth mode the proxy used, only when it says one', async () => {
+  const snapshot = (headers) =>
+    createFlightSource({
+      now: () => now,
+      fetchImpl: async () =>
+        response({ time: now / 1000, states: [aircraft] }, headers),
+    }).getSnapshot();
+  const anonymous = await snapshot({ 'X-OpenSky-Auth-Mode-Used': 'anon' });
+  assert.equal(anonymous.authModeUsed, 'anon');
+  assert.equal(anonymous.records.length, 1);
+  assert.equal(
+    (await snapshot({ 'x-opensky-auth-mode-used': 'OAuth' })).authModeUsed,
+    'oauth',
+  );
+  const unnamed = await snapshot({});
+  assert.equal(Object.hasOwn(unnamed, 'authModeUsed'), false);
+  assert.equal(unnamed.records.length, 1);
+});
+
 test('cancellation after slow body parsing rejects even with a transport that ignores abort', async () => {
   let release;
   const controller = new AbortController();

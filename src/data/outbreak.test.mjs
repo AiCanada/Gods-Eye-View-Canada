@@ -73,7 +73,7 @@ test('Outbreak has its own share-link token', () => {
   );
   assert.deepEqual(
     { ...row },
-    { id: 'outbreak', token: '4', disposition: 'enabled-only' },
+    { id: 'outbreak', token: 'zx', disposition: 'enabled-only' },
   );
 });
 

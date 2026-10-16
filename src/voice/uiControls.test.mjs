@@ -914,13 +914,16 @@ function attributesOf(text) {
 /**
  * The Outbreak box as layer-panels.html lays it out: every button, input and
  * select in document order, with its attributes, options and <label for>.
- * The box is the last panel in the file.
+ * The box ends where the next left-stack box, the AI World Training Sim,
+ * begins.
  */
 function outbreakBoxFromMarkup(make) {
   const html = readFileSync(TEMPLATE, 'utf8');
   const start = html.indexOf('<div id="outbreak-panel"');
   assert.ok(start >= 0, 'the Outbreak box is in the markup');
-  const part = html.slice(start);
+  const end = html.indexOf('<div id="ai-world-panel"', start);
+  assert.ok(end > start, 'the AI World box follows the Outbreak box');
+  const part = html.slice(start, end);
   const box = make('div', {
     id: 'outbreak-panel',
     'data-panel-id': 'outbreak-panel',

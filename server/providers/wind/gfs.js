@@ -2,12 +2,13 @@ import { readWindBody } from '../../../src/sources/windBody.js';
 /**
  * Parse a GFS `.idx` inventory into ordered message records.
  *
- * Each line is `msgNumber:byteOffset:d=YYYYMMDDHH:VAR:LEVEL:...:`. Malformed
- * lines are skipped; a payload with no valid lines is rejected so callers never
- * treat an HTML error page as an empty inventory.
+ * Each line is `msgNumber:byteOffset:d=YYYYMMDDHH:VAR:LEVEL:FORECAST:...:`,
+ * FORECAST being text such as `anl`, `6 hour fcst` or `0-6 hour ave fcst`.
+ * Malformed lines are skipped; a payload with no valid lines is rejected so
+ * callers never treat an HTML error page as an empty inventory.
  *
  * @param {string} text - Raw `.idx` body.
- * @returns {{ messages: Array<{index: number, offset: number, variable: string, level: string}> }}
+ * @returns {{ messages: Array<{index: number, offset: number, variable: string, level: string, forecast: string}> }}
  */
 export function parseGfsIdx(text) {
   const messages = [];
@@ -27,6 +28,7 @@ export function parseGfsIdx(text) {
       offset: Number(parts[1]),
       variable: parts[3],
       level: parts[4],
+      forecast: parts[5],
     });
   }
   if (!messages.length) throw new Error('malformed GFS index');
@@ -34,28 +36,54 @@ export function parseGfsIdx(text) {
 }
 
 /**
- * Byte ranges for the two 10 m wind components. A message runs from its own
- * offset to one byte before the next message in file order.
+ * The hours a time-mean message averages over, from its forecast text:
+ * `6-7 hour ave fcst` is {fromHour: 6, toHour: 7}, in forecast hours from the
+ * cycle. An instant or an accumulation is null.
+ */
+function averageWindow(forecast) {
+  const match = /^(\d+)-(\d+) hour ave fcst$/.exec(forecast);
+  if (!match) return null;
+  const fromHour = Number(match[1]);
+  const toHour = Number(match[2]);
+  return fromHour < toHour ? { fromHour, toHour } : null;
+}
+
+/**
+ * Byte ranges for the two 10 m wind components and an overlay's companion
+ * field. A message runs from its own offset to one byte before the next
+ * message in file order. One variable and level can appear more than once, so
+ * the precipitation rate is the time-mean PRATE, with the `window` it averages.
  *
  * @param {{messages: Array<object>}} parsed - {@link parseGfsIdx} result.
- * @param {{level?: string}} [options]
- * @returns {{u: {start: number, end: number}, v: {start: number, end: number}}}
+ * @param {{level?: string, overlay?: string}} [options]
+ * @returns {{u: {start: number, end: number}, v: {start: number, end: number},
+ *   scalar?: {start: number, end: number},
+ *   window?: {fromHour: number, toHour: number}}}
  */
 export function windMessageRanges(
   parsed,
   { level = '10 m above ground', overlay = 'none' } = {},
 ) {
   weatherScalarMetadata(overlay);
-  const range = (variable, fieldLevel = level) => {
+  const locate = (variable, fieldLevel = level, accept = () => true) => {
     const index = parsed.messages.findIndex(
       (message) =>
-        message.variable === variable && message.level === fieldLevel,
+        message.variable === variable &&
+        message.level === fieldLevel &&
+        accept(message),
     );
     const message = parsed.messages[index];
     const next = parsed.messages[index + 1];
     if (!message || !next)
       throw new Error(`missing ${variable} at ${fieldLevel}`);
-    return { start: message.offset, end: next.offset - 1 };
+    return { message, range: { start: message.offset, end: next.offset - 1 } };
+  };
+  const range = (variable, fieldLevel) => locate(variable, fieldLevel).range;
+  const meanRate = () => {
+    const { message, range: scalar } = locate('PRATE', 'surface', (candidate) =>
+      averageWindow(candidate.forecast),
+    );
+    return { scalar, window: averageWindow(message.forecast) };
   };
   return {
     u: range('UGRD'),
@@ -66,6 +94,10 @@ export function windMessageRanges(
     ...(overlay === 'pressure'
       ? { scalar: range('PRMSL', 'mean sea level') }
       : {}),
+    ...(overlay === 'humidity'
+      ? { scalar: range('SPFH', '2 m above ground') }
+      : {}),
+    ...(overlay === 'precipitation' ? meanRate() : {}),
   };
 }
 
@@ -118,6 +150,29 @@ export async function fetchRange({
   return buffer;
 }
 
+/**
+ * Optional work under its own bound: it resolves undefined on failure or
+ * timeout without cancelling valid wind siblings; a parent abort still stops it.
+ */
+async function optional(task, { signal, timeoutMs }) {
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal.reason);
+  signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    signal?.throwIfAborted();
+    const value = await task(controller.signal);
+    controller.signal.throwIfAborted();
+    return value;
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+    signal?.removeEventListener('abort', abort);
+  }
+}
+
 /** A bounded optional request may fail without cancelling valid wind siblings. */
 export async function loadOptionalScalar({
   range,
@@ -128,28 +183,48 @@ export async function loadOptionalScalar({
   timeoutMs = 12_000,
 }) {
   if (!range) return undefined;
-  const controller = new AbortController();
-  const abort = () => controller.abort(signal.reason);
-  signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    signal?.throwIfAborted();
-    const bytes = await fetchRange({
-      url,
-      ...range,
-      fetchImpl,
-      signal: controller.signal,
-    });
-    const value = await decodeImpl(bytes);
-    controller.signal.throwIfAborted();
-    return value;
-  } catch {
-    return undefined;
-  } finally {
-    clearTimeout(timer);
-    controller.abort();
-    signal?.removeEventListener('abort', abort);
-  }
+  return optional(
+    async (bounded) =>
+      decodeImpl(
+        await fetchRange({ url, ...range, fetchImpl, signal: bounded }),
+      ),
+    { signal, timeoutMs },
+  );
+}
+
+/**
+ * The analysis (f000) has no time-mean PRATE; the cycle's f006 object holds
+ * its first six-hour mean. Its own inventory, byte range and decode share one
+ * optional bound, so a failure leaves the served step's wind alone.
+ */
+async function loadCycleMeanRate({
+  url,
+  fetchImpl,
+  decodeImpl,
+  signal,
+  timeoutMs = 12_000,
+}) {
+  return optional(
+    async (bounded) => {
+      const index = await fetchText({
+        url: `${url}.idx`,
+        fetchImpl,
+        signal: bounded,
+      });
+      const { scalar: range, window } = windMessageRanges(
+        parseGfsIdx(index.toString()),
+        { overlay: 'precipitation' },
+      );
+      const bytes = await fetchRange({
+        url,
+        ...range,
+        fetchImpl,
+        signal: bounded,
+      });
+      return { scalar: await decodeImpl(bytes), window };
+    },
+    { signal, timeoutMs },
+  );
 }
 
 import {
@@ -182,31 +257,42 @@ export async function fetchGfsWind({
   // Pick the forecast step whose valid time is closest to now, so the layer
   // shows the freshest field the cycle offers instead of the analysis.
   const forecastHour = nearestGfsStep((nowMs - runMs) / 3600_000);
-  const base = `https://${GFS_BUCKET}.s3.amazonaws.com/${gfsObjectKey({ ...cycle, forecastHour })}`;
+  const objectUrl = (step) =>
+    `https://${GFS_BUCKET}.s3.amazonaws.com/${gfsObjectKey({ ...cycle, forecastHour: step })}`;
+  const base = objectUrl(forecastHour);
   const index = await fetchText({ url: `${base}.idx`, fetchImpl, signal });
   const inventory = parseGfsIdx(index.toString());
   const ranges = windMessageRanges(inventory);
-  let scalarRange;
+  let companion;
   if (overlay !== 'none') {
     try {
-      scalarRange = windMessageRanges(inventory, { overlay }).scalar;
+      companion = windMessageRanges(inventory, { overlay });
     } catch {
       /* A missing optional field does not discard valid wind. */
     }
   }
-  // All selected messages come from this one issue/valid-time object.
+  // All selected messages come from this one issue/valid-time object, except
+  // a precipitation rate the step lacks: the cycle's f006 mean stands in, and
+  // its window says so.
   const load = async (range) =>
     decodeImpl(await fetchRange({ url: base, ...range, fetchImpl, signal }));
-  const [u, v, scalar] = await Promise.all([
+  const loadCompanion = async () =>
+    overlay === 'precipitation' && !companion && forecastHour !== 6
+      ? loadCycleMeanRate({ url: objectUrl(6), fetchImpl, decodeImpl, signal })
+      : {
+          scalar: await loadOptionalScalar({
+            range: companion?.scalar,
+            url: base,
+            fetchImpl,
+            decodeImpl,
+            signal,
+          }),
+          window: companion?.window,
+        };
+  const [u, v, { scalar, window } = {}] = await Promise.all([
     load(ranges.u),
     load(ranges.v),
-    loadOptionalScalar({
-      range: scalarRange,
-      url: base,
-      fetchImpl,
-      decodeImpl,
-      signal,
-    }),
+    loadCompanion(),
   ]);
   signal?.throwIfAborted();
   const fields = resampleWeatherSnapshot({ u, v, scalar, overlay, targetDx });
@@ -217,5 +303,9 @@ export async function fetchGfsWind({
     level: '10 m above ground',
     units: 'm/s',
     ...fields,
+    // A time mean names the forecast hours it averages over.
+    ...(fields.scalar && window
+      ? { scalar: { ...fields.scalar, window } }
+      : {}),
   };
 }

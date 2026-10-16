@@ -17,6 +17,7 @@ function fixture() {
   let restored;
   let nextTimer = 0;
   let ultraDestroyed = 0;
+  let aiWorldDestroyed = 0;
   const controller = new AbortController();
   const context = {
     console,
@@ -46,6 +47,30 @@ function fixture() {
         },
       };
     },
+    // The AI World Training Sim box starts beside it, counted the same way.
+    initAiWorldPanel() {
+      return {
+        destroy: () => {
+          aiWorldDestroyed += 1;
+        },
+      };
+    },
+    // And its predictions overlay on the globe.
+    initAiWorldOverlay() {
+      return {
+        destroy: () => {
+          aiWorldDestroyed += 1;
+        },
+      };
+    },
+    // Every box's corner grip, counted the same way.
+    installPanelCornerResize() {
+      return {
+        destroy: () => {
+          aiWorldDestroyed += 1;
+        },
+      };
+    },
   };
   vm.createContext(context);
   vm.runInContext(source, context);
@@ -71,6 +96,7 @@ function fixture() {
     restored,
     controller,
     ultraCount: () => ultraDestroyed,
+    aiWorldCount: () => aiWorldDestroyed,
     fire(delay) {
       for (const [id, task] of timers) {
         if (task.delay === delay) {
@@ -102,6 +128,9 @@ test('welcome waits for restoration, minimum delay, and the cover transition', a
   // The Ultra box is started beside Provider Settings and goes down with it:
   // its poll and its map events must not outlive the shell.
   assert.equal(f.ultraCount(), 1);
+  // So do the AI World box, its overlay and the boxes' corner grips:
+  // neither its status poll, its predictions nor a grip may outlive the shell.
+  assert.equal(f.aiWorldCount(), 3);
   assert.equal(f.timers.size, 0);
 });
 

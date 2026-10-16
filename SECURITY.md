@@ -31,7 +31,7 @@ These are designed to be used directly in the browser (like a Mapbox public toke
 
 1. **Google Maps API key** — loads Photorealistic 3D Tiles directly and powers GEV place search and Street View (Maps JavaScript API; add it to the key's API restrictions). **Restrict it** (HTTP referrer + API restriction to the required Google APIs) in the Google Cloud Console. An unrestricted key in a public deployment can be abused and billed to you.
 2. **Cesium ion token** (`CESIUM_ION_TOKEN`, optional — for ion-hosted Google Photorealistic 3D Tiles, Bing world imagery, and world terrain) — used as `Cesium.Ion.defaultAccessToken` client-side. Use a public **`assets:read`** token with **URL restrictions** for any hosted deployment. The Community plan has eligibility and usage limits; a public token is not a secret, but it can still consume the account's quota.
-3. **Mapillary client token** (`MAPILLARY_CLIENT_TOKEN`, optional, Street Level) — used by the MapillaryJS viewer and Graph API lookups in the browser, and by the server's coverage-tile proxy. Mapillary client tokens are meant for browser use.
+3. **Mapillary client token** (`MAPILLARY_CLIENT_TOKEN`, optional, Street Level) — used by the MapillaryJS viewer and Graph API lookups in the browser, and by the server's coverage-tile proxy and image-metadata search (`/api/mapillary/images`), which sends it to `graph.mapillary.com` only in an `Authorization: OAuth` header, never in a URL, a log or an answer. Mapillary client tokens are meant for browser use.
 
 > The explicit browser `define` block in `build/vite.js` controls exactly what reaches the client: only these three keys. Everything else stays server-side.
 
@@ -66,6 +66,7 @@ browser-key fallback for existing single-key setups.
 The data proxies under `server/providers/` are written so the browser cannot turn the server into an open relay:
 
 - **No arbitrary-URL fetching.** The CCTV frame proxy fetches only server-registered camera/frame URLs — clients cannot pass an upstream URL to fetch (SSRF mitigation). Other proxies target fixed upstream hosts.
+- **Mapillary image search is small-box, header-authorised and pinned.** `GET /api/mapillary/images?bbox=west,south,east,north` takes only four plain decimals on the globe with west < east, south < north and at most 0.05° a side (Mapillary answers bbox searches only under 0.01 square degrees); anything else is a `400`, and without `MAPILLARY_CLIENT_TOKEN` it answers `503 {"error":"no_key","keyRequired":true}`, in both cases without calling Mapillary. It asks only the fixed host `https://graph.mapillary.com/images`, for fixed fields (no thumbnail links: those are signed URLs on CDN hosts that vary per image) and at most 2,000 images, with the token only in the `Authorization: OAuth` header; it never follows a redirect (a 3xx is a `502`), times out after 30 s, caps the body at 4 MB and validates every image (finite numbers; ids and sequence ids of at most 64 safe characters; a camera type of at most 32). Each box's answer is cached in memory for 24 h (32 MB, least recently used first). Like its siblings it refuses cross-site requests; it allows 300 searches a minute per client (1,200 overall), runs at most 4 upstream searches at once with 32 waiting (more get `503` with `Retry-After`), shares identical searches in flight, and after a rejected token (5 minutes) or a Mapillary `429` (its `Retry-After`, at most 10 minutes) answers misses without asking again.
 - **Camera lookups and frames are decided by the server.** `POST /api/cctv/lookup/:id` answers only a same-origin POST whose `Host` is one the server serves (Fetch Metadata, and `Origin` must match that `Host`), is rate-limited to 30 requests a minute per client and 120 overall, and resolves only catalogue cameras marked for Road511 lookup with a well-formed feature id; anything else answers without an upstream call. An image URL Road511 returns is used only when it is http(s) on a public host. `/api/cctv/frame/:id` ignores client-supplied position, label and heading parameters, makes no upstream call for an unknown id, and uses the Street View fallback only when `CCTV_STREETVIEW_FALLBACK=1` and only for the open camera. `/api/cctv/sources` needs a point and returns at most the 1,000 cameras nearest to it, never the whole catalogue.
 - **Live HLS is bounded and origin-pinned.** Registered HTTP(S) HLS sources use a Node puller that rejects redirects and off-origin playlist references, bounds playlists and segment bodies while streaming, and aborts timed-out or released sessions. At most two sessions retain 12 segments/24 MiB each, plus bounded download buffers. Stores are memory-only and idle sessions expire after 15 seconds. RTMP/ffmpeg execution is not enabled. Locally configured source URLs remain an operator trust boundary.
 - **Radio is not an audio relay.** `/api/radio/stations` contacts only allowlisted Radio Browser HTTPS hosts and paths, rejects redirects, rejects any hostname with a loopback/private/link-local/metadata/non-public A or AAAA result, and pins each TLS connection to a validated address. It returns normalized public HTTPS stream URLs; `/api/radio/click/:uuid` applies the same destination policy and accepts only station IDs from the current bounded catalog. The browser then connects directly to the broadcaster after an explicit playback action, so the broadcaster sees the listener's IP address. GEV never proxies, caches, records, or redistributes audio.
@@ -76,11 +77,10 @@ The data proxies under `server/providers/` are written so the browser cannot tur
 - **Sanitized errors** — internal error details are not echoed back to clients.
 - **Coalesced OAuth refresh** and cached successful responses only (OpenSky).
 - **Redacted debug logging.** The voice debug log (`.gev-logs/`, gitignored) strips API keys, bearer tokens, client secrets, and image data URLs before writing.
-- **Cross-site gate on cost/log endpoints.** The cost-bearing (`/api/realtime/token`, `/api/openai/hud-summary`, `/api/google/nearby-places`, `/api/google/text-search`), quota-bearing (`/api/mapillary/*`, with a per-IP limit on tiles) and log (`/api/realtime/debug-log`) endpoints refuse cross-site browser requests: a foreign or opaque `Origin`, a `Sec-Fetch-Site` other than `same-origin`/`none` (this is what blocks an `<img>`/navigation that carries no `Origin`), or any reverse-proxy/CDN forwarding header returns `403`. Non-browser loopback tools (the repo QA harnesses POST the token endpoint with no `Origin`) and the explicit `HOST=0.0.0.0` LAN opt-in keep working — the gate deliberately does not require a loopback remote address; that stricter requirement belongs only to the credential panel (`admitKeySetupRequest`). The Host check (`allowedHosts`, applied by `hostCheckPlugin` ahead of every route, since Vite's own check runs only after plugin middleware) rejects a rebinding `Host` before any handler runs, in every mode, and the gate is defense in depth behind it: the LAN opt-in keeps that check and accepts only IP addresses, `localhost` and names listed in `GEV_ALLOWED_HOSTS`. **Limit:** a name you list there is trusted like the app's own address, so list only names you control.
+- **Cross-site gate on cost/log endpoints.** The cost-bearing (`/api/realtime/token`, `/api/openai/hud-summary`, `/api/google/nearby-places`, `/api/google/text-search`), quota-bearing (`/api/mapillary/*`, with per-IP limits on tiles and image searches) and log (`/api/realtime/debug-log`) endpoints refuse cross-site browser requests: a foreign or opaque `Origin`, a `Sec-Fetch-Site` other than `same-origin`/`none` (this is what blocks an `<img>`/navigation that carries no `Origin`), or any reverse-proxy/CDN forwarding header returns `403`. Non-browser loopback tools (the repo QA harnesses POST the token endpoint with no `Origin`) and the explicit `HOST=0.0.0.0` LAN opt-in keep working — the gate deliberately does not require a loopback remote address; that stricter requirement belongs only to the credential panel (`admitKeySetupRequest`). The Host check (`allowedHosts`, applied by `hostCheckPlugin` ahead of every route, since Vite's own check runs only after plugin middleware) rejects a rebinding `Host` before any handler runs, in every mode, and the gate is defense in depth behind it: the LAN opt-in keeps that check and accepts only IP addresses, `localhost` and names listed in `GEV_ALLOWED_HOSTS`. **Limit:** a name you list there is trusted like the app's own address, so list only names you control.
 - **Full Content-Security-Policy.** The dev and preview servers send a real CSP (`script-src 'self' 'unsafe-eval' blob:` plus the YouTube, Facebook and X scripts the Nepal event's embedded media loads and the Maps JavaScript API that Street View runs on, with a matching `frame-src` for their players and posts: no inline script and no other script origin; `blob:` covers the object URLs Cesium's bundled workers bootstrap through in the built app), alongside the existing `X-Frame-Options: DENY` and `frame-ancestors 'none'`. `'unsafe-eval'` stays because Knockout, bundled inside Cesium's widgets package, resolves the global object with `eval` at load time and the globe does not initialize without it; styles permit `'unsafe-inline'` and Google Fonts because Vite's dev client injects `<style>` elements.
 
 Allowing `maps.googleapis.com` in `script-src` also trusts its JSONP endpoints, which can bypass the script allowlist if an HTML-injection bug exists; this is an accepted limitation of loading the Maps JavaScript API, alongside the existing `'unsafe-eval'` allowance.
-- **Full Content-Security-Policy.** The dev and preview servers send a real CSP (`script-src 'self' 'unsafe-eval' blob:` plus the YouTube, Facebook and X scripts the Nepal event's embedded media loads, with a matching `frame-src` for their players and posts: no inline script and no other script origin; `blob:` covers the object URLs Cesium's bundled workers bootstrap through in the built app), alongside the existing `X-Frame-Options: DENY` and `frame-ancestors 'none'`. `'unsafe-eval'` stays because Knockout, bundled inside Cesium's widgets package, resolves the global object with `eval` at load time and the globe does not initialize without it; styles permit `'unsafe-inline'` and Google Fonts because Vite's dev client injects `<style>` elements.
 - **ChatGPT OAuth voice reuses the local Codex sign-in.** `/api/realtime/oauth-status`, `/api/realtime/oauth-login` and `/api/realtime/token?auth=oauth` answer only loopback connections or [the owner's Tailscale device](#your-own-phone-over-tailscale-mirror-of-pc-gevc-on-cell), behind the same cross-site gate as the token endpoint; the login route also refuses a foreign `Origin`, and from the owner's device it requires an exact one. `codex login` always runs on the PC, so its sign-in page opens in the PC's browser. None of them returns the access token. The login route runs `codex login` (or the executable named by `CODEX_BIN`) without a shell. On Windows the program is always a full path (`CODEX_BIN` must be one), so the working folder is never searched before PATH, and an npm `codex.cmd` shim is replaced by Node running the shim's own `codex.js`; the window is hidden. It runs with an allowlisted environment that leaves out GEV's provider keys, keeps one attempt pending at a time and cancels it after two minutes or when the server stops. **Limits:** any program on this machine that can reach the server can mint Realtime sessions on the signed-in ChatGPT account, as it can with the API key; a local reverse proxy that hides the client's address defeats the loopback check; and OpenAI has not documented this use of Codex credentials for Realtime, so it may stop working or fall outside the account's terms.
 
 ## Private home and business security cameras
@@ -256,6 +256,130 @@ the private cameras' rules:
 - **Local devices are reachable on purpose.** Drones, robots and boats live on
   your own network, so these addresses may be private ones. Only the machine
   running the server can set them.
+
+## Artificial Intelligence World Training Sim
+
+The tab's routes, `/api/ai-world/*` (`server/providers/aiWorld.js`,
+docs/AI-WORLD-TAB.md), start heavy local work and delete local data, so they
+follow the device feeds' rules:
+
+- **Who may ask.** Only the machine running the server (loopback socket and
+  a local `Host`) or the owner's Tailscale device, with an exact `Origin` and
+  a JSON body on writes and same-origin Fetch Metadata; proxied requests and
+  sharing modes are refused (the Provider Settings gate). Writes are limited
+  to 30 a minute per client and 60 overall; the status and catalog routes
+  answer before the limiter.
+- **Delete.** `GET /delete-preview` lists what would go, by group, with a
+  sha256 token over every listed path, size and modification time.
+  `DELETE /delete` lists again and refuses (409) unless the token matches,
+  deletes only those files, only inside `.gev-data/` (resolved paths;
+  links are removed as links, never followed), only while the job is
+  stopped, and never touches `.gev-cache`, `config/` or the repository. The
+  owner's phone is refused every removal with `X-GEV-Removal: pc-only` and
+  `{"removal":"pc-only"}` (owner ruling 2026-10-11), by the mirror and by the
+  route.
+- **Areas.** `POST /areas` adds a point (finite latitude and longitude, a
+  name of at most 80 characters, at most 32 areas) to
+  `.gev-data/ai-world/areas.json`; the feeds that record around places
+  (cameras, traffic, news, imagery, street level, the mapped static layers)
+  use only those points. `DELETE /areas` takes one off the list (recording
+  stops there; what was recorded stays) and is refused to the owner's phone
+  like every removal.
+- **Upstreams.** The recorder reads almost every feed through the app's own
+  `/api/` routes, so every proxy's fixed hosts, budgets and keys still
+  apply; camera stills go through `/api/cctv/frame/<id>` and its 511
+  host budget, never school, university, college or library cameras.
+  Street level reads Mapillary only through `/api/mapillary/tiles/coverage`
+  and `/api/mapillary/images` (at most 32 image searches an area a day) and
+  never fetches image pixels. Two layers have no app route and their sources fetch fixed hosts from the
+  server, as the browser does: RECENT SATELLITE IMAGERY (NASA CMR
+  `cmr.earthdata.nasa.gov` and Worldview snapshots `wvs.earthdata.nasa.gov`,
+  one catalog query and at most one image per area a day) and PLATE-READER
+  CAMERAS (the OpenStreetMap extract at `tiles.dontgetflocked.com`, once a
+  day per area). Both are asked only for the selected areas' boxes, never a
+  URL a request names. YOUR DEVICES reads the owner's own recordings under
+  `config/device-recordings/` without writing there. POPULATION
+  DEMOGRAPHICS fetches the World Bank API the rail volumes already use. The
+  child processes are the repository's own `ml/` modules, started with a
+  fixed argument list (no shell); `GEV_PYTHON` only chooses the interpreter.
+  OWID, OxCGRT, the USGS catalogue, the FIRMS archive, the GFS archive,
+  HURDAT2 and past VIIRS images are fetched only by the command-line tools,
+  never by the server. `world-tape:backfill` asks only fixed hosts:
+  `earthquake.usgs.gov`, `firms.modaps.eosdis.nasa.gov`,
+  `noaa-gfs-bdp-pds.s3.amazonaws.com` (the `.idx` inventories and byte ranges
+  of the object keys the Wind proxy builds; one cycle at a time, at most four
+  ranges in flight, 60 s per request, bodies capped as the proxy caps them),
+  `www.nhc.noaa.gov` (the `/data/hurdat/` listing, then only file names a
+  strict pattern accepts, resolved in that folder; 1 MB and 32 MB caps) and
+  `wvs.earthdata.nasa.gov` (through the Recent Imagery source, for the AI
+  World areas' boxes or `--area` points only). Its GFS, HURDAT2 and Worldview
+  requests refuse redirects. It writes only under its `--tape` directory
+  (default `.gev-data/tape/`) and reads `.gev-data/ai-world/areas.json`.
+- **Typed addresses.** A news URL (the NEWS EVENTS list) is fetched only
+  if it is public https: no userinfo, the host checked as written and again
+  after DNS (every address it resolves to must be public), and redirects
+  followed by hand, at most three, each new address checked the same way
+  (`server/shared/publicFetch.mjs`). Fetch's own redirect-following would
+  let a public page send the request into the owner's network.
+- **Market quotes.** Yahoo Finance's chart and spark endpoints
+  (`query1.finance.yahoo.com`, fixed symbols from `src/marketAssets.mjs`, 20
+  a request), Twelve Data (`api.twelvedata.com`; its key rides in the
+  `Authorization` header, never the address) and OilPriceAPI
+  (`api.oilpriceapi.com`, key in the `Authorization` header). Not advice.
+- **POST-TRAIN.** `POST /posttrain` names an adapter as `module:Class` and
+  an existing model's checkpoint. The adapter must be a file in the
+  repository's `ml/adapters/` or `.gev-data/ai-world/adapters/` (the
+  pattern `^[a-z_][a-z0-9_]*:[A-Za-z_][A-Za-z0-9_]*$`; nothing else is
+  imported), the checkpoint a path that resolves inside `.gev-data/`; both are
+  checked on the server before anything runs, and `ml.gevtape.posttrain`
+  loads the adapter from those folders only. Writing an adapter file is
+  writing code that runs on this PC: only the owner puts one there.
+- **At rest.** Everything recorded lives in the gitignored `.gev-data/`,
+  each record tagged with its licence class; the job state in
+  `.gev-data/ai-world/state.json` holds no credential. The dev server never
+  serves `.gev-data/` as static files (`fs.deny` in `build/vite.js`; dev-mode
+  sirv does not skip dotfiles, so before this a GET of
+  `/.gev-data/<path>` returned the file) and never watches it; only the
+  `/api/ai-world` routes read it.
+
+## Custom LLM training
+
+The POWER UP section's routes, `/api/llm-training/*`
+(`server/providers/llmTraining.js`, `server/shared/llmTraining.mjs`), start
+heavy local work and read the owner's files, so they follow the same rules as
+the AI World tab's:
+
+- **Who may ask.** This machine's own page (loopback socket, local `Host`)
+  or the owner's Tailscale device, exact `Origin`, JSON bodies on writes,
+  same-origin Fetch Metadata; writes limited to 30 a minute per client, 60
+  overall. The owner's phone may add URLs and local sources and start, pause
+  and stop a run; every DELETE (a URL or a local source off the list) is
+  refused to it with `X-GEV-Removal: pc-only`, as every removal is.
+- **Custom URLs.** At most 100, public https only (`cleanNewsUrl`), fetched
+  only when INITIALIZE TRAINING runs, through `server/shared/publicFetch.mjs`
+  (DNS checked, redirects followed by hand and checked again, 15 s, text
+  types only, at most 2 MB of text each). Their text is kept under
+  `.gev-data/llm/sources/urls/`; a URL taken off the list takes its text
+  with it.
+- **Local sources.** At most 50 absolute paths to files or folders that
+  exist. The app's own keys and output are refused: the repository's
+  `config/`, `.gev-cache/`, any `.env…`, `.gev-data/llm/`, and any folder
+  that holds them (the repository itself). The dataset builder reads only
+  text-like files (text, Markdown, CSV, JSON lines, HTML, code; at most 2 MB a
+  file, 200 MB and 20,000 files in all), skips hidden folders and files
+  (`.git`, `.ssh`, `.env`), and copies their text into the training set under
+  `.gev-data/llm/<name>/data/`, which stays on this machine.
+- **Models.** The base model is loaded with `local_files_only`: nothing is
+  downloaded. It is found in `.gev-data/llm/base/<name>` (the default
+  Qwen3.5-0.8B and the large option Qwen3.6-35B-A3B are downloaded there once
+  by the owner), the Hugging Face cache, or a folder the owner names; only native transformers model classes
+  load it, never code from the model folder (`trust_remote_code` is off). The trained adapters (`adapter.safetensors`, `adapter.json`)
+  stay under `.gev-data/llm/<name>/model/`. The child processes are the
+  repository's own `ml.gevtape.llm_data` and `ml.gevtape.llm_train`, started
+  with a fixed argument list (no shell).
+- **What a model can repeat.** A model trained on a file can say what was in
+  it. Local sources are the owner's choice; the refusals above keep this
+  app's own keys out, not every secret a chosen folder may hold.
 
 ## Network exposure — the operator threat model
 

@@ -1018,3 +1018,58 @@ body.scene-playback-mode #key-setup {
   inset: auto;
   align-self: center;
 }
+
+/* CUSTOM LLM TRAINING (src/llmTrainingSetup.js): the source ticks in tidy
+   columns, the URL and local-source rows wide enough to read, the number box
+   small. */
+.llm-training .llm-training-sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.3rem 0.9rem;
+}
+
+.llm-training .device-feeds-option {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.llm-training .device-feeds-option input {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  accent-color: #36dcff;
+}
+
+.llm-training .llm-training-list,
+.llm-training .llm-training-models {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.llm-training .llm-training-list .private-cams-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.llm-training
+  .private-cams-actions
+  > input:not([type='checkbox']):not([type='number']) {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.llm-training .private-cams-actions > input[type='number'] {
+  width: 4.5rem;
+}
+
+/* A disabled big button reads as disabled (INITIALIZE TRAINING while a run
+   goes, SAVE SETTINGS while it may not change). */
+.llm-training .key-setup-apply:disabled {
+  cursor: default;
+  opacity: 0.45;
+}

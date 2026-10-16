@@ -1677,6 +1677,7 @@ test('DOWNLOAD RESULTS and DOWNLOAD CSV save the result through a link, and say 
     assert.equal(json.request.seed, 12);
     assert.equal(json.request.runs, 200);
     assert.equal(json.request.flightCount, 0);
+    assert.deepEqual(json.request.flights, [], 'the scan’s flights travel too');
     assert.deepEqual(json.request.outbreakAirports, ['UIII']);
     assert.equal(json.result.places[0].id, 'UUEE');
     page.nodes.get('outbreak-epi-csv').click();

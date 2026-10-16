@@ -207,6 +207,7 @@
     .ultra-panel-inner,
     .social-panel-inner,
     .outbreak-panel-inner,
+    .ai-world-panel-inner,
     #pp-toggles:not(.collapsed),
     #pp-toggles.collapsed > .pp-header-row
   ) {
@@ -232,7 +233,8 @@
     .ask-panel-inner,
     .ultra-panel-inner,
     .social-panel-inner,
-    .outbreak-panel-inner
+    .outbreak-panel-inner,
+    .ai-world-panel-inner
   )
   > .panel-header {
   min-height: 28px;
@@ -319,7 +321,8 @@
     .ask-panel-inner,
     .ultra-panel-inner,
     .social-panel-inner,
-    .outbreak-panel-inner
+    .outbreak-panel-inner,
+    .ai-world-panel-inner
   )
   > .panel-header
   .panel-title {
@@ -340,7 +343,8 @@
     .ask-panel-inner,
     .ultra-panel-inner,
     .social-panel-inner,
-    .outbreak-panel-inner
+    .outbreak-panel-inner,
+    .ai-world-panel-inner
   )
   > .panel-header
   .panel-title::before {
@@ -369,7 +373,8 @@
     .ask-panel-inner,
     .ultra-panel-inner,
     .social-panel-inner,
-    .outbreak-panel-inner
+    .outbreak-panel-inner,
+    .ai-world-panel-inner
   )
   > .panel-header
   .panel-divider {
@@ -435,7 +440,8 @@
     #cctv-panel,
     #ultra-panel,
     #social-panel,
-    #outbreak-panel
+    #outbreak-panel,
+    #ai-world-panel
   ):not(.collapsed) {
   left: 10px;
   width: calc(100% - 10px);
@@ -1719,7 +1725,8 @@
       #ask-panel,
       #ultra-panel,
       #social-panel,
-      #outbreak-panel
+      #outbreak-panel,
+      #ai-world-panel
     ) {
     --panel-expanded-width: var(--cyber-panel-width);
     width: var(--panel-expanded-width);
@@ -1733,7 +1740,8 @@
       #ask-panel,
       #ultra-panel,
       #social-panel,
-      #outbreak-panel
+      #outbreak-panel,
+      #ai-world-panel
     ).collapsed {
     width: var(--cyber-panel-collapsed-width);
   }
@@ -1746,7 +1754,8 @@
       #ask-panel,
       #ultra-panel,
       #social-panel,
-      #outbreak-panel
+      #outbreak-panel,
+      #ai-world-panel
     ).collapsed
     :is(
       .data-panel-inner,
@@ -1754,7 +1763,8 @@
       .ask-panel-inner,
       .ultra-panel-inner,
       .social-panel-inner,
-      .outbreak-panel-inner
+      .outbreak-panel-inner,
+      .ai-world-panel-inner
     ) {
     box-sizing: border-box;
     height: 50px;
@@ -2924,14 +2934,16 @@
     #ultra-panel,
     #sst-panel,
     #social-panel,
-    #outbreak-panel
+    #outbreak-panel,
+    #ai-world-panel
   ).collapsed
   > :is(
     .ask-panel-inner,
     .ultra-panel-inner,
     .sst-panel-inner,
     .social-panel-inner,
-    .outbreak-panel-inner
+    .outbreak-panel-inner,
+    .ai-world-panel-inner
   )
   > .panel-header
   .panel-title {
@@ -2945,14 +2957,16 @@
     #ultra-panel,
     #sst-panel,
     #social-panel,
-    #outbreak-panel
+    #outbreak-panel,
+    #ai-world-panel
   ).collapsed
   > :is(
     .ask-panel-inner,
     .ultra-panel-inner,
     .sst-panel-inner,
     .social-panel-inner,
-    .outbreak-panel-inner
+    .outbreak-panel-inner,
+    .ai-world-panel-inner
   )
   > .panel-header
   .panel-title::before {

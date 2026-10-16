@@ -80,6 +80,14 @@ export function createFlightSource({
         'Flights',
       );
       if (!response.ok) throw openSkyError(response);
+      // The OpenSky auth mode the proxy used (anon, basic, oauth, …), for
+      // callers that pace themselves by the account's credits.
+      const authModeUsed = String(
+        header(response, 'x-opensky-auth-mode-used') || '',
+      )
+        .trim()
+        .toLowerCase()
+        .slice(0, 40);
       return {
         ...openSkySnapshot(payload, {
           // A fallback provider names itself in X-Flight-Source.
@@ -92,6 +100,7 @@ export function createFlightSource({
           now: now(),
         }),
         status: response.status,
+        ...(authModeUsed ? { authModeUsed } : {}),
       };
     },
     async getTrack(reference, { signal } = {}) {

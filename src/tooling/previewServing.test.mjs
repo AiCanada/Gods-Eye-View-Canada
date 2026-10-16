@@ -121,6 +121,7 @@ test('real dev and built-preview servers serve provider JSON and terminate unkno
         // the check that the real servers register them.
         ['/api/mapillary/status', 200],
         ['/api/mapillary/tiles/coverage/14/1/2', 503],
+        ['/api/mapillary/images?bbox=-97.75,30.25,-97.7,30.3', 503],
         ['/api/radio/unknown', 404],
         ['/api/setup/status', isPreview ? 404 : 200],
         ['/api/setup/update', 404],
@@ -143,7 +144,7 @@ test('real dev and built-preview servers serve provider JSON and terminate unkno
           assert.equal(body.sources[0].id, 'fixture');
         if (route === '/api/mapillary/status')
           assert.deepEqual(body, { configured: false }, route);
-        if (route.startsWith('/api/mapillary/tiles'))
+        if (/^\/api\/mapillary\/(tiles|images)/.test(route))
           assert.deepEqual(body, { error: 'no_key', keyRequired: true }, route);
         if (
           route === '/api/does-not-exist' ||

@@ -7,6 +7,7 @@ import {
   llmAskTimeoutMs,
   llmAnswerTokens,
   llmMaxTokens,
+  llmModelSampling,
   llmProviderRoster,
   parseLlmAskRequest,
   resolveLlmProvider,
@@ -119,6 +120,44 @@ test('the upstream call is the shared chat-completions dialect, reasoning effort
   const xai = parseLlmAskRequest(JSON.stringify({ provider: 'xai', question: 'q' }), KEYED);
   const xaiCall = buildLlmAskCall(xai.provider, xai.settings, 'q', {}, KEYED);
   assert.equal('reasoning_effort' in xaiCall.payload, false, 'other providers reject the field');
+});
+
+test("OpenRouter's default is Nemotron 3.5 Super VL, asked the way NVIDIA's sample call asks it", () => {
+  const env = { OPENROUTER_API_KEY: 'or-1', NVIDIA_API_KEY: 'nv-1' };
+  const openrouter = parseLlmAskRequest(JSON.stringify({ provider: 'openrouter', question: 'q' }), env);
+  assert.equal(openrouter.settings.model, 'nvidia/nemotron-3.5-super-vl:free');
+  const call = buildLlmAskCall(openrouter.provider, openrouter.settings, 'q', {}, env, openrouter.answerTokens);
+  assert.equal(call.url, 'https://openrouter.ai/api/v1/chat/completions');
+  assert.equal(call.headers.Authorization, 'Bearer or-1');
+  assert.equal(call.payload.model, 'nvidia/nemotron-3.5-super-vl:free');
+  assert.equal(call.payload.temperature, 1);
+  assert.equal(call.payload.top_p, 0.95);
+  assert.equal(call.payload.seed, 42);
+  assert.equal(call.payload.max_tokens, 16384, 'room for the thinking and the answer');
+  assert.deepEqual(call.payload.reasoning, { enabled: true }, "OpenRouter's own thinking switch");
+  assert.equal('chat_template_kwargs' in call.payload, false);
+  assert.equal('reasoning_effort' in call.payload, false);
+  assert.equal(call.payload.stream, false, 'the panel shows the finished answer');
+  assert.equal(buildLlmAskCall(openrouter.provider, openrouter.settings, 'q', {}, { ...env, LLM_MAX_TOKENS: '20000' }).payload.max_tokens, 20000, 'a larger budget stands');
+
+  const paid = buildLlmAskCall(openrouter.provider, { ...openrouter.settings, model: 'nvidia/nemotron-3.5-super-vl' }, 'q', {}, env);
+  assert.equal(paid.payload.seed, 42, 'the paid id is the same model');
+  const other = buildLlmAskCall(openrouter.provider, { ...openrouter.settings, model: 'openai/gpt-5.2' }, 'q', {}, env);
+  assert.equal(other.payload.temperature, 0.3, 'another model keeps the usual settings');
+  assert.equal(other.payload.max_tokens, 2048);
+  for (const field of ['top_p', 'seed', 'reasoning']) assert.equal(field in other.payload, false, field);
+
+  // The same model on NVIDIA NIM, as in the sample call itself.
+  const nim = parseLlmAskRequest(JSON.stringify({ provider: 'nvidia', question: 'q' }), { ...env, NVIDIA_MODEL: 'nvidia/nemotron-3.5-super-vl-120b-a12b' });
+  const nimCall = buildLlmAskCall(nim.provider, nim.settings, 'q', {}, env);
+  assert.equal(nimCall.url, 'https://integrate.api.nvidia.com/v1/chat/completions');
+  assert.deepEqual(nimCall.payload.chat_template_kwargs, { enable_thinking: true });
+  assert.equal('reasoning_effort' in nimCall.payload, false, 'the template switches its thinking on instead');
+  assert.equal('reasoning' in nimCall.payload, false);
+  assert.equal(nimCall.payload.top_p, 0.95);
+
+  assert.equal(llmModelSampling('nvidia/nemotron-3-ultra-550b-a55b:free'), null);
+  assert.equal(llmModelSampling('xnvidia/nemotron-3.5-super-vl'), null, 'the whole id must match');
 });
 
 test('upstream failures are reported as 502 with the message, never relayed verbatim', () => {

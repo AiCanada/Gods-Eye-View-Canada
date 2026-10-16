@@ -1,0 +1,26 @@
+{
+  "node": "v24.19.0",
+  "v8": "13.6.233.17-node.51",
+  "hashes": {
+    "world-default": "ec6b5b837220e51ee4f03c29bbab6c97960f4bc9560299bf906e3c149dbffd03",
+    "world-ban": "1ca5c9befa6b036e6d3aea0a13c7089e66d94fa4e1aab68fb455634ba44b4416",
+    "one-place-long": "fc57a0902552e55d591dc4f0b5037d696f5764a376c0ca75a6e1f5493328a09e",
+    "borders-origin": "b2f4e678feeba86337c0f428c4dd5cdad919144b698d5e18284a27cec6fadd61",
+    "borders-reported": "ada4d981fcc5cc5cbd9bce930fb941a24f990fe76eefee09b14d87edba6191bd",
+    "borders-all": "79e14edc7b0e49c3bd58afe12209cec4e14ca21259701b022e87c9f9842ef19b",
+    "per-place-reported": "e217b1ceb235d9704c92c355a38778ac2f88b0c619d0635632e9b55e27af4c44",
+    "per-place-hospital": "f89c03508acda31ca7477f867f9bbfa1093003fa1edfa93726959714efc06f13",
+    "window-hour-37": "6bb3088fb707a254fe6c030cf76750c10e7030fe6dd93fcadc922d4e951400ad",
+    "two-strain": "c7c982965fe975d52ab4a4e133ef47c479adfbcff654ba479cc57db209f26897",
+    "compare": "739bc1fce5ecd5d3f60a165dcbac089b90be9a54b7591cbd0fdc3d23f898d1ff",
+    "legacy-no-hospital": "d66acee3e531a270733274a8113af5ef437d54c284964fb442a96df89e1dcf6c",
+    "waning-campaign": "fba69b913272573860c7307945769c23441597e0ed99822b2a9df05d98f015af",
+    "testing-awareness": "a2d2a44e7be9ae71d89223243f26efc15359413769b57924776dc6a53484e9bf",
+    "deadline-cut": "d8b9977e8a9f95c2e53ab6fb4ef165856fc6b9dfc1d3098ead96531953190e01",
+    "transfers": "b7f692df77f549c1c65310891ebeb8f43c28c547924133f65bcd6a542cd94b17",
+    "daytime-mixing": "94cde249f1966d97156b27b30c3b55145d488dc84d3c2326fa5b314301b3004b",
+    "rail-long": "fb8a3848d8642bc2393d73bb8a44d6b6ea76a2fda503c118fb6fa6da4082cc5c",
+    "rail-short": "4a2514f8a81983c7784ea0e89eca07dd5a2fcaff9e758bbbff3ec1231d99f5c7",
+    "offhour-air": "6ab9a6d02889ed437d4d1aa2f13e18bcf03531cfe6f0e5b766fa23a59771d616"
+  }
+}

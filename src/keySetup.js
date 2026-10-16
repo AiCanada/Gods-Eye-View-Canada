@@ -2,6 +2,7 @@ import { createSurfaceKeyboard } from './ui/surfaceKeyboard.js';
 import { initPrivateCameraSetup } from './privateCamerasSetup.js';
 import { initDeviceFeedSetup } from './deviceFeedsSetup.js';
 import { initRoadCctvKeysSetup } from './roadCctvKeysSetup.js';
+import { initLlmTrainingSetup } from './llmTrainingSetup.js';
 import {
   isOwnerRemovalRefusal,
   noteOwnerRemovalRefusal,
@@ -397,6 +398,14 @@ export async function initKeySetup({
       : null;
   if (deviceHost) deviceHost.className = 'private-cams device-feeds';
   let deviceSetup = null;
+  // CUSTOM LLM TRAINING: a model trained on what the app records and on the
+  // owner's URLs and files, after the devices (src/llmTrainingSetup.js).
+  const llmHost =
+    rowsHost && documentRef.createElement
+      ? documentRef.createElement('div')
+      : null;
+  if (llmHost) llmHost.className = 'private-cams llm-training';
+  let llmSetup = null;
   // GENERIC ROAD CCTV API KEYS: any number, shown right under the ROAD511 key
   // and kept across re-renders the same way (src/roadCctvKeysSetup.js).
   const roadHost =
@@ -449,6 +458,7 @@ export async function initKeySetup({
     }
     if (privateHost) rowsHost.append(privateHost);
     if (deviceHost) rowsHost.append(deviceHost);
+    if (llmHost) rowsHost.append(llmHost);
     syncCloudVoiceAuth();
   };
 
@@ -728,6 +738,13 @@ export async function initKeySetup({
       fetchImpl: doFetch,
       onSections: onSections('road-cctv-keys'),
     });
+  if (llmHost)
+    llmSetup = initLlmTrainingSetup({
+      host: llmHost,
+      documentRef,
+      fetchImpl: doFetch,
+      signal: lifetime.signal,
+    });
   if (deviceHost)
     deviceSetup = initDeviceFeedSetup({
       host: deviceHost,
@@ -757,6 +774,7 @@ export async function initKeySetup({
     applyButton?.removeEventListener('click', onApply);
     privateSetup?.destroy();
     deviceSetup?.destroy();
+    llmSetup?.destroy();
   };
   return { open: openDialog, close, render, destroy };
 }

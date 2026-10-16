@@ -146,6 +146,66 @@ export function mulberry32(seed) {
   };
 }
 
+/**
+ * xoshiro128** (Blackman & Vigna), the generator datasets use (world-model
+ * work, owner request 2026-10-13): 2^128 − 1 period from four 32-bit words,
+ * so runs and scenarios seeded apart never share a stretch of stream, which
+ * one 2^32 cycle (mulberry32) cannot promise at dataset scale. Same shape as
+ * mulberry32: each call is one uniform in [0, 1).
+ */
+export function xoshiro128ss(a, b, c, d) {
+  let s0 = a | 0;
+  let s1 = b | 0;
+  let s2 = c | 0;
+  let s3 = d | 0;
+  if ((s0 | s1 | s2 | s3) === 0) s0 = 1; // the all-zero state is a fixed point
+  return () => {
+    const m = Math.imul(s1, 5);
+    const result = Math.imul((m << 7) | (m >>> 25), 9) >>> 0;
+    const t = s1 << 9;
+    s2 ^= s0;
+    s3 ^= s1;
+    s1 ^= s2;
+    s0 ^= s3;
+    s2 ^= t;
+    s3 = (s3 << 11) | (s3 >>> 21);
+    return result / 4294967296;
+  };
+}
+
+const MASK64 = (1n << 64n) - 1n;
+
+/** One SplitMix64 step: [the next state, its output] (BigInt, 64-bit). */
+export function splitmix64(state) {
+  const next = (BigInt.asUintN(64, state) + 0x9e3779b97f4a7c15n) & MASK64;
+  let z = next;
+  z = ((z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n) & MASK64;
+  z = ((z ^ (z >> 27n)) * 0x94d049bb133111ebn) & MASK64;
+  return [next, z ^ (z >> 31n)];
+}
+
+/**
+ * The four xoshiro words for run `run` of a stream keyed by two 32-bit words
+ * (a dataset seed and a scenario, mixed by the caller). The arm of a paired
+ * comparison is not in the key, so both arms draw the same stream.
+ */
+export function streamWords(key, run) {
+  const hi = BigInt((Number(key?.[0]) || 0) >>> 0);
+  const lo = BigInt((Number(key?.[1]) || 0) >>> 0);
+  let state =
+    ((hi << 32n) | lo) ^ ((BigInt(run >>> 0) * 0xd1b54a32d192ed03n) & MASK64);
+  let z1;
+  let z2;
+  [state, z1] = splitmix64(state);
+  [state, z2] = splitmix64(state);
+  return [
+    Number(z1 & 0xffffffffn),
+    Number(z1 >> 32n),
+    Number(z2 & 0xffffffffn),
+    Number(z2 >> 32n),
+  ];
+}
+
 /** A 32-bit seed from any text (FNV-1a). */
 export function seedFromText(text) {
   let h = 2166136261;
@@ -2364,6 +2424,36 @@ function quantile(sorted, p) {
 }
 
 /**
+ * Immunity lost over `hours` by a place nobody stepped, as its expected value
+ * (no draw). The engine's catch-up and a tape's snapshot share it, so the two
+ * cannot drift apart.
+ */
+export function wanedBack(recovered, omega, hours) {
+  return Math.round(recovered * (1 - Math.exp(-omega * hours * DT)));
+}
+
+/** The campaign's protected target at a place by `day` (a whole count). */
+export function vaccineTargetCount(
+  population,
+  origin,
+  day,
+  vaccine,
+  efficacy,
+  protectDays,
+) {
+  const start =
+    vaccine.startDay +
+    (vaccine.priority === 'origin-first' && !origin
+      ? ORIGIN_FIRST_DELAY_DAYS
+      : 0);
+  const coverage = Math.min(
+    vaccine.coverageMax,
+    (vaccine.perDay / 1000) * Math.max(0, day - protectDays - start),
+  );
+  return Math.round(population * efficacy * coverage);
+}
+
+/**
  * Run the ensemble.
  *
  * @param {object} input
@@ -2388,6 +2478,15 @@ function quantile(sorted, p) {
  *   ABORT_CHECK_HOURS simulated hours). Run 0 is kept, cut short; a later
  *   run is dropped, so the result is that of the runs done. Unset (the
  *   default), the clock is never read inside a run.
+ * @param {object} [input.tape] World-model taps (src/outbreakEpiTape.mjs):
+ *   `begin(info)` once, `step(run, day, view)` before hour 0 and at the end
+ *   of every day (it may return the next day's control: `{ window, switches,
+ *   flags }`), `flow(kind, mode, from, to, people)` on infected travel, and
+ *   `runEnd(run, view)`. Read-only: no draw, no change to the run, so with
+ *   no control the result is the same as without it.
+ * @param {{kind: 'xoshiro128', key: number[]}} [input.stream] Datasets:
+ *   draw from xoshiro128** keyed by two 32-bit words instead of mulberry32
+ *   on `seed`.
  */
 function simulateEnsemble(
   {
@@ -2406,6 +2505,9 @@ function simulateEnsemble(
     links = gravityLinks(nodes),
     trace = false,
     deadlineMs = Infinity,
+    tape = null,
+    stream = null,
+    drivers = null,
   },
   { pairs = false, light = false } = {},
 ) {
@@ -2527,12 +2629,70 @@ function simulateEnsemble(
           ? 0
           : seasonalFactor(nodes[i].lat, at, params.seasonAmplitude);
     }
+  // Recorded conditions (world-model work, owner request 2026-10-13): a
+  // driver may set each place's seasonal factor per day (from the weather
+  // the world tape recorded; it gets the formula's value) and scale the
+  // travel out of a place per day and mode ('air' or 'rail'). Unset, the
+  // model is as ever.
+  if (typeof drivers?.season === 'function')
+    for (let i = 0; i < n; i += 1)
+      for (let d = 0; d < days; d += 1) {
+        const value = drivers.season(i, d, season[i * days + d]);
+        if (Number.isFinite(value) && value >= 0) season[i * days + d] = value;
+      }
+  const travelDriver =
+    typeof drivers?.travel === 'function' ? drivers.travel : null;
+  // A driver may also scale each place's commuting per day (from the transit
+  // service the world tape recorded): a factor on its residents' commuting
+  // shares, kept so they never take more than 95 % of the place out. In
+  // force, each day's factors set the out-commuting shares (outNow) and,
+  // under two-way mixing, the daytime populations (NtildeDay); unset, every
+  // factor is 1, outNow is outShare and NtildeDay is Ntilde, and the
+  // arithmetic is unchanged (x × 1 is x).
+  const commuteTable =
+    typeof drivers?.commute === 'function'
+      ? new Float64Array(n * days).fill(1)
+      : null;
+  if (commuteTable)
+    for (let i = 0; i < n; i += 1)
+      for (let d = 0; d < days; d += 1) {
+        const value = drivers.commute(i, d);
+        if (Number.isFinite(value) && value >= 0)
+          commuteTable[i * days + d] =
+            outShare[i] > 0 ? Math.min(value, 0.95 / outShare[i]) : value;
+      }
+  const cfNow = new Float64Array(n).fill(1);
+  const outNow = commuteTable ? new Float64Array(n) : outShare;
+  const dayNtilde = commuteTable && daytime ? new Float64Array(n) : null;
+  let NtildeDay = Ntilde;
+  const commuteDay = (day) => {
+    let changed = false;
+    for (let i = 0; i < n; i += 1) {
+      const c = commuteTable[i * days + day];
+      cfNow[i] = c;
+      outNow[i] = outShare[i] * c;
+      if (c !== 1) changed = true;
+    }
+    if (!dayNtilde) return;
+    if (!changed) {
+      NtildeDay = Ntilde;
+      return;
+    }
+    for (let i = 0; i < n; i += 1) dayNtilde[i] = (1 - outNow[i]) * N[i];
+    for (let i = 0; i < n; i += 1)
+      for (const link of links[i] || [])
+        dayNtilde[link.j] += link.share * cfNow[i] * N[i];
+    NtildeDay = dayNtilde;
+  };
   // Dated flights by departure hour; daily routes by hour of the day.
+  // An hour's landings are handled before its departures board, so a leg
+  // lands the next hour at the earliest (a batch filed under its own hour
+  // or an earlier one was never read: its travellers stayed in transit).
   const byHour = Array.from({ length: hours }, () => []);
   for (const f of flights) {
     const h = Math.floor((f.departMs - startMs) / HOUR_MS);
     if (h < 0 || h >= hours || !valid(f.from) || !valid(f.to)) continue;
-    const landH = Math.max(h, Math.floor((f.arriveMs - startMs) / HOUR_MS));
+    const landH = Math.max(h + 1, Math.floor((f.arriveMs - startMs) / HOUR_MS));
     byHour[h].push({ from: f.from, to: f.to, passengers: f.passengers, landH });
   }
   // Under the local clock a pattern route's hour of day is local to its
@@ -2900,6 +3060,25 @@ function simulateEnsemble(
   let globalSignal = 0;
   // The places this run has reached, in order.
   const reachedList = [];
+  // World-model taps (owner request 2026-10-13). With a tape the engine
+  // reports each day and every infected leg, and may take a control for the
+  // next day: the intervention window by hour (a 24-bit mask), per-place
+  // switches (node → 0/1; listed places change, the others stay, and the
+  // trigger rule is off) and countries flagged (ISO codes, 'reported'
+  // policy). Only those three decisions are replaced, where they are made
+  // today, so replaying a run's own decisions gives the same run.
+  const tap = tape || null;
+  if (tap && Number.isFinite(deadlineMs))
+    throw new Error('A tape cannot run under a deadline.');
+  let ctlSwitches = null; // the day's switch control, at the tick
+  let dayMask = 0; // the window hours of the day being run (tape only)
+  const tickedDay = tap ? new Int32Array(n).fill(-1) : null;
+  // Each run's generator: mulberry32 on the seed, or a keyed xoshiro stream.
+  const keyed = stream?.kind === 'xoshiro128';
+  const streamFor = (run) =>
+    keyed
+      ? xoshiro128ss(...streamWords(stream.key, run))
+      : mulberry32((seed + Math.imul(run, RUN_STRIDE)) >>> 0);
 
   // Infectiousness of newly infectious people: gamma(k) each, so the sum of
   // m of them is gamma(m·k, 1/k); k = Infinity is exactly m.
@@ -2920,9 +3099,7 @@ function simulateEnsemble(
   const waneCatchUp = (i) => {
     if (lastWane[i] >= hourNow) return;
     if (R[i] > 0) {
-      const back = Math.round(
-        R[i] * (1 - Math.exp(-omega * (hourNow - lastWane[i]) * DT)),
-      );
+      const back = wanedBack(R[i], omega, hourNow - lastWane[i]);
       if (live2) Rx[i] -= Math.round((back * Rx[i]) / R[i]);
       R[i] -= back;
       S[i] += back;
@@ -2945,16 +3122,26 @@ function simulateEnsemble(
   };
   // The campaign: the protected target by this day, by place, and the move
   // S → R up to it (a target count, so the path there does not matter).
-  const vaccineTarget = (i, day) => {
+  const vaccineTarget = (i, day) =>
+    vacControlled
+      ? controlledVaccineTarget(i, day)
+      : vaccineTargetCount(N[i], isOrigin[i], day, vac, vacEff, vacProtect);
+  // The doses given from the place's own start (its share of a part day
+  // first) up to vacProtect days ago, capped by the campaign's coverage.
+  const controlledVaccineTarget = (i, day) => {
     const start =
       vac.startDay +
       (vac.priority === 'origin-first' && !isOrigin[i]
         ? ORIGIN_FIRST_DELAY_DAYS
         : 0);
-    const coverage = Math.min(
-      vac.coverageMax,
-      (vac.perDay / 1000) * Math.max(0, day - vacProtect - start),
-    );
+    const upto = Math.min(days + 1, day - vacProtect);
+    const first = Math.floor(start);
+    let given = 0;
+    if (upto > first && first >= 0 && first <= days)
+      given =
+        doses[first] * (1 - (start - first)) +
+        (doseSum[upto] - doseSum[Math.min(upto, first + 1)]);
+    const coverage = Math.min(vac.coverageMax, given);
     return Math.round(N[i] * vacEff * coverage);
   };
   const vaccinate = (i, day) => {
@@ -3001,9 +3188,59 @@ function simulateEnsemble(
   // Contacts left under the lockdown here: everywhere inside the window, or
   // where the place's own restriction is on, both fading with compliance.
   let lockdownAll = 1;
+  // The day's magnitudes (world-model control, owner request 2026-10-13): a
+  // day's control may set the lockdown level, the travel-ban share, the tests
+  // a day per 1,000 and the campaign's doses a day per 1,000. What it leaves
+  // unset is the scenario's own setting, so a run with no such control reads
+  // exactly the values it always did.
+  let lockNow = iv.lockdown;
+  let banNow = iv.travelBan;
+  let capNow = capacity;
+  let restrictsNow = restrictsAnyone;
+  const capacityCache = new Map();
+  const capacityFor = (per1000) => {
+    if (!(per1000 > 0)) return null;
+    if (per1000 === testsPer1000Day) return capacity;
+    if (!capacityCache.has(per1000)) {
+      const cap = new Float64Array(n);
+      for (let i = 0; i < n; i += 1)
+        cap[i] = Math.max(1, Math.round((N[i] * per1000) / 1000));
+      capacityCache.set(per1000, cap);
+    }
+    return capacityCache.get(per1000);
+  };
+  // The campaign's doses given each day this run (a share of people) and
+  // their running sum. Until a control sets a day's rate the closed form
+  // (vaccineTargetCount) stands; from then on the target is what the doses
+  // actually given add up to (the same for a steady rate).
+  let vacControlled = false;
+  const doses = vac ? new Float64Array(days + 1) : null;
+  const doseSum = vac ? new Float64Array(days + 2) : null;
+  const clamp01 = (x) => Math.min(1, Math.max(0, x));
+  const applyControl = (control, d) => {
+    lockNow = Number.isFinite(control?.lockdown)
+      ? clamp01(control.lockdown)
+      : iv.lockdown;
+    banNow = Number.isFinite(control?.travelBan)
+      ? clamp01(control.travelBan)
+      : iv.travelBan;
+    restrictsNow = lockNow > 0 || banNow > 0;
+    capNow =
+      Number.isFinite(control?.testsPer1000Day) && control.testsPer1000Day >= 0
+        ? capacityFor(control.testsPer1000Day)
+        : capacity;
+    if (vac && d <= days) {
+      const set =
+        Number.isFinite(control?.vaccinePer1000Day) &&
+        control.vaccinePer1000Day >= 0;
+      if (set) vacControlled = true;
+      doses[d] = (set ? control.vaccinePer1000Day : vac.perDay) / 1000;
+      doseSum[d + 1] = doseSum[d] + doses[d];
+    }
+  };
   const lockdownOf = (i) =>
     perPlace
-      ? lockdownMix(params, npiOn[i] ? iv.lockdown * cDay[i] : 0)
+      ? lockdownMix(params, npiOn[i] ? lockNow * cDay[i] : 0)
       : lockdownAll;
   // People pull back as the signal (reports, deaths or both per 100,000,
   // here, everywhere or a mix) rises, less so as they tire of it.
@@ -3039,23 +3276,33 @@ function simulateEnsemble(
         : Is[i] * params.hospitalShare;
     return beds[i] > 0 ? load / beds[i] : load > 0 ? Infinity : 0;
   };
+  // A place's restriction comes on: the hour it did, the daily tick from
+  // now on, and its first trigger this run.
+  const switchOn = (i) => {
+    npiOn[i] = 1;
+    npiSince[i] = hourNow;
+    watched.add(i);
+    if (restrictAt[i] === Infinity) {
+      restrictAt[i] = hourNow;
+      restrictedRuns[i] += 1;
+    }
+  };
   // The daily tick of a place's restriction: the incidence window decays,
   // the restriction comes on past the threshold inside the window and goes
   // off below half of it (or once the window ends) after minLockDays; the
-  // day's compliance is cached.
+  // day's compliance is cached. Under a tape's switch control the decision
+  // is the control's (a listed place takes its value, any other keeps its
+  // state); the decay and compliance run as ever.
   const tickRestrictions = (i) => {
     recentRep[i] *= incidenceDecay;
     const level = triggerLevel(i);
-    if (!npiOn[i]) {
-      if (inWindow && threshold > 0 && level >= threshold) {
-        npiOn[i] = 1;
-        npiSince[i] = hourNow;
-        watched.add(i);
-        if (restrictAt[i] === Infinity) {
-          restrictAt[i] = hourNow;
-          restrictedRuns[i] += 1;
-        }
-      }
+    if (ctlSwitches) {
+      tickedDay[i] = Math.floor(hourNow / 24);
+      const want = ctlSwitches.get(i);
+      if (want === 1 && !npiOn[i]) switchOn(i);
+      else if (want === 0 && npiOn[i]) npiOn[i] = 0;
+    } else if (!npiOn[i]) {
+      if (inWindow && threshold > 0 && level >= threshold) switchOn(i);
     } else if (
       (level < TRIGGER_RELEASE_RATIO * threshold || !inWindow) &&
       hourNow - npiSince[i] >= minLockH
@@ -3102,12 +3349,12 @@ function simulateEnsemble(
   // Reports found by the day's tests: past the place's capacity they are
   // lost (the draw is made, then clipped, so the stream is unchanged).
   const testCap = (i, found, day) => {
-    if (!capacity || found <= 0) return found;
+    if (!capNow || found <= 0) return found;
     if (testsDay[i] !== day) {
       testsUsed[i] = 0;
       testsDay[i] = day;
     }
-    const allowed = Math.max(0, capacity[i] - testsUsed[i]);
+    const allowed = Math.max(0, capNow[i] - testsUsed[i]);
     let kept = found;
     if (kept > allowed) {
       saturated[i] = 1;
@@ -3117,6 +3364,36 @@ function simulateEnsemble(
     return kept;
   };
 
+  if (tap)
+    tap.begin?.({
+      n,
+      hours,
+      days: Math.ceil(hours / 24),
+      startMs,
+      params,
+      nodes,
+      origins,
+      N,
+      isOrigin,
+      countryOf,
+      countryCodes: [...countryIndex.keys()],
+      perPlace,
+      borderPolicy,
+      startHour: iv.startHour,
+      endHour,
+      waning,
+      omega,
+      vaccine: vac,
+      vaccineEfficacy: vacEff,
+      vaccineProtectDays: vacProtect,
+      quarantineCatch:
+        iv.quarantineDays > 0
+          ? Math.min(
+              0.95,
+              1 - Math.exp((-1.2 * iv.quarantineDays) / params.incubationDays),
+            )
+          : 0,
+    });
   for (let run = 0; run < runCount; run += 1) {
     if (run > 0) {
       const t = now();
@@ -3127,7 +3404,7 @@ function simulateEnsemble(
         break;
       }
     }
-    rng = mulberry32((seed + Math.imul(run, RUN_STRIDE)) >>> 0);
+    rng = streamFor(run);
     hourNow = 0;
     watched.clear();
     for (let i = 0; i < n; i += 1) {
@@ -3253,13 +3530,24 @@ function simulateEnsemble(
         }
       const b = { e: t.e, p: t.p, s: t.s, a: t.a };
       const scope = scopeOK(hb, pick.to);
-      inTransit -= inspectArrival(b, scope);
+      let caughtOn = inspectArrival(b, scope);
+      inTransit -= caughtOn;
       // The second strain aboard takes the same onward checks, after.
       const b2 =
         live2 && t.e2 !== undefined
           ? { e: t.e2, p: t.p2, s: t.s2, a: t.a2 }
           : null;
-      if (b2) inTransit -= inspectArrival(b2, scope);
+      if (b2) {
+        const caught2 = inspectArrival(b2, scope);
+        inTransit -= caught2;
+        caughtOn += caught2;
+      }
+      if (tap) {
+        const flying =
+          t.e + t.p + t.s + t.a + (b2 ? t.e2 + t.p2 + t.s2 + t.a2 : 0);
+        tap.flow(5, 2, hb, pick.to, flying);
+        if (caughtOn > 0) tap.flow(2, 2, hb, pick.to, caughtOn);
+      }
       transfersFlown += 1;
       if (b.e + b.p + b.s + b.a + (b2 ? b2.e + b2.p + b2.s + b2.a : 0) <= 0)
         return true;
@@ -3284,14 +3572,162 @@ function simulateEnsemble(
         record.ws2 = t.s2 > 0 ? (t.ws2 * b2.s) / t.s2 : 0;
         record.wa2 = t.a2 > 0 ? (t.wa2 * b2.a) / t.a2 : 0;
       }
+      if (tap) {
+        record.from = hb;
+        record.via = 1;
+      }
       list.push(record);
       landing.set(at, list);
       return true;
     };
+    // The tape's view of this run: the live arrays and the hour's numbers,
+    // read-only (caughtUp works on copies).
+    const view = tap
+      ? {
+          run,
+          get hour() {
+            return hourNow;
+          },
+          get lockdownLevel() {
+            return lockNow;
+          },
+          get travelBanShare() {
+            return banNow;
+          },
+          vaccineTargetOf: (i, day) => (vac ? vaccineTarget(i, day) : 0),
+          S,
+          E,
+          P,
+          Is,
+          Ia,
+          H,
+          U,
+          R,
+          D,
+          V,
+          cum,
+          reported,
+          cumAdm,
+          imported,
+          local,
+          reinf,
+          E2,
+          P2,
+          Is2,
+          Ia2,
+          Rx,
+          cum2,
+          npiOn,
+          cDay,
+          testsUsed,
+          testsDay,
+          saturated,
+          countryFlagged,
+          arrived,
+          firstBy,
+          firstReport,
+          firstDeath,
+          firstTen,
+          overflowAt,
+          reachedList,
+          active,
+          isActive,
+          get totalsRow() {
+            return totals.length ? totals[totals.length - 1] : null;
+          },
+          get deaths() {
+            return deaths;
+          },
+          get totalInfected() {
+            return totalInfected;
+          },
+          get totalReported() {
+            return totalReported;
+          },
+          get inTransit() {
+            return inTransit;
+          },
+          get pendingAdmit() {
+            return pendingAdmit;
+          },
+          get isolated() {
+            return isolated;
+          },
+          get globalSignal() {
+            return globalSignal;
+          },
+          get cNow() {
+            return cNow;
+          },
+          get live2() {
+            return live2;
+          },
+          get strain2SeededAt() {
+            return strain2SeededAt;
+          },
+          get windowMask() {
+            return dayMask;
+          },
+          lockdownOf,
+          cautionOf,
+          // S, R, V (and Rx) as the engine would have them here now, for a
+          // place the hourly loop has not stepped (waning, then the
+          // campaign, as at a first touch), without touching the run.
+          caughtUp(i, out) {
+            let s = S[i];
+            let r = R[i];
+            let v = V[i];
+            let rx = live2 ? Rx[i] : 0;
+            if (!isActive[i] && !isOrigin[i]) {
+              if (waning && lastWane[i] < hourNow && r > 0) {
+                const back = wanedBack(r, omega, hourNow - lastWane[i]);
+                if (live2) rx -= Math.round((back * rx) / r);
+                r -= back;
+                s += back;
+                if (live2 && rx > r) rx = r;
+              }
+              if (vac) {
+                const move = Math.max(
+                  0,
+                  Math.min(s, vaccineTarget(i, Math.floor(hourNow / 24)) - v),
+                );
+                if (move > 0) {
+                  s -= move;
+                  r += move;
+                  if (live2) rx += move;
+                  v += move;
+                }
+              }
+            }
+            out.S = s;
+            out.R = r;
+            out.V = v;
+            out.Rx = rx;
+            return out;
+          },
+        }
+      : null;
+    // Day 0's control, before hour 0; the magnitudes start as set.
+    lockNow = iv.lockdown;
+    banNow = iv.travelBan;
+    capNow = capacity;
+    restrictsNow = restrictsAnyone;
+    vacControlled = false;
+    let ctl = tap ? tap.step(run, 0, view) || null : null;
+    if (tap) applyControl(ctl, 0);
+    dayMask = 0;
     for (let h = 0; h < hours; h += 1) {
       hourNow = h;
       const day = Math.floor(h / 24);
-      inWindow = h >= iv.startHour && h < endHour;
+      if (commuteTable && h % 24 === 0) commuteDay(day);
+      inWindow =
+        ctl && Number.isFinite(ctl.window)
+          ? ((ctl.window >>> (h % 24)) & 1) === 1
+          : h >= iv.startHour && h < endHour;
+      if (tap) {
+        if (h % 24 === 0) dayMask = 0;
+        if (inWindow) dayMask |= 1 << (h % 24);
+      }
       // The commuting factor by the destination's local hour, for every
       // offset: this hour's, and the mean over the six hours of the step.
       const commuteHour = h % COMMUTE_STEP_H === 0;
@@ -3317,7 +3753,7 @@ function simulateEnsemble(
       // those outside the home (lockdownMix), fading with compliance.
       lockdownAll = perPlace
         ? 1
-        : lockdownMix(params, inWindow ? iv.lockdown * cNow : 0);
+        : lockdownMix(params, inWindow ? lockNow * cNow : 0);
       // Under 'two-strain' the second strain is the variant: no drift.
       const drift = takeover
         ? takeoverMultiplier(day, takeoverAdv)
@@ -3340,6 +3776,14 @@ function simulateEnsemble(
             t.s -= found;
             isolated += found;
             travellersCaught += found;
+            if (tap)
+              tap.flow(
+                4,
+                t.ground ? 1 : t.via ? 2 : 0,
+                t.from ?? -1,
+                t.to,
+                found,
+              );
             const rep = testCap(t.to, found, day);
             if (rep > 0) {
               const at = h + reportDelayH;
@@ -3362,6 +3806,14 @@ function simulateEnsemble(
             t.s2 -= found;
             isolated += found;
             travellersCaught += found;
+            if (tap)
+              tap.flow(
+                4,
+                t.ground ? 1 : t.via ? 2 : 0,
+                t.from ?? -1,
+                t.to,
+                found,
+              );
             const rep = testCap(t.to, found, day);
             if (rep > 0) {
               const at = h + reportDelayH;
@@ -3391,6 +3843,8 @@ function simulateEnsemble(
         }
         imported[t.to] += landed;
         importedTotal += landed;
+        if (tap && landed > 0)
+          tap.flow(3, t.ground ? 1 : t.via ? 2 : 0, t.from ?? -1, t.to, landed);
         if (landed > 0) {
           activate(t.to);
           // By train it came over the ground (RAIL_TRAVEL).
@@ -3454,6 +3908,8 @@ function simulateEnsemble(
       //    global awareness signal, and the campaign's move up to the day's
       //    protected target.
       if (h % 24 === 0) {
+        // A tape's switch control for this tick (per-place modes only).
+        ctlSwitches = perPlace && ctl?.switches ? ctl.switches : null;
         if (perPlace) {
           for (const i of active) tickRestrictions(i);
           for (const i of origins) if (!isActive[i]) tickRestrictions(i);
@@ -3467,15 +3923,35 @@ function simulateEnsemble(
               watched.delete(i);
             }
           }
+          // A controlled switch at a place no loop above ticked: it is
+          // ticked once now (and watched from then on if switched on).
+          if (ctlSwitches)
+            for (const [i] of ctlSwitches)
+              if (valid(i) && tickedDay[i] !== day) tickRestrictions(i);
         } else if (fatigueHalfDays > 0)
           cNow = compliance((h - iv.startHour) / 24);
-        // A country whose reports reached the trigger is flagged for good.
-        if (borderPolicy === 'reported')
-          for (let c = 0; c < countryCount; c += 1)
-            if (!countryFlagged[c] && countryReported[c] >= iv.borderTrigger) {
-              countryFlagged[c] = 1;
-              flaggedCount += 1;
+        ctlSwitches = null;
+        // A country whose reports reached the trigger is flagged for good
+        // (or, under a tape's control, the countries it names).
+        if (borderPolicy === 'reported') {
+          if (ctl?.flags) {
+            for (const code of ctl.flags) {
+              const c = countryIndex.get(code);
+              if (c !== undefined && !countryFlagged[c]) {
+                countryFlagged[c] = 1;
+                flaggedCount += 1;
+              }
             }
+          } else
+            for (let c = 0; c < countryCount; c += 1)
+              if (
+                !countryFlagged[c] &&
+                countryReported[c] >= iv.borderTrigger
+              ) {
+                countryFlagged[c] = 1;
+                flaggedCount += 1;
+              }
+        }
         if (awareness > 0 && responseReach !== 'local') {
           let people = 0;
           for (const i of reachedList) people += N[i];
@@ -3524,7 +4000,7 @@ function simulateEnsemble(
             cautionOf(i) *
             season[i * days + day] *
             at) /
-          (daytime ? Ntilde[i] : N[i])
+          (daytime ? NtildeDay[i] : N[i])
         );
       };
       if (!daytime)
@@ -3555,12 +4031,14 @@ function simulateEnsemble(
             Wp[i] * presymKeep +
             Ws[i] * (1 - iso) +
             Wa[i] * params.asymRelative;
+          const ci = cfNow[i];
           if (!live2) {
             if (pressure[i] <= 0) continue;
             for (const link of links[i] || []) {
               const j = link.j;
               visitorPressure[j] +=
                 link.share *
+                ci *
                 (diurnal ? dfacNow[offset[j] + 12] : 1) *
                 pressure[i];
               if (!isActive[j] && !visitorPending[j]) {
@@ -3580,7 +4058,8 @@ function simulateEnsemble(
           const own2 = pressure2[i] > 0 ? pressure2[i] : 0;
           for (const link of links[i] || []) {
             const j = link.j;
-            const dfac = link.share * (diurnal ? dfacNow[offset[j] + 12] : 1);
+            const dfac =
+              link.share * ci * (diurnal ? dfacNow[offset[j] + 12] : 1);
             visitorPressure[j] += dfac * own1;
             visitorPressure2[j] += dfac * own2;
             if (!isActive[j] && !visitorPending[j]) {
@@ -3590,11 +4069,11 @@ function simulateEnsemble(
           }
         }
         for (const i of infectedNodes) {
-          const at = (1 - outShare[i]) * pressure[i] + visitorPressure[i];
+          const at = (1 - outNow[i]) * pressure[i] + visitorPressure[i];
           visitorPressure[i] = 0;
           lambda[i] = at > 0 ? hazard(i, at) : 0;
           if (live2) {
-            const at2 = (1 - outShare[i]) * pressure2[i] + visitorPressure2[i];
+            const at2 = (1 - outNow[i]) * pressure2[i] + visitorPressure2[i];
             visitorPressure2[i] = 0;
             lambda2[i] = at2 > 0 ? hazard(i, at2) * rel2 : 0;
           }
@@ -3612,12 +4091,14 @@ function simulateEnsemble(
       const touched = [];
       for (const j of infectedNodes) {
         stamp[j] = mark;
-        let own = (1 - outShare[j]) * lambda[j];
+        let own = (1 - outNow[j]) * lambda[j];
         // One pass over the links for both strains (strain 1 evaluates as
-        // (share * d) * lambda, exactly as before).
-        let own2 = live2 ? (1 - outShare[j]) * lambda2[j] : 0;
+        // (share * c * d) * lambda; with c = 1, exactly as before).
+        let own2 = live2 ? (1 - outNow[j]) * lambda2[j] : 0;
+        const cj = cfNow[j];
         for (const link of links[j] || []) {
-          const f = link.share * (diurnal ? dfacNow[offset[link.j] + 12] : 1);
+          const f =
+            link.share * cj * (diurnal ? dfacNow[offset[link.j] + 12] : 1);
           own += f * lambda[link.j];
           if (live2) own2 += f * lambda2[link.j];
         }
@@ -3639,15 +4120,15 @@ function simulateEnsemble(
             const i = list[k];
             if (stamp[i] === mark) {
               if (farMark[i] === mark) {
-                force[i] -= list[k + 1] * pull;
-                force2[i] += list[k + 1] * pull2;
+                force[i] -= list[k + 1] * cfNow[i] * pull;
+                force2[i] += list[k + 1] * cfNow[i] * pull2;
               }
               continue;
             }
             stamp[i] = mark;
             farMark[i] = mark;
-            force[i] = -list[k + 1] * pull;
-            force2[i] = list[k + 1] * pull2;
+            force[i] = -list[k + 1] * cfNow[i] * pull;
+            force2[i] = list[k + 1] * cfNow[i] * pull2;
             touched.push(i);
           }
         }
@@ -3660,9 +4141,8 @@ function simulateEnsemble(
             visitorPressure[j] = 0;
             visitorPressure2[j] = 0;
             if (isActive[j] || !(at > 0 || at2 > 0)) continue;
-            const term = at > 0 ? (1 - outShare[j]) * hazard(j, at) : 0;
-            const term2 =
-              at2 > 0 ? (1 - outShare[j]) * hazard(j, at2) * rel2 : 0;
+            const term = at > 0 ? (1 - outNow[j]) * hazard(j, at) : 0;
+            const term2 = at2 > 0 ? (1 - outNow[j]) * hazard(j, at2) * rel2 : 0;
             if (stamp[j] === mark) {
               force[j] -= term;
               force2[j] += term2;
@@ -3684,12 +4164,12 @@ function simulateEnsemble(
           for (let k = 0; k < list.length; k += 2) {
             const i = list[k];
             if (stamp[i] === mark) {
-              if (force[i] < 0) force[i] -= list[k + 1] * pull;
+              if (force[i] < 0) force[i] -= list[k + 1] * cfNow[i] * pull;
               continue;
             }
             stamp[i] = mark;
             // Negative marks "not infected": exposure over the longer step.
-            force[i] = -list[k + 1] * pull;
+            force[i] = -list[k + 1] * cfNow[i] * pull;
             touched.push(i);
           }
         }
@@ -3703,7 +4183,7 @@ function simulateEnsemble(
             const at = visitorPressure[j] / COMMUTE_STEP_H;
             visitorPressure[j] = 0;
             if (isActive[j] || !(at > 0)) continue;
-            const term = (1 - outShare[j]) * hazard(j, at);
+            const term = (1 - outNow[j]) * hazard(j, at);
             if (stamp[j] === mark) force[j] -= term;
             else {
               stamp[j] = mark;
@@ -4122,10 +4602,14 @@ function simulateEnsemble(
           params.travel *
           (gatherOn && isOrigin[from] ? params.gathering.travel : 1) *
           (international(from, to) ? travelIntl : travelDomestic);
+        if (travelDriver) {
+          const factor = travelDriver(from, day, rail ? 'rail' : 'air');
+          if (Number.isFinite(factor) && factor >= 0) pax *= factor;
+        }
         const banOn = scope && (perPlace ? npiOn[from] || npiOn[to] : inWindow);
-        if (banOn && iv.travelBan > 0) {
+        if (banOn && banNow > 0) {
           const before = Math.round(pax);
-          pax *= 1 - iv.travelBan;
+          pax *= 1 - banNow;
           passengersBlocked += before - Math.round(pax);
         }
         const has2 = live2 && E2[from] + P2[from] + Is2[from] + Ia2[from] > 0;
@@ -4159,6 +4643,14 @@ function simulateEnsemble(
           a2 = take(binomial(pax, share(Ia2[from]), rng), Ia2[from]);
         }
         if (e + p + s + a + (e2 + p2 + s2 + a2) <= 0) return;
+        if (tap)
+          tap.flow(
+            0,
+            rail ? 1 : 0,
+            from,
+            to,
+            e + p + s + a + e2 + p2 + s2 + a2,
+          );
         const wp = P[from] > 0 ? (Wp[from] * p) / P[from] : 0;
         const ws = Is[from] > 0 ? (Ws[from] * s) / Is[from] : 0;
         let wa = Ia[from] > 0 ? (Wa[from] * a) / Ia[from] : 0;
@@ -4194,6 +4686,7 @@ function simulateEnsemble(
           b.p -= caughtP;
           isolated += caughtS + caughtP;
           travellersCaught += caughtS + caughtP;
+          let caught2 = 0;
           if (b2) {
             const caughtS2 = binomial(b2.s, SCREENING_CATCH.symptomatic, rng);
             const caughtP2 = binomial(b2.p, SCREENING_CATCH.presym, rng);
@@ -4201,7 +4694,10 @@ function simulateEnsemble(
             b2.p -= caughtP2;
             isolated += caughtS2 + caughtP2;
             travellersCaught += caughtS2 + caughtP2;
+            caught2 = caughtS2 + caughtP2;
           }
+          if (tap && caughtS + caughtP + caught2 > 0)
+            tap.flow(1, rail ? 1 : 0, from, to, caughtS + caughtP + caught2);
         }
         // At a hub, a share of each compartment flies on after landing: it
         // skips this leg's entry screening and quarantine and takes the
@@ -4263,8 +4759,10 @@ function simulateEnsemble(
         // Screening on arrival, and quarantine, which catches those who fall
         // ill or test positive within it: most of a 14-day one, little of a
         // 2-day one.
-        inspectArrival(b, scope);
-        if (b2) inspectArrival(b2, scope);
+        const entryCaught =
+          inspectArrival(b, scope) + (b2 ? inspectArrival(b2, scope) : 0);
+        if (tap && entryCaught > 0)
+          tap.flow(2, rail ? 1 : 0, from, to, entryCaught);
         if (b.e + b.p + b.s + b.a + (b2 ? b2.e + b2.p + b2.s + b2.a : 0) <= 0)
           return;
         inTransit += b.e + b.p + b.s + b.a;
@@ -4280,6 +4778,7 @@ function simulateEnsemble(
           wa,
         };
         if (rail) record.ground = 1;
+        if (tap) record.from = from;
         if (b2) {
           inTransit += b2.e + b2.p + b2.s + b2.a;
           record.e2 = b2.e;
@@ -4308,11 +4807,16 @@ function simulateEnsemble(
           flownKeys.has(`${r.from}>${r.to}|${Math.round(departMs / 1_800_000)}`)
         )
           continue;
+        // The next hour at the earliest, as for dated flights: departMs is
+        // on the UTC hour's clock, which may run before startMs's.
         board(
           r.from,
           r.to,
           r.passengers,
-          Math.floor((departMs + r.lengthMs - startMs) / HOUR_MS),
+          Math.max(
+            h + 1,
+            Math.floor((departMs + r.lengthMs - startMs) / HOUR_MS),
+          ),
           rail,
         );
       }
@@ -4337,7 +4841,7 @@ function simulateEnsemble(
             restrictedPeople += N[i];
             restrictedPlaces += 1;
           }
-      } else if (inWindow && restrictsAnyone) {
+      } else if (inWindow && restrictsNow) {
         for (const i of active) restrictedPeople += N[i];
         restrictedPlaces = active.length;
         for (const i of origins)
@@ -4384,7 +4888,7 @@ function simulateEnsemble(
         // Distancing: the people-weighted share of contacts the lockdown
         // and caution take away in the affected places.
         let distancing = 0;
-        if (iv.lockdown > 0 || awareness > 0) {
+        if (lockNow > 0 || awareness > 0) {
           let people = 0;
           let cut = 0;
           for (const i of active) {
@@ -4436,6 +4940,11 @@ function simulateEnsemble(
             if (cum[i] >= 10) acc.tenRuns[day] += 1;
             acc.caseSum[day] += cum[i];
           }
+        // The tape sees the day's end, and may hand back tomorrow's control.
+        if (tap) {
+          ctl = tap.step(run, day + 1, view) || null;
+          applyControl(ctl, day + 1);
+        }
       }
       if (trace && run === 0) {
         let people =
@@ -4524,6 +5033,7 @@ function simulateEnsemble(
     firstAbroadReports.push(firstAbroadReport);
     transfersFlownRuns.push(transfersFlown);
     dailyTotals.push(totals);
+    if (tap) tap.runEnd?.(run, view);
     let living = 0;
     for (const i of active) living += E[i] + P[i] + Is[i] + Ia[i] + H[i] + U[i];
     if (twoStrain)
@@ -5177,6 +5687,10 @@ const CF_PHRASE = Object.freeze({
  */
 export function simulateEpidemic(input) {
   const compare = input?.params?.compare;
+  // Both arms would share one tape: a dataset runs the comparison arm as its
+  // own call (counterfactualParams, the same stream key).
+  if (input?.tape && compare && compare !== 'none')
+    throw new Error('A tape records one arm: run the comparison arm alone.');
   if (!(compare && compare !== 'none')) return simulateEnsemble(input);
   const budgetMs = input.budgetMs ?? EPIDEMIC_BUDGET_MS;
   const now = input.now ?? Date.now;

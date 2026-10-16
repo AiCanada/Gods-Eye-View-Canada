@@ -156,6 +156,7 @@ export function createOwnerCheck({
   ask = runTailscale,
   ttlMs = 5 * 60_000,
   now = Date.now,
+  log = (line) => console.warn(line),
 } = {}) {
   let self = null;
   const seen = new Map(); // ip -> {ok, at}
@@ -173,7 +174,7 @@ export function createOwnerCheck({
     const ip = String(address || '').replace(/^::ffff:/, '');
     if (!isTailnetIPv4(ip)) return false;
     const held = seen.get(ip);
-    if (held && now() - held.at < ttlMs) return held.ok;
+    if (held && now() - held.at < (held.ttl ?? ttlMs)) return held.ok;
     const [owner, who] = await Promise.all([
       selfUser(),
       ask(['whois', '--json', ip]),
@@ -184,10 +185,60 @@ export function createOwnerCheck({
       Number.isFinite(caller) &&
       owner === caller &&
       !nodeIsShared(who?.Node);
-    seen.set(ip, { ok, at: now() });
+    // A no that Tailscale could not answer (its daemon still reconnecting,
+    // a timeout) is kept only briefly, so the owner's phone is not shut out
+    // for minutes; a real verdict is kept for the full time.
+    const unanswered = owner === null || who === null || who === undefined;
+    seen.set(ip, {
+      ok,
+      at: now(),
+      ttl: unanswered ? Math.min(ttlMs, 15_000) : ttlMs,
+    });
     if (seen.size > 256) seen.delete(seen.keys().next().value);
+    if (!ok)
+      log(
+        `[Tailnet dashboard] refused ${ip}: ${unanswered ? 'Tailscale did not answer' : "not a device of the owner's account"}`,
+      );
     return ok;
   };
+}
+
+/**
+ * This machine's own Tailscale names, lower case: its MagicDNS name with and
+ * without the tailnet suffix. Empty until Tailscale answers; asked again
+ * after a while.
+ * @param {{ask?: (args: string[]) => Promise<any>, ttlMs?: number, now?: () => number}} [options]
+ */
+export function createSelfNames({
+  ask = runTailscale,
+  ttlMs = 5 * 60_000,
+  now = Date.now,
+} = {}) {
+  let held = null;
+  return async function selfNames() {
+    if (held && now() - held.at < ttlMs) return held.names;
+    const status = await ask(['status', '--json']);
+    const dns = String(status?.Self?.DNSName || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\.$/, '');
+    const names = new Set();
+    if (dns) {
+      names.add(dns);
+      names.add(dns.split('.')[0]);
+    }
+    held = { names, at: now() };
+    return names;
+  };
+}
+
+/** Whether a Host header names this machine by one of its own names. */
+export function namedHost(hostHeader, names) {
+  const host = String(hostHeader || '')
+    .trim()
+    .toLowerCase()
+    .replace(/:\d+$/, '');
+  return Boolean(host) && Boolean(names?.has?.(host));
 }
 
 /**
@@ -215,7 +266,13 @@ export function nodeIsShared(node) {
  * from the owner's device is refused here with the PC-only message.
  * @param {{isOwnerDevice: (address: string) => any, token?: string, authority?: string, next: Function}} options
  */
-export function ownerOnlyHandler({ isOwnerDevice, token, authority, next }) {
+export function ownerOnlyHandler({
+  isOwnerDevice,
+  token,
+  authority,
+  next,
+  selfNames = null,
+}) {
   return (req, res) => {
     stripOwnerStamp(req.headers);
     Promise.resolve(isOwnerDevice(req.socket?.remoteAddress))
@@ -237,11 +294,27 @@ export function ownerOnlyHandler({ isOwnerDevice, token, authority, next }) {
           sendOwnerRemovalRefusal(res);
           return;
         }
-        if (token && authority && !hasProxySignals(req.headers || {})) {
-          req.headers[OWNER_DEVICE_HEADER] = token;
-          req.headers[OWNER_DEVICE_AUTHORITY_HEADER] = authority;
-        }
-        next(req, res);
+        return Promise.resolve(selfNames ? selfNames() : null)
+          .catch(() => null)
+          .then((names) => {
+            if (authority && names && namedHost(req.headers?.host, names)) {
+              // The owner's device opened the mirror by this machine's name.
+              // The stamp names the address, and the Ultra box, POWER UP and
+              // the rest answer only a Host that matches it, so the page is
+              // sent to the address form; the bookmark keeps working.
+              res.writeHead(302, {
+                Location: `${authority}${req.url || '/'}`,
+                'Cache-Control': 'no-store',
+              });
+              res.end();
+              return;
+            }
+            if (token && authority && !hasProxySignals(req.headers || {})) {
+              req.headers[OWNER_DEVICE_HEADER] = token;
+              req.headers[OWNER_DEVICE_AUTHORITY_HEADER] = authority;
+            }
+            next(req, res);
+          });
       });
   };
 }
@@ -253,7 +326,7 @@ export function tailnetDashboardPlugin({
   env = process.env,
   interfaces = () => os.networkInterfaces(),
   createServer = http.createServer,
-  retryMs = 30_000,
+  retryMs = 3_000,
   ownerCheck = null,
 } = {}) {
   return {
@@ -291,12 +364,22 @@ export function tailnetDashboardPlugin({
       const token = crypto.randomBytes(32).toString('hex');
       setOwnerDeviceToken(token);
       const isOwnerDevice = ownerCheck || createOwnerCheck();
+      const selfNames = createSelfNames();
       let mirror = null;
       let retry = null;
       let warned = false;
+      let failures = 0;
       const open = () => {
         retry = null;
-        const address = tailnetAddress(interfaces());
+        if (mirror) return;
+        let address = '';
+        try {
+          address = tailnetAddress(interfaces());
+        } catch {
+          // The interface read can fail while an adapter has no address yet:
+          // that is "no address", looked at again shortly.
+          address = '';
+        }
         const port = main.address()?.port;
         if (!port) return;
         if (!address) {
@@ -318,6 +401,7 @@ export function tailnetDashboardPlugin({
             token,
             authority: `http://${address}:${port}`,
             next: (req, res) => server.middlewares(req, res),
+            selfNames,
           }),
         );
         // Live reload: the page's websocket goes to the same handler as on
@@ -332,11 +416,26 @@ export function tailnetDashboardPlugin({
             });
         });
         mirror.on('error', (error) => {
-          console.warn(
-            `[Tailnet dashboard] not listening on the tailnet: ${error?.message || error}`,
-          );
+          // The port may still be held from the server before, or the
+          // address gone again: say so (once, then once a minute while it
+          // keeps failing), let go, and try again shortly.
+          failures += 1;
+          if (failures === 1 || failures % 20 === 0)
+            console.warn(
+              `[Tailnet dashboard] not listening on the tailnet (${failures} tries): ${error?.message || error}`,
+            );
+          try {
+            mirror?.closeAllConnections?.();
+            mirror?.close();
+          } catch {
+            /* never opened */
+          }
+          mirror = null;
+          retry = setTimeout(open, retryMs);
+          retry.unref?.();
         });
         mirror.listen(port, address, () => {
+          failures = 0;
           console.log(
             `[Tailnet dashboard] Open http://${address}:${port}/ on your phone (Tailscale on, signed in as you).`,
           );
@@ -346,6 +445,9 @@ export function tailnetDashboardPlugin({
       main.once('close', () => {
         if (retry) clearTimeout(retry);
         setOwnerDeviceToken('');
+        // The phone's keep-alive sockets must not hold the address for the
+        // next listener (an in-process restart binds it again at once).
+        mirror?.closeAllConnections?.();
         mirror?.close();
       });
     },

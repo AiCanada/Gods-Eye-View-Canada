@@ -17,6 +17,7 @@ import {
   createDefaultLayerState,
   decodeLayerStateParams,
   encodeLayerStateParams,
+  nextForkLayerStateToken,
   nextLayerStateToken,
   normalizeLayerState,
   parseStoredLayerState,
@@ -243,16 +244,22 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
   for (const [id, token] of Object.entries(LEGACY_LAYER_STATE_TOKENS)) {
     assert.equal(LAYER_STATE_TOKEN_RESERVATIONS[id], token);
   }
-  // street-level holds '0' (upstream); private-cctv '3', outbreak '4' and
-  // device-feeds '5' (fork layers); '1' and '2' are upstream's.
-  assert.equal(nextLayerStateToken(), '6');
+  // '0', '1' and '2' are upstream's; the fork's layers sit at the top of
+  // the namespace (zz, zy, zx), so upstream's next free digit is '3'.
+  assert.equal(nextLayerStateToken(), '3');
   assert.equal(
     nextLayerStateToken({
       ...LAYER_STATE_TOKEN_RESERVATIONS,
-      alpha: '0',
-      bravo: '6',
+      alpha: '3',
+      bravo: '5',
     }),
-    '7',
+    '4',
+  );
+  // Fork layers count down from the top: the next fork token is 'zw'.
+  assert.equal(nextForkLayerStateToken(), 'zw');
+  assert.equal(
+    nextForkLayerStateToken({ ...LAYER_STATE_TOKEN_RESERVATIONS, a: 'zw' }),
+    'zv',
   );
   const digitsExhausted = {
     ...LAYER_STATE_TOKEN_RESERVATIONS,
@@ -310,10 +317,9 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
   assert.equal(
     validateLayerStateAllocations(
       LAYER_STATE_TOKEN_RESERVATIONS,
-      // '0' is upstream's street-level; '3', '4' and '5' are the fork's
-      // private-cctv, outbreak and device-feeds tokens, so the next free
-      // ones are '6' and '7'.
-      { ...LAYER_STATE_TOKEN_RESERVATIONS, future: '6', next: '7' },
+      // '0'-'2' are upstream's and the fork's tokens are at the top, so
+      // upstream's next free ones are '3' and '4'.
+      { ...LAYER_STATE_TOKEN_RESERVATIONS, future: '3', next: '4' },
     ),
     true,
   );
@@ -323,7 +329,7 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
         ...LAYER_STATE_TOKEN_RESERVATIONS,
         future: '00',
       }),
-    /next free token 6/,
+    /next free token 3/,
   );
   const beforeLastDigit = { ...digitsExhausted };
   delete beforeLastDigit['prior-9'];
@@ -349,7 +355,7 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
         { ...LAYER_STATE_TOKEN_RESERVATIONS, merged: '3' },
         { ...LAYER_STATE_TOKEN_RESERVATIONS, merged: '3', competing: '3' },
       ),
-    /next free token 6/,
+    /next free token 4/,
   );
   assert.throws(
     () => validateLayerStateAllocations({ future: '00' }, { future: '01' }),

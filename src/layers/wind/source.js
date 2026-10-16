@@ -1,5 +1,29 @@
 import { readWindBody } from '../../sources/windBody.js';
 
+/** The provider's optional fields: units, level, and the error naming one missing. */
+const SCALARS = {
+  temperature: {
+    units: '°C',
+    level: '2 m above ground',
+    error: 'Temperature field unavailable',
+  },
+  pressure: {
+    units: 'hPa',
+    level: 'mean sea level',
+    error: 'Mean sea level pressure field unavailable',
+  },
+  humidity: {
+    units: 'kg/kg',
+    level: '2 m above ground',
+    error: 'Specific humidity field unavailable',
+  },
+  precipitation: {
+    units: 'mm/h',
+    level: 'surface',
+    error: 'Precipitation rate field unavailable',
+  },
+};
+
 /** Create a bounded, cancellable source for the same-origin wind provider. */
 export function createWindSource({
   fetchImpl = (...args) => globalThis.fetch(...args),
@@ -9,7 +33,7 @@ export function createWindSource({
     async getSnapshot({ signal, model = 'gfs', overlay = 'none' } = {}) {
       if (!['gfs', 'ifs'].includes(model))
         throw new Error('Unknown wind model');
-      if (!['none', 'temperature', 'pressure'].includes(overlay))
+      if (overlay !== 'none' && !Object.hasOwn(SCALARS, overlay))
         throw new Error('Unknown weather overlay');
       const query = `model=${model}${overlay === 'none' ? '' : `&overlay=${overlay}`}`;
       const controller = new AbortController();
@@ -37,24 +61,27 @@ export function createWindSource({
         const grid = manifest?.grid;
         const scalar = manifest?.scalar;
         const scalarError = manifest?.scalarError;
+        const expected = SCALARS[overlay];
         const optionalUnavailable =
           overlay !== 'none' &&
           scalar === undefined &&
-          scalarError ===
-            (overlay === 'temperature'
-              ? 'Temperature field unavailable'
-              : 'Mean sea level pressure field unavailable');
+          scalarError === expected.error;
+        // A precipitation rate is a time mean over this window, in forecast
+        // hours from the cycle.
+        const meanWindow = scalar?.window;
         const scalarValid =
           overlay === 'none'
             ? scalar === undefined && scalarError === undefined
             : optionalUnavailable ||
               (scalarError === undefined &&
                 scalar?.kind === overlay &&
-                scalar.units === (overlay === 'temperature' ? '°C' : 'hPa') &&
-                scalar.level ===
-                  (overlay === 'temperature'
-                    ? '2 m above ground'
-                    : 'mean sea level'));
+                scalar.units === expected.units &&
+                scalar.level === expected.level &&
+                (overlay !== 'precipitation' ||
+                  (Number.isInteger(meanWindow?.fromHour) &&
+                    Number.isInteger(meanWindow?.toHour) &&
+                    meanWindow.fromHour >= 0 &&
+                    meanWindow.fromHour < meanWindow.toHour)));
         if (
           manifest?.model !== model ||
           (manifest.overlay ?? 'none') !== overlay ||

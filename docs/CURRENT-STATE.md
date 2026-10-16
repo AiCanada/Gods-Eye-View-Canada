@@ -1,10 +1,134 @@
 # God's Eye View Current State
 
+## Artificial Intelligence World Training Sim (owner request 2026-10-13)
+
+The left stack ends with ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM (CSS
+`order: 6`, after Outbreak; hidden in Cockpit like Ask and Ultra). Owner
+request: train future world models on the Outbreak sim plus other data —
+"live data for vehicles and trains, weather, ect.", "use all feeds" —
+predicting all actions on the globe, with INITIALIZE, PAUSE / CONTINUE, STOP
+and DELETE (showing the data first) and a tick box per data layer, news
+events and ALL. docs/AI-WORLD-TAB.md is the contract and
+docs/WORLD-MODEL-DATA.md the formats.
+
+- **TRAIN ON.** One tick box per DataManager layer (`showInTogglePanel`),
+  then NEWS EVENTS, POPULATION DEMOGRAPHICS, OUTBREAK SIM EPISODES and YOUR
+  DEVICES, with ALL first (native indeterminate when some are ticked). Each
+  row shows its licence class (OPEN, NC, RESTRICTED, UNCLEAR, PERSONAL,
+  STATIC) and its live status. Ticks post to `/api/ai-world/selection`.
+  YOUR DEVICES records every personal feed (phone recordings, private
+  cameras, local receivers) and shows them as one row.
+- **AREAS.** The places cameras, traffic, news, recent imagery, street level
+  and the mapped static layers record around, at most 32, kept in
+  `.gev-data/ai-world/areas.json`. ADD VIEW AS AREA adds the middle of the
+  map (the phone may add); REMOVE stops recording there and keeps the tape,
+  and is refused to the phone like every removal. With no area those feeds
+  read NO AREA SELECTED.
+- **INITIALIZE** shows an estimate first (bytes a day, days to the cap,
+  workers, GPU; STORAGE CAP (GB) 600 by default; SIM SCENARIOS 2000 when the
+  sim is ticked) and starts only on CONFIRM. **PAUSE / CONTINUE** is one
+  button. **STOP** keeps every byte. **DELETE** lists what it would delete
+  by group (path, files, size, total) and deletes only on a second, red
+  press, only those files, only inside `.gev-data/`, only when stopped,
+  refusing if anything changed since the preview. The owner's phone may do
+  everything but delete: the mirror refuses any DELETE, the route answers
+  403 `X-GEV-Removal: pc-only` with `{"removal":"pc-only"}`, and the panel
+  stays silent (owner ruling 2026-10-11).
+- **Recording (the world tape).** Each ticked feed is recorded through the
+  app's own `/api/` routes with the layers' portable sources, so the
+  providers' caches, rate limits, keys and the CCTV per-host budget (511
+  hosts 20 a minute, 1,000 a day) apply, at or below each layer's cadence.
+  Records carry their licence class: `nc`, `restricted`, `unclear` and
+  `personal` data stay on this machine. Cameras never include school,
+  university, college or library cams (the CCTV school filter), at most the
+  nearest 1,000 within 50 km of each area in `.gev-data/ai-world/areas.json`.
+  Basemaps and radio audio are never recorded. At the cap a feed stops and
+  says so; nothing is deleted. Pauses, stops and restarts are written as
+  gaps; an empty poll still writes a manifest line (observed, not missing).
+  PAUSE, STOP and an untick abort a poll in flight. Camera budgets are
+  shared per real still host (`budgetHost` in the catalogue). Recent
+  imagery (NASA) and plate-reader cameras (the OSM extract) are the two
+  sources that fetch their fixed hosts from the server, as the browser does.
+  The wind feed records GFS 2 m specific humidity and the time-mean
+  precipitation rate beside wind, temperature and pressure (new opt-in
+  `humidity` and `precipitation` overlays of `/api/wind`; the default answer
+  is unchanged).
+- **Sim episodes.** With OUTBREAK SIM EPISODES ticked the tab builds the
+  frozen world (`server/shared/outbreakWorldStore.mjs`, the route's own
+  assembly, now `server/shared/outbreakEpidemicWorld.mjs`) and writes
+  episodes on 24 worker threads, shard by shard, resumable.
+- **Training and predicting.** `py -3.13 -m ml.gevtape.train` (or
+  `GEV_PYTHON`) trains the outbreak, world and tracks models on the RTX 4060
+  and pauses by checkpoint; `ml.gevtape.serve` answers `/api/ai-world/predict`.
+  PREDICTIONS draws each ready domain on the globe (`src/aiWorldOverlay.js`);
+  a domain still learning draws nothing. Once the outbreak model exists and
+  `npm run outbreak:real-data` has run, `ml.gevtape.calibrate` calibrates it
+  on OWID and OxCGRT (zero-shot, fine-tuned and from-scratch skill against
+  persistence, `models/outbreak-real/calibration.md`). First result, from a
+  2-epoch surrogate on the 10-day smoke set: zero-shot far worse than
+  persistence, fine-tuned and from-scratch near it; to be rerun after a full
+  sim sweep.
+- **State.** `.gev-data/ai-world/state.json` keeps the job across dev-server
+  restarts: a recorder that was running starts again and the downtime is a
+  gap. `.gev-data/` is gitignored.
+- **Tools.** `npm run outbreak:world`, `outbreak:dataset` (with `--pilot`),
+  `world-tape:bin` (weather sampled from the recorded grids, trains by the
+  transit layer's modes), `world-tape:backfill` (USGS, FIRMS),
+  `outbreak:real-data` (OWID and OxCGRT, CC BY 4.0) and `outbreak:env` (a
+  closed-loop environment on stdio for reinforcement learning).
+- **The model.** `simulateEpidemic` gained `tape`, control, `stream`
+  (xoshiro128**) and `drivers` (docs/outbreak-epidemic-model.md); absent,
+  it is bit-identical, as the golden master proves. Control covers the
+  window, per-place switches, border flags and the day's magnitudes
+  (lockdown level, ban share, tests a day, the campaign's doses a day);
+  drivers cover the season (humidity), travel (departures, trains) and
+  commuting (transit service). Not controllable: the pathogen's own numbers
+  and the model's internal constants (`params.constants` stays deferred:
+  the summary R reads module-level values).
+- **Datasets from the tape and from the box.** `outbreak:dataset --drivers`
+  starts scenarios on binned days under the recorded conditions;
+  `--from-export run.json` sweeps policies around a box run saved with
+  DOWNLOAD RESULTS (which now keeps the scan's flights).
+- **History.** `world-tape:backfill` fills past days from the GFS archive
+  (from 2021-03-22), HURDAT2 (1851/1949 to last season), VIIRS images of the
+  AREAS (from 2023-02-10), USGS and FIRMS; the server never fetches them.
+- **More training feeds (2026-10-14).** The tab records sea surface temperature and observed weather at the areas, short CCTV clips when the camera is fragmented MP4, up to 100 operator news URLs (title and link only), and live quotes for the 42 financial assets of `src/marketAssets.mjs` (currencies and the dollar index, US yields, energy, metal and grain futures, the main stock indexes, the VIX, Bitcoin and Ether). Yahoo Finance covers most of them, 20 symbols a request, and stands in for any series a cap or a missing key leaves out; Twelve Data (`TWELVE_DATA_API_KEY`) covers forex and gold and OilPriceAPI (`OILPRICE_API_KEY`) WTI, copper and the fuels, while each free cap has room. `ALPHA_VANTAGE_API_KEY` is not used for this cadence. PM2.5 and US stream-gauge discharge are area readings. News, AIS ship class, traffic, cameras, weather, and flights share an hour with the price prints, including gasoline, jet fuel, and jet kerosene. A shared hour is not treated as a cause. Crop yield and regional fuel use are not filled in. Routes, terrain height, and nearby-place counts are not feeds.
+- **Real-world training (2026-10-14).** Military layers and military
+  flights are not training rows and are not predicted. The running job bins
+  every finished UTC day that has tape and no bin, oldest first and one day
+  at a time (backfilled days included; fixed 2026-10-16, it used to bin the
+  newest day only), waits for three binned days, and then trains the world
+  model (and civil tracks) on those bins; a trainer that fails is tried
+  again when a new day is binned, not every quarter hour, and the TRAINING
+  line says what it waits for. PREDICTIONS lists every ready type, and INFER answers a
+  location, item, topic, or event from the tape and that model, drawing
+  nothing when there is no match. More map training sources come later.
+- **Fixed after the walk-through (2026-10-14).** The globe overlay's default
+  timers threw "Illegal invocation" in the browser and stopped the app from
+  starting (Node allows the call, so tests missed it; a test now runs them
+  browser-strict). TRAIN ON and AREAS were collapsing to no height in the
+  box's flex column; they keep their rows now. The dev server was serving
+  `.gev-data/` as static files and watching it; `build/vite.js` now denies
+  and ignores it like `.gev-cache/`.
+
 ## Ultra Security Package
 
 The left stack has an ULTRA SECURITY PACKAGE panel, collapsed like Data Layers.
 Camera buttons are limited to the cameras of the selected handset and are sent
-as one command to the paired phone. Find Ultra Help is under development: its
+as one command to the paired phone; a press the phone page has not picked up
+reads ASKED · <camera> · OPEN THE CAMERA LINK BELOW ON THE PHONE (LIVE VIDEO
+only once the page is live), and a press older than five minutes is dropped
+rather than fired later. The camera link lists this machine's Tailscale
+address first (the phone reaches the PC over Tailscale only, owner ruling
+2026-10-11) and follows it when Tailscale comes up after the listener did
+(2026-10-16). With two packages saved, the CELL select above the camera
+buttons picks the phone (kept with the model, route `/camera-cell`); AUTO is
+the phone whose camera page is open (it polled within 5 s), else the one
+that reported last, and the link names the package. With no page open on
+that phone, a press goes to its camera app (IP Webcam port 8080, DroidCam
+4747): PHOTO keeps the pulled still as the photo, VIDEO shows the app's
+stream live for the recording time and keeps its first frame (no video
+encoder on this machine, so the clip itself still needs the page). Find Ultra Help is under development: its
 button is disabled, and the station search, its list, the message box and Send
 Ultra Help are removed for now (`/incident` and `/send` answer 404). The FIND
 HELP incident select stays: SEND HELP sends the incident it shows. GROK BOT
@@ -306,7 +430,11 @@ leaves that section's check off.
 With `GEV_TAILNET_DASHBOARD=1` the dev server also listens on this machine's
 Tailscale IPv4 address (`Mirror of PC GEVC on Cell/tailnet-dashboard.js`).
 Only devices `tailscale whois` names as the owner's account get in; anyone
-else gets 403 and a closed websocket. The mirror removes any caller-sent
+else gets 403 and a closed websocket (an unanswered check is kept 15 s, a
+verdict five minutes, each refusal logged). A request that names this
+machine by its MagicDNS name is sent (302) to the address form, since the
+owner stamp binds to the address (2026-10-16). While Tailscale has no
+address on this PC the mirror looks again every 3 s. The mirror removes any caller-sent
 owner stamp, then stamps every owner request with an in-memory 32-byte token
 and its own `http://<tailnet IP>:<port>`. `ownerDeviceAuthority` and
 `isOwnerDeviceRequest` in `src/keySetupCore.mjs` accept that stamp only from a
@@ -1454,6 +1582,25 @@ and joins them into one world rail network
   that ring on the antipode (southern Chile for Irkutsk). With the world
   network, train follows the rail instead of a circle.
 
+## Outbreak: short legs land the next hour (owner ruling 2026-10-13)
+
+The epidemic model handles each hour's landings before its departures
+board. A leg that would land within the hour it boards now lands the next
+hour (`max(h + 1, …)` for dated flights and daily routes alike). Before, it
+was filed under an hour already read: a half-hour train, a 20-minute hop,
+or a short flight in a window that starts past the hour (the box's
+`now − d days`, while a route's departure sits on the UTC hour) carried
+nothing, and its infected travellers stayed in transit for good. The
+conservation identity still balanced, which is why no test saw it. Longer
+legs land when they always did, and give the same result on the same seed.
+
+`src/outbreakEpiGolden.test.mjs` pins the full result of a 20-scenario matrix
+(`src/testSupport/outbreakEpiMatrix.mjs`): every mechanism of the model,
+seeded, hashed. It compares only on the V8 build the hashes were pinned on
+(Node v24.19.0, V8 13.6.233.17), because `Math.exp` and friends may differ
+on another. Re-pin after an intended change with
+`GEV_WRITE_OUTBREAK_GOLDEN=1 node --test src/outbreakEpiGolden.test.mjs`.
+
 ## Scene control ownership
 
 Scene controls own creation/deletion prompts, panel listeners, shot rows, playback/recording presentation
@@ -1522,9 +1669,9 @@ feed marks online. Frame URLs are built from each camera UUID under
 from the payload. There is no heading in the feed, so gizmos use the shared
 id-hash fallback at low confidence.
 
-Once enabled, the 250 cameras nearest the five borough cores load.
-`CCTV_NYC_MAX_SOURCES` sets the pack cap (8–400). The catalog-wide ceiling stays at 4,000 and is shared
-round-robin, so adding this pack does not silently drop another region.
+Once enabled, every camera the feed reports online loads: no pack cap and
+no catalogue ceiling (owner ruling 2026-10-11); the area cap of the nearest
+1,000 within 50 km bounds what is served, as for every pack.
 
 ## DriveBC CCTV source pack
 
@@ -5431,7 +5578,7 @@ easier to meet (detection is now on more often), but does not create it.
   samples and constant elevation during E/N drag; one shared-floor resolution on
   release; late one-shot shared-cell work is permitted during viewshed idle. The
   A+B harness intentionally excludes citywide LOD assertions.
-- Panel positions have a versioned storage name, `godsEyeView.v8.panelPos.<panel-id>`. Docked panels store nothing; a portable panel (CCTV, Street Level) stores `{ left, top, width, height, floating: true }` once a header drag lifts it out of the rail, and a header double-click removes it. Double presses are detected in the header's `pointerdown` handler, because its `preventDefault()` suppresses native `dblclick`. Collapsed state persists for every panel at `godsEyeView.v6.panelCollapsed.<panel-id>` (`'0'` open, `'1'` closed, absent means the panel's own default).
+- Panel positions have a versioned storage name, `godsEyeView.v8.panelPos.<panel-id>`. Docked panels store nothing; a portable panel (CCTV, Street Level) stores `{ left, top, width, height, floating: true }` once a header drag lifts it out of the rail, and a header double-click removes it. CCTV minimizes to the rail (owner request 2026-10-14): collapsed, its window docks its tab in the rail with the others, never over an open box, and keeps the record with `parked: true`; opened, by its button, a restore or the CCTV layer's own first camera, it comes back as the window at that place and size, kept on screen; pulled out of the rail, the minimized tab opens where it is dropped. Double presses are detected in the header's `pointerdown` handler, because its `preventDefault()` suppresses native `dblclick`. Collapsed state persists for every panel at `godsEyeView.v6.panelCollapsed.<panel-id>` (`'0'` open, `'1'` closed, absent means the panel's own default).
 - Legacy draggable-panel position keys may remain in local storage for backward compatibility, but the map-mode right rail ignores them unless they describe a portable panel's floating window; collapsed states still persist at `godsEyeView.v6.panelCollapsed.<panel-id>`.
 - Flight/military tracked entities cache dead-reckoned positions per frame to avoid callback desync flicker.
 - Aircraft 3D-model and tracking invariants are covered by `npm run test:track`; run this before touching `flights.js`, `militaryFlights.js`, `detection.js`, or `trackedReadout.js`.

@@ -172,9 +172,14 @@ test('the viewer comes first and the panel is a portable, resizable window', () 
     position,
     /id: 'street-level-panel',[\s\S]*?dockOnCollapse: true/,
   );
+  // Only the user's own collapse docks it (`explicit`); restores keep it.
   assert.match(
     read('src/ui/panelChrome.js'),
-    /classList\.toggle\('collapsed', nextCollapsed\);[\s\S]{0,200}?if \(explicit && !restore\)\s*this\._panelPosition\?\.onPanelCollapsed\?\.\(panelId, nextCollapsed\)/,
+    /classList\.toggle\('collapsed', nextCollapsed\);[\s\S]{0,400}?this\._panelPosition\?\.onPanelCollapsed\?\.\(panelId, nextCollapsed, \{\s*explicit: explicit && !restore,\s*\}\)/,
+  );
+  assert.match(
+    position,
+    /if \(collapsed && explicit && portable\.dockOnCollapse\)\s*this\.dockPanel\(panelId\)/,
   );
   assert.match(
     controls,

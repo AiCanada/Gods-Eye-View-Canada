@@ -48,6 +48,11 @@ hospital stay, so a profile built from a preset runs the hospital path. Only a
 profile with "Hospital stay (days)" blank runs the older instantaneous death
 draw.
 
+Within an hour, the landings due are handled first and the departures board
+after, so a leg lands the hour after it boards at the earliest: a half-hour
+train boarding at 07:00 lands at 08:00 (owner ruling 2026-10-13; a leg filed
+under its own hour was never read and its travellers stayed in transit).
+
 ## Options and their neutral values
 
 Each control is in the Outbreak box; its profile key is what the server and the
@@ -423,6 +428,67 @@ pairing. The derived seed ignores `compare`, so turning the comparison on
 keeps the main arm's seed. Its result then has fewer runs, a prefix of the
 full-budget ensemble, because arm A gets half the budget.
 
+## World-model taps, control and dataset streams (owner request 2026-10-13)
+
+The model can record its runs as training data for world models
+(docs/WORLD-MODEL-DATA.md). Three optional inputs of `simulateEpidemic`,
+each absent by default; absent, the model is bit-identical to before (a
+golden master, `src/outbreakEpiGolden.test.mjs`, pins the full result of a
+20-scenario matrix):
+
+- **`tape`** (`src/outbreakEpiTape.mjs`): `begin(info)` once, then
+  `step(run, day, view)` before hour 0 and at the end of every day, and
+  `flow(kind, mode, from, to, people)` on every infected leg (boarded,
+  caught at exit, caught at entry or quarantine, landed, found at the gate,
+  flown on from a hub), and `runEnd(run, view)`. The view reads the run's
+  arrays and counters; `caughtUp(i)` gives S, R, V for a place the hourly
+  loop has not touched, with the engine's own catch-up arithmetic
+  (`wanedBack`, `vaccineTargetCount`) on copies. A tape draws nothing and
+  changes nothing. It is refused with a comparison (each arm is its own
+  call) and with a deadline.
+- **Control**: `step` may return the next day's control, which replaces
+  exactly the three decisions the model makes, where it makes them: the
+  intervention window by hour (`window`, a 24-bit mask, read at each hour's
+  header), the per-place switches (`switches`, node → 0/1, at the daily
+  tick; under control the trigger rule is off, a listed place takes its
+  value and any other keeps its state; the incidence decay and compliance
+  run as ever) and the countries flagged under the 'reported' border policy
+  (`flags`, ISO codes). Everything else follows from those through the same
+  formulas, so replaying a run's own logged decisions gives the same run,
+  byte for byte. What a control can steer depends on the trigger mode
+  (per-place switches only in the per-place modes).
+- **Magnitudes**: a day's control may also set how hard: `lockdown` (the
+  level, 0–1, where the scenario's `lockdownPct` would apply), `travelBan`
+  (the share of travellers stopped on a banned leg, 0–1), `testsPer1000Day`
+  (each place's tests a day; 0 is unlimited) and `vaccinePer1000Day` (the
+  campaign's doses a day per 1,000 people; it modulates a campaign the
+  scenario has, from its own start day). What a day's control leaves unset
+  is the scenario's own setting, so a run without such controls reads
+  exactly the values it always did. The campaign is a closed form until a
+  control sets a rate (`vaccineTargetCount`); from then on each place's
+  target is the doses actually given since its start (a part first day by
+  its share, protection `vaccineProtectDays` later), capped by the coverage,
+  which for a steady rate is the closed form to the person. The tape logs
+  each magnitude as the control gave it (`controls_magnitudes`, NaN where
+  unset), so a replay sets the same days and stays exact.
+- **`stream`**: `{ kind: 'xoshiro128', key: [k0, k1] }` draws from
+  xoshiro128** (2^128 − 1 period) seeded by SplitMix64 from the key and the
+  run, instead of mulberry32 on `seed` (one 2^32 cycle, whose run streams
+  overlap at dataset scale). The arm of a comparison is not in the key, so
+  paired arms draw the same stream. The box keeps mulberry32.
+- **`drivers`**: `season(i, d, formula)` replaces a place's seasonal
+  factor per day, `travel(i, d, mode)` scales the travel out of a place per
+  day and mode ('air', 'rail'), and `commute(i, d)` scales its residents'
+  commuting per day: every commuting share out of the place (pushed
+  pressure, the force on the place, the pull on the places it commutes to)
+  and, under two-way mixing, the daytime populations, kept so that no more
+  than 95 % of a place commutes. Factors of 1 leave the arithmetic
+  unchanged. `src/outbreakEpiDrivers.mjs` makes all three from the world
+  tape's recorded humidity, departures, trains and transit service.
+
+The dataset tools run the model in worker threads with `budgetMs: Infinity`
+and `now: () => 0`, so nothing depends on speed.
+
 ## Sources
 
 - Balcan et al. 2009, PNAS: GLEAM metapopulation model, air travel and commuting.
@@ -465,3 +531,7 @@ full-budget ensemble, because arm A gets half the budget.
 - Gostic et al. 2020, PLoS Comput Biol: practical Rt estimation.
 - Wallinga & Lipsitch 2007, Proc R Soc B: generation intervals and
   reproduction numbers.
+- Blackman & Vigna 2021, ACM TOMS: xoshiro128** and SplitMix64.
+- Roberts 2018: the R_d quasi-random sequence (the dataset sampler).
+- Shaman & Kohn 2009, PNAS; Shaman et al. 2010, PLoS Biology: absolute
+  humidity and transmission (the recorded-weather driver).

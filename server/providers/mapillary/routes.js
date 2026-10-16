@@ -1,7 +1,17 @@
 import { sameSiteGated } from '../common/same-site.js';
 import { makeRateLimiter, clientKey } from '../common/rate-limit.js';
 import { fetchTile, TileRequestError, TileUpstreamError } from './tiles.js';
-import { mapillaryToken, TILE_ROUTE_MAX_PER_MIN } from './constants.js';
+import {
+  fetchImages,
+  normalizeImagesBbox,
+  ImagesRequestError,
+  ImagesUpstreamError,
+} from './images.js';
+import {
+  mapillaryToken,
+  IMAGES_ROUTE_MAX_PER_MIN,
+  TILE_ROUTE_MAX_PER_MIN,
+} from './constants.js';
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -78,8 +88,82 @@ async function handleTile(req, res, allow) {
 }
 
 /**
- * Attach the Mapillary routes. Both refuse cross-site requests so another page
- * cannot spend the token or provoke a 429 that holds every tile miss.
+ * GET /api/mapillary/images?bbox=west,south,east,north — image metadata in a
+ * box at most 0.05° a side, cached 24 h: `{ images: [{ id, capturedAt, lat,
+ * lon, compass, sequence, isPano, cameraType }], truncated }`.
+ */
+async function handleImages(req, res, allow) {
+  if (req.method !== 'GET')
+    return sendJson(res, 405, { error: 'Method not allowed' });
+  if (!allow(clientKey(req))) {
+    res.setHeader('Retry-After', '5');
+    return sendJson(res, 429, {
+      error: 'Too many image requests',
+      retryAfter: 5,
+    });
+  }
+  const url = new URL(req.url || '/', 'http://localhost');
+  if (url.pathname !== '/')
+    return sendJson(res, 400, {
+      error: 'Image search is /api/mapillary/images?bbox=west,south,east,north',
+    });
+  let bbox;
+  try {
+    bbox = normalizeImagesBbox(url.searchParams.get('bbox'));
+  } catch (error) {
+    return sendJson(res, error.status || 400, { error: error.message });
+  }
+  if (!mapillaryToken())
+    return sendJson(res, 503, { error: 'no_key', keyRequired: true });
+  const abandoned = new AbortController();
+  req.on?.('aborted', () => abandoned.abort());
+  res.on?.('close', () => abandoned.abort());
+  try {
+    const { body, source } = await fetchImages(bbox, {
+      signal: abandoned.signal,
+    });
+    if (res.writableEnded) return;
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Gev-Cache', source);
+    res.end(body);
+  } catch (error) {
+    if (res.writableEnded || abandoned.signal.aborted) return;
+    if (error instanceof ImagesRequestError) {
+      if (!error.retryAfterSec)
+        return sendJson(res, error.status, { error: error.message });
+      res.setHeader('Retry-After', String(error.retryAfterSec));
+      return sendJson(res, error.status, {
+        error: error.message,
+        retryAfter: error.retryAfterSec,
+      });
+    }
+    if (error instanceof ImagesUpstreamError) {
+      if (error.keyRejected)
+        return sendJson(res, 403, {
+          error: 'Mapillary rejected the access token',
+          keyRejected: true,
+        });
+      if (error.status === 429) {
+        const retryAfter = error.retryAfterSec || 60;
+        res.setHeader('Retry-After', String(retryAfter));
+        return sendJson(res, 429, {
+          error: 'Mapillary is rate-limiting image searches',
+          retryAfter,
+        });
+      }
+      // An upstream 400 must not read as a malformed request to this proxy.
+      return sendJson(res, 502, { error: error.message });
+    }
+    sendJson(res, 502, { error: error?.message || 'Image search failed' });
+  }
+}
+
+/**
+ * Attach the Mapillary routes. All refuse cross-site requests so another page
+ * cannot spend the token or provoke a 429 that holds every tile miss or
+ * image search.
  */
 export function installMapillaryRoutes(middlewares) {
   const allow = makeRateLimiter({
@@ -87,9 +171,18 @@ export function installMapillaryRoutes(middlewares) {
     max: TILE_ROUTE_MAX_PER_MIN,
     globalMax: TILE_ROUTE_MAX_PER_MIN * 4,
   });
+  const allowImages = makeRateLimiter({
+    windowMs: 60_000,
+    max: IMAGES_ROUTE_MAX_PER_MIN,
+    globalMax: IMAGES_ROUTE_MAX_PER_MIN * 4,
+  });
   middlewares.use('/api/mapillary/status', sameSiteGated(handleStatus));
   middlewares.use(
     '/api/mapillary/tiles',
     sameSiteGated((req, res) => handleTile(req, res, allow)),
+  );
+  middlewares.use(
+    '/api/mapillary/images',
+    sameSiteGated((req, res) => handleImages(req, res, allowImages)),
   );
 }

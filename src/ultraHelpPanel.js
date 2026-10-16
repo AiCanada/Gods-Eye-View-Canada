@@ -1408,12 +1408,46 @@ export function paintMedia(documentRef, items, selected = new Set()) {
   list.replaceChildren(...rows);
 }
 
+/** One entry of the CELL select. */
+function cellOption(documentRef, value, text) {
+  const option = documentRef.createElement('option');
+  option.value = value;
+  option.textContent = text;
+  return option;
+}
+
 export function applyUltraHelpStatus(documentRef, status) {
   const model = byId(documentRef, 'ultra-model');
   if (model && status?.model?.id && model.value !== status.model.id) {
     model.value = status.model.id;
   }
   const modelId = model?.value || status?.model?.id || 'samsung-s22-ultra';
+  // CELL: which saved phone TAKE PHOTO and TAKE VIDEO go to (owner request
+  // 2026-10-16): AUTO, then one entry per saved package, the pick shown.
+  const cell = byId(documentRef, 'ultra-camera-cell');
+  if (cell && status && Array.isArray(status.packages)) {
+    const wanted = ['', ...status.packages.map((item) => String(item.id))];
+    const have = [...(cell.children || [])].map((item) => String(item.value));
+    if (wanted.join('\n') !== have.join('\n')) {
+      cell.replaceChildren(
+        cellOption(
+          documentRef,
+          '',
+          'AUTO · THE PHONE WHOSE PAGE IS OPEN, ELSE THE LAST TO REPORT',
+        ),
+        ...status.packages.map((item) =>
+          cellOption(
+            documentRef,
+            String(item.id),
+            String(item.name || 'Ultra').toUpperCase(),
+          ),
+        ),
+      );
+    }
+    const chosen =
+      typeof status.cameraCell === 'string' ? status.cameraCell : '';
+    if (cell.value !== chosen) cell.value = chosen;
+  }
   // One row per camera (PHOTO, VIDEO, RECORD), shown when the model has it.
   for (const row of documentRef.querySelectorAll('[data-ultra-camera-row]')) {
     const role = row.dataset.ultraCameraRow;
@@ -1429,6 +1463,11 @@ export function applyUltraHelpStatus(documentRef, status) {
   }
   const statusLine = byId(documentRef, 'ultra-status');
   if (statusLine) {
+    // The mirror is on (the phone reaches this PC over Tailscale only), the
+    // report listener is up, and none of its addresses is a tailnet one.
+    const noTailnet = Boolean(
+      status?.tailnetWanted && status?.camLink && !status?.networkBase,
+    );
     const unread = Number(status?.unread) || 0;
     const release =
       status?.release && typeof status.release === 'object'
@@ -1442,9 +1481,28 @@ export function applyUltraHelpStatus(documentRef, status) {
     } else if (unread > 0) {
       statusLine.textContent = `HELP · ${unread} NEW`;
     } else if (status?.pending?.kind === 'camera') {
-      statusLine.textContent = `LIVE VIDEO · ${status.pending.label}`;
+      // LIVE VIDEO only while the phone page is polling. A press it has not
+      // picked up says what is missing: the page, the listener, or this
+      // PC's Tailscale address.
+      const label = status.pending.label;
+      statusLine.textContent = status.pageOpen
+        ? `LIVE VIDEO · ${label}`
+        : status.appLive
+          ? `LIVE VIDEO · ${label} · CAMERA APP`
+          : noTailnet
+            ? `ASKED · ${label} · THIS PC HAS NO TAILSCALE ADDRESS: CONNECT TAILSCALE ON THE PC`
+            : status.camLink
+              ? `ASKED · ${label} · OPEN THE CAMERA LINK BELOW, OR START THE CAMERA APP ON THE PHONE`
+              : `ASKED · ${label} · THE REPORT LISTENER IS NOT UP: RESTART THE DEV SERVER`;
+    } else if (status?.lapsed?.kind === 'camera') {
+      statusLine.textContent = `NOT TAKEN · ${status.lapsed.label} · PRESS AGAIN WITH THE PHONE PAGE OPEN`;
+    } else if (status?.appLive) {
+      statusLine.textContent = 'LIVE VIDEO · CAMERA APP';
     } else if (status?.cameraNote) {
       statusLine.textContent = status.cameraNote;
+    } else if (noTailnet) {
+      statusLine.textContent =
+        'TAILSCALE · THIS PC HAS NO TAILSCALE ADDRESS: THE PHONE CANNOT REACH IT';
     } else if (status?.position) {
       statusLine.textContent = `PHONE · ${status.position.lat.toFixed(4)}, ${status.position.lon.toFixed(4)}`;
     } else {
@@ -1459,8 +1517,12 @@ export function applyUltraHelpStatus(documentRef, status) {
     if (status?.camLink) {
       const anchor = documentRef.createElement('a');
       anchor.href = status.camLink;
-      anchor.textContent =
-        'Open this on the phone: it sends the phone’s position and camera (no app needed)';
+      // Which saved phone the link is for, when the box knows (two phones).
+      anchor.textContent = `${
+        status.camPackage
+          ? `Open this on the phone (${status.camPackage}): `
+          : 'Open this on the phone: '
+      }it sends the phone’s position and camera (no app needed)`;
       anchor.rel = 'noopener';
       rows.push(['cam', anchor]);
     }
@@ -2778,6 +2840,10 @@ export function initUltraHelpPanel({
       /* The owner's own pick from now on: the box stops following new calls. */
       event.target.dataset.ultraPicked = '1';
       if (latest) paintRelease(documentRef, latest);
+      return;
+    }
+    if (event.target?.id === 'ultra-camera-cell') {
+      void post('camera-cell', { id: event.target.value });
       return;
     }
     if (event.target?.id === 'ultra-model') {

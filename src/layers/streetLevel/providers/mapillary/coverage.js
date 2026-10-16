@@ -13,6 +13,7 @@ import {
   COVERAGE_MAX_SEQUENCES,
   COVERAGE_MAX_TILES,
   COVERAGE_MOVE_DEBOUNCE_MS,
+  COVERAGE_OVERVIEW_DOTS,
   COVERAGE_OVERVIEW_MAX_TILES,
   COVERAGE_OVERVIEW_POINT_PX,
   KEY_REJECTED_MESSAGE,
@@ -38,10 +39,18 @@ export function sequenceIdFromPick(pickId) {
   return lineSequenceIdFromPick(pickId, PICK_PREFIX.sequence);
 }
 
-/** Mapillary's vector-tile coverage through the server proxy. */
-export function createCoverage({ state, source }) {
+/**
+ * Mapillary's vector-tile coverage through the server proxy. The overview
+ * dots are off by policy: from orbit nothing is fetched or drawn.
+ */
+export function createCoverage({
+  state,
+  source,
+  overviewDots = COVERAGE_OVERVIEW_DOTS,
+}) {
   return createLineCoverage({
     state,
+    overviewDots,
     fetchTile: async (tile, { signal }) =>
       decodeCoverageTile(
         await source.getTile('coverage', tile.z, tile.x, tile.y, { signal }),

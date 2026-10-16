@@ -94,12 +94,17 @@ export class PanelPositionControls {
     syncCctvPanelViewport,
     showToast,
     onPanelResized = null,
+    expandPanel = null,
   }) {
     this._syncPanelCollapseButton = syncPanelCollapseButton;
     this._layoutRightPanels = layoutRightPanels;
     this._syncCctvPanelViewport = syncCctvPanelViewport;
     this._showToast = showToast;
     this._onPanelResized = onPanelResized;
+    // Opens a panel the way its own button does (panel chrome); a minimized
+    // tab pulled onto the map opens there through it.
+    this._expandPanel = expandPanel;
+    this._openAt = null;
     this._ppToggles = document.getElementById('pp-toggles');
     this._panelZCounter = PANEL_Z_BASE + 10;
     this._draggableResizeObserver = null;
@@ -259,6 +264,10 @@ export class PanelPositionControls {
         handle: cctvPanel?.querySelector('.panel-header'),
         portable: true,
         min: { width: 300, height: 160 },
+        // Minimized, its tab joins the rail with the others (never over an
+        // open box); opened, the window comes back where it was, at its
+        // size. Pulled out onto the map, the tab opens there.
+        minimizeToRail: true,
       },
       {
         id: 'street-level-panel',
@@ -280,6 +289,7 @@ export class PanelPositionControls {
           handle: spec.handle,
           min: { width: 300, height: 160, ...spec.min },
           dockOnCollapse: spec.dockOnCollapse === true,
+          minimizeToRail: spec.minimizeToRail === true,
         });
         spec.panel.classList.add('panel-portable');
       }
@@ -381,6 +391,9 @@ export class PanelPositionControls {
       // Only portable panels store, and accept, floating records.
       const portable = this._portablePanels.get(panelId);
       if (Boolean(pos.floating) !== Boolean(portable)) return;
+      // A window minimized to the rail waits there; it opens at its place.
+      if (portable && pos.parked && panelEl.classList.contains('collapsed'))
+        return;
       if (portable) {
         panelEl.classList.add('panel-floating', 'panel-draggable');
         // A restored window must stack above the docked rail panels too.
@@ -512,9 +525,19 @@ export class PanelPositionControls {
 
   /** Snap a floating panel back into its rail and forget its window. */
   _resetPanelPosition(panelId) {
-    const portable = this._portablePanels.get(panelId);
-    if (!portable) return;
-    const panelEl = portable.panel;
+    if (!this._portablePanels.has(panelId)) return;
+    try {
+      localStorage.removeItem(this._panelStorageKey(panelId));
+    } catch {
+      // storage unavailable
+    }
+    this._dockInRail(panelId);
+  }
+
+  /** Put a floating panel back in its rail; its stored window is untouched. */
+  _dockInRail(panelId) {
+    const panelEl = this._portablePanels.get(panelId)?.panel;
+    if (!panelEl) return;
     this._cancelDrag?.();
     panelEl.classList.remove(
       'panel-floating',
@@ -525,13 +548,106 @@ export class PanelPositionControls {
     for (const property of FLOATING_STYLE_PROPERTIES) {
       panelEl.style.removeProperty(property);
     }
-    try {
-      localStorage.removeItem(this._panelStorageKey(panelId));
-    } catch {
-      // storage unavailable
-    }
     this._layoutRightPanels();
     this._onPanelResized?.(panelId);
+  }
+
+  _readWindowRecord(panelId) {
+    try {
+      const record = JSON.parse(
+        localStorage.getItem(this._panelStorageKey(panelId)) || 'null',
+      );
+      return record && typeof record === 'object' ? record : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Minimize a window to the rail: its tab docks with the rail's others and
+   * its place and size are kept (`parked`) for when it opens.
+   * @returns {boolean} Whether it was floating and is now in the rail.
+   */
+  _minimizeToRail(panelId) {
+    const panelEl = this._portablePanels.get(panelId)?.panel;
+    if (!panelEl?.classList.contains('panel-floating')) return false;
+    const px = (value) => {
+      const n = parseFloat(value);
+      return Number.isFinite(n) ? Math.round(n) : null;
+    };
+    const rect = panelEl.getBoundingClientRect();
+    const record = {
+      left: px(panelEl.style.left) ?? Math.round(rect.left),
+      top: px(panelEl.style.top) ?? Math.round(rect.top),
+      floating: true,
+      parked: true,
+    };
+    // The size the user chose: the inline value, never the collapsed box.
+    const width = px(panelEl.style.width);
+    const height = px(panelEl.style.height);
+    if (width !== null) record.width = width;
+    if (height !== null) record.height = height;
+    this._dockInRail(panelId);
+    try {
+      localStorage.setItem(
+        this._panelStorageKey(panelId),
+        JSON.stringify(record),
+      );
+    } catch {
+      // storage unavailable: it reopens docked
+    }
+    return true;
+  }
+
+  /**
+   * Open a minimized window where it was, at its size, or (pulled out of
+   * the rail) where it was dropped. Without a kept window it opens docked.
+   * @returns {boolean} Whether it is a window again.
+   */
+  _restoreFromRail(panelId) {
+    const portable = this._portablePanels.get(panelId);
+    if (!portable) return false;
+    const panelEl = portable.panel;
+    const record = this._readWindowRecord(panelId);
+    const dropped = this._openAt?.panelId === panelId ? this._openAt : null;
+    if (!record?.parked && !dropped) return false;
+    panelEl.style.removeProperty('--right-panel-allocated-height');
+    panelEl.removeAttribute('aria-hidden');
+    panelEl.classList.add('panel-floating', 'panel-draggable');
+    if (Number.isFinite(record?.width)) {
+      panelEl.style.width = `${fitWindowExtent(
+        record.width,
+        portable.min.width,
+        window.innerWidth,
+      )}px`;
+    } else if (!panelEl.style.width) {
+      // Never sized: as wide as the rail it came from.
+      const rail = panelEl.parentElement?.getBoundingClientRect?.();
+      panelEl.style.width = `${fitWindowExtent(
+        rail?.width || portable.min.width,
+        portable.min.width,
+        window.innerWidth,
+      )}px`;
+    }
+    if (Number.isFinite(record?.height)) {
+      panelEl.style.height = `${fitWindowExtent(
+        record.height,
+        portable.min.height,
+        window.innerHeight,
+      )}px`;
+    }
+    const at = dropped || record;
+    const { left, top } = this._clampPortableWindow(
+      portable,
+      Math.round(at.left),
+      Math.round(at.top),
+    );
+    placeAt(panelEl, left, top);
+    this._promotePanelZ(panelEl);
+    this._layoutRightPanels();
+    this._savePanelPosition(panelId, panelEl);
+    this._onPanelResized?.(panelId);
+    return true;
   }
 
   _makePanelDraggable(panelId, panelEl, handleEl) {
@@ -647,11 +763,22 @@ export class PanelPositionControls {
     return true;
   }
 
-  /** A `dockOnCollapse` panel returns to its rail when collapsed while floating. */
-  onPanelCollapsed(panelId, collapsed) {
-    if (!collapsed || !this._portablePanels.get(panelId)?.dockOnCollapse)
+  /**
+   * A panel was collapsed or opened. A `minimizeToRail` window docks its tab
+   * in the rail when collapsed and comes back when opened, whoever did it
+   * (its place is kept). A `dockOnCollapse` panel returns to its rail, and
+   * forgets its place, only on the user's own collapse (`explicit`).
+   */
+  onPanelCollapsed(panelId, collapsed, { explicit = true } = {}) {
+    const portable = this._portablePanels.get(panelId);
+    if (!portable) return;
+    if (portable.minimizeToRail) {
+      if (collapsed) this._minimizeToRail(panelId);
+      else this._restoreFromRail(panelId);
       return;
-    this.dockPanel(panelId);
+    }
+    if (collapsed && explicit && portable.dockOnCollapse)
+      this.dockPanel(panelId);
   }
 
   /**
@@ -748,6 +875,24 @@ export class PanelPositionControls {
           setTimeout(() => {
             swallowNextClick = false;
           }, 0);
+          if (entry.minimizeToRail && panelEl.classList.contains('collapsed')) {
+            // A minimized tab is never left on the map: pulled out of the
+            // rail, it opens there as its window; with nothing to open it,
+            // it goes back.
+            this._openAt = {
+              panelId,
+              left: parseFloat(panelEl.style.left),
+              top: parseFloat(panelEl.style.top),
+            };
+            try {
+              this._expandPanel?.(panelId);
+            } finally {
+              this._openAt = null;
+            }
+            if (panelEl.classList.contains('collapsed'))
+              this._dockInRail(panelId);
+            return;
+          }
           this._savePanelPosition(panelId, panelEl);
           this._onPanelResized?.(panelId);
         },

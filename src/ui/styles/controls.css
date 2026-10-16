@@ -122,9 +122,14 @@
   flex: none;
   pointer-events: auto;
 }
-/* A collapsed window shows only its header strip; its inline height stays. */
+/* A collapsed window is a tab like the rail's others, the same width and
+   strip wherever it was moved, and still draggable by it. The size chosen
+   for it stays inline (and saved), so it opens at that size again; the
+   inline values are why these two need !important. */
 #right-context-rail > .panel-floating.collapsed {
   max-height: max-content;
+  width: var(--right-display-collapsed-width) !important;
+  height: auto !important;
 }
 .panel-floating[style*='height'] > .cctv-panel-inner {
   box-sizing: border-box;
@@ -1112,6 +1117,7 @@ body.ui-clean-view #global-context-panel,
 body.ui-clean-view #scene-panel,
 body.ui-clean-view #social-panel,
 body.ui-clean-view #outbreak-panel,
+body.ui-clean-view #ai-world-panel,
 /* The expanded viewer lives on <body>, outside every panel. */
 body.ui-clean-view .sl-viewer-wrap-expanded {
   opacity: 0 !important;

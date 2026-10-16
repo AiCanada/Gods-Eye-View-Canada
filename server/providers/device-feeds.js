@@ -44,6 +44,7 @@ import path from 'node:path';
 import { defaultSourceRoot } from './common/source-root.js';
 import {
   admitKeySetupRequest,
+  isTailnetIPv4,
   sendOwnerRemovalRefusal,
 } from '../../src/keySetupCore.mjs';
 import {
@@ -132,6 +133,12 @@ export const DEVICE_RECORD_BODY_LIMIT = 16 * 1024 * 1024;
 /** A phone's report is a few hundred bytes; a batch of buffered ones a few kilobytes. */
 export const DEVICE_REPORT_BODY_LIMIT = 64 * 1024;
 export const DEVICE_REPORT_DEFAULT_PORT = 44173;
+/**
+ * How often the listener looks at this machine's addresses again while it is
+ * up: Tailscale's address has been seen to come up after the listener did
+ * (at every dev-server start), and the phone link must move to it then.
+ */
+const LISTENER_ADDRESS_REFRESH_MS = 15_000;
 const LAST_REPORT_FILE = 'last-report.json';
 const REFUSAL_LOG_MS = 60_000;
 const REPORT_MAX_CONNECTIONS = 256;
@@ -301,10 +308,30 @@ export function reportKeyOf(url) {
   return [fromPath, fromId].find((value) => REPORT_KEY.test(value || '')) || '';
 }
 
-/** The IPv4 addresses this machine answers on, for the setup card. */
+/**
+ * The IPv4 addresses this machine answers on, for the setup card and the
+ * phone links: the tailnet ones (100.64.0.0/10) first, since the owner's
+ * phone reaches this machine over Tailscale only (owner ruling 2026-10-11);
+ * a LAN address stays listed after them.
+ */
 function localAddresses() {
+  return tailnetFirst(machineIPv4Addresses());
+}
+
+/** Every IPv4 address of this machine that another device could reach. */
+function machineIPv4Addresses(interfaces = null) {
   const out = [];
-  for (const list of Object.values(os.networkInterfaces())) {
+  let table = interfaces;
+  if (!table) {
+    try {
+      table = os.networkInterfaces();
+    } catch {
+      // The read can fail while an adapter has no address yet: none this
+      // time, and the next look tries again.
+      return out;
+    }
+  }
+  for (const list of Object.values(table || {})) {
     for (const entry of list || []) {
       if (entry.family === 'IPv4' || entry.family === 4) {
         // A link-local address (a VPN adapter that is not signed in) reaches nothing.
@@ -314,6 +341,15 @@ function localAddresses() {
     }
   }
   return out;
+}
+
+/** The tailnet addresses ahead of the rest; each group keeps its order. */
+export function tailnetFirst(addresses) {
+  const list = Array.isArray(addresses) ? addresses : [];
+  return [
+    ...list.filter((address) => isTailnetIPv4(address)),
+    ...list.filter((address) => !isTailnetIPv4(address)),
+  ];
 }
 
 /**
@@ -790,6 +826,8 @@ export function deviceFeedsProxy({
     scheme: 'http',
     retries: 0,
     retryTimer: null,
+    refreshTimer: null,
+    bases: '',
   };
 
   /**
@@ -1225,6 +1263,8 @@ export function deviceFeedsProxy({
     // device holding sockets open must not take the process's handles.
     server.maxConnections = reportMaxConnections;
     server.on('error', (error) => {
+      clearInterval(listener.refreshTimer);
+      listener.refreshTimer = null;
       listener.server = null;
       listener.port = null;
       // A dev server restarting in-process still holds the port for a moment
@@ -1253,14 +1293,36 @@ export function deviceFeedsProxy({
       );
     });
     server.listen(port, host, () => {
+      if (listener.server !== server) {
+        // Stopped while the bind was still in flight: this one is an orphan.
+        server.close();
+        server.closeAllConnections?.();
+        return;
+      }
       listener.port = server.address()?.port ?? port;
       listener.error = '';
       listener.retries = 0;
       const bases = listenerAddresses();
+      listener.bases = bases.join('\n');
       noteUltraEndpoint(bases);
       console.log(
         `[Device feeds] Reports accepted on port ${listener.port} over ${listener.scheme} (${bases.join(', ') || host})`,
       );
+      // Tailscale's address can come up after the listener did: look again
+      // every so often, so the phone link moves to it without a restart.
+      clearInterval(listener.refreshTimer);
+      listener.refreshTimer = setInterval(() => {
+        if (listener.server !== server) return;
+        const next = listenerAddresses();
+        const key = next.join('\n');
+        if (key === listener.bases) return;
+        listener.bases = key;
+        noteUltraEndpoint(next);
+        console.log(
+          `[Device feeds] Report addresses now ${next.join(', ') || host}`,
+        );
+      }, LISTENER_ADDRESS_REFRESH_MS);
+      listener.refreshTimer.unref?.();
     });
     listener.server = server;
   };
@@ -1270,6 +1332,11 @@ export function deviceFeedsProxy({
     clearTimeout(listener.retryTimer);
     listener.retryTimer = null;
     listener.retries = 0;
+    clearInterval(listener.refreshTimer);
+    listener.refreshTimer = null;
+    listener.bases = '';
+    // No listener, no phone link: the box must not hand out a closed port.
+    noteUltraEndpoint([]);
     const server = listener.server;
     listener.server = null;
     listener.port = null;

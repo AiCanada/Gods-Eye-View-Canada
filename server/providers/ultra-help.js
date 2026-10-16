@@ -192,6 +192,82 @@ const SHARED = (globalThis.__GEV_ULTRA_HELP_MEMORY ??= { root: '' });
 const shared = (name, make) => (SHARED[name] ??= make());
 const positions = shared('positions', () => new Map());
 const commands = shared('commands', () => new Map());
+/** When each phone page last polled (ms), by key: whether a page is open now. */
+const pagePolls = shared('pagePolls', () => new Map());
+/** The last camera press that waited too long, by key, for the box to say so. */
+const lapsedCommands = shared('lapsedCommands', () => new Map());
+/**
+ * How long a camera press waits for the phone page. The page polls every
+ * second while it is on screen, and on plain http it has no wake lock, so a
+ * locked phone misses presses: fifteen minutes lets the owner wake it, while
+ * a press no page ever picked up must not fire the camera hours later.
+ */
+const COMMAND_MAX_AGE_MS = 15 * 60_000;
+/** A page that polled this recently counts as open. */
+const PAGE_OPEN_MS = 5_000;
+/** How long the box keeps saying that a press was not taken. */
+const LAPSED_SHOW_MS = 10 * 60_000;
+/** The command waiting for this phone, dropping one that waited too long. */
+function pendingCommand(key, now = Date.now()) {
+  const command = commands.get(key) || null;
+  if (
+    command &&
+    Number.isFinite(command.at) &&
+    now - command.at > COMMAND_MAX_AGE_MS
+  ) {
+    commands.delete(key);
+    lapsedCommands.set(key, { ...command, lapsedAt: now });
+    return null;
+  }
+  return command;
+}
+/** Whether this phone's page polled within the last few seconds. */
+function pageOpen(key, now = Date.now()) {
+  const age = now - (pagePolls.get(key) || 0);
+  // A poll stamped in the future (a clock set back) is not a page open now.
+  return age >= 0 && age < PAGE_OPEN_MS;
+}
+/** The press that lapsed for this phone, while it is still worth saying. */
+function lapsedCommand(key, now = Date.now()) {
+  const entry = lapsedCommands.get(key) || null;
+  if (!entry) return null;
+  if (now - entry.lapsedAt > LAPSED_SHOW_MS) {
+    lapsedCommands.delete(key);
+    return null;
+  }
+  return entry;
+}
+/**
+ * The phone a camera press goes to, and the one the box's camera fields
+ * describe: the package whose page is open (it polled within the last few
+ * seconds; the most recent when two are), else the one that reported last.
+ * With two phones saved, the press must reach the one in hand, not the one
+ * whose tracker app happened to report last.
+ */
+function chosenPhoneKey(store, now = Date.now()) {
+  // The owner's CELL pick first: that package's key, whatever is open.
+  const picked = store?.cameraCell
+    ? securityFeeds().find((item) => item.id === store.cameraCell)
+    : null;
+  if (picked && KEY.test(String(picked.reportKey || '')))
+    return picked.reportKey;
+  let open = null;
+  for (const [key, at] of pagePolls) {
+    const age = now - at;
+    if (age < 0 || age >= PAGE_OPEN_MS || !KEY.test(key)) continue;
+    if (!open || at > open.at) open = { key, at };
+  }
+  if (open) return open.key;
+  const fix = latestPosition();
+  return fix && KEY.test(fix.key) ? fix.key : '';
+}
+/** The saved package's name for a key, or '' when no package has it. */
+function packageNameOf(key) {
+  const feed = key
+    ? securityFeeds().find((item) => item.reportKey === key)
+    : null;
+  return feed ? String(feed.name || 'Ultra') : '';
+}
 const pictures = new Map();
 const phoneHosts = new Map();
 const viewers = new Set();
@@ -612,10 +688,16 @@ function readStore() {
     return empty;
   }
   const modelId = ultraPhoneModel(parsed?.modelId).id;
+  // CELL: the saved package TAKE PHOTO and TAKE VIDEO go to ('' is AUTO).
+  const cameraCell =
+    typeof parsed?.cameraCell === 'string'
+      ? parsed.cameraCell.slice(0, 80)
+      : '';
   if (!trusted) {
     const safe = {
       version: 1,
       modelId,
+      cameraCell,
       contacts: [],
       owner: { number: '', needs: null },
       releases: heldReleases(),
@@ -627,6 +709,7 @@ function readStore() {
   return {
     version: 1,
     modelId,
+    cameraCell,
     contacts: contacts
       .map((item) => {
         const number = normalizeUltraNumber(item?.number);
@@ -744,6 +827,7 @@ function writeStore(store) {
   const body = {
     version: 1,
     modelId: store.modelId,
+    cameraCell: store.cameraCell || '',
     contacts: store.contacts,
     owner: store.owner,
     releases: store.releases,
@@ -3731,16 +3815,40 @@ function firstJpeg(buffer) {
   return buffer.subarray(start, end + 2);
 }
 
-/** Try the usual phone-camera URLs on the address that reported in. One hit is enough. */
-async function pullGenericPhonePicture(key, fetchImpl) {
+/** MJPEG stream endpoints the phone camera apps serve, tried in order. */
+const GENERIC_PHONE_STREAMS = Object.freeze([
+  Object.freeze({ port: 8080, path: '/video' }),
+  Object.freeze({ port: 4747, path: '/mjpegfeed' }),
+  Object.freeze({ port: 4747, path: '/video' }),
+]);
+/** How long a camera app gets to answer a press. */
+const APP_ANSWER_MS = 1500;
+/** How long the app's stream is shown live after a VIDEO press. */
+const APP_STREAM_MS = 30_000;
+/** When each phone's camera app last gave a frame (ms), by key. */
+const appPulls = new Map();
+/** The app stream being read for each phone: {controller, until}. */
+const appStreams = new Map();
+/** Whether the phone's camera app gave a frame within the last few seconds. */
+function appLive(key, now = Date.now()) {
+  const age = now - (appPulls.get(key) || 0);
+  return age >= 0 && age < PAGE_OPEN_MS;
+}
+
+/**
+ * Try the usual phone-camera URLs on the address that reported in. One hit
+ * is enough: the still is published as the live picture and, with `keep`,
+ * kept as a photo for the box. Resolves to the still, or null.
+ */
+async function pullGenericPhonePicture(key, fetchImpl, { keep = false } = {}) {
   const host = phoneHosts.get(key);
-  if (!host) return false;
+  if (!host) return null;
   for (const camera of GENERIC_PHONE_CAMERAS) {
     try {
       const response = await fetchImpl(
         `http://${host}:${camera.port}${camera.path}`,
         {
-          signal: AbortSignal.timeout(1200),
+          signal: AbortSignal.timeout(APP_ANSWER_MS),
           redirect: 'error',
         },
       );
@@ -3771,12 +3879,134 @@ async function pullGenericPhonePicture(key, fetchImpl) {
       const jpeg = /^image\/jpeg/i.test(type) ? buffer : firstJpeg(buffer);
       if (!jpeg || jpeg.length < 32) continue;
       publishFrame(key, jpeg, 'image/jpeg');
-      return true;
+      appPulls.set(key, Date.now());
+      if (keep) storeUltraPhoto(key, Buffer.from(jpeg), 'image/jpeg');
+      return jpeg;
     } catch {
       /* This port is not a camera. Try the next one. */
     }
   }
+  return null;
+}
+
+/** Pull the JPEG frames out of a running MJPEG byte stream. */
+function takeJpegs(state, chunk) {
+  const SOI = Buffer.from([0xff, 0xd8, 0xff]);
+  const EOI = Buffer.from([0xff, 0xd9]);
+  // A web stream yields plain byte arrays, whose indexOf takes a number:
+  // a Buffer finds the byte patterns.
+  const data = Buffer.isBuffer(chunk)
+    ? chunk
+    : Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  state.buffer = state.buffer ? Buffer.concat([state.buffer, data]) : data;
+  const frames = [];
+  for (;;) {
+    const start = state.buffer.indexOf(SOI);
+    if (start < 0) {
+      state.buffer = state.buffer.subarray(
+        Math.max(0, state.buffer.length - 2),
+      );
+      break;
+    }
+    const end = state.buffer.indexOf(EOI, start + 3);
+    if (end < 0) {
+      if (start > 0) state.buffer = state.buffer.subarray(start);
+      // A frame that never ends is not a frame: start over.
+      if (state.buffer.length > 4 * 1024 * 1024) state.buffer = Buffer.alloc(0);
+      break;
+    }
+    frames.push(Buffer.from(state.buffer.subarray(start, end + 2)));
+    state.buffer = state.buffer.subarray(end + 2);
+  }
+  return frames;
+}
+
+/**
+ * TAKE VIDEO with no page open: read the phone camera app's MJPEG stream for
+ * the recording time, publishing every frame as the live picture (the map's
+ * Cell card) and keeping the first as a photo, since this machine has no
+ * video encoder to write a clip with. A press while it runs extends it.
+ * Resolves true once the first frame is in, false when no app answered.
+ */
+async function startAppStream(key, fetchImpl) {
+  const host = phoneHosts.get(key);
+  if (!host) return false;
+  const running = appStreams.get(key);
+  if (running) {
+    running.until = Date.now() + APP_STREAM_MS;
+    return true;
+  }
+  for (const camera of GENERIC_PHONE_STREAMS) {
+    const controller = new AbortController();
+    // Only the connection waits on a timer: the stream itself runs on.
+    const connect = setTimeout(() => controller.abort(), APP_ANSWER_MS);
+    let response;
+    try {
+      response = await fetchImpl(
+        `http://${host}:${camera.port}${camera.path}`,
+        { signal: controller.signal, redirect: 'error' },
+      );
+    } catch {
+      clearTimeout(connect);
+      continue;
+    }
+    clearTimeout(connect);
+    if (!response.ok || !response.body) {
+      try {
+        await response.body?.cancel();
+      } catch {
+        /* already closed */
+      }
+      continue;
+    }
+    const entry = { controller, until: Date.now() + APP_STREAM_MS };
+    appStreams.set(key, entry);
+    const first = pumpAppStream(key, response.body, entry);
+    const got = await Promise.race([
+      first,
+      new Promise((resolve) =>
+        setTimeout(() => resolve(false), APP_ANSWER_MS * 2),
+      ),
+    ]);
+    if (got) return true;
+    controller.abort();
+    appStreams.delete(key);
+  }
   return false;
+}
+
+/** Read frames until the recording time is over; resolves when the first is in. */
+function pumpAppStream(key, body, entry) {
+  return new Promise((resolveFirst) => {
+    let first = true;
+    (async () => {
+      const state = { buffer: null };
+      try {
+        for await (const chunk of body) {
+          for (const frame of takeJpegs(state, chunk)) {
+            publishFrame(key, frame, 'image/jpeg');
+            appPulls.set(key, Date.now());
+            if (first) {
+              first = false;
+              storeUltraPhoto(key, frame, 'image/jpeg');
+              resolveFirst(true);
+            }
+          }
+          if (Date.now() > entry.until) break;
+        }
+      } catch {
+        /* the app went away: the live picture simply stops */
+      } finally {
+        try {
+          entry.controller.abort();
+        } catch {
+          /* already closed */
+        }
+        if (appStreams.get(key) === entry) appStreams.delete(key);
+        resolveFirst(false);
+      }
+    })();
+  });
 }
 
 /** Remember a position the paired security package just reported. */
@@ -4030,6 +4260,9 @@ function publicStatus(store, { editable = false } = {}) {
       (best, item) => (!best || item.renewedAt > best.renewedAt ? item : best),
       null,
     ) || null;
+  // The phone the camera fields describe: the page that is open, else the
+  // one that reported last, else the saved package (before any report).
+  const camKey = chosenPhoneKey(store) || firstSecurityKey();
   return {
     model: ultraPhoneModel(store.modelId),
     cameras: ultraCameraButtons(store.modelId),
@@ -4038,14 +4271,28 @@ function publicStatus(store, { editable = false } = {}) {
       ? { name: fix.name, lat: fix.lat, lon: fix.lon, at: fix.at }
       : null,
     contacts: store.contacts,
-    pending: fix && KEY.test(fix.key) ? commands.get(fix.key) || null : null,
-    hasPicture: Boolean(livePicture) || (fix ? pictures.has(fix.key) : false),
+    pending: camKey ? pendingCommand(camKey) : null,
+    // Whether the phone page is open now (it polls every second), and the
+    // press it missed when one lapsed: the box's LIVE VIDEO, ASKED and NOT
+    // TAKEN lines. hasPicture stays what it was: a frame was ever received.
+    pageOpen: camKey ? pageOpen(camKey) : false,
+    lapsed: camKey ? lapsedCommand(camKey) : null,
+    // With the mirror on, the owner's phone reaches this machine over
+    // Tailscale only: a listener with no tailnet address is then worth saying.
+    tailnetWanted: /^(?:1|true|yes|on)$/i.test(
+      String(process.env.GEV_TAILNET_DASHBOARD || '').trim(),
+    ),
+    hasPicture: Boolean(livePicture) || (camKey ? pictures.has(camKey) : false),
     livePicture,
     // Shown before any report too: opening this link on the phone is what
     // produces the first one.
-    camLink: ultraCamLink(
-      fix && KEY.test(fix.key) ? fix.key : firstSecurityKey(),
-    ),
+    camLink: ultraCamLink(camKey),
+    // Which saved phone that link and the camera buttons are for, the CELL
+    // pick behind it ('' is AUTO), and whether that phone's camera app is
+    // streaming into the box right now (no page needed).
+    camPackage: packageNameOf(camKey),
+    cameraCell: store.cameraCell || '',
+    appLive: camKey ? appLive(camKey) : false,
     editable,
     // Every Ultra cell, with its map id (the Cell layer's) and what it
     // records. Never its key.
@@ -4396,11 +4643,17 @@ async function receiveUltraPhoto(req, res, key) {
     json(res, 415, 'Not a photo', 'text/plain');
     return;
   }
-  const name = mediaName('photo', PHOTO_EXTENSIONS[type]);
+  storeUltraPhoto(key, bytes, type);
+  json(res, 200, 'kept', 'text/plain');
+}
+
+/** Keep a still as a photo on this computer, listed for the box. */
+function storeUltraPhoto(key, bytes, type) {
+  const name = mediaName('photo', PHOTO_EXTENSIONS[type] || 'jpg');
   fs.mkdirSync(mediaDir(), { recursive: true, mode: 0o700 });
   fs.writeFileSync(path.join(mediaDir(), name), bytes, { mode: 0o600 });
   stills.set(key, { bytes, type, at: Date.now(), name });
-  json(res, 200, 'kept', 'text/plain');
+  return name;
 }
 
 /** A clip from the phone, written straight to disk as it arrives. */
@@ -4875,6 +5128,8 @@ export async function handleUltraPhone(req, res, url) {
   // The one-slot command and the help queue are popped together, so a
   // pending camera switch and a help message arrive in the same answer.
   const now = Date.now();
+  // The page is open while it keeps polling: the box says LIVE VIDEO only then.
+  pagePolls.set(key, now);
   // A STAND DOWN (or SEND HELP) the disk refused is written from here too:
   // the owner may be out with the phone and no GEV tab open.
   retryUnsavedReleases(now);
@@ -4884,8 +5139,11 @@ export async function handleUltraPhone(req, res, url) {
   // replaced by a new call) is never handed over.
   if (feed)
     dropPleaCards(key, feed.id, active ? `${feed.id}:${active.at}` : null);
-  const command = commands.get(key) || null;
-  if (command) commands.delete(key);
+  const command = pendingCommand(key, now);
+  if (command) {
+    commands.delete(key);
+    lapsedCommands.delete(key);
+  }
   const notify = (notifies.get(key) || []).map(({ call, ...card }) => card);
   notifies.delete(key);
   if (notify.length) markDelivered(notify, now);
@@ -6154,6 +6412,21 @@ export function ultraHelpProxy({
           json(res, 200, { deleted, items: listUltraMedia() });
           return;
         }
+        if (req.method === 'POST' && pathName === '/camera-cell') {
+          // CELL (owner request 2026-10-16): which saved phone the camera
+          // buttons go to; '' is AUTO (the open page, else the last reporter).
+          const id = String(body.id || '')
+            .trim()
+            .slice(0, 80);
+          if (id && !securityFeeds().some((feed) => feed.id === id)) {
+            json(res, 400, { error: 'No such Ultra cell' });
+            return;
+          }
+          store.cameraCell = id;
+          writeStore(store);
+          json(res, 200, answer(store));
+          return;
+        }
         if (req.method === 'POST' && pathName === '/model') {
           store.modelId = ultraPhoneModel(body.modelId).id;
           writeStore(store);
@@ -6194,8 +6467,10 @@ export function ultraHelpProxy({
             return;
           }
           const known = answer(store);
-          const fix = latestPosition();
-          if (!fix || !KEY.test(fix.key)) {
+          // The phone in hand: the CELL pick, else the one whose page is
+          // open, else the last reporter (chosenPhoneKey).
+          const key = chosenPhoneKey(store);
+          if (!key) {
             json(res, 400, {
               error:
                 'No paired phone yet. The phone has to report in once first.',
@@ -6205,20 +6480,36 @@ export function ultraHelpProxy({
           // PHOTO (one still) or VIDEO (the live picture); the phone records
           // a clip with either (owner ruling, 2026-10-08).
           const mode = body.mode === 'photo' ? 'photo' : 'video';
-          commands.set(fix.key, {
+          lapsedCommands.delete(key);
+          commands.set(key, {
             kind: 'camera',
             role: role.id,
             mode,
             label: `${role.label} · ${mode.toUpperCase()}`,
             at: Date.now(),
           });
-          if (!known.livePicture && !pictures.has(fix.key)) {
-            await pullGenericPhonePicture(fix.key, fetchImpl);
+          // No page open on that phone: its camera app (IP Webcam, DroidCam)
+          // takes the press, so no page is needed (owner request 2026-10-16).
+          // PHOTO pulls one still and keeps it as the photo; VIDEO shows the
+          // app's stream live for the recording time and keeps its first
+          // frame. An app that answered has taken the press: the page's slot
+          // is cleared so a page opened later does not fire it again.
+          let app = false;
+          if (!pageOpen(key)) {
+            app =
+              mode === 'photo'
+                ? Boolean(
+                    await pullGenericPhonePicture(key, fetchImpl, {
+                      keep: true,
+                    }),
+                  )
+                : await startAppStream(key, fetchImpl);
+            if (app) commands.delete(key);
           }
           const status = answer(store);
-          if (!status.livePicture && !status.hasPicture) {
+          if (!status.pageOpen && !app) {
             status.cameraNote = status.camLink
-              ? 'Open the camera link on the phone. It sends live video into this box.'
+              ? 'Nothing took the press: open the camera link on the phone, or start its camera app (IP Webcam, port 8080) so no page is needed.'
               : 'The report listener is not up yet. Restart the dev server, then open the camera link on the phone.';
           }
           json(res, 200, status);

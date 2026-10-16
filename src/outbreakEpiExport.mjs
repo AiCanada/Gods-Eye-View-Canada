@@ -68,6 +68,9 @@ const REQUEST_KEYS = [
   'locations',
   'outbreakAirports',
   'flightCount',
+  // The scan's flights (airport codes and times): with them a saved run can
+  // be run again as a scenario (scripts/outbreak-dataset.mjs --from-export).
+  'flights',
   'profile',
   // Rail travel (owner ruling 2026-10-12).
   'speedKmh',

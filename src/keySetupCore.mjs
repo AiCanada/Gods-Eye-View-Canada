@@ -163,7 +163,9 @@ export const KEY_SETUP_KEYS = Object.freeze([
         name: 'NVIDIA_MODEL',
         label: 'MODEL',
         placeholder: 'moonshotai/kimi-k3',
-        options: Object.freeze([]),
+        // NIM's id for Nemotron 3.5 Super VL, read from its model list on
+        // 2026-10-16; it is asked with thinking on (ask.js MODEL_SAMPLING).
+        options: Object.freeze(['nvidia/nemotron-3.5-super-vl-120b-a12b']),
       }),
     ]),
     tier: 'free',
@@ -209,16 +211,19 @@ export const KEY_SETUP_KEYS = Object.freeze([
     group: 'llm',
     title: 'OPENROUTER',
     unlocks:
-      'AI Risk & Truth Assessment: one key that reaches many models; NVIDIA Nemotron 3 Ultra (free) unless another is chosen',
+      'AI Risk & Truth Assessment: one key that reaches many models; NVIDIA Nemotron 3.5 Super VL (free) unless another is chosen',
     getUrl: 'https://openrouter.ai/keys',
     envVars: Object.freeze(['OPENROUTER_API_KEY']),
     optionalEnvVars: Object.freeze([
       Object.freeze({
         name: 'OPENROUTER_MODEL',
         label: 'MODEL',
-        placeholder: 'nvidia/nemotron-3-ultra-550b-a55b:free',
-        // OpenRouter's own ids, read from its model list on 2026-09-27.
+        placeholder: 'nvidia/nemotron-3.5-super-vl:free',
+        // OpenRouter's own ids, read from its model list on 2026-09-27 and
+        // 2026-10-16.
         options: Object.freeze([
+          'nvidia/nemotron-3.5-super-vl:free',
+          'nvidia/nemotron-3.5-super-vl',
           'nvidia/nemotron-3-ultra-550b-a55b:free',
           'nvidia/nemotron-3-super-120b-a12b:free',
           'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',

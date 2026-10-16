@@ -94,6 +94,8 @@ export function meshBoxInRange(box, centre) {
  * @param {LineCoverageTuning} options.tuning
  * @param {{keyRejected?: string, rateLimited: string, tooHigh?: string}} options.messages
  * @param {(sequence: object, filter: object) => boolean} [options.passes]  Whether the imagery filter keeps a line or point.
+ * @param {boolean} [options.overviewDots] Whether overview points are drawn
+ *   at all. Off, orbit draws and fetches nothing and the hint says to zoom in.
  */
 export function createLineCoverage({
   state,
@@ -105,6 +107,7 @@ export function createLineCoverage({
   tuning,
   messages,
   passes = passesImageryFilter,
+  overviewDots = true,
 }) {
   const { render } = state.services;
   const perTileSequenceCap = Math.floor(tuning.maxSequences / tuning.maxTiles);
@@ -681,6 +684,14 @@ export function createLineCoverage({
     const level = zoomFor(height);
     const zoom = level?.zoom ?? null;
     const kind = level?.kind ?? null;
+    // The overview dots can be off (Mapillary: owner ruling, 2026-10-09): from
+    // orbit nothing is drawn or fetched; the lines show on zooming in.
+    if (kind === 'overview' && !overviewDots) {
+      state.coverage.hint = 'Zoom in to see street-level coverage lines';
+      clear();
+      notify();
+      return;
+    }
     // At street zooms the rays meet the ground where it really is (1,600 m up
     // in Denver; Google 3D hides the globe) and stop short of the horizon.
     const ranged =

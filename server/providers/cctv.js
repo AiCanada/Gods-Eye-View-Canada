@@ -387,6 +387,9 @@ export function cctvProxy({
       // stills refresh every 15 minutes on cards and every minute when active.
       frameRefreshMs: budgeted ? CCTV_IBI_CARD_REFRESH_MS : undefined,
       activeFrameRefreshMs: budgeted ? CCTV_IBI_ACTIVE_REFRESH_MS : undefined,
+      // The host those budgets are kept for (the world tape's recorder
+      // shares them per host).
+      budgetHost: budgeted ? upstreamHostOf(still) || undefined : undefined,
     };
   };
 

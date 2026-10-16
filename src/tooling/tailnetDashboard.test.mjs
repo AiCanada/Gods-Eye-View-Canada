@@ -160,7 +160,7 @@ test("only devices signed in as this machine's owner get in, and Tailscale's sil
     }
     return null;
   };
-  const isOwner = createOwnerCheck({ ask });
+  const isOwner = createOwnerCheck({ ask, log: () => {} });
   assert.equal(await isOwner('100.64.0.10'), true, 'my own phone');
   assert.equal(await isOwner('::ffff:100.64.0.10'), true, 'as a mapped IPv4');
   assert.equal(
@@ -201,7 +201,7 @@ test('a relaying owner node (subnet router, exit node) or a node without details
     if (args[0] === 'status') return { Self: { UserID: 7 } };
     return { UserProfile: { ID: 7 }, Node: nodes[args[2]] };
   };
-  const isOwner = createOwnerCheck({ ask });
+  const isOwner = createOwnerCheck({ ask, log: () => {} });
   assert.equal(await isOwner('100.64.0.10'), true, 'a plain owner device');
   assert.equal(await isOwner('100.64.0.20'), false, 'subnet router');
   assert.equal(await isOwner('100.64.0.21'), false, 'extra allowed prefix');
@@ -673,4 +673,163 @@ test('the core gate admits the stamped owner device: reads and writes, never rem
     }),
     { ok: true, ownerDevice: false },
   );
+});
+
+test('a listen that fails is tried again shortly, and the mirror comes up on the next try', async () => {
+  const { server, main } = fakeDevServer();
+  const attempts = [];
+  const plugin = tailnetDashboardPlugin({
+    env: { GEV_TAILNET_DASHBOARD: '1' },
+    retryMs: 5,
+    interfaces: () => ({
+      ts: [{ family: 'IPv4', address: '100.101.102.103', internal: false }],
+    }),
+    createServer: () => {
+      const mirror = new EventEmitter();
+      mirror.listen = (port, host, ready) => {
+        attempts.push(host);
+        // The port is still held by the server before: the first try fails.
+        if (attempts.length === 1)
+          setImmediate(() => mirror.emit('error', new Error('EADDRINUSE')));
+        else ready?.();
+      };
+      mirror.close = () => {};
+      return mirror;
+    },
+  });
+  const warn = console.warn;
+  const log = console.log;
+  const warned = [];
+  console.warn = (line) => warned.push(String(line));
+  console.log = () => {};
+  try {
+    plugin.configureServer(server);
+    main.emit('listening');
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(attempts, ['100.101.102.103', '100.101.102.103']);
+    assert.equal(warned.length, 1, 'the failure is said once');
+    assert.match(warned[0], /not listening on the tailnet/);
+  } finally {
+    console.warn = warn;
+    console.log = log;
+    main.emit('close');
+  }
+});
+
+test('a refusal Tailscale could not answer is kept only briefly, and a real verdict for the full time', async () => {
+  const { createOwnerCheck } =
+    await import('../../Mirror of PC GEVC on Cell/tailnet-dashboard.js');
+  let answer = null;
+  let t = 0;
+  const logged = [];
+  const ask = async (args) =>
+    args[0] === 'status' ? { Self: { UserID: 7 } } : answer;
+  const isOwner = createOwnerCheck({
+    ask,
+    now: () => t,
+    log: (line) => logged.push(line),
+  });
+  assert.equal(await isOwner('100.64.0.10'), false, 'no answer yet');
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /did not answer/);
+  answer = { UserProfile: { ID: 7 }, Node: phoneNode('100.64.0.10') };
+  t += 10_000;
+  assert.equal(await isOwner('100.64.0.10'), false, 'kept for a few seconds');
+  t += 10_000;
+  assert.equal(await isOwner('100.64.0.10'), true, 'asked again after 15 s');
+  t += 4 * 60_000;
+  assert.equal(await isOwner('100.64.0.10'), true, 'a yes is kept');
+  assert.equal(logged.length, 1, 'a cached answer is not logged again');
+});
+
+test("the owner device that opens the mirror by this machine's name is sent to the address form, where the stamp works", async () => {
+  const { ownerOnlyHandler, createSelfNames, namedHost } =
+    await import('../../Mirror of PC GEVC on Cell/tailnet-dashboard.js');
+  const names = createSelfNames({
+    ask: async () => ({ Self: { DNSName: 'Box.tail1.ts.net.' } }),
+  });
+  assert.deepEqual([...(await names())], ['box.tail1.ts.net', 'box']);
+  assert.equal(namedHost('BOX.tail1.ts.net:4173', await names()), true);
+  assert.equal(namedHost('100.64.0.1:4173', await names()), false);
+  assert.equal(namedHost('', await names()), false);
+  const run = (host) =>
+    new Promise((resolve) => {
+      const req = {
+        method: 'GET',
+        url: '/api/ultra-help/status?x=1',
+        headers: { host },
+        socket: { remoteAddress: '100.64.0.10' },
+      };
+      const res = {
+        writeHead(status, head) {
+          this.status = status;
+          this.head = head;
+        },
+        end() {
+          resolve({ status: this.status, head: this.head });
+        },
+      };
+      ownerOnlyHandler({
+        isOwnerDevice: async () => true,
+        token: 'a'.repeat(64),
+        authority: 'http://100.64.0.1:4173',
+        selfNames: names,
+        next: (r) =>
+          resolve({
+            status: 'next',
+            stamped: r.headers['x-gev-owner-device-authority'],
+          }),
+      })(req, res);
+    });
+  const byName = await run('box.tail1.ts.net:4173');
+  assert.equal(byName.status, 302);
+  assert.equal(
+    byName.head.Location,
+    'http://100.64.0.1:4173/api/ultra-help/status?x=1',
+  );
+  assert.equal((await run('box:4173')).status, 302, 'the short name too');
+  const byAddress = await run('100.64.0.1:4173');
+  assert.equal(byAddress.status, 'next');
+  assert.equal(byAddress.stamped, 'http://100.64.0.1:4173');
+});
+
+test('an interface read that throws counts as no address yet, and the mirror still comes up', async () => {
+  const { server, main } = fakeDevServer();
+  let up = false;
+  const listened = [];
+  const plugin = tailnetDashboardPlugin({
+    env: { GEV_TAILNET_DASHBOARD: '1' },
+    retryMs: 5,
+    interfaces: () => {
+      if (!up) throw new Error('EAGAIN');
+      return {
+        ts: [{ family: 'IPv4', address: '100.101.102.103', internal: false }],
+      };
+    },
+    createServer: () => {
+      const mirror = new EventEmitter();
+      mirror.listen = (port, host, ready) => {
+        listened.push(host);
+        ready?.();
+      };
+      mirror.close = () => {};
+      return mirror;
+    },
+  });
+  const warn = console.warn;
+  const log = console.log;
+  console.warn = () => {};
+  console.log = () => {};
+  try {
+    plugin.configureServer(server);
+    main.emit('listening');
+    assert.deepEqual(listened, [], 'the read failed: nothing yet');
+    up = true;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.deepEqual(listened, ['100.101.102.103']);
+  } finally {
+    console.warn = warn;
+    console.log = log;
+    main.emit('close');
+  }
 });

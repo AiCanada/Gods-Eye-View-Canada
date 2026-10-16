@@ -22,6 +22,7 @@ import {
   noteOutboundEnvSaved,
   noteSecurityFeedsSaved,
   noteUltraEndpoint,
+  noteUltraPhone,
   noteUltraPosition,
   onUltraPhoneFix,
   pollUltraNetworkOnce,
@@ -8677,4 +8678,228 @@ test('PHOTO and VIDEO: the phone keeps a still and a clip; the box lists and ser
     fs.readdirSync(path.join(root, 'config', 'ultra-media')),
     [],
   );
+});
+
+test('a camera press no phone page picked up within fifteen minutes is dropped and said, never fired later; LIVE VIDEO only while the page polls', async () => {
+  await withPeer(async ({ post, request, clock }) => {
+    noteUltraPosition({
+      key: VAN_KEY,
+      name: 'Van 7',
+      lat: 45.27,
+      lon: -66.06,
+      at: Date.now(),
+    });
+    // Earlier tests polled this key on the same fake clock, minutes in:
+    // move an hour past anything they did.
+    clock.tick(60 * 60_000);
+    const pressed = await post('/camera', { role: 'rear', mode: 'photo' });
+    assert.equal(pressed.status, 200, pressed.text);
+    assert.equal(pressed.json().pending.mode, 'photo');
+    assert.equal(pressed.json().pageOpen, false, 'no page is polling');
+    assert.match(String(pressed.json().cameraNote || ''), /camera link/i);
+    clock.tick(14 * 60_000);
+    assert.equal(
+      (await request('/status')).json().pending?.kind,
+      'camera',
+      'still waiting at fourteen minutes',
+    );
+    clock.tick(2 * 60_000);
+    const dropped = (await request('/status')).json();
+    assert.equal(dropped.pending, null, 'dropped after fifteen minutes');
+    assert.equal(dropped.lapsed?.kind, 'camera', 'the box is told it lapsed');
+    assert.match(String(dropped.lapsed?.label), /PHOTO$/);
+    // The poll path, with no /status read in between: a press that lapsed
+    // is not handed to a page that opens now.
+    const again = await post('/camera', { role: 'rear', mode: 'photo' });
+    assert.equal(again.status, 200, again.text);
+    assert.equal(again.json().lapsed, null, 'a new press clears the notice');
+    clock.tick(16 * 60_000);
+    const polled = (await phone(`/ultra/${VAN_KEY}`)).json();
+    assert.equal(polled.command, null, 'a page that opens now gets nothing');
+    // That poll means the page is open: LIVE VIDEO, and a fresh press is
+    // handed over at once; ten quiet seconds later the page is not open.
+    assert.equal((await request('/status')).json().pageOpen, true);
+    const fresh = await post('/camera', { role: 'rear', mode: 'photo' });
+    assert.equal(fresh.status, 200, fresh.text);
+    assert.equal(fresh.json().cameraNote, undefined, 'no note while live');
+    assert.equal(
+      (await phone(`/ultra/${VAN_KEY}`)).json().command.mode,
+      'photo',
+    );
+    clock.tick(10_000);
+    assert.equal((await request('/status')).json().pageOpen, false);
+  });
+});
+
+test('with two phones saved, a camera press goes to the one whose page is open, else the one that reported last', async () => {
+  const VAN_KEY_B = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq';
+  await withPeer(async ({ post, request, clock }) => {
+    // Past anything earlier tests did on the shared clock.
+    clock.tick(3 * 60 * 60_000);
+    noteUltraPosition({
+      key: VAN_KEY,
+      name: 'Van 7',
+      lat: 45.27,
+      lon: -66.06,
+      at: Date.now(),
+    });
+    clock.tick(1000);
+    noteUltraPosition({
+      key: VAN_KEY_B,
+      name: 'Van 8',
+      lat: 45.28,
+      lon: -66.07,
+      at: Date.now(),
+    });
+    // Van 8 reported last; Van 7's page is the one open.
+    assert.equal((await phone(`/ultra/${VAN_KEY}`)).status, 200);
+    let status = (await request('/status')).json();
+    assert.equal(status.pageOpen, true);
+    assert.equal(status.camPackage, 'Van 7');
+    assert.match(status.camLink, new RegExp(`/ultra/${VAN_KEY}/cam$`));
+    const pressed = await post('/camera', { role: 'rear', mode: 'photo' });
+    assert.equal(pressed.status, 200, pressed.text);
+    assert.equal(
+      (await phone(`/ultra/${VAN_KEY}`)).json().command?.mode,
+      'photo',
+      'the open page gets the press',
+    );
+    // No page open any more: the press goes to the phone that reported last.
+    clock.tick(10_000);
+    status = (await request('/status')).json();
+    assert.equal(status.pageOpen, false);
+    assert.match(status.camLink, new RegExp(`/ultra/${VAN_KEY_B}/cam$`));
+    assert.equal(status.camPackage, '', 'Van 8 is a fix, not a saved package');
+    const again = await post('/camera', { role: 'rear', mode: 'photo' });
+    assert.equal(again.status, 200, again.text);
+    assert.equal(
+      (await request('/status')).json().pending?.mode,
+      'photo',
+      'waiting under the last reporter',
+    );
+    // The other phone's page, opened now, is not handed that press.
+    assert.equal(
+      (await phone(`/ultra/${VAN_KEY}`)).json().command,
+      null,
+      'not the other phone',
+    );
+  });
+});
+
+test('CELL: the owner picks which saved phone takes the photo; AUTO follows the open page, else the last reporter', async () => {
+  const other = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopr';
+  await withPeer(async ({ post, request, clock }) => {
+    clock.tick(4 * 60 * 60_000);
+    noteUltraPosition({
+      key: VAN_KEY,
+      name: 'Van 7',
+      lat: 45.27,
+      lon: -66.06,
+      at: Date.now(),
+    });
+    clock.tick(1000);
+    noteUltraPosition({
+      key: other,
+      name: 'Van 9',
+      lat: 45.29,
+      lon: -66.08,
+      at: Date.now(),
+    });
+    const bad = await post('/camera-cell', { id: 'no-such-cell' });
+    assert.equal(bad.status, 400);
+    const picked = await post('/camera-cell', { id: 'security-van' });
+    assert.equal(picked.status, 200, picked.text);
+    assert.equal(picked.json().cameraCell, 'security-van');
+    assert.equal(picked.json().camPackage, 'Van 7');
+    assert.match(picked.json().camLink, new RegExp(`/ultra/${VAN_KEY}/cam$`));
+    // Van 9 reported last and no page is open: the press still goes to Van 7.
+    const pressed = await post('/camera', { role: 'rear', mode: 'photo' });
+    assert.equal(pressed.status, 200, pressed.text);
+    assert.equal(
+      (await phone(`/ultra/${VAN_KEY}`)).json().command?.mode,
+      'photo',
+    );
+    // The pick is on disk: a fresh read shows it; AUTO clears it.
+    assert.equal((await request('/status')).json().cameraCell, 'security-van');
+    const auto = await post('/camera-cell', { id: '' });
+    assert.equal(auto.status, 200, auto.text);
+    assert.equal(auto.json().cameraCell, '');
+  });
+});
+
+test('no page open: a PHOTO press pulls the still from the phone camera app and keeps it; VIDEO shows the app stream live and keeps its first frame', async () => {
+  const JPEG = Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]),
+    Buffer.from('JFIF-FRAME-ONE-'.repeat(4)),
+    Buffer.from([0xff, 0xd9]),
+  ]);
+  const JPEG2 = Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]),
+    Buffer.from('JFIF-FRAME-TWO-'.repeat(4)),
+    Buffer.from([0xff, 0xd9]),
+  ]);
+  const mjpeg = Buffer.concat([
+    Buffer.from('--frame\r\nContent-Type: image/jpeg\r\n\r\n'),
+    JPEG,
+    Buffer.from('\r\n--frame\r\nContent-Type: image/jpeg\r\n\r\n'),
+    JPEG2,
+    Buffer.from('\r\n--frame--\r\n'),
+  ]);
+  await withPeer(async ({ post, request, script, clock }) => {
+    clock.tick(5 * 60 * 60_000);
+    noteUltraPosition({
+      key: VAN_KEY,
+      name: 'Van 7',
+      lat: 45.27,
+      lon: -66.06,
+      at: Date.now(),
+    });
+    noteUltraPhone(VAN_KEY, '100.64.0.10');
+    const asked = [];
+    script((url) => {
+      asked.push(String(url));
+      if (String(url) === 'http://100.64.0.10:8080/shot.jpg')
+        return {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg' },
+          body: JPEG,
+        };
+      if (String(url) === 'http://100.64.0.10:8080/video')
+        return {
+          status: 200,
+          headers: {
+            'content-type': 'multipart/x-mixed-replace; boundary=frame',
+          },
+          body: mjpeg,
+        };
+      return { status: 404, body: 'Not found' };
+    });
+    const before = (await request('/media')).json().items.length;
+    const photo = await post('/camera', { role: 'rear', mode: 'photo' });
+    assert.equal(photo.status, 200, photo.text);
+    assert.equal(photo.json().pending, null, 'the app took the press');
+    assert.equal(photo.json().cameraNote, undefined);
+    assert.equal(photo.json().hasPicture, true);
+    assert.ok(asked.some((url) => url.endsWith(':8080/shot.jpg')));
+    const afterPhoto = (await request('/media')).json().items;
+    assert.equal(afterPhoto.length, before + 1, 'the still is kept as a photo');
+    assert.equal(afterPhoto[0].kind, 'photo');
+    const video = await post('/camera', { role: 'rear', mode: 'video' });
+    assert.equal(video.status, 200, video.text);
+    assert.equal(video.json().pending, null, 'the app stream took the press');
+    assert.equal(video.json().appLive, true, 'frames are coming in');
+    assert.ok(asked.some((url) => url.endsWith(':8080/video')));
+    assert.equal(
+      (await request('/media')).json().items.length,
+      before + 2,
+      'the first frame is kept',
+    );
+    // No app and no page: the press waits and the note says what to do.
+    script(() => ({ status: 404, body: 'Not found' }));
+    clock.tick(10_000);
+    const none = await post('/camera', { role: 'rear', mode: 'photo' });
+    assert.equal(none.status, 200, none.text);
+    assert.equal(none.json().pending?.mode, 'photo');
+    assert.match(String(none.json().cameraNote), /camera app/i);
+  });
 });

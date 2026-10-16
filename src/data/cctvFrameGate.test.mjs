@@ -373,6 +373,8 @@ test('511 stills: 15-minute card reuse, 60 s active reuse, and a spent budget se
   assert.equal(byId['on511-1'].activeFrameRefreshMs, 60000);
   assert.equal(byId.plain.frameRefreshMs, undefined);
   assert.equal(byId.plain.activeFrameRefreshMs, undefined);
+  assert.equal(byId['on511-1'].budgetHost, '511on.ca', 'the host the budget is kept for');
+  assert.equal(byId.plain.budgetHost, undefined);
 
   const source = (res) => `${res.headers['X-CCTV-Source']}:${res.headers['X-CCTV-Cache'] || ''}`;
   assert.equal(source(await request('/frame/on511-1')), 'upstream-image:miss');

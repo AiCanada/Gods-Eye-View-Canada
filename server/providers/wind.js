@@ -3,6 +3,15 @@ import { fetchIfsWind } from './wind/ifs.js';
 import { decodeWindGribMessage } from './wind/decode.js';
 import { weatherScalarMetadata, weatherScalarError } from './wind/grid.js';
 
+/** The overlays a request may name; any other is refused before acquisition. */
+const OVERLAYS = [
+  'none',
+  'temperature',
+  'pressure',
+  'humidity',
+  'precipitation',
+];
+
 /** Serve bounded, single-flight, per-model/overlay forecast snapshots from fixed providers. */
 export function windProxy({
   fetchImpl = fetch,
@@ -13,7 +22,7 @@ export function windProxy({
   timeoutMs = 40_000,
   models = { gfs: fetchGfsWind, ifs: fetchIfsWind },
 } = {}) {
-  // Request validation limits these maps to 2 models × 3 overlays.
+  // Request validation limits these maps to 2 models × 5 overlays.
   const caches = new Map();
   const loadings = new Map();
   const grids = new Map();
@@ -60,6 +69,15 @@ export function windProxy({
           value.scalar === undefined &&
           value.scalarError === weatherScalarError(overlay);
         const scalar = missingScalar ? null : expectedScalar;
+        // A precipitation rate is a time mean: the window it averages, in
+        // forecast hours from the cycle, travels with it.
+        const window =
+          scalar && overlay === 'precipitation' ? value.scalar?.window : null;
+        const windowValid =
+          Number.isInteger(window?.fromHour) &&
+          Number.isInteger(window?.toHour) &&
+          window.fromHour >= 0 &&
+          window.fromHour < window.toHour;
         if (
           !Number.isInteger(grid.nx) ||
           !Number.isInteger(grid.ny) ||
@@ -75,7 +93,8 @@ export function windProxy({
               )
             : value.scalar !== undefined || grid.scalar !== undefined) ||
           (!expectedScalar && value.scalarError !== undefined) ||
-          (scalar && value.scalarError !== undefined)
+          (scalar && value.scalarError !== undefined) ||
+          (scalar && overlay === 'precipitation' && !windowValid)
         )
           throw new Error('Invalid wind grid');
         for (const values of [
@@ -101,7 +120,19 @@ export function windProxy({
           model,
           cycle,
           ...(expectedScalar ? { overlay } : {}),
-          ...(scalar ? { scalar } : {}),
+          ...(scalar
+            ? {
+                scalar: windowValid
+                  ? {
+                      ...scalar,
+                      window: {
+                        fromHour: window.fromHour,
+                        toHour: window.toHour,
+                      },
+                    }
+                  : scalar,
+              }
+            : {}),
           ...(missingScalar
             ? { scalarError: weatherScalarError(overlay) }
             : {}),
@@ -161,7 +192,7 @@ export function windProxy({
       return sendJson(res, { error: 'method_not_allowed' }, 405);
     if (!['gfs', 'ifs'].includes(model) || !Object.hasOwn(models, model))
       return sendJson(res, { error: 'unknown_model' }, 400);
-    if (!['none', 'temperature', 'pressure'].includes(overlay))
+    if (!OVERLAYS.includes(overlay))
       return sendJson(res, { error: 'unknown_overlay' }, 400);
     if (url.pathname.startsWith('/grid/')) {
       const id = url.pathname.slice(6).replace(/\.bin$/, '');

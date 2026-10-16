@@ -511,7 +511,7 @@ test('overlay failures retain only their own last-good scalar and unknown overla
   );
   assert.equal(JSON.parse((await request('/manifest')).body).stale, false);
   const before = calls;
-  for (const overlay of ['toString', 'humidity', 'temperature,pressure']) {
+  for (const overlay of ['toString', 'dewpoint', 'temperature,pressure']) {
     assert.equal(
       (await request(`/manifest?overlay=${overlay}`)).statusCode,
       400,
@@ -654,4 +654,227 @@ test('optional scalar failure serves wind and recovery has a distinct immutable 
     (await request(partial.gridUrl.replace('/api/wind', ''))).body.length,
     12 * 8,
   );
+});
+
+/** A GFS object and an IFS object holding every field any overlay reads. */
+const SURFACE_IDX = [
+  '1:0:d=2026091406:UGRD:10 m above ground:6 hour fcst:',
+  '2:4:d=2026091406:VGRD:10 m above ground:6 hour fcst:',
+  '3:8:d=2026091406:TMP:2 m above ground:6 hour fcst:',
+  '4:12:d=2026091406:SPFH:2 m above ground:6 hour fcst:',
+  '5:16:d=2026091406:PRMSL:mean sea level:6 hour fcst:',
+  '6:20:d=2026091406:PRATE:surface:6 hour fcst:',
+  '7:24:d=2026091406:PRATE:surface:0-6 hour ave fcst:',
+  '8:28:d=2026091406:HGT:surface:6 hour fcst:',
+].join('\n');
+const IFS_INDEX = ['10u', '10v', '2t', 'msl', 'tp']
+  .map((param, i) =>
+    JSON.stringify({ param, _offset: 100 + i * 4, _length: 4 }),
+  )
+  .join('\n');
+/** Decoded value and GRIB units by message offset (IFS from 100). */
+const SURFACE_FIELDS = {
+  0: [1, 'm/s'],
+  4: [2, 'm/s'],
+  8: [293.15, 'K'],
+  12: [0.0125, 'kg kg**-1'],
+  16: [101325, 'Pa'],
+  20: [0.002, 'kg m**-2 s**-1'],
+  24: [0.0005, 'kg m**-2 s**-1'],
+  100: [3, 'm/s'],
+  104: [4, 'm/s'],
+  108: [283.15, 'K'],
+  112: [100000, 'Pa'],
+  116: [0.001, 'm'],
+};
+
+/** The real GFS and IFS providers over those two objects. */
+function surfaceProxy(counter = { calls: 0 }) {
+  return proxy({
+    fetchImpl: async (url, options = {}) => {
+      counter.calls += 1;
+      if (url.endsWith('.idx')) return new Response(SURFACE_IDX);
+      if (url.endsWith('.index')) return new Response(IFS_INDEX);
+      const [start, end] = /bytes=(\d+)-(\d+)/
+        .exec(options.headers.Range)
+        .slice(1)
+        .map(Number);
+      const body = new Uint8Array(end - start + 1);
+      body[0] = start;
+      return new Response(body, { status: 206 });
+    },
+    decodeImpl: async (bytes) => {
+      const [value, units] = SURFACE_FIELDS[bytes[0]];
+      return { ...DECODED_U, values: new Array(12).fill(value), units };
+    },
+  });
+}
+
+const floats = (body) => [
+  ...new Float32Array(body.buffer, body.byteOffset, body.length / 4),
+];
+
+test('the default answer and the existing overlays are byte-identical beside the new fields', async () => {
+  const counter = { calls: 0 };
+  const request = install(surfaceProxy(counter));
+  const answer = (overlay, scalar) =>
+    JSON.stringify({
+      schemaVersion: 1,
+      model: 'gfs',
+      cycle: {
+        date: '20260914',
+        hour: 6,
+        forecastHour: 6,
+        runIso: '2026-09-14T06:00:00.000Z',
+        validIso: '2026-09-14T12:00:00.000Z',
+      },
+      ...(overlay ? { overlay, scalar } : {}),
+      fetchedAt: Date.UTC(2026, 8, 14, 12),
+      level: '10 m above ground',
+      units: 'm/s',
+      grid: GRID,
+      stale: false,
+      unavailable: false,
+      reason: null,
+      gridUrl: overlay
+        ? `/api/wind/grid/gfs-20260914-6-f6-90-${overlay}.bin?model=gfs&overlay=${overlay}`
+        : '/api/wind/grid/gfs-20260914-6-f6-90.bin?model=gfs',
+    });
+  const wind = await request('/manifest');
+  assert.equal(wind.body, answer());
+  assert.equal(counter.calls, 3, 'the index, u and v only');
+  assert.deepEqual(
+    floats(
+      (await request(JSON.parse(wind.body).gridUrl.replace('/api/wind', '')))
+        .body,
+    ),
+    [...Array(12).fill(1), ...Array(12).fill(2)],
+  );
+  assert.equal(
+    (await request('/manifest?overlay=temperature')).body,
+    answer('temperature', {
+      kind: 'temperature',
+      units: '°C',
+      level: '2 m above ground',
+    }),
+  );
+  assert.equal(
+    (await request('/manifest?overlay=pressure')).body,
+    answer('pressure', {
+      kind: 'pressure',
+      units: 'hPa',
+      level: 'mean sea level',
+    }),
+  );
+});
+
+test('humidity and precipitation are opt-in GFS overlays; IFS answers them with wind alone', async () => {
+  const counter = { calls: 0 };
+  const request = install(surfaceProxy(counter));
+  for (const [overlay, scalar, expected, error] of [
+    [
+      'humidity',
+      { kind: 'humidity', units: 'kg/kg', level: '2 m above ground' },
+      0.0125,
+      'Specific humidity field unavailable',
+    ],
+    [
+      'precipitation',
+      {
+        kind: 'precipitation',
+        units: 'mm/h',
+        level: 'surface',
+        window: { fromHour: 0, toHour: 6 },
+      },
+      1.8,
+      'Precipitation rate field unavailable',
+    ],
+  ]) {
+    const before = counter.calls;
+    const manifest = JSON.parse(
+      (await request(`/manifest?overlay=${overlay}`)).body,
+    );
+    assert.equal(counter.calls - before, 4, 'the index, u, v and one field');
+    assert.equal(manifest.overlay, overlay);
+    assert.deepEqual(manifest.scalar, scalar);
+    assert.equal(manifest.scalarError, undefined);
+    assert.equal(
+      manifest.gridUrl,
+      `/api/wind/grid/gfs-20260914-6-f6-90-${overlay}.bin?model=gfs&overlay=${overlay}`,
+    );
+    const values = floats(
+      (await request(manifest.gridUrl.replace('/api/wind', ''))).body,
+    );
+    assert.deepEqual(values.slice(0, 24), [
+      ...Array(12).fill(1),
+      ...Array(12).fill(2),
+    ]);
+    assert.equal(values.length, 36);
+    assert.ok(values.slice(24).every((n) => Math.abs(n - expected) < 1e-6));
+    assert.deepEqual(
+      JSON.parse((await request(`/status?overlay=${overlay}`)).body).scalar,
+      scalar,
+    );
+    const ifs = JSON.parse(
+      (await request(`/manifest?model=ifs&overlay=${overlay}`)).body,
+    );
+    assert.equal(ifs.unavailable, false);
+    assert.equal(ifs.overlay, overlay);
+    assert.equal(ifs.scalar, undefined);
+    assert.equal(ifs.scalarError, error);
+    assert.match(ifs.gridUrl, new RegExp(`-${overlay}-wind-only\\.bin\\?`));
+    assert.deepEqual(
+      floats((await request(ifs.gridUrl.replace('/api/wind', ''))).body),
+      [...Array(12).fill(3), ...Array(12).fill(4)],
+    );
+  }
+  const before = counter.calls;
+  for (const overlay of ['Humidity', 'precip', 'humidity,precipitation'])
+    assert.equal(
+      (await request(`/manifest?overlay=${overlay}`)).statusCode,
+      400,
+    );
+  assert.equal(counter.calls, before);
+});
+
+test('a precipitation scalar carries a well-formed averaging window, and only that reaches the manifest', async () => {
+  const rate = (window) => async () => ({
+    cycle: { date: '20260914', hour: 6, forecastHour: 6 },
+    level: '10 m above ground',
+    units: 'm/s',
+    grid: {
+      ...GRID,
+      u: new Float32Array(12),
+      v: new Float32Array(12),
+      scalar: new Float32Array(12).fill(1.8),
+    },
+    scalar: { kind: 'precipitation', units: 'mm/h', level: 'surface', window },
+  });
+  for (const window of [
+    undefined,
+    null,
+    {},
+    { fromHour: 6, toHour: 6 },
+    { fromHour: -1, toHour: 6 },
+    { fromHour: 0, toHour: 6.5 },
+    { fromHour: '0', toHour: '6' },
+  ]) {
+    const request = install(proxy({ models: { gfs: rate(window) } }));
+    const manifest = JSON.parse(
+      (await request('/manifest?overlay=precipitation')).body,
+    );
+    assert.equal(manifest.unavailable, true, JSON.stringify(window));
+  }
+  const request = install(
+    proxy({ models: { gfs: rate({ fromHour: 6, toHour: 7, note: 'x' }) } }),
+  );
+  const manifest = JSON.parse(
+    (await request('/manifest?overlay=precipitation')).body,
+  );
+  assert.deepEqual(manifest.scalar, {
+    kind: 'precipitation',
+    units: 'mm/h',
+    level: 'surface',
+    window: { fromHour: 6, toHour: 7 },
+  });
 });

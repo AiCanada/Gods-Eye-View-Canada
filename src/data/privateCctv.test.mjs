@@ -117,6 +117,6 @@ test('Private CCTV Cams has its own share-link token', () => {
   );
   assert.deepEqual(
     { ...row },
-    { id: 'private-cctv', token: '3', disposition: 'enabled-only' },
+    { id: 'private-cctv', token: 'zy', disposition: 'enabled-only' },
   );
 });

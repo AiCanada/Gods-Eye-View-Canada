@@ -1892,7 +1892,86 @@ test('unread help messages win the status line over a pending camera', () => {
   assert.equal(byId('ultra-inbox-count').textContent, '· 2 NEW');
   assert.ok(byId('ultra-inbox-heading').classList.contains('ultra-unread'));
   applyUltraHelpStatus(documentRef, { unread: 0, pending, inbox: [] });
+  // No page on the phone has taken the press, and no link to open: the box
+  // says what is missing, not LIVE VIDEO.
+  assert.equal(
+    byId('ultra-status').textContent,
+    'ASKED · REAR · THE REPORT LISTENER IS NOT UP: RESTART THE DEV SERVER',
+  );
+  applyUltraHelpStatus(documentRef, {
+    unread: 0,
+    pending,
+    inbox: [],
+    camLink: 'http://100.64.0.1:44173/ultra/KEY/cam',
+    networkBase: 'http://100.64.0.1:44173',
+    tailnetWanted: true,
+  });
+  assert.equal(
+    byId('ultra-status').textContent,
+    'ASKED · REAR · OPEN THE CAMERA LINK BELOW, OR START THE CAMERA APP ON THE PHONE',
+  );
+  applyUltraHelpStatus(documentRef, {
+    unread: 0,
+    pending,
+    inbox: [],
+    camLink: 'http://192.168.1.20:44173/ultra/KEY/cam',
+    networkBase: '',
+    tailnetWanted: true,
+  });
+  assert.equal(
+    byId('ultra-status').textContent,
+    'ASKED · REAR · THIS PC HAS NO TAILSCALE ADDRESS: CONNECT TAILSCALE ON THE PC',
+  );
+  applyUltraHelpStatus(documentRef, {
+    unread: 0,
+    pending,
+    inbox: [],
+    pageOpen: true,
+    hasPicture: true,
+  });
   assert.equal(byId('ultra-status').textContent, 'LIVE VIDEO · REAR');
+  // The phone's camera app took it: live, with no page open.
+  applyUltraHelpStatus(documentRef, {
+    unread: 0,
+    pending,
+    inbox: [],
+    pageOpen: false,
+    appLive: true,
+  });
+  assert.equal(
+    byId('ultra-status').textContent,
+    'LIVE VIDEO · REAR · CAMERA APP',
+  );
+  applyUltraHelpStatus(documentRef, {
+    unread: 0,
+    pending: null,
+    inbox: [],
+    appLive: true,
+    position: { lat: 45.27, lon: -66.06 },
+  });
+  assert.equal(byId('ultra-status').textContent, 'LIVE VIDEO · CAMERA APP');
+  applyUltraHelpStatus(documentRef, {
+    unread: 0,
+    pending: null,
+    lapsed: { kind: 'camera', label: 'REAR' },
+    inbox: [],
+  });
+  assert.equal(
+    byId('ultra-status').textContent,
+    'NOT TAKEN · REAR · PRESS AGAIN WITH THE PHONE PAGE OPEN',
+  );
+  applyUltraHelpStatus(documentRef, {
+    unread: 0,
+    inbox: [],
+    camLink: 'http://192.168.1.20:44173/ultra/KEY/cam',
+    networkBase: '',
+    tailnetWanted: true,
+    position: { lat: 45.27, lon: -66.06 },
+  });
+  assert.equal(
+    byId('ultra-status').textContent,
+    'TAILSCALE · THIS PC HAS NO TAILSCALE ADDRESS: THE PHONE CANNOT REACH IT',
+  );
   assert.equal(byId('ultra-inbox-count').textContent, '');
   assert.equal(
     byId('ultra-inbox-heading').classList.contains('ultra-unread'),
@@ -5049,4 +5128,42 @@ test('home-list rows show the last skill check beside the token', () => {
     readout,
     /PARAMEDIC: CONFIRMED, ELECTRICIAN: REJECTED CLAIM \(MIXED\) · SKILLS CHECKED /,
   );
+});
+
+test('CELL: the box lists AUTO and every saved package, shows the pick, and keeps the entries when nothing changed', () => {
+  const { documentRef, panel, byId } = installFakeDocument();
+  const cell = documentRef.createElement('select');
+  cell.id = 'ultra-camera-cell';
+  panel.appendChild(cell);
+  applyUltraHelpStatus(documentRef, {
+    packages: [
+      { id: 'security-van', name: 'Van 8' },
+      { id: 'security-z3', name: 'Z3' },
+    ],
+    cameraCell: 'security-z3',
+    inbox: [],
+  });
+  assert.deepEqual(
+    [...byId('ultra-camera-cell').children].map((item) => [
+      item.value,
+      item.textContent,
+    ]),
+    [
+      ['', 'AUTO · THE PHONE WHOSE PAGE IS OPEN, ELSE THE LAST TO REPORT'],
+      ['security-van', 'VAN 8'],
+      ['security-z3', 'Z3'],
+    ],
+  );
+  assert.equal(byId('ultra-camera-cell').value, 'security-z3');
+  const before = byId('ultra-camera-cell').children;
+  applyUltraHelpStatus(documentRef, {
+    packages: [
+      { id: 'security-van', name: 'Van 8' },
+      { id: 'security-z3', name: 'Z3' },
+    ],
+    cameraCell: '',
+    inbox: [],
+  });
+  assert.equal(byId('ultra-camera-cell').children, before, 'same entries');
+  assert.equal(byId('ultra-camera-cell').value, '');
 });

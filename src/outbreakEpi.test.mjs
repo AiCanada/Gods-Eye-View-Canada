@@ -4378,6 +4378,76 @@ test('rail travel in the model: a train lands as ground travel, never transfers 
   assert.deepEqual(strip(withQuiet), strip(plain));
 });
 
+test('short legs land: a leg that lands within the hour it boards arrives the next hour, never stuck in transit', () => {
+  // Each hour's landings are handled before its departures board. A leg
+  // filed under its own hour (or an earlier one) was never read, so a
+  // half-hour train or an off-hour short flight carried nothing and its
+  // travellers stayed in the air for good (found 2026-10-13).
+  const pair = (km) => [
+    abroad('A', 10, 10, 1_000_000, 'RU'),
+    abroad('B', 10 + km / 111, 10, 1_000_000, 'RU'),
+  ];
+  const run = ({ routes = [], flights = [], startMs = START, km = 30 }) =>
+    simulateEpidemic({
+      nodes: pair(km),
+      origins: [0],
+      links: [[], []],
+      routes,
+      flights,
+      params: epiParameters({
+        ...presetValues('covid2020'),
+        initialCases: 100000,
+      }),
+      startMs,
+      untilMs: startMs + 6 * DAY,
+      runs: 10,
+      seed: 32,
+      trace: true,
+    });
+  const landed = (result) => {
+    const b = result.places.find((p) => p.id === 'B');
+    assert.ok(b && b.pArrive === 1, 'every run reaches B');
+    assert.ok(
+      result.trace.runEnd.every((end) => end.inTransit === 0),
+      'nobody is left in the air once the last leg has landed',
+    );
+    assert.ok(result.trace.conservation.every((v) => v === 0));
+    return b;
+  };
+  // A half-hour train at 07:00 lands at 08:00, the hour after it boards.
+  const train = landed(
+    run({ routes: [daily(0, 1, 7, 0.5, 2000, { mode: 'rail', km: 30 })] }),
+  );
+  assert.equal(train.etaP5, 8);
+  // A 1.5 h flight in a window that starts 50 minutes past the hour: the
+  // route's clock (the UTC hour) runs before the window's.
+  landed(
+    run({
+      routes: [daily(0, 1, 6, 1.5, 2000)],
+      startMs: START + 50 * 60_000,
+      km: 600,
+    }),
+  );
+  // A dated 20-minute hop inside one hour lands the next hour.
+  const hop = landed(
+    run({
+      flights: Array.from({ length: 6 }, (_, d) => ({
+        from: 0,
+        to: 1,
+        departMs: START + d * DAY + 6 * HOUR + 10 * 60_000,
+        arriveMs: START + d * DAY + 6 * HOUR + 30 * 60_000,
+        passengers: 2000,
+      })),
+    }),
+  );
+  assert.equal(hop.etaP5, 7);
+  // A leg longer than the hour lands when it always did.
+  const long = landed(
+    run({ routes: [daily(0, 1, 7, 3, 2000, { mode: 'rail', km: 180 })] }),
+  );
+  assert.equal(long.etaP5, 10);
+});
+
 test('effective distance on a heap: the same distances as sorting the queue every step', () => {
   const sorted = (flows, sources) => {
     const dist = new Map();

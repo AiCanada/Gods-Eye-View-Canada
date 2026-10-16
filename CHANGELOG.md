@@ -1,5 +1,310 @@
 # Changelog
 
+- Ultra box, the phone's camera and the mirror (owner report 2026-10-16:
+  TAKE PHOTO and TAKE VIDEO did nothing, and the map would not load on the
+  phone). What the log and the live machine showed, and what changed:
+  - The map: this PC had no Tailscale address for hours at a time (from the
+    morning reboot until the early afternoon), so the mirror that serves the
+    dashboard on it could not listen and nothing from the phone arrived; the
+    mirror only looked again every 30 s and a restart inside that window
+    cancelled the look. It now looks every 3 s, retries a failed listen
+    (saying so once, then once a minute), closes the phone's sockets when it
+    goes down, keeps an unanswered owner check for 15 s instead of five
+    minutes, and logs each refused address. Keeping Tailscale connected on
+    the PC (its "Run unattended" setting) is what keeps the phone's page up.
+  - A phone that opens the mirror by this machine's MagicDNS name got the
+    page but a dead Ultra box: the owner stamp binds to the address, so every
+    owner route answered 403 by name. The mirror now sends a by-name request
+    (302) to the address form, so an old bookmark keeps working.
+  - The camera link in the box carried this machine's LAN address whenever
+    the Tailscale address was missing at the listener's start, and Windows
+    Firewall blocks node on the Wi-Fi's Public profile. The listener now
+    lists the Tailscale address first and looks at its addresses again every
+    15 s, so the link moves to the address the phone can reach without a
+    restart; with no listener it hands out no link at all.
+  - The box's status line said LIVE VIDEO as soon as a button was pressed,
+    while the command only waited for a phone page that was not open (the
+    page polls every second; the box only queues the press). It now says LIVE
+    VIDEO only while the page is polling; otherwise ASKED with what is
+    missing (the page, the listener, or this PC's Tailscale address), NOT
+    TAKEN once a press has waited fifteen minutes (it is dropped rather than
+    fired whenever the page opens), and TAILSCALE · THIS PC HAS NO TAILSCALE
+    ADDRESS while the mirror is on and the listener has none. The phone side
+    is unchanged: the page needs the chrome://flags "Insecure origins treated
+    as secure" entry for the Tailscale addresses (Mirror README) to take the
+    still itself; without it the page offers one tap.
+  - With two phones saved (two Ultra packages), a press went to whichever
+    phone's tracker app reported last, and so did the camera link. A CELL
+    select above the camera buttons now picks the phone (owner request
+    2026-10-16; kept with the phone model, route `/camera-cell`); AUTO goes
+    to the phone whose camera page is open, else the last reporter, and the
+    link names the package it is for.
+  - No page needed (owner request 2026-10-16): with no camera page open on
+    the chosen phone, a press goes to the phone's camera app instead (IP
+    Webcam on port 8080, DroidCam on 4747, as the box already tried once).
+    TAKE PHOTO pulls one still and keeps it as the photo; TAKE VIDEO reads
+    the app's stream for the recording time, shows it live on the map card
+    (LIVE VIDEO · CAMERA APP) and keeps its first frame, since this machine
+    has no video encoder to write a clip with. When neither answers, the box
+    says so and names both ways.
+  - Checked end to end on the owner's phone over Tailscale (the debug bridge
+    only to read the page): the page is a secure context with the flag set,
+    the live camera runs, a press from the box is taken within seconds and
+    the still is stored and listed.
+  - Also: the AI World job state no longer declares `selection` twice (an
+    esbuild warning at every start).
+- Fixed, AI World tab (2026-10-16): the running job binned only the newest
+  finished day, so backfilled history (thirty days of earthquakes from
+  `world-tape:backfill`) and any day the server slept through at midnight
+  were never binned, and the world model kept saying one day recorded.
+  Every finished day with tape and no bin is now binned, oldest first and
+  one day at a time, and `learning.daysBinned` counts them (LEARNING shows
+  the binned days when they exceed the recorded ones). The world model is
+  launched only once three binned days exist (two to train on, one held
+  out); until then the TRAINING line reads WAITING with what it needs,
+  instead of a torch process starting and failing every fifteen minutes and
+  STATUS showing ERROR. A trainer that does fail is tried again when a new
+  day is binned. `docs/AI-WORLD-TAB.md` lost its duplicated paragraphs and
+  now describes the 42-asset MARKETS feed as it is.
+- Fixed: three leftovers of the 2026-10-14 upstream merge that failed five
+  unit tests. The NYC DOT camera pack's 250-camera cap
+  (`DEFAULT_NYC_MAX_SOURCES`, `CCTV_NYC_MAX_SOURCES`, the borough anchors
+  and a `prioritizeSources` that no longer existed, so the pack could never
+  load) is gone: once enabled, every online NYC camera loads and the area
+  cap bounds what is served, as for every other pack. Mapillary's orbit
+  guard is back: no overview dots are fetched or drawn from orbit (owner
+  ruling 2026-10-09); the shared line coverage takes `overviewDots`. The
+  right rail's merged-in test asserted the one-box "exclusive" mode the
+  fork turned off (owner ruling 2026-09-27); it now checks the fork's rule:
+  the other tabs stay in reach, and a panel an older version auto-collapsed
+  is released once the HUD is away.
+- OpenRouter's default model is NVIDIA: Nemotron 3.5 Super VL (free) (owner
+  ruling 2026-10-16; `nvidia/nemotron-3.5-super-vl:free`, 120 B parameters
+  with 12 B active, replacing Nemotron 3 Ultra of 2026-09-27). It is asked
+  the way NVIDIA's own sample call asks it: thinking on, temperature 1,
+  top_p 0.95, seed 42, and a 16,384-token budget so the thinking leaves room
+  for the answer (`MODEL_SAMPLING` in `server/providers/llm/ask.js`). The
+  same settings apply to OpenRouter's paid id for the model and to NIM's
+  `nvidia/nemotron-3.5-super-vl-120b-a12b`, which the NVIDIA NIM MODEL box
+  now suggests. On NIM the chat template switches the thinking on, so no
+  `reasoning_effort` is sent. Every other model keeps temperature 0.3 and
+  the usual budget. The panel still shows the finished answer only: the
+  upstream call is not streamed, and the thinking is not shown. Checked
+  live: OpenRouter answered in 1.8 s and an Overview-style question in
+  10.5 s, at no cost; NIM answered in 1.1 s.
+
+- POWER UP · CUSTOM LLM TRAINING: the default base model is Qwen3.5-0.8B
+  (owner ruling 2026-10-16; `Qwen/Qwen3.5-0.8B`, Apache-2.0, 1.7 GB, trains
+  on the GPU alone). Qwen3.6-35B-A3B is the large option (owner ruling
+  2026-10-16, "use Qwen3.6-A3B"; `Qwen/Qwen3.6-35B-A3B`, Apache-2.0, about
+  72 GB). A list under the base box offers both, says which are on this PC,
+  and any other id or folder can be typed. A base is found in
+  `.gev-data/llm/base/<name>`, the Hugging Face cache or a named folder, and
+  never downloaded by the app; untouched settings on the earlier default
+  move to the new one. Checked on this PC: Qwen3.5-0.8B trained on the GPU in
+  84 s on a small set (held-out loss 4.43 → 0.08), and the trained model
+  answered from it.
+  - A base too big for the GPU is split across GPU and RAM, with gradient
+    checkpointing (`--placement auto`; `gpu`, `split` and `cpu` force one).
+    A base that fits neither together is refused.
+  - LoRA now also adapts the gated-delta linear-attention projections
+    (`in_proj_qkv`, `in_proj_z`, `out_proj`) that most of Qwen3.6's layers
+    use.
+
+- Dashboard boxes resize from a corner on desktop (owner requests
+  2026-10-16). Every box in the left stack has a grip at its bottom-right
+  corner, and every box on the right rail has one at its bottom-left: that
+  rail is anchored to the screen's right edge, so the box grows onto the map.
+  Drag to set the width and height, use the arrow keys (Shift for bigger
+  steps), or double-click for the box's own size. A size stays on screen,
+  is fitted again where a box opens, and is remembered per box in this
+  browser (`gev:panel-size:<panel id>`). A floating CCTV or Street Level
+  window keeps its own edge resizing. Phone-width layouts are unchanged
+  (`src/ui/panelCornerResize.js`, `panel-resize.css`). Open, the AI World tab
+  is now 520 px wide instead of 360.
+- AI World tab, financial assets and price moves (owner request 2026-10-15).
+  FINANCIAL ASSETS records 42 assets every five minutes:
+  - currencies and the dollar index;
+  - US 5-, 10- and 30-year yields;
+  - WTI, Brent, natural gas, gold, silver, copper, wheat, corn, soybeans,
+    gasoline, heating oil, jet fuel and kerosene;
+  - the S&P 500, Dow, Nasdaq, TSX, FTSE, DAX, CAC 40, Nikkei, Hang Seng,
+    Shanghai, Sensex, ASX 200 and Bovespa;
+  - the VIX, Bitcoin and Ether.
+
+  Yahoo Finance is read 20 symbols a request. The Twelve Data key now goes in
+  a header, not the address. Each asset carries the place its benchmark is
+  set (`src/marketAssets.mjs`, `assets.json` beside the bins). PRICE MOVES
+  draws the world model's predicted move there: a dot and a card on the
+  world-overlay host, green up, red down, biggest move first. The FINANCIAL
+  ASSETS list shows each quote with its predicted move. Not advice.
+
+- AI World tab, military travel left out entirely (owner request
+  2026-10-15). The flights and local ADS-B feeds drop every airframe the
+  app's military list names before recording, and hold their poll (an error,
+  so the hour is not read as quiet) when no list newer than 6 hours can be
+  had. AIS military vessels (ship type 35) are never recorded. The bins'
+  empty `military` mobility column is gone, as is the track model's
+  military kind.
+- AI World tab, measured links. `ml.gevtape.links` measures every recorded
+  channel against every asset's hourly returns, from 24 hours before to 24
+  hours after, after each day is binned. It fits on the earlier hours, checks
+  on the later ones, and applies a false-discovery rate. LINKS shows the
+  strongest links in plain words, and each study pair's best one. A
+  correlation is not a cause.
+- AI World tab, post-training (owner request 2026-10-16: "update existing
+  World models via Post training to keep the most up to date"). The world
+  model meeting new channels (a new layer or asset) is now grown, keeping
+  what it learned (`models.grow_world_model`), instead of starting over.
+  POST-TRAIN keeps another world model up to date through an adapter
+  (`ml.gevtape.posttrain`; template `ml/adapters/kit_world.py`, owner adapters
+  in `.gev-data/ai-world/adapters/`): now, or daily on new data, scored on
+  held-out days before and after.
+- AI World tab, for someone training a new model of their own:
+  - `ml.gevtape.world_env.WorldMarketEnv`, a reinforcement-learning
+    environment over the recorded hours (data layers in, asset weights out,
+    time-split train and test, imagined episodes with any world model);
+  - `ml.gevtape.export`, a self-contained, licence-filtered training set
+    with its `DATASET.md` card;
+  - an INSTRUCTIONS block in the tab, and `docs/TRAINING-GUIDE.md`.
+- POWER UP, CUSTOM LLM TRAINING (owner requests 2026-10-16). Pick a base
+  model already on this PC (default Qwen/Qwen3-0.6B; nothing is downloaded
+  but the custom URLs). Tick the data sources: recorded headlines, asset
+  prices, headlines with next-day moves, measured links, hourly readings,
+  custom URLs and local files or folders. Then INITIALIZE TRAINING:
+  - the URLs are fetched, public https only, every redirect checked;
+  - a dataset is built, with one example in twenty held out;
+  - LoRA adapters are trained, with PAUSE, CONTINUE and STOP;
+  - the held-out loss is shown before and after.
+
+  POST-TRAIN FROM continues an earlier model, and POST-TRAIN DAILY
+  post-trains it on what was recorded since. Routes `/api/llm-training`. The
+  owner's phone may add and run, never remove (`server/shared/llmTraining.mjs`,
+  `ml.gevtape.llm_data`, `ml.gevtape.llm_train`, `ml.gevtape.llm_chat`,
+  `src/llmTrainingSetup.js`).
+
+- Fixed: the news-URL feed followed redirects blindly, so a public page could
+  send the request to an address on the owner's network. Redirects are now
+  followed by hand, each address checked after DNS
+  (`server/shared/publicFetch.mjs`). Also fixed:
+  - observed weather never recorded anything (a wrong import path, caught
+    silently);
+  - a blank prediction was drawn as 0;
+  - three AI World tests had fallen behind the feed list and the bin files.
+
+- CCTV, Toronto and Catalonia frames (owner request 2026-10-15). Toronto's
+  `ComparisonImages/loc<n><direction>.jpg` addresses are 2016 reference
+  stills (Last-Modified June 2016), not frames. Each camera's four direction
+  rows become one entry on its live view, `CameraImages/loc<n>.jpg`. In the
+  Canada pack that is 955 rows into 248 cameras; 247 of them are already
+  live in the inventory pack, so the two share one still and show once. In
+  the inventory pack, 188 stills of cameras it already lists live go, and 7
+  cameras become live entries. All 318 answered live (HTTP 200) on
+  2026-10-15. Catalonia SCT's `RenderService` links (196, each of 98 cameras
+  listed twice) never loaded over https: that host's TLS fails in Node
+  (`ERR_SSL_DH_KEY_TOO_SMALL`), and it redirects to plain http anyway. They
+  now name the frame directly,
+  `http://mct.gencat.cat/mct2bo/TransitCamera?nom=<id>` (all 98 answer, 38
+  showing the operator's "no images" card while offline), refreshing every
+  3 minutes. A Terrassa link lost its trailing `%20&#13;`. The catalogue
+  applies the same rules to every source at load (`liveStillUrl` and
+  `decodeNumericEntities` in `cctv/normalize.js`, ported from upstream
+  #595), so a pack that still carries an old link is fixed too. Not ported
+  from #595: the `/media` video-only guard, since the panel still links
+  stills through `/media`.
+
+- Share links: the fork's own layers moved to the top of the token range,
+  so a new upstream layer can never take one of their tokens again (owner
+  request 2026-10-15). Your Devices `5` → `zz`, Private CCTV Cams `3` →
+  `zy`, Outbreak `4` → `zx`; upstream counts up from the free digits and
+  `00`, the fork counts down from `zz` (`FORK_LAYER_STATE_IDS`,
+  `nextForkLayerStateToken`, `npm run layer-token:next -- --fork <id>`).
+  The digits freed go to upstream's GNSS integrity (`3`) and air quality
+  (`4`) at the next merge. Saved layer state keeps layer names, so nothing
+  saved changes. A share link made before this with one of those three
+  layers on no longer restores its layers (an unknown token voids the whole
+  layer list, by design); after the merge, `3` and `4` in such a link open
+  upstream's layers instead.
+- CCTV: a CCTV window minimizes to the rail. Collapsed, its tab docks in the
+  right rail with the dashboard's other tabs, the same size and never over an
+  open box (before, it stayed on the map at the width it was resized to).
+  Opened, it comes back as the window where it was, at the size chosen for
+  it; pulled out of the rail, the minimized tab opens where it is dropped.
+  Open, it moves and resizes from every edge as before
+  (`panelPositionControls.js` `minimizeToRail`, `controls.css`).
+- ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM (owner request 2026-10-13): a
+  new left tab, last in the stack, to train world models on the Outbreak sim
+  plus every live feed. TRAIN ON lists a tick box per data layer plus NEWS
+  EVENTS, POPULATION DEMOGRAPHICS, OUTBREAK SIM EPISODES and YOUR DEVICES,
+  with ALL; INITIALIZE (after an estimate), PAUSE / CONTINUE, STOP, and
+  DELETE, which lists what it would remove and deletes only that, never from
+  the owner's phone (`pc-only`). Routes `/api/ai-world/*`
+  (`server/providers/aiWorld.js`); the world tape records each ticked feed
+  through the app's own API with its licence class
+  (`server/shared/worldTape*`); sim episodes come from a frozen world graph
+  on worker threads (`scripts/outbreak-world.mjs`,
+  `scripts/outbreak-dataset.mjs`); training and prediction run `ml/`
+  (Python, `py -3.13`); PREDICTIONS draws each ready domain on the globe
+  (`src/aiWorldOverlay.js`). AREAS holds the places cameras, traffic, news,
+  imagery and street level record around (ADD VIEW AS AREA takes the middle
+  of the map; REMOVE is the PC's alone); YOUR DEVICES records every personal
+  feed. Camera stills go through `/api/cctv/frame/<id>` and its 511 host
+  budget (the catalogue now names each still's `budgetHost`), at most the
+  nearest 1,000 per area within 50 km, never a school, university, college or
+  library camera. STREET LEVEL also records per-image Mapillary metadata
+  (`kind: 'image'`, at most 32 searches an area a day, no pixels) through a
+  new cached, same-site route `GET /api/mapillary/images?bbox=w,s,e,n`
+  (boxes ≤ 0.05°, the token only in an `Authorization` header to
+  `graph.mapillary.com`); FLIGHTS records hourly under anonymous OpenSky and
+  tags OpenSky rows with `auth`. The Wind layer's GFS proxy gained opt-in
+  `humidity` (2 m specific) and `precipitation` (time-mean rate) overlays,
+  which the tape records. The calibration on real epidemics
+  (`ml.gevtape.calibrate`) runs from the tab once the outbreak model and the
+  real data exist. Data lives in the gitignored `.gev-data/`
+  (docs/WORLD-MODEL-DATA.md, docs/AI-WORLD-TAB.md), which the dev server
+  neither serves nor watches (it had been readable as static files).
+- Outbreak EPIDEMIC MODEL, for world models: optional `tape` (each run as an
+  episode: state of every country and 5,000 tracked places each day,
+  interventions exactly and as features, every infected leg, first events),
+  control of the three decisions the model makes (window, per-place
+  switches, border flags; a run's own logged decisions replay it byte for
+  byte), `stream` (xoshiro128** keyed streams for datasets; the box keeps
+  mulberry32) and `drivers` (recorded humidity, departures, trains and
+  transit service: `season`, `travel`, `commute`). A day's control may also
+  set the magnitudes — lockdown level, travel-ban share, tests a day and
+  the campaign's doses a day — logged exactly (`controls_magnitudes`) so a
+  replay stays byte for byte; a steady dose rate given each day vaccinates
+  exactly as the closed form does. All absent by default, and then
+  bit-identical (the golden master). The network assembly moved from the
+  route to `server/shared/outbreakEpidemicWorld.mjs` unchanged.
+- Sim datasets: `--drivers` starts scenarios on days the world tape binned
+  and runs them under the conditions recorded then; `--from-export` makes a
+  box run saved with DOWNLOAD RESULTS the base of a sweep (its pathogen,
+  places, window and scan flights on the frozen world, the policy and random
+  stream varying). DOWNLOAD RESULTS now keeps the scan's flights. The random
+  policy also explores the magnitudes, from its own generator; the
+  closed-loop environment takes them in its actions.
+- World tape tools: `npm run world-tape:bin` (hourly features per tracked
+  place; weather sampled from the recorded GFS and ECMWF grids, trains by
+  the transit layer's own modes; each aircraft, vessel or vehicle counted
+  once an hour, whatever the polling), `world-tape:backfill` (USGS
+  catalogue, FIRMS archive, the NOAA GFS archive on AWS, NHC HURDAT2 best
+  tracks, past VIIRS images of the AREAS),
+  `outbreak:real-data` (OWID COVID-19 and OxCGRT policy, CC BY 4.0, in the
+  same schema), `outbreak:env` (a closed-loop environment on stdio for
+  reinforcement learning).
+- Outbreak EPIDEMIC MODEL: a leg that lands within the hour it boards now
+  lands the next hour (owner ruling 2026-10-13). Each simulated hour handles
+  its landings before its departures board, so a half-hour train, a
+  20-minute hop, or a short flight in a window that starts past the hour
+  (the box's `now − d days`) was filed under an hour already read. Those
+  infected travellers stayed in transit for good, and the place was never
+  reached that way. Dated flights and daily routes now land at
+  `max(h + 1, …)` (`src/outbreakEpi.mjs`). Results change for short legs
+  only; every longer leg gives the same result on the same seed. A golden
+  master (`src/outbreakEpiGolden.test.mjs`) now pins the full result of a
+  20-scenario matrix (`src/testSupport/outbreakEpiMatrix.mjs`), the guard
+  for the world-model work.
 - OPENAI BOT SWARM / OPENAI DOT SWARM without an OPENAI DOTS key (Social
   Media, Outbreak SOCIAL SEARCH, and CONFIRM ULTRA TOKEN SKILLS) copies
   the ChatGPT task, opens ChatGPT, and pastes it into the focused composer
@@ -340,7 +645,7 @@
   photo a click opens, and the cones, by each photo's projection and upload
   date. KartaView's SINCE is the upload date (all its server can filter by);
   a note under the slider says so while KartaView is lit (`sinceBasis:
-  'upload'` in the provider contract).
+'upload'` in the provider contract).
   Mapillary's line coverage and sequence cones are now shared by both
   (`lineCoverage.js`, `sequenceCones.js`).
 

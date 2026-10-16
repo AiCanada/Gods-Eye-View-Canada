@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { PanelPositionControls } from './panelPositionControls.js';
 
@@ -81,7 +82,11 @@ function fixture() {
   };
 }
 
-function floatingPanel(f, id, { dockOnCollapse = false } = {}) {
+function floatingPanel(
+  f,
+  id,
+  { dockOnCollapse = false, minimizeToRail = false } = {},
+) {
   const panel = f.element();
   const handle = f.element();
   panel.id = id;
@@ -95,8 +100,10 @@ function floatingPanel(f, id, { dockOnCollapse = false } = {}) {
   f.store.set(`godsEyeView.v8.panelPos.${id}`, '{"floating":true}');
   f.owner._portablePanels.set(id, {
     panel,
+    handle,
     min: { width: 320, height: 280 },
     dockOnCollapse,
+    minimizeToRail,
   });
   f.owner._makePanelDraggable(id, panel, handle);
   return { panel, handle };
@@ -139,27 +146,153 @@ test('dockPanel returns a floating window to its rail and forgets its place', ()
   }
 });
 
-test('only a dockOnCollapse panel docks when collapsed, and only on collapse', () => {
+test('only a dockOnCollapse panel docks when collapsed, only on collapse, and only on the user’s own', () => {
   const f = fixture();
   try {
     const street = floatingPanel(f, 'street-level-panel', {
       dockOnCollapse: true,
     });
-    const cctv = floatingPanel(f, 'cctv-panel');
+    const other = floatingPanel(f, 'other-panel');
     f.owner.onPanelCollapsed('street-level-panel', false);
     assert.equal(
       street.panel.classList.contains('panel-floating'),
       true,
       'expanding keeps it',
     );
-    f.owner.onPanelCollapsed('cctv-panel', true);
+    f.owner.onPanelCollapsed('other-panel', true);
     assert.equal(
-      cctv.panel.classList.contains('panel-floating'),
+      other.panel.classList.contains('panel-floating'),
       true,
-      'CCTV did not opt in',
+      'a panel that did not opt in stays put',
+    );
+    f.owner.onPanelCollapsed('street-level-panel', true, { explicit: false });
+    assert.equal(
+      street.panel.classList.contains('panel-floating'),
+      true,
+      'a restore or the cockpit keeps its place',
     );
     f.owner.onPanelCollapsed('street-level-panel', true);
     assert.equal(street.panel.classList.contains('panel-floating'), false);
+  } finally {
+    f.restore();
+  }
+});
+
+test('a minimizeToRail window: minimized, its tab docks in the rail with its window kept; opened, it comes back there at its size', () => {
+  const f = fixture();
+  try {
+    const { panel } = floatingPanel(f, 'cctv-panel', { minimizeToRail: true });
+    const key = 'godsEyeView.v8.panelPos.cctv-panel';
+    panel.classList.add('collapsed');
+    f.owner.onPanelCollapsed('cctv-panel', true);
+    assert.equal(panel.classList.contains('panel-floating'), false, 'docked');
+    assert.equal(panel.style.left, undefined);
+    assert.equal(panel.style.width, undefined);
+    assert.equal(panel.style.zIndex, undefined, 'never over an open box');
+    assert.deepEqual(JSON.parse(f.store.get(key)), {
+      left: 100,
+      top: 80,
+      floating: true,
+      parked: true,
+      width: 360,
+      height: 420,
+    });
+    // Whoever minimizes it (a restore, the cockpit), its place is kept.
+    panel.classList.remove('collapsed');
+    f.owner.onPanelCollapsed('cctv-panel', false, { explicit: false });
+    assert.equal(panel.classList.contains('panel-floating'), true, 'a window');
+    assert.equal(panel.style.left, '100px');
+    assert.equal(panel.style.top, '80px');
+    assert.equal(panel.style.width, '360px');
+    assert.equal(panel.style.height, '420px');
+    assert.ok(Number(panel.style.zIndex) > 110, 'above the rail again');
+    assert.equal(JSON.parse(f.store.get(key)).parked, undefined);
+    // A double-click snap-back forgets the window: opened later, it stays
+    // in the rail.
+    f.owner._resetPanelPosition('cctv-panel');
+    panel.classList.add('collapsed');
+    f.owner.onPanelCollapsed('cctv-panel', true);
+    panel.classList.remove('collapsed');
+    f.owner.onPanelCollapsed('cctv-panel', false);
+    assert.equal(panel.classList.contains('panel-floating'), false);
+  } finally {
+    f.restore();
+  }
+});
+
+test('a minimized window waits in the rail across a reload; an open one comes back as its window', () => {
+  const f = fixture();
+  try {
+    const panel = f.element();
+    panel.id = 'cctv-panel';
+    f.owner._portablePanels.set('cctv-panel', {
+      panel,
+      min: { width: 300, height: 160 },
+      minimizeToRail: true,
+    });
+    f.store.set(
+      'godsEyeView.v8.panelPos.cctv-panel',
+      JSON.stringify({
+        left: 700,
+        top: 300,
+        width: 380,
+        height: 340,
+        floating: true,
+        parked: true,
+      }),
+    );
+    panel.classList.add('collapsed');
+    f.owner._restorePanelPosition('cctv-panel', panel);
+    assert.equal(panel.classList.contains('panel-floating'), false);
+    panel.classList.remove('collapsed');
+    f.owner._restorePanelPosition('cctv-panel', panel);
+    assert.equal(panel.classList.contains('panel-floating'), true);
+    assert.equal(panel.style.width, '380px');
+  } finally {
+    f.restore();
+  }
+});
+
+test('a minimized tab pulled out of the rail opens where it is dropped, at its kept size', () => {
+  const f = fixture();
+  try {
+    const { panel, handle } = floatingPanel(f, 'cctv-panel', {
+      minimizeToRail: true,
+    });
+    // Minimized: a docked tab with its window kept.
+    panel.classList.add('collapsed');
+    f.owner.onPanelCollapsed('cctv-panel', true);
+    const key = 'godsEyeView.v8.panelPos.cctv-panel';
+    const kept = JSON.parse(f.store.get(key));
+    kept.width = 400;
+    kept.height = 300;
+    f.store.set(key, JSON.stringify(kept));
+    const opened = [];
+    f.owner._expandPanel = (id) => {
+      opened.push(id);
+      panel.classList.remove('collapsed');
+      f.owner.onPanelCollapsed(id, false);
+    };
+    press(handle, { timeStamp: 5000, clientX: 200, clientY: 90 });
+    const move = new Event('pointermove');
+    Object.assign(move, { clientX: 600, clientY: 300 });
+    move.preventDefault = () => {};
+    window.dispatchEvent(move);
+    window.dispatchEvent(new Event('pointerup'));
+    assert.deepEqual(opened, ['cctv-panel']);
+    assert.equal(panel.classList.contains('panel-floating'), true);
+    assert.equal(panel.style.left, '500px', 'where the tab was dropped');
+    assert.equal(panel.style.top, '290px');
+    assert.equal(panel.style.width, '400px');
+    assert.equal(panel.style.height, '300px');
+    // Nothing to open it with: it goes back to the rail, not left on the map.
+    panel.classList.add('collapsed');
+    f.owner.onPanelCollapsed('cctv-panel', true);
+    f.owner._expandPanel = null;
+    press(handle, { timeStamp: 9000, clientX: 200, clientY: 90 });
+    window.dispatchEvent(move);
+    window.dispatchEvent(new Event('pointerup'));
+    assert.equal(panel.classList.contains('panel-floating'), false);
   } finally {
     f.restore();
   }
@@ -625,4 +758,32 @@ test('a collapsed floating window keeps its chosen height through a drag and a r
   } finally {
     f.restore();
   }
+});
+
+test('a collapsed floating window is the size of the rail’s other tabs; its chosen size waits inline', () => {
+  const css = readFileSync(
+    new URL('./styles/controls.css', import.meta.url),
+    'utf8',
+  );
+  const rule = css.match(
+    /#right-context-rail > \.panel-floating\.collapsed \{([^}]*)\}/,
+  );
+  assert.ok(rule, 'the collapsed floating rule');
+  // The docked tabs' own width, beating the inline size kept for reopening.
+  assert.match(
+    rule[1],
+    /width: var\(--right-display-collapsed-width\) !important;/,
+  );
+  assert.match(rule[1], /height: auto !important;/);
+  assert.match(rule[1], /max-height: max-content;/);
+  // The docked tabs take that same width.
+  assert.match(
+    readFileSync(new URL('./styles/layers.css', import.meta.url), 'utf8'),
+    /#right-context-rail #cctv-panel\.collapsed:not\(\.panel-floating\),[^{]*\{\s*width: var\(--right-display-collapsed-width\);/,
+  );
+  // Collapsed, it cannot be resized, only moved.
+  assert.match(
+    css,
+    /\.panel-collapsible\.collapsed > \.panel-resize-edge,\s*\.panel-collapsible\.collapsed > \.panel-resize-grip \{\s*display: none;/,
+  );
 });

@@ -592,7 +592,7 @@ test('every help network and SMS relay name may be saved, and the values they ca
   assert.equal(validateKeySetupUpdates({ ULTRA_DIRECTORY_WRITE_TOKEN: null }).ok, true, 'the write token can be removed');
 });
 
-test('every LLM key carries an optional MODEL box; OpenRouter defaults to NVIDIA Nemotron 3 Ultra (free)', async () => {
+test('every LLM key carries an optional MODEL box; OpenRouter defaults to NVIDIA Nemotron 3.5 Super VL (free)', async () => {
   const { resolveLlmProvider } = await import('../server/providers/llm/ask.js');
   const known = knownKeySetupEnvVars();
   const status = keySetupStatus({ OPENROUTER_API_KEY: 'k', OPENROUTER_MODEL: 'openai/gpt-5.2' });
@@ -608,8 +608,11 @@ test('every LLM key carries an optional MODEL box; OpenRouter defaults to NVIDIA
   const openrouter = status.keys.find((key) => key.id === 'openrouter');
   assert.equal(openrouter.set, true, 'the key alone makes the slot set');
   assert.equal(openrouter.optionalEnvVars[0].value, 'openai/gpt-5.2', 'the model in use is shown; it is not a secret');
-  assert.equal(openrouter.optionalEnvVars[0].placeholder, 'nvidia/nemotron-3-ultra-550b-a55b:free');
-  assert.ok(openrouter.optionalEnvVars[0].options.includes('nvidia/nemotron-3-ultra-550b-a55b:free'));
+  assert.equal(openrouter.optionalEnvVars[0].placeholder, 'nvidia/nemotron-3.5-super-vl:free');
+  assert.equal(openrouter.optionalEnvVars[0].options[0], 'nvidia/nemotron-3.5-super-vl:free', 'the default is offered first');
+  assert.ok(openrouter.optionalEnvVars[0].options.includes('nvidia/nemotron-3-ultra-550b-a55b:free'), 'the earlier default is still offered');
+  const nvidia = status.keys.find((key) => key.id === 'nvidia');
+  assert.ok(nvidia.optionalEnvVars[0].options.includes('nvidia/nemotron-3.5-super-vl-120b-a12b'), "NIM's id for the same model");
   assert.equal(keySetupStatus({}).keys.find((key) => key.id === 'openrouter').optionalEnvVars[0].value, '');
   const flat = JSON.stringify(keySetupStatus({ OPENROUTER_API_KEY: 'SECRET-KEY-VALUE' }));
   assert.ok(!flat.includes('SECRET-KEY-VALUE'), 'a key value never appears in the status');

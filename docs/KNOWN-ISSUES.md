@@ -58,7 +58,12 @@ Related keys (current versions):
   link ignores the stored value entirely.
 - Panel positions: `godsEyeView.v8.panelPos.<panel-id>` — written only for a
   floating portable panel (CCTV, Street Level). Deleting it, or double-clicking
-  the panel header, docks the panel again.
+  the panel header, docks the panel again. A minimized CCTV window keeps its
+  record with `parked: true` while its tab sits in the rail, and opens there
+  again.
+- Box sizes: `gev:panel-size:<panel-id>` — `{ width, height }` in pixels,
+  written when a box is sized by its corner grip (desktop only); a
+  double-click on the grip deletes it and the box takes its own size again.
 - CCTV calibration: `godsEyeView.cctv.calibration.v2`
 
 ---

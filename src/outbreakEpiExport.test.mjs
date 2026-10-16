@@ -206,6 +206,9 @@ test('epidemicExport: JSON round trip, the request kept, inputs untouched', () =
     locations: [{ id: 'irkutsk', lat: 52.287, lon: 104.305 }],
     outbreakAirports: ['UIII'],
     flightCount: 12,
+    flights: [
+      { from: 'UIII', to: 'UUEE', departMs: 3_600_000, arriveMs: 25_200_000 },
+    ],
     profile,
     links: [[{ j: 1, share: 0.1 }]],
     budgetMs: 1000,
@@ -224,6 +227,7 @@ test('epidemicExport: JSON round trip, the request kept, inputs untouched', () =
     locations: request.locations,
     outbreakAirports: ['UIII'],
     flightCount: 12,
+    flights: request.flights,
     profile,
   });
   assert.deepEqual(doc.request.profile, profile);

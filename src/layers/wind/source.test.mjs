@@ -144,7 +144,7 @@ test('wind source rejects scalar contract mismatches before fetching a grid', as
       return response(base);
     },
   });
-  await assert.rejects(source.getSnapshot({ overlay: 'humidity' }), /Unknown/);
+  await assert.rejects(source.getSnapshot({ overlay: 'dewpoint' }), /Unknown/);
   assert.equal(calls, 0);
   await assert.rejects(
     source.getSnapshot(),
@@ -240,6 +240,122 @@ test('wind source retains usable wind when the requested scalar is unavailable',
     assert.equal(result.scalar, undefined);
     assert.equal(result.scalarError, partial.scalarError);
     assert.deepEqual([...result.u], [1, 2]);
+    assert.deepEqual([...result.v], [3, 4]);
+  }
+});
+
+test('wind source takes the humidity and precipitation overlays, their units and the rate window', async () => {
+  for (const scalar of [
+    { kind: 'humidity', units: 'kg/kg', level: '2 m above ground' },
+    {
+      kind: 'precipitation',
+      units: 'mm/h',
+      level: 'surface',
+      window: { fromHour: 6, toHour: 7 },
+    },
+  ]) {
+    const overlay = scalar.kind;
+    const variant = {
+      ...manifest,
+      overlay,
+      scalar,
+      gridUrl: `/api/wind/grid/gfs-test-${overlay}.bin?model=gfs&overlay=${overlay}`,
+    };
+    const calls = [];
+    const source = createWindSource({
+      fetchImpl: async (url) => {
+        calls.push(url);
+        return response(
+          url.includes('/manifest?')
+            ? variant
+            : Float32Array.from([1, 2, 3, 4, 0.5, 0.25]).buffer,
+        );
+      },
+    });
+    const field = await source.getSnapshot({ overlay });
+    assert.deepEqual(calls, [
+      `/api/wind/manifest?model=gfs&overlay=${overlay}`,
+      variant.gridUrl,
+    ]);
+    assert.deepEqual([...field.u], [1, 2]);
+    assert.deepEqual([...field.v], [3, 4]);
+    assert.deepEqual(
+      { ...field.scalar, values: [...field.scalar.values] },
+      { ...scalar, values: [0.5, 0.25] },
+    );
+  }
+});
+
+test('a precipitation manifest needs its averaging window, and the new units are exact', async () => {
+  const rate = {
+    ...manifest,
+    overlay: 'precipitation',
+    scalar: {
+      kind: 'precipitation',
+      units: 'mm/h',
+      level: 'surface',
+      window: { fromHour: 0, toHour: 6 },
+    },
+    gridUrl:
+      '/api/wind/grid/gfs-test-precipitation.bin?model=gfs&overlay=precipitation',
+  };
+  const humidity = {
+    ...manifest,
+    overlay: 'humidity',
+    scalar: { kind: 'humidity', units: 'kg/kg', level: '2 m above ground' },
+    gridUrl: '/api/wind/grid/gfs-test-humidity.bin?model=gfs&overlay=humidity',
+  };
+  for (const bad of [
+    { ...rate, scalar: { ...rate.scalar, window: undefined } },
+    { ...rate, scalar: { ...rate.scalar, window: { fromHour: 6, toHour: 6 } } },
+    {
+      ...rate,
+      scalar: { ...rate.scalar, window: { fromHour: 0.5, toHour: 6 } },
+    },
+    {
+      ...rate,
+      scalar: { ...rate.scalar, window: { fromHour: -6, toHour: 0 } },
+    },
+    { ...rate, scalar: { ...rate.scalar, units: 'kg m**-2 s**-1' } },
+    { ...humidity, scalar: { ...humidity.scalar, units: 'g/kg' } },
+    { ...humidity, scalar: { ...humidity.scalar, level: 'surface' } },
+  ]) {
+    let calls = 0;
+    const source = createWindSource({
+      fetchImpl: async () => {
+        calls++;
+        return response(bad);
+      },
+    });
+    await assert.rejects(
+      source.getSnapshot({ overlay: bad.overlay }),
+      /Malformed/,
+    );
+    assert.equal(calls, 1);
+  }
+  // IFS has neither field and answers them with wind alone.
+  for (const [overlay, scalarError] of [
+    ['humidity', 'Specific humidity field unavailable'],
+    ['precipitation', 'Precipitation rate field unavailable'],
+  ]) {
+    const partial = {
+      ...manifest,
+      model: 'ifs',
+      overlay,
+      scalarError,
+      gridUrl: `/api/wind/grid/ifs-test-${overlay}-wind-only.bin?model=ifs&overlay=${overlay}`,
+    };
+    const source = createWindSource({
+      fetchImpl: async (url) =>
+        response(
+          url.includes('manifest')
+            ? partial
+            : Float32Array.from([1, 2, 3, 4]).buffer,
+        ),
+    });
+    const result = await source.getSnapshot({ model: 'ifs', overlay });
+    assert.equal(result.scalar, undefined);
+    assert.equal(result.scalarError, scalarError);
     assert.deepEqual([...result.v], [3, 4]);
   }
 });

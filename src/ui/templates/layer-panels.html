@@ -222,6 +222,15 @@
           <option value="samsung-z-fold">Galaxy Z Fold</option>
         </select>
       </div>
+      <!-- CELL: which saved phone TAKE PHOTO and TAKE VIDEO go to (owner
+           request 2026-10-16). AUTO is the phone whose camera page is open,
+           else the one that reported last; the rest name a saved Ultra cell.
+           The entries are filled from the status (src/ultraHelpPanel.js). -->
+      <div class="cctv-controls">
+        <select id="ultra-camera-cell" aria-label="Which Ultra cell takes the photo or video">
+          <option value="">AUTO · THE PHONE WHOSE PAGE IS OPEN, ELSE THE LAST TO REPORT</option>
+        </select>
+      </div>
       <!-- CELL CAMERAS: PHOTO (one still) and VIDEO (live) for each camera
            this phone model has. Every press also records a clip, kept on
            this computer (owner ruling, 2026-10-08). -->
@@ -1047,6 +1056,171 @@
         <ul id="outbreak-found" class="outbreak-list" aria-label="New outbreak locations found"></ul>
         <div id="outbreak-status" class="ask-status" role="status" aria-live="polite"></div>
         <div id="outbreak-output" class="ask-output" role="status" aria-live="polite" tabindex="0"></div>
+      </div>
+    </div>
+
+    <!-- Artificial Intelligence World Training Sim: a left-stack box under
+         Outbreak. TRAIN ON is one tick box per data layer, then news events,
+         population demographics, outbreak sim episodes and the owner's
+         devices, with ALL first. INITIALIZE shows an estimate before it
+         starts anything; DELETE lists exactly what it would remove, and a
+         second press inside the box removes it. STATUS follows each stage;
+         PREDICTIONS picks what the globe draws. The rows, the status and the
+         lists are filled by src/aiWorldPanel.js from /api/ai-world
+         (docs/AI-WORLD-TAB.md). -->
+    <div id="ai-world-panel" class="panel-collapsible collapsed" data-panel-id="ai-world-panel">
+      <div class="panel-glow"></div>
+      <div class="ai-world-panel-inner">
+        <div class="panel-header">
+          <span class="panel-title" data-collapsed-title="ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM">ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM</span>
+          <span class="panel-divider"></span>
+          <button class="panel-collapse-btn" data-collapse-target="ai-world-panel" title="Collapse panel">+</button>
+        </div>
+        <div id="ai-world-status" class="ask-status" role="status" aria-live="polite"></div>
+        <details id="ai-world-howto" class="ai-world-howto">
+          <summary>INSTRUCTIONS</summary>
+          <ol class="ai-world-list">
+            <li>TRAIN ON: tick the data layers, FINANCIAL ASSETS, NEWS EVENTS and DEMOGRAPHICS (or ALL). Military is never used.</li>
+            <li>AREAS: move the map and ADD VIEW AS AREA where cameras, traffic, news and imagery should record.</li>
+            <li>INITIALIZE: check the estimate and the storage cap, then CONFIRM INITIALIZE. Recording starts.</li>
+            <li>Each finished day is binned, then the world model trains or post-trains by itself; STATUS shows it.</li>
+            <li>PREDICTIONS: tick a domain once it is trained (PRICE MOVES draws each asset's predicted move where it trades) and set the HORIZON.</li>
+            <li>POST-TRAIN: keep another world model up to date with an adapter and its checkpoint.</li>
+            <li>Your own model: export the data, or use the reinforcement-learning environment. A custom LLM trains from POWER UP.</li>
+          </ol>
+          <p class="social-note">Full instructions: docs/TRAINING-GUIDE.md</p>
+        </details>
+        <div class="cctv-summary-label">TRAIN ON</div>
+        <p id="ai-world-military-note" class="social-note">Military layers and military flights are not used for training.</p>
+        <label class="outbreak-mode ai-world-all" data-class="all"><input id="ai-world-all" type="checkbox" /><span class="outbreak-swatch"></span>ALL</label>
+        <ul id="ai-world-sources" class="ai-world-list ai-world-sources" aria-label="Data the AI trains on"></ul>
+        <!-- AREAS: cameras, traffic, news, recent imagery, street level and
+             the mapped static layers record around these places only. ADD
+             VIEW AS AREA adds the place in the middle of the map; REMOVE
+             stops recording there and keeps what was recorded (refused on the
+             owner's phone, as every removal is). -->
+        <div class="cctv-summary-label">AREAS</div>
+        <ul id="ai-world-areas" class="ai-world-list ai-world-areas" aria-label="Areas recorded around"></ul>
+        <div class="cctv-controls ai-world-actions">
+          <button id="ai-world-area-add" class="scene-btn" type="button" title="Adds the place in the middle of the map: cameras, traffic, news, imagery and street level record around each area">ADD VIEW AS AREA</button>
+        </div>
+        <div class="cctv-summary-label">NEWS EVENTS</div>
+        <p id="ai-world-news-count" class="social-note">0 / 100</p>
+        <ul id="ai-world-news-urls" class="ai-world-list" aria-label="News URLs"></ul>
+        <div class="cctv-controls ai-world-actions">
+          <input id="ai-world-news-url" type="url" maxlength="2000" placeholder="https://…" aria-label="News URL" />
+          <button id="ai-world-news-add" class="scene-btn" type="button">ADD</button>
+        </div>
+        <div class="cctv-summary-label">FINANCIAL ASSETS</div>
+        <p class="social-note">Live quotes: currencies, yields, commodities, stock indexes, volatility and crypto. Once trained, each shows its predicted move, and PRICE MOVES draws them where each benchmark is set. Not a recommendation. The same hour is kept beside news, ships, traffic, weather, and flights. That is not a claim one moved the other.</p>
+        <ul id="ai-world-markets" class="ai-world-list" aria-label="Live financial asset quotes"></ul>
+        <div class="cctv-summary-label">LINKS</div>
+        <ul id="ai-world-links" class="ai-world-list" aria-label="Training links"></ul>
+        <div class="cctv-controls ai-world-actions">
+          <button id="ai-world-links-tick" class="scene-btn" type="button">TICK LINK FEEDS</button>
+        </div>
+        <div class="cctv-summary-label">CONTROLS</div>
+        <div class="cctv-controls ai-world-actions">
+          <button id="ai-world-init" class="scene-btn" type="button" title="Shows the storage and compute estimate first, then starts on CONFIRM INITIALIZE">INITIALIZE</button>
+          <button id="ai-world-pause" class="scene-btn" type="button" title="PAUSE holds the work where it is; CONTINUE resumes it" disabled>PAUSE</button>
+          <button id="ai-world-stop" class="scene-btn" type="button" title="Stops recording, sim episodes and training; the data stays" disabled>STOP</button>
+          <button id="ai-world-delete" class="scene-btn" type="button" title="Lists the files first; a second press in the box deletes them">DELETE</button>
+        </div>
+        <div id="ai-world-estimate" class="ai-world-block" hidden>
+          <div class="cctv-summary-label">ESTIMATE</div>
+          <ul id="ai-world-estimate-lines" class="ai-world-list" aria-label="What INITIALIZE will use"></ul>
+          <div class="ai-world-fields">
+            <label for="ai-world-cap">STORAGE CAP (GB)</label>
+            <input id="ai-world-cap" type="number" min="1" max="100000" step="1" value="600" />
+            <label id="ai-world-scenarios-label" for="ai-world-scenarios" hidden>SIM SCENARIOS</label>
+            <input id="ai-world-scenarios" type="number" min="1" max="1000000" step="1" value="2000" hidden />
+          </div>
+          <div class="cctv-controls">
+            <button id="ai-world-init-confirm" class="scene-btn" type="button" disabled>CONFIRM INITIALIZE</button>
+            <button id="ai-world-init-cancel" class="scene-btn" type="button" aria-label="Cancel initialize">CANCEL</button>
+          </div>
+        </div>
+        <div id="ai-world-delete-panel" class="ai-world-block ai-world-block-danger" hidden>
+          <div class="cctv-summary-label">WHAT DELETE WILL REMOVE</div>
+          <div class="cctv-controls">
+            <select id="ai-world-delete-scope" aria-label="What to delete">
+              <option value="all" selected>ALL DATA</option>
+              <option value="tape">TAPE</option>
+              <option value="bins">BINS</option>
+              <option value="datasets">SIM DATASETS</option>
+              <option value="worlds">WORLDS</option>
+              <option value="models">MODELS</option>
+              <option value="predictions">PREDICTIONS</option>
+              <option value="demographics">DEMOGRAPHICS</option>
+            </select>
+          </div>
+          <ul id="ai-world-delete-groups" class="ai-world-list" aria-label="Files that will be deleted"></ul>
+          <p id="ai-world-delete-total" class="social-note"></p>
+          <div class="cctv-controls">
+            <button id="ai-world-delete-confirm" class="scene-btn ultra-danger" type="button" disabled>DELETE LISTED FILES</button>
+            <button id="ai-world-delete-cancel" class="scene-btn" type="button" aria-label="Cancel delete">CANCEL</button>
+          </div>
+        </div>
+        <div class="cctv-summary-label">STATUS</div>
+        <ul id="ai-world-stages" class="ai-world-list" aria-label="Status of each stage">
+          <li id="ai-world-stage-state">STATE · WAITING FOR THE SERVER</li>
+          <li id="ai-world-stage-recorder">RECORDING · OFF</li>
+          <li id="ai-world-stage-generator">SIM EPISODES · OFF</li>
+          <li id="ai-world-stage-trainer">TRAINING · OFF</li>
+          <li id="ai-world-stage-predictor">PREDICTING · OFF</li>
+          <li id="ai-world-stage-storage">STORAGE · NOTHING RECORDED</li>
+          <li id="ai-world-stage-gaps">GAPS · NONE</li>
+          <li id="ai-world-stage-compute">COMPUTE · WAITING FOR THE SERVER</li>
+        </ul>
+        <!-- POST-TRAIN: keep an existing world model up to date on the newest
+             recordings (ml.gevtape.posttrain). The kit's own world model does
+             this by itself every day. The adapter must be a file in
+             ml/adapters/ or .gev-data/ai-world/adapters/, the checkpoint a path
+             inside .gev-data/. -->
+        <div class="cctv-summary-label">POST-TRAIN</div>
+        <p id="ai-world-posttrain-note" class="social-note">The kit's own world model post-trains itself every day on all recorded days, and grows when a new layer or asset arrives.</p>
+        <div class="ai-world-fields">
+          <label for="ai-world-posttrain-adapter">ADAPTER</label>
+          <input id="ai-world-posttrain-adapter" type="text" maxlength="130" placeholder="kit_world:KitWorldAdapter" autocomplete="off" spellcheck="false" />
+          <label for="ai-world-posttrain-checkpoint">CHECKPOINT</label>
+          <input id="ai-world-posttrain-checkpoint" type="text" maxlength="400" placeholder="path inside .gev-data/" autocomplete="off" spellcheck="false" />
+        </div>
+        <label class="outbreak-mode ai-world-all" data-class="all"><input id="ai-world-posttrain-daily" type="checkbox" /><span class="outbreak-swatch"></span>POST-TRAIN DAILY ON NEW DATA</label>
+        <div class="cctv-controls ai-world-actions">
+          <button id="ai-world-posttrain-save" class="scene-btn" type="button">SAVE</button>
+          <button id="ai-world-posttrain-run" class="scene-btn" type="button" title="Post-trains the model now on every recorded day; the last days are held out to score it before and after">POST-TRAIN NOW</button>
+        </div>
+        <!-- PREDICTIONS: a domain is a live tick once the predictor draws it,
+             LEARNING until then. The choice and the horizon stay in this
+             browser and go to the globe overlay. -->
+        <div class="cctv-summary-label">PREDICTIONS</div>
+        <label class="outbreak-mode ai-world-all" data-class="all"><input id="ai-world-predict-all" type="checkbox" /><span class="outbreak-swatch"></span>ALL PREDICTIONS</label>
+        <div id="ai-world-domains" class="ai-world-domains" role="group" aria-label="Predictions drawn on the globe">
+          <div class="ai-world-row"><label class="outbreak-mode" data-domain="outbreak"><input id="ai-world-domain-outbreak" type="checkbox" aria-label="Predict outbreak" aria-describedby="ai-world-domain-outbreak-note" disabled /><span class="outbreak-swatch"></span>OUTBREAK</label><span id="ai-world-domain-outbreak-note" class="ai-world-note">LEARNING</span></div>
+          <div class="ai-world-row"><label class="outbreak-mode" data-domain="mobility"><input id="ai-world-domain-mobility" type="checkbox" aria-label="Predict mobility" aria-describedby="ai-world-domain-mobility-note" disabled /><span class="outbreak-swatch"></span>MOBILITY</label><span id="ai-world-domain-mobility-note" class="ai-world-note">LEARNING</span></div>
+          <div class="ai-world-row"><label class="outbreak-mode" data-domain="weather"><input id="ai-world-domain-weather" type="checkbox" aria-label="Predict weather" aria-describedby="ai-world-domain-weather-note" disabled /><span class="outbreak-swatch"></span>WEATHER</label><span id="ai-world-domain-weather-note" class="ai-world-note">LEARNING</span></div>
+          <div class="ai-world-row"><label class="outbreak-mode" data-domain="hazards"><input id="ai-world-domain-hazards" type="checkbox" aria-label="Predict hazards" aria-describedby="ai-world-domain-hazards-note" disabled /><span class="outbreak-swatch"></span>HAZARDS</label><span id="ai-world-domain-hazards-note" class="ai-world-note">LEARNING</span></div>
+          <div class="ai-world-row"><label class="outbreak-mode" data-domain="news"><input id="ai-world-domain-news" type="checkbox" aria-label="Predict news" aria-describedby="ai-world-domain-news-note" disabled /><span class="outbreak-swatch"></span>NEWS</label><span id="ai-world-domain-news-note" class="ai-world-note">LEARNING</span></div>
+          <div class="ai-world-row"><label class="outbreak-mode" data-domain="tracks"><input id="ai-world-domain-tracks" type="checkbox" aria-label="Predict tracks" aria-describedby="ai-world-domain-tracks-note" disabled /><span class="outbreak-swatch"></span>TRACKS</label><span id="ai-world-domain-tracks-note" class="ai-world-note">LEARNING</span></div>
+        </div>
+        <div class="cctv-summary-label">INFER</div>
+        <div class="cctv-controls ai-world-actions">
+          <select id="ai-world-infer-kind" aria-label="What to infer">
+            <option value="location" selected>LOCATION</option>
+            <option value="item">ITEM</option>
+            <option value="topic">TOPIC</option>
+            <option value="event">EVENT</option>
+          </select>
+          <input id="ai-world-infer-query" type="text" maxlength="200" placeholder="Place, id, topic, or event" aria-label="Infer query" />
+          <button id="ai-world-infer" class="scene-btn" type="button" title="Predict from the trained model for this place, item, topic, or event. An empty location uses the middle of the map.">ASK</button>
+        </div>
+        <p id="ai-world-infer-note" class="social-note"></p>
+        <div class="ai-world-horizon">
+          <label for="ai-world-horizon">HORIZON</label>
+          <input id="ai-world-horizon" type="range" min="1" max="168" step="1" value="24" aria-valuetext="24 HOURS" />
+          <output id="ai-world-horizon-value" class="ai-world-horizon-value" for="ai-world-horizon">24 H</output>
+        </div>
+        <div id="ai-world-output" class="ask-output" role="status" aria-live="polite" tabindex="0"></div>
       </div>
     </div>
   </div>

@@ -170,7 +170,12 @@ test('traffic timing pairs real ordering to the scheduling change and guards re-
       configFile: false,
       appType: 'custom',
       logLevel: 'silent',
-      server: { middlewareMode: true },
+      // No dependency scan and no watcher: without a config file Vite would
+      // glob the whole checkout for entries (the provider caches and the AI
+      // World data hold tens of thousands of files), and an SSR load waits
+      // for that scan.
+      optimizeDeps: { noDiscovery: true, entries: [] },
+      server: { middlewareMode: true, watch: null },
       plugins: [{
         name: 'traffic-timing-test-hooks',
         transform(code, id) {

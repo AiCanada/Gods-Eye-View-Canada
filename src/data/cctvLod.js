@@ -38,6 +38,10 @@ const PROVIDER_STATIC_REFRESH_MS = Object.freeze({
   // collectionInterval, 600 s for every station sampled; polling faster only
   // re-fetches the same JPEG.
   fintraffic: 10 * 60 * 1000,
+  // Catalonia SCT frames change every 90-150 s (measured upstream, #595);
+  // 3 min matches the other highway packs.
+  'catalonia sct cameres.kml': 3 * 60 * 1000,
+  'catalonia sct cameres.xml': 3 * 60 * 1000,
 });
 
 /**

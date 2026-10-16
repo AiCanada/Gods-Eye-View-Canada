@@ -596,11 +596,11 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   }),
   // Fork layer (Cell). The fork once used 'v', which upstream gave
   // weather-radar, then '0', which upstream gave street-level (merged
-  // 2026-10-07, owner ruling); it now holds the next free merge-time token,
-  // a move recorded in LAYER_STATE_TOKEN_MOVES.
+  // 2026-10-07), then '5'; it now holds the first fork token, at the top of
+  // the namespace (FORK_LAYER_STATE_IDS).
   Object.freeze({
     id: 'device-feeds',
-    token: '5',
+    token: 'zz',
     disposition: 'enabled-only',
   }),
   Object.freeze({ id: 'directions', token: 'n', disposition: 'enabled-only' }),
@@ -639,13 +639,13 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
     token: 'i',
     disposition: 'enabled-only',
   }),
-  // Fork layer: Outbreak Locations & Predicted Spread, the next free
-  // merge-time token.
-  Object.freeze({ id: 'outbreak', token: '4', disposition: 'enabled-only' }),
-  // Fork layer: Private CCTV Cams, the next free merge-time token.
+  // Fork layer: Outbreak Locations & Predicted Spread (was '4'), the third
+  // fork token.
+  Object.freeze({ id: 'outbreak', token: 'zx', disposition: 'enabled-only' }),
+  // Fork layer: Private CCTV Cams (was '3'), the second fork token.
   Object.freeze({
     id: 'private-cctv',
-    token: '3',
+    token: 'zy',
     disposition: 'enabled-only',
   }),
   Object.freeze({
@@ -741,6 +741,41 @@ export function nextLayerStateToken(
   throw new Error('Layer-state token namespace exhausted');
 }
 
+/**
+ * Fork layers, in allocation order (owner ruling 2026-10-15). Upstream
+ * allocates from the bottom of the namespace (free digits, then 00, 01 …);
+ * the fork allocates from the top (zz, zy, zx …), so a new upstream token
+ * never lands on a fork token and no fork token has to move again at a
+ * merge. A new fork layer is appended here and takes
+ * `nextForkLayerStateToken()`.
+ */
+export const FORK_LAYER_STATE_IDS = Object.freeze([
+  'device-feeds',
+  'private-cctv',
+  'outbreak',
+]);
+const FORK_LAYER_STATE_ID_SET = new Set(FORK_LAYER_STATE_IDS);
+
+/** Whether a layer id is a fork layer, allocated from the top. */
+export function isForkLayerStateId(id) {
+  return FORK_LAYER_STATE_ID_SET.has(id);
+}
+
+/** The next free fork token, counting down from zz. */
+export function nextForkLayerStateToken(
+  reservations = LAYER_STATE_TOKEN_RESERVATIONS,
+) {
+  const occupied = new Set(Object.values(reservations || {}));
+  const alphabet = [...LAYER_STATE_TOKEN_ALPHABET].reverse();
+  for (const first of alphabet) {
+    for (const second of alphabet) {
+      const candidate = `${first}${second}`;
+      if (!occupied.has(candidate)) return candidate;
+    }
+  }
+  throw new Error('Layer-state token namespace exhausted');
+}
+
 function allocationRank(token) {
   if (NEW_SINGLE_CHARACTER_TOKEN_PATTERN.test(token)) return Number(token);
   if (typeof token !== 'string' || token.length !== 2) return Infinity;
@@ -750,20 +785,18 @@ function allocationRank(token) {
 }
 
 /**
- * Published tokens never move, with these recorded exceptions only. Each one
- * is a fork layer that yielded its token to an upstream layer published with
- * the same token, and took the next free one (owner ruling, 2026-10-07: the
- * fork's Cell gave '0' to upstream's Street Level and moved to '5'). A move
- * applies only while the published base still holds the old token and the
- * upstream layer is arriving with it; once it is published it is ordinary.
+ * Published tokens never move, with these recorded exceptions only: fork
+ * layers leaving the bottom of the namespace for their fork token at the top
+ * (owner ruling, 2026-10-15), so the digits they held go to upstream's
+ * layers (3 GNSS integrity, 4 air quality, 5 the next one). Earlier moves
+ * (Cell 'v' → '0' → '5', each yielding to an upstream layer) are history.
+ * A move applies only while the published base still holds the old token;
+ * once it is published it is ordinary.
  */
 export const LAYER_STATE_TOKEN_MOVES = Object.freeze([
-  Object.freeze({
-    id: 'device-feeds',
-    from: '0',
-    to: '5',
-    yieldsTo: 'street-level',
-  }),
+  Object.freeze({ id: 'device-feeds', from: '5', to: 'zz' }),
+  Object.freeze({ id: 'private-cctv', from: '3', to: 'zy' }),
+  Object.freeze({ id: 'outbreak', from: '4', to: 'zx' }),
 ]);
 
 /** The recorded move that explains this published token changing, if any. */
@@ -774,8 +807,9 @@ function recordedTokenMove(id, baseReservations, reservations) {
         move.id === id &&
         baseReservations[id] === move.from &&
         reservations[id] === move.to &&
-        reservations[move.yieldsTo] === move.from &&
-        !Object.hasOwn(baseReservations, move.yieldsTo),
+        (!move.yieldsTo ||
+          (reservations[move.yieldsTo] === move.from &&
+            !Object.hasOwn(baseReservations, move.yieldsTo))),
     ) || null
   );
 }
@@ -798,14 +832,28 @@ export function validateLayerStateAllocations(
     throw new Error(`Published layer-state token changed or removed: ${id}`);
   }
   // A moved layer is allocated again, after the token it gave up is free.
-  const newlyReserved = Object.entries(reservations)
-    .filter(([id]) => !Object.hasOwn(baseReservations, id) || moved.has(id))
+  // Upstream layers take the next free token from the bottom; fork layers,
+  // in FORK_LAYER_STATE_IDS order, the next free one from the top.
+  const newlyReserved = Object.entries(reservations).filter(
+    ([id]) => !Object.hasOwn(baseReservations, id) || moved.has(id),
+  );
+  const upstreamReserved = newlyReserved
+    .filter(([id]) => !isForkLayerStateId(id))
     .sort((left, right) => allocationRank(left[1]) - allocationRank(right[1]));
+  const forkReserved = newlyReserved
+    .filter(([id]) => isForkLayerStateId(id))
+    .sort(
+      ([left], [right]) =>
+        FORK_LAYER_STATE_IDS.indexOf(left) -
+        FORK_LAYER_STATE_IDS.indexOf(right),
+    );
   const occupied = Object.fromEntries(
     Object.entries(baseReservations).filter(([id]) => !moved.has(id)),
   );
-  for (const [id, token] of newlyReserved) {
-    const expected = nextLayerStateToken(occupied);
+  for (const [id, token] of [...upstreamReserved, ...forkReserved]) {
+    const expected = isForkLayerStateId(id)
+      ? nextForkLayerStateToken(occupied)
+      : nextLayerStateToken(occupied);
     if (token !== expected) {
       throw new Error(
         `Layer-state token for ${id} must be the next free token ${expected}`,

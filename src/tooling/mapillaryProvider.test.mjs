@@ -11,6 +11,11 @@ import {
 } from '../../server/providers/mapillary/trim.js';
 import * as tiles from '../../server/providers/mapillary/tiles.js';
 import {
+  IMAGES_FIELDS,
+  IMAGES_LIMIT,
+  IMAGES_QUEUE_MAX,
+  IMAGES_ROUTE_MAX_PER_MIN,
+  IMAGES_UPSTREAM_CONCURRENCY,
   TILE_DISK_FILE_OVERHEAD_BYTES,
   TILE_MAX_BYTES,
   TILE_MEMORY_BUDGET_BYTES,
@@ -19,6 +24,12 @@ import {
   TILE_ROUTE_MAX_PER_MIN,
   TILE_UPSTREAM_CONCURRENCY,
 } from '../../server/providers/mapillary/constants.js';
+import {
+  fetchImages,
+  normalizeImagesBbox,
+  ImagesRequestError,
+  _resetImagesForTest,
+} from '../../server/providers/mapillary/images.js';
 import {
   fetchTile,
   normalizeTileAddress,
@@ -134,10 +145,11 @@ function install(plugin, mode = 'configureServer') {
 
 const json = (res) => JSON.parse(String(res.body));
 
-test('the plugin mounts the status and tile routes for dev and preview servers', () => {
+test('the plugin mounts the status, tile and image routes for dev and preview servers', () => {
   for (const mode of ['configureServer', 'configurePreviewServer']) {
     const { routes } = install(mapillaryProxy(), mode);
     assert.deepEqual([...routes.keys()].sort(), [
+      '/api/mapillary/images',
       '/api/mapillary/status',
       '/api/mapillary/tiles',
     ]);
@@ -188,6 +200,7 @@ async function withUpstream(answer, run) {
   const savedToken = process.env.MAPILLARY_CLIENT_TOKEN;
   process.env.MAPILLARY_CLIENT_TOKEN = 'MLY|test|token';
   _resetTileMemoryForTest();
+  _resetImagesForTest();
   const calls = [];
   const inits = [];
   globalThis.fetch = async (url, init) => {
@@ -205,6 +218,7 @@ async function withUpstream(answer, run) {
     if (savedToken === undefined) delete process.env.MAPILLARY_CLIENT_TOKEN;
     else process.env.MAPILLARY_CLIENT_TOKEN = savedToken;
     _resetTileMemoryForTest();
+    _resetImagesForTest();
   }
 }
 
@@ -829,7 +843,7 @@ test('an endless same-origin redirect stops after a few hops', async () => {
   );
 });
 
-test('cross-site requests are refused on both routes; the app itself passes', async () => {
+test('cross-site requests are refused on every route; the app itself passes', async () => {
   await withUpstream(
     () => new Response(tile([{ name: 'sequence' }]), { status: 200 }),
     async ({ calls, call }) => {
@@ -845,6 +859,7 @@ test('cross-site requests are refused on both routes; the app itself passes', as
         for (const [route, url] of [
           ['/api/mapillary/status', '/'],
           ['/api/mapillary/tiles', '/coverage/14/13/13'],
+          ['/api/mapillary/images', '/?bbox=-97.75,30.25,-97.7,30.3'],
         ]) {
           const res = await call(route, url, 'GET', undefined, headers);
           assert.equal(
@@ -1309,4 +1324,368 @@ test('layer names are read without decoding features', () => {
     'a',
     'b',
   ]);
+});
+
+// ── Image search ──
+
+const BBOX = '-97.75,30.25,-97.7,30.3';
+const imageRow = (id, extra = {}) => ({
+  id,
+  captured_at: 1_760_000_000_000,
+  compass_angle: 91.5,
+  computed_compass_angle: 92.25,
+  geometry: { type: 'Point', coordinates: [-97.7431234567, 30.2672345678] },
+  sequence: 'seqAbc123',
+  is_pano: false,
+  camera_type: 'perspective',
+  ...extra,
+});
+const graphAnswer = (data, extra = {}) =>
+  new Response(JSON.stringify({ data, ...extra }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+
+test('the image route never searches without a token', async () => {
+  const savedFetch = globalThis.fetch;
+  const savedToken = process.env.MAPILLARY_CLIENT_TOKEN;
+  delete process.env.MAPILLARY_CLIENT_TOKEN;
+  _resetImagesForTest();
+  let upstream = 0;
+  globalThis.fetch = async () => {
+    upstream++;
+    return graphAnswer([]);
+  };
+  try {
+    const { call } = install(mapillaryProxy());
+    const noKey = await call('/api/mapillary/images', `/?bbox=${BBOX}`);
+    assert.equal(noKey.statusCode, 503);
+    assert.deepEqual(json(noKey), { error: 'no_key', keyRequired: true });
+    await assert.rejects(fetchImages(normalizeImagesBbox(BBOX)), {
+      name: 'ImagesRequestError',
+      status: 503,
+    });
+    assert.equal(upstream, 0, 'Mapillary is never asked');
+  } finally {
+    globalThis.fetch = savedFetch;
+    if (savedToken === undefined) delete process.env.MAPILLARY_CLIENT_TOKEN;
+    else process.env.MAPILLARY_CLIENT_TOKEN = savedToken;
+  }
+});
+
+test('an image search box must be four plain decimals, ordered, at most 0.05° a side', async () => {
+  await withUpstream(
+    () => graphAnswer([]),
+    async ({ calls, call }) => {
+      for (const bbox of [
+        null, // no bbox at all
+        '',
+        '-97.75,30.25,-97.7',
+        '-97.75,30.25,-97.7,30.3,1',
+        'a,b,c,d',
+        '1e1,30.25,10.01,30.3',
+        '0x10,30.25,16.01,30.3',
+        'Infinity,30.25,-97.7,30.3',
+        '-97.7,30.25,-97.75,30.3', // west after east
+        '-97.75,30.3,-97.7,30.25', // south after north
+        '-97.75,30.25,-97.75,30.3', // no width
+        '-97.8,30.25,-97.7,30.3', // 0.1° wide
+        '-97.75,30.2,-97.7,30.3', // 0.1° tall
+        '-180.02,0,-179.99,0.01', // off the globe
+        '10,90.01,10.01,90.02',
+      ]) {
+        const res = await call(
+          '/api/mapillary/images',
+          bbox === null ? '/' : `/?bbox=${bbox}`,
+        );
+        assert.equal(res.statusCode, 400, String(bbox));
+        assert.match(json(res).error, /bbox/, String(bbox));
+      }
+      const path = await call('/api/mapillary/images', `/x?bbox=${BBOX}`);
+      assert.equal(path.statusCode, 400);
+      const post = await call(
+        '/api/mapillary/images',
+        `/?bbox=${BBOX}`,
+        'POST',
+      );
+      assert.equal(post.statusCode, 405);
+      assert.equal(calls.length, 0, 'Mapillary is never asked');
+    },
+  );
+});
+
+test('an image search carries the token only in its header and answers validated images, then from memory', async () => {
+  await withUpstream(
+    () =>
+      graphAnswer([
+        imageRow('1001'),
+        imageRow(1002, {
+          is_pano: true,
+          camera_type: 'spherical',
+          computed_compass_angle: null,
+          compass_angle: -90,
+        }),
+        imageRow('1001'), // a repeat
+        imageRow('10 03'), // not a plain id
+        imageRow('1004', { geometry: null }),
+        imageRow('1005', {
+          geometry: { type: 'Point', coordinates: [-197.7, 30.27] },
+        }),
+        imageRow('1006', {
+          captured_at: 'soon',
+          compass_angle: 'north',
+          computed_compass_angle: null,
+          sequence: 'x'.repeat(65),
+          camera_type: '<b>fisheye</b>',
+        }),
+        'not an image',
+      ]),
+    async ({ calls, inits, call }) => {
+      const res = await call('/api/mapillary/images', `/?bbox=${BBOX}`);
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.headers['x-gev-cache'], 'upstream');
+      const place = { lat: 30.2672346, lon: -97.7431235 };
+      assert.deepEqual(json(res), {
+        images: [
+          {
+            id: '1001',
+            capturedAt: 1_760_000_000_000,
+            ...place,
+            compass: 92.25,
+            sequence: 'seqAbc123',
+            isPano: false,
+            cameraType: 'perspective',
+          },
+          {
+            id: '1002',
+            capturedAt: 1_760_000_000_000,
+            ...place,
+            compass: 270,
+            sequence: 'seqAbc123',
+            isPano: true,
+            cameraType: 'spherical',
+          },
+          {
+            id: '1006',
+            capturedAt: null,
+            ...place,
+            compass: null,
+            sequence: null,
+            isPano: false,
+            cameraType: null,
+          },
+        ],
+        truncated: false,
+      });
+      assert.equal(calls.length, 1);
+      const url = new URL(calls[0]);
+      assert.equal(url.origin, 'https://graph.mapillary.com');
+      assert.equal(url.pathname, '/images');
+      assert.equal(url.searchParams.get('bbox'), BBOX);
+      assert.equal(url.searchParams.get('fields'), IMAGES_FIELDS);
+      assert.equal(url.searchParams.get('limit'), String(IMAGES_LIMIT));
+      assert.equal(url.searchParams.has('access_token'), false);
+      assert.doesNotMatch(calls[0], /MLY/, 'the token is not in the URL');
+      assert.equal(inits[0].headers.Authorization, 'OAuth MLY|test|token');
+      assert.equal(inits[0].redirect, 'manual');
+      assert.doesNotMatch(String(res.body), /MLY/);
+      // The same box written differently is the same cache entry.
+      const again = await call(
+        '/api/mapillary/images',
+        '/?bbox=-97.750000,30.25,-97.70,30.300',
+      );
+      assert.equal(again.statusCode, 200);
+      assert.equal(again.headers['x-gev-cache'], 'memory');
+      assert.equal(again.body, res.body);
+      assert.equal(calls.length, 1, 'answered from memory');
+    },
+  );
+});
+
+test('a full page of images, or a next link, marks the answer truncated', async () => {
+  let respond = () =>
+    graphAnswer(
+      Array.from({ length: IMAGES_LIMIT + 5 }, (_, i) =>
+        imageRow(String(5000 + i)),
+      ),
+    );
+  await withUpstream(
+    () => respond(),
+    async ({ call }) => {
+      const full = json(await call('/api/mapillary/images', `/?bbox=${BBOX}`));
+      assert.equal(full.truncated, true);
+      assert.equal(full.images.length, IMAGES_LIMIT, 'never past the limit');
+      respond = () =>
+        graphAnswer([imageRow('1')], {
+          paging: { next: 'https://graph.mapillary.com/images?after=x' },
+        });
+      const paged = json(
+        await call('/api/mapillary/images', '/?bbox=-97.7,30.25,-97.65,30.3'),
+      );
+      assert.deepEqual([paged.images.length, paged.truncated], [1, true]);
+    },
+  );
+});
+
+test('malformed upstream JSON is a 502, never cached, and the next ask tries again', async () => {
+  const bodies = [
+    '{"data": [',
+    '{"data": "none"}',
+    JSON.stringify({ data: [imageRow('7')] }),
+  ];
+  await withUpstream(
+    (n) => new Response(bodies[n - 1], { status: 200 }),
+    async ({ calls, call }) => {
+      const broken = await call('/api/mapillary/images', `/?bbox=${BBOX}`);
+      assert.equal(broken.statusCode, 502);
+      assert.deepEqual(json(broken), {
+        error: 'Mapillary answered malformed JSON',
+      });
+      const shapeless = await call('/api/mapillary/images', `/?bbox=${BBOX}`);
+      assert.equal(shapeless.statusCode, 502);
+      assert.deepEqual(json(shapeless), {
+        error: 'Mapillary answered without an image list',
+      });
+      const good = await call('/api/mapillary/images', `/?bbox=${BBOX}`);
+      assert.equal(good.statusCode, 200);
+      assert.equal(json(good).images[0].id, '7');
+      assert.equal(calls.length, 3, 'a bad answer is never cached');
+    },
+  );
+});
+
+test('a rejected token or a rate limit holds image searches; cached answers still serve', async (t) => {
+  let status = 200;
+  await withUpstream(
+    () =>
+      status === 200
+        ? graphAnswer([imageRow('1')])
+        : new Response('{}', {
+            status,
+            headers: status === 429 ? { 'Retry-After': '30' } : {},
+          }),
+    async ({ calls, call }) => {
+      const ask = (bbox) => call('/api/mapillary/images', `/?bbox=${bbox}`);
+      assert.equal((await ask(BBOX)).statusCode, 200);
+      status = 403;
+      const rejected = await ask('-97.7,30.25,-97.65,30.3');
+      assert.equal(rejected.statusCode, 403);
+      assert.deepEqual(json(rejected), {
+        error: 'Mapillary rejected the access token',
+        keyRejected: true,
+      });
+      assert.equal((await ask('-97.65,30.25,-97.6,30.3')).statusCode, 403);
+      assert.equal(calls.length, 2, 'held: Mapillary is not asked again');
+      assert.equal((await ask(BBOX)).headers['x-gev-cache'], 'memory');
+      // A new token is tried at once; a 429 passes its Retry-After on.
+      process.env.MAPILLARY_CLIENT_TOKEN = 'MLY|new|token';
+      status = 429;
+      const limited = await ask('-97.65,30.25,-97.6,30.3');
+      assert.equal(limited.statusCode, 429);
+      assert.equal(limited.headers['retry-after'], '30');
+      assert.deepEqual(json(limited), {
+        error: 'Mapillary is rate-limiting image searches',
+        retryAfter: 30,
+      });
+      assert.equal((await ask('-97.6,30.25,-97.55,30.3')).statusCode, 429);
+      assert.equal(calls.length, 3, 'held until the Retry-After is over');
+      const now = Date.now();
+      t.mock.method(Date, 'now', () => now + 31_000);
+      status = 200;
+      assert.equal((await ask('-97.6,30.25,-97.55,30.3')).statusCode, 200);
+      assert.equal(calls.length, 4);
+    },
+  );
+});
+
+test('an image search that redirects is refused, never followed', async () => {
+  await withUpstream(
+    () =>
+      new Response(null, {
+        status: 302,
+        headers: { location: 'https://graph.mapillary.com.evil.example/x' },
+      }),
+    async ({ calls, inits, call }) => {
+      const res = await call('/api/mapillary/images', `/?bbox=${BBOX}`);
+      assert.equal(res.statusCode, 502);
+      assert.deepEqual(json(res), {
+        error: 'Mapillary image search redirected',
+      });
+      assert.equal(calls.length, 1, 'the Location is never fetched');
+      assert.equal(inits[0].redirect, 'manual');
+    },
+  );
+});
+
+test('identical image searches share one upstream request; a full queue is refused', async () => {
+  const savedFetch = globalThis.fetch;
+  const savedToken = process.env.MAPILLARY_CLIENT_TOKEN;
+  process.env.MAPILLARY_CLIENT_TOKEN = 'MLY|test|token';
+  _resetImagesForTest();
+  const pending = [];
+  globalThis.fetch = () =>
+    new Promise((resolve) =>
+      pending.push(() => resolve(graphAnswer([imageRow('1')]))),
+    );
+  const box = (i) =>
+    normalizeImagesBbox(
+      `${(i * 0.05).toFixed(2)},0,${((i + 1) * 0.05).toFixed(2)},0.05`,
+    );
+  try {
+    const first = fetchImages(box(0));
+    const joined = fetchImages(box(0));
+    const others = Array.from(
+      { length: IMAGES_UPSTREAM_CONCURRENCY + IMAGES_QUEUE_MAX - 1 },
+      (_, i) => fetchImages(box(i + 1)),
+    );
+    await waitFor(
+      () => pending.length === IMAGES_UPSTREAM_CONCURRENCY,
+      'the upstream slots to fill',
+    );
+    await assert.rejects(
+      fetchImages(box(99)),
+      (error) =>
+        error instanceof ImagesRequestError &&
+        error.status === 503 &&
+        error.retryAfterSec === 5,
+    );
+    const all = Promise.all([first, joined, ...others]);
+    for (let i = 0; i <= others.length; i++) {
+      await waitFor(() => pending.length > 0, 'an upstream request');
+      pending.shift()();
+    }
+    const [a, b] = await all;
+    assert.deepEqual([a.source, b.source], ['upstream', 'inflight']);
+    assert.equal(a.body, b.body);
+    assert.equal(pending.length, 0, 'one request per box');
+  } finally {
+    globalThis.fetch = savedFetch;
+    if (savedToken === undefined) delete process.env.MAPILLARY_CLIENT_TOKEN;
+    else process.env.MAPILLARY_CLIENT_TOKEN = savedToken;
+    _resetImagesForTest();
+  }
+});
+
+test('the image route answers 429 past its per-IP budget', async () => {
+  const saved = process.env.MAPILLARY_CLIENT_TOKEN;
+  delete process.env.MAPILLARY_CLIENT_TOKEN;
+  try {
+    const { call } = install(mapillaryProxy());
+    for (let i = 0; i < IMAGES_ROUTE_MAX_PER_MIN; i++) {
+      const res = await call('/api/mapillary/images', `/?bbox=${BBOX}`);
+      assert.equal(res.statusCode, 503, `request ${i + 1} is within budget`);
+    }
+    const over = await call('/api/mapillary/images', `/?bbox=${BBOX}`);
+    assert.equal(over.statusCode, 429);
+    assert.equal(over.headers['retry-after'], '5');
+    assert.deepEqual(json(over), {
+      error: 'Too many image requests',
+      retryAfter: 5,
+    });
+    const tile = await call('/api/mapillary/tiles', '/coverage/14/1/2');
+    assert.equal(tile.statusCode, 503, 'tiles keep their own budget');
+  } finally {
+    if (saved === undefined) delete process.env.MAPILLARY_CLIENT_TOKEN;
+    else process.env.MAPILLARY_CLIENT_TOKEN = saved;
+  }
 });

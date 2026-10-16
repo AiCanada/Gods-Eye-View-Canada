@@ -1,0 +1,351 @@
+/* Artificial Intelligence World Training Sim. A left-stack box: its glass,
+   the collapse chrome and its inputs come from the Social Media Analysis
+   rules (social.css), which name #ai-world-panel beside #social-panel and
+   #outbreak-panel. This file is only the box's own rows, blocks and lists,
+   laid out like the Outbreak box's (outbreak.css). */
+#ai-world-panel {
+  /* The swatch beside each row is its licence class. */
+  --ai-world-open: #19e6b0;
+  --ai-world-nc: #ffd21a;
+  --ai-world-restricted: #ff2a2a;
+  --ai-world-unclear: #9aa4ad;
+  --ai-world-personal: #c77dff;
+  --ai-world-static: #00d4ff;
+}
+
+/* The box's name is longer than the box is wide: it wraps onto a second
+   line, so the expand/collapse button keeps its place in the corner. */
+#ai-world-panel:not(.collapsed) .panel-header .panel-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+#ai-world-panel:not(.collapsed) .panel-header .panel-divider {
+  flex: 0 0 12px;
+}
+
+#ai-world-panel .panel-header .panel-collapse-btn {
+  flex: 0 0 auto;
+}
+
+/* INSTRUCTIONS: the short steps, folded until asked for. */
+#ai-world-panel .ai-world-howto summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+
+#ai-world-panel .ai-world-howto ol {
+  margin: 6px 0;
+  padding-left: 16px;
+  list-style: decimal;
+}
+
+/* The action log at the bottom of the box. */
+#ai-world-panel .ask-output {
+  min-height: 120px;
+  max-height: min(50vh, 400px);
+}
+
+#ai-world-panel .ai-world-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+#ai-world-panel .ai-world-list:empty {
+  display: none;
+}
+
+#ai-world-panel .ai-world-list li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* TRAIN ON scrolls inside its own band, so INITIALIZE, PAUSE, STOP and
+   DELETE stay in reach with every layer listed. A scrolling list in the
+   box's flex column would otherwise shrink to nothing when the left stack
+   is short (its automatic minimum height is 0); it keeps its rows and the
+   box scrolls instead. */
+#ai-world-panel .ai-world-sources,
+#ai-world-panel .ai-world-areas {
+  flex: 0 0 auto;
+}
+
+#ai-world-panel .ai-world-sources {
+  max-height: min(45vh, 420px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 212, 255, 0.46) rgba(255, 255, 255, 0.06);
+  padding-right: 4px;
+}
+
+/* A row: the tick, its swatch and name, the licence class, and the live
+   status on the line below. */
+#ai-world-panel .ai-world-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 7px;
+  min-width: 0;
+}
+
+#ai-world-panel .outbreak-mode {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--text-primary);
+}
+
+#ai-world-panel .outbreak-mode input[type='checkbox'] {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+#ai-world-panel .outbreak-mode:has(input:disabled) {
+  opacity: 0.6;
+}
+
+#ai-world-panel .outbreak-swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  background: color-mix(in srgb, currentColor 25%, transparent);
+  color: var(--ai-world-static);
+}
+
+#ai-world-panel .outbreak-mode[data-class='open'] .outbreak-swatch {
+  color: var(--ai-world-open);
+}
+
+#ai-world-panel .outbreak-mode[data-class='nc'] .outbreak-swatch {
+  color: var(--ai-world-nc);
+}
+
+#ai-world-panel .outbreak-mode[data-class='restricted'] .outbreak-swatch {
+  color: var(--ai-world-restricted);
+}
+
+#ai-world-panel .outbreak-mode[data-class='unclear'] .outbreak-swatch {
+  color: var(--ai-world-unclear);
+}
+
+#ai-world-panel .outbreak-mode[data-class='personal'] .outbreak-swatch {
+  color: var(--ai-world-personal);
+}
+
+#ai-world-panel .ai-world-all .outbreak-swatch,
+#ai-world-panel .outbreak-mode[data-domain] .outbreak-swatch {
+  color: var(--accent, #00d4ff);
+}
+
+#ai-world-panel .ai-world-all {
+  flex: 0 0 auto;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+}
+
+#ai-world-panel .ai-world-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#ai-world-panel .ai-world-class {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+}
+
+#ai-world-panel .ai-world-feed {
+  flex: 1 0 100%;
+  min-width: 0;
+  padding-left: 39px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+#ai-world-panel .ai-world-feed:empty {
+  display: none;
+}
+
+/* AREAS: each name with its REMOVE button on one line, the point below; the
+   list scrolls in its own band past a few areas. The button keeps the
+   shared button size. */
+#ai-world-panel .ai-world-areas {
+  max-height: min(30vh, 260px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 212, 255, 0.46) rgba(255, 255, 255, 0.06);
+  padding-right: 4px;
+}
+
+#ai-world-panel .ai-world-areas .ai-world-name {
+  flex: 1 1 auto;
+}
+
+#ai-world-panel .ai-world-area-remove {
+  flex: 0 0 auto;
+  order: 2;
+}
+
+#ai-world-panel .ai-world-areas .ai-world-feed {
+  order: 3;
+  padding-left: 0;
+}
+
+/* LEARNING or READY, at the right of each PREDICTIONS row. */
+#ai-world-panel .ai-world-note {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+}
+
+/* INITIALIZE, PAUSE / CONTINUE, STOP and DELETE drop to the next line on a
+   narrow box rather than squeezing. */
+#ai-world-panel .ai-world-actions {
+  flex-wrap: wrap;
+}
+
+/* The DELETE confirm: the one red button in the box. */
+#ai-world-panel .ultra-danger {
+  border-color: #ff4d4d;
+  color: #ffd6d6;
+  font-weight: 700;
+}
+
+/* The estimate before INITIALIZE starts, and the DELETE preview. */
+#ai-world-panel .ai-world-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  padding: 8px 9px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+#ai-world-panel .ai-world-block[hidden] {
+  display: none;
+}
+
+#ai-world-panel .ai-world-block-danger {
+  border-color: rgba(255, 77, 77, 0.45);
+  background: rgba(255, 72, 72, 0.06);
+}
+
+/* STORAGE CAP (GB) and SIM SCENARIOS: a label column and a field column. */
+#ai-world-panel .ai-world-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 5px 8px;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--text-primary);
+}
+
+#ai-world-panel .ai-world-fields input {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: var(--text-primary);
+  padding: 4px 6px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
+#ai-world-panel .ai-world-fields [hidden] {
+  display: none;
+}
+
+#ai-world-panel .ai-world-domains {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* HORIZON: the slider, then its value in hours. */
+#ai-world-panel .ai-world-horizon {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--text-primary);
+}
+
+#ai-world-panel .ai-world-horizon label {
+  flex: 1 0 100%;
+  color: var(--text-dim);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+
+#ai-world-panel .ai-world-horizon input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--accent, #00d4ff);
+}
+
+#ai-world-panel .ai-world-horizon-value {
+  flex: 0 0 auto;
+  min-width: 48px;
+  text-align: right;
+}
+
+/* Cockpit is first-person flight: the training console stays out of it, as
+   the LLM and Ultra boxes do (cockpit.css). The globe overlay keeps drawing. */
+body.cockpit-mode #left-panel-stack > #ai-world-panel {
+  display: none !important;
+}
+
+/* Open, the box is wider than its 360 px neighbours (owner request
+   2026-10-16: "when expanded it should also be larger as features are still
+   being added"). The corner grip (panel-resize.css) can size it further.
+   Phone-width layouts keep the stack's own sizes. :root outranks the Cyber
+   theme's own panel width (cyber.css). */
+@media (min-width: 721px) {
+  :root
+    #left-panel-stack
+    > #ai-world-panel:not(.collapsed):not(.panel-user-wide),
+  :root
+    #left-panel-stack.layout-overlap
+    > #ai-world-panel:not(.collapsed):not(.panel-user-wide) {
+    width: min(520px, calc(100vw - var(--left-stack-x, 16px) - 16px));
+  }
+}

@@ -917,7 +917,7 @@ test('right layout ignores a CSS-hidden expanded panel when deciding exclusivity
   );
 });
 
-test('right layout still restores panels that exclusive presentation hides', () => {
+test('right layout keeps collapsed tabs in reach (owner ruling 2026-09-27) and releases a panel an older version auto-collapsed once the HUD is away', () => {
   const f = fixture('right');
   // Model layers.css: an exclusive rail hides its collapsed panels.
   f.options.windowRef.getComputedStyle = (node) => ({
@@ -930,11 +930,13 @@ test('right layout still restores panels that exclusive presentation hides', () 
   });
   f.expand(f.first, 250);
   f.second.classList.add('layout-auto-collapsed');
+  // A stack an older version left in its one-box mode.
   f.stack.classList.add('layout-exclusive');
 
   f.run();
-  assert.equal(f.stack.classList.contains('layout-exclusive'), true);
-  assert.equal(f.second.getAttribute('aria-hidden'), 'true');
+  // No one-box mode on any HUD layout: the other tab stays in reach.
+  assert.equal(f.stack.classList.contains('layout-exclusive'), false);
+  assert.equal(f.second.getAttribute('aria-hidden'), undefined);
 
   f.options.hud.visible = false;
   f.run();

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   resampleWindGrid,
   resampleWeatherFields,
+  resampleWeatherSnapshot,
 } from '../../server/providers/wind/grid.js';
 
 test('resamples and wraps a wind grid', () => {
@@ -59,6 +60,65 @@ test('weather resampling converts temperature and MSL pressure on the wind geome
     'scalar' in resampleWeatherFields({ u, v, targetDx: 90 }).grid,
     false,
   );
+});
+
+test('specific humidity passes through in kg/kg and the precipitation rate becomes mm/h', () => {
+  const u = component(3);
+  const v = component(-4);
+  for (const [overlay, raw, units, expected, scalar] of [
+    [
+      'humidity',
+      0.0125,
+      'kg kg**-1',
+      0.0125,
+      { kind: 'humidity', units: 'kg/kg', level: '2 m above ground' },
+    ],
+    // 1 kg m⁻² s⁻¹ of water is 1 mm/s.
+    [
+      'precipitation',
+      0.0005,
+      'kg m**-2 s**-1',
+      1.8,
+      { kind: 'precipitation', units: 'mm/h', level: 'surface' },
+    ],
+  ]) {
+    const result = resampleWeatherFields({
+      u,
+      v,
+      scalar: component(raw, { units }),
+      overlay,
+      targetDx: 90,
+    });
+    assert.deepEqual(result.scalar, scalar);
+    assert.deepEqual([...result.grid.u], Array(12).fill(3));
+    assert.deepEqual([...result.grid.v], Array(12).fill(-4));
+    assert.ok(result.grid.scalar.every((n) => Math.abs(n - expected) < 1e-6));
+  }
+  // A relative humidity or an accumulation is not the field asked for.
+  for (const [overlay, units] of [
+    ['humidity', '%'],
+    ['humidity', 'K'],
+    ['precipitation', 'kg m**-2'],
+  ])
+    assert.throws(
+      () =>
+        resampleWeatherFields({
+          u,
+          v,
+          scalar: component(1, { units }),
+          overlay,
+        }),
+      /units/,
+    );
+  for (const [overlay, error] of [
+    ['humidity', 'Specific humidity field unavailable'],
+    ['precipitation', 'Precipitation rate field unavailable'],
+  ]) {
+    const result = resampleWeatherSnapshot({ u, v, overlay, targetDx: 90 });
+    assert.equal(result.scalarError, error);
+    assert.equal(result.grid.scalar, undefined);
+    assert.deepEqual([...result.grid.v], Array(12).fill(-4));
+  }
 });
 
 test('weather components cannot share a grid when shifted, truncated or non-finite', () => {

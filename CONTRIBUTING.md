@@ -91,6 +91,14 @@ this checks that every published assignment remains reserved and that new
 assignments consume free digits before the two-character tokens, in order.
 Pull-request CI runs the same check against `main`.
 
+This fork allocates its own layers from the other end: two-character tokens
+counting down from `zz` (`zz` Your Devices, `zy` Private CCTV Cams, `zx`
+Outbreak), so upstream's next tokens, counting up, never land on one and no
+fork token has to move at a merge. For a new fork layer, run
+`npm run layer-token:next -- --fork <layer-id>`, append the id to
+`FORK_LAYER_STATE_IDS` in `src/data/layerState.js`, and add the token to the
+registry entry and ledger row as above.
+
 The helper reads the local ledger; it does not run during a rebase or edit files.
 If another PR publishes your provisional token first, keep every published
 registry entry and ledger reservation from the refreshed `main`. Temporarily

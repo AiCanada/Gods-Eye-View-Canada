@@ -53,8 +53,11 @@ export class TileUpstreamError extends Error {
  */
 let _upstreamHold = null;
 
-/** Milliseconds to wait from a Retry-After header (seconds or an HTTP date). */
-function retryAfterMs(header, now = Date.now()) {
+/**
+ * Milliseconds to wait from a Retry-After header (seconds or an HTTP date),
+ * bounded; image searches hold on the same terms.
+ */
+export function retryAfterMs(header, now = Date.now()) {
   const text = String(header ?? '').trim();
   let ms = NaN;
   if (/^\d+$/.test(text)) ms = Number(text) * 1000;

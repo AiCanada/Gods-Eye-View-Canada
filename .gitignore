@@ -14,6 +14,9 @@ qa-shots/
 output/
 .gev-logs/
 .gev-cache/
+# World-model data (Artificial Intelligence World Training Sim): recorded
+# feeds, sim datasets, models. Never committed (docs/WORLD-MODEL-DATA.md).
+.gev-data/
 # Browser QA gate evidence (screenshots, console and network dumps).
 qa-artifacts/
 .DS_Store

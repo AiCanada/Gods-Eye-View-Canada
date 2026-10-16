@@ -69,6 +69,8 @@ export class PanelChrome {
       syncCctvPanelViewport: () => this._syncCctvPanelViewport(),
       showToast: (message) => this._showToast(message),
       onPanelResized: (panelId) => this._onPanelResized(panelId),
+      expandPanel: (panelId) =>
+        this.setPanelCollapsed(panelId, false, { explicit: true }),
     });
     this._panelLayout = new PanelLayoutController({
       readHud: () => ({
@@ -494,10 +496,12 @@ export class PanelChrome {
       }
     }
     panelEl.classList.toggle('collapsed', nextCollapsed);
-    // Only a user's own collapse docks a floating window; restores, cockpit
-    // entry and accordion peers keep its place.
-    if (explicit && !restore)
-      this._panelPosition?.onPanelCollapsed?.(panelId, nextCollapsed);
+    // Only a user's own collapse docks a dockOnCollapse window (it forgets
+    // its place); restores, cockpit entry and accordion peers keep it. A
+    // window that minimizes to the rail keeps its place either way.
+    this._panelPosition?.onPanelCollapsed?.(panelId, nextCollapsed, {
+      explicit: explicit && !restore,
+    });
     // A box the operator just opened belongs in front of whatever it now
     // overlaps, whether it was opened by pointer, keyboard or voice.
     if (!nextCollapsed) this._panelLayout?.raisePanel?.(panelId);

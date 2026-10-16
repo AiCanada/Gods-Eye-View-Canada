@@ -128,3 +128,46 @@ test('IFS optional pressure refusal preserves same-cycle wind', async () => {
   assert.deepEqual([...result.grid.v], Array(12).fill(2));
   assert.equal(result.cycle.validIso, '2026-09-15T15:00:00.000Z');
 });
+
+test('IFS has no 2 m specific humidity or precipitation rate: it answers those with wind alone', async () => {
+  const entries = ['10u', '10v', '2t', 'msl', 'tp'].map((param, i) => ({
+    param,
+    _offset: i * 2,
+    _length: 2,
+  }));
+  for (const [overlay, error] of [
+    ['humidity', 'Specific humidity field unavailable'],
+    ['precipitation', 'Precipitation rate field unavailable'],
+  ]) {
+    const calls = [];
+    const result = await fetchIfsWind({
+      overlay,
+      targetDx: 90,
+      now: () => Date.UTC(2026, 8, 15, 14),
+      fetchImpl: async (url, options) => {
+        calls.push(url);
+        if (url.endsWith('.index'))
+          return new Response(
+            entries.map((entry) => JSON.stringify(entry)).join('\n'),
+          );
+        const start = Number(/bytes=(\d+)-/.exec(options.headers.Range)[1]);
+        return new Response(Uint8Array.of(start, 0), { status: 206 });
+      },
+      decodeImpl: async (bytes) => ({
+        ni: 4,
+        nj: 3,
+        lo1: 0,
+        la1: 90,
+        di: 90,
+        dj: 90,
+        values: new Float64Array(12).fill(bytes[0]),
+        units: 'm/s',
+      }),
+    });
+    assert.equal(calls.length, 3, 'the index, 10u and 10v only');
+    assert.equal(result.scalar, undefined);
+    assert.equal(result.grid.scalar, undefined);
+    assert.equal(result.scalarError, error);
+    assert.deepEqual([...result.grid.v], Array(12).fill(2));
+  }
+});

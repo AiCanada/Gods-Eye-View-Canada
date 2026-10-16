@@ -30,6 +30,7 @@ test('explicit build inputs preserve browser-only defines, plugin order and loop
   // Runtime output and caches are never modules: the watcher skips them.
   for (const pattern of [
     '**/.gev-cache/**',
+    '**/.gev-data/**',
     '**/.gev-logs/**',
     '**/dist/**',
     '**/qa-artifacts/**',
@@ -41,7 +42,12 @@ test('explicit build inputs preserve browser-only defines, plugin order and loop
   }
   // Logs and caches are also never served: dev-mode sirv skips the dotfile
   // filter, so only fs.deny keeps .gev-logs/dev-server.log off the network.
-  for (const pattern of ['**/.gev-cache/**', '**/.gev-logs/**']) {
+  // The AI World data (the owner's devices' recordings among them) neither.
+  for (const pattern of [
+    '**/.gev-cache/**',
+    '**/.gev-data/**',
+    '**/.gev-logs/**',
+  ]) {
     assert.ok(config.server.fs.deny.includes(pattern), pattern);
   }
   // Private camera logins are never static files.

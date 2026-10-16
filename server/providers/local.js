@@ -40,6 +40,8 @@ import { socialSwarmProxy } from './socialSwarm.js';
 import { grokBotDesktopProxy } from './grokBotDesktop.js';
 import { openaiDotsDesktopProxy } from './openaiDotsDesktop.js';
 import { outbreakProxy } from './outbreak.js';
+import { aiWorldProvider } from './aiWorld.js';
+import { llmTrainingProvider } from './llmTraining.js';
 
 /**
  * Construct the local provider plugins in their established order.
@@ -103,6 +105,12 @@ function localProviderPlugins({ realtime } = {}) {
     outbreakProxy({ railWorld: true }),
     // Street Level imagery (upstream): Mapillary tiles, cached.
     mapillaryProxy(),
+    // ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM (owner request 2026-10-13):
+    // records every ticked feed, generates sim episodes, trains and predicts.
+    aiWorldProvider(),
+    // CUSTOM LLM TRAINING (owner request 2026-10-16): the POWER UP section's
+    // dataset build and LoRA training on a base model already on this PC.
+    llmTrainingProvider(),
     keySetupEndpoint({ onEnvSaved: noteOutboundEnvSaved }),
   ];
 }
@@ -128,6 +136,7 @@ export {
   llmAnswerTokens,
   llmAskTimeoutMs,
   llmMaxTokens,
+  llmModelSampling,
   llmProviderRoster,
   llmProviderSettings,
   parseLlmAskRequest,

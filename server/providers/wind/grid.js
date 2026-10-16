@@ -97,14 +97,50 @@ export function resampleWindGrid({
   };
 }
 
-/** Metadata for the two optional same-cycle weather fields. */
+/**
+ * The optional same-cycle weather fields: the units and level each is served
+ * at, the units ecCodes decodes its GRIB message in (`from`), the conversion
+ * served = decoded × scale + offset, and the error naming it when missing.
+ */
+const WEATHER_SCALARS = {
+  temperature: {
+    units: '°C',
+    level: '2 m above ground',
+    from: 'K',
+    offset: -273.15,
+    error: 'Temperature field unavailable',
+  },
+  pressure: {
+    units: 'hPa',
+    level: 'mean sea level',
+    from: 'Pa',
+    scale: 0.01,
+    error: 'Mean sea level pressure field unavailable',
+  },
+  // Specific humidity: kg of water vapour per kg of moist air.
+  humidity: {
+    units: 'kg/kg',
+    level: '2 m above ground',
+    from: 'kg kg**-1',
+    error: 'Specific humidity field unavailable',
+  },
+  // 1 kg m⁻² of water is 1 mm deep, so a rate per second × 3600 is mm/h.
+  precipitation: {
+    units: 'mm/h',
+    level: 'surface',
+    from: 'kg m**-2 s**-1',
+    scale: 3600,
+    error: 'Precipitation rate field unavailable',
+  },
+};
+
+/** Metadata for the optional same-cycle weather fields. */
 export function weatherScalarMetadata(overlay = 'none') {
   if (overlay === 'none') return null;
-  if (overlay === 'temperature')
-    return { kind: overlay, units: '°C', level: '2 m above ground' };
-  if (overlay === 'pressure')
-    return { kind: overlay, units: 'hPa', level: 'mean sea level' };
-  throw new Error('Unknown weather overlay');
+  if (!Object.hasOwn(WEATHER_SCALARS, overlay))
+    throw new Error('Unknown weather overlay');
+  const { units, level } = WEATHER_SCALARS[overlay];
+  return { kind: overlay, units, level };
 }
 
 /** Reject shifted/mismatched components before sharing U's grid geometry. */
@@ -128,7 +164,8 @@ export function resampleWeatherFields({
     )
   )
     throw new Error('Mismatched weather grid geometry');
-  if (metadata && scalar.units !== (overlay === 'temperature' ? 'K' : 'Pa'))
+  const { from, scale = 1, offset = 0 } = WEATHER_SCALARS[overlay] ?? {};
+  if (metadata && scalar.units !== from)
     throw new Error('Unexpected weather scalar units');
   const grid = resampleWindGrid({
     u: u.values,
@@ -142,11 +179,7 @@ export function resampleWeatherFields({
     dx: targetDx,
     dy: targetDx,
     ...(metadata
-      ? {
-          scalar: scalar.values,
-          scalarScale: overlay === 'pressure' ? 0.01 : 1,
-          scalarOffset: overlay === 'temperature' ? -273.15 : 0,
-        }
+      ? { scalar: scalar.values, scalarScale: scale, scalarOffset: offset }
       : {}),
   });
   return { grid, ...(metadata ? { scalar: metadata } : {}) };
@@ -166,7 +199,5 @@ export function resampleWeatherSnapshot(options) {
 
 export function weatherScalarError(overlay) {
   weatherScalarMetadata(overlay);
-  return overlay === 'temperature'
-    ? 'Temperature field unavailable'
-    : 'Mean sea level pressure field unavailable';
+  return WEATHER_SCALARS[overlay]?.error;
 }

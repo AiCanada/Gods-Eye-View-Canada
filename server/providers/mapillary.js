@@ -1,8 +1,9 @@
 import { installMapillaryRoutes } from './mapillary/routes.js';
 
 /**
- * Vite plugin: cached Mapillary coverage tiles (token added server-side) and a
- * status route that says whether a token is configured.
+ * Vite plugin: cached Mapillary coverage tiles and small-box image metadata
+ * searches (token added server-side), and a status route that says whether a
+ * token is configured.
  */
 function mapillaryProxy() {
   return {

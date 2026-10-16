@@ -77,14 +77,10 @@ import {
   EPIDEMIC_BUDGET_MS,
   EPIDEMIC_RUNS_DEFAULT,
   RAIL_TRAVEL,
-  buildEpidemicNodes,
-  railCountryVolumes,
   cleanEpiProfile,
   effectiveDistances,
   epiParameters,
-  flightPassengers,
   seedFromText,
-  worldAirRoutes,
 } from '../../src/outbreakEpi.mjs';
 import { sensitivityTornado } from '../../src/outbreakEpiSensitivity.mjs';
 import {
@@ -99,12 +95,14 @@ import {
   networkTiles,
   tileDistanceKm,
 } from '../../src/outbreakNetwork.mjs';
-import {
-  RAIL_WORLD_VERSION,
-  continentOf,
-} from '../../src/outbreakRailWorld.mjs';
+import { RAIL_WORLD_VERSION } from '../../src/outbreakRailWorld.mjs';
 import { railWorldJob } from './outbreakRailWorld.js';
 import { unpackRailRoutes } from './outbreakRailWorldTasks.mjs';
+import {
+  airportView,
+  assembleEpidemicNetwork,
+  scheduledWorld,
+} from '../shared/outbreakEpidemicWorld.mjs';
 
 const AIRPORTS_URL =
   'https://davidmegginson.github.io/ourairports-data/airports.csv';
@@ -350,20 +348,6 @@ export function parseAirportsCsv(text) {
     });
   }
   return rows;
-}
-
-function airportView(row, from) {
-  return {
-    code: row.code,
-    iata: row.iata,
-    name: row.name,
-    city: row.city,
-    country: row.country,
-    continent: row.continent || '',
-    lat: row.lat,
-    lon: row.lon,
-    ...(from ? { km: Math.round(distanceKm(from, row)) } : {}),
-  };
 }
 
 /** The airport table, loaded once per server: disk first, then OurAirports. */
@@ -1675,17 +1659,7 @@ export function outbreakProxy({
   /** Every scheduled airport and its normal daily routes, once per table. */
   const world = (index) => {
     if (worldMemo?.rows === index.allScheduled) return worldMemo;
-    const airports = index.allScheduled.map((row) => ({
-      ...airportView(row),
-      code: row.code,
-      kind: row.kind,
-    }));
-    const byFrom = new Map();
-    for (const route of worldAirRoutes(airports, index.scheduled)) {
-      if (!byFrom.has(route.from)) byFrom.set(route.from, []);
-      byFrom.get(route.from).push(route);
-    }
-    worldMemo = { rows: index.allScheduled, airports, byFrom };
+    worldMemo = { rows: index.allScheduled, ...scheduledWorld(index) };
     return worldMemo;
   };
   const allowNews = makeRateLimiter({
@@ -2305,118 +2279,42 @@ export function outbreakProxy({
       populationSource =
         'Airport size (GeoNames did not load): about 2 million round a large airport, 300,000 round a medium one';
     }
-    // Towns on the world rail are places too, however far from an airport
-    // (owner ruling 2026-10-12).
-    const railGraph = railBuild ? railWorld.graph() : null;
-    const { nodes, origins } = buildEpidemicNodes({
+    // The places and routes (server/shared/outbreakEpidemicWorld.mjs): the
+    // same assembly the world-model dataset tools use.
+    const {
+      nodes,
+      origins,
+      at,
+      flights,
+      flown,
+      routes,
+      flows,
+      railSource,
+      railStats,
+      railEstimated,
+    } = await assembleEpidemicNetwork({
       airports,
-      cities: cityRows,
+      byFrom: globe.byFrom,
+      scheduled: index.scheduled,
+      cityRows,
       locations,
       profile,
-      railNear: railGraph
-        ? (lat, lon) =>
-            Boolean(railGraph.index.nearest({ lat, lon }, RAIL_REACH_KM))
-        : null,
+      scanFlights,
+      startMs,
+      untilMs,
+      rail: {
+        on: rail,
+        build: railBuild,
+        graph: railBuild ? railWorld.graph() : null,
+        speedKmh: railSpeedKmh,
+        passengerKm: () => railWorld.passengerKm(),
+        meta: () => railWorld.meta(),
+        task: (job) => railWorld.task(job),
+        unpack: unpackRailRoutes,
+        cache: railKept,
+        cacheMax: LINKS_CACHE_MAX,
+      },
     });
-    const at = new Map(nodes.map((node, i) => [node.id, i]));
-    const flights = [];
-    const flown = [];
-    const routes = [];
-    const flows = new Map();
-    const scanDays = Math.max(1, (untilMs - startMs) / 86_400_000);
-    const flow = (fromCode, toCode, perDay) => {
-      if (!flows.has(fromCode)) flows.set(fromCode, new Map());
-      const out = flows.get(fromCode);
-      out.set(toCode, (out.get(toCode) || 0) + perDay);
-    };
-    // The scan's flights, each flown once on its own day.
-    for (const f of scanFlights) {
-      const from = at.get(f.from.code);
-      const to = at.get(f.to.code);
-      if (from === undefined || to === undefined) continue;
-      const passengers = flightPassengers(distanceKm(f.from, f.to), 1);
-      flights.push({
-        from,
-        to,
-        departMs: f.departMs,
-        arriveMs: f.arriveMs,
-        passengers,
-      });
-      flown.push(`${from}>${to}|${Math.round(f.departMs / 1_800_000)}`);
-      flow(f.from.code, f.to.code, passengers / scanDays);
-    }
-    // Daily routes: the scan's, then every other airport's normal traffic.
-    const scanned = new Set(scanFlights.map((f) => f.from.code));
-    const daily = [
-      ...worldAirRoutes([], index.scheduled, scanFlights),
-      ...[...globe.byFrom]
-        .filter(([code]) => !scanned.has(code))
-        .flatMap(([, list]) => list),
-    ];
-    for (const r of daily) {
-      const from = at.get(r.from);
-      const to = at.get(r.to);
-      if (from === undefined || to === undefined) continue;
-      routes.push({ ...r, from, to });
-      flow(r.from, r.to, r.passengers);
-    }
-    // Rail travel between the places on the world rail (RAIL_TRAVEL, owner
-    // ruling 2026-10-12), worked out in a worker and kept by the places.
-    // Until the world rail is built the model runs as before and says so.
-    let railSource = rail ? (railBuild ? '' : 'pending') : 'off';
-    let railStats = null;
-    let railEstimated = [];
-    if (railBuild) {
-      try {
-        const table = await railWorld.passengerKm();
-        const { pkm, estimated } = railCountryVolumes(
-          table.pkm,
-          railWorld.meta()?.byCountry || {},
-          (code) => continentOf(code),
-        );
-        railEstimated = estimated;
-        const railKey = seedFromText(
-          JSON.stringify([
-            railBuild.builtAt,
-            railSpeedKmh,
-            pkm,
-            nodes.map((node) => [node.id, node.population, node.lat, node.lon]),
-          ]),
-        );
-        let packed = railKept.get(railKey);
-        if (!packed || packed.places !== nodes.length) {
-          packed = await railWorld.task({
-            kind: 'routes',
-            nodes: {
-              id: nodes.map((node) => node.id),
-              lat: Float64Array.from(nodes, (node) => node.lat),
-              lon: Float64Array.from(nodes, (node) => node.lon),
-              population: Float64Array.from(
-                nodes,
-                (node) => node.population || 0,
-              ),
-              country: nodes.map((node) => node.country || ''),
-            },
-            countryPkm: pkm,
-            speedKmh: railSpeedKmh,
-            reachKm: RAIL_REACH_KM,
-          });
-          packed.places = nodes.length;
-          railKept.set(railKey, packed);
-          while (railKept.size > LINKS_CACHE_MAX)
-            railKept.delete(railKept.keys().next().value);
-        }
-        for (const r of unpackRailRoutes(packed.routes)) {
-          if (!(r.from < nodes.length && r.to < nodes.length)) continue;
-          routes.push(r);
-          flow(nodes[r.from].id, nodes[r.to].id, r.passengers);
-        }
-        railStats = packed.stats;
-        railSource = `${RAIL_TRAVEL.volumeSource}${estimated.length ? ` (estimated from the continent's median passenger-km per km of line for ${estimated.length} countries)` : ''}; ${RAIL_TRAVEL.shapeSource}; ${RAIL_TRAVEL.networkSource}`;
-      } catch (error) {
-        railSource = `failed: ${error.message || 'the rail routes did not build'}`;
-      }
-    }
     // Patient zero's own airports start the effective distance; with rail,
     // its own town too.
     const sources = [

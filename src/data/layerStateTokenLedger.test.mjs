@@ -15,8 +15,10 @@ import test from 'node:test';
 import {
   LEGACY_LAYER_STATE_TOKENS,
   LAYER_STATE_TOKEN_ALPHABET,
+  FORK_LAYER_STATE_IDS,
   LAYER_STATE_TOKEN_MOVES,
   LAYER_STATE_TOKEN_RESERVATIONS,
+  nextForkLayerStateToken,
   nextLayerStateToken,
   parseLayerStateTokenReservations,
   validateLayerStateAllocations,
@@ -130,17 +132,17 @@ test('reservation ledger is complete, pinned, and rejects duplicate or malformed
     { ...LAYER_STATE_TOKEN_RESERVATIONS },
   );
   // The 28 upstream legacy tokens and upstream's street-level ('0'), plus
-  // the fork's private-cctv, outbreak and device-feeds reservations (3, 4 and
-  // 5; device-feeds moved off '0' in the 2026-10-07 merge).
+  // the fork's device-feeds, private-cctv and outbreak reservations at the
+  // top of the namespace (zz, zy, zx; owner ruling 2026-10-15).
   assert.equal(Object.keys(LAYER_STATE_TOKEN_RESERVATIONS).length, 32);
   assert.deepEqual(
     { ...LAYER_STATE_TOKEN_RESERVATIONS },
     {
       ...LEGACY_LAYER_STATE_TOKENS,
       'street-level': '0',
-      'private-cctv': '3',
-      outbreak: '4',
-      'device-feeds': '5',
+      'device-feeds': 'zz',
+      'private-cctv': 'zy',
+      outbreak: 'zx',
     },
   );
   assert.throws(
@@ -181,14 +183,14 @@ test('reservation ledger is complete, pinned, and rejects duplicate or malformed
 
 test('published retired digits and competing PRs advance the merge-time allocation', () => {
   withPublishedBase(
-    { rows: [...reservationRows, ['retired-layer', '6']] },
+    { rows: [...reservationRows, ['retired-layer', '3']] },
     (cwd) => {
       const published = readPublishedLayerStateReservations('HEAD', cwd);
-      assert.equal(nextLayerStateToken(published), '7');
+      assert.equal(nextLayerStateToken(published), '4');
       assert.equal(
         validateLayerStateAllocations(published, {
           ...published,
-          newcomer: '7',
+          newcomer: '4',
         }),
         true,
       );
@@ -196,15 +198,15 @@ test('published retired digits and competing PRs advance the merge-time allocati
         () =>
           validateLayerStateAllocations(published, {
             ...published,
-            competing: '6',
+            competing: '3',
           }),
-        /next free token 7/,
+        /next free token 4/,
       );
       assert.throws(
         () =>
           validateLayerStateAllocations(published, {
             ...LAYER_STATE_TOKEN_RESERVATIONS,
-            newcomer: '6',
+            newcomer: '3',
           }),
         /changed or removed: retired-layer/,
       );
@@ -212,8 +214,8 @@ test('published retired digits and competing PRs advance the merge-time allocati
   );
 });
 
-test('PR B manually replaces provisional 6 with 7 after PR A publishes 6', () => {
-  withPublishedBase({ rows: [...reservationRows, ['pr-a', '6']] }, (cwd) => {
+test('PR B manually replaces provisional 3 with 4 after PR A publishes 3', () => {
+  withPublishedBase({ rows: [...reservationRows, ['pr-a', '3']] }, (cwd) => {
     mkdirSync(path.join(cwd, 'scripts'));
     const fixtureChecker = path.join(
       cwd,
@@ -234,8 +236,8 @@ test('PR B manually replaces provisional 6 with 7 after PR A publishes 6', () =>
 
     writeCodecFixture(
       cwd,
-      [...reservationRows, ['pr-b', '6']],
-      [{ id: 'pr-b', token: '6' }],
+      [...reservationRows, ['pr-b', '3']],
+      [{ id: 'pr-b', token: '3' }],
     );
     const beforeRebase = runCheck();
     assert.equal(beforeRebase.status, 1);
@@ -243,10 +245,10 @@ test('PR B manually replaces provisional 6 with 7 after PR A publishes 6', () =>
 
     writeCodecFixture(
       cwd,
-      [...reservationRows, ['pr-a', '6'], ['pr-b', '6']],
+      [...reservationRows, ['pr-a', '3'], ['pr-b', '3']],
       [
-        { id: 'pr-a', token: '6' },
-        { id: 'pr-b', token: '6' },
+        { id: 'pr-a', token: '3' },
+        { id: 'pr-b', token: '3' },
       ],
     );
     const staleRebase = runCheck();
@@ -254,16 +256,16 @@ test('PR B manually replaces provisional 6 with 7 after PR A publishes 6', () =>
     assert.match(staleRebase.stderr, /Duplicate layer-state token reservation/);
 
     const published = readPublishedLayerStateReservations('HEAD', cwd);
-    assert.equal(nextLayerStateToken(published), '7');
-    const validBaselineRows = [...reservationRows, ['pr-a', '6']];
-    writeCodecFixture(cwd, validBaselineRows, [{ id: 'pr-a', token: '6' }]);
+    assert.equal(nextLayerStateToken(published), '4');
+    const validBaselineRows = [...reservationRows, ['pr-a', '3']];
+    writeCodecFixture(cwd, validBaselineRows, [{ id: 'pr-a', token: '3' }]);
     const helper = spawnSync(
       process.execPath,
       [realpathSync(fixtureNext), 'pr-b'],
       { cwd, encoding: 'utf8' },
     );
     assert.equal(helper.status, 0, helper.stderr);
-    assert.match(helper.stdout, /pr-b: 7/);
+    assert.match(helper.stdout, /pr-b: 4/);
     assert.deepEqual(
       JSON.parse(readFileSync(path.join(cwd, LEDGER_PATH), 'utf8')),
       validBaselineRows,
@@ -271,10 +273,10 @@ test('PR B manually replaces provisional 6 with 7 after PR A publishes 6', () =>
     );
     writeCodecFixture(
       cwd,
-      [...reservationRows, ['pr-a', '6'], ['pr-b', '7']],
+      [...reservationRows, ['pr-a', '3'], ['pr-b', '4']],
       [
-        { id: 'pr-a', token: '6' },
-        { id: 'pr-b', token: '7' },
+        { id: 'pr-a', token: '3' },
+        { id: 'pr-b', token: '4' },
       ],
     );
     const corrected = runCheck();
@@ -284,7 +286,7 @@ test('PR B manually replaces provisional 6 with 7 after PR A publishes 6', () =>
 });
 
 test('allocation batches cross the last digit and base-36 pair boundaries in order', () => {
-  const digitRows = [...'6789'].map((digit) => [`retired-${digit}`, digit]);
+  const digitRows = [...'3456789'].map((digit) => [`retired-${digit}`, digit]);
   const allDigits = parseLayerStateTokenReservations([
     ...reservationRows,
     ...digitRows,
@@ -336,7 +338,7 @@ test('allocation batches cross the last digit and base-36 pair boundaries in ord
 test('an isolated valid two-character fixture round-trips an l field beyond the old 64-character cap', async () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'gev-layer-token-width-'));
   try {
-    const priorDigits = [...'6789'].map((digit) => [
+    const priorDigits = [...'3456789'].map((digit) => [
       `qa-prior-digit-${digit}`,
       digit,
     ]);
@@ -373,7 +375,8 @@ test('an isolated valid two-character fixture round-trips an l field beyond the 
     const params = new URLSearchParams([['v', '2']]);
     codec.encodeLayerStateParams(params, state);
     assert.ok(params.get('l').length > 64, 'fixture must cross the old cap');
-    assert.equal(params.get('l').length, 75);
+    // 75 before the fork's three layers took two-character tokens (zz, zy, zx).
+    assert.equal(params.get('l').length, 78);
     const restored = codec.decodeLayerStateParams(params);
     assert.deepEqual(restored?.enabledLayerIds, expectedLayerIds);
     assert.deepEqual(restored?.options, state.options);
@@ -434,17 +437,38 @@ test('checker fails closed on unknown or malformed published ledgers', () => {
   });
 });
 
-test('a published token moves only by a recorded move: Cell gave 0 to Street Level and took 5', () => {
+test('fork tokens sit at the top of the namespace: published fork digits move there once', () => {
   assert.deepEqual(
-    LAYER_STATE_TOKEN_MOVES.map((m) => [m.id, m.from, m.to, m.yieldsTo]),
-    [['device-feeds', '0', '5', 'street-level']],
+    [...FORK_LAYER_STATE_IDS],
+    ['device-feeds', 'private-cctv', 'outbreak'],
   );
-  // The fork's published base before the 2026-10-07 merge.
-  const published = { ...LAYER_STATE_TOKEN_RESERVATIONS };
-  delete published['street-level'];
-  published['device-feeds'] = '0';
+  assert.deepEqual(
+    LAYER_STATE_TOKEN_MOVES.map((m) => [m.id, m.from, m.to]),
+    [
+      ['device-feeds', '5', 'zz'],
+      ['private-cctv', '3', 'zy'],
+      ['outbreak', '4', 'zx'],
+    ],
+  );
+  // The fork's published base before the 2026-10-15 move.
+  const published = {
+    ...LAYER_STATE_TOKEN_RESERVATIONS,
+    'device-feeds': '5',
+    'private-cctv': '3',
+    outbreak: '4',
+  };
   assert.equal(
     validateLayerStateAllocations(published, LAYER_STATE_TOKEN_RESERVATIONS),
+    true,
+  );
+  // The digits they gave up go to upstream's layers, in upstream's order
+  // (3 GNSS integrity, 4 air quality), with no fork token touched.
+  assert.equal(
+    validateLayerStateAllocations(published, {
+      ...LAYER_STATE_TOKEN_RESERVATIONS,
+      'gnss-integrity': '3',
+      'air-quality': '4',
+    }),
     true,
   );
   const refuse = (reservations, pattern) =>
@@ -454,24 +478,39 @@ test('a published token moves only by a recorded move: Cell gave 0 to Street Lev
     );
   // Only to the recorded token.
   refuse(
-    { ...LAYER_STATE_TOKEN_RESERVATIONS, 'device-feeds': '6' },
+    { ...LAYER_STATE_TOKEN_RESERVATIONS, 'device-feeds': 'zw' },
     /changed or removed: device-feeds/,
   );
-  // Only when the upstream layer takes the token it gave up.
-  const noStreetLevel = { ...LAYER_STATE_TOKEN_RESERVATIONS };
-  delete noStreetLevel['street-level'];
-  refuse(noStreetLevel, /changed or removed: device-feeds/);
   // Never for any other published layer.
   refuse(
-    { ...LAYER_STATE_TOKEN_RESERVATIONS, outbreak: '7' },
-    /changed or removed: outbreak/,
+    { ...LAYER_STATE_TOKEN_RESERVATIONS, 'street-level': 'zw' },
+    /changed or removed: street-level/,
   );
-  // Once published, the move is history: the base already holds 5.
+  // Once published, the move is history, and later upstream layers never
+  // need a fork token to move.
   assert.equal(
     validateLayerStateAllocations(
       LAYER_STATE_TOKEN_RESERVATIONS,
       LAYER_STATE_TOKEN_RESERVATIONS,
     ),
     true,
+  );
+  const merged = {
+    ...LAYER_STATE_TOKEN_RESERVATIONS,
+    'gnss-integrity': '3',
+    'air-quality': '4',
+  };
+  assert.equal(
+    validateLayerStateAllocations(merged, {
+      ...merged,
+      'upstream-next': '5',
+    }),
+    true,
+  );
+  // A new fork layer takes the next token down from the top, never a digit.
+  assert.equal(nextForkLayerStateToken(merged), 'zw');
+  refuse(
+    { ...LAYER_STATE_TOKEN_RESERVATIONS, 'upstream-next': 'zw' },
+    /next free token 3/,
   );
 });

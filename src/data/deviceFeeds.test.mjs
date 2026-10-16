@@ -23,8 +23,9 @@ const device = (extra = {}) => ({
 
 test('the layer is in the share-link registry under its own token', () => {
   const entry = LAYER_STATE_REGISTRY.find((item) => item.id === DEVICE_FEEDS_LAYER_ID);
-  // 'v' went to upstream's weather radar in the 2026-10 merge.
-  assert.deepEqual([entry?.token, entry?.disposition], ['5', 'enabled-only']);
+  // 'v' went to upstream's weather radar, '0' to its street level; since
+  // 2026-10-15 fork layers count down from the top, out of upstream's way.
+  assert.deepEqual([entry?.token, entry?.disposition], ['zz', 'enabled-only']);
 });
 
 test('only well-formed devices, and only the application’s own picture route', () => {
@@ -462,4 +463,16 @@ test('the owner phone asks the server once whether it records, then records; a 4
   assert.equal(asked.filter((url) => url === '/api/device-feeds/status').length, 1);
   assert.equal(layer.getStats().error ?? null, null);
   layer.destroy(viewer);
+});
+
+test('the phone links list the tailnet address first and the LAN after: the phone reaches the PC over Tailscale only', async () => {
+  const { tailnetFirst } = await import(
+    '../../server/providers/device-feeds.js'
+  );
+  assert.deepEqual(
+    tailnetFirst(['192.168.1.20', '100.101.102.103', '10.0.0.7', '100.64.0.2']),
+    ['100.101.102.103', '100.64.0.2', '192.168.1.20', '10.0.0.7'],
+  );
+  assert.deepEqual(tailnetFirst(['192.168.1.20']), ['192.168.1.20']);
+  assert.deepEqual(tailnetFirst(undefined), []);
 });

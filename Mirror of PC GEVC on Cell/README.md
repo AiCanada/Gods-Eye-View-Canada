@@ -60,6 +60,45 @@ location and camera on it. The link is still private: Tailscale encrypts it.
    (the dashboard, and the Ultra phone page).
 4. Tap **Relaunch**.
 
+The camera link in the Ultra box uses the PC's Tailscale address, like the
+dashboard, so open that one on the phone: the LAN address is not reachable
+from the phone while Windows Firewall blocks node on the Public profile, and
+the phone does not need it. With the flag set for both addresses, TAKE PHOTO
+and TAKE VIDEO take the still and the clip on the phone page itself; without
+it the page offers one tap that opens the phone's own camera app. Keep that
+page open and on screen while you press: it polls every second only then,
+and the box says LIVE VIDEO only while it does. A press it misses is kept
+fifteen minutes, then dropped and shown as NOT TAKEN. With two phones
+saved, the CELL select above the camera buttons picks the phone; AUTO goes
+to the one whose camera page is open, else the last to report, and the link
+in the box names the package it is for.
+
+## Without the page: a camera app on the phone
+
+A browser page can use the camera only while it is open and on screen. For
+TAKE PHOTO and TAKE VIDEO with no page open, run a camera-server app on the
+phone and the PC pulls from it over Tailscale:
+
+1. Install **IP Webcam** (free, Play Store) on the phone; in its settings
+   keep the port at 8080 and allow it to run in the background, then tap
+   **Start server**. DroidCam (port 4747) works the same way.
+2. Press TAKE PHOTO on the PC: the box pulls one still from the app and
+   keeps it as the photo. Press TAKE VIDEO: the app's stream shows live on
+   the map card for 30 seconds (LIVE VIDEO · CAMERA APP) and its first frame
+   is kept. A recorded clip still needs the camera page: this PC has no
+   video encoder.
+3. The app must answer on the phone's Tailscale address, which the PC learns
+   from the phone's reports (the tracker app or the page). If nothing took
+   the press, the box says so and names both ways.
+
+Open the dashboard by the PC's Tailscale IP, not its name: the owner stamp
+binds to the address, so a page opened by name is sent to the address form.
+If the dashboard says it has no Tailscale address at start, it looks again
+every 3 s and comes up on its own; the Ultra box says TAILSCALE · THIS PC
+HAS NO TAILSCALE ADDRESS while that lasts. Tailscale on the PC must stay
+connected for the phone to reach anything: turn on **Run unattended** in the
+Tailscale menu on the PC, so it connects at boot without a sign-in.
+
 If a Chrome update ever removes that setting: in Termux run
 `socat TCP-LISTEN:4173,fork,reuseaddr TCP:<PC's Tailscale IP>:4173` and open
 `http://localhost:4173` on the phone instead (a browser always trusts

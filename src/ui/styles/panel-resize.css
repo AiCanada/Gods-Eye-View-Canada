@@ -1,0 +1,154 @@
+/* Corner resizing for every dashboard box on desktop (owner requests
+   2026-10-16; src/ui/panelCornerResize.js). The grip sits at the bottom-right
+   of a left-stack box and at the bottom-left of a right-rail box (that rail is
+   anchored to the screen's right edge, so the box grows onto the map). A size
+   the grip sets is applied here only: --panel-user-width with
+   .panel-user-wide, --panel-user-height with .panel-user-sized. Phone-width
+   layouts never show a grip and keep their own sizes. A floating CCTV or
+   Street Level window keeps its own edge resizing and shows no grip. :root
+   and the id list outrank each rail's own sizes, the Cyber theme's included
+   (cyber.css stays the last stylesheet). */
+.panel-corner-resize {
+  display: none;
+}
+
+@media (min-width: 721px) {
+  :root
+    :is(#left-panel-stack, #right-context-rail)
+    > :is(
+      #ask-panel,
+      #ultra-panel,
+      #cctv-panel,
+      #social-panel,
+      #outbreak-panel,
+      #ai-world-panel,
+      #pp-toggles,
+      #data-panel,
+      #sst-panel,
+      #scene-panel,
+      #radio-panel,
+      #weather-panel,
+      #recent-imagery-panel,
+      #street-level-panel,
+      #global-context-panel
+    ).panel-user-wide:not(.collapsed):not(.panel-floating) {
+    width: min(var(--panel-user-width), calc(100vw - 16px));
+    max-width: none;
+  }
+
+  :root
+    :is(#left-panel-stack, #right-context-rail)
+    > :is(
+      #ask-panel,
+      #ultra-panel,
+      #cctv-panel,
+      #social-panel,
+      #outbreak-panel,
+      #ai-world-panel,
+      #pp-toggles,
+      #data-panel,
+      #sst-panel,
+      #scene-panel,
+      #radio-panel,
+      #weather-panel,
+      #recent-imagery-panel,
+      #street-level-panel,
+      #global-context-panel
+    ).panel-user-sized:not(.collapsed):not(.panel-floating) {
+    flex: 0 0 auto;
+    height: var(--panel-user-height);
+    max-height: none;
+  }
+
+  /* A box sized shorter than its rows scrolls inside, header kept. */
+  :root
+    :is(#left-panel-stack, #right-context-rail)
+    > .panel-user-sized:not(.collapsed):not(.panel-floating)
+    > :is(
+      .ask-panel-inner,
+      .ultra-panel-inner,
+      .cctv-panel-inner,
+      .social-panel-inner,
+      .outbreak-panel-inner,
+      .ai-world-panel-inner,
+      .data-panel-inner,
+      .sst-panel-inner,
+      .scene-panel-inner,
+      .radio-panel-inner,
+      .weather-panel-inner,
+      .recent-imagery-panel-inner,
+      .street-level-panel-inner,
+      .global-context-panel-inner
+    ) {
+    box-sizing: border-box;
+    height: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+
+  :root #right-context-rail > #pp-toggles.panel-user-sized:not(.collapsed) {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  :is(#left-panel-stack, #right-context-rail)
+    > [data-panel-id]:not(.collapsed):not(.panel-floating)
+    > .panel-corner-resize {
+    position: absolute;
+    bottom: 2px;
+    z-index: 3;
+    display: block;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    background: linear-gradient(
+      135deg,
+      transparent 0 45%,
+      rgba(0, 212, 255, 0.55) 45% 52%,
+      transparent 52% 64%,
+      rgba(0, 212, 255, 0.55) 64% 71%,
+      transparent 71% 83%,
+      rgba(0, 212, 255, 0.55) 83% 90%,
+      transparent 90%
+    );
+    cursor: nwse-resize;
+    touch-action: none;
+    opacity: 0.7;
+    pointer-events: auto;
+  }
+
+  .panel-corner-resize.panel-corner-resize-right {
+    right: 2px;
+    border-radius: 0 0 8px 0;
+  }
+
+  /* The mirror grip of a right-rail box: its free corner is bottom-left. */
+  .panel-corner-resize.panel-corner-resize-left {
+    left: 2px;
+    border-radius: 0 0 0 8px;
+    background: linear-gradient(
+      225deg,
+      transparent 0 45%,
+      rgba(0, 212, 255, 0.55) 45% 52%,
+      transparent 52% 64%,
+      rgba(0, 212, 255, 0.55) 64% 71%,
+      transparent 71% 83%,
+      rgba(0, 212, 255, 0.55) 83% 90%,
+      transparent 90%
+    );
+    cursor: nesw-resize;
+  }
+
+  .panel-corner-resize:hover,
+  .panel-corner-resize:focus-visible {
+    opacity: 1;
+    outline: 1px solid rgba(0, 212, 255, 0.85);
+    outline-offset: 1px;
+  }
+
+  .panel-resizing-corner,
+  .panel-resizing-corner * {
+    user-select: none;
+  }
+}
