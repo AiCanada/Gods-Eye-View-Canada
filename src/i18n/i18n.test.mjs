@@ -5,6 +5,7 @@ import {
   applyDocumentTranslations,
   formatDate,
   formatNumber,
+  getCatalog,
   localDigits,
   localSay,
   msg,
@@ -16,6 +17,7 @@ import {
   tn,
 } from './index.js';
 import {
+  LOCALE_NAMES,
   LOCALE_STORAGE_KEY,
   applyDocumentLanguage,
   normalizeLocale,
@@ -339,6 +341,61 @@ test('Inuktitut: its tag, syllabic text, the dual plural, the fork tabs and Cana
   assert.equal(tabFiles(5), '5 ᑐᖅᑯᖅᑕᐅᓯᒪᔪᑦ');
   // Intl has no Inuktitut number or date data: numbers and dates use
   // Canadian English, the way Nunavut writes them, whatever the browser is.
+  assert.equal(formatNumber(1234.5), '1,234.5');
+  assert.equal(localDigits('12,345.6'), '12,345.6');
+  assert.equal(
+    formatDate(new Date(Date.UTC(2026, 0, 15)), {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'UTC',
+    }),
+    'January 15, 2026',
+  );
+});
+
+test('Ancient Egyptian: its tag, hieroglyphic text, the dual plural, the fork tabs and Canadian number marks', () => {
+  assert.equal(normalizeLocale('egy'), 'egy');
+  assert.equal(normalizeLocale('egy-Egyp-EG'), 'egy');
+  assert.equal(normalizeLocale(' EGY '), 'egy');
+  assert.equal(LOCALE_NAMES.egy, 'Ancient Egyptian');
+  const doc = { documentElement: {} };
+  applyDocumentLanguage(doc, 'egy');
+  assert.deepEqual(doc.documentElement, { lang: 'egy', dir: 'ltr' });
+
+  setLocale('egy');
+  // dp.t.PL n.t p.t ꜥnḫ: the living boats of the sky.
+  assert.equal(t('Live Flights'), '𓂧𓊪𓏏𓊛𓏥 𓈖𓏏 𓊪𓏏𓇯 𓋹𓈖𓐍');
+  assert.equal(t('CLEAR', { context: 'action' }), '𓅱𓂝𓃂');
+  // Egyptian has a dual: one, two, then the plural from three on. Intl has
+  // no Egyptian plural rules; it counts as Inuktitut does.
+  const files = (count) =>
+    tn(count, '{count} file selected', '{count} files selected');
+  assert.equal(files(1), '𓅓𓍑𓏏𓏛 1 𓍉𓏏𓊪𓏏');
+  assert.equal(files(2), '𓅓𓍑𓏏𓏛𓏛 2 𓍉𓏏𓊪𓏏');
+  assert.equal(files(3), '𓅓𓍒𓏏𓏝𓏝𓏝 3 𓍉𓏏𓊪𓏏');
+  assert.equal(files(0), '𓅓𓍒𓏏𓏝𓏝𓏝 0 𓍉𓏏𓊪𓏏');
+  // The fork's own tabs are translated too, with the same dual.
+  assert.equal(tl('AI RISK & TRUTH ASSESSMENT'), '𓇋𓊪𓏝 𓈖 𓇓𓅱𓏏 𓎛𓈖𓂝 𓌳𓂝𓏏 𓈖 𓅜𓐍');
+  assert.equal(tl('OPEN', { context: 'licence' }), '𓃹𓈖');
+  const tabFiles = (count) => tln(count, '{count} FILE', '{count} FILES');
+  assert.equal(tabFiles(2), '𓅓𓍑𓏏𓏛𓏛 2');
+  assert.equal(tabFiles(5), '𓅓𓍒𓏏𓏝𓏝𓏝 5');
+  // Signs from the Unicode base block only: no format controls, so every
+  // hieroglyph font draws them in a plain line. Names, codes and units stay
+  // in Latin letters; the rest is hieroglyphic.
+  const entries = Object.values(getCatalog('egy')).map((entry) =>
+    typeof entry === 'string' ? [entry] : Object.values(entry),
+  );
+  for (const forms of entries)
+    for (const text of forms)
+      assert.doesNotMatch(text, /[\u{13430}-\u{1345F}]/u, text);
+  const written = entries.filter((forms) =>
+    forms.some((text) => /[\u{13000}-\u{1342F}]/u.test(text)),
+  );
+  assert.ok(written.length > entries.length * 0.9, `${written.length}`);
+  // Intl has no Egyptian number or date data: numbers and dates use
+  // Canadian English, in Western digits, whatever the browser is.
   assert.equal(formatNumber(1234.5), '1,234.5');
   assert.equal(localDigits('12,345.6'), '12,345.6');
   assert.equal(

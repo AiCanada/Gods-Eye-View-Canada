@@ -1,6 +1,6 @@
 # Translating God's Eye View
 
-Shipped languages: **English** (source and fallback), **Spanish** (`es`), **Quebec French** (`fr-CA`, shown as Français Québécois), **Inuktitut** (`iu`, written in syllabics) and **Russian** (`ru`).
+Shipped languages: **English** (source and fallback), **Spanish** (`es`), **Quebec French** (`fr-CA`, shown as Français Québécois), **Inuktitut** (`iu`, written in syllabics), **Russian** (`ru`) and **Ancient Egyptian** (`egy`, written in hieroglyphs).
 
 ## How it works
 
@@ -38,7 +38,7 @@ Changing English text changes its key: the old translation becomes unused and th
 
 ## The fork's own tabs
 
-The five tabs on the left that God's Eye View Canada adds, and the POWER UP chip's count, are translated only into the languages listed in `src/i18n/fork-locales.json` (now `fr-CA` and `iu`); every other language shows them in English. Their entries live in the same catalog file, and `--missing` lists them with the rest. To translate them into another language, add its code to `src/i18n/fork-locales.json` once its catalog holds them: from then on the check requires them.
+The five tabs on the left that God's Eye View Canada adds, and the POWER UP chip's count, are translated only into the languages listed in `src/i18n/fork-locales.json` (now `fr-CA`, `iu` and `egy`); every other language shows them in English. Their entries live in the same catalog file, and `--missing` lists them with the rest. To translate them into another language, add its code to `src/i18n/fork-locales.json` once its catalog holds them: from then on the check requires them.
 
 ## Fixing a translation
 
@@ -67,4 +67,4 @@ These are contracts, not copy: layer ids and registry keys, status enums and oth
 
 ## Language notes
 
-Each language keeps its glossary, plural forms, units and style in its own file, `docs/translations/<code>.md`: [Spanish](./translations/es.md), [Quebec French](./translations/fr-CA.md), [Inuktitut](./translations/iu.md), [Russian](./translations/ru.md). Read it before translating, and add a term there when you settle on one.
+Each language keeps its glossary, plural forms, units and style in its own file, `docs/translations/<code>.md`: [Spanish](./translations/es.md), [Quebec French](./translations/fr-CA.md), [Inuktitut](./translations/iu.md), [Russian](./translations/ru.md), [Ancient Egyptian](./translations/egy.md). Read it before translating, and add a term there when you settle on one.

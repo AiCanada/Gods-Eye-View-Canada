@@ -26,6 +26,15 @@ const FORK_ENGLISH_ONLY = path.join(ROOT, 'src/i18n/fork-english-only.json');
 // tl(), tln(), msgl() and data-i18n-local*, and only these catalogs must hold
 // it (docs/I18N.md, "The fork's own tabs").
 const FORK_LOCALES = path.join(ROOT, 'src/i18n/fork-locales.json');
+// The locale Intl takes plural rules from where it has none, as
+// pluralRulesLocale() in src/i18n/locale.js: Ancient Egyptian counts as
+// Inuktitut does (one, two, other).
+const PLURAL_RULE_LOCALES = Object.freeze({ egy: 'iu' });
+
+function pluralCategories(locale) {
+  return new Intl.PluralRules(PLURAL_RULE_LOCALES[locale] ?? locale)
+    .resolvedOptions().pluralCategories;
+}
 
 const STRING = String.raw`'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|\`(?:\\.|[^\`\\$])*\``;
 const CALL = new RegExp(
@@ -555,8 +564,7 @@ export function checkCatalog(
   messages,
   sameAsEnglish = readSameAsEnglish(locale),
 ) {
-  const categories = new Intl.PluralRules(locale).resolvedOptions()
-    .pluralCategories;
+  const categories = pluralCategories(locale);
   const missing = [];
   const errors = [];
   for (const [text, info] of messages) {
@@ -611,8 +619,7 @@ export function checkCatalog(
  * plural form left as the English.
  */
 export function missingTemplate(locale, catalog, messages) {
-  const categories = new Intl.PluralRules(locale).resolvedOptions()
-    .pluralCategories;
+  const categories = pluralCategories(locale);
   const out = {};
   for (const text of checkCatalog(locale, catalog, messages, new Set())
     .missing) {

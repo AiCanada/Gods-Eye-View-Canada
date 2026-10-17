@@ -48,6 +48,20 @@ html[lang='iu'] {
     sans-serif;
 }
 
+/* Ancient Egyptian is written in hieroglyphs (U+13000–U+1342F), which the UI
+   fonts lack: Noto Sans Egyptian Hieroglyphs (index.html loads it, and the
+   browser fetches it only when a hieroglyph is drawn; Apple and Android ship
+   it too), then Windows' Segoe UI Historic and the free Aegyptus and
+   NewGardiner (JSesh) faces, before the generic family. */
+html[lang='egy'] {
+  --font-mono:
+    'JetBrains Mono', 'SF Mono', 'Fira Code', 'Noto Sans Egyptian Hieroglyphs',
+    'Segoe UI Historic', 'Aegyptus', 'NewGardiner', monospace;
+  --font-sans:
+    'Inter', 'Noto Sans Egyptian Hieroglyphs', 'Segoe UI Historic', 'Aegyptus',
+    'NewGardiner', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
 * {
   margin: 0;
   padding: 0;

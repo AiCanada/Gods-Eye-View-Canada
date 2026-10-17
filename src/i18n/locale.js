@@ -8,11 +8,13 @@ export const LOCALE_STORAGE_KEY = 'gev:locale:v1';
 export const DEFAULT_LOCALE = 'en';
 
 /** Shipped locales; order does not matter. Adding one: docs/TRANSLATORS.md. */
-export const LOCALES = Object.freeze(['en', 'es', 'fr-CA', 'iu', 'ru']);
+export const LOCALES = Object.freeze(['en', 'es', 'fr-CA', 'iu', 'ru', 'egy']);
 
 /**
  * Each locale named in its own language, for the selector. Inuktitut is
- * named as its speakers write it in English text, the name the owner chose.
+ * named as its speakers write it in English text, the name the owner chose;
+ * Ancient Egyptian (egy, written in hieroglyphs) by the name the owner gave
+ * it, since nobody reads the selector in the old language.
  */
 export const LOCALE_NAMES = Object.freeze({
   en: 'English',
@@ -20,7 +22,19 @@ export const LOCALE_NAMES = Object.freeze({
   'fr-CA': 'Français Québécois',
   iu: 'Inuktitut',
   ru: 'Русский',
+  egy: 'Ancient Egyptian',
 });
+
+/**
+ * The locale Intl takes plural rules from, for a shipped locale it has none
+ * for. Ancient Egyptian counts as Inuktitut does: one, two (the dual), other.
+ */
+const PLURAL_RULE_LOCALES = Object.freeze({ egy: 'iu' });
+
+/** The tag to give Intl.PluralRules for a locale. */
+export function pluralRulesLocale(locale) {
+  return PLURAL_RULE_LOCALES[locale] ?? locale;
+}
 
 /** Right-to-left locales. */
 const RTL_LOCALES = Object.freeze([]);

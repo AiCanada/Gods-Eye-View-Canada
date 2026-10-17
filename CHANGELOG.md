@@ -1,5 +1,28 @@
 # Changelog
 
+- Ancient Egyptian, shown as **Ancient Egyptian**, is a new interface
+  language in the language picker (owner request 2026-10-17), added the way
+  Inuktitut was, the five tabs on the left included:
+  `src/i18n/locales/egy.json` with all 4,525 messages in hieroglyphs, `egy`
+  in `LOCALES`, `LOCALE_NAMES` and `src/i18n/fork-locales.json`, its catalog
+  in `src/i18n/index.js` and `scripts/package-boundaries.json`, its
+  kept-as-English list in `src/i18n/same-as-english.json`, and its notes in
+  `docs/translations/egy.md` (sources, script, the dual plural, glossary).
+  The language of the Old Kingdom is preferred: each word takes an Old
+  Kingdom spelling from the Thesaurus Linguae Aegyptiae corpus where one is
+  attested, else a later one, else Wikidata's TLA lemma. Signs come from the
+  Unicode base block only, written in a plain line; Hieratic and Demotic have
+  no Unicode encoding, and Coptic, a much later stage, is not used. `Intl`
+  has no Egyptian plural rules, so `pluralRulesLocale()` counts Egyptian as
+  Inuktitut (one, two for the dual, other), in the page and in
+  `npm run i18n`; numbers and dates follow Canadian English (`1,234.5`).
+  Pages in Ancient Egyptian name the fonts that carry hieroglyphs (Noto Sans
+  Egyptian Hieroglyphs, which `index.html` now loads from Google Fonts and
+  the browser fetches only when a hieroglyph is drawn, Segoe UI Historic,
+  Aegyptus, NewGardiner), and the CCTV control row wraps for it. The
+  translation is a first draft; it needs an Egyptologist's review. Spanish,
+  Russian, Quebec French and Inuktitut are unchanged.
+
 - Inuktitut, shown as **Inuktitut**, is a new interface language in the
   language picker (owner request 2026-10-17), added the way Quebec French
   was, the five tabs on the left included: `src/i18n/locales/iu.json` with

@@ -14,23 +14,26 @@
 import {
   DEFAULT_LOCALE,
   normalizeLocale,
+  pluralRulesLocale,
   writeStoredLocale,
 } from './locale.js';
 import forkLocales from './fork-locales.json' with { type: 'json' };
 import es from './locales/es.json' with { type: 'json' };
+import egy from './locales/egy.json' with { type: 'json' };
 import frCA from './locales/fr-CA.json' with { type: 'json' };
 import iu from './locales/iu.json' with { type: 'json' };
 import ru from './locales/ru.json' with { type: 'json' };
 import { useLocalText } from './marker.js';
 
-const CATALOGS = Object.freeze({ es, 'fr-CA': frCA, iu, ru });
+const CATALOGS = Object.freeze({ es, 'fr-CA': frCA, iu, ru, egy });
 /**
  * The locale Intl formats numbers, dates and relative times in. Intl has
  * plural rules for Inuktitut (one, two, other) but no number or date data,
  * so it uses Canadian English, the way Nunavut writes numbers, instead of
- * whatever the browser falls back to.
+ * whatever the browser falls back to. Ancient Egyptian has neither: its
+ * numbers and dates are written the same Canadian way, in Western digits.
  */
-const INTL_FORMAT_LOCALES = Object.freeze({ iu: 'en-CA' });
+const INTL_FORMAT_LOCALES = Object.freeze({ iu: 'en-CA', egy: 'en-CA' });
 
 function formatLocale() {
   return INTL_FORMAT_LOCALES[currentLocale] ?? currentLocale;
@@ -153,11 +156,11 @@ function lookupLocal(text) {
  * The fork's own tabs (the five on the left: AI Risk & Truth Assessment,
  * Ultra Security Package, Social Media Analysis, Outbreak, the AI World
  * Training Sim) are translated only into the locales listed in
- * src/i18n/fork-locales.json (Quebec French). tl() and tln() mark their text
- * as t() and tn() do; any other locale shows the English, without a
- * missing-translation warning, even where its catalog has the same English
- * for the rest of the page. `npm run i18n` requires these entries only of
- * the listed locales.
+ * src/i18n/fork-locales.json (Quebec French, Inuktitut, Ancient Egyptian).
+ * tl() and tln() mark their text as t() and tn() do; any other locale shows
+ * the English, without a missing-translation warning, even where its catalog
+ * has the same English for the rest of the page. `npm run i18n` requires
+ * these entries only of the listed locales.
  */
 export function tl(text, values) {
   const entry = lookupLocal(
@@ -233,7 +236,7 @@ const pluralRulesCache = new Map();
 function pluralRules(locale) {
   let rules = pluralRulesCache.get(locale);
   if (!rules) {
-    rules = new Intl.PluralRules(locale);
+    rules = new Intl.PluralRules(pluralRulesLocale(locale));
     pluralRulesCache.set(locale, rules);
   }
   return rules;

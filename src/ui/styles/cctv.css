@@ -75,10 +75,10 @@
   margin-bottom: 0;
 }
 
-/* Spanish, Quebec French and Inuktitut labels overflow the nowrap
-   .scene-btn row of the fixed-width panel; wrap the row under es, fr-CA and
-   iu only, English stays as is. */
-html:is([lang='es'], [lang='fr-CA'], [lang='iu']) .cctv-controls {
+/* Spanish, Quebec French, Inuktitut and Ancient Egyptian labels overflow the
+   nowrap .scene-btn row of the fixed-width panel; wrap the row under es,
+   fr-CA, iu and egy only, English stays as is. */
+html:is([lang='es'], [lang='fr-CA'], [lang='iu'], [lang='egy']) .cctv-controls {
   flex-wrap: wrap;
 }
 
