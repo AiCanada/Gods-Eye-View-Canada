@@ -9,6 +9,7 @@ import {
   isOverBudget as isTomTomOverBudget,
   tileToBBox as tomtomTileBBox,
 } from '../../src/data/tomtomTiles.js';
+import { admitSameSite } from './common/same-site.js';
 import { haversineKm } from './common/geo.js';
 import { localProviderTrusted } from '../shared/localIntegrity.mjs';
 
@@ -91,6 +92,13 @@ export function pruneTomTomMemoryOutside(
  * a month's entire allowance in five days, leaving the traffic layer dead
  * for the rest of the billing period. 6,000/day keeps a full 31-day month
  * inside the allowance (186,000) with headroom to spare.
+ *
+ * Cross-site gate: both routes refuse cross-site browser requests with 403
+ * (the gate Mapillary, OpenAI and Places already use). Every uncached tile is
+ * a billed upstream attempt counted against the persistent daily budget, so
+ * without the gate any web page the user visits could fire `<img>` requests
+ * at distinct tiles, spend the TomTom quota and leave the traffic layer on
+ * 429 budget for the rest of the UTC day.
  *
  * GET /api/tomtom/status → {hasKey, dailyCount, budget, date}. Keyless mode:
  * status reports hasKey:false and the tile endpoint 503s {error:'no_key'}
@@ -219,6 +227,8 @@ export function tomtomProxy() {
   const installMiddleware = (server) => {
     _tomtomMemoryTiers.add(mem);
     server.middlewares.use('/api/tomtom', async (req, res) => {
+      // Gate first: a cross-site <img>/fetch must not reach the budget counter.
+      if (admitSameSite(req, res)) return;
       // Sanitized responses only (proxy/security baseline): no upstream
       // error details, and never echo the key or the upstream URL.
       const sendJson = (status, obj, extraHeaders = {}) => {

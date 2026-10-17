@@ -1,5 +1,20 @@
 # Changelog
 
+- Upstream merge, 2026-10-17 (second): the 44 upstream commits after
+  a571142d, up to 1df2a272, all taken. The map retries the real imagery and
+  terrain provider after a boot-time fallback instead of keeping OSM or a flat
+  globe for the session (#1111); `geo:` URIs resolve offline in location
+  search (#1071); camera snapshots call Street View fallback imagery
+  historical (#1118; the fork's frame route sends the same provenance
+  values); the TomTom routes refuse cross-site requests before they spend the
+  daily tile budget (#973; the phone's tiles through the mirror are
+  same-origin and still load); tracked aircraft publish their vertical rate
+  (#718); the scene director's save status and run counts are accurate
+  (#1135); fire-perimeter queries and cards handle the antimeridian (#1142);
+  and rocket-launch normalization has edge-case tests (#1136). Upstream's
+  #718 dropped three earlier changelog entries (FM seek, Bogotá and
+  Santiago, Barcelona) by accident; this changelog keeps them.
+
 - Upstream merge, 2026-10-17 ("True Up"): the 57 upstream pull requests
   merged into gods-eye-view main after the 2026-10-14 merge, up to a571142d.
   What came in:
@@ -492,6 +507,12 @@
   capacity, peak and cost lines, Monte-Carlo intervals, a random-seed box and
   JSON/CSV export. Random streams are now per run, so seeded results differ
   once from earlier builds.
+
+- The tracked-aircraft descriptor now publishes `verticalRateMps`, on both the
+  civil and military layers, so a consumer reading `getTrackedInfo()` no longer
+  has to reach past it into the raw poll record for climb/descent. Reported,
+  never derived: an aircraft that has not transmitted a rate reads as `null`
+  rather than a level-flight `0`.
 
 - Local FM seek finds stations after wrapping around 87.5–108 MHz, covers both
   band edges, skips the starting station and rejects spectra from an earlier
