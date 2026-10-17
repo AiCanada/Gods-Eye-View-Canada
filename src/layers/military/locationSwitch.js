@@ -1,4 +1,4 @@
-import { greatCircleKm } from '../../data/routePlausible.js';
+import { greatCircleKm } from '../../geoDistance.js';
 
 // ---------------------------------------------------------------------------
 // Location switch (mirror of src/layers/flights/locationSwitch.js, see the
@@ -69,7 +69,7 @@ export function createLocationSwitch({ flightState, parts }) {
         info &&
         Number.isFinite(info.rawLat) &&
         Number.isFinite(info.rawLon) &&
-        greatCircleKm(to.lat, to.lon, info.rawLat, info.rawLon) <= keepKm
+        greatCircleKm(to, { lat: info.rawLat, lon: info.rawLon }) <= keepKm
       )
         continue;
       queue.add(icao24);

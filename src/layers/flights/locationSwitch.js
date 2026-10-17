@@ -1,4 +1,4 @@
-import { greatCircleKm } from '../../data/routePlausible.js';
+import { greatCircleKm } from '../../geoDistance.js';
 
 // ---------------------------------------------------------------------------
 // Location switch (the user picked a place in a different first-level region).
@@ -100,7 +100,7 @@ export function createLocationSwitch({ flightState, parts }) {
         info &&
         Number.isFinite(info.rawLat) &&
         Number.isFinite(info.rawLon) &&
-        greatCircleKm(point.lat, point.lon, info.rawLat, info.rawLon) <= keepKm
+        greatCircleKm(point, { lat: info.rawLat, lon: info.rawLon }) <= keepKm
       )
         continue;
       queue.add(icao24);
@@ -172,7 +172,7 @@ export function createLocationSwitch({ flightState, parts }) {
       if (!Number.isFinite(info?.rawLat) || !Number.isFinite(info?.rawLon))
         continue;
       if (
-        greatCircleKm(point.lat, point.lon, info.rawLat, info.rawLon) > radiusKm
+        greatCircleKm(point, { lat: info.rawLat, lon: info.rawLon }) > radiusKm
       )
         evict.push([icao24, bb]);
     }

@@ -1,5 +1,26 @@
 # Changelog
 
+- Upstream merge, 2026-10-17 (third): the 45 upstream commits after
+  1df2a272, up to 93ea088f, all taken. Launch pads without coordinates stay
+  unknown instead of drawing at 0°N 0°E, and a missing stage flight number no
+  longer reads "FLIGHT 0" (#1186); satellite catalog numbers written in
+  Alpha-5 decode (`A0000` is 100000) instead of colliding as NaN (#767), and a
+  TLE set whose two lines name different satellites is skipped (#1101); one
+  shared great-circle distance, `src/geoDistance.js` with `{ lat, lon }`
+  points, replaces the local copies (#287); the dev server stops watching
+  `.gev-cache` and `.gev-logs` (#761); dompurify, sharp and source-map-js move
+  to their patched releases (#1094); nine Spanish city bike systems join the
+  bike-share registry, underscores in station names read as spaces, and PBSC
+  capacity counts docks, not the geofenced area; plus earthquake-record tests
+  (#867) and documentation fixes (#839, #1196). Fork fits: the flight,
+  military and traffic location switches use `greatCircleKm` from
+  `src/geoDistance.js` (#287 removed the four-argument copies they imported
+  from `routePlausible.js` and `trafficBounds.js`), and the `military-flights`
+  package lists it; the dev watcher also skips `.gev-data`, where the AI World
+  recorder writes its tape and models; the new watcher test builds its config
+  from the isolated temp root like its neighbours. A checkout picks up the new
+  package versions with `npm ci`.
+
 - Ancient Egyptian, shown as **Ancient Egyptian**, is a new interface
   language in the language picker (owner request 2026-10-17), added the way
   Inuktitut was, the five tabs on the left included:

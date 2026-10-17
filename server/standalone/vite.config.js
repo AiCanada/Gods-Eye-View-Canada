@@ -14,6 +14,7 @@ import { routeGuardPlugin } from './route-guard.js';
 import { singleInstancePlugin } from './single-instance.js';
 import { standaloneVoiceTools } from './voiceTools.js';
 import { tailnetDashboardPlugin } from '../../Mirror of PC GEVC on Cell/tailnet-dashboard.js';
+import { unwatchedRuntimeDirsPlugin } from './unwatched-cache.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -48,6 +49,7 @@ export default defineConfig(({ command, mode, sourceRoot }) => {
       apiNotFoundPlugin(),
       // The same dashboard on this machine's Tailscale address (off unless set).
       tailnetDashboardPlugin(),
+      unwatchedRuntimeDirsPlugin(),
     ],
     googleApiKey: localClientCredential('google', 'GOOGLE_MAPS_API_KEY'),
     cesiumToken: localClientCredential('cesium', 'CESIUM_ION_TOKEN'),

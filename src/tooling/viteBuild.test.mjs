@@ -154,7 +154,7 @@ test('root config retains existing named exports and standalone provider order',
     assert.equal(compatibility[name], value, name);
   const config = standaloneConfig({ mode: 'test', sourceRoot: isolatedCwd });
   assert.deepEqual(
-    config.plugins.slice(6, -5).map((plugin) => plugin.name),
+    config.plugins.slice(6, -6).map((plugin) => plugin.name),
     providers
       .localProviderPlugins({ sourceRoot: isolatedCwd })
       .map((plugin) => plugin.name),
@@ -169,14 +169,33 @@ test('root config retains existing named exports and standalone provider order',
   assert.equal(config.plugins[4].name, 'route-guard');
   assert.equal(config.plugins[5].name, 'gev-health');
   assert.equal(config.plugins[5].apply, 'serve');
-  assert.equal(config.plugins.at(-6).name, 'gev-key-setup');
+  assert.equal(config.plugins.at(-7).name, 'gev-key-setup');
   // The local MCP route follows every provider and precedes the API fallback.
-  assert.equal(config.plugins.at(-5).name, 'local-mcp');
-  assert.equal(config.plugins.at(-4).name, 'api-not-found');
+  assert.equal(config.plugins.at(-6).name, 'local-mcp');
+  assert.equal(config.plugins.at(-5).name, 'api-not-found');
   // The tailnet copy of the dashboard serves the same middleware (off unless set).
-  assert.equal(config.plugins.at(-3).name, 'gev-tailnet-dashboard');
+  assert.equal(config.plugins.at(-4).name, 'gev-tailnet-dashboard');
+  // Config-only, so it sits after the provider slice rather than in it.
+  assert.equal(config.plugins.at(-3).name, 'gev-unwatched-runtime-dirs');
   assert.equal(config.plugins.at(-2).name, 'embed-framing');
   assert.equal(config.plugins.at(-1).name, 'panel-build');
+});
+
+test('directories the server writes while it runs are kept out of the dev watcher', () => {
+  // Providers write cache files and logs here while the app runs, and the AI
+  // World recorder its tape and models in .gev-data; none of it is source, so
+  // the dev watcher has no reason to stat it.
+  const config = standaloneConfig({ mode: 'test', sourceRoot: isolatedCwd });
+  const plugin = config.plugins.find(
+    ({ name }) => name === 'gev-unwatched-runtime-dirs',
+  );
+  // Dev only: preview and build have no watcher.
+  assert.equal(plugin.apply, 'serve');
+  assert.deepEqual(plugin.config().server.watch.ignored, [
+    '**/.gev-cache/**',
+    '**/.gev-logs/**',
+    '**/.gev-data/**',
+  ]);
 });
 
 test('build export resolves in Node and has no browser fallback', async () => {

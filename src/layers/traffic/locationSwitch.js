@@ -1,4 +1,4 @@
-import { greatCircleKm } from '../../data/trafficBounds.js';
+import { greatCircleKm } from '../../geoDistance.js';
 import { tileToBBox } from '../../data/tomtomTiles.js';
 
 /**
@@ -50,7 +50,7 @@ export function tileCacheKeysAwayFrom(keys, point, radiusKm) {
     const near =
       Boolean(point) &&
       Boolean(center) &&
-      greatCircleKm(center.lat, center.lon, point.lat, point.lon) <= radiusKm;
+      greatCircleKm(center, point) <= radiusKm;
     if (!near) away.push(key);
   }
   return away;
