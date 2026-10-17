@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   applyDocumentTranslations,
+  englishSingular,
   formatDate,
   formatNumber,
   getCatalog,
@@ -11,6 +12,7 @@ import {
   msg,
   persistLocaleAndReload,
   setLocale,
+  shownEnglish,
   t,
   tl,
   tln,
@@ -407,6 +409,40 @@ test('Ancient Egyptian: its tag, hieroglyphic text, the dual plural, the fork ta
     }),
     'January 15, 2026',
   );
+});
+
+test('in Ancient Egyptian and Inuktitut the page keeps the English of each line it shows', () => {
+  setLocale('es');
+  assert.equal(
+    shownEnglish(t('Live Flights')),
+    undefined,
+    'other locales keep nothing',
+  );
+  setLocale('egy');
+  const flights = t('Live Flights');
+  assert.equal(shownEnglish(flights), 'Live Flights');
+  assert.equal(shownEnglish(` ${flights}  `), 'Live Flights');
+  // A value comes back in English too, a translated one included.
+  assert.equal(
+    shownEnglish(t('Show {name}', { name: flights })),
+    'Show Live Flights',
+  );
+  assert.equal(
+    shownEnglish(t('Show {name}', { name: 'Toronto' })),
+    'Show Toronto',
+  );
+  const files = (count) =>
+    tn(count, '{count} file selected', '{count} files selected');
+  assert.equal(shownEnglish(files(1)), '1 file selected');
+  assert.equal(shownEnglish(files(3)), '3 files selected');
+  assert.equal(
+    englishSingular('{count} files selected'),
+    '{count} file selected',
+  );
+  setLocale('iu');
+  const title = tl('AI RISK & TRUTH ASSESSMENT');
+  assert.notEqual(title, 'AI RISK & TRUTH ASSESSMENT');
+  assert.equal(shownEnglish(title), 'AI RISK & TRUTH ASSESSMENT');
 });
 
 test('marker.js tl(), tln() and localDigits() follow the page once index.js is loaded; english stays English', () => {

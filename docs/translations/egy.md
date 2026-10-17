@@ -89,6 +89,17 @@ English. Units stay in Latin letters: km, m, km/h, kts, ft, min, MB, GB, °, %.
 - A message that names a button uses that button's own Egyptian label, so the
   two always match.
 
+## Hover help
+
+A mouse that rests two seconds on hieroglyphs shows the English they were
+translated from, in a small box above the pointer (`src/ui/englishHint.js`).
+The page keeps the English of each line it draws, values filled in, so a line
+with a number or a name reads back exactly; a line put together from several
+translated pieces is read back piece by piece from the catalog
+(`src/i18n/backToEnglish.js`). Where Egyptian uses one word for two English
+labels (_ḥtp_ is both "Pause" and "Paused"), the help shows one of them. Mouse
+only: touch has no hover, so the phone page is unchanged.
+
 ## Glossary
 
 | English                              | Hieroglyphs                    | Transliteration                         | Literally                              |

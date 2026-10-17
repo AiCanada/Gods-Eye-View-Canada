@@ -62,6 +62,27 @@ html[lang='egy'] {
     'NewGardiner', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+/* The English of hieroglyphs or syllabics the mouse rests on
+   (src/ui/englishHint.js): above every panel, never in the pointer's way. */
+.english-hint {
+  position: fixed;
+  z-index: 10001;
+  max-width: min(360px, calc(100vw - 16px));
+  padding: 6px 10px;
+  border: 1px solid var(--accent-glow);
+  border-radius: var(--btn-radius);
+  background: var(--menu-bg);
+  color: var(--text-primary);
+  font: 500 13px/1.35 var(--font-sans);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.english-hint[hidden] {
+  display: none;
+}
+
 * {
   margin: 0;
   padding: 0;

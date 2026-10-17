@@ -8,6 +8,7 @@ import { createStandaloneData } from './data.js';
 import { createStandaloneTools } from './tools.js';
 import { resolveLocale, applyDocumentLanguage } from '../i18n/locale.js';
 import { applyDocumentTranslations, setLocale } from '../i18n/index.js';
+import { installEnglishHint } from '../ui/englishHint.js';
 import { createGoogleTokenSource } from '../maps/googleTokens.js';
 
 // The existing controls and layer catalog contain page-scoped state.
@@ -34,6 +35,8 @@ export function createStandaloneApplication({
   setLocale(activeLocale);
   applyDocumentLanguage(document, activeLocale);
   applyDocumentTranslations(document);
+  // Ancient Egyptian and Inuktitut: a two-second mouse rest shows the English.
+  installEnglishHint({ locale: activeLocale });
   const loadingScreen = document.getElementById('loading-screen');
   const loaderStatus = loadingScreen.querySelector('.loader-status');
   let placeSearch;

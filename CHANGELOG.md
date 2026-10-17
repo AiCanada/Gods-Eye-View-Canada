@@ -1,5 +1,17 @@
 # Changelog
 
+- Hover help in Ancient Egyptian and Inuktitut (owner request 2026-10-17): a
+  mouse that rests two seconds on hieroglyphs or syllabics shows the English
+  the text was translated from, in a small box above the pointer. While either
+  locale is active, the i18n core keeps the English of each line it translates
+  (`shownEnglish()`, values filled in, a translated value read back too; the
+  latest 4,000 lines with values are kept), and `src/i18n/backToEnglish.js`
+  reads anything else back from the catalog: whole lines, lines with values
+  (matched against their pattern) and lines joined from translated pieces.
+  `src/ui/englishHint.js` follows the pointer: mouse only, a 6-pixel rest
+  tolerance, hidden on any move, click, key or scroll. Every other language,
+  and the phone page, are unchanged.
+
 - Upstream merge, 2026-10-17 (third): the 45 upstream commits after
   1df2a272, up to 93ea088f, all taken. Launch pads without coordinates stay
   unknown instead of drawing at 0°N 0°E, and a missing stage flight number no

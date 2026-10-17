@@ -43,6 +43,61 @@ const FORK_LOCALES = new Set(forkLocales);
 
 let currentLocale = DEFAULT_LOCALE;
 
+/**
+ * God's Eye View Canada: hover help in the locales few readers know. A mouse
+ * resting on their text shows the English it came from (src/ui/englishHint.js).
+ * Each line shown here is kept with its English, values filled in, so the help
+ * is exact. Lines with values change as the page runs; only the latest of
+ * those are kept.
+ */
+export const ENGLISH_HINT_LOCALES = Object.freeze(['egy', 'iu']);
+const LINES_WITH_VALUES_KEPT = 4000;
+let keepingEnglish = false;
+const plainLines = new Map();
+const linesWithValues = new Map();
+const englishSingulars = new Map();
+
+const squashLine = (text) => String(text).replace(/\s+/g, ' ').trim();
+
+/** A translated line, kept with its English while a hint locale is active. */
+function shownLine(entry, english, values) {
+  const shown = interpolate(entry, values);
+  if (!keepingEnglish) return shown;
+  const key = squashLine(shown);
+  if (!key) return shown;
+  const line = squashLine(interpolate(english, englishValues(values)));
+  if (shown === entry) {
+    plainLines.set(key, line);
+  } else {
+    linesWithValues.delete(key);
+    linesWithValues.set(key, line);
+    if (linesWithValues.size > LINES_WITH_VALUES_KEPT)
+      linesWithValues.delete(linesWithValues.keys().next().value);
+  }
+  return shown;
+}
+
+/** The values in English: one that is itself a line shown here reads back. */
+function englishValues(values) {
+  if (!values) return values;
+  const english = {};
+  for (const [name, value] of Object.entries(values))
+    english[name] =
+      typeof value === 'string' ? (shownEnglish(value) ?? value) : value;
+  return english;
+}
+
+/** The English of a line this page showed in a hint locale, else undefined. */
+export function shownEnglish(text) {
+  const key = squashLine(text);
+  return linesWithValues.get(key) ?? plainLines.get(key);
+}
+
+/** The English singular of a count message shown here, found by its plural. */
+export function englishSingular(other) {
+  return englishSingulars.get(other);
+}
+
 /** The catalog for a locale; null for English and unknown codes. */
 export function getCatalog(locale) {
   return CATALOGS[normalizeLocale(locale)] ?? null;
@@ -63,6 +118,7 @@ export function setLocale(locale) {
   if (normalized !== currentLocale) {
     currentLocale = normalized;
     formatterCache.clear();
+    keepingEnglish = ENGLISH_HINT_LOCALES.includes(currentLocale);
   }
   return currentLocale;
 }
@@ -115,7 +171,9 @@ function lookup(text) {
  */
 export function t(text, values) {
   const entry = lookup(values?.context ? `${values.context}|${text}` : text);
-  return interpolate(typeof entry === 'string' ? entry : text, values);
+  return typeof entry === 'string'
+    ? shownLine(entry, text, values)
+    : interpolate(text, values);
 }
 
 /**
@@ -137,14 +195,14 @@ export function tn(count, one, other, values) {
 /** tn() with the lookup it is given: one form per plural category. */
 function pluralFrom(entry, count, one, other, values) {
   const category = pluralRules(currentLocale).select(count);
-  let pattern;
+  const english =
+    pluralRules(DEFAULT_LOCALE).select(count) === 'one' ? one : other;
   const forms = entry && typeof entry === 'object' ? entry : null;
-  if (forms && (filled(forms[category]) || filled(forms.other))) {
-    pattern = filled(forms[category]) ? forms[category] : forms.other;
-  } else {
-    pattern = pluralRules(DEFAULT_LOCALE).select(count) === 'one' ? one : other;
-  }
-  return interpolate(pattern, { count, ...values });
+  if (!forms || !(filled(forms[category]) || filled(forms.other)))
+    return interpolate(english, { count, ...values });
+  const pattern = filled(forms[category]) ? forms[category] : forms.other;
+  if (keepingEnglish) englishSingulars.set(other, one);
+  return shownLine(pattern, english, { count, ...values });
 }
 
 /** A catalog entry for the fork's own tabs: only a fork locale has one. */
@@ -166,7 +224,9 @@ export function tl(text, values) {
   const entry = lookupLocal(
     values?.context ? `${values.context}|${text}` : text,
   );
-  return interpolate(typeof entry === 'string' ? entry : text, values);
+  return typeof entry === 'string'
+    ? shownLine(entry, text, values)
+    : interpolate(text, values);
 }
 
 /** tn() for the fork's own tabs; see tl(). */
@@ -223,7 +283,7 @@ export function translateKnown(text) {
   const catalog = CATALOGS[currentLocale];
   if (!catalog || typeof text !== 'string') return text;
   const entry = Object.hasOwn(catalog, text) ? catalog[text] : undefined;
-  return filled(entry) ? entry : text;
+  return filled(entry) ? shownLine(entry, text) : text;
 }
 
 /** Mark English text that is stored in data and translated later by t(). */
