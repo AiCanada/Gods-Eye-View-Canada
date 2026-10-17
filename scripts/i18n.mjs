@@ -22,12 +22,28 @@ const SAME_AS_ENGLISH = path.join(ROOT, 'src/i18n/same-as-english.json');
 // English text for now. The unmarked check skips them; their markup opts out
 // with data-i18n-skip. Every catalog check still runs on all code.
 const FORK_ENGLISH_ONLY = path.join(ROOT, 'src/i18n/fork-english-only.json');
+// Locales that also translate the fork's own tabs: their text is marked with
+// tl(), tln(), msgl() and data-i18n-local*, and only these catalogs must hold
+// it (docs/I18N.md, "The fork's own tabs").
+const FORK_LOCALES = path.join(ROOT, 'src/i18n/fork-locales.json');
 
 const STRING = String.raw`'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|\`(?:\\.|[^\`\\$])*\``;
 const CALL = new RegExp(
   String.raw`\bt\(\s*(${STRING})\s*,\s*\{\s*context:\s*(${STRING})|\b(t|msg)\(\s*(${STRING})|\btn\(\s*[^,]+?,\s*(${STRING})\s*,\s*(${STRING})`,
   'g',
 );
+
+const LOCAL_CALL = new RegExp(
+  String.raw`\btl\(\s*(${STRING})\s*,\s*\{\s*context:\s*(${STRING})|\b(tl|msgl)\(\s*(${STRING})|\btln\(\s*[^,]+?,\s*(${STRING})\s*,\s*(${STRING})`,
+  'g',
+);
+
+/** The locales that translate the fork's own tabs too. */
+export function forkLocales() {
+  return existsSync(FORK_LOCALES)
+    ? JSON.parse(readFileSync(FORK_LOCALES, 'utf8'))
+    : [];
+}
 
 function unquote(literal) {
   const body = literal.slice(1, -1);
@@ -92,7 +108,20 @@ function trackedFiles(...pathspecs) {
  * Every message the code can ask for.
  * @returns {Map<string, {plural: boolean, one?: string, where: string}>}
  */
-export function extractMessages() {
+/**
+ * Messages marked with t(), tn(), msg() and data-i18n*: every catalog holds
+ * them. With `local`, those marked with tl(), tln(), msgl() and
+ * data-i18n-local* instead: only the fork locales' catalogs hold them.
+ */
+export function extractMessages({ local = false } = {}) {
+  const call = local ? LOCAL_CALL : CALL;
+  const marker = local ? 'data-i18n-local' : 'data-i18n';
+  const attributes = local
+    ? 'title|aria-label|placeholder|label|collapsed-title'
+    : 'title|aria-label|placeholder';
+  // The marker's suffix names the attribute, except a tab's collapsed name.
+  const attributeOf = (name) =>
+    name === 'collapsed-title' ? 'data-collapsed-title' : name;
   const messages = new Map();
   const add = (text, where, plural = null) => {
     if (!text) return;
@@ -109,7 +138,7 @@ export function extractMessages() {
   const sources = sourceFiles();
   for (const file of sources) {
     const source = readFileSync(path.join(ROOT, file), 'utf8');
-    for (const match of source.matchAll(CALL)) {
+    for (const match of source.matchAll(call)) {
       const line = source.slice(0, match.index).split('\n').length;
       const where = `${file}:${line}`;
       if (match[1]) {
@@ -129,21 +158,42 @@ export function extractMessages() {
     const html = readFileSync(path.join(ROOT, file), 'utf8');
     for (const [, tag, attrs, text] of html.matchAll(TAG)) {
       const where = `${file} <${tag}>`;
-      if (/\sdata-i18n(\s|=|$)/.test(attrs))
+      if (new RegExp(String.raw`\s${marker}(\s|=|$)`).test(attrs))
         add(normalize(decodeHtml(text)), where);
       for (const [, name] of attrs.matchAll(
-        /\sdata-i18n-(title|aria-label|placeholder)\b/g,
+        new RegExp(String.raw`\s${marker}-(${attributes})\b`, 'g'),
       )) {
-        const value = attrs.match(new RegExp(String.raw`\s${name}="([^"]*)"`));
+        const value = attrs.match(
+          new RegExp(String.raw`\s${attributeOf(name)}="([^"]*)"`),
+        );
         if (value) add(decodeHtml(value[1]), where);
         else
           throw new Error(
-            `${where}: data-i18n-${name} without a ${name} attribute`,
+            `${where}: ${marker}-${name} without a ${name} attribute`,
           );
       }
     }
   }
   return messages;
+}
+
+/**
+ * Everything a locale's catalog must hold: the shared messages, and for the
+ * fork locales the fork tabs' messages as well.
+ */
+export function messagesFor(locale) {
+  const messages = extractMessages();
+  if (!forkLocales().includes(locale)) return messages;
+  const merged = new Map(messages);
+  for (const [text, info] of extractMessages({ local: true })) {
+    const known = merged.get(text);
+    if (known && known.plural !== info.plural)
+      throw new Error(
+        `${info.where}: "${text}" is used both as plural and plain text (also ${known.where})`,
+      );
+    if (!known) merged.set(text, info);
+  }
+  return merged;
 }
 
 const hasWords = (text) => /[A-Za-z]{2,}/.test(text);
@@ -202,7 +252,9 @@ export function unmarkedMarkup(file, html) {
       )) {
         if (
           hasWords(value) &&
-          !new RegExp(String.raw`\sdata-i18n-${name}\b`).test(attrs)
+          !new RegExp(String.raw`\sdata-i18n-(?:local-)?${name}\b`).test(
+            attrs,
+          )
         )
           found.push({
             where: `${file}:${lineAt(source, match.index)}`,
@@ -211,7 +263,11 @@ export function unmarkedMarkup(file, html) {
       }
     }
     if (!VOID_TAGS.has(tag) && !selfClosing)
-      stack.push({ tag, skip, marked: /\sdata-i18n(\s|=|$)/.test(attrs) });
+      stack.push({
+        tag,
+        skip,
+        marked: /\sdata-i18n(?:-local)?(\s|=|$)/.test(attrs),
+      });
   }
   return found;
 }
@@ -249,7 +305,7 @@ function defaultValue(source, nameStart, valueStart) {
   const after = source.slice(end).trimStart()[0];
   return Boolean(after) && ',)]}'.includes(after);
 }
-const MARKERS = /\b(?:t|tn|msg)\(/y;
+const MARKERS = /\b(?:t|tn|msg|tl|tln|msgl)\(/y;
 
 /** The expression starting at `start`, up to its end at bracket depth 0. */
 function expressionAt(source, start) {
@@ -574,17 +630,21 @@ export function missingTemplate(locale, catalog, messages) {
 }
 
 function main(args) {
-  const messages = extractMessages();
   const missingFor = args.includes('--missing')
     ? args[args.indexOf('--missing') + 1]
     : null;
   if (missingFor) {
-    const out = missingTemplate(missingFor, readCatalog(missingFor), messages);
+    const out = missingTemplate(
+      missingFor,
+      readCatalog(missingFor),
+      messagesFor(missingFor),
+    );
     console.log(JSON.stringify(out, null, 2));
     return 0;
   }
   let failed = false;
   for (const locale of shippedLocales()) {
+    const messages = messagesFor(locale);
     let catalog = readCatalog(locale);
     const { missing, stale, errors } = checkCatalog(locale, catalog, messages);
     if (args.includes('--prune') && stale.length) {

@@ -1,5 +1,93 @@
 # Changelog
 
+- Inuktitut, shown as **Inuktitut**, is a new interface language in the
+  language picker (owner request 2026-10-17), added the way Quebec French
+  was, the five tabs on the left included: `src/i18n/locales/iu.json` with
+  all 4,525 messages in syllabics, `iu` in `LOCALES`, `LOCALE_NAMES` and
+  `src/i18n/fork-locales.json`, its catalog in `src/i18n/index.js` and
+  `scripts/package-boundaries.json`, its kept-as-English list in
+  `src/i18n/same-as-english.json`, and its notes in
+  `docs/translations/iu.md` (spelling, the dual plural, glossary). Counts
+  take Inuktitut's three forms (one, two, other). `Intl` has no Inuktitut
+  number or date data, so numbers and dates follow Canadian English
+  (`1,234.5`) whatever the browser is. Pages in Inuktitut name the system
+  fonts that carry syllabics (Pigiarniq, Euphemia UCAS, Gadugi, Noto Sans
+  Canadian Aboriginal), and the CCTV control row wraps for it as for Spanish
+  and Quebec French. The translation is a first draft, checked word by word
+  against the Nunavut Hansard parallel corpus; it needs a fluent speaker's
+  review. Spanish and Russian are unchanged.
+
+- The five tabs on the left are in Quebec French too (owner request
+  2026-10-17): AI RISK & TRUTH ASSESSMENT, ULTRA SECURITY PACKAGE, SOCIAL
+  MEDIA ANALYSIS, OUTBREAK LOCATIONS & PREDICTED SPREAD and the ARTIFICIAL
+  INTELLIGENCE WORLD TRAINING SIM, with what they draw on the globe (AI World
+  predictions and market cards, the outbreak layer, Ultra photos and videos),
+  the panels' corner resize grip and the POWER UP chip's count. Their text is
+  marked with `tl()`, `tln()`, `msgl()` and `data-i18n-local*`, which
+  translate only into the locales listed in `src/i18n/fork-locales.json`
+  (Quebec French): Spanish and Russian keep these tabs in English, and their
+  catalogs are unchanged. Code the server shares (the outbreak and epidemic
+  summaries, the Ultra help request, the world tape) takes its words from a
+  `say` argument, so a model or a message still gets English. The AI World
+  row labels and licence notes, and the custom LLM's data sources and base
+  models, come from the server; the tabs list them for translation, and tests
+  fail when a list drifts from the server's. `fr-CA.json` now holds 4,525
+  messages. Still English in every language: SST, POWER UP's device, home and
+  business camera and road CCTV key sections, and what the server writes
+  (model answers, a forecast's reasons). How to mark text in these tabs:
+  `docs/I18N.md`, "The fork's own tabs".
+
+- Quebec French, shown as **Français Québécois**, is a new interface
+  language in the language picker (owner request 2026-10-17), added the way
+  Spanish and Russian were: `src/i18n/locales/fr-CA.json` with all 2,627
+  messages, `fr-CA` in `LOCALES` and `LOCALE_NAMES`, its catalog in
+  `src/i18n/index.js` and `scripts/package-boundaries.json`, its kept-as-
+  English list in `src/i18n/same-as-english.json`, and its notes in
+  `docs/translations/fr-CA.md` (Quebec vocabulary, French spacing, plurals,
+  glossary). A tag with a region is matched exactly first, and any French
+  (`fr`, `fr-FR`) opens in Quebec French, the only French shipped. Dates and
+  numbers follow Canadian French. The CCTV control row wraps for it as it
+  does for Spanish. Russian is unchanged.
+
+- ULTRA SECURITY PACKAGE moved from POWER UP → YOUR DEVICES to the bottom of
+  the ULTRA SECURITY PACKAGE tab (owner request 2026-10-17). The package
+  cards are laid out like the tab's other sections (its heading with the
+  count, its notes, rows and buttons); the tab mounts them and ends them with
+  itself, and they stay hidden until `/api/device-feeds` answers. Every
+  control, saved field, route and rule is unchanged: how a phone or tracker
+  connects, its address and login, the report-in key and lines, NEW KEY,
+  SAVE PACKAGE and REMOVE PACKAGE (refused quietly on the owner's phone, as
+  before). POWER UP keeps the drones, robots, marine drones and GPS trackers,
+  and its count no longer includes the package. One device is followed at a
+  time, so a save in either place redraws the other when it changes what
+  that one shows. The SMS relay and help-network directory keys stay in
+  POWER UP with the other keys.
+
+- Tests are isolated from this machine's data, caches and private config
+  (owner rule 2026-10-17: isolate a test; never move its fixtures out of the
+  way). A file-access sweep of `npm test` found `previewServing.test.mjs`
+  booting every provider on this checkout: each run appended two `restart`
+  gaps to the world tape and rewrote the AI World job state and market files
+  beside the running app. Other tests read the live Overpass, camera live-pack
+  and road CCTV key files, the Ultra token key, help network and inbox, the
+  private camera feed config, the integrity store and `.env`. Each now works
+  in an empty temp folder (`src/tooling/isolatedCwd.mjs`, imported first), or
+  passes a temp root, or both: `localProviderPlugins` and the app's Vite config
+  take an optional `sourceRoot` (without one nothing changes), the camera
+  server keys its stills from its own checkout, help-network pins are served
+  only for the Ultra module's own checkout, and two Vite test builds load no
+  `.env` (`envDir: false`). The media provenance test runs on a catalogue
+  with no live packs and checks that only its two fixture hosts are asked.
+
+- CUSTOM LLM TRAINING moved from POWER UP to the bottom of the ARTIFICIAL
+  INTELLIGENCE WORLD TRAINING SIM tab (owner request 2026-10-17). It is laid
+  out like the tab's other sections (its headings, notes, tick boxes, lists
+  with REMOVE and buttons), the tab mounts it and ends it with itself, and it
+  stays hidden until `/api/llm-training` answers. The settings, sources, runs
+  and trained models are unchanged; POWER UP no longer shows the section. The
+  tab's INSTRUCTIONS, `docs/TRAINING-GUIDE.md` part 4, `docs/AI-WORLD-TAB.md`
+  and `DATA_SOURCES.md` say where it is now.
+
 - Upstream merge, 2026-10-17 (second): the 44 upstream commits after
   a571142d, up to 1df2a272, all taken. The map retries the real imagery and
   terrain provider after a boot-time fallback instead of keeping OSM or a flat
@@ -583,7 +671,7 @@
 
 - Stop one retired bikeshare feed from reporting the whole layer as failed.
   City feeds are fetched independently, but failure was recorded in a single
-  flag that only a successful *activation* cleared — and an already-loaded city
+  flag that only a successful _activation_ cleared — and an already-loaded city
   never activates again. A dead feed re-entering camera range therefore latched
   LOAD FAILED permanently over a map still drawing every other city's stations.
   Failure is now tracked per city: a city that fails beside others still

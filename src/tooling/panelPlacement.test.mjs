@@ -30,8 +30,9 @@ test('left stack: AI Risk & Truth Assessment, CCTV, Ultra, Social Media Analysis
 test('the LLM box collapses like the others and is titled AI Risk & Truth Assessment', () => {
   const ask = between('<div id="ask-panel"', '<div id="cctv-panel"');
   assert.match(ask, /class="panel-collapsible" data-panel-id="ask-panel"/);
-  // The full name on the tab too (two lines), not a short form.
-  assert.match(ask, /<span class="panel-title" data-collapsed-title="AI RISK &amp; TRUTH ASSESSMENT">AI RISK &amp; TRUTH ASSESSMENT<\/span>/);
+  // The full name on the tab too (two lines), not a short form. Marked for
+  // the fork locales (data-i18n-local*): Quebec French, English elsewhere.
+  assert.match(ask, /<span class="panel-title" data-collapsed-title="AI RISK &amp; TRUTH ASSESSMENT"[^>]*>AI RISK &amp; TRUTH ASSESSMENT<\/span>/);
   assert.match(ask, /<button class="panel-collapse-btn" data-collapse-target="ask-panel"/);
   assert.ok(!html.includes('id="ask-toggle"'), 'no private show/hide button');
 });

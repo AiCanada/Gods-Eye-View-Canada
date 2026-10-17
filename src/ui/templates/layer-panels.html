@@ -5,13 +5,13 @@
        its own input, buttons and log, stacked top to bottom; the stack gives
        the panel its height and the rows scroll inside it, so several models
        never overlap. -->
-  <div id="ask-panel" class="panel-collapsible" data-panel-id="ask-panel" data-i18n-skip>
+  <div id="ask-panel" class="panel-collapsible" data-panel-id="ask-panel">
     <div class="panel-glow"></div>
     <div class="ask-panel-inner">
       <div class="panel-header">
-        <span class="panel-title" data-collapsed-title="AI RISK &amp; TRUTH ASSESSMENT">AI RISK &amp; TRUTH ASSESSMENT</span>
+        <span class="panel-title" data-collapsed-title="AI RISK &amp; TRUTH ASSESSMENT" data-i18n-local-collapsed-title data-i18n-local>AI RISK &amp; TRUTH ASSESSMENT</span>
         <span class="panel-divider"></span>
-        <button class="panel-collapse-btn" data-collapse-target="ask-panel" title="Collapse panel">−</button>
+        <button class="panel-collapse-btn" data-collapse-target="ask-panel" title="Collapse panel" data-i18n-local-title>−</button>
       </div>
       <div id="ask-body" class="ask-body">
         <div id="ask-empty" class="ask-status" aria-live="polite" hidden></div>
@@ -159,68 +159,68 @@
 
 
   <!-- Ultra Security Package: the owner's paired phone, not the CCTV catalogues. -->
-  <div id="ultra-panel" class="panel-collapsible collapsed" data-panel-id="ultra-panel" data-i18n-skip>
+  <div id="ultra-panel" class="panel-collapsible collapsed" data-panel-id="ultra-panel">
     <div class="panel-glow"></div>
     <div class="ultra-panel-inner">
       <div class="panel-header">
-        <span class="panel-title" data-collapsed-title="ULTRA">ULTRA SECURITY PACKAGE</span>
+        <span class="panel-title" data-collapsed-title="ULTRA" data-i18n-local-collapsed-title data-i18n-local>ULTRA SECURITY PACKAGE</span>
         <span class="panel-divider"></span>
-        <button class="panel-collapse-btn" data-collapse-target="ultra-panel" title="Collapse panel">+</button>
+        <button class="panel-collapse-btn" data-collapse-target="ultra-panel" title="Collapse panel" data-i18n-local-title>+</button>
       </div>
-      <div id="ultra-status" class="sst-readout" role="status" aria-live="polite">PHONE · WAITING</div>
+      <div id="ultra-status" class="sst-readout" role="status" aria-live="polite" data-i18n-local>PHONE · WAITING</div>
       <div id="ultra-cam-link" class="sst-readout"></div>
       <!-- Send help: one press releases this phone's position to every token marked NETWORK for four hours (STAND DOWN any time) and hands the phone the plea for the saved helpers. The incident comes from the FIND HELP select. -->
-      <div class="cctv-summary-label">SEND HELP <span id="ultra-release-state"></span></div>
+      <div class="cctv-summary-label"><span data-i18n-local>SEND HELP</span> <span id="ultra-release-state"></span></div>
       <div id="ultra-release" class="cctv-controls ultra-release">
         <!-- Shown only with more than one package saved: each has its own call, and these buttons act on the one chosen here. -->
-        <select id="ultra-release-package" aria-label="Which package is asking for help" hidden></select>
-        <button id="ultra-release-send" class="scene-btn ultra-danger" type="button">SEND HELP</button>
+        <select id="ultra-release-package" aria-label="Which package is asking for help" hidden data-i18n-local-aria-label></select>
+        <button id="ultra-release-send" class="scene-btn ultra-danger" type="button" data-i18n-local>SEND HELP</button>
         <!-- Always beside SEND HELP: with no call on, a press ends nothing and says so. -->
-        <button id="ultra-release-stand-down" class="scene-btn" type="button">STAND DOWN</button>
+        <button id="ultra-release-stand-down" class="scene-btn" type="button" data-i18n-local>STAND DOWN</button>
       </div>
       <p id="ultra-release-note" class="ultra-note"></p>
       <div id="ultra-release-plea" class="sst-readout" hidden></div>
       <!-- Help messages from token holders sit first under the status line: an incoming plea outranks the camera controls. -->
       <div id="ultra-inbox" class="ultra-inbox"></div>
       <div class="cctv-controls ultra-read-row">
-        <label class="ultra-match"><input id="ultra-read-aloud" type="checkbox" checked> Read new help messages aloud</label>
-        <label class="ultra-match"><input id="ultra-private-cams" type="checkbox"> Private CCTV on map</label>
+        <label class="ultra-match"><input id="ultra-read-aloud" type="checkbox" checked> <span data-i18n-local>Read new help messages aloud</span></label>
+        <label class="ultra-match"><input id="ultra-private-cams" type="checkbox"> <span data-i18n-local>Private CCTV on map</span></label>
       </div>
       <div class="cctv-controls ultra-map-controls">
-        <label class="ultra-match"><input id="ultra-map-show" type="checkbox"> Display Ultra history on map</label>
-        <select id="ultra-map-period" aria-label="How much of the Ultra holders' path the map shows" title="How much of each Ultra holder's path over time the map shows">
-          <option value="live">Live only</option>
-          <option value="1h">Last hour</option>
-          <option value="6h">Last 6 hours</option>
-          <option value="24h">Last 24 hours</option>
-          <option value="7d">Last 7 days</option>
-          <option value="30d" selected>Last 30 days</option>
-          <option value="365d">Last year</option>
+        <label class="ultra-match"><input id="ultra-map-show" type="checkbox"> <span data-i18n-local>Display Ultra history on map</span></label>
+        <select id="ultra-map-period" aria-label="How much of the Ultra holders' path the map shows" title="How much of each Ultra holder's path over time the map shows" data-i18n-local-aria-label data-i18n-local-title>
+          <option value="live" data-i18n-local>Live only</option>
+          <option value="1h" data-i18n-local>Last hour</option>
+          <option value="6h" data-i18n-local>Last 6 hours</option>
+          <option value="24h" data-i18n-local>Last 24 hours</option>
+          <option value="7d" data-i18n-local>Last 7 days</option>
+          <option value="30d" selected data-i18n-local>Last 30 days</option>
+          <option value="365d" data-i18n-local>Last year</option>
         </select>
       </div>
-      <div class="cctv-summary-label">ULTRA CELLS <span id="ultra-cells-count"></span></div>
+      <div class="cctv-summary-label"><span data-i18n-local>ULTRA CELLS</span> <span id="ultra-cells-count"></span></div>
       <div id="ultra-cells" class="ultra-cells"></div>
       <div class="cctv-controls">
-        <button id="ultra-cells-all" class="scene-btn" type="button" title="Every Ultra cell and every path on the map at the same time">SHOW ALL ON MAP</button>
+        <button id="ultra-cells-all" class="scene-btn" type="button" title="Every Ultra cell and every path on the map at the same time" data-i18n-local-title data-i18n-local>SHOW ALL ON MAP</button>
       </div>
       <form id="ultra-cell-add" class="cctv-controls ultra-contact">
-        <input id="ultra-cell-name" type="text" maxlength="60" placeholder="Name of another Ultra cell" aria-label="Name of another Ultra cell" autocomplete="off">
-        <button id="ultra-cell-add-btn" class="scene-btn" type="submit">+ ADD ULTRA CELL</button>
+        <input id="ultra-cell-name" type="text" maxlength="60" placeholder="Name of another Ultra cell" aria-label="Name of another Ultra cell" autocomplete="off" data-i18n-local-placeholder data-i18n-local-aria-label>
+        <button id="ultra-cell-add-btn" class="scene-btn" type="submit" data-i18n-local>+ ADD ULTRA CELL</button>
       </form>
       <p id="ultra-cell-note" class="ultra-note" hidden></p>
       <div class="cctv-controls">
-        <select id="ultra-model" aria-label="Ultra phone model">
-          <option value="generic-cell">Generic cell</option>
-          <option value="google-pixel">Google Pixel</option>
-          <option value="motorola">Motorola</option>
-          <option value="oppo">Oppo</option>
-          <option value="vivo">Vivo</option>
-          <option value="xiaomi">Xiaomi</option>
-          <option value="samsung-s26">Galaxy S26</option>
-          <option value="samsung-s22-ultra" selected>Galaxy S22 Ultra</option>
-          <option value="samsung-z8">Galaxy Z8</option>
-          <option value="samsung-z3">Galaxy Z3</option>
-          <option value="samsung-z-fold">Galaxy Z Fold</option>
+        <select id="ultra-model" aria-label="Ultra phone model" data-i18n-local-aria-label>
+          <option value="generic-cell" data-i18n-local>Generic cell</option>
+          <option value="google-pixel" data-i18n-local>Google Pixel</option>
+          <option value="motorola" data-i18n-local>Motorola</option>
+          <option value="oppo" data-i18n-local>Oppo</option>
+          <option value="vivo" data-i18n-local>Vivo</option>
+          <option value="xiaomi" data-i18n-local>Xiaomi</option>
+          <option value="samsung-s26" data-i18n-local>Galaxy S26</option>
+          <option value="samsung-s22-ultra" selected data-i18n-local>Galaxy S22 Ultra</option>
+          <option value="samsung-z8" data-i18n-local>Galaxy Z8</option>
+          <option value="samsung-z3" data-i18n-local>Galaxy Z3</option>
+          <option value="samsung-z-fold" data-i18n-local>Galaxy Z Fold</option>
         </select>
       </div>
       <!-- CELL: which saved phone TAKE PHOTO and TAKE VIDEO go to (owner
@@ -228,39 +228,39 @@
            else the one that reported last; the rest name a saved Ultra cell.
            The entries are filled from the status (src/ultraHelpPanel.js). -->
       <div class="cctv-controls">
-        <select id="ultra-camera-cell" aria-label="Which Ultra cell takes the photo or video">
-          <option value="">AUTO · THE PHONE WHOSE PAGE IS OPEN, ELSE THE LAST TO REPORT</option>
+        <select id="ultra-camera-cell" aria-label="Which Ultra cell takes the photo or video" data-i18n-local-aria-label>
+          <option value="" data-i18n-local>AUTO · THE PHONE WHOSE PAGE IS OPEN, ELSE THE LAST TO REPORT</option>
         </select>
       </div>
       <!-- CELL CAMERAS: PHOTO (one still) and VIDEO (live) for each camera
            this phone model has. Every press also records a clip, kept on
            this computer (owner ruling, 2026-10-08). -->
-      <div class="cctv-summary-label">CELL CAMERAS</div>
+      <div class="cctv-summary-label" data-i18n-local>CELL CAMERAS</div>
       <div class="cctv-controls ultra-cam-row" data-ultra-camera-row="front">
-        <span class="ultra-cam-name">Front Cell Cam</span>
-        <button class="scene-btn" type="button" data-ultra-camera="front" data-ultra-mode="photo" title="One still from the Front Cell Cam">TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map">▶</button>
-        <button class="scene-btn" type="button" data-ultra-camera="front" data-ultra-mode="video" title="Live video from the Front Cell Cam">TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map">▶</button>
+        <span class="ultra-cam-name" data-i18n-local>Front Cell Cam</span>
+        <button class="scene-btn" type="button" data-ultra-camera="front" data-ultra-mode="photo" title="One still from the Front Cell Cam" data-i18n-local-title data-i18n-local>TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map" data-i18n-local-title>◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map" data-i18n-local-title>▶</button>
+        <button class="scene-btn" type="button" data-ultra-camera="front" data-ultra-mode="video" title="Live video from the Front Cell Cam" data-i18n-local-title data-i18n-local>TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map" data-i18n-local-title>◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map" data-i18n-local-title>▶</button>
       </div>
       <div class="cctv-controls ultra-cam-row" data-ultra-camera-row="rear">
-        <span class="ultra-cam-name">Rear Cell Cam</span>
-        <button class="scene-btn" type="button" data-ultra-camera="rear" data-ultra-mode="photo" title="One still from the Rear Cell Cam">TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map">▶</button>
-        <button class="scene-btn" type="button" data-ultra-camera="rear" data-ultra-mode="video" title="Live video from the Rear Cell Cam">TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map">▶</button>
+        <span class="ultra-cam-name" data-i18n-local>Rear Cell Cam</span>
+        <button class="scene-btn" type="button" data-ultra-camera="rear" data-ultra-mode="photo" title="One still from the Rear Cell Cam" data-i18n-local-title data-i18n-local>TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map" data-i18n-local-title>◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map" data-i18n-local-title>▶</button>
+        <button class="scene-btn" type="button" data-ultra-camera="rear" data-ultra-mode="video" title="Live video from the Rear Cell Cam" data-i18n-local-title data-i18n-local>TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map" data-i18n-local-title>◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map" data-i18n-local-title>▶</button>
       </div>
       <div class="cctv-controls ultra-cam-row" data-ultra-camera-row="inner">
-        <span class="ultra-cam-name">Inside Fold Cell Cam</span>
-        <button class="scene-btn" type="button" data-ultra-camera="inner" data-ultra-mode="photo" title="One still from the Inside Fold Cell Cam">TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map">▶</button>
-        <button class="scene-btn" type="button" data-ultra-camera="inner" data-ultra-mode="video" title="Live video from the Inside Fold Cell Cam">TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map">▶</button>
+        <span class="ultra-cam-name" data-i18n-local>Inside Fold Cell Cam</span>
+        <button class="scene-btn" type="button" data-ultra-camera="inner" data-ultra-mode="photo" title="One still from the Inside Fold Cell Cam" data-i18n-local-title data-i18n-local>TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map" data-i18n-local-title>◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map" data-i18n-local-title>▶</button>
+        <button class="scene-btn" type="button" data-ultra-camera="inner" data-ultra-mode="video" title="Live video from the Inside Fold Cell Cam" data-i18n-local-title data-i18n-local>TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map" data-i18n-local-title>◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map" data-i18n-local-title>▶</button>
       </div>
       <div id="ultra-extra-cameras">
       <div class="cctv-controls ultra-cam-row" data-ultra-camera-row="rear-ultrawide" hidden>
-        <span class="ultra-cam-name">Rear Ultrawide Cam</span>
-        <button class="scene-btn" type="button" data-ultra-camera="rear-ultrawide" data-ultra-mode="photo" title="One still from the Rear Ultrawide Cam">TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map">▶</button>
-        <button class="scene-btn" type="button" data-ultra-camera="rear-ultrawide" data-ultra-mode="video" title="Live video from the Rear Ultrawide Cam">TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map">▶</button>
+        <span class="ultra-cam-name" data-i18n-local>Rear Ultrawide Cam</span>
+        <button class="scene-btn" type="button" data-ultra-camera="rear-ultrawide" data-ultra-mode="photo" title="One still from the Rear Ultrawide Cam" data-i18n-local-title data-i18n-local>TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map" data-i18n-local-title>◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map" data-i18n-local-title>▶</button>
+        <button class="scene-btn" type="button" data-ultra-camera="rear-ultrawide" data-ultra-mode="video" title="Live video from the Rear Ultrawide Cam" data-i18n-local-title data-i18n-local>TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map" data-i18n-local-title>◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map" data-i18n-local-title>▶</button>
       </div>
       <div class="cctv-controls ultra-cam-row" data-ultra-camera-row="rear-tele" hidden>
-        <span class="ultra-cam-name">Rear Telephoto Cam</span>
-        <button class="scene-btn" type="button" data-ultra-camera="rear-tele" data-ultra-mode="photo" title="One still from the Rear Telephoto Cam">TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map">▶</button>
-        <button class="scene-btn" type="button" data-ultra-camera="rear-tele" data-ultra-mode="video" title="Live video from the Rear Telephoto Cam">TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map">◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map">▶</button>
+        <span class="ultra-cam-name" data-i18n-local>Rear Telephoto Cam</span>
+        <button class="scene-btn" type="button" data-ultra-camera="rear-tele" data-ultra-mode="photo" title="One still from the Rear Telephoto Cam" data-i18n-local-title data-i18n-local>TAKE PHOTO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="-1" title="The photos before, on the map" data-i18n-local-title>◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="photos" data-ultra-media-dir="1" title="The next photos, on the map" data-i18n-local-title>▶</button>
+        <button class="scene-btn" type="button" data-ultra-camera="rear-tele" data-ultra-mode="video" title="Live video from the Rear Telephoto Cam" data-i18n-local-title data-i18n-local>TAKE VIDEO</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="-1" title="The videos before, on the map" data-i18n-local-title>◀</button><button class="scene-btn ultra-step" type="button" data-ultra-media-step="videos" data-ultra-media-dir="1" title="The next videos, on the map" data-i18n-local-title>▶</button>
       </div>
       </div>
       <!-- Photos and videos show on the map only, beside the Ultra cell: a
@@ -272,183 +272,185 @@
            ones off this computer, or every one with All ticked; it asks once
            more first. -->
       <div class="cctv-controls ultra-media-controls">
-        <label class="ultra-match"><input id="ultra-photos-on-map" type="checkbox" checked> PHOTOS ON MAP <span id="ultra-photo-pos"></span></label>
-        <label class="ultra-match"><input id="ultra-videos-on-map" type="checkbox" checked> VIDEOS ON MAP <span id="ultra-video-pos"></span></label>
+        <label class="ultra-match"><input id="ultra-photos-on-map" type="checkbox" checked> <span data-i18n-local>PHOTOS ON MAP</span> <span id="ultra-photo-pos"></span></label>
+        <label class="ultra-match"><input id="ultra-videos-on-map" type="checkbox" checked> <span data-i18n-local>VIDEOS ON MAP</span> <span id="ultra-video-pos"></span></label>
       </div>
       <div class="cctv-controls ultra-media-controls">
-        <label class="ultra-match"><input id="ultra-media-delete-all" type="checkbox"> All</label>
-        <button id="ultra-media-delete" class="scene-btn" type="button" title="Delete the ticked photos and videos, or all of them with All ticked" disabled>DELETE TICKED</button>
+        <label class="ultra-match"><input id="ultra-media-delete-all" type="checkbox"> <span data-i18n-local>All</span></label>
+        <button id="ultra-media-delete" class="scene-btn" type="button" title="Delete the ticked photos and videos, or all of them with All ticked" disabled data-i18n-local-title data-i18n-local>DELETE TICKED</button>
       </div>
-      <ul id="ultra-media" class="ultra-media" aria-label="Photos and videos from the Ultra cell"></ul>
-      <div class="cctv-summary-label">FIND HELP</div>
+      <ul id="ultra-media" class="ultra-media" aria-label="Photos and videos from the Ultra cell" data-i18n-local-aria-label></ul>
+      <div class="cctv-summary-label" data-i18n-local>FIND HELP</div>
       <!-- The incident select names the incident SEND HELP sends. Find Ultra Help is under development: its button does nothing yet. -->
       <div class="cctv-controls">
-        <select id="ultra-incident" aria-label="Classified incident type">
-          <option value="threat">THREAT</option>
-          <option value="fire">FIRE</option>
-          <option value="medical">MEDICAL</option>
-          <option value="other">OTHER</option>
+        <select id="ultra-incident" aria-label="Classified incident type" data-i18n-local-aria-label>
+          <option value="threat" data-i18n-local>THREAT</option>
+          <option value="fire" data-i18n-local>FIRE</option>
+          <option value="medical" data-i18n-local>MEDICAL</option>
+          <option value="other" data-i18n-local>OTHER</option>
         </select>
-        <button id="ultra-find" class="scene-btn" type="button" disabled title="Under development">Find Ultra Help (under development)</button>
+        <button id="ultra-find" class="scene-btn" type="button" disabled title="Under development" data-i18n-local-title data-i18n-local>Find Ultra Help (under development)</button>
       </div>
       <!-- GROK BOT SWARM: seven bots on GROK_BOT_API_KEY for the phone's last
            fix. Answers land in this log. Without the key, the Grok Bot
            computer (POWER UP), else the copied task and Grok Bot opened. -->
-      <div class="cctv-summary-label">GROK BOT SWARM</div>
-      <textarea id="ultra-swarm-instructions" class="ask-input social-query" rows="3" maxlength="1000" autocomplete="off" aria-label="Grok bot instructions" placeholder="Grok bot instructions. Leave empty for the default: threat incidents near the phone's last fix."></textarea>
+      <div class="cctv-summary-label" data-i18n-local>GROK BOT SWARM</div>
+      <textarea id="ultra-swarm-instructions" class="ask-input social-query" rows="3" maxlength="1000" autocomplete="off" aria-label="Grok bot instructions" placeholder="Grok bot instructions. Leave empty for the default: threat incidents near the phone's last fix." data-i18n-local-aria-label data-i18n-local-placeholder></textarea>
       <div class="cctv-controls">
-        <button id="ultra-swarm-run" class="scene-btn" type="button">GROK BOT SWARM</button>
+        <button id="ultra-swarm-run" class="scene-btn" type="button" data-i18n-local>GROK BOT SWARM</button>
       </div>
       <div id="ultra-swarm-status" class="ask-status" role="status" aria-live="polite"></div>
       <div id="ultra-swarm-output" class="ask-output" role="status" aria-live="polite" tabindex="0"></div>
-      <div class="cctv-summary-label">PREDEFINED HELP #</div>
+      <div class="cctv-summary-label" data-i18n-local>PREDEFINED HELP #</div>
       <form id="ultra-contact" class="cctv-controls ultra-contact">
-        <input id="ultra-contact-label" type="text" placeholder="Helper name" aria-label="Helper name" autocomplete="off" />
-        <input id="ultra-contact-number" type="tel" placeholder="+15065550100" aria-label="Helper phone number" autocomplete="off" />
-        <select id="ultra-contact-kind" aria-label="Helper kind">
-          <option value="police">POLICE</option>
-          <option value="fire">FIRE</option>
-          <option value="other">OTHER</option>
+        <input id="ultra-contact-label" type="text" placeholder="Helper name" aria-label="Helper name" autocomplete="off"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+        <input id="ultra-contact-number" type="tel" placeholder="+15065550100" aria-label="Helper phone number" autocomplete="off"  data-i18n-local-aria-label/>
+        <select id="ultra-contact-kind" aria-label="Helper kind" data-i18n-local-aria-label>
+          <option value="police" data-i18n-local>POLICE</option>
+          <option value="fire" data-i18n-local>FIRE</option>
+          <option value="other" data-i18n-local>OTHER</option>
         </select>
-        <button class="scene-btn" type="submit">SAVE #</button>
+        <button class="scene-btn" type="submit" data-i18n-local>SAVE #</button>
       </form>
-      <p id="ultra-help-store-note" class="ultra-note" hidden>The helpers file was changed and is not being used. The next save replaces it.</p>
+      <p id="ultra-help-store-note" class="ultra-note" hidden data-i18n-local>The helpers file was changed and is not being used. The next save replaces it.</p>
       <p id="ultra-outbound-note" class="ultra-note" hidden></p>
       <div id="ultra-contacts"></div>
       <!-- Share help tokens: one token per person, handed over beside the tailnet address; the plaintext only ever lands in the reveal box, which the status poll cannot repaint. -->
-      <div class="cctv-summary-label">SHARE ENCRYPTED ULTRA TOKENS</div>
+      <div class="cctv-summary-label" data-i18n-local>SHARE ENCRYPTED ULTRA TOKENS</div>
       <p id="ultra-token-note" class="ultra-note"></p>
       <form id="ultra-number" class="cctv-controls ultra-contact">
-        <input id="ultra-number-input" type="tel" placeholder="+15065550100 your cell: calls for help you receive are texted here" aria-label="Your number for SMS help" autocomplete="off">
-        <button class="scene-btn" type="submit">SAVE MY #</button>
-        <button id="ultra-number-clear" class="scene-btn" type="button" hidden>CLEAR MY #</button>
+        <input id="ultra-number-input" type="tel" placeholder="+15065550100 your cell: calls for help you receive are texted here" aria-label="Your number for SMS help" autocomplete="off" data-i18n-local-placeholder data-i18n-local-aria-label>
+        <button class="scene-btn" type="submit" data-i18n-local>SAVE MY #</button>
+        <button id="ultra-number-clear" class="scene-btn" type="button" hidden data-i18n-local>CLEAR MY #</button>
       </form>
       <form id="ultra-token" class="cctv-controls ultra-contact">
-        <input id="ultra-token-label" type="text" placeholder="Name of Ultra Token Holder" aria-label="Name of Ultra Token Holder" autocomplete="off">
+        <input id="ultra-token-label" type="text" placeholder="Name of Ultra Token Holder" aria-label="Name of Ultra Token Holder" autocomplete="off" data-i18n-local-placeholder data-i18n-local-aria-label>
         <!-- A token carries the location poll alone: Network is its only switch. -->
-        <label class="ultra-match"><input id="ultra-token-network" type="checkbox" checked> Network</label>
+        <label class="ultra-match"><input id="ultra-token-network" type="checkbox" checked> <span data-i18n-local>Network</span></label>
         <!-- Skill codes are written into the token string. Encrypt seals that list inside the string; leaving every box off mints the short token. -->
         <div id="ultra-token-skills" class="ultra-skills">
-          <span class="cctv-summary-label">Your Gifts or Skills Encrypted into Token String</span>
-          <label class="ultra-match"><input id="ultra-skill-dr" type="checkbox" data-ultra-skill="dr"> Doctor</label>
-          <label class="ultra-match"><input id="ultra-skill-pm" type="checkbox" data-ultra-skill="pm"> Paramedic</label>
-          <label class="ultra-match"><input id="ultra-skill-fr" type="checkbox" data-ultra-skill="fr"> First Responder</label>
-          <label class="ultra-match"><input id="ultra-skill-lg" type="checkbox" data-ultra-skill="lg"> Lifeguard</label>
-          <label class="ultra-match"><input id="ultra-skill-ff" type="checkbox" data-ultra-skill="ff"> Firefighter</label>
-          <label class="ultra-match ultra-skill-wide"><input id="ultra-skill-sr" type="checkbox" data-ultra-skill="sr"> Search and Rescue (SAR) Specialist</label>
-          <label class="ultra-match"><input id="ultra-skill-br" type="checkbox" data-ultra-skill="br"> Brave</label>
-          <label class="ultra-match"><input id="ultra-skill-st" type="checkbox" data-ultra-skill="st"> Strong</label>
-          <label class="ultra-match"><input id="ultra-skill-cc" type="checkbox" data-ultra-skill="cc"> Crisis Counselor</label>
-          <label class="ultra-match"><input id="ultra-skill-en" type="checkbox" data-ultra-skill="en"> Enforcer</label>
-          <label class="ultra-match"><input id="ultra-skill-ac" type="checkbox" data-ultra-skill="ac"> Animal Control</label>
-          <label class="ultra-match ultra-skill-wide"><input id="ultra-skill-hz" type="checkbox" data-ultra-skill="hz"> Hazardous Materials (HAZMAT)</label>
-          <label class="ultra-match"><input id="ultra-skill-rg" type="checkbox" data-ultra-skill="rg"> Ranger</label>
-          <label class="ultra-match"><input id="ultra-skill-tr" type="checkbox" data-ultra-skill="tr"> Transportation</label>
-          <label class="ultra-match"><input id="ultra-skill-ng" type="checkbox" data-ultra-skill="ng"> Mr./Mrs. Nice Guy</label>
-          <span class="cctv-summary-label">Your Custom Gifts or Skills Encrypted into Token String</span>
-          <input id="ultra-skill-custom-1" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 1" autocomplete="off" title="A long name is shortened to the words the token can carry.">
-          <input id="ultra-skill-custom-2" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 2" autocomplete="off" title="A long name is shortened to the words the token can carry.">
-          <input id="ultra-skill-custom-3" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 3" autocomplete="off" title="A long name is shortened to the words the token can carry.">
-          <input id="ultra-skill-custom-4" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 4" autocomplete="off" title="A long name is shortened to the words the token can carry.">
-          <input id="ultra-skill-custom-5" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 5" autocomplete="off" title="A long name is shortened to the words the token can carry.">
+          <span class="cctv-summary-label" data-i18n-local>Your Gifts or Skills Encrypted into Token String</span>
+          <label class="ultra-match"><input id="ultra-skill-dr" type="checkbox" data-ultra-skill="dr"> <span data-i18n-local>Doctor</span></label>
+          <label class="ultra-match"><input id="ultra-skill-pm" type="checkbox" data-ultra-skill="pm"> <span data-i18n-local>Paramedic</span></label>
+          <label class="ultra-match"><input id="ultra-skill-fr" type="checkbox" data-ultra-skill="fr"> <span data-i18n-local>First Responder</span></label>
+          <label class="ultra-match"><input id="ultra-skill-lg" type="checkbox" data-ultra-skill="lg"> <span data-i18n-local>Lifeguard</span></label>
+          <label class="ultra-match"><input id="ultra-skill-ff" type="checkbox" data-ultra-skill="ff"> <span data-i18n-local>Firefighter</span></label>
+          <label class="ultra-match ultra-skill-wide"><input id="ultra-skill-sr" type="checkbox" data-ultra-skill="sr"> <span data-i18n-local>Search and Rescue (SAR) Specialist</span></label>
+          <label class="ultra-match"><input id="ultra-skill-br" type="checkbox" data-ultra-skill="br"> <span data-i18n-local>Brave</span></label>
+          <label class="ultra-match"><input id="ultra-skill-st" type="checkbox" data-ultra-skill="st"> <span data-i18n-local>Strong</span></label>
+          <label class="ultra-match"><input id="ultra-skill-cc" type="checkbox" data-ultra-skill="cc"> <span data-i18n-local>Crisis Counselor</span></label>
+          <label class="ultra-match"><input id="ultra-skill-en" type="checkbox" data-ultra-skill="en"> <span data-i18n-local>Enforcer</span></label>
+          <label class="ultra-match"><input id="ultra-skill-ac" type="checkbox" data-ultra-skill="ac"> <span data-i18n-local>Animal Control</span></label>
+          <label class="ultra-match ultra-skill-wide"><input id="ultra-skill-hz" type="checkbox" data-ultra-skill="hz"> <span data-i18n-local>Hazardous Materials (HAZMAT)</span></label>
+          <label class="ultra-match"><input id="ultra-skill-rg" type="checkbox" data-ultra-skill="rg"> <span data-i18n-local>Ranger</span></label>
+          <label class="ultra-match"><input id="ultra-skill-tr" type="checkbox" data-ultra-skill="tr"> <span data-i18n-local>Transportation</span></label>
+          <label class="ultra-match"><input id="ultra-skill-ng" type="checkbox" data-ultra-skill="ng"> <span data-i18n-local>Mr./Mrs. Nice Guy</span></label>
+          <span class="cctv-summary-label" data-i18n-local>Your Custom Gifts or Skills Encrypted into Token String</span>
+          <input id="ultra-skill-custom-1" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 1" autocomplete="off" title="A long name is shortened to the words the token can carry." data-i18n-local-placeholder data-i18n-local-aria-label data-i18n-local-title>
+          <input id="ultra-skill-custom-2" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 2" autocomplete="off" title="A long name is shortened to the words the token can carry." data-i18n-local-placeholder data-i18n-local-aria-label data-i18n-local-title>
+          <input id="ultra-skill-custom-3" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 3" autocomplete="off" title="A long name is shortened to the words the token can carry." data-i18n-local-placeholder data-i18n-local-aria-label data-i18n-local-title>
+          <input id="ultra-skill-custom-4" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 4" autocomplete="off" title="A long name is shortened to the words the token can carry." data-i18n-local-placeholder data-i18n-local-aria-label data-i18n-local-title>
+          <input id="ultra-skill-custom-5" class="ultra-skill-custom" type="text" maxlength="40" placeholder="Custom skill" aria-label="Custom skill 5" autocomplete="off" title="A long name is shortened to the words the token can carry." data-i18n-local-placeholder data-i18n-local-aria-label data-i18n-local-title>
           <p id="ultra-skill-custom-preview" class="ultra-note" hidden></p>
-          <label class="ultra-match ultra-skill-wide" title="On: the skill list is sealed inside the token string. Off: the skill codes are written in the token string in the clear. Either way the token still works. No skills and Encrypt off keeps the short token."><input id="ultra-token-encrypt" type="checkbox"> Encrypt</label>
+          <label class="ultra-match ultra-skill-wide" title="On: the skill list is sealed inside the token string. Off: the skill codes are written in the token string in the clear. Either way the token still works. No skills and Encrypt off keeps the short token." data-i18n-local-title><input id="ultra-token-encrypt" type="checkbox"> <span data-i18n-local>Encrypt</span></label>
         </div>
-        <select id="ultra-token-package" aria-label="Which package" hidden></select>
-        <button id="ultra-token-submit" class="scene-btn" type="submit">GENERATE NEW TOKEN</button>
+        <select id="ultra-token-package" aria-label="Which package" hidden data-i18n-local-aria-label></select>
+        <button id="ultra-token-submit" class="scene-btn" type="submit" data-i18n-local>GENERATE NEW TOKEN</button>
       </form>
       <div id="ultra-token-reveal" class="ultra-reveal" hidden>
         <pre id="ultra-token-link"></pre>
         <div class="cctv-controls">
-          <button id="ultra-token-copy-address" class="scene-btn" type="button">COPY ADDRESS</button>
-          <button id="ultra-token-copy" class="scene-btn" type="button">COPY TOKEN</button>
-          <button id="ultra-token-hide" class="scene-btn" type="button">HIDE</button>
+          <button id="ultra-token-copy-address" class="scene-btn" type="button" data-i18n-local>COPY ADDRESS</button>
+          <button id="ultra-token-copy" class="scene-btn" type="button" data-i18n-local>COPY TOKEN</button>
+          <button id="ultra-token-hide" class="scene-btn" type="button" data-i18n-local>HIDE</button>
         </div>
       </div>
       <div id="ultra-tokens"></div>
       <!-- CONFIRM ULTRA TOKEN SKILLS: below the token REMOVE rows, above
            HELP NETWORK. Paste an Ultra Token to decrypt its skills. -->
       <div class="cctv-controls">
-        <button id="ultra-skill-check-open" class="scene-btn" type="button">CONFIRM ULTRA TOKEN SKILLS</button>
+        <button id="ultra-skill-check-open" class="scene-btn" type="button" data-i18n-local>CONFIRM ULTRA TOKEN SKILLS</button>
       </div>
       <form id="ultra-skill-check" class="ultra-reveal" hidden>
         <p id="ultra-skill-check-for" class="ultra-note"></p>
-        <p class="ultra-note">CONFIRMED, NO CONFIRMATION or REJECTED CLAIM, each with its link. Every detail is optional except the skills and a name or link; they help the bots or LLM find the right person.</p>
+        <p class="ultra-note" data-i18n-local>CONFIRMED, NO CONFIRMATION or REJECTED CLAIM, each with its link. Every detail is optional except the skills and a name or link; they help the bots or LLM find the right person.</p>
         <div class="cctv-controls ultra-contact">
-          <input id="ultra-skill-check-skills" type="text" maxlength="500" placeholder="Paste Ultra Token and decrypt skills from Ultra token to confirm" aria-label="Paste Ultra Token and decrypt skills from Ultra token to confirm" autocomplete="off" spellcheck="false">
-          <input id="ultra-skill-check-name" type="text" maxlength="80" placeholder="Name of token holder" aria-label="Name of token holder" autocomplete="off">
-          <input id="ultra-skill-check-alias" type="text" maxlength="80" placeholder="Alias/AKA" aria-label="Alias or AKA of token holder" autocomplete="off">
-          <input id="ultra-skill-check-location" type="text" maxlength="120" placeholder="Location of token holder" aria-label="Location of token holder" autocomplete="off">
-          <input id="ultra-skill-check-age" type="number" min="13" max="120" step="1" placeholder="Age" aria-label="Age of token holder" autocomplete="off">
-          <select id="ultra-skill-check-sex" aria-label="Male, female or other">
-            <option value="">Male / Female / Other</option>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-            <option value="other">Other</option>
+          <input id="ultra-skill-check-skills" type="text" maxlength="500" placeholder="Paste Ultra Token and decrypt skills from Ultra token to confirm" aria-label="Paste Ultra Token and decrypt skills from Ultra token to confirm" autocomplete="off" spellcheck="false" data-i18n-local-placeholder data-i18n-local-aria-label>
+          <input id="ultra-skill-check-name" type="text" maxlength="80" placeholder="Name of token holder" aria-label="Name of token holder" autocomplete="off" data-i18n-local-placeholder data-i18n-local-aria-label>
+          <input id="ultra-skill-check-alias" type="text" maxlength="80" placeholder="Alias/AKA" aria-label="Alias or AKA of token holder" autocomplete="off" data-i18n-local-placeholder data-i18n-local-aria-label>
+          <input id="ultra-skill-check-location" type="text" maxlength="120" placeholder="Location of token holder" aria-label="Location of token holder" autocomplete="off" data-i18n-local-placeholder data-i18n-local-aria-label>
+          <input id="ultra-skill-check-age" type="number" min="13" max="120" step="1" placeholder="Age" aria-label="Age of token holder" autocomplete="off" data-i18n-local-placeholder data-i18n-local-aria-label>
+          <select id="ultra-skill-check-sex" aria-label="Male, female or other" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Male / Female / Other</option>
+            <option value="male" data-i18n-local>Male</option>
+            <option value="female" data-i18n-local>Female</option>
+            <option value="other" data-i18n-local>Other</option>
           </select>
-          <input id="ultra-skill-check-profession" type="text" maxlength="80" placeholder="Profession" aria-label="Profession of token holder" autocomplete="off">
+          <input id="ultra-skill-check-profession" type="text" maxlength="80" placeholder="Profession" aria-label="Profession of token holder" autocomplete="off" data-i18n-local-placeholder data-i18n-local-aria-label>
         </div>
-        <textarea id="ultra-skill-check-urls" class="ask-input social-query" rows="2" maxlength="1600" autocomplete="off" spellcheck="false" aria-label="URLs of token holder" placeholder="URLs of token holder, one per line (profile, website, licence page)"></textarea>
-        <div id="ultra-skill-check-apps" class="ultra-skills" role="group" aria-label="Apps to search for token holder skills"></div>
+        <textarea id="ultra-skill-check-urls" class="ask-input social-query" rows="2" maxlength="1600" autocomplete="off" spellcheck="false" aria-label="URLs of token holder" placeholder="URLs of token holder, one per line (profile, website, licence page)" data-i18n-local-aria-label data-i18n-local-placeholder></textarea>
+        <div id="ultra-skill-check-apps" class="ultra-skills" role="group" aria-label="Apps to search for token holder skills" data-i18n-local-aria-label></div>
         <div class="cctv-controls">
-          <select id="ultra-skill-check-swarm" aria-label="Which swarm checks the skills">
-            <option value="xai">GROK BOT SWARM</option>
-            <option value="openai">OPENAI DOT SWARM</option>
-            <option value="llm">LLM</option>
+          <select id="ultra-skill-check-swarm" aria-label="Which swarm checks the skills" data-i18n-local-aria-label>
+            <option value="xai" data-i18n-local>GROK BOT SWARM</option>
+            <option value="openai" data-i18n-local>OPENAI DOT SWARM</option>
+            <option value="llm" data-i18n-local>LLM</option>
           </select>
-          <button id="ultra-skill-check-run" class="scene-btn" type="submit">CHECK SKILLS</button>
-          <button id="ultra-skill-check-close" class="scene-btn" type="button">CLOSE</button>
+          <button id="ultra-skill-check-run" class="scene-btn" type="submit" data-i18n-local>CHECK SKILLS</button>
+          <button id="ultra-skill-check-close" class="scene-btn" type="button" data-i18n-local>CLOSE</button>
         </div>
         <p id="ultra-skill-check-status" class="ultra-note" aria-live="polite"></p>
         <div id="ultra-skill-check-paste" hidden>
-          <textarea id="ultra-skill-check-report" class="ask-input social-query" rows="4" maxlength="8000" autocomplete="off" aria-label="Chief of Staff report" placeholder="Paste the Chief of Staff's report here, then READ REPORT"></textarea>
+          <textarea id="ultra-skill-check-report" class="ask-input social-query" rows="4" maxlength="8000" autocomplete="off" aria-label="Chief of Staff report" placeholder="Paste the Chief of Staff's report here, then READ REPORT" data-i18n-local-aria-label data-i18n-local-placeholder></textarea>
           <div class="cctv-controls">
-            <button id="ultra-skill-check-read" class="scene-btn" type="button">READ REPORT</button>
+            <button id="ultra-skill-check-read" class="scene-btn" type="button" data-i18n-local>READ REPORT</button>
           </div>
         </div>
         <ul id="ultra-skill-check-results" class="ultra-skill-check-results"></ul>
       </form>
       <!-- Help network: the handouts (tailnet address + Ultra Token) this machine's server polls, the directory the group shares, my published token and the SMS relay. Other people's tokens are never shown here; only hosts are. -->
-      <div class="cctv-summary-label">HELP NETWORK <span id="ultra-network-count"></span></div>
+      <div class="cctv-summary-label"><span data-i18n-local>HELP NETWORK</span> <span id="ultra-network-count"></span></div>
       <p id="ultra-network-note" class="ultra-note"></p>
       <form id="ultra-network-me" class="cctv-controls ultra-contact">
-        <input id="ultra-network-me-name" type="text" maxlength="60" placeholder="Your name, as your holders see it" aria-label="Your network name" autocomplete="off">
-        <button class="scene-btn" type="submit">SAVE MY NAME</button>
+        <input id="ultra-network-me-name" type="text" maxlength="60" placeholder="Your name, as your holders see it" aria-label="Your network name" autocomplete="off" data-i18n-local-placeholder data-i18n-local-aria-label>
+        <button class="scene-btn" type="submit" data-i18n-local>SAVE MY NAME</button>
       </form>
       <form id="ultra-directory" class="cctv-controls ultra-contact">
-        <input id="ultra-directory-url" type="url" placeholder="https://raw.githubusercontent.com/<group>/<repo>/main/ultra-directory.json" aria-label="Directory address" autocomplete="off" spellcheck="false">
-        <input id="ultra-directory-token" type="password" placeholder="GitHub write token (optional, never shown)" aria-label="Directory write token" autocomplete="off">
-        <button class="scene-btn" type="submit">SAVE DIRECTORY</button>
+        <input id="ultra-directory-url" type="url" placeholder="https://raw.githubusercontent.com/<group>/<repo>/main/ultra-directory.json" aria-label="Directory address" autocomplete="off" spellcheck="false" data-i18n-local-placeholder data-i18n-local-aria-label>
+        <input id="ultra-directory-token" type="password" placeholder="GitHub write token (optional, never shown)" aria-label="Directory write token" autocomplete="off" data-i18n-local-placeholder data-i18n-local-aria-label>
+        <button class="scene-btn" type="submit" data-i18n-local>SAVE DIRECTORY</button>
       </form>
       <div class="cctv-controls">
-        <select id="ultra-publish-token" aria-label="Which token to publish" hidden></select>
+        <select id="ultra-publish-token" aria-label="Which token to publish" hidden data-i18n-local-aria-label></select>
         <!-- Shown only with more than one package saved and DIRECTORY TOKEN chosen: which package's position the new directory token follows. -->
-        <select id="ultra-publish-package" aria-label="Which package to publish" hidden></select>
-        <button id="ultra-network-publish" class="scene-btn" type="button">PUBLISH MY TOKEN</button>
-        <button id="ultra-network-update" class="scene-btn" type="button">UPDATE HOME LIST</button>
-        <button id="ultra-network-poll" class="scene-btn" type="button">CHECK NOW</button>
+        <select id="ultra-publish-package" aria-label="Which package to publish" hidden data-i18n-local-aria-label></select>
+        <button id="ultra-network-publish" class="scene-btn" type="button" data-i18n-local>PUBLISH MY TOKEN</button>
+        <button id="ultra-network-update" class="scene-btn" type="button" data-i18n-local>UPDATE HOME LIST</button>
+        <button id="ultra-network-poll" class="scene-btn" type="button" data-i18n-local>CHECK NOW</button>
       </div>
       <div id="ultra-network-entry" class="ultra-reveal" hidden>
         <pre id="ultra-network-entry-text"></pre>
         <p id="ultra-network-entry-note" class="ultra-note"></p>
         <div class="cctv-controls">
-          <button id="ultra-network-entry-copy" class="scene-btn" type="button">COPY ENTRY</button>
-          <a id="ultra-network-entry-mail" class="scene-btn" rel="noopener" hidden>EMAIL ENTRY</a>
-          <button id="ultra-network-entry-hide" class="scene-btn" type="button">HIDE</button>
+          <button id="ultra-network-entry-copy" class="scene-btn" type="button" data-i18n-local>COPY ENTRY</button>
+          <a id="ultra-network-entry-mail" class="scene-btn" rel="noopener" hidden data-i18n-local>EMAIL ENTRY</a>
+          <button id="ultra-network-entry-hide" class="scene-btn" type="button" data-i18n-local>HIDE</button>
         </div>
       </div>
       <!-- A handout is two boxes: the tailnet address and the Ultra Token. The token is never part of a URL; a legacy whole link pasted into the address box is split before posting. -->
       <form id="ultra-network-add" class="cctv-controls ultra-contact">
-        <input id="ultra-network-address" type="text" placeholder="Their tailnet address (https://<machine>.<tailnet>.ts.net)" aria-label="Their tailnet address" autocomplete="off" spellcheck="false">
-        <input id="ultra-network-token" type="text" placeholder="Their Ultra Token (uht1.…)" aria-label="Their Ultra Token" autocomplete="off" spellcheck="false">
-        <input id="ultra-network-link-name" type="text" maxlength="60" placeholder="Their name" aria-label="Their name" autocomplete="off">
-        <button class="scene-btn" type="submit">ADD TO HOME LIST</button>
+        <input id="ultra-network-address" type="text" placeholder="Their tailnet address (https://<machine>.<tailnet>.ts.net)" aria-label="Their tailnet address" autocomplete="off" spellcheck="false" data-i18n-local-placeholder data-i18n-local-aria-label>
+        <input id="ultra-network-token" type="text" placeholder="Their Ultra Token (uht1.…)" aria-label="Their Ultra Token" autocomplete="off" spellcheck="false" data-i18n-local-placeholder data-i18n-local-aria-label>
+        <input id="ultra-network-link-name" type="text" maxlength="60" placeholder="Their name" aria-label="Their name" autocomplete="off" data-i18n-local-placeholder data-i18n-local-aria-label>
+        <button class="scene-btn" type="submit" data-i18n-local>ADD TO HOME LIST</button>
       </form>
       <div id="ultra-network-list"></div>
       <div class="cctv-controls">
         <span id="ultra-sms-relay" class="sst-readout"></span>
-        <button id="ultra-sms-test" class="scene-btn" type="button">TEST SMS</button>
+        <button id="ultra-sms-test" class="scene-btn" type="button" data-i18n-local>TEST SMS</button>
       </div>
+      <!-- ULTRA SECURITY PACKAGE: the package cards (how each phone or tracker connects, its address, login and report-in key), last in the tab. Moved from POWER UP on 2026-10-17 (owner request). src/deviceFeedsSetup.js draws them in this tab's look and src/ultraHelpPanel.js mounts them; hidden until /api/device-feeds answers. -->
+      <div id="ultra-package-setup" class="ultra-package-setup" hidden></div>
     </div>
   </div>
 
@@ -456,177 +458,177 @@
     <!-- Social Media Analysis: a left-stack box under CCTV. The user id and
          password stay encrypted on this computer. Analyze, Breaking News, and
          Search look up public news for the map place, then send one question. -->
-    <div id="social-panel" class="panel-collapsible collapsed" data-panel-id="social-panel" data-i18n-skip>
+    <div id="social-panel" class="panel-collapsible collapsed" data-panel-id="social-panel">
       <div class="panel-glow"></div>
       <div class="social-panel-inner">
         <div class="panel-header">
-          <span class="panel-title" data-collapsed-title="SOCIAL MEDIA ANALYSIS">SOCIAL MEDIA ANALYSIS</span>
+          <span class="panel-title" data-collapsed-title="SOCIAL MEDIA ANALYSIS" data-i18n-local-collapsed-title data-i18n-local>SOCIAL MEDIA ANALYSIS</span>
           <span class="panel-divider"></span>
-          <button class="panel-collapse-btn" data-collapse-target="social-panel" title="Collapse panel">+</button>
+          <button class="panel-collapse-btn" data-collapse-target="social-panel" title="Collapse panel" data-i18n-local-title>+</button>
         </div>
         <!-- The note, the Power Up count and the heading sit flush, with no space between. -->
-        <p class="social-note social-flush">Your API Keys, User Id's and Passwords stay encrypted on this computer for integrating AI Tools</p>
-        <p id="social-powerup" class="social-powerup social-flush">0/0 Power Ups Attained</p>
-        <div class="cctv-summary-label social-flush">Social Media/The Gig Economy/On-Demand Delivery Platforms</div>
+        <p class="social-note social-flush" data-i18n-local>Your API Keys, User Id's and Passwords stay encrypted on this computer for integrating AI Tools</p>
+        <p id="social-powerup" class="social-powerup social-flush" data-i18n-local>0/0 Power Ups Attained</p>
+        <div class="cctv-summary-label social-flush" data-i18n-local>Social Media/The Gig Economy/On-Demand Delivery Platforms</div>
         <div class="cctv-controls">
-          <select id="social-account-platform" aria-label="Account platform">
-            <optgroup label="Social Media">
-            <option value="facebook">Facebook</option>
-            <option value="instagram">Instagram</option>
-            <option value="threads">Threads</option>
+          <select id="social-account-platform" aria-label="Account platform" data-i18n-local-aria-label>
+            <optgroup label="Social Media" data-i18n-local-label>
+            <option value="facebook" data-i18n-local>Facebook</option>
+            <option value="instagram" data-i18n-local>Instagram</option>
+            <option value="threads" data-i18n-local>Threads</option>
             <option value="x">X</option>
-            <option value="truth">Truth Social</option>
-            <option value="snapchat">Snapchat</option>
-            <option value="tiktok">TikTok</option>
-            <option value="find-my">Apple Find My</option>
-            <option value="google-maps">Google Maps</option>
-            <option value="bump">Bump</option>
-            <option value="blink">Blink</option>
-            <option value="life360">Life360</option>
-            <option value="radarly">Radarly</option>
-            <option value="buzzly">Buzzly</option>
-            <option value="vicinity">Vicinity</option>
-            <option value="nearjoy">NearJoy</option>
-            <option value="happn">Happn</option>
-            <option value="pure">Pure</option>
-            <option value="sniffies">Sniffies</option>
+            <option value="truth" data-i18n-local>Truth Social</option>
+            <option value="snapchat" data-i18n-local>Snapchat</option>
+            <option value="tiktok" data-i18n-local>TikTok</option>
+            <option value="find-my" data-i18n-local>Apple Find My</option>
+            <option value="google-maps" data-i18n-local>Google Maps</option>
+            <option value="bump" data-i18n-local>Bump</option>
+            <option value="blink" data-i18n-local>Blink</option>
+            <option value="life360" data-i18n-local>Life360</option>
+            <option value="radarly" data-i18n-local>Radarly</option>
+            <option value="buzzly" data-i18n-local>Buzzly</option>
+            <option value="vicinity" data-i18n-local>Vicinity</option>
+            <option value="nearjoy" data-i18n-local>NearJoy</option>
+            <option value="happn" data-i18n-local>Happn</option>
+            <option value="pure" data-i18n-local>Pure</option>
+            <option value="sniffies" data-i18n-local>Sniffies</option>
             </optgroup>
             <!-- HELP locations from these, and sending HELP through them with Find Ultra Help, are under development. -->
-            <optgroup label="The Gig Economy / On-Demand Delivery">
-            <option value="doordash">DoorDash</option>
-            <option value="uber">Uber</option>
-            <option value="lyft">Lyft</option>
-            <option value="just-eat-takeaway">Just Eat Takeaway</option>
-            <option value="delivery-hero">Delivery Hero</option>
-            <option value="grubhub">Grubhub</option>
+            <optgroup label="The Gig Economy / On-Demand Delivery" data-i18n-local-label>
+            <option value="doordash" data-i18n-local>DoorDash</option>
+            <option value="uber" data-i18n-local>Uber</option>
+            <option value="lyft" data-i18n-local>Lyft</option>
+            <option value="just-eat-takeaway" data-i18n-local>Just Eat Takeaway</option>
+            <option value="delivery-hero" data-i18n-local>Delivery Hero</option>
+            <option value="grubhub" data-i18n-local>Grubhub</option>
             </optgroup>
           </select>
         </div>
         <p id="social-account-note" class="social-note" hidden></p>
         <!-- HELP DELIVERY: what the gig and delivery platforms would bring. Each GEVC keeps its own default in this browser; sending it is under development. -->
-        <div class="cctv-summary-label">HELP DELIVERY · On-Demand Delivery / The Gig Economy</div>
+        <div class="cctv-summary-label" data-i18n-local>HELP DELIVERY · On-Demand Delivery / The Gig Economy</div>
         <div class="cctv-controls">
-          <select id="social-help-kind" aria-label="Help item to be delivered">
-            <option value="medicine">Medicine</option>
-            <option value="transportation">Transportation</option>
-            <option value="food">Food</option>
-            <option value="liquid">Liquid</option>
-            <option value="items">Items</option>
+          <select id="social-help-kind" aria-label="Help item to be delivered" data-i18n-local-aria-label>
+            <option value="medicine" data-i18n-local>Medicine</option>
+            <option value="transportation" data-i18n-local>Transportation</option>
+            <option value="food" data-i18n-local>Food</option>
+            <option value="liquid" data-i18n-local>Liquid</option>
+            <option value="items" data-i18n-local>Items</option>
           </select>
-          <select id="social-help-destination" aria-label="Take from current location to" hidden>
-            <option value="home">From current location to Home</option>
-            <option value="hospital">From current location to Hospital</option>
+          <select id="social-help-destination" aria-label="Take from current location to" hidden data-i18n-local-aria-label>
+            <option value="home" data-i18n-local>From current location to Home</option>
+            <option value="hospital" data-i18n-local>From current location to Hospital</option>
           </select>
         </div>
         <div class="cctv-controls" id="social-help-entries">
-          <input id="social-help-item-1" class="ask-input" type="text" maxlength="80" autocomplete="off" placeholder="Medication 1" aria-label="Medication 1" />
-          <input id="social-help-item-2" class="ask-input" type="text" maxlength="80" autocomplete="off" placeholder="Medication 2" aria-label="Medication 2" />
+          <input id="social-help-item-1" class="ask-input" type="text" maxlength="80" autocomplete="off" placeholder="Medication 1" aria-label="Medication 1"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <input id="social-help-item-2" class="ask-input" type="text" maxlength="80" autocomplete="off" placeholder="Medication 2" aria-label="Medication 2"  data-i18n-local-placeholder data-i18n-local-aria-label/>
         </div>
         <div class="cctv-controls">
-          <button id="social-help-save" class="scene-btn" type="button">SAVE MY DEFAULT</button>
+          <button id="social-help-save" class="scene-btn" type="button" data-i18n-local>SAVE MY DEFAULT</button>
         </div>
-        <p id="social-help-default" class="social-note">No default saved yet. Sending HELP through these platforms is under development.</p>
+        <p id="social-help-default" class="social-note" data-i18n-local>No default saved yet. Sending HELP through these platforms is under development.</p>
         <div class="cctv-controls">
-          <input id="social-account-handle" class="ask-input" type="text" maxlength="128" autocomplete="off" spellcheck="false" placeholder="User id" aria-label="User id" />
-        </div>
-        <div class="cctv-controls">
-          <input id="social-account-password" class="ask-input" type="password" maxlength="256" autocomplete="off" spellcheck="false" placeholder="Password" aria-label="Password" />
-          <button id="social-account-save" class="scene-btn" type="button">SAVE LOGIN</button>
+          <input id="social-account-handle" class="ask-input" type="text" maxlength="128" autocomplete="off" spellcheck="false" placeholder="User id" aria-label="User id"  data-i18n-local-placeholder data-i18n-local-aria-label/>
         </div>
         <div class="cctv-controls">
-          <input id="social-account-apikey" class="ask-input" type="password" maxlength="512" autocomplete="off" spellcheck="false" placeholder="API key" aria-label="API key" />
+          <input id="social-account-password" class="ask-input" type="password" maxlength="256" autocomplete="off" spellcheck="false" placeholder="Password" aria-label="Password"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <button id="social-account-save" class="scene-btn" type="button" data-i18n-local>SAVE LOGIN</button>
         </div>
         <div class="cctv-controls">
-          <button id="social-account-open" class="scene-btn" type="button">OPEN SITE</button>
+          <input id="social-account-apikey" class="ask-input" type="password" maxlength="512" autocomplete="off" spellcheck="false" placeholder="API key" aria-label="API key"  data-i18n-local-placeholder data-i18n-local-aria-label/>
         </div>
         <div class="cctv-controls">
-          <select id="social-open-kind" aria-label="Which saved sites to open">
-            <option value="login" selected>ID &amp; Pass</option>
-            <option value="api">API</option>
-            <option value="all">All</option>
+          <button id="social-account-open" class="scene-btn" type="button" data-i18n-local>OPEN SITE</button>
+        </div>
+        <div class="cctv-controls">
+          <select id="social-open-kind" aria-label="Which saved sites to open" data-i18n-local-aria-label>
+            <option value="login" selected data-i18n-local>ID &amp; Pass</option>
+            <option value="api" data-i18n-local>API</option>
+            <option value="all" data-i18n-local>All</option>
           </select>
-          <button id="social-open-saved" class="scene-btn" type="button">OPEN ID &amp; PASS SITES</button>
+          <button id="social-open-saved" class="scene-btn" type="button" data-i18n-local>OPEN ID &amp; PASS SITES</button>
         </div>
-        <ul id="social-account-list" class="social-account-list" aria-label="Saved accounts"></ul>
+        <ul id="social-account-list" class="social-account-list" aria-label="Saved accounts" data-i18n-local-aria-label></ul>
         <div class="cctv-controls">
           <label class="social-show-location" for="social-show-location">
-            <input id="social-show-location" type="checkbox" checked aria-label="Show live location on the map" />
-            SHOW ON MAP
+            <input id="social-show-location" type="checkbox" checked aria-label="Show live location on the map"  data-i18n-local-aria-label/>
+            <span data-i18n-local>SHOW ON MAP</span>
           </label>
         </div>
-        <p id="social-location-note" class="social-note">A hooked-up account that shares location displays live position on the map. If allowed by 3rd Party.</p>
-        <div class="cctv-summary-label">LLM</div>
-        <textarea id="social-query" class="ask-input social-query" rows="3" autocomplete="off" aria-label="Analysis, news question, or help to send" placeholder="Type the analysis, news question, or help to send"></textarea>
+        <p id="social-location-note" class="social-note" data-i18n-local>A hooked-up account that shares location displays live position on the map. If allowed by 3rd Party.</p>
+        <div class="cctv-summary-label" data-i18n-local>LLM</div>
+        <textarea id="social-query" class="ask-input social-query" rows="3" autocomplete="off" aria-label="Analysis, news question, or help to send" placeholder="Type the analysis, news question, or help to send" data-i18n-local-aria-label data-i18n-local-placeholder></textarea>
         <div class="cctv-controls">
-          <select id="social-model" aria-label="Language model">
-            <option value="">No model key yet</option>
+          <select id="social-model" aria-label="Language model" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>No model key yet</option>
           </select>
         </div>
         <div class="cctv-controls">
-          <button id="social-analyze" class="scene-btn" type="button">ANALYZE</button>
-          <select id="social-analyze-platform" aria-label="Platform to analyze">
-            <option value="all">All platforms</option>
-            <option value="facebook">Facebook</option>
-            <option value="instagram">Instagram</option>
-            <option value="threads">Threads</option>
+          <button id="social-analyze" class="scene-btn" type="button" data-i18n-local>ANALYZE</button>
+          <select id="social-analyze-platform" aria-label="Platform to analyze" data-i18n-local-aria-label>
+            <option value="all" data-i18n-local>All platforms</option>
+            <option value="facebook" data-i18n-local>Facebook</option>
+            <option value="instagram" data-i18n-local>Instagram</option>
+            <option value="threads" data-i18n-local>Threads</option>
             <option value="x">X</option>
-            <option value="truth">Truth Social</option>
-            <option value="snapchat">Snapchat</option>
-            <option value="tiktok">TikTok</option>
+            <option value="truth" data-i18n-local>Truth Social</option>
+            <option value="snapchat" data-i18n-local>Snapchat</option>
+            <option value="tiktok" data-i18n-local>TikTok</option>
           </select>
         </div>
         <div class="cctv-controls">
-          <button id="social-news" class="scene-btn" type="button">BREAKING NEWS</button>
-          <select id="social-news-platform" aria-label="Platform for breaking news">
-            <option value="all">All</option>
-            <option value="facebook">Facebook</option>
-            <option value="instagram">Instagram</option>
-            <option value="threads">Threads</option>
+          <button id="social-news" class="scene-btn" type="button" data-i18n-local>BREAKING NEWS</button>
+          <select id="social-news-platform" aria-label="Platform for breaking news" data-i18n-local-aria-label>
+            <option value="all" data-i18n-local>All</option>
+            <option value="facebook" data-i18n-local>Facebook</option>
+            <option value="instagram" data-i18n-local>Instagram</option>
+            <option value="threads" data-i18n-local>Threads</option>
             <option value="x">X</option>
-            <option value="truth">Truth Social</option>
-            <option value="tiktok">TikTok</option>
+            <option value="truth" data-i18n-local>Truth Social</option>
+            <option value="tiktok" data-i18n-local>TikTok</option>
           </select>
         </div>
         <div class="cctv-controls">
-          <button id="social-search" class="scene-btn" type="button">SEARCH</button>
+          <button id="social-search" class="scene-btn" type="button" data-i18n-local>SEARCH</button>
         </div>
-        <div class="cctv-summary-label">FIND HELP TO SEND</div>
+        <div class="cctv-summary-label" data-i18n-local>FIND HELP TO SEND</div>
         <div class="cctv-controls">
-          <button id="social-help" class="scene-btn" type="button">FIND HELP</button>
-          <select id="social-help-platform" aria-label="Location option for finding help">
-            <option value="all">All location options</option>
-            <option value="find-my">Apple Find My</option>
-            <option value="google-maps">Google Maps</option>
-            <option value="snap-map">Snapchat Snap Map</option>
-            <option value="bump">Bump</option>
-            <option value="blink">Blink</option>
-            <option value="life360">Life360</option>
-            <option value="radarly">Radarly</option>
-            <option value="buzzly">Buzzly</option>
-            <option value="vicinity">Vicinity</option>
-            <option value="nearjoy">NearJoy</option>
-            <option value="happn">Happn</option>
-            <option value="pure">Pure</option>
-            <option value="sniffies">Sniffies</option>
-            <option value="instagram-map">Instagram Map</option>
-            <option value="facebook-checkin">Facebook check-ins</option>
-            <option value="instagram-checkin">Instagram check-ins</option>
-            <option value="x-checkin">X check-ins</option>
+          <button id="social-help" class="scene-btn" type="button" data-i18n-local>FIND HELP</button>
+          <select id="social-help-platform" aria-label="Location option for finding help" data-i18n-local-aria-label>
+            <option value="all" data-i18n-local>All location options</option>
+            <option value="find-my" data-i18n-local>Apple Find My</option>
+            <option value="google-maps" data-i18n-local>Google Maps</option>
+            <option value="snap-map" data-i18n-local>Snapchat Snap Map</option>
+            <option value="bump" data-i18n-local>Bump</option>
+            <option value="blink" data-i18n-local>Blink</option>
+            <option value="life360" data-i18n-local>Life360</option>
+            <option value="radarly" data-i18n-local>Radarly</option>
+            <option value="buzzly" data-i18n-local>Buzzly</option>
+            <option value="vicinity" data-i18n-local>Vicinity</option>
+            <option value="nearjoy" data-i18n-local>NearJoy</option>
+            <option value="happn" data-i18n-local>Happn</option>
+            <option value="pure" data-i18n-local>Pure</option>
+            <option value="sniffies" data-i18n-local>Sniffies</option>
+            <option value="instagram-map" data-i18n-local>Instagram Map</option>
+            <option value="facebook-checkin" data-i18n-local>Facebook check-ins</option>
+            <option value="instagram-checkin" data-i18n-local>Instagram check-ins</option>
+            <option value="x-checkin" data-i18n-local>X check-ins</option>
           </select>
         </div>
         <!-- Bot swarms: one bot per platform, each a single request with the provider's own search, all sent at once on the swarm's own key in POWER UP (GROK BOT, OPENAI DOTS). Answers land in this log. No login is kept here. -->
-        <div class="cctv-summary-label">GROK BOT SWARM</div>
-        <textarea id="social-swarm-xai-instructions" class="ask-input social-query" rows="3" maxlength="1000" autocomplete="off" aria-label="Grok bot instructions" placeholder="Grok bot instructions. Leave empty for the default: threat incidents near this map place."></textarea>
+        <div class="cctv-summary-label" data-i18n-local>GROK BOT SWARM</div>
+        <textarea id="social-swarm-xai-instructions" class="ask-input social-query" rows="3" maxlength="1000" autocomplete="off" aria-label="Grok bot instructions" placeholder="Grok bot instructions. Leave empty for the default: threat incidents near this map place." data-i18n-local-aria-label data-i18n-local-placeholder></textarea>
         <div class="cctv-controls">
-          <button id="social-swarm-xai-run" class="scene-btn" type="button">GROK BOT SWARM</button>
-          <button id="social-swarm-xai-open" class="scene-btn" type="button">OPEN GROK BOT</button>
+          <button id="social-swarm-xai-run" class="scene-btn" type="button" data-i18n-local>GROK BOT SWARM</button>
+          <button id="social-swarm-xai-open" class="scene-btn" type="button" data-i18n-local>OPEN GROK BOT</button>
         </div>
         <div id="social-swarm-xai-status" class="ask-status" role="status" aria-live="polite"></div>
-        <div class="cctv-summary-label">OPENAI BOT SWARM</div>
-        <textarea id="social-swarm-openai-instructions" class="ask-input social-query" rows="3" maxlength="1000" autocomplete="off" aria-label="OpenAI bot instructions" placeholder="OpenAI bot instructions. Leave empty for the default: threat incidents near this map place."></textarea>
+        <div class="cctv-summary-label" data-i18n-local>OPENAI BOT SWARM</div>
+        <textarea id="social-swarm-openai-instructions" class="ask-input social-query" rows="3" maxlength="1000" autocomplete="off" aria-label="OpenAI bot instructions" placeholder="OpenAI bot instructions. Leave empty for the default: threat incidents near this map place." data-i18n-local-aria-label data-i18n-local-placeholder></textarea>
         <div class="cctv-controls">
-          <button id="social-swarm-openai-run" class="scene-btn" type="button">OPENAI BOT SWARM</button>
-          <button id="social-swarm-openai-open" class="scene-btn" type="button">OPEN CHATGPT</button>
+          <button id="social-swarm-openai-run" class="scene-btn" type="button" data-i18n-local>OPENAI BOT SWARM</button>
+          <button id="social-swarm-openai-open" class="scene-btn" type="button" data-i18n-local>OPEN CHATGPT</button>
         </div>
         <div id="social-swarm-openai-status" class="ask-status" role="status" aria-live="polite"></div>
         <div id="social-status" class="ask-status" role="status" aria-live="polite"></div>
@@ -639,268 +641,268 @@
          any can be added or removed), the travel out of them since the scan
          began, and how far each way of travel could have carried it, drawn
          on the map by the Outbreak layer for the hour picked. -->
-    <div id="outbreak-panel" class="panel-collapsible collapsed" data-panel-id="outbreak-panel" data-i18n-skip>
+    <div id="outbreak-panel" class="panel-collapsible collapsed" data-panel-id="outbreak-panel">
       <div class="panel-glow"></div>
       <div class="outbreak-panel-inner">
         <div class="panel-header">
-          <span class="panel-title" data-collapsed-title="OUTBREAK LOCATIONS &amp; PREDICTED SPREAD">OUTBREAK LOCATIONS &amp; PREDICTED SPREAD</span>
+          <span class="panel-title" data-collapsed-title="OUTBREAK LOCATIONS &amp; PREDICTED SPREAD" data-i18n-local-collapsed-title data-i18n-local>OUTBREAK LOCATIONS &amp; PREDICTED SPREAD</span>
           <span class="panel-divider"></span>
-          <button class="panel-collapse-btn" data-collapse-target="outbreak-panel" title="Collapse panel">+</button>
+          <button class="panel-collapse-btn" data-collapse-target="outbreak-panel" title="Collapse panel" data-i18n-local-title>+</button>
         </div>
         <div class="cctv-controls">
           <label class="social-show-location" for="outbreak-show">
-            <input id="outbreak-show" type="checkbox" aria-label="Display the outbreak and its predicted spread on the map" />
-            Display spread on map
+            <input id="outbreak-show" type="checkbox" aria-label="Display the outbreak and its predicted spread on the map"  data-i18n-local-aria-label/>
+            <span data-i18n-local>Display spread on map</span>
           </label>
           <!-- CLEAR MAP: the spread leaves the map; every result is kept.
                CLEAR DATA: the last run's results go (scan, flights, future
                spread, found places, the log) and the map with them; the
                locations and settings stay. -->
-          <button id="outbreak-clear-map" class="scene-btn" type="button" title="Take the spread off the map; the results are kept">CLEAR MAP</button>
-          <button id="outbreak-clear" class="scene-btn" type="button" title="Clear the last run's results for a new run from scratch">CLEAR DATA</button>
+          <button id="outbreak-clear-map" class="scene-btn" type="button" title="Take the spread off the map; the results are kept" data-i18n-local-title data-i18n-local>CLEAR MAP</button>
+          <button id="outbreak-clear" class="scene-btn" type="button" title="Clear the last run's results for a new run from scratch" data-i18n-local-title data-i18n-local>CLEAR DATA</button>
         </div>
-        <div class="cctv-summary-label">CURRENT OUTBREAK LOCATIONS</div>
-        <ul id="outbreak-locations" class="outbreak-list" aria-label="Outbreak locations"></ul>
+        <div class="cctv-summary-label" data-i18n-local>CURRENT OUTBREAK LOCATIONS</div>
+        <ul id="outbreak-locations" class="outbreak-list" aria-label="Outbreak locations" data-i18n-local-aria-label></ul>
         <form id="outbreak-add" class="cctv-controls" autocomplete="off">
-          <input id="outbreak-add-name" class="ask-input" type="text" maxlength="80" placeholder="New outbreak location (city, town)" aria-label="New outbreak location" />
-          <button id="outbreak-add-btn" class="scene-btn" type="submit">+ ADD</button>
+          <input id="outbreak-add-name" class="ask-input" type="text" maxlength="80" placeholder="New outbreak location (city, town)" aria-label="New outbreak location"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <button id="outbreak-add-btn" class="scene-btn" type="submit" data-i18n-local>+ ADD</button>
         </form>
         <div class="cctv-controls">
-          <input id="outbreak-keywords" class="ask-input" type="text" maxlength="80" placeholder="Disease or outbreak name (optional)" aria-label="Disease or outbreak name" />
+          <input id="outbreak-keywords" class="ask-input" type="text" maxlength="80" placeholder="Disease or outbreak name (optional)" aria-label="Disease or outbreak name"  data-i18n-local-placeholder data-i18n-local-aria-label/>
         </div>
         <!-- PATHOGEN CHARACTERISTICS (optional): any field left at "Not set" is
              ignored. Set ones suggest a HOW CONTAGIOUS level (USE SUGGESTED
              applies it) and go with every language-model and bot request. -->
-        <div class="cctv-summary-label">PATHOGEN CHARACTERISTICS (OPTIONAL)</div>
+        <div class="cctv-summary-label" data-i18n-local>PATHOGEN CHARACTERISTICS (OPTIONAL)</div>
         <!-- A preset fills every field below with typical published values
              (illustrative, not definitive); each field stays editable. -->
         <div class="outbreak-profile">
-          <label for="outbreak-preset">Pathogen preset</label>
-          <select id="outbreak-preset" aria-label="Pathogen preset">
-            <option value="">Not set</option>
+          <label for="outbreak-preset" data-i18n-local>Pathogen preset</label>
+          <select id="outbreak-preset" aria-label="Pathogen preset" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-transmission">Transmission mode</label>
-          <select id="outbreak-transmission" aria-label="Transmission mode">
-            <option value="">Not set</option>
-            <option value="airborne">Airborne (lingers in the air)</option>
-            <option value="droplets">Respiratory droplets (coughing, sneezing)</option>
-            <option value="contact">Direct physical contact</option>
-            <option value="fomites">Fomites (contaminated surfaces)</option>
-            <option value="vector">Vector-borne (e.g. mosquitoes)</option>
+          <label for="outbreak-transmission" data-i18n-local>Transmission mode</label>
+          <select id="outbreak-transmission" aria-label="Transmission mode" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
+            <option value="airborne" data-i18n-local>Airborne (lingers in the air)</option>
+            <option value="droplets" data-i18n-local>Respiratory droplets (coughing, sneezing)</option>
+            <option value="contact" data-i18n-local>Direct physical contact</option>
+            <option value="fomites" data-i18n-local>Fomites (contaminated surfaces)</option>
+            <option value="vector" data-i18n-local>Vector-borne (e.g. mosquitoes)</option>
           </select>
-          <label for="outbreak-r0">Reproduction number R₀</label>
-          <input id="outbreak-r0" type="number" min="0.1" max="20" step="0.1" placeholder="Not set" aria-label="Basic reproduction number R0" />
-          <label for="outbreak-asymptomatic">Asymptomatic transmission</label>
-          <select id="outbreak-asymptomatic" aria-label="Asymptomatic transmission">
-            <option value="">Not set</option>
-            <option value="yes">Yes, spreads without symptoms</option>
-            <option value="no">No, only with symptoms</option>
+          <label for="outbreak-r0" data-i18n-local>Reproduction number R₀</label>
+          <input id="outbreak-r0" type="number" min="0.1" max="20" step="0.1" placeholder="Not set" aria-label="Basic reproduction number R0"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-asymptomatic" data-i18n-local>Asymptomatic transmission</label>
+          <select id="outbreak-asymptomatic" aria-label="Asymptomatic transmission" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
+            <option value="yes" data-i18n-local>Yes, spreads without symptoms</option>
+            <option value="no" data-i18n-local>No, only with symptoms</option>
           </select>
-          <label for="outbreak-incubation">Incubation period (days)</label>
-          <input id="outbreak-incubation" type="number" min="0.5" max="60" step="0.5" placeholder="Not set" aria-label="Incubation period in days" />
-          <label for="outbreak-mutation">Mutation rate</label>
-          <select id="outbreak-mutation" aria-label="Mutation rate">
-            <option value="">Not set</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
+          <label for="outbreak-incubation" data-i18n-local>Incubation period (days)</label>
+          <input id="outbreak-incubation" type="number" min="0.5" max="60" step="0.5" placeholder="Not set" aria-label="Incubation period in days"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-mutation" data-i18n-local>Mutation rate</label>
+          <select id="outbreak-mutation" aria-label="Mutation rate" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
+            <option value="low" data-i18n-local>Low</option>
+            <option value="medium" data-i18n-local>Medium</option>
+            <option value="high" data-i18n-local>High</option>
           </select>
-          <label for="outbreak-latent">Latent period (days, infected → infectious)</label>
-          <input id="outbreak-latent" type="number" min="0.1" max="60" step="0.1" placeholder="Not set" aria-label="Latent period (days, infected → infectious)" />
-          <label for="outbreak-infectious">Infectious period (days)</label>
-          <input id="outbreak-infectious" type="number" min="0.5" max="60" step="0.5" placeholder="Not set" aria-label="Infectious period (days)" />
-          <label for="outbreak-asym-pct">Asymptomatic share (%)</label>
-          <input id="outbreak-asym-pct" type="number" min="0" max="95" step="1" placeholder="Not set" aria-label="Asymptomatic share (%)" />
-          <label for="outbreak-asym-relative">Asymptomatic infectiousness (× symptomatic)</label>
-          <input id="outbreak-asym-relative" type="number" min="0" max="1.5" step="0.05" placeholder="Not set" aria-label="Asymptomatic infectiousness (× symptomatic)" />
-          <label for="outbreak-superspreading">Superspreading</label>
-          <select id="outbreak-superspreading" aria-label="Superspreading">
-            <option value="">Not set</option>
+          <label for="outbreak-latent" data-i18n-local>Latent period (days, infected → infectious)</label>
+          <input id="outbreak-latent" type="number" min="0.1" max="60" step="0.1" placeholder="Not set" aria-label="Latent period (days, infected → infectious)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-infectious" data-i18n-local>Infectious period (days)</label>
+          <input id="outbreak-infectious" type="number" min="0.5" max="60" step="0.5" placeholder="Not set" aria-label="Infectious period (days)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-asym-pct" data-i18n-local>Asymptomatic share (%)</label>
+          <input id="outbreak-asym-pct" type="number" min="0" max="95" step="1" placeholder="Not set" aria-label="Asymptomatic share (%)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-asym-relative" data-i18n-local>Asymptomatic infectiousness (× symptomatic)</label>
+          <input id="outbreak-asym-relative" type="number" min="0" max="1.5" step="0.05" placeholder="Not set" aria-label="Asymptomatic infectiousness (× symptomatic)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-superspreading" data-i18n-local>Superspreading</label>
+          <select id="outbreak-superspreading" aria-label="Superspreading" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-hospital">Hospitalised (% of symptomatic)</label>
-          <input id="outbreak-hospital" type="number" min="0" max="100" step="0.5" placeholder="Not set" aria-label="Hospitalised (% of symptomatic)" />
-          <label for="outbreak-fatality">Fatality (% of symptomatic)</label>
-          <input id="outbreak-fatality" type="number" min="0" max="100" step="0.05" placeholder="Not set" aria-label="Fatality (% of symptomatic)" />
-          <label for="outbreak-hospital-days">Hospital stay (days)</label>
-          <input id="outbreak-hospital-days" type="number" min="1" max="60" step="1" placeholder="Not set" aria-label="Hospital stay (days)" />
-          <label for="outbreak-icu">Intensive care (% of hospitalised)</label>
-          <input id="outbreak-icu" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Intensive care (% of hospitalised)" />
-          <label for="outbreak-admit-delay">Admission delay (days)</label>
-          <input id="outbreak-admit-delay" type="number" min="0" max="14" step="0.5" placeholder="Not set" aria-label="Admission delay (days)" />
-          <label for="outbreak-waning">Immunity wanes after (days)</label>
-          <input id="outbreak-waning" type="number" min="0" max="3650" step="30" placeholder="Not set" aria-label="Immunity wanes after (days)" title="Days until a recovered person can catch it again (0: never)" />
-          <label for="outbreak-variants">Variant emergence</label>
-          <select id="outbreak-variants" aria-label="Variant emergence">
-            <option value="">Not set</option>
+          <label for="outbreak-hospital" data-i18n-local>Hospitalised (% of symptomatic)</label>
+          <input id="outbreak-hospital" type="number" min="0" max="100" step="0.5" placeholder="Not set" aria-label="Hospitalised (% of symptomatic)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-fatality" data-i18n-local>Fatality (% of symptomatic)</label>
+          <input id="outbreak-fatality" type="number" min="0" max="100" step="0.05" placeholder="Not set" aria-label="Fatality (% of symptomatic)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-hospital-days" data-i18n-local>Hospital stay (days)</label>
+          <input id="outbreak-hospital-days" type="number" min="1" max="60" step="1" placeholder="Not set" aria-label="Hospital stay (days)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-icu" data-i18n-local>Intensive care (% of hospitalised)</label>
+          <input id="outbreak-icu" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Intensive care (% of hospitalised)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-admit-delay" data-i18n-local>Admission delay (days)</label>
+          <input id="outbreak-admit-delay" type="number" min="0" max="14" step="0.5" placeholder="Not set" aria-label="Admission delay (days)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-waning" data-i18n-local>Immunity wanes after (days)</label>
+          <input id="outbreak-waning" type="number" min="0" max="3650" step="30" placeholder="Not set" aria-label="Immunity wanes after (days)" title="Days until a recovered person can catch it again (0: never)"  data-i18n-local-placeholder data-i18n-local-aria-label data-i18n-local-title/>
+          <label for="outbreak-variants" data-i18n-local>Variant emergence</label>
+          <select id="outbreak-variants" aria-label="Variant emergence" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-strain2-day">Second strain starts (day)</label>
-          <input id="outbreak-strain2-day" type="number" min="0" max="40" step="1" placeholder="Not set" aria-label="Second strain starts (day)" />
-          <label for="outbreak-strain2-cases">Second strain seed cases</label>
-          <input id="outbreak-strain2-cases" type="number" min="1" max="100000" step="1" placeholder="Not set" aria-label="Second strain seed cases" />
-          <label for="outbreak-strain2-place">Second strain airport code</label>
-          <input id="outbreak-strain2-place" type="text" maxlength="4" placeholder="Not set" aria-label="Second strain airport code" />
-          <label for="outbreak-strain2-spread">Second strain transmissibility (% of first)</label>
-          <input id="outbreak-strain2-spread" type="number" min="10" max="300" step="5" placeholder="Not set" aria-label="Second strain transmissibility (% of first)" />
-          <label for="outbreak-strain2-severity">Second strain severity (% of first)</label>
-          <input id="outbreak-strain2-severity" type="number" min="10" max="500" step="5" placeholder="Not set" aria-label="Second strain severity (% of first)" />
-          <label for="outbreak-cross-immunity">Cross-immunity (% of first-strain immunity kept)</label>
-          <input id="outbreak-cross-immunity" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Cross-immunity (% of first-strain immunity kept)" />
+          <label for="outbreak-strain2-day" data-i18n-local>Second strain starts (day)</label>
+          <input id="outbreak-strain2-day" type="number" min="0" max="40" step="1" placeholder="Not set" aria-label="Second strain starts (day)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-strain2-cases" data-i18n-local>Second strain seed cases</label>
+          <input id="outbreak-strain2-cases" type="number" min="1" max="100000" step="1" placeholder="Not set" aria-label="Second strain seed cases"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-strain2-place" data-i18n-local>Second strain airport code</label>
+          <input id="outbreak-strain2-place" type="text" maxlength="4" placeholder="Not set" aria-label="Second strain airport code"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-strain2-spread" data-i18n-local>Second strain transmissibility (% of first)</label>
+          <input id="outbreak-strain2-spread" type="number" min="10" max="300" step="5" placeholder="Not set" aria-label="Second strain transmissibility (% of first)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-strain2-severity" data-i18n-local>Second strain severity (% of first)</label>
+          <input id="outbreak-strain2-severity" type="number" min="10" max="500" step="5" placeholder="Not set" aria-label="Second strain severity (% of first)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-cross-immunity" data-i18n-local>Cross-immunity (% of first-strain immunity kept)</label>
+          <input id="outbreak-cross-immunity" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Cross-immunity (% of first-strain immunity kept)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
         </div>
         <!-- HUMAN BEHAVIOR & DEMOGRAPHICS (optional): how quickly the people
              at the outbreak let it spread. Like the pathogen, they suggest a
              HOW CONTAGIOUS level and go with every model and bot request. -->
-        <div class="cctv-summary-label">HUMAN BEHAVIOR &amp; DEMOGRAPHICS (OPTIONAL)</div>
+        <div class="cctv-summary-label" data-i18n-local>HUMAN BEHAVIOR &amp; DEMOGRAPHICS (OPTIONAL)</div>
         <div class="outbreak-profile">
-          <label for="outbreak-density">Population Density Near Patient Zero</label>
-          <select id="outbreak-density" aria-label="Population Density Near Patient Zero">
-            <option value="">Not set</option>
+          <label for="outbreak-density" data-i18n-local>Population Density Near Patient Zero</label>
+          <select id="outbreak-density" aria-label="Population Density Near Patient Zero" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-density-new">Population Density of New Infected Locations</label>
-          <select id="outbreak-density-new" aria-label="Population Density of New Infected Locations">
-            <option value="">Not set</option>
+          <label for="outbreak-density-new" data-i18n-local>Population Density of New Infected Locations</label>
+          <select id="outbreak-density-new" aria-label="Population Density of New Infected Locations" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-travel">Global travel &amp; mobility</label>
-          <select id="outbreak-travel" aria-label="Global travel &amp; mobility">
-            <option value="">Not set</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High (major flight and transit hub)</option>
+          <label for="outbreak-travel" data-i18n-local>Global travel &amp; mobility</label>
+          <select id="outbreak-travel" aria-label="Global travel &amp; mobility" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
+            <option value="low" data-i18n-local>Low</option>
+            <option value="medium" data-i18n-local>Medium</option>
+            <option value="high" data-i18n-local>High (major flight and transit hub)</option>
           </select>
-          <label for="outbreak-compliance">Public compliance &amp; trust</label>
-          <select id="outbreak-compliance" aria-label="Public compliance &amp; trust">
-            <option value="">Not set</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
+          <label for="outbreak-compliance" data-i18n-local>Public compliance &amp; trust</label>
+          <select id="outbreak-compliance" aria-label="Public compliance &amp; trust" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
+            <option value="high" data-i18n-local>High</option>
+            <option value="medium" data-i18n-local>Medium</option>
+            <option value="low" data-i18n-local>Low</option>
           </select>
-          <label for="outbreak-vulnerability">Socioeconomic vulnerability</label>
-          <select id="outbreak-vulnerability" aria-label="Socioeconomic vulnerability">
-            <option value="">Not set</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High (no remote work, clean water, sick leave)</option>
+          <label for="outbreak-vulnerability" data-i18n-local>Socioeconomic vulnerability</label>
+          <select id="outbreak-vulnerability" aria-label="Socioeconomic vulnerability" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
+            <option value="low" data-i18n-local>Low</option>
+            <option value="medium" data-i18n-local>Medium</option>
+            <option value="high" data-i18n-local>High (no remote work, clean water, sick leave)</option>
           </select>
-          <label for="outbreak-season">Seasonality &amp; weather</label>
-          <select id="outbreak-season" aria-label="Seasonality &amp; weather">
-            <option value="">Not set</option>
-            <option value="warm">Warm and humid</option>
-            <option value="mild">Mild</option>
-            <option value="winter">Cold, dry winter</option>
-            <option value="rain">Heavy rain (people indoors)</option>
+          <label for="outbreak-season" data-i18n-local>Seasonality &amp; weather</label>
+          <select id="outbreak-season" aria-label="Seasonality &amp; weather" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
+            <option value="warm" data-i18n-local>Warm and humid</option>
+            <option value="mild" data-i18n-local>Mild</option>
+            <option value="winter" data-i18n-local>Cold, dry winter</option>
+            <option value="rain" data-i18n-local>Heavy rain (people indoors)</option>
           </select>
-          <label for="outbreak-immunity">Immunity landscape</label>
-          <select id="outbreak-immunity" aria-label="Immunity landscape">
-            <option value="">Not set</option>
-            <option value="novel">Novel (no immunity)</option>
-            <option value="partial">Partial</option>
-            <option value="strong">Strong (past strains, vaccination)</option>
+          <label for="outbreak-immunity" data-i18n-local>Immunity landscape</label>
+          <select id="outbreak-immunity" aria-label="Immunity landscape" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
+            <option value="novel" data-i18n-local>Novel (no immunity)</option>
+            <option value="partial" data-i18n-local>Partial</option>
+            <option value="strong" data-i18n-local>Strong (past strains, vaccination)</option>
           </select>
-          <label for="outbreak-age">Age structure</label>
-          <select id="outbreak-age" aria-label="Age structure">
-            <option value="">Not set</option>
+          <label for="outbreak-age" data-i18n-local>Age structure</label>
+          <select id="outbreak-age" aria-label="Age structure" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-household">Household size</label>
-          <select id="outbreak-household" aria-label="Household size">
-            <option value="">Not set</option>
+          <label for="outbreak-household" data-i18n-local>Household size</label>
+          <select id="outbreak-household" aria-label="Household size" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-healthcare">Healthcare &amp; surveillance</label>
-          <select id="outbreak-healthcare" aria-label="Healthcare &amp; surveillance">
-            <option value="">Not set</option>
+          <label for="outbreak-healthcare" data-i18n-local>Healthcare &amp; surveillance</label>
+          <select id="outbreak-healthcare" aria-label="Healthcare &amp; surveillance" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-response">Public response to reported cases</label>
-          <select id="outbreak-response" aria-label="Public response to reported cases">
-            <option value="">Not set</option>
+          <label for="outbreak-response" data-i18n-local>Public response to reported cases</label>
+          <select id="outbreak-response" aria-label="Public response to reported cases" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-gathering">Mass gathering</label>
-          <select id="outbreak-gathering" aria-label="Mass gathering">
-            <option value="">Not set</option>
+          <label for="outbreak-gathering" data-i18n-local>Mass gathering</label>
+          <select id="outbreak-gathering" aria-label="Mass gathering" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-holiday">Holiday travel</label>
-          <select id="outbreak-holiday" aria-label="Holiday travel">
-            <option value="">Not set</option>
+          <label for="outbreak-holiday" data-i18n-local>Holiday travel</label>
+          <select id="outbreak-holiday" aria-label="Holiday travel" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-transit">Public transit crowding</label>
-          <select id="outbreak-transit" aria-label="Public transit crowding">
-            <option value="">Not set</option>
+          <label for="outbreak-transit" data-i18n-local>Public transit crowding</label>
+          <select id="outbreak-transit" aria-label="Public transit crowding" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-reservoir">Animal reservoir</label>
-          <select id="outbreak-reservoir" aria-label="Animal reservoir">
-            <option value="">Not set</option>
+          <label for="outbreak-reservoir" data-i18n-local>Animal reservoir</label>
+          <select id="outbreak-reservoir" aria-label="Animal reservoir" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-heterogeneity">Susceptibility variation</label>
-          <select id="outbreak-heterogeneity" aria-label="Susceptibility variation">
-            <option value="">Not set</option>
+          <label for="outbreak-heterogeneity" data-i18n-local>Susceptibility variation</label>
+          <select id="outbreak-heterogeneity" aria-label="Susceptibility variation" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-mixing">Commuting mixing</label>
-          <select id="outbreak-mixing" aria-label="Commuting mixing">
-            <option value="">Not set</option>
+          <label for="outbreak-mixing" data-i18n-local>Commuting mixing</label>
+          <select id="outbreak-mixing" aria-label="Commuting mixing" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-commute-day">Commuting concentrated in daytime</label>
-          <input id="outbreak-commute-day" type="number" min="0.5" max="1" step="0.05" placeholder="Not set" aria-label="Commuting concentrated in daytime" title="0.5: flat all day; 1: all commuting between 7 and 19 local" />
-          <label for="outbreak-clock">Departure clock</label>
-          <select id="outbreak-clock" aria-label="Departure clock">
-            <option value="">Not set</option>
+          <label for="outbreak-commute-day" data-i18n-local>Commuting concentrated in daytime</label>
+          <input id="outbreak-commute-day" type="number" min="0.5" max="1" step="0.05" placeholder="Not set" aria-label="Commuting concentrated in daytime" title="0.5: flat all day; 1: all commuting between 7 and 19 local"  data-i18n-local-placeholder data-i18n-local-aria-label data-i18n-local-title/>
+          <label for="outbreak-clock" data-i18n-local>Departure clock</label>
+          <select id="outbreak-clock" aria-label="Departure clock" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-transfers">Airport transfers</label>
-          <select id="outbreak-transfers" aria-label="Airport transfers">
-            <option value="">Not set</option>
+          <label for="outbreak-transfers" data-i18n-local>Airport transfers</label>
+          <select id="outbreak-transfers" aria-label="Airport transfers" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-response-signal">Response signal</label>
-          <select id="outbreak-response-signal" aria-label="Response signal">
-            <option value="">Not set</option>
+          <label for="outbreak-response-signal" data-i18n-local>Response signal</label>
+          <select id="outbreak-response-signal" aria-label="Response signal" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-response-reach">Response reach</label>
-          <select id="outbreak-response-reach" aria-label="Response reach">
-            <option value="">Not set</option>
+          <label for="outbreak-response-reach" data-i18n-local>Response reach</label>
+          <select id="outbreak-response-reach" aria-label="Response reach" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-response-fatigue">Awareness fatigue (days to halve)</label>
-          <input id="outbreak-response-fatigue" type="number" min="0" max="180" step="5" placeholder="Not set" aria-label="Awareness fatigue (days to halve)" />
-          <label for="outbreak-vaccinated">Vaccinated at the start (%)</label>
-          <input id="outbreak-vaccinated" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Vaccinated at the start (%)" />
-          <label for="outbreak-vaccine-efficacy">Vaccine protection (%)</label>
-          <input id="outbreak-vaccine-efficacy" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Vaccine protection (%)" title="All-or-nothing protection against infection" />
-          <label for="outbreak-travel-domestic">Domestic flights (% of normal)</label>
-          <input id="outbreak-travel-domestic" type="number" min="0" max="300" step="5" placeholder="Not set" aria-label="Domestic flights (% of normal)" />
-          <label for="outbreak-travel-intl">International flights (% of normal)</label>
-          <input id="outbreak-travel-intl" type="number" min="0" max="300" step="5" placeholder="Not set" aria-label="International flights (% of normal)" />
+          <label for="outbreak-response-fatigue" data-i18n-local>Awareness fatigue (days to halve)</label>
+          <input id="outbreak-response-fatigue" type="number" min="0" max="180" step="5" placeholder="Not set" aria-label="Awareness fatigue (days to halve)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-vaccinated" data-i18n-local>Vaccinated at the start (%)</label>
+          <input id="outbreak-vaccinated" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Vaccinated at the start (%)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-vaccine-efficacy" data-i18n-local>Vaccine protection (%)</label>
+          <input id="outbreak-vaccine-efficacy" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Vaccine protection (%)" title="All-or-nothing protection against infection"  data-i18n-local-placeholder data-i18n-local-aria-label data-i18n-local-title/>
+          <label for="outbreak-travel-domestic" data-i18n-local>Domestic flights (% of normal)</label>
+          <input id="outbreak-travel-domestic" type="number" min="0" max="300" step="5" placeholder="Not set" aria-label="Domestic flights (% of normal)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-travel-intl" data-i18n-local>International flights (% of normal)</label>
+          <input id="outbreak-travel-intl" type="number" min="0" max="300" step="5" placeholder="Not set" aria-label="International flights (% of normal)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
         </div>
         <div class="cctv-controls">
-          <p id="outbreak-suggest" class="social-note outbreak-suggest">Set any of these for a suggested HOW CONTAGIOUS level.</p>
-          <button id="outbreak-use-suggested" class="scene-btn" type="button" disabled>USE SUGGESTED</button>
+          <p id="outbreak-suggest" class="social-note outbreak-suggest" data-i18n-local>Set any of these for a suggested HOW CONTAGIOUS level.</p>
+          <button id="outbreak-use-suggested" class="scene-btn" type="button" disabled data-i18n-local>USE SUGGESTED</button>
         </div>
-        <div class="cctv-summary-label">TRAVEL HISTORY</div>
+        <div class="cctv-summary-label" data-i18n-local>TRAVEL HISTORY</div>
         <div class="cctv-controls">
-          <select id="outbreak-days" aria-label="Scan travel history from">
-            <option value="1">From 1 day ago</option>
-            <option value="2" selected>From 2 days ago</option>
-            <option value="3">From 3 days ago</option>
-            <option value="5">From 5 days ago</option>
-            <option value="7">From 7 days ago</option>
+          <select id="outbreak-days" aria-label="Scan travel history from" data-i18n-local-aria-label>
+            <option value="1" data-i18n-local>From 1 day ago</option>
+            <option value="2" selected data-i18n-local>From 2 days ago</option>
+            <option value="3" data-i18n-local>From 3 days ago</option>
+            <option value="5" data-i18n-local>From 5 days ago</option>
+            <option value="7" data-i18n-local>From 7 days ago</option>
           </select>
-          <button id="outbreak-scan" class="scene-btn" type="button">SCAN TRAVEL</button>
+          <button id="outbreak-scan" class="scene-btn" type="button" data-i18n-local>SCAN TRAVEL</button>
         </div>
-        <p id="outbreak-scan-note" class="social-note">Plane: flight history (POWER UP → OPENSKY), else the chosen language model's airline schedules. Train and boat: OpenStreetMap near each location. Road and train follow the main roads and rail lines from OpenStreetMap: a road lights up dark red and a rail line orange once the spread reaches it; where one seems to end, it carries on along the closest one at the same speed. Roads load farther in steps (500, 2,500 and 8,000 km) so the spread keeps going to the end of the forecast. A circle where they could not be fetched. Red is air, and the road after landing.</p>
-        <div class="cctv-summary-label">SPREAD BY TRANSPORT</div>
+        <p id="outbreak-scan-note" class="social-note" data-i18n-local>Plane: flight history (POWER UP → OPENSKY), else the chosen language model's airline schedules. Train and boat: OpenStreetMap near each location. Road and train follow the main roads and rail lines from OpenStreetMap: a road lights up dark red and a rail line orange once the spread reaches it; where one seems to end, it carries on along the closest one at the same speed. Roads load farther in steps (500, 2,500 and 8,000 km) so the spread keeps going to the end of the forecast. A circle where they could not be fetched. Red is air, and the road after landing.</p>
+        <div class="cctv-summary-label" data-i18n-local>SPREAD BY TRANSPORT</div>
         <div id="outbreak-modes" class="outbreak-modes">
-          <label class="outbreak-mode" data-mode="plane"><input id="outbreak-mode-plane" type="checkbox" checked aria-label="Show spread by plane" /><span class="outbreak-swatch"></span>Plane · Red · flights, then the roads out of each landing airport light up green: 100 km at road speed, onward at ¼</label>
-          <label class="outbreak-mode" data-mode="train"><input id="outbreak-mode-train" type="checkbox" checked aria-label="Show spread by train" /><span class="outbreak-swatch"></span>Train · Orange · rail lines light up orange once reached <input id="outbreak-speed-train" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="60" aria-label="Train speed in km/h" /> KM/H</label>
-          <label class="outbreak-mode" data-mode="boat"><input id="outbreak-mode-boat" type="checkbox" checked aria-label="Show spread by boat or vehicle" /><span class="outbreak-swatch"></span>Boat or vehicle · Yellow · within 100 km <input id="outbreak-speed-boat" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="38" aria-label="Boat or vehicle speed in km/h" /> KM/H</label>
-          <label class="outbreak-mode" data-mode="road"><input id="outbreak-mode-road" type="checkbox" checked aria-label="Show spread by road" /><span class="outbreak-swatch"></span>Road vehicle · Dark red · main roads light up dark red once reached <input id="outbreak-speed-road" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="100" aria-label="Road speed in km/h" /> KM/H</label>
+          <label class="outbreak-mode" data-mode="plane"><input id="outbreak-mode-plane" type="checkbox" checked aria-label="Show spread by plane"  data-i18n-local-aria-label/><span class="outbreak-swatch"></span><span data-i18n-local>Plane · Red · flights, then the roads out of each landing airport light up green: 100 km at road speed, onward at ¼</span></label>
+          <label class="outbreak-mode" data-mode="train"><input id="outbreak-mode-train" type="checkbox" checked aria-label="Show spread by train"  data-i18n-local-aria-label/><span class="outbreak-swatch"></span><span data-i18n-local>Train · Orange · rail lines light up orange once reached</span> <input id="outbreak-speed-train" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="60" aria-label="Train speed in km/h"  data-i18n-local-aria-label/> <span data-i18n-local>KM/H</span></label>
+          <label class="outbreak-mode" data-mode="boat"><input id="outbreak-mode-boat" type="checkbox" checked aria-label="Show spread by boat or vehicle"  data-i18n-local-aria-label/><span class="outbreak-swatch"></span><span data-i18n-local>Boat or vehicle · Yellow · within 100 km</span> <input id="outbreak-speed-boat" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="38" aria-label="Boat or vehicle speed in km/h"  data-i18n-local-aria-label/> <span data-i18n-local>KM/H</span></label>
+          <label class="outbreak-mode" data-mode="road"><input id="outbreak-mode-road" type="checkbox" checked aria-label="Show spread by road"  data-i18n-local-aria-label/><span class="outbreak-swatch"></span><span data-i18n-local>Road vehicle · Dark red · main roads light up dark red once reached</span> <input id="outbreak-speed-road" class="outbreak-speed" type="number" min="1" max="1000" step="1" value="100" aria-label="Road speed in km/h"  data-i18n-local-aria-label/> <span data-i18n-local>KM/H</span></label>
         </div>
         <!-- HOW CONTAGIOUS: how the spread is drawn in PLAY and MAP FUTURE
              SPREAD, thicker and darker when high, thinner and lighter when
              low. It does not change how far the spread reaches. -->
         <div class="outbreak-contagion">
-          <label for="outbreak-contagion">HOW CONTAGIOUS</label>
-          <span class="outbreak-contagion-end">LOW</span>
-          <input id="outbreak-contagion" type="range" min="0" max="110" step="5" value="50" aria-label="How contagious the outbreak is, low to high, then zero hour" />
-          <span class="outbreak-contagion-end">ZERO HOUR</span>
-          <span id="outbreak-contagion-value" class="outbreak-contagion-value">MEDIUM</span>
+          <label for="outbreak-contagion" data-i18n-local>HOW CONTAGIOUS</label>
+          <span class="outbreak-contagion-end" data-i18n-local>LOW</span>
+          <input id="outbreak-contagion" type="range" min="0" max="110" step="5" value="50" aria-label="How contagious the outbreak is, low to high, then zero hour"  data-i18n-local-aria-label/>
+          <span class="outbreak-contagion-end" data-i18n-local>ZERO HOUR</span>
+          <span id="outbreak-contagion-value" class="outbreak-contagion-value" data-i18n-local>MEDIUM</span>
         </div>
-        <p id="outbreak-contagion-note" class="outbreak-contagion-note">Entire airport considered infected after 5.5 h, not just connected flights on infected planes</p>
+        <p id="outbreak-contagion-note" class="outbreak-contagion-note" data-i18n-local>Entire airport considered infected after 5.5 h, not just connected flights on infected planes</p>
         <div class="cctv-controls">
-          <select id="outbreak-hour" aria-label="Spread shown at hour"></select>
-          <button id="outbreak-play" class="scene-btn" type="button">PLAY</button>
+          <select id="outbreak-hour" aria-label="Spread shown at hour" data-i18n-local-aria-label></select>
+          <button id="outbreak-play" class="scene-btn" type="button" data-i18n-local>PLAY</button>
         </div>
         <!-- FIND FUTURE SPREAD LOCATIONS (left): a new global news search,
              then one request to the chosen model per window up to the reach
@@ -910,80 +912,80 @@
              Violet: later. MAP FUTURE SPREAD (right): plays the present to
              +30 days, hourly to +48 h, then every 6 hours. -->
         <div class="cctv-controls">
-          <select id="outbreak-future-days" aria-label="Future spread window"></select>
+          <select id="outbreak-future-days" aria-label="Future spread window" data-i18n-local-aria-label></select>
         </div>
         <div class="cctv-controls outbreak-future-row">
-          <button id="outbreak-future" class="scene-btn" type="button">FIND FUTURE SPREAD LOCATIONS</button>
-          <button id="outbreak-play-future" class="scene-btn" type="button">MAP FUTURE SPREAD</button>
+          <button id="outbreak-future" class="scene-btn" type="button" data-i18n-local>FIND FUTURE SPREAD LOCATIONS</button>
+          <button id="outbreak-play-future" class="scene-btn" type="button" data-i18n-local>MAP FUTURE SPREAD</button>
         </div>
-        <ul id="outbreak-forecast" class="outbreak-list" aria-label="Future spread locations"></ul>
+        <ul id="outbreak-forecast" class="outbreak-list" aria-label="Future spread locations" data-i18n-local-aria-label></ul>
         <!-- INTERVENTIONS (optional): each starts at the hour given, counted
              from the scan's start. They change the EPIDEMIC MODEL only. -->
-        <div class="cctv-summary-label">INTERVENTIONS (OPTIONAL)</div>
+        <div class="cctv-summary-label" data-i18n-local>INTERVENTIONS (OPTIONAL)</div>
         <div class="outbreak-profile">
-          <label for="outbreak-intervention-hour">Interventions start (hours after the scan start)</label>
-          <input id="outbreak-intervention-hour" type="number" min="0" max="720" step="1" placeholder="Not set" aria-label="Interventions start (hours after the scan start)" />
-          <label for="outbreak-travel-ban">Travel restriction (% fewer passengers)</label>
-          <input id="outbreak-travel-ban" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Travel restriction (% fewer passengers)" />
-          <label for="outbreak-exit-screening">Exit screening</label>
-          <select id="outbreak-exit-screening" aria-label="Exit screening">
-            <option value="">Not set</option>
+          <label for="outbreak-intervention-hour" data-i18n-local>Interventions start (hours after the scan start)</label>
+          <input id="outbreak-intervention-hour" type="number" min="0" max="720" step="1" placeholder="Not set" aria-label="Interventions start (hours after the scan start)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-travel-ban" data-i18n-local>Travel restriction (% fewer passengers)</label>
+          <input id="outbreak-travel-ban" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Travel restriction (% fewer passengers)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-exit-screening" data-i18n-local>Exit screening</label>
+          <select id="outbreak-exit-screening" aria-label="Exit screening" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-entry-screening">Entry screening</label>
-          <select id="outbreak-entry-screening" aria-label="Entry screening">
-            <option value="">Not set</option>
+          <label for="outbreak-entry-screening" data-i18n-local>Entry screening</label>
+          <select id="outbreak-entry-screening" aria-label="Entry screening" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-quarantine">Quarantine on arrival (days)</label>
-          <input id="outbreak-quarantine" type="number" min="0" max="21" step="1" placeholder="Not set" aria-label="Quarantine on arrival (days)" />
-          <label for="outbreak-lockdown">Lockdown / distancing (% fewer contacts)</label>
-          <input id="outbreak-lockdown" type="number" min="0" max="90" step="5" placeholder="Not set" aria-label="Lockdown / distancing (% fewer contacts)" title="Fewer contacts; with Lockdown reach set to outside the home, households keep mixing" />
-          <label for="outbreak-tracing">Contact tracing</label>
-          <select id="outbreak-tracing" aria-label="Contact tracing">
-            <option value="">Not set</option>
+          <label for="outbreak-quarantine" data-i18n-local>Quarantine on arrival (days)</label>
+          <input id="outbreak-quarantine" type="number" min="0" max="21" step="1" placeholder="Not set" aria-label="Quarantine on arrival (days)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-lockdown" data-i18n-local>Lockdown / distancing (% fewer contacts)</label>
+          <input id="outbreak-lockdown" type="number" min="0" max="90" step="5" placeholder="Not set" aria-label="Lockdown / distancing (% fewer contacts)" title="Fewer contacts; with Lockdown reach set to outside the home, households keep mixing"  data-i18n-local-placeholder data-i18n-local-aria-label data-i18n-local-title/>
+          <label for="outbreak-tracing" data-i18n-local>Contact tracing</label>
+          <select id="outbreak-tracing" aria-label="Contact tracing" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-intervention-days">Interventions end after (days)</label>
-          <input id="outbreak-intervention-days" type="number" min="0" max="40" step="1" placeholder="Not set" aria-label="Interventions end after (days)" title="0: never" />
-          <label for="outbreak-trigger-mode">Local trigger</label>
-          <select id="outbreak-trigger-mode" aria-label="Local trigger">
-            <option value="">Not set</option>
+          <label for="outbreak-intervention-days" data-i18n-local>Interventions end after (days)</label>
+          <input id="outbreak-intervention-days" type="number" min="0" max="40" step="1" placeholder="Not set" aria-label="Interventions end after (days)" title="0: never"  data-i18n-local-placeholder data-i18n-local-aria-label data-i18n-local-title/>
+          <label for="outbreak-trigger-mode" data-i18n-local>Local trigger</label>
+          <select id="outbreak-trigger-mode" aria-label="Local trigger" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-trigger-level">Case trigger (reported per 100,000 in 7 days)</label>
-          <input id="outbreak-trigger-level" type="number" min="0" max="500" step="0.5" placeholder="Not set" aria-label="Case trigger (reported per 100,000 in 7 days)" />
-          <label for="outbreak-trigger-beds">Bed trigger (% of beds full)</label>
-          <input id="outbreak-trigger-beds" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Bed trigger (% of beds full)" />
-          <label for="outbreak-min-lock-days">Minimum restriction (days)</label>
-          <input id="outbreak-min-lock-days" type="number" min="1" max="28" step="1" placeholder="Not set" aria-label="Minimum restriction (days)" />
-          <label for="outbreak-restriction-fatigue">Restriction fatigue (days to halve compliance)</label>
-          <input id="outbreak-restriction-fatigue" type="number" min="0" max="180" step="5" placeholder="Not set" aria-label="Restriction fatigue (days to halve compliance)" />
-          <label for="outbreak-lockdown-scope">Lockdown reach</label>
-          <select id="outbreak-lockdown-scope" aria-label="Lockdown reach">
-            <option value="">Not set</option>
+          <label for="outbreak-trigger-level" data-i18n-local>Case trigger (reported per 100,000 in 7 days)</label>
+          <input id="outbreak-trigger-level" type="number" min="0" max="500" step="0.5" placeholder="Not set" aria-label="Case trigger (reported per 100,000 in 7 days)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-trigger-beds" data-i18n-local>Bed trigger (% of beds full)</label>
+          <input id="outbreak-trigger-beds" type="number" min="0" max="100" step="5" placeholder="Not set" aria-label="Bed trigger (% of beds full)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-min-lock-days" data-i18n-local>Minimum restriction (days)</label>
+          <input id="outbreak-min-lock-days" type="number" min="1" max="28" step="1" placeholder="Not set" aria-label="Minimum restriction (days)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-restriction-fatigue" data-i18n-local>Restriction fatigue (days to halve compliance)</label>
+          <input id="outbreak-restriction-fatigue" type="number" min="0" max="180" step="5" placeholder="Not set" aria-label="Restriction fatigue (days to halve compliance)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-lockdown-scope" data-i18n-local>Lockdown reach</label>
+          <select id="outbreak-lockdown-scope" aria-label="Lockdown reach" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-border-policy">Border policy</label>
-          <select id="outbreak-border-policy" aria-label="Border policy">
-            <option value="">Not set</option>
+          <label for="outbreak-border-policy" data-i18n-local>Border policy</label>
+          <select id="outbreak-border-policy" aria-label="Border policy" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-border-trigger">Border trigger (reported cases in the country)</label>
-          <input id="outbreak-border-trigger" type="number" min="1" max="100000" step="1" placeholder="Not set" aria-label="Border trigger (reported cases in the country)" />
-          <label for="outbreak-import-detection">Detection of arriving cases</label>
-          <select id="outbreak-import-detection" aria-label="Detection of arriving cases">
-            <option value="">Not set</option>
+          <label for="outbreak-border-trigger" data-i18n-local>Border trigger (reported cases in the country)</label>
+          <input id="outbreak-border-trigger" type="number" min="1" max="100000" step="1" placeholder="Not set" aria-label="Border trigger (reported cases in the country)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-import-detection" data-i18n-local>Detection of arriving cases</label>
+          <select id="outbreak-import-detection" aria-label="Detection of arriving cases" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-test-capacity">Testing capacity (tests per 1,000 people a day)</label>
-          <input id="outbreak-test-capacity" type="number" min="0" max="50" step="0.1" placeholder="Not set" aria-label="Testing capacity (tests per 1,000 people a day)" />
-          <label for="outbreak-vaccine-start">Vaccination starts (day)</label>
-          <input id="outbreak-vaccine-start" type="number" min="0" max="40" step="1" placeholder="Not set" aria-label="Vaccination starts (day)" />
-          <label for="outbreak-vaccine-pace">Vaccination pace (doses per 1,000 people a day)</label>
-          <input id="outbreak-vaccine-pace" type="number" min="0" max="50" step="0.5" placeholder="Not set" aria-label="Vaccination pace (doses per 1,000 people a day)" />
-          <label for="outbreak-vaccine-cap">Vaccination cap (% of people)</label>
-          <input id="outbreak-vaccine-cap" type="number" min="0" max="95" step="5" placeholder="Not set" aria-label="Vaccination cap (% of people)" />
-          <label for="outbreak-vaccine-priority">Vaccination priority</label>
-          <select id="outbreak-vaccine-priority" aria-label="Vaccination priority">
-            <option value="">Not set</option>
+          <label for="outbreak-test-capacity" data-i18n-local>Testing capacity (tests per 1,000 people a day)</label>
+          <input id="outbreak-test-capacity" type="number" min="0" max="50" step="0.1" placeholder="Not set" aria-label="Testing capacity (tests per 1,000 people a day)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-vaccine-start" data-i18n-local>Vaccination starts (day)</label>
+          <input id="outbreak-vaccine-start" type="number" min="0" max="40" step="1" placeholder="Not set" aria-label="Vaccination starts (day)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-vaccine-pace" data-i18n-local>Vaccination pace (doses per 1,000 people a day)</label>
+          <input id="outbreak-vaccine-pace" type="number" min="0" max="50" step="0.5" placeholder="Not set" aria-label="Vaccination pace (doses per 1,000 people a day)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-vaccine-cap" data-i18n-local>Vaccination cap (% of people)</label>
+          <input id="outbreak-vaccine-cap" type="number" min="0" max="95" step="5" placeholder="Not set" aria-label="Vaccination cap (% of people)"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <label for="outbreak-vaccine-priority" data-i18n-local>Vaccination priority</label>
+          <select id="outbreak-vaccine-priority" aria-label="Vaccination priority" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
-          <label for="outbreak-compare">Compare against</label>
-          <select id="outbreak-compare" aria-label="Compare against">
-            <option value="">Not set</option>
+          <label for="outbreak-compare" data-i18n-local>Compare against</label>
+          <select id="outbreak-compare" aria-label="Compare against" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>Not set</option>
           </select>
         </div>
         <!-- EPIDEMIC MODEL: a stochastic simulation (src/outbreakEpi.mjs) over
@@ -995,66 +997,66 @@
              shortages, per-place triggers and country border closures. A
              second strain and a comparison run against fewer measures are
              optional. -->
-        <div class="cctv-summary-label">EPIDEMIC MODEL</div>
+        <div class="cctv-summary-label" data-i18n-local>EPIDEMIC MODEL</div>
         <div class="cctv-controls outbreak-epi-row">
           <!-- Each label sits small above its box. -->
           <div class="outbreak-epi-field">
-            <label for="outbreak-initial-cases" class="outbreak-epi-label">Starting cases</label>
-            <input id="outbreak-initial-cases" class="outbreak-speed" type="number" min="1" max="100000" step="1" placeholder="50" aria-label="Starting cases" title="Infected people at the start" />
+            <label for="outbreak-initial-cases" class="outbreak-epi-label" data-i18n-local>Starting cases</label>
+            <input id="outbreak-initial-cases" class="outbreak-speed" type="number" min="1" max="100000" step="1" placeholder="50" aria-label="Starting cases" title="Infected people at the start"  data-i18n-local-aria-label data-i18n-local-title/>
           </div>
           <div class="outbreak-epi-field">
-            <label for="outbreak-epi-runs" class="outbreak-epi-label">Number of runs</label>
-            <select id="outbreak-epi-runs" aria-label="Number of runs">
-              <option value="50">50 runs</option>
-              <option value="200" selected>200 runs</option>
-              <option value="500">500 runs</option>
+            <label for="outbreak-epi-runs" class="outbreak-epi-label" data-i18n-local>Number of runs</label>
+            <select id="outbreak-epi-runs" aria-label="Number of runs" data-i18n-local-aria-label>
+              <option value="50" data-i18n-local>50 runs</option>
+              <option value="200" selected data-i18n-local>200 runs</option>
+              <option value="500" data-i18n-local>500 runs</option>
             </select>
           </div>
           <div class="outbreak-epi-field">
-            <label for="outbreak-epi-days" class="outbreak-epi-label">Forecast</label>
-            <select id="outbreak-epi-days" aria-label="Forecast">
-              <option value="2" selected>2 days</option>
-              <option value="7">7 days</option>
-              <option value="14">14 days</option>
-              <option value="30">30 days</option>
+            <label for="outbreak-epi-days" class="outbreak-epi-label" data-i18n-local>Forecast</label>
+            <select id="outbreak-epi-days" aria-label="Forecast" data-i18n-local-aria-label>
+              <option value="2" selected data-i18n-local>2 days</option>
+              <option value="7" data-i18n-local>7 days</option>
+              <option value="14" data-i18n-local>14 days</option>
+              <option value="30" data-i18n-local>30 days</option>
             </select>
           </div>
           <div class="outbreak-epi-field">
-            <label for="outbreak-epi-seed" class="outbreak-epi-label">Random seed</label>
-            <input id="outbreak-epi-seed" class="outbreak-speed" type="number" min="0" max="4294967295" step="1" placeholder="auto" aria-label="Random seed" title="Same seed, same result; blank picks one from the inputs" />
+            <label for="outbreak-epi-seed" class="outbreak-epi-label" data-i18n-local>Random seed</label>
+            <input id="outbreak-epi-seed" class="outbreak-speed" type="number" min="0" max="4294967295" step="1" placeholder="auto" aria-label="Random seed" title="Same seed, same result; blank picks one from the inputs"  data-i18n-local-placeholder data-i18n-local-aria-label data-i18n-local-title/>
           </div>
         </div>
         <!-- RUN EPIDEMIC MODEL, DOWNLOAD RESULTS and DOWNLOAD CSV: their own
              row under the boxes, same buttons and sizes as before. -->
         <div class="cctv-controls outbreak-epi-actions">
-          <button id="outbreak-epi-run" class="scene-btn" type="button">RUN EPIDEMIC MODEL</button>
-          <button id="outbreak-epi-download" class="scene-btn" type="button" disabled>DOWNLOAD RESULTS</button>
-          <button id="outbreak-epi-csv" class="scene-btn" type="button" disabled>DOWNLOAD CSV</button>
+          <button id="outbreak-epi-run" class="scene-btn" type="button" data-i18n-local>RUN EPIDEMIC MODEL</button>
+          <button id="outbreak-epi-download" class="scene-btn" type="button" disabled data-i18n-local>DOWNLOAD RESULTS</button>
+          <button id="outbreak-epi-csv" class="scene-btn" type="button" disabled data-i18n-local>DOWNLOAD CSV</button>
         </div>
-        <label class="outbreak-mode" data-mode="epidemic"><input id="outbreak-mode-epidemic" type="checkbox" checked aria-label="Show the epidemic model on the map" /><span class="outbreak-swatch"></span>Epidemic model · chance of arrival · commuting</label>
+        <label class="outbreak-mode" data-mode="epidemic"><input id="outbreak-mode-epidemic" type="checkbox" checked aria-label="Show the epidemic model on the map"  data-i18n-local-aria-label/><span class="outbreak-swatch"></span><span data-i18n-local>Epidemic model · chance of arrival · commuting</span></label>
         <!-- The epidemic curve: infected (teal, with its 5–95 % band),
              reported (orange) and deaths (red), day by day. -->
         <div id="outbreak-epi-curve" class="outbreak-epi-curve" hidden></div>
-        <ul id="outbreak-epidemic" class="outbreak-list" aria-label="Epidemic model results"></ul>
-        <ul id="outbreak-summary" class="outbreak-list" aria-label="How far each way of travel has reached"></ul>
-        <ul id="outbreak-destinations" class="outbreak-list" aria-label="Places reached by plane"></ul>
-        <div class="cctv-summary-label">GLOBAL MEDIA SEARCH · LLM</div>
+        <ul id="outbreak-epidemic" class="outbreak-list" aria-label="Epidemic model results" data-i18n-local-aria-label></ul>
+        <ul id="outbreak-summary" class="outbreak-list" aria-label="How far each way of travel has reached" data-i18n-local-aria-label></ul>
+        <ul id="outbreak-destinations" class="outbreak-list" aria-label="Places reached by plane" data-i18n-local-aria-label></ul>
+        <div class="cctv-summary-label" data-i18n-local>GLOBAL MEDIA SEARCH · LLM</div>
         <div class="cctv-controls">
-          <select id="outbreak-model" aria-label="Language model">
-            <option value="">No model key yet</option>
+          <select id="outbreak-model" aria-label="Language model" data-i18n-local-aria-label>
+            <option value="" data-i18n-local>No model key yet</option>
           </select>
-          <button id="outbreak-media" class="scene-btn" type="button">MEDIA SEARCH</button>
+          <button id="outbreak-media" class="scene-btn" type="button" data-i18n-local>MEDIA SEARCH</button>
         </div>
-        <div class="cctv-summary-label">GLOBAL SOCIAL MEDIA SEARCH</div>
+        <div class="cctv-summary-label" data-i18n-local>GLOBAL SOCIAL MEDIA SEARCH</div>
         <div class="cctv-controls">
-          <select id="outbreak-swarm" aria-label="Social media search bot">
-            <option value="xai">Grok Bot</option>
-            <option value="openai">OpenAI DOTS</option>
+          <select id="outbreak-swarm" aria-label="Social media search bot" data-i18n-local-aria-label>
+            <option value="xai" data-i18n-local>Grok Bot</option>
+            <option value="openai" data-i18n-local>OpenAI DOTS</option>
           </select>
-          <button id="outbreak-social" class="scene-btn" type="button">SOCIAL SEARCH</button>
+          <button id="outbreak-social" class="scene-btn" type="button" data-i18n-local>SOCIAL SEARCH</button>
         </div>
-        <div class="cctv-summary-label">NEW LOCATIONS FOUND</div>
-        <ul id="outbreak-found" class="outbreak-list" aria-label="New outbreak locations found"></ul>
+        <div class="cctv-summary-label" data-i18n-local>NEW LOCATIONS FOUND</div>
+        <ul id="outbreak-found" class="outbreak-list" aria-label="New outbreak locations found" data-i18n-local-aria-label></ul>
         <div id="outbreak-status" class="ask-status" role="status" aria-live="polite"></div>
         <div id="outbreak-output" class="ask-output" role="status" aria-live="polite" tabindex="0"></div>
       </div>
@@ -1069,159 +1071,165 @@
          PREDICTIONS picks what the globe draws. The rows, the status and the
          lists are filled by src/aiWorldPanel.js from /api/ai-world
          (docs/AI-WORLD-TAB.md). -->
-    <div id="ai-world-panel" class="panel-collapsible collapsed" data-panel-id="ai-world-panel" data-i18n-skip>
+    <div id="ai-world-panel" class="panel-collapsible collapsed" data-panel-id="ai-world-panel">
       <div class="panel-glow"></div>
       <div class="ai-world-panel-inner">
         <div class="panel-header">
-          <span class="panel-title" data-collapsed-title="ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM">ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM</span>
+          <span class="panel-title" data-collapsed-title="ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM" data-i18n-local-collapsed-title data-i18n-local>ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM</span>
           <span class="panel-divider"></span>
-          <button class="panel-collapse-btn" data-collapse-target="ai-world-panel" title="Collapse panel">+</button>
+          <button class="panel-collapse-btn" data-collapse-target="ai-world-panel" title="Collapse panel" data-i18n-local-title>+</button>
         </div>
         <div id="ai-world-status" class="ask-status" role="status" aria-live="polite"></div>
         <details id="ai-world-howto" class="ai-world-howto">
-          <summary>INSTRUCTIONS</summary>
+          <summary data-i18n-local>INSTRUCTIONS</summary>
           <ol class="ai-world-list">
-            <li>TRAIN ON: tick the data layers, FINANCIAL ASSETS, NEWS EVENTS and DEMOGRAPHICS (or ALL). Military is never used.</li>
-            <li>AREAS: move the map and ADD VIEW AS AREA where cameras, traffic, news and imagery should record.</li>
-            <li>INITIALIZE: check the estimate and the storage cap, then CONFIRM INITIALIZE. Recording starts.</li>
-            <li>Each finished day is binned, then the world model trains or post-trains by itself; STATUS shows it.</li>
-            <li>PREDICTIONS: tick a domain once it is trained (PRICE MOVES draws each asset's predicted move where it trades) and set the HORIZON.</li>
-            <li>POST-TRAIN: keep another world model up to date with an adapter and its checkpoint.</li>
-            <li>Your own model: export the data, or use the reinforcement-learning environment. A custom LLM trains from POWER UP.</li>
+            <li data-i18n-local>TRAIN ON: tick the data layers, FINANCIAL ASSETS, NEWS EVENTS and DEMOGRAPHICS (or ALL). Military is never used.</li>
+            <li data-i18n-local>AREAS: move the map and ADD VIEW AS AREA where cameras, traffic, news and imagery should record.</li>
+            <li data-i18n-local>INITIALIZE: check the estimate and the storage cap, then CONFIRM INITIALIZE. Recording starts.</li>
+            <li data-i18n-local>Each finished day is binned, then the world model trains or post-trains by itself; STATUS shows it.</li>
+            <li data-i18n-local>PREDICTIONS: tick a domain once it is trained (PRICE MOVES draws each asset's predicted move where it trades) and set the HORIZON.</li>
+            <li data-i18n-local>POST-TRAIN: keep another world model up to date with an adapter and its checkpoint.</li>
+            <li data-i18n-local>Your own model: export the data, or use the reinforcement-learning environment. A custom LLM trains in CUSTOM LLM TRAINING, at the bottom of this tab.</li>
           </ol>
-          <p class="social-note">Full instructions: docs/TRAINING-GUIDE.md</p>
+          <p class="social-note" data-i18n-local>Full instructions: docs/TRAINING-GUIDE.md</p>
         </details>
-        <div class="cctv-summary-label">TRAIN ON</div>
-        <p id="ai-world-military-note" class="social-note">Military layers and military flights are not used for training.</p>
-        <label class="outbreak-mode ai-world-all" data-class="all"><input id="ai-world-all" type="checkbox" /><span class="outbreak-swatch"></span>ALL</label>
-        <ul id="ai-world-sources" class="ai-world-list ai-world-sources" aria-label="Data the AI trains on"></ul>
+        <div class="cctv-summary-label" data-i18n-local>TRAIN ON</div>
+        <p id="ai-world-military-note" class="social-note" data-i18n-local>Military layers and military flights are not used for training.</p>
+        <label class="outbreak-mode ai-world-all" data-class="all"><input id="ai-world-all" type="checkbox" /><span class="outbreak-swatch"></span><span data-i18n-local>ALL</span></label>
+        <ul id="ai-world-sources" class="ai-world-list ai-world-sources" aria-label="Data the AI trains on" data-i18n-local-aria-label></ul>
         <!-- AREAS: cameras, traffic, news, recent imagery, street level and
              the mapped static layers record around these places only. ADD
              VIEW AS AREA adds the place in the middle of the map; REMOVE
              stops recording there and keeps what was recorded (refused on the
              owner's phone, as every removal is). -->
-        <div class="cctv-summary-label">AREAS</div>
-        <ul id="ai-world-areas" class="ai-world-list ai-world-areas" aria-label="Areas recorded around"></ul>
+        <div class="cctv-summary-label" data-i18n-local>AREAS</div>
+        <ul id="ai-world-areas" class="ai-world-list ai-world-areas" aria-label="Areas recorded around" data-i18n-local-aria-label></ul>
         <div class="cctv-controls ai-world-actions">
-          <button id="ai-world-area-add" class="scene-btn" type="button" title="Adds the place in the middle of the map: cameras, traffic, news, imagery and street level record around each area">ADD VIEW AS AREA</button>
+          <button id="ai-world-area-add" class="scene-btn" type="button" title="Adds the place in the middle of the map: cameras, traffic, news, imagery and street level record around each area" data-i18n-local-title data-i18n-local>ADD VIEW AS AREA</button>
         </div>
-        <div class="cctv-summary-label">NEWS EVENTS</div>
+        <div class="cctv-summary-label" data-i18n-local>NEWS EVENTS</div>
         <p id="ai-world-news-count" class="social-note">0 / 100</p>
-        <ul id="ai-world-news-urls" class="ai-world-list" aria-label="News URLs"></ul>
+        <ul id="ai-world-news-urls" class="ai-world-list" aria-label="News URLs" data-i18n-local-aria-label></ul>
         <div class="cctv-controls ai-world-actions">
-          <input id="ai-world-news-url" type="url" maxlength="2000" placeholder="https://…" aria-label="News URL" />
-          <button id="ai-world-news-add" class="scene-btn" type="button">ADD</button>
+          <input id="ai-world-news-url" type="url" maxlength="2000" placeholder="https://…" aria-label="News URL"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <button id="ai-world-news-add" class="scene-btn" type="button" data-i18n-local>ADD</button>
         </div>
-        <div class="cctv-summary-label">FINANCIAL ASSETS</div>
-        <p class="social-note">Live quotes: currencies, yields, commodities, stock indexes, volatility and crypto. Once trained, each shows its predicted move, and PRICE MOVES draws them where each benchmark is set. Not a recommendation. The same hour is kept beside news, ships, traffic, weather, and flights. That is not a claim one moved the other.</p>
-        <ul id="ai-world-markets" class="ai-world-list" aria-label="Live financial asset quotes"></ul>
-        <div class="cctv-summary-label">LINKS</div>
-        <ul id="ai-world-links" class="ai-world-list" aria-label="Training links"></ul>
+        <div class="cctv-summary-label" data-i18n-local>FINANCIAL ASSETS</div>
+        <p class="social-note" data-i18n-local>Live quotes: currencies, yields, commodities, stock indexes, volatility and crypto. Once trained, each shows its predicted move, and PRICE MOVES draws them where each benchmark is set. Not a recommendation. The same hour is kept beside news, ships, traffic, weather, and flights. That is not a claim one moved the other.</p>
+        <ul id="ai-world-markets" class="ai-world-list" aria-label="Live financial asset quotes" data-i18n-local-aria-label></ul>
+        <div class="cctv-summary-label" data-i18n-local>LINKS</div>
+        <ul id="ai-world-links" class="ai-world-list" aria-label="Training links" data-i18n-local-aria-label></ul>
         <div class="cctv-controls ai-world-actions">
-          <button id="ai-world-links-tick" class="scene-btn" type="button">TICK LINK FEEDS</button>
+          <button id="ai-world-links-tick" class="scene-btn" type="button" data-i18n-local>TICK LINK FEEDS</button>
         </div>
-        <div class="cctv-summary-label">CONTROLS</div>
+        <div class="cctv-summary-label" data-i18n-local>CONTROLS</div>
         <div class="cctv-controls ai-world-actions">
-          <button id="ai-world-init" class="scene-btn" type="button" title="Shows the storage and compute estimate first, then starts on CONFIRM INITIALIZE">INITIALIZE</button>
-          <button id="ai-world-pause" class="scene-btn" type="button" title="PAUSE holds the work where it is; CONTINUE resumes it" disabled>PAUSE</button>
-          <button id="ai-world-stop" class="scene-btn" type="button" title="Stops recording, sim episodes and training; the data stays" disabled>STOP</button>
-          <button id="ai-world-delete" class="scene-btn" type="button" title="Lists the files first; a second press in the box deletes them">DELETE</button>
+          <button id="ai-world-init" class="scene-btn" type="button" title="Shows the storage and compute estimate first, then starts on CONFIRM INITIALIZE" data-i18n-local-title data-i18n-local>INITIALIZE</button>
+          <button id="ai-world-pause" class="scene-btn" type="button" title="PAUSE holds the work where it is; CONTINUE resumes it" disabled data-i18n-local-title data-i18n-local>PAUSE</button>
+          <button id="ai-world-stop" class="scene-btn" type="button" title="Stops recording, sim episodes and training; the data stays" disabled data-i18n-local-title data-i18n-local>STOP</button>
+          <button id="ai-world-delete" class="scene-btn" type="button" title="Lists the files first; a second press in the box deletes them" data-i18n-local-title data-i18n-local>DELETE</button>
         </div>
         <div id="ai-world-estimate" class="ai-world-block" hidden>
-          <div class="cctv-summary-label">ESTIMATE</div>
-          <ul id="ai-world-estimate-lines" class="ai-world-list" aria-label="What INITIALIZE will use"></ul>
+          <div class="cctv-summary-label" data-i18n-local>ESTIMATE</div>
+          <ul id="ai-world-estimate-lines" class="ai-world-list" aria-label="What INITIALIZE will use" data-i18n-local-aria-label></ul>
           <div class="ai-world-fields">
-            <label for="ai-world-cap">STORAGE CAP (GB)</label>
+            <label for="ai-world-cap" data-i18n-local>STORAGE CAP (GB)</label>
             <input id="ai-world-cap" type="number" min="1" max="100000" step="1" value="600" />
-            <label id="ai-world-scenarios-label" for="ai-world-scenarios" hidden>SIM SCENARIOS</label>
+            <label id="ai-world-scenarios-label" for="ai-world-scenarios" hidden data-i18n-local>SIM SCENARIOS</label>
             <input id="ai-world-scenarios" type="number" min="1" max="1000000" step="1" value="2000" hidden />
           </div>
           <div class="cctv-controls">
-            <button id="ai-world-init-confirm" class="scene-btn" type="button" disabled>CONFIRM INITIALIZE</button>
-            <button id="ai-world-init-cancel" class="scene-btn" type="button" aria-label="Cancel initialize">CANCEL</button>
+            <button id="ai-world-init-confirm" class="scene-btn" type="button" disabled data-i18n-local>CONFIRM INITIALIZE</button>
+            <button id="ai-world-init-cancel" class="scene-btn" type="button" aria-label="Cancel initialize" data-i18n-local-aria-label data-i18n-local>CANCEL</button>
           </div>
         </div>
         <div id="ai-world-delete-panel" class="ai-world-block ai-world-block-danger" hidden>
-          <div class="cctv-summary-label">WHAT DELETE WILL REMOVE</div>
+          <div class="cctv-summary-label" data-i18n-local>WHAT DELETE WILL REMOVE</div>
           <div class="cctv-controls">
-            <select id="ai-world-delete-scope" aria-label="What to delete">
-              <option value="all" selected>ALL DATA</option>
-              <option value="tape">TAPE</option>
-              <option value="bins">BINS</option>
-              <option value="datasets">SIM DATASETS</option>
-              <option value="worlds">WORLDS</option>
-              <option value="models">MODELS</option>
-              <option value="predictions">PREDICTIONS</option>
-              <option value="demographics">DEMOGRAPHICS</option>
+            <select id="ai-world-delete-scope" aria-label="What to delete" data-i18n-local-aria-label>
+              <option value="all" selected data-i18n-local>ALL DATA</option>
+              <option value="tape" data-i18n-local>TAPE</option>
+              <option value="bins" data-i18n-local>BINS</option>
+              <option value="datasets" data-i18n-local>SIM DATASETS</option>
+              <option value="worlds" data-i18n-local>WORLDS</option>
+              <option value="models" data-i18n-local>MODELS</option>
+              <option value="predictions" data-i18n-local>PREDICTIONS</option>
+              <option value="demographics" data-i18n-local>DEMOGRAPHICS</option>
             </select>
           </div>
-          <ul id="ai-world-delete-groups" class="ai-world-list" aria-label="Files that will be deleted"></ul>
+          <ul id="ai-world-delete-groups" class="ai-world-list" aria-label="Files that will be deleted" data-i18n-local-aria-label></ul>
           <p id="ai-world-delete-total" class="social-note"></p>
           <div class="cctv-controls">
-            <button id="ai-world-delete-confirm" class="scene-btn ultra-danger" type="button" disabled>DELETE LISTED FILES</button>
-            <button id="ai-world-delete-cancel" class="scene-btn" type="button" aria-label="Cancel delete">CANCEL</button>
+            <button id="ai-world-delete-confirm" class="scene-btn ultra-danger" type="button" disabled data-i18n-local>DELETE LISTED FILES</button>
+            <button id="ai-world-delete-cancel" class="scene-btn" type="button" aria-label="Cancel delete" data-i18n-local-aria-label data-i18n-local>CANCEL</button>
           </div>
         </div>
-        <div class="cctv-summary-label">STATUS</div>
-        <ul id="ai-world-stages" class="ai-world-list" aria-label="Status of each stage">
-          <li id="ai-world-stage-state">STATE · WAITING FOR THE SERVER</li>
-          <li id="ai-world-stage-recorder">RECORDING · OFF</li>
-          <li id="ai-world-stage-generator">SIM EPISODES · OFF</li>
-          <li id="ai-world-stage-trainer">TRAINING · OFF</li>
-          <li id="ai-world-stage-predictor">PREDICTING · OFF</li>
-          <li id="ai-world-stage-storage">STORAGE · NOTHING RECORDED</li>
-          <li id="ai-world-stage-gaps">GAPS · NONE</li>
-          <li id="ai-world-stage-compute">COMPUTE · WAITING FOR THE SERVER</li>
+        <div class="cctv-summary-label" data-i18n-local>STATUS</div>
+        <ul id="ai-world-stages" class="ai-world-list" aria-label="Status of each stage" data-i18n-local-aria-label>
+          <li id="ai-world-stage-state" data-i18n-local>STATE · WAITING FOR THE SERVER</li>
+          <li id="ai-world-stage-recorder" data-i18n-local>RECORDING · OFF</li>
+          <li id="ai-world-stage-generator" data-i18n-local>SIM EPISODES · OFF</li>
+          <li id="ai-world-stage-trainer" data-i18n-local>TRAINING · OFF</li>
+          <li id="ai-world-stage-predictor" data-i18n-local>PREDICTING · OFF</li>
+          <li id="ai-world-stage-storage" data-i18n-local>STORAGE · NOTHING RECORDED</li>
+          <li id="ai-world-stage-gaps" data-i18n-local>GAPS · NONE</li>
+          <li id="ai-world-stage-compute" data-i18n-local>COMPUTE · WAITING FOR THE SERVER</li>
         </ul>
         <!-- POST-TRAIN: keep an existing world model up to date on the newest
              recordings (ml.gevtape.posttrain). The kit's own world model does
              this by itself every day. The adapter must be a file in
              ml/adapters/ or .gev-data/ai-world/adapters/, the checkpoint a path
              inside .gev-data/. -->
-        <div class="cctv-summary-label">POST-TRAIN</div>
-        <p id="ai-world-posttrain-note" class="social-note">The kit's own world model post-trains itself every day on all recorded days, and grows when a new layer or asset arrives.</p>
+        <div class="cctv-summary-label" data-i18n-local>POST-TRAIN</div>
+        <p id="ai-world-posttrain-note" class="social-note" data-i18n-local>The kit's own world model post-trains itself every day on all recorded days, and grows when a new layer or asset arrives.</p>
         <div class="ai-world-fields">
-          <label for="ai-world-posttrain-adapter">ADAPTER</label>
-          <input id="ai-world-posttrain-adapter" type="text" maxlength="130" placeholder="kit_world:KitWorldAdapter" autocomplete="off" spellcheck="false" />
-          <label for="ai-world-posttrain-checkpoint">CHECKPOINT</label>
-          <input id="ai-world-posttrain-checkpoint" type="text" maxlength="400" placeholder="path inside .gev-data/" autocomplete="off" spellcheck="false" />
+          <label for="ai-world-posttrain-adapter" data-i18n-local>ADAPTER</label>
+          <input id="ai-world-posttrain-adapter" type="text" maxlength="130" placeholder="kit_world:KitWorldAdapter" autocomplete="off" spellcheck="false"  data-i18n-local-placeholder/>
+          <label for="ai-world-posttrain-checkpoint" data-i18n-local>CHECKPOINT</label>
+          <input id="ai-world-posttrain-checkpoint" type="text" maxlength="400" placeholder="path inside .gev-data/" autocomplete="off" spellcheck="false"  data-i18n-local-placeholder/>
         </div>
-        <label class="outbreak-mode ai-world-all" data-class="all"><input id="ai-world-posttrain-daily" type="checkbox" /><span class="outbreak-swatch"></span>POST-TRAIN DAILY ON NEW DATA</label>
+        <label class="outbreak-mode ai-world-all" data-class="all"><input id="ai-world-posttrain-daily" type="checkbox" /><span class="outbreak-swatch"></span><span data-i18n-local>POST-TRAIN DAILY ON NEW DATA</span></label>
         <div class="cctv-controls ai-world-actions">
-          <button id="ai-world-posttrain-save" class="scene-btn" type="button">SAVE</button>
-          <button id="ai-world-posttrain-run" class="scene-btn" type="button" title="Post-trains the model now on every recorded day; the last days are held out to score it before and after">POST-TRAIN NOW</button>
+          <button id="ai-world-posttrain-save" class="scene-btn" type="button" data-i18n-local>SAVE</button>
+          <button id="ai-world-posttrain-run" class="scene-btn" type="button" title="Post-trains the model now on every recorded day; the last days are held out to score it before and after" data-i18n-local-title data-i18n-local>POST-TRAIN NOW</button>
         </div>
         <!-- PREDICTIONS: a domain is a live tick once the predictor draws it,
              LEARNING until then. The choice and the horizon stay in this
              browser and go to the globe overlay. -->
-        <div class="cctv-summary-label">PREDICTIONS</div>
-        <label class="outbreak-mode ai-world-all" data-class="all"><input id="ai-world-predict-all" type="checkbox" /><span class="outbreak-swatch"></span>ALL PREDICTIONS</label>
-        <div id="ai-world-domains" class="ai-world-domains" role="group" aria-label="Predictions drawn on the globe">
-          <div class="ai-world-row"><label class="outbreak-mode" data-domain="outbreak"><input id="ai-world-domain-outbreak" type="checkbox" aria-label="Predict outbreak" aria-describedby="ai-world-domain-outbreak-note" disabled /><span class="outbreak-swatch"></span>OUTBREAK</label><span id="ai-world-domain-outbreak-note" class="ai-world-note">LEARNING</span></div>
-          <div class="ai-world-row"><label class="outbreak-mode" data-domain="mobility"><input id="ai-world-domain-mobility" type="checkbox" aria-label="Predict mobility" aria-describedby="ai-world-domain-mobility-note" disabled /><span class="outbreak-swatch"></span>MOBILITY</label><span id="ai-world-domain-mobility-note" class="ai-world-note">LEARNING</span></div>
-          <div class="ai-world-row"><label class="outbreak-mode" data-domain="weather"><input id="ai-world-domain-weather" type="checkbox" aria-label="Predict weather" aria-describedby="ai-world-domain-weather-note" disabled /><span class="outbreak-swatch"></span>WEATHER</label><span id="ai-world-domain-weather-note" class="ai-world-note">LEARNING</span></div>
-          <div class="ai-world-row"><label class="outbreak-mode" data-domain="hazards"><input id="ai-world-domain-hazards" type="checkbox" aria-label="Predict hazards" aria-describedby="ai-world-domain-hazards-note" disabled /><span class="outbreak-swatch"></span>HAZARDS</label><span id="ai-world-domain-hazards-note" class="ai-world-note">LEARNING</span></div>
-          <div class="ai-world-row"><label class="outbreak-mode" data-domain="news"><input id="ai-world-domain-news" type="checkbox" aria-label="Predict news" aria-describedby="ai-world-domain-news-note" disabled /><span class="outbreak-swatch"></span>NEWS</label><span id="ai-world-domain-news-note" class="ai-world-note">LEARNING</span></div>
-          <div class="ai-world-row"><label class="outbreak-mode" data-domain="tracks"><input id="ai-world-domain-tracks" type="checkbox" aria-label="Predict tracks" aria-describedby="ai-world-domain-tracks-note" disabled /><span class="outbreak-swatch"></span>TRACKS</label><span id="ai-world-domain-tracks-note" class="ai-world-note">LEARNING</span></div>
+        <div class="cctv-summary-label" data-i18n-local>PREDICTIONS</div>
+        <label class="outbreak-mode ai-world-all" data-class="all"><input id="ai-world-predict-all" type="checkbox" /><span class="outbreak-swatch"></span><span data-i18n-local>ALL PREDICTIONS</span></label>
+        <div id="ai-world-domains" class="ai-world-domains" role="group" aria-label="Predictions drawn on the globe" data-i18n-local-aria-label>
+          <div class="ai-world-row"><label class="outbreak-mode" data-domain="outbreak"><input id="ai-world-domain-outbreak" type="checkbox" aria-label="Predict outbreak" aria-describedby="ai-world-domain-outbreak-note" disabled  data-i18n-local-aria-label/><span class="outbreak-swatch"></span><span data-i18n-local>OUTBREAK</span></label><span id="ai-world-domain-outbreak-note" class="ai-world-note" data-i18n-local>LEARNING</span></div>
+          <div class="ai-world-row"><label class="outbreak-mode" data-domain="mobility"><input id="ai-world-domain-mobility" type="checkbox" aria-label="Predict mobility" aria-describedby="ai-world-domain-mobility-note" disabled  data-i18n-local-aria-label/><span class="outbreak-swatch"></span><span data-i18n-local>MOBILITY</span></label><span id="ai-world-domain-mobility-note" class="ai-world-note" data-i18n-local>LEARNING</span></div>
+          <div class="ai-world-row"><label class="outbreak-mode" data-domain="weather"><input id="ai-world-domain-weather" type="checkbox" aria-label="Predict weather" aria-describedby="ai-world-domain-weather-note" disabled  data-i18n-local-aria-label/><span class="outbreak-swatch"></span><span data-i18n-local>WEATHER</span></label><span id="ai-world-domain-weather-note" class="ai-world-note" data-i18n-local>LEARNING</span></div>
+          <div class="ai-world-row"><label class="outbreak-mode" data-domain="hazards"><input id="ai-world-domain-hazards" type="checkbox" aria-label="Predict hazards" aria-describedby="ai-world-domain-hazards-note" disabled  data-i18n-local-aria-label/><span class="outbreak-swatch"></span><span data-i18n-local>HAZARDS</span></label><span id="ai-world-domain-hazards-note" class="ai-world-note" data-i18n-local>LEARNING</span></div>
+          <div class="ai-world-row"><label class="outbreak-mode" data-domain="news"><input id="ai-world-domain-news" type="checkbox" aria-label="Predict news" aria-describedby="ai-world-domain-news-note" disabled  data-i18n-local-aria-label/><span class="outbreak-swatch"></span><span data-i18n-local>NEWS</span></label><span id="ai-world-domain-news-note" class="ai-world-note" data-i18n-local>LEARNING</span></div>
+          <div class="ai-world-row"><label class="outbreak-mode" data-domain="tracks"><input id="ai-world-domain-tracks" type="checkbox" aria-label="Predict tracks" aria-describedby="ai-world-domain-tracks-note" disabled  data-i18n-local-aria-label/><span class="outbreak-swatch"></span><span data-i18n-local>TRACKS</span></label><span id="ai-world-domain-tracks-note" class="ai-world-note" data-i18n-local>LEARNING</span></div>
         </div>
-        <div class="cctv-summary-label">INFER</div>
+        <div class="cctv-summary-label" data-i18n-local>INFER</div>
         <div class="cctv-controls ai-world-actions">
-          <select id="ai-world-infer-kind" aria-label="What to infer">
-            <option value="location" selected>LOCATION</option>
-            <option value="item">ITEM</option>
-            <option value="topic">TOPIC</option>
-            <option value="event">EVENT</option>
+          <select id="ai-world-infer-kind" aria-label="What to infer" data-i18n-local-aria-label>
+            <option value="location" selected data-i18n-local>LOCATION</option>
+            <option value="item" data-i18n-local>ITEM</option>
+            <option value="topic" data-i18n-local>TOPIC</option>
+            <option value="event" data-i18n-local>EVENT</option>
           </select>
-          <input id="ai-world-infer-query" type="text" maxlength="200" placeholder="Place, id, topic, or event" aria-label="Infer query" />
-          <button id="ai-world-infer" class="scene-btn" type="button" title="Predict from the trained model for this place, item, topic, or event. An empty location uses the middle of the map.">ASK</button>
+          <input id="ai-world-infer-query" type="text" maxlength="200" placeholder="Place, id, topic, or event" aria-label="Infer query"  data-i18n-local-placeholder data-i18n-local-aria-label/>
+          <button id="ai-world-infer" class="scene-btn" type="button" title="Predict from the trained model for this place, item, topic, or event. An empty location uses the middle of the map." data-i18n-local-title data-i18n-local>ASK</button>
         </div>
         <p id="ai-world-infer-note" class="social-note"></p>
         <div class="ai-world-horizon">
-          <label for="ai-world-horizon">HORIZON</label>
+          <label for="ai-world-horizon" data-i18n-local>HORIZON</label>
           <input id="ai-world-horizon" type="range" min="1" max="168" step="1" value="24" aria-valuetext="24 HOURS" />
           <output id="ai-world-horizon-value" class="ai-world-horizon-value" for="ai-world-horizon">24 H</output>
         </div>
         <div id="ai-world-output" class="ask-output" role="status" aria-live="polite" tabindex="0"></div>
+        <!-- CUSTOM LLM TRAINING (owner request 2026-10-17: moved here from
+             POWER UP, at the bottom of the tab): a language model trained on
+             what the app records and on the owner's URLs and files
+             (src/llmTrainingSetup.js, /api/llm-training). Hidden until the
+             server answers. -->
+        <div id="llm-training" class="ai-world-llm" hidden></div>
       </div>
     </div>
   </div>

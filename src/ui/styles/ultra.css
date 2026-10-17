@@ -391,3 +391,78 @@
   min-width: 0;
   padding: 4px 6px;
 }
+
+/* ULTRA SECURITY PACKAGE, last in the tab (moved from POWER UP, owner request
+   2026-10-17): the package cards in the tab's own labels, notes, rows and
+   buttons (src/deviceFeedsSetup.js, look 'ultra'). A row class shows its
+   flex, so a part the card hides needs saying so here. */
+#ultra-panel .ultra-package-setup[hidden],
+#ultra-panel .ultra-package-kind [hidden] {
+  display: none;
+}
+
+#ultra-panel .ultra-package {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#ultra-panel .ultra-package > *,
+#ultra-panel .ultra-package-report > * {
+  flex: 1 1 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+#ultra-panel .ultra-package .ultra-contact {
+  margin-top: 0;
+}
+
+#ultra-panel .ultra-package-head > input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#ultra-panel .ultra-package-report {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#ultra-panel .ultra-package-note:empty,
+#ultra-panel .ultra-package-state:empty,
+#ultra-panel .ultra-package-recording:empty {
+  display: none;
+}
+
+/* How the address is reached, coloured as POWER UP's badge is. */
+#ultra-panel .ultra-package-transport {
+  align-self: center;
+  color: rgba(84, 227, 156, 0.88);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+#ultra-panel .ultra-package-transport[data-transport='lan-http'] {
+  color: rgba(255, 214, 140, 0.85);
+}
+
+#ultra-panel .ultra-package-transport[data-transport='insecure'] {
+  color: rgba(255, 170, 150, 0.9);
+}
+
+#ultra-panel .ultra-package-state[data-ok='true'] {
+  color: rgba(84, 227, 156, 0.9);
+}
+
+/* A full row, as the tab's other buttons are inside their rows. */
+#ultra-panel .ultra-package-add {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 8px;
+}

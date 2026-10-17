@@ -19,9 +19,12 @@
  *
  * Every answer comes from the dev server's /api/ai-world routes. Until they
  * exist the box says AI WORLD SERVER NOT READY and stays usable. The rules
- * and every line of text are src/aiWorldSelection.mjs.
+ * and every line of text are src/aiWorldSelection.mjs. The text is marked
+ * with tl() and tln(): Quebec French in the fork locales, else English.
  */
 import { formatAskLogEntry, prependOutputLog } from './askOverview.js';
+import { msgl, tl, tln } from './i18n/index.js';
+import { initLlmTrainingSetup } from './llmTrainingSetup.js';
 import {
   TRAINING_LINKS,
   linkFeedIds,
@@ -38,6 +41,9 @@ import {
 import {
   AI_WORLD_DELETE_SCOPES,
   AI_WORLD_DOMAINS,
+  AI_WORLD_HORIZON_DEFAULT,
+  AI_WORLD_HORIZON_MAX,
+  AI_WORLD_HORIZON_MIN,
   AI_WORLD_NO_AREAS,
   AI_WORLD_STAGE_KEYS,
   allState,
@@ -50,11 +56,11 @@ import {
   domainNote,
   marketLines,
   postTrainNote,
-  countLabel,
   deletePreviewView,
   estimateLines,
   feedStatusText,
   formatBytes,
+  formatCount,
   horizonLabel,
   learningLabel,
   pollDelay,
@@ -70,7 +76,8 @@ export const AI_WORLD_API = '/api/ai-world';
 export const AI_WORLD_STORAGE_KEY = 'gev-ai-world-v1';
 /** Sent on `document` with `{ domains, horizonHours }` for the globe overlay. */
 export const AI_WORLD_PREDICTIONS_EVENT = 'ai-world:predictions';
-export const AI_WORLD_NOT_READY = 'AI WORLD SERVER NOT READY';
+/** English, shown through tl(). */
+export const AI_WORLD_NOT_READY = msgl('AI WORLD SERVER NOT READY');
 export const AI_WORLD_SELECTION_DEBOUNCE_MS = 400;
 export const AI_WORLD_RETRY_MS = 60_000;
 /** A DataManager change is looked at once per this long, not per notice. */
@@ -83,9 +90,9 @@ const SIM_DAYS = 40;
 const CAP_GB_MAX = 100_000;
 const SCENARIOS_MAX = 1_000_000;
 const PENDING = Object.freeze({
-  pause: 'PAUSING…',
-  continue: 'CONTINUING…',
-  stop: 'STOPPING…',
+  pause: msgl('PAUSING…'),
+  continue: msgl('CONTINUING…'),
+  stop: msgl('STOPPING…'),
 });
 
 /**
@@ -170,6 +177,7 @@ export class AiWorldPanel {
     this._previewSeq = 0;
     this._areaBusy = false;
     this._unsubscribe = null;
+    this._llm = null;
 
     const byId = (id) => doc?.getElementById?.(id) || null;
     this._root = byId('ai-world-panel');
@@ -323,6 +331,17 @@ export class AiWorldPanel {
     void this._loadMarkets();
     this._paintLinks();
     void this._poll();
+
+    // CUSTOM LLM TRAINING sits at the bottom of this tab (owner request
+    // 2026-10-17, moved from POWER UP): its own routes, polling and lifetime.
+    const llmHost = byId('llm-training');
+    if (llmHost)
+      this._llm = initLlmTrainingSetup({
+        host: llmHost,
+        documentRef: doc,
+        fetchImpl: this._fetch || undefined,
+        signal: this._signal || undefined,
+      });
   }
 
   destroy() {
@@ -347,6 +366,8 @@ export class AiWorldPanel {
       /* The manager is going away too. */
     }
     this._unsubscribe = null;
+    this._llm?.destroy();
+    this._llm = null;
     this._signal?.removeEventListener?.('abort', this._onAbort);
   }
 
@@ -398,7 +419,7 @@ export class AiWorldPanel {
   }
 
   _clearNotReady() {
-    if (this._statusLine?.textContent === AI_WORLD_NOT_READY) this._say('');
+    if (this._statusLine?.textContent === tl(AI_WORLD_NOT_READY)) this._say('');
   }
 
   _log(kind, body) {
@@ -451,7 +472,8 @@ export class AiWorldPanel {
   }
 
   _labelFor(id) {
-    return this._items.find((item) => item.id === id)?.label || stateLabel(id);
+    const label = this._items.find((item) => item.id === id)?.label;
+    return label ? tl(label) : stateLabel(id);
   }
 
   /* --------------------------------------------------------------------- */
@@ -510,10 +532,13 @@ export class AiWorldPanel {
 
   _refused(what, response, data) {
     if (this._notThere(response, data)) {
-      this._say(AI_WORLD_NOT_READY);
+      this._say(tl(AI_WORLD_NOT_READY));
       return;
     }
-    const message = `${what} REFUSED · ${data?.error || `HTTP ${Number(response?.status) || 0}`}`;
+    const message = tl('{what} REFUSED · {why}', {
+      what,
+      why: data?.error || `HTTP ${Number(response?.status) || 0}`,
+    });
     this._say(message);
     this._log(what, message);
   }
@@ -522,8 +547,8 @@ export class AiWorldPanel {
     if (this._destroyed) return;
     this._say(
       error?.name === 'AbortError'
-        ? `${what} · NO ANSWER IN TIME`
-        : AI_WORLD_NOT_READY,
+        ? tl('{what} · NO ANSWER IN TIME', { what })
+        : tl(AI_WORLD_NOT_READY),
     );
   }
 
@@ -549,10 +574,12 @@ export class AiWorldPanel {
         typeof data !== 'object' ||
         typeof data.state !== 'string'
       ) {
-        if (this._notThere(response, data)) this._say(AI_WORLD_NOT_READY);
+        if (this._notThere(response, data)) this._say(tl(AI_WORLD_NOT_READY));
         else
           this._say(
-            `AI WORLD STATUS · ${data?.error || `HTTP ${Number(response?.status) || 0}`}`,
+            tl('AI WORLD STATUS · {why}', {
+              why: data?.error || `HTTP ${Number(response?.status) || 0}`,
+            }),
           );
         return;
       }
@@ -572,7 +599,7 @@ export class AiWorldPanel {
       )
         this._scheduleSelection(0);
     } catch {
-      if (!this._destroyed) this._say(AI_WORLD_NOT_READY);
+      if (!this._destroyed) this._say(tl(AI_WORLD_NOT_READY));
     } finally {
       this._polling = false;
       if (!this._destroyed)
@@ -649,13 +676,17 @@ export class AiWorldPanel {
     );
     if (this._destroyed) return;
     if (!response?.ok) {
-      this._refused(run ? 'POST-TRAIN' : 'POST-TRAIN SAVE', response, data);
+      this._refused(
+        run ? tl('POST-TRAIN') : tl('POST-TRAIN SAVE'),
+        response,
+        data,
+      );
       return;
     }
     this._postFilled = true;
     if (this._status) this._status.posttrain = data?.posttrain || null;
     this._renderPostTrain();
-    this._say(run ? 'POST-TRAINING QUEUED' : 'POST-TRAIN SAVED');
+    this._say(run ? tl('POST-TRAINING QUEUED') : tl('POST-TRAIN SAVED'));
   }
 
   async _loadCatalog() {
@@ -685,7 +716,9 @@ export class AiWorldPanel {
       return Array.isArray(all)
         ? all.map((layer) => ({
             id: layer?.id,
-            name: layer?.name,
+            // A layer the catalog does not name is listed by its own name,
+            // as the Data Layers list words it.
+            name: typeof layer?.name === 'string' ? tl(layer.name) : '',
             showInTogglePanel: layer?.showInTogglePanel,
           }))
         : [];
@@ -742,7 +775,7 @@ export class AiWorldPanel {
     swatch.className = 'outbreak-swatch';
     const name = doc.createElement('span');
     name.className = 'ai-world-name';
-    name.textContent = item.label;
+    name.textContent = tl(item.label);
     label.appendChild(box);
     label.appendChild(swatch);
     label.appendChild(name);
@@ -750,7 +783,7 @@ export class AiWorldPanel {
     tag.className = 'ai-world-class';
     tag.id = `ai-world-row-${safe}-class`;
     tag.textContent = classTag(item.cls);
-    if (item.licence) tag.title = item.licence;
+    if (item.licence) tag.title = tl(item.licence);
     const feed = doc.createElement('span');
     feed.className = 'ai-world-feed';
     feed.id = `ai-world-row-${safe}-feed`;
@@ -844,7 +877,7 @@ export class AiWorldPanel {
         this._clearNotReady();
       } else if (this._notThere(response, data)) {
         this._resendWhenReady = true;
-        this._say(AI_WORLD_NOT_READY);
+        this._say(tl(AI_WORLD_NOT_READY));
       } else {
         // Refused: the server's selection stands, with the reason shown,
         // unless a newer change is already waiting to be sent.
@@ -860,12 +893,12 @@ export class AiWorldPanel {
           );
           this._renderTicks();
         }
-        this._refused('SELECTION', response, data);
+        this._refused(tl('SELECTION'), response, data);
       }
     } catch (error) {
       if (!this._destroyed) {
         this._resendWhenReady = true;
-        this._unanswered('SELECTION', error);
+        this._unanswered(tl('SELECTION'), error);
       }
     } finally {
       this._selectionInFlight = false;
@@ -891,7 +924,7 @@ export class AiWorldPanel {
     this._listKeys.set(list, key);
     if (!rows.length) {
       const li = this._doc.createElement('li');
-      li.textContent = AI_WORLD_NO_AREAS;
+      li.textContent = tl(AI_WORLD_NO_AREAS);
       list.replaceChildren(li);
       return;
     }
@@ -910,8 +943,11 @@ export class AiWorldPanel {
         remove.type = 'button';
         remove.className = 'scene-btn ai-world-area-remove';
         remove.dataset.aiWorldAreaKey = row.key;
-        remove.textContent = 'REMOVE';
-        remove.setAttribute('aria-label', `Stop recording around ${row.name}`);
+        remove.textContent = tl('REMOVE');
+        remove.setAttribute(
+          'aria-label',
+          tl('Stop recording around {name}', { name: row.name }),
+        );
         remove.disabled = this._areaBusy;
         li.appendChild(name);
         li.appendChild(where);
@@ -937,7 +973,7 @@ export class AiWorldPanel {
       point = null;
     }
     if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lon)) {
-      this._say('NO MAP VIEW TO ADD');
+      this._say(tl('NO MAP VIEW TO ADD'));
       return;
     }
     this._areaBusy = true;
@@ -949,15 +985,23 @@ export class AiWorldPanel {
       });
       if (this._destroyed) return;
       if (!response?.ok || !Array.isArray(data?.areas)) {
-        this._refused('AREA', response, data);
+        this._refused(tl('AREA'), response, data);
         return;
       }
       this._takeAreas(data);
-      const message = `AREA ADDED · ${countLabel(data.areas.length, 'AREA')}`;
+      const areas = data.areas.length;
+      const message = tln(
+        areas,
+        'AREA ADDED · {count} AREA',
+        'AREA ADDED · {count} AREAS',
+        {
+          count: formatCount(areas),
+        },
+      );
       this._say(message);
-      this._log('AREA', message);
+      this._log(tl('AREA'), message);
     } catch (error) {
-      this._unanswered('AREA', error);
+      this._unanswered(tl('AREA'), error);
     } finally {
       this._areaBusy = false;
       if (!this._destroyed) this._renderAreas();
@@ -999,16 +1043,23 @@ export class AiWorldPanel {
           noteOwnerRemovalRefusal();
           return;
         }
-        this._refused('AREA', response, data);
+        this._refused(tl('AREA'), response, data);
         return;
       }
       this._takeAreas(data);
       const left = Array.isArray(data?.areas) ? data.areas.length : 0;
-      const message = `AREA REMOVED · ${countLabel(left, 'AREA')} LEFT`;
+      const message = tln(
+        left,
+        'AREA REMOVED · {count} AREA LEFT',
+        'AREA REMOVED · {count} AREAS LEFT',
+        {
+          count: formatCount(left),
+        },
+      );
       this._say(message);
-      this._log('AREA', message);
+      this._log(tl('AREA'), message);
     } catch (error) {
-      this._unanswered('AREA', error);
+      this._unanswered(tl('AREA'), error);
     } finally {
       this._areaBusy = false;
       if (!this._destroyed) this._renderAreas();
@@ -1023,7 +1074,7 @@ export class AiWorldPanel {
     const allowed = controlStates(this._stateName);
     const busy = Boolean(this._busy);
     this._setDisabled(this._initBtn, busy || !allowed.initialize);
-    this._setText(this._pauseBtn, allowed.pauseLabel);
+    this._setText(this._pauseBtn, tl(allowed.pauseLabel));
     this._setDisabled(this._pauseBtn, busy || !allowed.pause);
     this._setDisabled(this._stopBtn, busy || !allowed.stop);
     this._setDisabled(this._deleteBtn, busy || !allowed.delete);
@@ -1043,7 +1094,7 @@ export class AiWorldPanel {
   async _openEstimate() {
     if (this._busy || !controlStates(this._stateName).initialize) return;
     if (!this._selection.length) {
-      this._say('TICK AT LEAST ONE SOURCE TO TRAIN ON');
+      this._say(tl('TICK AT LEAST ONE SOURCE TO TRAIN ON'));
       return;
     }
     this._closeDelete();
@@ -1065,7 +1116,7 @@ export class AiWorldPanel {
     if (!quiet) {
       this._busy = 'estimate';
       this._renderControls();
-      this._say('ESTIMATING…');
+      this._say(tl('ESTIMATING…'));
     }
     try {
       const { response, data } = await this._postJson('estimate', {
@@ -1074,7 +1125,7 @@ export class AiWorldPanel {
       });
       if (this._destroyed || seq !== this._estimateSeq) return;
       if (!response?.ok || !data || typeof data !== 'object') {
-        this._refused('ESTIMATE', response, data);
+        this._refused(tl('ESTIMATE'), response, data);
         return;
       }
       this._estimate = data;
@@ -1083,9 +1134,9 @@ export class AiWorldPanel {
         estimateLines(data, (id) => this._labelFor(id)),
       );
       this._setHidden(this._estimateBlock, false);
-      if (!quiet) this._say('ESTIMATE READY · CONFIRM INITIALIZE TO START');
+      if (!quiet) this._say(tl('ESTIMATE READY · CONFIRM INITIALIZE TO START'));
     } catch (error) {
-      if (seq === this._estimateSeq) this._unanswered('ESTIMATE', error);
+      if (seq === this._estimateSeq) this._unanswered(tl('ESTIMATE'), error);
     } finally {
       if (!quiet && this._busy === 'estimate') this._busy = '';
       if (!this._destroyed) this._renderControls();
@@ -1104,7 +1155,7 @@ export class AiWorldPanel {
     if (this._busy || !controlStates(this._stateName).initialize) return;
     if (!this._estimate) return;
     if (!this._selection.length) {
-      this._say('TICK AT LEAST ONE SOURCE TO TRAIN ON');
+      this._say(tl('TICK AT LEAST ONE SOURCE TO TRAIN ON'));
       return;
     }
     const selection = [...this._selection];
@@ -1112,7 +1163,7 @@ export class AiWorldPanel {
     const scenarios = this._scenarios();
     this._busy = 'initialize';
     this._renderControls();
-    this._say('STARTING…');
+    this._say(tl('STARTING…'));
     const seq = ++this._seq;
     try {
       const { response, data } = await this._postJson('initialize', {
@@ -1122,18 +1173,27 @@ export class AiWorldPanel {
       });
       if (this._destroyed) return;
       if (!response?.ok || typeof data?.state !== 'string') {
-        this._refused('INITIALIZE', response, data);
+        this._refused(tl('INITIALIZE'), response, data);
         return;
       }
       this._busy = '';
       this._closeEstimate();
       this._take(data, seq);
-      const message = `INITIALIZED · ${countLabel(selection.length, 'SOURCE')} · CAP ${capGb} GB`;
+      const sources = selection.length;
+      const message = tln(
+        sources,
+        'INITIALIZED · {count} SOURCE · CAP {cap} GB',
+        'INITIALIZED · {count} SOURCES · CAP {cap} GB',
+        {
+          count: formatCount(sources),
+          cap: capGb,
+        },
+      );
       this._say(message);
-      this._log('INITIALIZE', message);
+      this._log(tl('INITIALIZE'), message);
       this._schedulePoll(pollDelay(this._stateName));
     } catch (error) {
-      this._unanswered('INITIALIZE', error);
+      this._unanswered(tl('INITIALIZE'), error);
     } finally {
       if (this._busy === 'initialize') this._busy = '';
       if (!this._destroyed) this._renderControls();
@@ -1153,7 +1213,7 @@ export class AiWorldPanel {
     const name = stateLabel(action);
     this._busy = action;
     this._renderControls();
-    this._say(PENDING[action]);
+    this._say(tl(PENDING[action]));
     const seq = ++this._seq;
     try {
       const { response, data } = await this._postJson(action, {});
@@ -1211,7 +1271,7 @@ export class AiWorldPanel {
       if (!response?.ok || !Array.isArray(data?.groups)) {
         this._previewState = 'failed';
         this._renderPreview();
-        this._refused('DELETE PREVIEW', response, data);
+        this._refused(tl('DELETE PREVIEW'), response, data);
         return;
       }
       this._preview = {
@@ -1225,7 +1285,7 @@ export class AiWorldPanel {
       if (this._destroyed || seq !== this._previewSeq) return;
       this._previewState = 'failed';
       this._renderPreview();
-      this._unanswered('DELETE PREVIEW', error);
+      this._unanswered(tl('DELETE PREVIEW'), error);
     }
   }
 
@@ -1240,10 +1300,10 @@ export class AiWorldPanel {
       this._setText(
         this._deleteTotal,
         this._previewState === 'loading'
-          ? 'LISTING FILES…'
-          : 'THE FILES COULD NOT BE LISTED',
+          ? tl('LISTING FILES…')
+          : tl('THE FILES COULD NOT BE LISTED'),
       );
-      this._setText(this._deleteConfirm, 'DELETE LISTED FILES');
+      this._setText(this._deleteConfirm, tl('DELETE LISTED FILES'));
     }
     this._renderControls();
   }
@@ -1282,7 +1342,7 @@ export class AiWorldPanel {
           noteOwnerRemovalRefusal();
           return;
         }
-        this._refused('DELETE', response, data);
+        this._refused(tl('DELETE'), response, data);
         if (Number(response?.status) === 409) {
           this._busy = '';
           void this._loadPreview();
@@ -1293,12 +1353,20 @@ export class AiWorldPanel {
       const bytes = Number(data?.deleted?.bytes) || 0;
       this._busy = '';
       this._closeDelete();
-      const message = `DELETED ${countLabel(files, 'FILE')} · ${formatBytes(bytes)}`;
+      const message = tln(
+        files,
+        'DELETED {count} FILE · {size}',
+        'DELETED {count} FILES · {size}',
+        {
+          count: formatCount(files),
+          size: formatBytes(bytes),
+        },
+      );
       this._say(message);
-      this._log('DELETE', message);
+      this._log(tl('DELETE'), message);
       void this._poll();
     } catch (error) {
-      this._unanswered('DELETE', error);
+      this._unanswered(tl('DELETE'), error);
     } finally {
       if (this._busy === 'delete') this._busy = '';
       if (!this._destroyed) this._renderControls();
@@ -1329,9 +1397,11 @@ export class AiWorldPanel {
       .filter((id) => id !== 'military' && !id.startsWith('military-'))
       .map((id) => ({
         id,
-        label: (
-          AI_WORLD_DOMAINS.find((domain) => domain.id === id)?.label || id
-        ).toUpperCase(),
+        label: tl(
+          (
+            AI_WORLD_DOMAINS.find((domain) => domain.id === id)?.label || id
+          ).toUpperCase(),
+        ),
       }));
   }
 
@@ -1345,7 +1415,10 @@ export class AiWorldPanel {
     const box = this._doc.createElement('input');
     box.type = 'checkbox';
     box.id = `ai-world-domain-${domain.id}`;
-    box.setAttribute('aria-label', `Predict ${domain.label}`);
+    box.setAttribute(
+      'aria-label',
+      tl('Predict {domain}', { domain: domain.label }),
+    );
     const swatch = this._doc.createElement('span');
     swatch.className = 'outbreak-swatch';
     const name = this._doc.createElement('span');
@@ -1451,7 +1524,13 @@ export class AiWorldPanel {
   _showHorizon(value) {
     const label = horizonLabel(value);
     this._setText(this._horizonValue, label);
-    const spoken = `${label.replace(/ H$/, '')} HOURS`;
+    const hours = clampInt(
+      value,
+      AI_WORLD_HORIZON_MIN,
+      AI_WORLD_HORIZON_MAX,
+      AI_WORLD_HORIZON_DEFAULT,
+    );
+    const spoken = tln(hours, '{count} HOUR', '{count} HOURS');
     if (
       typeof this._horizon?.setAttribute === 'function' &&
       this._horizon.getAttribute?.('aria-valuetext') !== spoken
@@ -1509,7 +1588,7 @@ export class AiWorldPanel {
     const point = this._viewPoint?.() || null;
     this._busy = 'infer';
     this._setDisabled(this._inferBtn, true);
-    this._say('INFERRING');
+    this._say(tl('INFERRING'));
     try {
       const { response, data } = await this._postJson('infer', {
         kind,
@@ -1520,7 +1599,7 @@ export class AiWorldPanel {
       });
       if (this._destroyed) return;
       if (!response?.ok || !data || typeof data !== 'object') {
-        this._refused('INFER', response, data);
+        this._refused(tl('INFER'), response, data);
         return;
       }
       const names = Array.isArray(data.matched)
@@ -1531,18 +1610,21 @@ export class AiWorldPanel {
             .join(', ')
         : '';
       const note =
-        data.note || (data.learning ? 'LEARNING' : names || 'NO MATCH');
-      this._setText(this._inferNote, note);
+        data.note ||
+        (data.learning ? msgl('LEARNING') : names || msgl('NO MATCH'));
+      // The server's notes are LEARNING and NO MATCH; names show as given.
+      const shown = tl(note);
+      this._setText(this._inferNote, shown);
       this._infer =
         note === 'NO MATCH' || note === 'LEARNING' || data.learning
           ? null
           : data;
       this._lastEmitted = '';
       this._emitPredictions();
-      this._log('INFER', note);
-      this._say(note);
+      this._log(tl('INFER'), shown);
+      this._say(shown);
     } catch (error) {
-      this._unanswered('INFER', error);
+      this._unanswered(tl('INFER'), error);
     } finally {
       if (this._busy === 'infer') this._busy = '';
       if (!this._destroyed) this._setDisabled(this._inferBtn, false);
@@ -1572,7 +1654,7 @@ export class AiWorldPanel {
         button.type = 'button';
         button.className = 'scene-btn ai-world-area-remove';
         button.dataset.newsUrl = url;
-        button.textContent = 'REMOVE';
+        button.textContent = tl('REMOVE');
         li.appendChild(name);
         li.appendChild(button);
         return li;
@@ -1585,7 +1667,7 @@ export class AiWorldPanel {
     if (!url) return;
     const { response, data } = await this._postJson('news-urls', { url });
     if (!response?.ok) {
-      this._refused('NEWS URL', response, data);
+      this._refused(tl('NEWS URL'), response, data);
       return;
     }
     if (this._newsInput) this._newsInput.value = '';
@@ -1603,7 +1685,7 @@ export class AiWorldPanel {
     });
     if (isOwnerRemovalRefusal(response, data)) return;
     if (!response?.ok) {
-      this._refused('NEWS URL', response, data);
+      this._refused(tl('NEWS URL'), response, data);
       return;
     }
     this._paintNews(Array.isArray(data?.urls) ? data.urls : []);

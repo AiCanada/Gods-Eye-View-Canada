@@ -35,6 +35,19 @@
   --cockpit-radio-expanded-width: 232px;
 }
 
+/* Inuktitut is written in syllabics, which the UI fonts lack: name the
+   system fonts that carry them (Nunavut's Pigiarniq, Apple's Euphemia UCAS,
+   Windows' Euphemia and Gadugi, Android's Noto) before the generic family. */
+html[lang='iu'] {
+  --font-mono:
+    'JetBrains Mono', 'SF Mono', 'Fira Code', 'Pigiarniq', 'Euphemia UCAS',
+    'Euphemia', 'Gadugi', 'Noto Sans Canadian Aboriginal', monospace;
+  --font-sans:
+    'Inter', 'Pigiarniq', 'Euphemia UCAS', 'Euphemia', 'Gadugi',
+    'Noto Sans Canadian Aboriginal', -apple-system, BlinkMacSystemFont,
+    sans-serif;
+}
+
 * {
   margin: 0;
   padding: 0;

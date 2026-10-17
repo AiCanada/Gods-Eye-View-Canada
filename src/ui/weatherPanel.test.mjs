@@ -658,7 +658,7 @@ test('a change of open card scrolls its header into view once; refreshes never m
   view.destroy();
 });
 test('history time keeps the hour whatever the length of the localized date', () => {
-  for (const locale of ['en', 'es', 'ru']) {
+  for (const locale of ['en', 'es', 'fr-CA', 'iu', 'ru']) {
     setLocale(locale);
     try {
       const f = fixture();

@@ -173,6 +173,8 @@ test('consumer build includes only infrastructure code and resolves assets under
   const { fileURLToPath } = await import('node:url');
   const result = await build({
     configFile: false,
+    // This machine's .env is not the consumer's: no env file is loaded.
+    envDir: false,
     logLevel: 'silent',
     base: '/example/',
     build: {

@@ -1,3 +1,6 @@
+// First: this process works in an empty temp folder, so the Overpass and
+// military-installation disk caches are not this machine's .gev-cache.
+import './tooling/isolatedCwd.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';

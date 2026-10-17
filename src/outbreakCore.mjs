@@ -19,7 +19,12 @@
  * Each distance is speed × hours since the scan began, drawn as a circle
  * round the place it starts from. The circles are a reach, not a forecast of
  * cases.
+ *
+ * What the box shows is marked with tl() from src/i18n/marker.js (Quebec
+ * French on the page); what goes to a model stays English, and a builder
+ * that serves both takes `say` (english unless the box passes its own).
  */
+import { english, localDigits, msgl, tl } from './i18n/marker.js';
 
 export const OUTBREAK_LAYER_ID = 'outbreak';
 /** The box sends the model to the layer on this window event. */
@@ -36,14 +41,14 @@ export const OUTBREAK_DEFAULT_LOCATIONS = Object.freeze([
   Object.freeze({
     id: 'irkutsk',
     name: 'Irkutsk, Russia',
-    kind: 'City',
+    kind: msgl('City'),
     lat: 52.287,
     lon: 104.305,
   }),
   Object.freeze({
     id: 'shelekhov',
     name: 'Shelekhov, Russia',
-    kind: 'Town',
+    kind: msgl('Town'),
     lat: 52.2108,
     lon: 104.0989,
   }),
@@ -97,30 +102,30 @@ export const CONNECTING_AIRPORTS_MAX = 12;
 export const OUTBREAK_MODES = Object.freeze({
   road: Object.freeze({
     id: 'road',
-    label: 'Road',
+    label: msgl('Road'),
     // Road travel is dark red (owner ruling, 2026-10-09; it was blue).
-    colorName: 'Dark red',
+    colorName: msgl('Dark red'),
     color: '#a3121b',
     speedKmh: 100,
   }),
   train: Object.freeze({
     id: 'train',
-    label: 'Train',
-    colorName: 'Orange',
+    label: msgl('Train'),
+    colorName: msgl('Orange'),
     color: '#ff8c1a',
     speedKmh: 60,
   }),
   boat: Object.freeze({
     id: 'boat',
-    label: 'Boat or vehicle',
-    colorName: 'Yellow',
+    label: msgl('Boat or vehicle'),
+    colorName: msgl('Yellow'),
     color: '#ffd21a',
     speedKmh: 38,
   }),
   plane: Object.freeze({
     id: 'plane',
-    label: 'Plane',
-    colorName: 'Red',
+    label: msgl('Plane'),
+    colorName: msgl('Red'),
     color: '#ff2a2a',
     speedKmh: 100,
   }),
@@ -300,13 +305,13 @@ export const OUTBREAK_CONTAGION_MAX = 110;
 /** The words beside the slider. */
 export function contagionLabel(value) {
   const level = cleanContagion(value);
-  if (level >= OUTBREAK_CONTAGION_MAX) return 'ZERO HOUR';
-  if (level > OUTBREAK_CONTAGION_HIGH) return 'UNDER AN HOUR';
-  if (level >= 90) return 'HIGH';
-  if (level >= 65) return 'MEDIUM-HIGH';
-  if (level > 35) return 'MEDIUM';
-  if (level > 10) return 'MEDIUM-LOW';
-  return 'LOW';
+  if (level >= OUTBREAK_CONTAGION_MAX) return tl('ZERO HOUR');
+  if (level > OUTBREAK_CONTAGION_HIGH) return tl('UNDER AN HOUR');
+  if (level >= 90) return tl('HIGH');
+  if (level >= 65) return tl('MEDIUM-HIGH');
+  if (level > 35) return tl('MEDIUM');
+  if (level > 10) return tl('MEDIUM-LOW');
+  return tl('LOW');
 }
 
 /**
@@ -400,7 +405,9 @@ export function forecastWindowStart(within) {
 /** A window end for the box and the map: '48 H' below 3 days, then '7 D'. */
 export function forecastWindowLabel(within) {
   const hours = cleanForecastWithin(within);
-  return hours < 72 ? `${hours} H` : `${hours / 24} D`;
+  return hours < 72
+    ? tl('{hours} H', { hours })
+    : tl('{days} D', { days: hours / 24 });
 }
 
 /** FUTURE SPREAD LOCATIONS asks for these windows by default, in this order. */
@@ -422,8 +429,8 @@ export function outbreakHourOptions(startMs, nowMs) {
       value: hour,
       label:
         hour === last
-          ? `Present · hour ${hour} · ${clock}`
-          : `Hour ${hour} · ${clock}`,
+          ? tl('Present · hour {hour} · {clock}', { hour, clock })
+          : tl('Hour {hour} · {clock}', { hour, clock }),
     });
   }
   // Into the future: the same reach carried on from the present.
@@ -434,7 +441,18 @@ export function outbreakHourOptions(startMs, nowMs) {
     options.push({
       value: hour,
       future: true,
-      label: `Future · +${ahead <= 48 ? `${ahead} h` : `${Math.floor(ahead / 24)} d${ahead % 24 ? ` ${ahead % 24} h` : ''}`} · ${clock}`,
+      label: tl('Future · +{ahead} · {clock}', {
+        ahead:
+          ahead <= 48
+            ? tl('{hours} h', { hours: ahead })
+            : ahead % 24
+              ? tl('{days} d {hours} h', {
+                  days: Math.floor(ahead / 24),
+                  hours: ahead % 24,
+                })
+              : tl('{days} d', { days: Math.floor(ahead / 24) }),
+        clock,
+      }),
     });
   }
   return options;
@@ -474,9 +492,10 @@ export function cleanFlight(raw, fallbackDepartMs) {
     hop: raw?.hop === 2 ? 2 : raw?.hop === 3 ? 3 : 1,
     ...(raw?.assumed === true ? { assumed: true } : {}),
     callsign: cleanLine(raw?.callsign, 12),
+    // English, shown through tl().
     source: timed
-      ? cleanLine(raw?.source, 40) || 'Flight history'
-      : cleanLine(raw?.source, 40) || 'Schedule',
+      ? cleanLine(raw?.source, 40) || msgl('Flight history')
+      : cleanLine(raw?.source, 40) || msgl('Schedule'),
   };
 }
 
@@ -487,7 +506,7 @@ export function cleanFlight(raw, fallbackDepartMs) {
  * @param {{from: object, to: object, hop?: number}[]} routes
  * @param {number} startMs
  */
-export function timeScheduleRoutes(routes, startMs, source = 'Schedule') {
+export function timeScheduleRoutes(routes, startMs, source = msgl('Schedule')) {
   const firstArrival = new Map();
   const flights = [];
   for (const route of routes.filter((r) => r?.hop !== 2)) {
@@ -744,7 +763,11 @@ export function outbreakViewTarget(locations) {
   };
 }
 
-export function spreadSummary(spread, speeds = {}) {
+/**
+ * The reach of each way of travel, one line each, for the box and the
+ * language model: English unless `say` is the page's (the box passes it).
+ */
+export function spreadSummary(spread, speeds = {}, say = english) {
   const widest = (mode) =>
     spread.rings
       .filter((ring) => ring.mode === mode)
@@ -752,27 +775,62 @@ export function spreadSummary(spread, speeds = {}) {
   const lines = [];
   for (const mode of OUTBREAK_MODE_IDS) {
     const spec = OUTBREAK_MODES[mode];
+    const name = say.tl(spec.label);
+    const color = say.tl(spec.colorName);
     if (mode === 'plane') {
       lines.push(
-        `${spec.label} (${spec.colorName}): ${spread.destinations.length} destination${spread.destinations.length === 1 ? '' : 's'} reached · ${spread.airRoads ? 'roads out of each light up green from its landing' : 'the roads out of each are loading'}${spread.airRails ? ' · rail lines out of each light up orange' : ''}`,
+        [
+          say.tln(
+            spread.destinations.length,
+            '{mode} ({color}): {count} destination reached',
+            '{mode} ({color}): {count} destinations reached',
+            { mode: name, color },
+          ),
+          spread.airRoads
+            ? say.tl('roads out of each light up green from its landing')
+            : say.tl('the roads out of each are loading'),
+          spread.airRails
+            ? say.tl('rail lines out of each light up orange')
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
       );
       continue;
     }
+    const speed = cleanSpeed(mode, speeds[mode]);
     // Along the main roads or rail lines, where they are known.
     const along = (spread.reaches || [])
       .filter((r) => r.mode === mode)
       .reduce((max, r) => Math.max(max, r.km), 0);
     if (along > 0) {
+      const values = { mode: name, speed, km: Math.round(along) };
       lines.push(
-        `${spec.label} (${cleanSpeed(mode, speeds[mode])} km/h): ${Math.round(along)} km along the ${mode === 'train' ? 'rail lines, orange once reached' : 'main roads, dark red once reached'}`,
+        mode === 'train'
+          ? say.tl(
+              '{mode} ({speed} km/h): {km} km along the rail lines, orange once reached',
+              values,
+            )
+          : say.tl(
+              '{mode} ({speed} km/h): {km} km along the main roads, dark red once reached',
+              values,
+            ),
       );
       continue;
     }
     const km = widest(mode);
     lines.push(
       km > 0
-        ? `${spec.label} (${spec.colorName}, ${cleanSpeed(mode, speeds[mode])} km/h): ${Math.round(km)} km`
-        : `${spec.label} (${spec.colorName}): not near this outbreak`,
+        ? say.tl('{mode} ({color}, {speed} km/h): {km} km', {
+            mode: name,
+            color,
+            speed,
+            km: Math.round(km),
+          })
+        : say.tl('{mode} ({color}): not near this outbreak', {
+            mode: name,
+            color,
+          }),
     );
   }
   return lines;
@@ -789,39 +847,39 @@ export function spreadSummary(spread, speeds = {}) {
 export const TRANSMISSION_MODES = Object.freeze([
   Object.freeze({
     id: 'airborne',
-    label: 'Airborne',
+    label: msgl('Airborne'),
     words: 'airborne (fine droplets that linger in the air)',
     delta: 25,
   }),
   Object.freeze({
     id: 'droplets',
-    label: 'Respiratory droplets',
+    label: msgl('Respiratory droplets'),
     words: 'respiratory droplets (coughing and sneezing)',
     delta: 15,
   }),
   Object.freeze({
     id: 'contact',
-    label: 'Direct contact',
+    label: msgl('Direct contact'),
     words: 'direct physical contact',
     delta: 0,
   }),
   Object.freeze({
     id: 'fomites',
-    label: 'Fomites (surfaces)',
+    label: msgl('Fomites (surfaces)'),
     words: 'fomites (contaminated surfaces)',
     delta: -10,
   }),
   Object.freeze({
     id: 'vector',
-    label: 'Vector-borne',
+    label: msgl('Vector-borne'),
     words: 'vector-borne (for example mosquitoes)',
     delta: -20,
   }),
 ]);
 export const MUTATION_RATES = Object.freeze([
-  Object.freeze({ id: 'low', label: 'Low', delta: 0 }),
-  Object.freeze({ id: 'medium', label: 'Medium', delta: 5 }),
-  Object.freeze({ id: 'high', label: 'High', delta: 10 }),
+  Object.freeze({ id: 'low', label: msgl('Low'), delta: 0 }),
+  Object.freeze({ id: 'medium', label: msgl('Medium'), delta: 5 }),
+  Object.freeze({ id: 'high', label: msgl('High'), delta: 10 }),
 ]);
 export const R0_MAX = 20;
 export const INCUBATION_DAYS_MAX = 60;
@@ -836,63 +894,63 @@ export const DENSITY_BANDS = Object.freeze([
     id: '0-10k',
     low: 0,
     high: 10_000,
-    type: 'Rural / village',
+    type: msgl('Rural / village'),
     delta: -10,
   }),
   Object.freeze({
     id: '10k-50k',
     low: 10_000,
     high: 50_000,
-    type: 'Small town',
+    type: msgl('Small town'),
     delta: -7,
   }),
   Object.freeze({
     id: '50k-100k',
     low: 50_000,
     high: 100_000,
-    type: 'Town',
+    type: msgl('Town'),
     delta: -4,
   }),
   Object.freeze({
     id: '100k-250k',
     low: 100_000,
     high: 250_000,
-    type: 'Small city',
+    type: msgl('Small city'),
     delta: 0,
   }),
   Object.freeze({
     id: '250k-500k',
     low: 250_000,
     high: 500_000,
-    type: 'City',
+    type: msgl('City'),
     delta: 3,
   }),
   Object.freeze({
     id: '500k-1m',
     low: 500_000,
     high: 1_000_000,
-    type: 'Large city',
+    type: msgl('Large city'),
     delta: 6,
   }),
   Object.freeze({
     id: '1m-2.5m',
     low: 1_000_000,
     high: 2_500_000,
-    type: 'Metropolis',
+    type: msgl('Metropolis'),
     delta: 9,
   }),
   Object.freeze({
     id: '2.5m-5m',
     low: 2_500_000,
     high: 5_000_000,
-    type: 'Major metropolis',
+    type: msgl('Major metropolis'),
     delta: 12,
   }),
   Object.freeze({
     id: '5m-10m',
     low: 5_000_000,
     high: 10_000_000,
-    type: 'Megacity',
+    type: msgl('Megacity'),
     delta: 15,
   }),
 ]);
@@ -906,6 +964,27 @@ function peopleCount(n) {
 /** A band's range in words: "250,000 – 500,000 people". */
 export function densityRange(band) {
   return `${peopleCount(band.low)} – ${peopleCount(band.high)} people`;
+}
+
+/** People in words for a menu: 10,000; 2.5 million (in the page's marks). */
+function peopleShown(n) {
+  if (n >= 1_000_000)
+    return tl('{count} million', { count: localDigits(String(n / 1_000_000)) });
+  return localDigits(n.toLocaleString('en-US'));
+}
+
+/**
+ * A HUMAN BEHAVIOR & DEMOGRAPHICS choice as its menu shows it: a density
+ * band as "250,000 – 500,000 people · City", any other its own label.
+ */
+export function humanChoiceLabel(option) {
+  const band = DENSITY_BANDS.find((entry) => entry.id === option?.id);
+  if (!band) return tl(option?.label);
+  return tl('{low} – {high} people · {type}', {
+    low: peopleShown(band.low),
+    high: peopleShown(band.high),
+    type: tl(band.type),
+  });
 }
 
 /** The bands as a factor's choices, their weight scaled by `weight`. */
@@ -930,35 +1009,35 @@ function densityOptions(where, weight) {
 export const HUMAN_FACTORS = Object.freeze([
   Object.freeze({
     key: 'density',
-    label: 'Density near patient zero',
+    label: msgl('Density near patient zero'),
     options: densityOptions('near patient zero', 1),
   }),
   // Where it lands next: half the weight, since it speeds the spread on from
   // there rather than out of the outbreak itself.
   Object.freeze({
     key: 'densityNew',
-    label: 'Density of new infected locations',
+    label: msgl('Density of new infected locations'),
     options: densityOptions('at the new infected locations', 0.5),
   }),
   Object.freeze({
     key: 'travel',
-    label: 'Global travel',
+    label: msgl('Global travel'),
     options: Object.freeze([
       {
         id: 'low',
-        label: 'Low',
+        label: msgl('Low'),
         words: 'little international travel',
         delta: -5,
       },
       {
         id: 'medium',
-        label: 'Medium',
+        label: msgl('Medium'),
         words: 'some international travel',
         delta: 0,
       },
       {
         id: 'high',
-        label: 'High',
+        label: msgl('High'),
         words: 'a high-volume international flight and transit hub',
         delta: 10,
       },
@@ -966,24 +1045,24 @@ export const HUMAN_FACTORS = Object.freeze([
   }),
   Object.freeze({
     key: 'compliance',
-    label: 'Public compliance',
+    label: msgl('Public compliance'),
     options: Object.freeze([
       {
         id: 'high',
-        label: 'High',
+        label: msgl('High'),
         words:
           'high public compliance and trust (masking, distancing, quarantine, vaccination)',
         delta: -15,
       },
       {
         id: 'medium',
-        label: 'Medium',
+        label: msgl('Medium'),
         words: 'mixed public compliance and trust',
         delta: 0,
       },
       {
         id: 'low',
-        label: 'Low',
+        label: msgl('Low'),
         words: 'low public compliance and trust',
         delta: 12,
       },
@@ -991,23 +1070,23 @@ export const HUMAN_FACTORS = Object.freeze([
   }),
   Object.freeze({
     key: 'vulnerability',
-    label: 'Socioeconomic vulnerability',
+    label: msgl('Socioeconomic vulnerability'),
     options: Object.freeze([
       {
         id: 'low',
-        label: 'Low',
+        label: msgl('Low'),
         words: 'low socioeconomic vulnerability',
         delta: -5,
       },
       {
         id: 'medium',
-        label: 'Medium',
+        label: msgl('Medium'),
         words: 'some socioeconomic vulnerability',
         delta: 0,
       },
       {
         id: 'high',
-        label: 'High',
+        label: msgl('High'),
         words:
           'high socioeconomic vulnerability (no remote work, clean water or paid sick leave)',
         delta: 10,
@@ -1016,24 +1095,24 @@ export const HUMAN_FACTORS = Object.freeze([
   }),
   Object.freeze({
     key: 'season',
-    label: 'Seasonality',
+    label: msgl('Seasonality'),
     options: Object.freeze([
       {
         id: 'warm',
-        label: 'Warm and humid',
+        label: msgl('Warm and humid'),
         words: 'warm, humid weather',
         delta: -5,
       },
-      { id: 'mild', label: 'Mild', words: 'mild weather', delta: 0 },
+      { id: 'mild', label: msgl('Mild'), words: 'mild weather', delta: 0 },
       {
         id: 'winter',
-        label: 'Cold, dry winter',
+        label: msgl('Cold, dry winter'),
         words: 'cold, dry winter air (droplets stay suspended longer)',
         delta: 10,
       },
       {
         id: 'rain',
-        label: 'Heavy rain',
+        label: msgl('Heavy rain'),
         words: 'heavy rainfall driving people indoors',
         delta: 5,
       },
@@ -1041,18 +1120,23 @@ export const HUMAN_FACTORS = Object.freeze([
   }),
   Object.freeze({
     key: 'immunity',
-    label: 'Immunity',
+    label: msgl('Immunity'),
     options: Object.freeze([
       {
         id: 'novel',
-        label: 'Novel',
+        label: msgl('Novel'),
         words: 'a novel virus: no natural immunity',
         delta: 15,
       },
-      { id: 'partial', label: 'Partial', words: 'partial immunity', delta: 0 },
+      {
+        id: 'partial',
+        label: msgl('Partial'),
+        words: 'partial immunity',
+        delta: 0,
+      },
       {
         id: 'strong',
-        label: 'Strong',
+        label: msgl('Strong'),
         words: 'strong immunity from past strains or vaccination',
         delta: -15,
       },
@@ -1123,38 +1207,42 @@ export function suggestedContagion(profile) {
     !p.asymptomatic
   )
     parts.push({
-      label: `asymptomatic ${asymPct} %`,
+      label: tl('asymptomatic {percent} %', { percent: localDigits(asymPct) }),
       delta: asymPct >= 40 ? 10 : asymPct >= 20 ? 5 : 0,
     });
   const mode = TRANSMISSION_MODES.find((m) => m.id === p.transmission);
-  if (mode) parts.push({ label: mode.label, delta: mode.delta });
+  if (mode) parts.push({ label: tl(mode.label), delta: mode.delta });
   if (p.r0 !== undefined)
     parts.push({
-      label: `R0 ${p.r0}`,
+      label: `R0 ${localDigits(p.r0)}`,
       delta: Math.round(Math.max(-25, Math.min(35, (p.r0 - 1.5) * 12))),
     });
   if (p.asymptomatic)
     parts.push(
       p.asymptomatic === 'yes'
-        ? { label: 'spreads without symptoms', delta: 15 }
-        : { label: 'only with symptoms', delta: -10 },
+        ? { label: tl('spreads without symptoms'), delta: 15 }
+        : { label: tl('only with symptoms'), delta: -10 },
     );
   if (p.incubationDays !== undefined)
     parts.push({
-      label: `incubation ${p.incubationDays} d`,
+      label: tl('incubation {days} d', {
+        days: localDigits(p.incubationDays),
+      }),
       delta: p.incubationDays > 7 ? 10 : p.incubationDays >= 3 ? 5 : 0,
     });
   const mutation = MUTATION_RATES.find((m) => m.id === p.mutation);
   if (mutation)
     parts.push({
-      label: `mutation ${mutation.label.toLowerCase()}`,
+      label: tl('mutation {rate}', {
+        rate: tl(mutation.label).toLowerCase(),
+      }),
       delta: mutation.delta,
     });
   for (const factor of HUMAN_FACTORS) {
     const option = factor.options.find((o) => o.id === p[factor.key]);
     if (option)
       parts.push({
-        label: `${factor.label.toLowerCase()} ${option.label.toLowerCase()}`,
+        label: `${tl(factor.label).toLowerCase()} ${humanChoiceLabel(option).toLowerCase()}`,
         delta: option.delta,
       });
   }
@@ -1600,7 +1688,7 @@ export function simulateAirTraffic({
           to: f.to,
           timeOfDay,
           lengthMs: f.arriveMs - f.departMs,
-          source: 'Daily schedule (assumed)',
+          source: msgl('Daily schedule (assumed)'),
         });
     }
     if (!routes.size) {
@@ -1610,7 +1698,7 @@ export function simulateAirTraffic({
           // Spread through the day, the same for the same route every time.
           timeOfDay: stableIndex(`${code}>${to.code}`, 48) * 1_800_000,
           lengthMs: flightHours(here, to) * HOUR_MS,
-          source: 'Normal air traffic (assumed)',
+          source: msgl('Normal air traffic (assumed)'),
         });
       }
     }

@@ -49,6 +49,11 @@ import marketsFeed from '../../server/shared/worldTape/feeds/markets.mjs';
 import { sstRecord } from '../../server/shared/worldTape/feeds/sea-surface-temperature.mjs';
 import { weatherRecord } from '../../server/shared/worldTape/feeds/observed-weather.mjs';
 import { buildCatalog } from '../../server/shared/worldTape/catalog.mjs';
+import {
+  AI_WORLD_EXCLUDED,
+  AI_WORLD_FEED_LABELS,
+  AI_WORLD_LICENCES,
+} from '../aiWorldSelection.mjs';
 import cctvVideo from '../../server/shared/worldTape/feeds/cctv-video.mjs';
 import { airRecord } from '../../server/shared/worldTape/feeds/air-quality.mjs';
 import airQuality from '../../server/shared/worldTape/feeds/air-quality.mjs';
@@ -576,4 +581,15 @@ test('a news URL that redirects into this machine’s own network is refused; a 
     false,
     'the private address was never asked',
   );
+});
+
+test('every TRAIN ON label and licence note the catalog gives is listed for translation', () => {
+  const excluded = new Set(AI_WORLD_EXCLUDED);
+  const labels = new Set(AI_WORLD_FEED_LABELS);
+  const licences = new Set(AI_WORLD_LICENCES);
+  for (const item of buildCatalog()) {
+    if (excluded.has(item.id)) continue;
+    assert.ok(labels.has(item.label.toUpperCase()), item.label);
+    assert.ok(licences.has(item.licence), item.licence);
+  }
 });

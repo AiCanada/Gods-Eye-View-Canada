@@ -1,3 +1,6 @@
+// First: this process works in an empty temp folder, also the providers' root,
+// so no cache, private config or integrity store of this machine reaches it.
+import { isolatedCwd } from '../tooling/isolatedCwd.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -118,7 +121,7 @@ test('construction mounts the route once and neither parses nor fetches', (t) =>
   t.mock.method(globalThis, 'fetch', () => {
     throw Error('construction must not fetch');
   });
-  const plugins = localProviderPlugins();
+  const plugins = localProviderPlugins({ sourceRoot: isolatedCwd });
   assert.equal(
     plugins.filter((plugin) => plugin.name === 'local-receivers-proxy').length,
     1,

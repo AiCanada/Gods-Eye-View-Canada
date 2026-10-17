@@ -1,8 +1,7 @@
 import { createSurfaceKeyboard } from './ui/surfaceKeyboard.js';
 import { initPrivateCameraSetup } from './privateCamerasSetup.js';
-import { initDeviceFeedSetup } from './deviceFeedsSetup.js';
+import { initDeviceFeedSetup, ULTRA_PACKAGE_KIND } from './deviceFeedsSetup.js';
 import { initRoadCctvKeysSetup } from './roadCctvKeysSetup.js';
-import { initLlmTrainingSetup } from './llmTrainingSetup.js';
 import {
   isOwnerRemovalRefusal,
   noteOwnerRemovalRefusal,
@@ -29,7 +28,7 @@ import {
  * the chip and the dialog are removed outright.
  */
 
-import { t, msg, tn, registerUnsavedWork } from './i18n/index.js';
+import { t, msg, tn, tln, registerUnsavedWork } from './i18n/index.js';
 
 /**
  * Chip label — pure, exported for tests (keySetup.test.mjs pins the English).
@@ -41,7 +40,12 @@ export function keySetupChipLabel(status, sections = []) {
   const { missing } = keySetupPowerUpCount(status, sections);
   if (missing <= 0) return t('POWERED UP');
   // Once the sections are known, what is waiting is not only keys.
-  if (sections.length) return `POWER UP · ${missing} WAITING`;
+  if (sections.length)
+    return tln(
+      missing,
+      'POWER UP · {count} WAITING',
+      'POWER UP · {count} WAITING',
+    );
   return tn(
     missing,
     'POWER UP · {count} KEY WAITING',
@@ -52,8 +56,9 @@ export function keySetupChipLabel(status, sections = []) {
 /**
  * Every power-up on the dashboard, counted once each: the provider keys (an
  * alternatives group is one), and the sections that hold the owner's own things
- * (home cameras, business cameras, drones, robots, marine drones, trackers,
- * security packages), each ON when it holds at least one. Pure.
+ * (home cameras, business cameras, drones, robots, marine drones, trackers),
+ * each ON when it holds at least one. The Ultra Security Package's cards are in
+ * the Ultra tab, so they are not counted here. Pure.
  * @param {{setCount?: number, total?: number}|null} status
  * @param {Array<{id: string, set: boolean}>} [sections]
  * @returns {{on: number, total: number, missing: number}}
@@ -524,20 +529,14 @@ export async function initKeySetup({
   let privateSetup = null;
   // YOUR DEVICES: drones, robots, marine drones and GPS trackers, rendered after
   // the cameras and kept across re-renders the same way (src/deviceFeedsSetup.js).
+  // The Ultra Security Package is not among them: its cards are at the bottom
+  // of the Ultra tab (owner request 2026-10-17).
   const deviceHost =
     rowsHost && documentRef.createElement
       ? documentRef.createElement('div')
       : null;
   if (deviceHost) deviceHost.className = 'private-cams device-feeds';
   let deviceSetup = null;
-  // CUSTOM LLM TRAINING: a model trained on what the app records and on the
-  // owner's URLs and files, after the devices (src/llmTrainingSetup.js).
-  const llmHost =
-    rowsHost && documentRef.createElement
-      ? documentRef.createElement('div')
-      : null;
-  if (llmHost) llmHost.className = 'private-cams llm-training';
-  let llmSetup = null;
   // GENERIC ROAD CCTV API KEYS: any number, shown right under the ROAD511 key
   // and kept across re-renders the same way (src/roadCctvKeysSetup.js).
   const roadHost =
@@ -592,7 +591,6 @@ export async function initKeySetup({
     }
     if (privateHost) rowsHost.append(privateHost);
     if (deviceHost) rowsHost.append(deviceHost);
-    if (llmHost) rowsHost.append(llmHost);
     syncCloudVoiceAuth();
   };
 
@@ -892,19 +890,13 @@ export async function initKeySetup({
       fetchImpl: doFetch,
       onSections: onSections('road-cctv-keys'),
     });
-  if (llmHost)
-    llmSetup = initLlmTrainingSetup({
-      host: llmHost,
-      documentRef,
-      fetchImpl: doFetch,
-      signal: lifetime.signal,
-    });
   if (deviceHost)
     deviceSetup = initDeviceFeedSetup({
       host: deviceHost,
       documentRef,
       fetchImpl: doFetch,
       signal: lifetime.signal,
+      showKind: (kind) => kind.id !== ULTRA_PACKAGE_KIND,
       onSections: onSections('devices'),
     });
 
@@ -928,7 +920,6 @@ export async function initKeySetup({
     applyButton?.removeEventListener('click', onApply);
     privateSetup?.destroy();
     deviceSetup?.destroy();
-    llmSetup?.destroy();
   };
   return { open: openDialog, close, render, destroy };
 }

@@ -391,18 +391,19 @@ test('the box sits last in the left stack, collapsed, with the shared chrome and
     html.indexOf('<div id="outbreak-panel"') <
       html.indexOf('<div id="ai-world-panel"'),
   );
-  // data-i18n-skip: the tab's text stays English for now (scripts/i18n.mjs).
+  // The tab's text is marked for the fork locales (data-i18n-local, tl():
+  // Quebec French); every other locale shows it in English.
   assert.match(
     box,
-    /^<div id="ai-world-panel" class="panel-collapsible collapsed" data-panel-id="ai-world-panel" data-i18n-skip>\s*<div class="panel-glow"><\/div>\s*<div class="ai-world-panel-inner">/,
+    /^<div id="ai-world-panel" class="panel-collapsible collapsed" data-panel-id="ai-world-panel">\s*<div class="panel-glow"><\/div>\s*<div class="ai-world-panel-inner">/,
   );
   assert.match(
     box,
-    /<span class="panel-title" data-collapsed-title="ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM">ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM<\/span>/,
+    /<span class="panel-title" data-collapsed-title="ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM" data-i18n-local-collapsed-title data-i18n-local>ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM<\/span>/,
   );
   assert.match(
     box,
-    /<button class="panel-collapse-btn" data-collapse-target="ai-world-panel" title="Collapse panel">\+<\/button>/,
+    /<button class="panel-collapse-btn" data-collapse-target="ai-world-panel" title="Collapse panel" data-i18n-local-title>\+<\/button>/,
   );
   assert.match(
     box,

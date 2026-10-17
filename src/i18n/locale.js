@@ -8,12 +8,17 @@ export const LOCALE_STORAGE_KEY = 'gev:locale:v1';
 export const DEFAULT_LOCALE = 'en';
 
 /** Shipped locales; order does not matter. Adding one: docs/TRANSLATORS.md. */
-export const LOCALES = Object.freeze(['en', 'es', 'ru']);
+export const LOCALES = Object.freeze(['en', 'es', 'fr-CA', 'iu', 'ru']);
 
-/** Each locale named in its own language, for the selector. */
+/**
+ * Each locale named in its own language, for the selector. Inuktitut is
+ * named as its speakers write it in English text, the name the owner chose.
+ */
 export const LOCALE_NAMES = Object.freeze({
   en: 'English',
   es: 'Español',
+  'fr-CA': 'Français Québécois',
+  iu: 'Inuktitut',
   ru: 'Русский',
 });
 
@@ -21,13 +26,19 @@ export const LOCALE_NAMES = Object.freeze({
 const RTL_LOCALES = Object.freeze([]);
 
 /**
- * Map any language tag to a shipped locale: 'ru-RU' and 'RU' → 'ru'.
+ * Map any language tag to a shipped locale: 'ru-RU' and 'RU' → 'ru'. A
+ * locale with a region matches its exact tag first ('fr_ca' → 'fr-CA'), and
+ * its language alone stands for it: Quebec French is the only French shipped,
+ * so 'fr' and 'fr-FR' → 'fr-CA'.
  * @returns {string|null}
  */
 export function normalizeLocale(candidate) {
   if (typeof candidate !== 'string') return null;
-  const primary = candidate.trim().toLowerCase().split(/[-_]/)[0];
-  return LOCALES.includes(primary) ? primary : null;
+  const tag = candidate.trim().toLowerCase().replace(/_/g, '-');
+  const exact = LOCALES.find((code) => code.toLowerCase() === tag);
+  if (exact) return exact;
+  const primary = tag.split('-')[0];
+  return LOCALES.find((code) => code.split('-')[0] === primary) ?? null;
 }
 
 function queryLocale(location) {

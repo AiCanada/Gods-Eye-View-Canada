@@ -90,7 +90,7 @@ for (const locale of ['es', 'ru']) {
   });
 }
 
-for (const locale of ['en', 'es', 'ru']) {
+for (const locale of ['en', 'es', 'fr-CA', 'iu', 'ru']) {
   test(`${locale}: the Weather card shows an HTTP failure as the row does`, async () => {
     const layer = harness({
       getSnapshot: async () => {

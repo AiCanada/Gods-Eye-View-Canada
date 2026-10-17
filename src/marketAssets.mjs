@@ -13,20 +13,23 @@
  * - `mentions`: the words in a headline that name it. A mention is a count,
  *   not a claim that the story moved the price.
  *
- * Prices are a readout, not advice.
+ * Prices are a readout, not advice. Labels and hub names are English, marked
+ * for tl() (src/i18n/marker.js); the server reads this table too.
  */
+
+import { msgl } from './i18n/marker.js';
 
 const hub = (name, lat, lon) => Object.freeze({ name, lat, lon });
 
 // Places several assets share.
-const NEW_YORK = hub('New York', 40.7069, -74.0113);
-const NEW_YORK_HARBOR = hub('New York Harbor', 40.6676, -74.0446);
-const CHICAGO = hub('Chicago', 41.8781, -87.6298);
-const LONDON = hub('London', 51.5136, -0.089);
-const FRANKFURT = hub('Frankfurt', 50.1109, 8.6821);
-const TOKYO = hub('Tokyo', 35.6812, 139.7671);
-const MUMBAI = hub('Mumbai', 18.9298, 72.8333);
-const SYDNEY = hub('Sydney', -33.8688, 151.2093);
+const NEW_YORK = hub(msgl('New York'), 40.7069, -74.0113);
+const NEW_YORK_HARBOR = hub(msgl('New York Harbor'), 40.6676, -74.0446);
+const CHICAGO = hub(msgl('Chicago'), 41.8781, -87.6298);
+const LONDON = hub(msgl('London'), 51.5136, -0.089);
+const FRANKFURT = hub(msgl('Frankfurt'), 50.1109, 8.6821);
+const TOKYO = hub(msgl('Tokyo'), 35.6812, 139.7671);
+const MUMBAI = hub(msgl('Mumbai'), 18.9298, 72.8333);
+const SYDNEY = hub(msgl('Sydney'), -33.8688, 151.2093);
 
 const asset = (fields) =>
   Object.freeze({ ...fields, mentions: Object.freeze(fields.mentions) });
@@ -36,7 +39,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'eurusd',
     symbol: 'EURUSD=X',
-    label: 'EUR / USD',
+    label: msgl('EUR / USD'),
     unit: 'usd',
     group: 'fx',
     hub: FRANKFURT,
@@ -45,7 +48,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'usdjpy',
     symbol: 'USDJPY=X',
-    label: 'USD / JPY',
+    label: msgl('USD / JPY'),
     unit: 'jpy',
     group: 'fx',
     hub: TOKYO,
@@ -54,7 +57,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'gbpusd',
     symbol: 'GBPUSD=X',
-    label: 'GBP / USD',
+    label: msgl('GBP / USD'),
     unit: 'usd',
     group: 'fx',
     hub: LONDON,
@@ -63,25 +66,25 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'usdchf',
     symbol: 'USDCHF=X',
-    label: 'USD / CHF',
+    label: msgl('USD / CHF'),
     unit: 'chf',
     group: 'fx',
-    hub: hub('Zurich', 47.3769, 8.5417),
+    hub: hub(msgl('Zurich'), 47.3769, 8.5417),
     mentions: ['usd chf', 'swiss franc'],
   }),
   asset({
     id: 'usdcad',
     symbol: 'USDCAD=X',
-    label: 'USD / CAD',
+    label: msgl('USD / CAD'),
     unit: 'cad',
     group: 'fx',
-    hub: hub('Ottawa', 45.4206, -75.7036),
+    hub: hub(msgl('Ottawa'), 45.4206, -75.7036),
     mentions: ['usd cad', 'canadian dollar', 'loonie'],
   }),
   asset({
     id: 'audusd',
     symbol: 'AUDUSD=X',
-    label: 'AUD / USD',
+    label: msgl('AUD / USD'),
     unit: 'usd',
     group: 'fx',
     hub: SYDNEY,
@@ -90,16 +93,16 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'usdcny',
     symbol: 'USDCNY=X',
-    label: 'USD / CNY',
+    label: msgl('USD / CNY'),
     unit: 'cny',
     group: 'fx',
-    hub: hub('Beijing', 39.9042, 116.4074),
+    hub: hub(msgl('Beijing'), 39.9042, 116.4074),
     mentions: ['usd cny', 'yuan', 'renminbi'],
   }),
   asset({
     id: 'usdinr',
     symbol: 'USDINR=X',
-    label: 'USD / INR',
+    label: msgl('USD / INR'),
     unit: 'inr',
     group: 'fx',
     hub: MUMBAI,
@@ -108,16 +111,16 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'usdmxn',
     symbol: 'USDMXN=X',
-    label: 'USD / MXN',
+    label: msgl('USD / MXN'),
     unit: 'mxn',
     group: 'fx',
-    hub: hub('Mexico City', 19.4326, -99.1332),
+    hub: hub(msgl('Mexico City'), 19.4326, -99.1332),
     mentions: ['usd mxn', 'mexican peso'],
   }),
   asset({
     id: 'dxy',
     symbol: 'DX-Y.NYB',
-    label: 'US dollar index',
+    label: msgl('US dollar index'),
     unit: 'index',
     group: 'fx',
     hub: NEW_YORK,
@@ -127,7 +130,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'us5y',
     symbol: '^FVX',
-    label: 'US 5-year yield',
+    label: msgl('US 5-year yield'),
     unit: 'percent',
     group: 'yield',
     hub: NEW_YORK,
@@ -136,7 +139,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'us10y',
     symbol: '^TNX',
-    label: 'US 10-year yield',
+    label: msgl('US 10-year yield'),
     unit: 'percent',
     group: 'yield',
     hub: NEW_YORK,
@@ -145,7 +148,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'us30y',
     symbol: '^TYX',
-    label: 'US 30-year yield',
+    label: msgl('US 30-year yield'),
     unit: 'percent',
     group: 'yield',
     hub: NEW_YORK,
@@ -155,34 +158,34 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'crude',
     symbol: 'CL=F',
-    label: 'WTI crude',
+    label: msgl('WTI crude'),
     unit: 'usd',
     group: 'commodity',
-    hub: hub('Cushing, Oklahoma', 35.9851, -96.767),
+    hub: hub(msgl('Cushing, Oklahoma'), 35.9851, -96.767),
     mentions: ['crude', 'wti', 'oil'],
   }),
   asset({
     id: 'brent',
     symbol: 'BZ=F',
-    label: 'Brent crude',
+    label: msgl('Brent crude'),
     unit: 'usd',
     group: 'commodity',
-    hub: hub('North Sea (Brent)', 61.03, 1.71),
+    hub: hub(msgl('North Sea (Brent)'), 61.03, 1.71),
     mentions: ['brent'],
   }),
   asset({
     id: 'natgas',
     symbol: 'NG=F',
-    label: 'Natural gas (Henry Hub)',
+    label: msgl('Natural gas (Henry Hub)'),
     unit: 'usd',
     group: 'commodity',
-    hub: hub('Henry Hub, Louisiana', 29.9593, -92.036),
+    hub: hub(msgl('Henry Hub, Louisiana'), 29.9593, -92.036),
     mentions: ['natural gas', 'henry hub', 'lng'],
   }),
   asset({
     id: 'gold',
     symbol: 'GC=F',
-    label: 'Gold',
+    label: msgl('Gold'),
     unit: 'usd',
     group: 'commodity',
     hub: LONDON,
@@ -191,7 +194,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'silver',
     symbol: 'SI=F',
-    label: 'Silver',
+    label: msgl('Silver'),
     unit: 'usd',
     group: 'commodity',
     hub: NEW_YORK,
@@ -200,7 +203,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'wheat',
     symbol: 'ZW=F',
-    label: 'Wheat',
+    label: msgl('Wheat'),
     unit: 'usd',
     group: 'commodity',
     hub: CHICAGO,
@@ -209,7 +212,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'corn',
     symbol: 'ZC=F',
-    label: 'Corn',
+    label: msgl('Corn'),
     unit: 'usd',
     group: 'commodity',
     hub: CHICAGO,
@@ -218,7 +221,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'soybeans',
     symbol: 'ZS=F',
-    label: 'Soybeans',
+    label: msgl('Soybeans'),
     unit: 'usd',
     group: 'commodity',
     hub: CHICAGO,
@@ -227,7 +230,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'copper',
     symbol: 'HG=F',
-    label: 'Copper',
+    label: msgl('Copper'),
     unit: 'usd',
     group: 'commodity',
     hub: NEW_YORK,
@@ -236,7 +239,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'gasoline',
     symbol: 'RB=F',
-    label: 'RBOB gasoline',
+    label: msgl('RBOB gasoline'),
     unit: 'usd',
     group: 'commodity',
     hub: NEW_YORK_HARBOR,
@@ -245,7 +248,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'heatingoil',
     symbol: 'HO=F',
-    label: 'Heating oil',
+    label: msgl('Heating oil'),
     unit: 'usd',
     group: 'commodity',
     hub: NEW_YORK_HARBOR,
@@ -254,26 +257,26 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'jetfuel',
     symbol: '',
-    label: 'Jet fuel',
+    label: msgl('Jet fuel'),
     unit: 'usd',
     group: 'commodity',
-    hub: hub('US Gulf Coast', 29.7604, -95.3698),
+    hub: hub(msgl('US Gulf Coast'), 29.7604, -95.3698),
     mentions: ['jet fuel'],
   }),
   asset({
     id: 'kerosene',
     symbol: '',
-    label: 'Jet kerosene',
+    label: msgl('Jet kerosene'),
     unit: 'usd',
     group: 'commodity',
-    hub: hub('Singapore', 1.2903, 103.8519),
+    hub: hub(msgl('Singapore'), 1.2903, 103.8519),
     mentions: ['kerosene'],
   }),
   // Stock indexes, each at its exchange.
   asset({
     id: 'sp500',
     symbol: '^GSPC',
-    label: 'S&P 500',
+    label: msgl('S&P 500'),
     unit: 'points',
     group: 'equity',
     hub: NEW_YORK,
@@ -282,7 +285,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'dow',
     symbol: '^DJI',
-    label: 'Dow Jones',
+    label: msgl('Dow Jones'),
     unit: 'points',
     group: 'equity',
     hub: NEW_YORK,
@@ -291,7 +294,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'nasdaq',
     symbol: '^IXIC',
-    label: 'Nasdaq Composite',
+    label: msgl('Nasdaq Composite'),
     unit: 'points',
     group: 'equity',
     hub: NEW_YORK,
@@ -300,16 +303,16 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'tsx',
     symbol: '^GSPTSE',
-    label: 'S&P/TSX Composite',
+    label: msgl('S&P/TSX Composite'),
     unit: 'points',
     group: 'equity',
-    hub: hub('Toronto', 43.6481, -79.3815),
+    hub: hub(msgl('Toronto'), 43.6481, -79.3815),
     mentions: ['tsx', 'bay street'],
   }),
   asset({
     id: 'ftse',
     symbol: '^FTSE',
-    label: 'FTSE 100',
+    label: msgl('FTSE 100'),
     unit: 'points',
     group: 'equity',
     hub: LONDON,
@@ -318,7 +321,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'dax',
     symbol: '^GDAXI',
-    label: 'DAX',
+    label: msgl('DAX'),
     unit: 'points',
     group: 'equity',
     hub: FRANKFURT,
@@ -327,16 +330,16 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'cac40',
     symbol: '^FCHI',
-    label: 'CAC 40',
+    label: msgl('CAC 40'),
     unit: 'points',
     group: 'equity',
-    hub: hub('Paris', 48.869, 2.3412),
+    hub: hub(msgl('Paris'), 48.869, 2.3412),
     mentions: ['cac 40'],
   }),
   asset({
     id: 'nikkei',
     symbol: '^N225',
-    label: 'Nikkei 225',
+    label: msgl('Nikkei 225'),
     unit: 'points',
     group: 'equity',
     hub: TOKYO,
@@ -345,25 +348,25 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'hangseng',
     symbol: '^HSI',
-    label: 'Hang Seng',
+    label: msgl('Hang Seng'),
     unit: 'points',
     group: 'equity',
-    hub: hub('Hong Kong', 22.2835, 114.1588),
+    hub: hub(msgl('Hong Kong'), 22.2835, 114.1588),
     mentions: ['hang seng'],
   }),
   asset({
     id: 'shanghai',
     symbol: '000001.SS',
-    label: 'Shanghai Composite',
+    label: msgl('Shanghai Composite'),
     unit: 'points',
     group: 'equity',
-    hub: hub('Shanghai', 31.2304, 121.4737),
+    hub: hub(msgl('Shanghai'), 31.2304, 121.4737),
     mentions: ['shanghai composite'],
   }),
   asset({
     id: 'sensex',
     symbol: '^BSESN',
-    label: 'BSE Sensex',
+    label: msgl('BSE Sensex'),
     unit: 'points',
     group: 'equity',
     hub: MUMBAI,
@@ -372,7 +375,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'asx200',
     symbol: '^AXJO',
-    label: 'S&P/ASX 200',
+    label: msgl('S&P/ASX 200'),
     unit: 'points',
     group: 'equity',
     hub: SYDNEY,
@@ -381,16 +384,16 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'bovespa',
     symbol: '^BVSP',
-    label: 'Ibovespa',
+    label: msgl('Ibovespa'),
     unit: 'points',
     group: 'equity',
-    hub: hub('São Paulo', -23.5475, -46.6361),
+    hub: hub(msgl('São Paulo'), -23.5475, -46.6361),
     mentions: ['bovespa', 'ibovespa'],
   }),
   asset({
     id: 'vix',
     symbol: '^VIX',
-    label: 'VIX volatility index',
+    label: msgl('VIX volatility index'),
     unit: 'points',
     group: 'volatility',
     hub: CHICAGO,
@@ -400,7 +403,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'bitcoin',
     symbol: 'BTC-USD',
-    label: 'Bitcoin',
+    label: msgl('Bitcoin'),
     unit: 'usd',
     group: 'crypto',
     hub: null,
@@ -409,7 +412,7 @@ export const MARKET_ASSETS = Object.freeze([
   asset({
     id: 'ether',
     symbol: 'ETH-USD',
-    label: 'Ether',
+    label: msgl('Ether'),
     unit: 'usd',
     group: 'crypto',
     hub: null,

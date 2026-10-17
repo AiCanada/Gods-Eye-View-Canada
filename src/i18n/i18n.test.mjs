@@ -5,10 +5,14 @@ import {
   applyDocumentTranslations,
   formatDate,
   formatNumber,
+  localDigits,
+  localSay,
   msg,
   persistLocaleAndReload,
   setLocale,
   t,
+  tl,
+  tln,
   tn,
 } from './index.js';
 import {
@@ -18,6 +22,12 @@ import {
   resolveLocale,
   writeStoredLocale,
 } from './locale.js';
+import {
+  english,
+  localDigits as markerDigits,
+  tl as markerTl,
+  tln as markerTln,
+} from './marker.js';
 
 afterEach(() => setLocale('en'));
 
@@ -36,6 +46,34 @@ test('normalizeLocale folds regional variants and rejects unshipped tags', () =>
   assert.equal(normalizeLocale('en_GB'), 'en');
   assert.equal(normalizeLocale('xx'), null);
   assert.equal(normalizeLocale(undefined), null);
+});
+
+test('Quebec French: its tag, the page language, a translation and its plural forms', () => {
+  assert.equal(normalizeLocale('fr-CA'), 'fr-CA');
+  assert.equal(normalizeLocale(' FR_ca '), 'fr-CA');
+  assert.equal(normalizeLocale('fr'), 'fr-CA', 'the only French shipped');
+  assert.equal(normalizeLocale('fr-FR'), 'fr-CA');
+  const doc = { documentElement: {} };
+  applyDocumentLanguage(doc, 'fr-ca');
+  assert.deepEqual(doc.documentElement, { lang: 'fr-CA', dir: 'ltr' });
+
+  setLocale('fr-CA');
+  assert.equal(t('Live Flights'), 'Vols en direct');
+  assert.equal(t('CLEAR', { context: 'action' }), 'EFFACER');
+  // French takes the singular for 0 and 1, and "de" after exact millions.
+  const files = (count) =>
+    tn(count, '{count} file selected', '{count} files selected');
+  assert.equal(files(0), '0 fichier sélectionné');
+  assert.equal(files(1), '1 fichier sélectionné');
+  assert.equal(files(2), '2 fichiers sélectionnés');
+  assert.equal(files(1000000), '1000000 de fichiers sélectionnés');
+  // A colon keeps its non-breaking space before it.
+  assert.equal(
+    t('Unknown key: {name}', { name: 'X' }),
+    'Clé inconnue\u00a0: X',
+  );
+  // Numbers follow Canadian French: a space groups thousands, a comma marks decimals.
+  assert.match(formatNumber(1234.5), /^1\s234,5$/u);
 });
 
 test('resolveLocale: ?lang= wins, then the stored choice, then browser languages, then English', () => {
@@ -249,4 +287,84 @@ test('tn() shows a caller-formatted count and still picks the form by number', (
   } finally {
     setLocale('en');
   }
+});
+
+test('the fork tabs: tl() and tln() are Quebec French in fr-CA, English in Spanish and Russian', () => {
+  const title = 'AI RISK & TRUTH ASSESSMENT';
+  const files = (count) => tln(count, '{count} FILE', '{count} FILES');
+  setLocale('fr-CA');
+  assert.equal(tl(title), 'RISQUE ET VÉRITÉ PAR IA');
+  assert.equal(tl('OPEN', { context: 'licence' }), 'LIBRE');
+  assert.equal(files(1), '1 FICHIER');
+  assert.equal(files(2), '2 FICHIERS');
+  assert.equal(files(1000000), '1000000 DE FICHIERS');
+  assert.equal(tl('NOT IN A CATALOG {n}', { n: 3 }), 'NOT IN A CATALOG 3');
+  for (const locale of ['es', 'ru']) {
+    setLocale(locale);
+    assert.equal(tl(title), title, locale);
+    assert.equal(tl('OPEN', { context: 'licence' }), 'OPEN', locale);
+    assert.equal(files(2), '2 FILES', locale);
+    // English even where the locale translates the same text elsewhere.
+    assert.notEqual(t('Live Flights'), 'Live Flights', locale);
+    assert.equal(tl('Live Flights'), 'Live Flights', locale);
+  }
+});
+
+test('Inuktitut: its tag, syllabic text, the dual plural, the fork tabs and Canadian number marks', () => {
+  assert.equal(normalizeLocale('iu'), 'iu');
+  assert.equal(normalizeLocale('iu-Cans-CA'), 'iu');
+  assert.equal(normalizeLocale(' IU_ca '), 'iu');
+  const doc = { documentElement: {} };
+  applyDocumentLanguage(doc, 'iu');
+  assert.deepEqual(doc.documentElement, { lang: 'iu', dir: 'ltr' });
+
+  setLocale('iu');
+  assert.equal(t('Live Flights'), 'ᒫᓐᓇ ᖃᖓᑕᓂᐅᔪᑦ');
+  assert.equal(t('CLEAR', { context: 'action' }), 'ᐲᕐᓗᒋᑦ');
+  // Inuktitut has a dual: one, two, then the plural from three on.
+  const files = (count) =>
+    tn(count, '{count} file selected', '{count} files selected');
+  assert.equal(files(1), '1 ᑐᖅᑯᖅᑕᐅᓯᒪᔪᖅ ᓂᕈᐊᖅᑕᐅᔪᖅ');
+  assert.equal(files(2), '2 ᑐᖅᑯᖅᑕᐅᓯᒪᔫᒃ ᓂᕈᐊᖅᑕᐅᔫᒃ');
+  assert.equal(files(3), '3 ᑐᖅᑯᖅᑕᐅᓯᒪᔪᑦ ᓂᕈᐊᖅᑕᐅᔪᑦ');
+  assert.equal(files(0), '0 ᑐᖅᑯᖅᑕᐅᓯᒪᔪᑦ ᓂᕈᐊᖅᑕᐅᔪᑦ');
+  // The fork's own tabs are translated too, with the same dual.
+  assert.equal(
+    tl('AI RISK & TRUTH ASSESSMENT'),
+    'AI ᐊᑦᑕᓇᕐᓂᖓᓄᑦ ᓱᓕᓂᖓᓄᓪᓗ ᖃᐅᔨᓴᕐᓂᖅ',
+  );
+  assert.equal(tl('OPEN', { context: 'licence' }), 'ᒪᑐᐃᖅᓯᒪᔪᖅ');
+  const tabFiles = (count) => tln(count, '{count} FILE', '{count} FILES');
+  assert.equal(tabFiles(2), '2 ᑐᖅᑯᖅᑕᐅᓯᒪᔫᒃ');
+  assert.equal(tabFiles(5), '5 ᑐᖅᑯᖅᑕᐅᓯᒪᔪᑦ');
+  // Intl has no Inuktitut number or date data: numbers and dates use
+  // Canadian English, the way Nunavut writes them, whatever the browser is.
+  assert.equal(formatNumber(1234.5), '1,234.5');
+  assert.equal(localDigits('12,345.6'), '12,345.6');
+  assert.equal(
+    formatDate(new Date(Date.UTC(2026, 0, 15)), {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'UTC',
+    }),
+    'January 15, 2026',
+  );
+});
+
+test('marker.js tl(), tln() and localDigits() follow the page once index.js is loaded; english stays English', () => {
+  const title = 'AI RISK & TRUTH ASSESSMENT';
+  setLocale('fr-CA');
+  assert.equal(markerTl(title), 'RISQUE ET VÉRITÉ PAR IA');
+  assert.equal(markerTln(3, '{count} FILE', '{count} FILES'), '3 FICHIERS');
+  assert.equal(localSay.tl(title), 'RISQUE ET VÉRITÉ PAR IA');
+  assert.match(localDigits('12,345.6'), /^12\s345,6$/u);
+  assert.match(markerDigits('12,345.6'), /^12\s345,6$/u);
+  // A builder that takes say = english gives a model or a message English.
+  assert.equal(english.tl(title), title);
+  assert.equal(english.tln(1, '{count} FILE', '{count} FILES'), '1 FILE');
+  assert.equal(english.digits('12,345.6'), '12,345.6');
+  setLocale('ru');
+  assert.equal(markerTl(title), title);
+  assert.equal(localDigits('12,345.6'), '12,345.6');
 });

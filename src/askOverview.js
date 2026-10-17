@@ -4,6 +4,8 @@
  * no network.
  */
 
+import { english } from './i18n/marker.js';
+
 export const RISK_NEWS_RADIUS_KM = 100;
 export const RISK_NEWS_LOOKBACK_DAYS = 30;
 export const RISK_NEWS_TOPICS = Object.freeze([
@@ -426,39 +428,84 @@ export const GROUND_TRUTH_DETAIL_LIMITS = Object.freeze({
 export const GROUND_TRUTH_ANSWER_TOKENS = 6000;
 
 const found = (check) => Number(check?.found) || 0;
-const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 
 /** "police covering 96.4% of the population reported in 2025 (8 years under 90%, lowest 77% in 2021)", or ''. */
-function coveragePhrase(coverage) {
+function coveragePhrase(coverage, say) {
   const latest = coverage?.latest;
   if (!latest) return '';
   const lowest = coverage.findings?.[0];
   const low = found(coverage);
-  return `police covering ${latest.coveragePct}% of the population reported in ${latest.year}${low ? ` (${plural(low, 'year', 'years')} under 90%, lowest ${lowest.coveragePct}% in ${lowest.year})` : ''}`;
+  const values = { pct: latest.coveragePct, year: latest.year };
+  return low
+    ? say.tl(
+        'police covering {pct}% of the population reported in {year} ({years} under 90%, lowest {lowestPct}% in {lowestYear})',
+        {
+          ...values,
+          years: say.tln(low, '{count} year', '{count} years'),
+          lowestPct: lowest.coveragePct,
+          lowestYear: lowest.year,
+        },
+      )
+    : say.tl(
+        'police covering {pct}% of the population reported in {year}',
+        values,
+      );
 }
 
 /** "5 kinds of crime where under half of victims told the police (lowest 4% for sexual assault in 2024)", or ''. */
-function reportingPhrase(reporting) {
+function reportingPhrase(reporting, say) {
   if (!reporting?.published) return '';
   const low = found(reporting);
   const lowest = reporting.findings?.[0];
   return low
-    ? `${plural(low, 'kind of crime', 'kinds of crime')} where under half of victims told the police (lowest ${lowest.reportedToPolicePct}% for ${lowest.crime} in ${lowest.year})`
-    : 'no kind of crime where under half of victims told the police';
+    ? say.tl(
+        '{kinds} where under half of victims told the police (lowest {pct}% for {crime} in {year})',
+        {
+          kinds: say.tln(
+            low,
+            '{count} kind of crime',
+            '{count} kinds of crime',
+          ),
+          pct: lowest.reportedToPolicePct,
+          crime: lowest.crime,
+          year: lowest.year,
+        },
+      )
+    : say.tl('no kind of crime where under half of victims told the police');
+}
+
+/** Where the police figure sits against the estimate's interval, in words. */
+function positionWords(position, say) {
+  if (position === 'below') return say.tl('below', { context: 'rate' });
+  if (position === 'above') return say.tl('above', { context: 'rate' });
+  if (position === 'inside') return say.tl('inside', { context: 'rate' });
+  return position;
 }
 
 /** How the police figure sits against the independent estimate, or ''. */
-function independentPhrase(arithmetic) {
+function independentPhrase(arithmetic, say) {
   const compared = arithmetic?.independentSource;
   if (!compared) return '';
-  return `, the police homicide rate ${compared.position} the World Health Organization's estimate for ${compared.whoYear}`;
+  return say.tl(
+    ", the police homicide rate {position} the World Health Organization's estimate for {year}",
+    { position: positionWords(compared.position, say), year: compared.whoYear },
+  );
 }
 
 /** What the source says of reports police struck out, or that it says nothing. */
-function unfoundedPhrase(unfounded) {
+function unfoundedPhrase(unfounded, say) {
   if (unfounded?.notPublished)
-    return 'no count published of police reports struck as "unfounded"';
-  return `${plural(found(unfounded), 'category', 'categories')} with 10% or more of police reports struck as "unfounded"`;
+    return say.tl('no count published of police reports struck as "unfounded"');
+  return say.tl(
+    '{categories} with 10% or more of police reports struck as "unfounded"',
+    {
+      categories: say.tln(
+        found(unfounded),
+        '{count} category',
+        '{count} categories',
+      ),
+    },
+  );
 }
 
 /**
@@ -468,25 +515,107 @@ function unfoundedPhrase(unfounded) {
  * @param {object} evidence
  * @returns {string[]}
  */
-export function groundTruthSectionHeadings(evidence) {
+export function groundTruthSectionHeadings(evidence, say = english) {
   const checks = evidence?.checks || {};
   const others = found(checks.otherCategories);
   const larger = (checks.otherCategories?.findings || []).filter(
     (item) => item?.largerThanEveryNamedCategory,
   ).length;
   const moved = found(checks.movedToOtherNotes);
+  const leftOut = [
+    say.tln(
+      found(checks.totalsAgainstParts),
+      "{count} total that doesn't equal its listed parts",
+      "{count} totals that don't equal their listed parts",
+    ),
+    coveragePhrase(checks.coverage, say),
+    reportingPhrase(checks.reportingToPolice, say),
+    unfoundedPhrase(checks.unfounded, say),
+  ]
+    .filter(Boolean)
+    .join(', ');
   return [
-    `1. Incidents left out of totals, ${[plural(found(checks.totalsAgainstParts), "total that doesn't equal its listed parts", "totals that don't equal their listed parts"), coveragePhrase(checks.coverage), reportingPhrase(checks.reportingToPolice), unfoundedPhrase(checks.unfounded)].filter(Boolean).join(', ')}, and ${plural(found(checks.exclusionNotes), 'exclusion note', 'exclusion notes')}`,
+    say.tl('1. Incidents left out of totals, {checks}, and {notes}', {
+      checks: leftOut,
+      notes: say.tln(
+        found(checks.exclusionNotes),
+        '{count} exclusion note',
+        '{count} exclusion notes',
+      ),
+    }),
     checks.otherCategories?.notPublished
-      ? `2. Use of "other", nothing to check: ${checks.otherCategories.reason || 'this source publishes no "other" category'}`
-      : `2. Use of "other", ${plural(others, 'unusual "other" category', 'unusual "other" categories')}${larger ? `, ${larger} larger than every named category beside ${larger === 1 ? 'it' : 'them'}` : ''}${moved ? `, and ${plural(moved, 'note', 'notes')} filing offences under "other"` : ''}`,
-    `3. New categories and partial data, ${plural(found(checks.lateStarts), 'series that starts late', 'series that start late')} and ${plural(found(checks.comparabilityNotes), 'note', 'notes')} ruling out comparison across years`,
-    `4. Incorrect numbers, ${Number(checks.arithmetic?.checked) || 0} published figures recomputed from the counts with ${found(checks.arithmetic)} disagreeing${independentPhrase(checks.arithmetic)}, and ${checks.corrections?.notPublished ? 'no list of corrections published' : `${plural(found(checks.corrections), 'correction', 'corrections')} issued`}`,
+      ? say.tl('2. Use of "other", nothing to check: {reason}', {
+          reason:
+            checks.otherCategories.reason ||
+            say.tl('this source publishes no "other" category'),
+        })
+      : say.tl('2. Use of "other", {categories}{larger}{moved}', {
+          categories: say.tln(
+            others,
+            '{count} unusual "other" category',
+            '{count} unusual "other" categories',
+          ),
+          larger: larger
+            ? say.tln(
+                larger,
+                ', {count} larger than every named category beside it',
+                ', {count} larger than every named category beside them',
+              )
+            : '',
+          moved: moved
+            ? say.tl(', and {notes} filing offences under "other"', {
+                notes: say.tln(moved, '{count} note', '{count} notes'),
+              })
+            : '',
+        }),
+    say.tl(
+      '3. New categories and partial data, {late} and {notes} ruling out comparison across years',
+      {
+        late: say.tln(
+          found(checks.lateStarts),
+          '{count} series that starts late',
+          '{count} series that start late',
+        ),
+        notes: say.tln(
+          found(checks.comparabilityNotes),
+          '{count} note',
+          '{count} notes',
+        ),
+      },
+    ),
+    say.tl(
+      '4. Incorrect numbers, {checked} published figures recomputed from the counts with {disagreeing} disagreeing{independent}, and {corrections}',
+      {
+        checked: Number(checks.arithmetic?.checked) || 0,
+        disagreeing: found(checks.arithmetic),
+        independent: independentPhrase(checks.arithmetic, say),
+        corrections: checks.corrections?.notPublished
+          ? say.tl('no list of corrections published')
+          : say.tl('{corrections} issued', {
+              corrections: say.tln(
+                found(checks.corrections),
+                '{count} correction',
+                '{count} corrections',
+              ),
+            }),
+      },
+    ),
   ];
 }
 
-const noteLine = (note) =>
-  `- ${note?.categories?.length ? `${note.categories.slice(0, 3).join('; ')}${note.categories.length > 3 ? ` and ${note.categories.length - 3} more` : ''}: ` : ''}${note?.note || ''}`;
+const noteLine = (note, say) => {
+  const categories = note?.categories || [];
+  const lead = categories.length
+    ? say.tl('{categories}{more}: ', {
+        categories: categories.slice(0, 3).join('; '),
+        more:
+          categories.length > 3
+            ? say.tl(' and {count} more', { count: categories.length - 3 })
+            : '',
+      })
+    : '';
+  return `- ${lead}${note?.note || ''}`;
+};
 
 /**
  * The findings as one line each, by section: the top five of each section 1
@@ -495,7 +624,7 @@ const noteLine = (note) =>
  * @param {object} evidence
  * @returns {string[][]} Four arrays of lines.
  */
-export function groundTruthDetailLines(evidence) {
+export function groundTruthDetailLines(evidence, say = english) {
   const checks = evidence?.checks || {};
   const limited = (name) => {
     const findings = Array.isArray(checks[name]?.findings)
@@ -507,11 +636,23 @@ export function groundTruthDetailLines(evidence) {
   };
   const list = (check) =>
     Array.isArray(check?.findings) ? check.findings : [];
+  const note = (item) => noteLine(item, say);
   return [
     [
-      ...limited('totalsAgainstParts').map(
-        (item) =>
-          `- ${item.category} (${item.year}): reports ${item.reportedTotal}, its ${item.partsListed} listed parts add to ${item.sumOfListedParts}, difference ${item.difference} (${item.differencePct}%); ${item.reading}`,
+      ...limited('totalsAgainstParts').map((item) =>
+        say.tl(
+          '- {category} ({year}): reports {reported}, its {parts} listed parts add to {sum}, difference {difference} ({pct}%); {reading}',
+          {
+            category: item.category,
+            year: item.year,
+            reported: item.reportedTotal,
+            parts: item.partsListed,
+            sum: item.sumOfListedParts,
+            difference: item.difference,
+            pct: item.differencePct,
+            reading: item.reading,
+          },
+        ),
       ),
       ...[
         // The latest year first, then the years with the least coverage.
@@ -521,40 +662,105 @@ export function groundTruthDetailLines(evidence) {
         ),
       ]
         .slice(0, GROUND_TRUTH_DETAIL_LIMITS.coverage)
-        .map(
-          (item) =>
-            `- ${item.year}: police covering ${item.coveragePct}% of the population reported; ${item.populationNotCovered} people lived where no report was made, and nothing there is in any total. ${item.violentCrimesReported} violent crimes were reported; at the same rate the rest would add about ${item.atTheSameRateTheRestWouldAdd} (arithmetic on the published figures, not a count)`,
+        .map((item) =>
+          say.tl(
+            '- {year}: police covering {pct}% of the population reported; {people} people lived where no report was made, and nothing there is in any total. {violent} violent crimes were reported; at the same rate the rest would add about {rest} (arithmetic on the published figures, not a count)',
+            {
+              year: item.year,
+              pct: item.coveragePct,
+              people: item.populationNotCovered,
+              violent: item.violentCrimesReported,
+              rest: item.atTheSameRateTheRestWouldAdd,
+            },
+          ),
         ),
-      ...limited('reportingToPolice').map(
-        (item) =>
-          `- ${item.crime} (${item.year}): ${item.reportedToPolicePct}% of victims told the police; the other ${item.neverReportedPct}% are in no police total (the country's victimization survey)`,
+      ...limited('reportingToPolice').map((item) =>
+        say.tl(
+          "- {crime} ({year}): {pct}% of victims told the police; the other {never}% are in no police total (the country's victimization survey)",
+          {
+            crime: item.crime,
+            year: item.year,
+            pct: item.reportedToPolicePct,
+            never: item.neverReportedPct,
+          },
+        ),
       ),
-      ...limited('unfounded').map(
-        (item) =>
-          `- ${item.category} (${item.year}): ${item.struckAsUnfounded} reports struck as unfounded (${item.percentUnfounded}%), ${item.countedInTotals ?? 'n/a'} counted`,
+      ...limited('unfounded').map((item) =>
+        say.tl(
+          '- {category} ({year}): {struck} reports struck as unfounded ({pct}%), {counted} counted',
+          {
+            category: item.category,
+            year: item.year,
+            struck: item.struckAsUnfounded,
+            pct: item.percentUnfounded,
+            counted: item.countedInTotals ?? say.tl('n/a'),
+          },
+        ),
       ),
-      ...limited('exclusionNotes').map(noteLine),
+      ...limited('exclusionNotes').map(note),
     ],
     [
-      ...list(checks.otherCategories).map(
-        (item) =>
-          `- ${item.category} (${item.year}): ${item.incidents} ${item.unit === 'arrests' ? 'arrests' : 'incidents'}; ${(item.reasons || []).join('; ')}`,
-      ),
-      ...list(checks.movedToOtherNotes).map(noteLine),
+      ...list(checks.otherCategories).map((item) => {
+        const values = {
+          category: item.category,
+          year: item.year,
+          count: item.incidents,
+          reasons: (item.reasons || []).join('; '),
+        };
+        return item.unit === 'arrests'
+          ? say.tl('- {category} ({year}): {count} arrests; {reasons}', values)
+          : say.tl(
+              '- {category} ({year}): {count} incidents; {reasons}',
+              values,
+            );
+      }),
+      ...list(checks.movedToOtherNotes).map(note),
     ],
     [
-      ...list(checks.lateStarts).map(
-        (item) =>
-          `- ${item.category}: table starts ${item.tableStartsIn}, reaches its recent level in ${item.reachesRecentLevelIn} (${item.incidentsTheYearBefore ?? 'no figure'} the year before, ${item.incidentsThatYear} that year, ${item.latestIncidents} in ${item.latestYear})`,
+      ...list(checks.lateStarts).map((item) =>
+        say.tl(
+          '- {category}: table starts {start}, reaches its recent level in {level} ({before} the year before, {that} that year, {latest} in {latestYear})',
+          {
+            category: item.category,
+            start: item.tableStartsIn,
+            level: item.reachesRecentLevelIn,
+            before: item.incidentsTheYearBefore ?? say.tl('no figure'),
+            that: item.incidentsThatYear,
+            latest: item.latestIncidents,
+            latestYear: item.latestYear,
+          },
+        ),
       ),
-      ...list(checks.comparabilityNotes).map(noteLine),
+      ...list(checks.comparabilityNotes).map(note),
     ],
     list(checks.arithmetic).map((item) =>
       item.note
-        ? `- ${item.category} (${item.year}): ${item.note}`
+        ? say.tl('- {category} ({year}): {note}', {
+            category: item.category,
+            year: item.year,
+            note: item.note,
+          })
         : item.check === 'rate against incidents'
-          ? `- ${item.category} (${item.year}): published rate ${item.publishedRate}, its incidents imply ${item.rateTheIncidentsImply} (off by ${item.offByPct}%)`
-          : `- ${item.category} (${item.year}): published change ${item.publishedChangePct}%, its two rates imply ${item.changeTheRatesImplyPct}% (off by ${item.offByPoints} points)`,
+          ? say.tl(
+              '- {category} ({year}): published rate {rate}, its incidents imply {implied} (off by {pct}%)',
+              {
+                category: item.category,
+                year: item.year,
+                rate: item.publishedRate,
+                implied: item.rateTheIncidentsImply,
+                pct: item.offByPct,
+              },
+            )
+          : say.tl(
+              '- {category} ({year}): published change {change}%, its two rates imply {implied}% (off by {points} points)',
+              {
+                category: item.category,
+                year: item.year,
+                change: item.publishedChangePct,
+                implied: item.changeTheRatesImplyPct,
+                points: item.offByPoints,
+              },
+            ),
     ),
   ];
 }
@@ -636,9 +842,13 @@ export function buildGroundTruthQuestion(evidence) {
  * @param {object} evidence
  * @returns {string}
  */
-export function formatGroundTruthBody(evidence = {}) {
+export function formatGroundTruthBody(evidence = {}, say = english) {
   if (evidence?.status === 'excluded' || evidence?.status === 'nodata') {
-    return `${evidence.reason || 'There is nothing to assess for this country.'} No model was asked.`;
+    return say.tl('{reason} No model was asked.', {
+      reason:
+        evidence.reason ||
+        say.tl('There is nothing to assess for this country.'),
+    });
   }
   if (evidence?.status === 'unsupported') {
     const connected = (evidence.connected || [])
@@ -646,29 +856,35 @@ export function formatGroundTruthBody(evidence = {}) {
       .join(', ');
     return [
       evidence.country
-        ? `${evidence.country} is not in the United Nations' table of countries and areas, so no source lists it: there is nothing to check and no model was asked.`
-        : 'Could not tell which country this view is in, so there is nothing to check and no model was asked.',
-      connected ? `Sources: ${connected}.` : '',
+        ? say.tl(
+            "{country} is not in the United Nations' table of countries and areas, so no source lists it: there is nothing to check and no model was asked.",
+            { country: evidence.country },
+          )
+        : say.tl(
+            'Could not tell which country this view is in, so there is nothing to check and no model was asked.',
+          ),
+      connected ? say.tl('Sources: {sources}.', { sources: connected }) : '',
     ]
       .filter(Boolean)
       .join('\n');
   }
-  const headings = groundTruthSectionHeadings(evidence);
-  const details = groundTruthDetailLines(evidence);
+  const headings = groundTruthSectionHeadings(evidence, say);
+  const details = groundTruthDetailLines(evidence, say);
   const lines = [
-    `${evidence.source || 'National statistics table'}, ${evidence.geography || evidence.country || ''} ${evidence.year || ''}`.trim(),
+    `${evidence.source || say.tl('National statistics table')}, ${evidence.geography || evidence.country || ''} ${evidence.year || ''}`.trim(),
     ...(evidence.scope ? [evidence.scope] : []),
   ];
   headings.forEach((heading, index) => {
     lines.push(heading);
     // 4. Incorrect numbers: details only when something disagreed.
-    if (details[index].length) lines.push('List Details:', ...details[index]);
+    if (details[index].length)
+      lines.push(say.tl('List Details:'), ...details[index]);
   });
   return lines.join('\n');
 }
 
-function articleLine(article) {
-  const title = String(article?.title || '').trim() || 'Untitled';
+function articleLine(article, say) {
+  const title = String(article?.title || '').trim() || say.tl('Untitled');
   const domain = String(article?.domain || '').trim();
   return domain ? `- ${title} (${domain})` : `- ${title}`;
 }
@@ -676,9 +892,10 @@ function articleLine(article) {
 /**
  * Operator-visible search hits for one Risk Assessment press.
  * @param {{govCrimeHeadlines?: object[], localHeadlines?: object[]}} headlines
+ * @param {{tl: Function, tln: Function}} [say]
  * @returns {string}
  */
-export function formatRiskSearchBody(headlines = {}) {
+export function formatRiskSearchBody(headlines = {}, say = english) {
   const gov = Array.isArray(headlines.govCrimeHeadlines)
     ? headlines.govCrimeHeadlines
     : [];
@@ -687,30 +904,38 @@ export function formatRiskSearchBody(headlines = {}) {
     : [];
   const lines = [];
   if (gov.length) {
-    lines.push(`Government crime-stat hits (${gov.length}):`);
-    for (const article of gov) lines.push(articleLine(article));
+    lines.push(
+      say.tl('Government crime-stat hits ({count}):', { count: gov.length }),
+    );
+    for (const article of gov) lines.push(articleLine(article, say));
   } else {
-    lines.push('No government crime-stat hits for this area.');
+    lines.push(say.tl('No government crime-stat hits for this area.'));
   }
   const alJazeera = headlines.alJazeera;
   const ajDays = Number(alJazeera?.lookbackDays) || 90;
   if (alJazeera?.status === 'ready' && alJazeera.articles?.length) {
     lines.push(
-      `Al Jazeera, past ${ajDays} days (${alJazeera.articles.length}):`,
+      say.tl('Al Jazeera, past {days} days ({count}):', {
+        days: ajDays,
+        count: alJazeera.articles.length,
+      }),
     );
-    for (const article of alJazeera.articles) lines.push(articleLine(article));
+    for (const article of alJazeera.articles)
+      lines.push(articleLine(article, say));
   } else if (alJazeera?.status === 'empty') {
     lines.push(
-      `Al Jazeera: nothing on this location in the past ${ajDays} days.`,
+      say.tl('Al Jazeera: nothing on this location in the past {days} days.', {
+        days: ajDays,
+      }),
     );
   } else {
-    lines.push('Al Jazeera: search could not be completed.');
+    lines.push(say.tl('Al Jazeera: search could not be completed.'));
   }
   if (local.length) {
-    lines.push(`Local headlines (${local.length}):`);
-    for (const article of local) lines.push(articleLine(article));
+    lines.push(say.tl('Local headlines ({count}):', { count: local.length }));
+    for (const article of local) lines.push(articleLine(article, say));
   } else {
-    lines.push('No recent local headlines within 100 km / 30 days.');
+    lines.push(say.tl('No recent local headlines within 100 km / 30 days.'));
   }
   return lines.join('\n');
 }

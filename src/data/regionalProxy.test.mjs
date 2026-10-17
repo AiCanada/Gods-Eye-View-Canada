@@ -1,3 +1,7 @@
+// First: this process works in an empty temp folder, and the app's Vite config
+// is given it as its root, so no .env key, integrity store, cache or private
+// config of this machine reaches the test.
+import { isolatedCwd } from '../tooling/isolatedCwd.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import createViteConfig, {
@@ -44,7 +48,7 @@ test('adjacent proxy validators also require every coordinate explicitly', () =>
 });
 
 test('new data proxies install the same routes in dev and preview servers', () => {
-  const config = createViteConfig({ mode: 'test' });
+  const config = createViteConfig({ mode: 'test', sourceRoot: isolatedCwd });
   const byName = new Map(config.plugins.map((plugin) => [plugin.name, plugin]));
   for (const name of [
     'rocket-launches-proxy',

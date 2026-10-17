@@ -75,9 +75,10 @@
   margin-bottom: 0;
 }
 
-/* Spanish labels overflow the nowrap .scene-btn row of the fixed-width
-   panel; wrap the row under es only, English stays as is. */
-html[lang='es'] .cctv-controls {
+/* Spanish, Quebec French and Inuktitut labels overflow the nowrap
+   .scene-btn row of the fixed-width panel; wrap the row under es, fr-CA and
+   iu only, English stays as is. */
+html:is([lang='es'], [lang='fr-CA'], [lang='iu']) .cctv-controls {
   flex-wrap: wrap;
 }
 

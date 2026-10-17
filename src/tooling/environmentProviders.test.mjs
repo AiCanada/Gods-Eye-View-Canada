@@ -1,3 +1,6 @@
+// First: this process works in an empty temp folder, also the providers' root,
+// so the provider keys are checked against no integrity store of this machine.
+import { isolatedCwd } from './isolatedCwd.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { promises as fsp } from 'node:fs';
@@ -92,7 +95,7 @@ test('standalone composition mounts every extracted provider exactly once withou
   t.mock.method(globalThis, 'fetch', () => {
     throw Error('construction must not fetch');
   });
-  const plugins = localProviderPlugins();
+  const plugins = localProviderPlugins({ sourceRoot: isolatedCwd });
   for (const factory of [
     terrainHeightsProxy,
     tomtomProxy,

@@ -1,3 +1,7 @@
+// First: this process works in an empty temp folder, and the app's Vite config
+// is given it as its root, so no .env key, integrity store, cache or private
+// config of this machine reaches the test.
+import { isolatedCwd } from './isolatedCwd.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -148,10 +152,12 @@ test('build helper does not discover environment values or construct local provi
 test('root config retains existing named exports and standalone provider order', () => {
   for (const [name, value] of Object.entries(providers))
     assert.equal(compatibility[name], value, name);
-  const config = standaloneConfig({ mode: 'test' });
+  const config = standaloneConfig({ mode: 'test', sourceRoot: isolatedCwd });
   assert.deepEqual(
     config.plugins.slice(6, -5).map((plugin) => plugin.name),
-    providers.localProviderPlugins().map((plugin) => plugin.name),
+    providers
+      .localProviderPlugins({ sourceRoot: isolatedCwd })
+      .map((plugin) => plugin.name),
   );
   // The single-instance guard stops the previous dev server before anything
   // else runs; the route guard is registered before every provider: it can

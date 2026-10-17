@@ -3,6 +3,7 @@ import { closestCityForSearch, selectedPlaceLabel } from './locations.js';
 import { getBasemapLabelContext } from './voice/gevActions.js';
 import { fetchLocationRegion } from './data/regionalBrief.js';
 import { createOutputFind } from './askOutputFind.js';
+import { localSay, msgl, tl, tln } from './i18n/index.js';
 import {
   buildGroundTruthQuestion,
   buildLayerActivity,
@@ -122,8 +123,8 @@ export class AskPanel {
         // A server that could not be reached is a different problem from a
         // server that has no keys; say which.
         this._empty.textContent = reachable
-          ? 'No model key yet. Add one in POWER UP.'
-          : 'Could not reach the server for the model list.';
+          ? tl('No model key yet. Add one in POWER UP.')
+          : tl('Could not reach the server for the model list.');
         this._empty.hidden = false;
       }
       return;
@@ -169,38 +170,49 @@ export class AskPanel {
     input.type = 'text';
     input.className = 'ask-input';
     input.placeholder = showLabel
-      ? `Ask ${provider.label}...`
-      : 'Ask about this view...';
+      ? tl('Ask {model}...', { model: provider.label })
+      : tl('Ask about this view...');
     input.autocomplete = 'off';
     input.spellcheck = false;
     input.setAttribute(
       'aria-label',
-      `Ask ${provider.label} about the current view`,
+      tl('Ask {model} about the current view', { model: provider.label }),
     );
 
     const ask = document.createElement('button');
     ask.type = 'button';
     ask.className = 'scene-btn';
-    ask.textContent = 'ASK';
-    ask.title = `Send the typed question to ${provider.label}`;
+    ask.textContent = tl('ASK');
+    ask.title = tl('Send the typed question to {model}', {
+      model: provider.label,
+    });
 
     const overview = document.createElement('button');
     overview.type = 'button';
     overview.className = 'scene-btn ask-overview-btn';
-    overview.textContent = 'OVERVIEW';
-    overview.title = `Have ${provider.label} rate on-screen activity and how it changes risk`;
+    overview.textContent = tl('OVERVIEW');
+    overview.title = tl(
+      'Have {model} rate on-screen activity and how it changes risk',
+      { model: provider.label },
+    );
 
     const risk = document.createElement('button');
     risk.type = 'button';
     risk.className = 'scene-btn ask-risk-btn';
-    risk.textContent = 'RISK ASSESSMENT';
-    risk.title = `Have ${provider.label} assess risk from government crime-stat outliers and correlated sources. Can run before Overview`;
+    risk.textContent = tl('RISK ASSESSMENT');
+    risk.title = tl(
+      'Have {model} assess risk from government crime-stat outliers and correlated sources. Can run before Overview',
+      { model: provider.label },
+    );
 
     const groundTruth = document.createElement('button');
     groundTruth.type = 'button';
     groundTruth.className = 'scene-btn ask-ground-truth-btn';
-    groundTruth.textContent = 'COUNTRY GROUND TRUTH ASSESSMENT';
-    groundTruth.title = `Check the selected country's own published statistics for incidents left out of totals, misuse of "other", new or partial categories, and wrong numbers, then have ${provider.label} explain what was found`;
+    groundTruth.textContent = tl('COUNTRY GROUND TRUTH ASSESSMENT');
+    groundTruth.title = tl(
+      `Check the selected country's own published statistics for incidents left out of totals, misuse of "other", new or partial categories, and wrong numbers, then have {model} explain what was found`,
+      { model: provider.label },
+    );
 
     const actions = document.createElement('div');
     actions.className = 'ask-actions';
@@ -300,12 +312,12 @@ export class AskPanel {
     const row = this._rows.get(providerId);
     const question = String(row?.input?.value || '').trim();
     if (!question) {
-      this._setStatus(providerId, 'Type a question first.');
+      this._setStatus(providerId, tl('Type a question first.'));
       return;
     }
     void this.ask(question, {
       provider: providerId,
-      kind: 'ASK',
+      kind: msgl('ASK'),
     });
   }
 
@@ -319,8 +331,8 @@ export class AskPanel {
     const brief = await this._riskBrief(context);
     return this.ask(buildOverviewQuestion(brief), {
       provider: providerId,
-      label: 'Overview',
-      kind: 'OVERVIEW',
+      label: msgl('Overview'),
+      kind: msgl('OVERVIEW'),
       locationName: brief.locationName,
       context,
     });
@@ -341,7 +353,7 @@ export class AskPanel {
     }
 
     this._inFlight.set(providerId, new AbortController());
-    this._setBusy(providerId, true, 'Searching risk sources...');
+    this._setBusy(providerId, true, tl('Searching risk sources...'));
     try {
       const context = await this.sceneContext();
       const brief = await this._riskBrief(context);
@@ -349,14 +361,18 @@ export class AskPanel {
       context.riskAssessment = { ...brief, ...headlines };
       this._prependAnswer(
         providerId,
-        formatAskLogEntry('RISK SEARCH', formatRiskSearchBody(headlines), {
-          locationName: brief.searchCity || brief.locationName,
-        }),
+        formatAskLogEntry(
+          tl('RISK SEARCH'),
+          formatRiskSearchBody(headlines, localSay),
+          {
+            locationName: brief.searchCity || brief.locationName,
+          },
+        ),
       );
       return await this.ask(buildRiskAssessmentQuestion(brief), {
         provider: providerId,
-        label: 'Risk assessment',
-        kind: 'RISK ASSESSMENT',
+        label: msgl('Risk assessment'),
+        kind: msgl('RISK ASSESSMENT'),
         locationName: brief.searchCity || brief.locationName,
         context,
         continueFlight: true,
@@ -364,7 +380,7 @@ export class AskPanel {
     } catch (error) {
       this._inFlight.delete(providerId);
       this._setBusy(providerId, false);
-      this._setStatus(providerId, error?.message || 'Risk search failed.');
+      this._setStatus(providerId, error?.message || tl('Risk search failed.'));
       return null;
     }
   }
@@ -389,7 +405,7 @@ export class AskPanel {
     this._setBusy(
       providerId,
       true,
-      'Checking the country’s published statistics...',
+      tl('Checking the country’s published statistics...'),
     );
     try {
       const context = await this.sceneContext();
@@ -400,8 +416,8 @@ export class AskPanel {
       this._prependAnswer(
         providerId,
         formatAskLogEntry(
-          'GROUND TRUTH CHECKS',
-          formatGroundTruthBody(evidence),
+          tl('GROUND TRUTH CHECKS'),
+          formatGroundTruthBody(evidence, localSay),
           {
             locationName: countryName,
           },
@@ -413,10 +429,10 @@ export class AskPanel {
         this._setStatus(
           providerId,
           evidence.status === 'excluded'
-            ? 'This country is left out of the assessment.'
+            ? tl('This country is left out of the assessment.')
             : evidence.status === 'nodata'
-              ? 'No published figures to assess for this country.'
-              : 'Could not tell which country this is.',
+              ? tl('No published figures to assess for this country.')
+              : tl('Could not tell which country this is.'),
         );
         return null;
       }
@@ -425,8 +441,8 @@ export class AskPanel {
       context.groundTruth = groundTruthForModel(evidence);
       return await this.ask(buildGroundTruthQuestion(evidence), {
         provider: providerId,
-        label: 'Ground truth assessment',
-        kind: 'COUNTRY GROUND TRUTH ASSESSMENT',
+        label: msgl('Ground truth assessment'),
+        kind: msgl('COUNTRY GROUND TRUTH ASSESSMENT'),
         locationName: countryName,
         context,
         continueFlight: true,
@@ -437,7 +453,7 @@ export class AskPanel {
       this._setBusy(providerId, false);
       this._setStatus(
         providerId,
-        error?.message || 'Ground truth check failed.',
+        error?.message || tl('Ground truth check failed.'),
       );
       return null;
     }
@@ -453,19 +469,19 @@ export class AskPanel {
         country: null,
         connected: [
           {
-            country: 'Canada',
+            country: tl('Canada'),
             source: 'Statistics Canada table 35-10-0177-01',
           },
           {
-            country: 'United States',
+            country: tl('United States'),
             source: 'FBI Crime Data Explorer (Uniform Crime Reporting Program)',
           },
           {
-            country: 'European countries',
+            country: tl('European countries'),
             source: 'Eurostat, police-recorded offences by category',
           },
           {
-            country: 'Every other country',
+            country: tl('Every other country'),
             source:
               'United Nations SDG database and World Health Organization estimates',
           },
@@ -482,7 +498,7 @@ export class AskPanel {
     const data = await response.json().catch(() => null);
     if (!response.ok || !data?.status) {
       throw new Error(
-        data?.error || 'The country statistics table could not be read.',
+        data?.error || tl('The country statistics table could not be read.'),
       );
     }
     return data;
@@ -504,15 +520,18 @@ export class AskPanel {
       return null;
     }
 
-    const verb = options.label || 'Asking';
-    this._setBusy(providerId, true, `${verb}...`);
+    const verb = tl(options.label || msgl('Asking'));
+    this._setBusy(providerId, true, tl('{verb}...', { verb }));
     // These models take a minute or more. Without a visible clock the panel
     // looks broken, which is exactly how it was first reported.
     const startedAt = Date.now();
     const ticker = window.setInterval(() => {
       this._setStatus(
         providerId,
-        `${verb}... ${Math.round((Date.now() - startedAt) / 1000)}s`,
+        tl('{verb}... {seconds}s', {
+          verb,
+          seconds: Math.round((Date.now() - startedAt) / 1000),
+        }),
       );
     }, 1000);
 
@@ -546,7 +565,7 @@ export class AskPanel {
       if (response.status === 501 || data?.unconfigured) {
         this._setStatus(
           providerId,
-          'No key for this model. Add one in POWER UP.',
+          tl('No key for this model. Add one in POWER UP.'),
         );
         return null;
       }
@@ -556,7 +575,7 @@ export class AskPanel {
 
       this._prependAnswer(
         providerId,
-        formatAskLogEntry(options.kind || 'ASK', data.answer, {
+        formatAskLogEntry(tl(options.kind || msgl('ASK')), data.answer, {
           locationName: options.locationName || context.selectedLocation,
         }),
       );
@@ -568,7 +587,9 @@ export class AskPanel {
       const aborted = error?.name === 'AbortError';
       this._setStatus(
         providerId,
-        aborted ? 'No answer in time.' : error?.message || 'Request failed.',
+        aborted
+          ? tl('No answer in time.')
+          : error?.message || tl('Request failed.'),
       );
       return null;
     } finally {
@@ -588,7 +609,7 @@ export class AskPanel {
       : Number(usage.input_tokens || 0) + Number(usage.output_tokens || 0) ||
         null;
     const model = data?.model ? String(data.model) : '';
-    if (model && total) return `${model} · ${total} tokens`;
+    if (model && total) return tl('{model} · {total} tokens', { model, total });
     return model || '';
   }
 
@@ -791,8 +812,11 @@ export class AskPanel {
     row.entries = (row.entries || 0) + 1;
     if (row.logCount) {
       row.logCount.hidden = false;
-      row.logCount.textContent =
-        row.entries === 1 ? '1 report' : `${row.entries} reports`;
+      row.logCount.textContent = tln(
+        row.entries,
+        '{count} report',
+        '{count} reports',
+      );
     }
   }
 }

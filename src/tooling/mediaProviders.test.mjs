@@ -1,3 +1,6 @@
+// First: this process works in an empty temp folder, also the providers' root,
+// so no cache, private config or integrity store of this machine reaches it.
+import { isolatedCwd } from './isolatedCwd.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -107,7 +110,7 @@ test('CCTV instances resolve their own application source root and isolate catal
 
 test('composition creates exactly one CCTV and radio provider without acquisition', (t) => {
   isolate(t);
-  const plugins = localProviderPlugins();
+  const plugins = localProviderPlugins({ sourceRoot: isolatedCwd });
   for (const factory of [cctvProxy, radioBrowserProxy]) {
     assert.equal(plugins.filter((p) => p.name === factory().name).length, 1);
   }

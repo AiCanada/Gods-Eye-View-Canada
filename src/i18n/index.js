@@ -16,10 +16,27 @@ import {
   normalizeLocale,
   writeStoredLocale,
 } from './locale.js';
+import forkLocales from './fork-locales.json' with { type: 'json' };
 import es from './locales/es.json' with { type: 'json' };
+import frCA from './locales/fr-CA.json' with { type: 'json' };
+import iu from './locales/iu.json' with { type: 'json' };
 import ru from './locales/ru.json' with { type: 'json' };
+import { useLocalText } from './marker.js';
 
-const CATALOGS = Object.freeze({ es, ru });
+const CATALOGS = Object.freeze({ es, 'fr-CA': frCA, iu, ru });
+/**
+ * The locale Intl formats numbers, dates and relative times in. Intl has
+ * plural rules for Inuktitut (one, two, other) but no number or date data,
+ * so it uses Canadian English, the way Nunavut writes numbers, instead of
+ * whatever the browser falls back to.
+ */
+const INTL_FORMAT_LOCALES = Object.freeze({ iu: 'en-CA' });
+
+function formatLocale() {
+  return INTL_FORMAT_LOCALES[currentLocale] ?? currentLocale;
+}
+/** The locales that translate the fork's own tabs (see tl()). */
+const FORK_LOCALES = new Set(forkLocales);
 
 let currentLocale = DEFAULT_LOCALE;
 
@@ -69,13 +86,20 @@ function interpolate(pattern, values) {
 /** A catalog string with something to show; an empty one counts as missing. */
 const filled = (value) => typeof value === 'string' && value.trim() !== '';
 
-function lookup(text) {
+/** The active catalog's entry for `text`, or undefined; never warns. */
+function lookupQuiet(text) {
   const catalog = CATALOGS[currentLocale];
   if (!catalog) return undefined;
   const entry = Object.hasOwn(catalog, text) ? catalog[text] : undefined;
   if (filled(entry) || (entry && typeof entry === 'object')) return entry;
-  warnMissing(text);
   return undefined;
+}
+
+function lookup(text) {
+  if (!CATALOGS[currentLocale]) return undefined;
+  const entry = lookupQuiet(text);
+  if (entry === undefined) warnMissing(text);
+  return entry;
 }
 
 /**
@@ -104,7 +128,11 @@ export function t(text, values) {
  * @returns {string}
  */
 export function tn(count, one, other, values) {
-  const entry = lookup(other);
+  return pluralFrom(lookup(other), count, one, other, values);
+}
+
+/** tn() with the lookup it is given: one form per plural category. */
+function pluralFrom(entry, count, one, other, values) {
   const category = pluralRules(currentLocale).select(count);
   let pattern;
   const forms = entry && typeof entry === 'object' ? entry : null;
@@ -115,6 +143,73 @@ export function tn(count, one, other, values) {
   }
   return interpolate(pattern, { count, ...values });
 }
+
+/** A catalog entry for the fork's own tabs: only a fork locale has one. */
+function lookupLocal(text) {
+  return FORK_LOCALES.has(currentLocale) ? lookupQuiet(text) : undefined;
+}
+
+/**
+ * The fork's own tabs (the five on the left: AI Risk & Truth Assessment,
+ * Ultra Security Package, Social Media Analysis, Outbreak, the AI World
+ * Training Sim) are translated only into the locales listed in
+ * src/i18n/fork-locales.json (Quebec French). tl() and tln() mark their text
+ * as t() and tn() do; any other locale shows the English, without a
+ * missing-translation warning, even where its catalog has the same English
+ * for the rest of the page. `npm run i18n` requires these entries only of
+ * the listed locales.
+ */
+export function tl(text, values) {
+  const entry = lookupLocal(
+    values?.context ? `${values.context}|${text}` : text,
+  );
+  return interpolate(typeof entry === 'string' ? entry : text, values);
+}
+
+/** tn() for the fork's own tabs; see tl(). */
+export function tln(count, one, other, values) {
+  return pluralFrom(lookupLocal(other), count, one, other, values);
+}
+
+const separatorCache = new Map();
+
+/** The active locale's thousands and decimal marks. */
+function separators() {
+  let marks = separatorCache.get(currentLocale);
+  if (!marks) {
+    const parts = new Intl.NumberFormat(formatLocale()).formatToParts(12345.6);
+    marks = {
+      group: parts.find((part) => part.type === 'group')?.value ?? ',',
+      decimal: parts.find((part) => part.type === 'decimal')?.value ?? '.',
+    };
+    separatorCache.set(currentLocale, marks);
+  }
+  return marks;
+}
+
+/**
+ * A number the fork's tabs wrote the English way (12,345.6), in the marks of
+ * a locale that translates those tabs (12 345,6 in Quebec French); as given
+ * in every other locale, as their text is.
+ */
+export function localDigits(text) {
+  const value = String(text);
+  if (!FORK_LOCALES.has(currentLocale)) return value;
+  const { group, decimal } = separators();
+  return value.replace(/[,.]/g, (mark) => (mark === ',' ? group : decimal));
+}
+
+/** Mark English kept in data for a later tl(); returns it as is. */
+export function msgl(text) {
+  return text;
+}
+
+/** tl(), tln() and localDigits() as one object, for builders that take `say`
+ * (marker.js). */
+export const localSay = Object.freeze({ tl, tln, digits: localDigits });
+// Modules the server also loads mark their text with marker.js's tl(): on
+// the page it is this one.
+useLocalText(localSay);
 
 /**
  * Translate text that may be ours or may come from a provider: a catalog
@@ -155,7 +250,7 @@ function cachedFormatter(kind, Constructor, options) {
   const cacheKey = `${kind}|${currentLocale}|${options ? JSON.stringify(options) : ''}`;
   let formatter = formatterCache.get(cacheKey);
   if (!formatter) {
-    formatter = new Constructor(currentLocale, options);
+    formatter = new Constructor(formatLocale(), options);
     formatterCache.set(cacheKey, formatter);
   }
   return formatter;
@@ -226,6 +321,15 @@ const DOCUMENT_TRANSLATION_TARGETS = Object.freeze([
   ['data-i18n-title', 'title'],
   ['data-i18n-aria-label', 'aria-label'],
   ['data-i18n-placeholder', 'placeholder'],
+  // The fork's own tabs: translated only where src/i18n/fork-locales.json
+  // lists the locale, silently English elsewhere (see tl()).
+  ['data-i18n-local', null, true],
+  ['data-i18n-local-title', 'title', true],
+  ['data-i18n-local-aria-label', 'aria-label', true],
+  ['data-i18n-local-placeholder', 'placeholder', true],
+  ['data-i18n-local-label', 'label', true],
+  // A tab's short name on its collapsed rail button (CSS attr()).
+  ['data-i18n-local-collapsed-title', 'data-collapsed-title', true],
 ]);
 
 /**
@@ -238,13 +342,13 @@ export function applyDocumentTranslations(doc) {
   if (typeof doc?.querySelectorAll !== 'function') return 0;
   if (!CATALOGS[currentLocale]) return 0;
   let applied = 0;
-  for (const [marker, attribute] of DOCUMENT_TRANSLATION_TARGETS) {
+  for (const [marker, attribute, local] of DOCUMENT_TRANSLATION_TARGETS) {
     for (const element of doc.querySelectorAll(`[${marker}]`)) {
       const source = attribute
         ? element.getAttribute(attribute)
         : normalizeMarkupText(element.textContent);
       if (!source) continue;
-      const text = t(source);
+      const text = local ? tl(source) : t(source);
       if (text === source) continue;
       if (attribute) element.setAttribute(attribute, text);
       else element.textContent = text;

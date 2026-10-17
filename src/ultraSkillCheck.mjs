@@ -16,7 +16,11 @@
  * about the person. Finding nothing is NO CONFIRMATION, never a rejection,
  * and a verdict without a public link counts as nothing found. No DOM and
  * no network: every request and every answer is handled here.
+ *
+ * What the box shows is marked with tl() from src/i18n/marker.js (Quebec
+ * French on the page); the bots' tasks stay English.
  */
+import { msgl, tl } from './i18n/marker.js';
 import { SOCIAL_PUBLIC_SITES } from './socialMedia.js';
 import {
   ULTRA_CUSTOM_SLUG_SOURCE,
@@ -48,9 +52,9 @@ const BOT_LABEL_MAX = 40;
 
 /** The three verdicts, as stored and as shown. */
 export const SKILL_CHECK_VERDICTS = Object.freeze({
-  confirmed: 'CONFIRMED',
-  none: 'NO CONFIRMATION',
-  rejected: 'REJECTED CLAIM',
+  confirmed: msgl('CONFIRMED'),
+  none: msgl('NO CONFIRMATION'),
+  rejected: msgl('REJECTED CLAIM'),
 });
 
 /** Male / Female / Other, or not given. */
@@ -130,40 +134,40 @@ export const SKILL_CHECK_APP_OPTIONS = Object.freeze(
 export const SKILL_CHECK_BOTS = Object.freeze([
   Object.freeze({
     id: 'linkedin',
-    label: 'LinkedIn',
+    label: 'LinkedIn', // i18n-ignore: product name
     domains: Object.freeze(['linkedin.com']),
   }),
   Object.freeze({ id: 'x', label: 'X', domains: SOCIAL_PUBLIC_SITES.x }),
   Object.freeze({
     id: 'facebook',
-    label: 'Facebook',
+    label: 'Facebook', // i18n-ignore: product name
     domains: SOCIAL_PUBLIC_SITES.facebook,
   }),
   Object.freeze({
     id: 'instagram',
-    label: 'Instagram',
+    label: 'Instagram', // i18n-ignore: product name
     domains: SOCIAL_PUBLIC_SITES.instagram,
   }),
   Object.freeze({
     id: 'threads',
-    label: 'Threads',
+    label: 'Threads', // i18n-ignore: product name
     domains: SOCIAL_PUBLIC_SITES.threads,
   }),
   Object.freeze({
     id: 'tiktok',
-    label: 'TikTok',
+    label: 'TikTok', // i18n-ignore: product name
     domains: SOCIAL_PUBLIC_SITES.tiktok,
   }),
   Object.freeze({
     id: 'registries',
-    label: 'Licence registries',
+    label: msgl('Licence registries'),
     domains: Object.freeze([]),
     about:
       'public licence, certification and membership registers (colleges, regulators, boards, trade and professional associations), and employer or agency staff pages',
   }),
   Object.freeze({
     id: 'news',
-    label: 'News and web',
+    label: msgl('News and web'),
     domains: Object.freeze([]),
     about: 'news sites and the open web',
   }),
@@ -172,19 +176,19 @@ export const SKILL_CHECK_BOTS = Object.freeze([
 /** The bot for the person's own links and the apps the form names. */
 export const SKILL_CHECK_NAMED_BOT = Object.freeze({
   id: 'named',
-  label: 'Their links and apps',
+  label: msgl('Their links and apps'),
 });
 
 /** One line when the whole check went to the Chief of Staff bot. */
 export const SKILL_CHECK_CHIEF_BOT = Object.freeze({
   id: 'chief',
-  label: 'Chief of Staff',
+  label: msgl('Chief of Staff'),
 });
 
 /** One line when the whole check was pasted into ChatGPT (OPENAI DOTS). */
 export const SKILL_CHECK_CHATGPT_BOT = Object.freeze({
   id: 'chatgpt',
-  label: 'ChatGPT',
+  label: 'ChatGPT', // i18n-ignore: product name
 });
 
 /** Sent to every bot ahead of its task, whatever the form says. */
@@ -259,7 +263,7 @@ export function readPastedUltraTokenSkills(raw) {
       token: true,
       encrypted: false,
       skills: [],
-      error: 'That is not an Ultra Token skill list.',
+      error: tl('That is not an Ultra Token skill list.'),
     };
   return { token: true, encrypted: false, skills };
 }
@@ -317,12 +321,13 @@ export function cleanSkillCheckClaim(input = {}) {
   if (pasted?.encrypted) {
     return {
       ok: false,
-      error:
+      error: tl(
         'Those skills are encrypted. Type the ones they told you, or use CONFIRM ULTRA TOKEN SKILLS on the home-list row.',
+      ),
     };
   }
   if (pasted?.token && !pasted.skills.length)
-    return { ok: false, error: 'That token names no skills.' };
+    return { ok: false, error: tl('That token names no skills.') };
   const skillSource = pasted?.token ? pasted.skills : source.skills;
   const skills = [];
   for (const raw of listOf(skillSource)) {
@@ -334,7 +339,9 @@ export function cleanSkillCheckClaim(input = {}) {
     if (label.length > SKILL_CHECK_SKILL_MAX) {
       return {
         ok: false,
-        error: `Keep each skill under ${SKILL_CHECK_SKILL_MAX} characters.`,
+        error: tl('Keep each skill under {max} characters.', {
+          max: SKILL_CHECK_SKILL_MAX,
+        }),
       };
     }
     if (skills.some((item) => item.toLowerCase() === label.toLowerCase()))
@@ -342,11 +349,13 @@ export function cleanSkillCheckClaim(input = {}) {
     skills.push(label);
   }
   if (!skills.length)
-    return { ok: false, error: 'Name at least one skill to check.' };
+    return { ok: false, error: tl('Name at least one skill to check.') };
   if (skills.length > SKILL_CHECK_SKILLS_MAX) {
     return {
       ok: false,
-      error: `Check at most ${SKILL_CHECK_SKILLS_MAX} skills at a time.`,
+      error: tl('Check at most {max} skills at a time.', {
+        max: SKILL_CHECK_SKILLS_MAX,
+      }),
     };
   }
   const name = cleanLine(source.name, SKILL_CHECK_NAME_MAX);
@@ -364,7 +373,10 @@ export function cleanSkillCheckClaim(input = {}) {
     ) {
       return {
         ok: false,
-        error: `Age is a whole number from ${SKILL_CHECK_AGE_MIN} to ${SKILL_CHECK_AGE_MAX}, or leave it empty.`,
+        error: tl(
+          'Age is a whole number from {min} to {max}, or leave it empty.',
+          { min: SKILL_CHECK_AGE_MIN, max: SKILL_CHECK_AGE_MAX },
+        ),
       };
     }
     age = n;
@@ -383,13 +395,18 @@ export function cleanSkillCheckClaim(input = {}) {
     if (!url) {
       return {
         ok: false,
-        error: `That is not a web address: ${cleanLine(text, 60)}`,
+        error: tl('That is not a web address: {text}', {
+          text: cleanLine(text, 60),
+        }),
       };
     }
     if (!urls.includes(url)) urls.push(url);
   }
   if (urls.length > SKILL_CHECK_URLS_MAX)
-    return { ok: false, error: `Give at most ${SKILL_CHECK_URLS_MAX} links.` };
+    return {
+      ok: false,
+      error: tl('Give at most {max} links.', { max: SKILL_CHECK_URLS_MAX }),
+    };
   const apps = [];
   for (const raw of listOf(source.apps)) {
     const app = cleanLine(raw, SKILL_CHECK_APP_MAX + 1);
@@ -397,19 +414,25 @@ export function cleanSkillCheckClaim(input = {}) {
     if (app.length > SKILL_CHECK_APP_MAX) {
       return {
         ok: false,
-        error: `Keep each app under ${SKILL_CHECK_APP_MAX} characters.`,
+        error: tl('Keep each app under {max} characters.', {
+          max: SKILL_CHECK_APP_MAX,
+        }),
       };
     }
     if (!apps.some((item) => item.toLowerCase() === app.toLowerCase()))
       apps.push(app);
   }
   if (apps.length > SKILL_CHECK_APPS_MAX)
-    return { ok: false, error: `Name at most ${SKILL_CHECK_APPS_MAX} apps.` };
+    return {
+      ok: false,
+      error: tl('Name at most {max} apps.', { max: SKILL_CHECK_APPS_MAX }),
+    };
   if (!name && !urls.length) {
     return {
       ok: false,
-      error:
+      error: tl(
         'Give their name or one of their links, so the bots know whom to check.',
+      ),
     };
   }
   const typed = [
@@ -424,7 +447,7 @@ export function cleanSkillCheckClaim(input = {}) {
   if (KEY_SHAPE.test(typed)) {
     return {
       ok: false,
-      error: 'Take the key or token out. The bots never need one.',
+      error: tl('Take the key or token out. The bots never need one.'),
     };
   }
   return {
@@ -702,7 +725,7 @@ export function combineSkillVerdicts(skills, answers) {
     }
     const reason =
       deciding.find((row) => row.reason)?.reason ||
-      (verdict === 'none' ? 'Nothing public found either way.' : '');
+      (verdict === 'none' ? msgl('Nothing public found either way.') : '');
     return {
       skill,
       verdict,
@@ -736,25 +759,25 @@ export const SKILL_CHECK_VIA = Object.freeze([
  */
 export function skillCheckSwarmChoices(providers) {
   const swarm = [
-    { value: 'xai', label: 'GROK BOT SWARM' },
-    { value: 'openai', label: 'OPENAI DOT SWARM' },
+    { value: 'xai', label: tl('GROK BOT SWARM') },
+    { value: 'openai', label: tl('OPENAI DOT SWARM') },
   ];
   const ready = (Array.isArray(providers) ? providers : []).filter(
     (item) => item?.ready && item.id,
   );
-  if (!ready.length) return [...swarm, { value: 'llm', label: 'LLM' }];
+  if (!ready.length) return [...swarm, { value: 'llm', label: 'LLM' }]; // i18n-ignore: the acronym is the same in every language
   if (ready.length === 1) {
     return [
       ...swarm,
-      { value: 'llm', label: `LLM · ${ready[0].label || ready[0].id}` },
+      { value: 'llm', label: `LLM · ${ready[0].label || ready[0].id}` }, // i18n-ignore: the acronym and a model's name
     ];
   }
   return [
     ...swarm,
-    { value: 'llm', label: 'LLM · ALL' },
+    { value: 'llm', label: tl('LLM · ALL') },
     ...ready.map((item) => ({
       value: `llm:${item.id}`,
-      label: `LLM · ${item.label || item.id}`,
+      label: `LLM · ${item.label || item.id}`, // i18n-ignore: the acronym and a model's name
     })),
   ];
 }
@@ -809,5 +832,8 @@ export function cleanSkillCheckRecord(value) {
 /** One verdict as a row word: "MEDIC: CONFIRMED", with "(MIXED)" when the bots disagreed. */
 export function skillVerdictWords(row) {
   const word = SKILL_CHECK_VERDICTS[row?.verdict] || SKILL_CHECK_VERDICTS.none;
-  return `${String(row?.skill || '').toUpperCase()}: ${word}${row?.mixed ? ' (MIXED)' : ''}`;
+  return `${tl('{skill}: {verdict}', {
+    skill: String(row?.skill || '').toUpperCase(),
+    verdict: tl(word),
+  })}${row?.mixed ? ` ${tl('(MIXED)')}` : ''}`;
 }

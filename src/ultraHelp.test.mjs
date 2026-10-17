@@ -85,7 +85,7 @@ test('the Ultra box is a collapsed left-stack panel and the help module does not
     assert.match(
       html,
       new RegExp(
-        `data-ultra-camera-row="${role}"[^>]*>\\s*<span class="ultra-cam-name">${name}</span>`,
+        `data-ultra-camera-row="${role}"[^>]*>\\s*<span class="ultra-cam-name"[^>]*>${name}</span>`,
       ),
     );
     for (const mode of ['photo', 'video'])
@@ -387,7 +387,7 @@ test('needs never coerce a JSON object, and hidden characters are dropped from i
     new URL('./ultraHelp.mjs', import.meta.url),
     'utf8',
   );
-  assert.match(help, /code: 'ng', label: 'Mr\.\/Mrs\. Nice Guy'/);
+  assert.match(help, /code: 'ng', label: msgl\('Mr\.\/Mrs\. Nice Guy'\)/);
   assert.match(
     tokens,
     /export \{ ULTRA_CUSTOM_SKILL_LIMIT, ULTRA_SKILL_SETS \}/,

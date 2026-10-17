@@ -1,3 +1,6 @@
+// First: this process works in an empty temp folder, also the providers' root,
+// so no cache, private config or integrity store of this machine reaches it.
+import { isolatedCwd } from '../../tooling/isolatedCwd.mjs';
 // BIKESHARE PROXY ROUTE — the client's URL against the real mounted middleware.
 //
 // The station source and the GBFS proxy are unit-tested apart, each against a
@@ -339,7 +342,7 @@ test('the mounted route still refuses a host outside the allowlist', async () =>
  * or from the preview half of it — fails here rather than in a browser.
  */
 function composedGbfsPlugin() {
-  const plugin = localProviderPlugins().find(
+  const plugin = localProviderPlugins({ sourceRoot: isolatedCwd }).find(
     (entry) => entry.name === 'gbfs-proxy',
   );
   assert.ok(plugin, 'the application must compose a GBFS provider');

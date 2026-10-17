@@ -1,3 +1,6 @@
+// First: this process works in an empty temp folder, also the providers' root,
+// so no cache, private config or integrity store of this machine reaches it.
+import { isolatedCwd } from './isolatedCwd.mjs';
 // THE LAST-RESORT PLACE SEARCH ROUTE — what it is allowed to send upstream.
 //
 // The public instance permits one request per second. One request per second
@@ -112,7 +115,7 @@ const jsonResponse = (value) =>
   });
 
 test('the route is part of the application on both dev and preview', () => {
-  const plugin = localProviderPlugins().find(
+  const plugin = localProviderPlugins({ sourceRoot: isolatedCwd }).find(
     (entry) => entry.name === 'geocode-proxy',
   );
   assert.ok(plugin, 'the application must compose the place-search route');

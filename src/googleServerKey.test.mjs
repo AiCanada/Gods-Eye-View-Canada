@@ -1,3 +1,7 @@
+// First: this process works in an empty temp folder, and the app's Vite config
+// is given it as its root, so no .env key, integrity store, cache or private
+// config of this machine reaches the test.
+import { isolatedCwd } from './tooling/isolatedCwd.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import config, { googleServerApiKey, googlePlacesContextProxy } from '../vite.config.js';
@@ -124,7 +128,7 @@ test('every Google route selects the intended key and keeps it out of responses'
 
 test('browser defines contain the browser key and exclude the server key', () => {
   withKeys({ server: 'server-secret', browser: 'browser-public' }, () => {
-    const defines = config({ mode: 'test' }).define;
+    const defines = config({ mode: 'test', sourceRoot: isolatedCwd }).define;
     assert.equal(defines['import.meta.env.GOOGLE_MAPS_API_KEY'], '"browser-public"');
     assert.ok(!JSON.stringify(defines).includes('server-secret'));
     assert.ok(!Object.keys(defines).some((key) => key.includes('SERVER_API_KEY')));

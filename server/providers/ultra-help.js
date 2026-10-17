@@ -2757,8 +2757,13 @@ async function deliverOwnPlea(active, feed) {
   }
 }
 
-/** Every episode this machine is holding, as a pin for the Your Devices layer. */
-export function ultraNetworkPins(now = Date.now()) {
+/**
+ * Every episode this machine is holding, as a pin for the Your Devices layer.
+ * They are this checkout's: a device route on another root (a test's temp
+ * folder) gets none, and nothing of this checkout's help network is read.
+ */
+export function ultraNetworkPins(now = Date.now(), root = sourceRoot) {
+  if (path.resolve(String(root)) !== path.resolve(sourceRoot)) return [];
   const pins = [];
   for (const entry of loadNetwork().entries) {
     const memory = networkMemory.get(entry.id);

@@ -11,6 +11,7 @@ import {
   fetchTxdotSnapshot,
   fetchCctvMediaUpstream,
   watchDownstreamClose,
+  setRoadCctvKeysRoot,
   setRoadCctvSiteSource,
 } from './cctv/media.js';
 import { sanitizeCctvRangeHeader } from './cctv/range.js';
@@ -154,6 +155,9 @@ export function cctvProxy({
   const cameras = catalog || createCctvCatalog({ sourceRoot, cacheDir });
   // POWER UP lists this catalogue's camera sites for the road CCTV keys.
   setRoadCctvSiteSource(() => cameras.snapshot());
+  // Its stills are keyed from this checkout's saved road CCTV keys, the same
+  // folder POWER UP's ROAD511 keys section writes (src/roadCctvKeysSetup.js).
+  setRoadCctvKeysRoot(sourceRoot);
   const frames = frameCache || createFrameCache();
   const gate = upstreamGate || createUpstreamGate();
   // Hand-made thumbnail alignments, kept in a tracked config file.

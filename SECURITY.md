@@ -213,7 +213,9 @@ from **GEV Private_CCTV_Feed Relay**, a personal unpacked Chrome extension in
 
 ## Your own drones, robots, marine drones and GPS trackers
 
-POWER UP → **YOUR DEVICES** adds any number of devices of four kinds
+POWER UP → **YOUR DEVICES** adds any number of devices of four kinds, and the
+package cards at the bottom of the ULTRA SECURITY PACKAGE tab add Ultra
+Security Packages, a fifth kind, through the same routes
 (`server/providers/device-feeds.js`, `src/deviceFeedsCore.mjs`). The rules are
 the private cameras' rules:
 

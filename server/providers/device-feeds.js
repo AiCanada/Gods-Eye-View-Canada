@@ -1396,7 +1396,7 @@ export function deviceFeedsProxy({
     // device store. A package with RECORD on captures it among its
     // surroundings like any other map record (see the CHANGELOG caveat).
     respondJson(res, 200, {
-      devices: [...devices, ...ultraNetworkPins(Date.now())],
+      devices: [...devices, ...ultraNetworkPins(Date.now(), sourceRoot)],
       minPollMs: DEVICE_FEED_MIN_POLL_MS,
     });
   };

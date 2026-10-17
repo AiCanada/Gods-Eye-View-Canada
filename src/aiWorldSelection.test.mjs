@@ -21,12 +21,12 @@ import {
   cleanClass,
   cleanPredictions,
   controlStates,
-  countLabel,
   deletePreviewView,
   domainNote,
   durationLabel,
   estimateLines,
   feedStatusText,
+  fileCount,
   formatBytes,
   formatCount,
   horizonLabel,
@@ -229,9 +229,9 @@ test('counts, state words, times and durations', () => {
   assert.equal(formatCount(999), '999');
   assert.equal(formatCount(-1200.4), '-1,200');
   assert.equal(formatCount('x'), '0');
-  assert.equal(countLabel(1, 'FILE'), '1 FILE');
-  assert.equal(countLabel(1200, 'FILE'), '1,200 FILES');
-  assert.equal(countLabel(0, 'FILE'), '0 FILES');
+  assert.equal(fileCount(1), '1 FILE');
+  assert.equal(fileCount(1200), '1,200 FILES');
+  assert.equal(fileCount(0), '0 FILES');
   assert.equal(stateLabel('running'), 'RUNNING');
   assert.equal(stateLabel('outbreak-sim'), 'OUTBREAK SIM');
   assert.equal(stateLabel('  quota_hit '), 'QUOTA HIT');

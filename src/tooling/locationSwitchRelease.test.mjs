@@ -1,3 +1,6 @@
+// First: this process works in an empty temp folder, also the providers' root,
+// so no cache, private config or integrity store of this machine reaches it.
+import { isolatedCwd } from './isolatedCwd.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Readable } from 'node:stream';
@@ -281,7 +284,7 @@ test('standalone composition mounts the release route exactly once, before key s
   t.mock.method(globalThis, 'fetch', () => {
     throw Error('construction must not fetch');
   });
-  const names = localProviderPlugins().map((plugin) => plugin.name);
+  const names = localProviderPlugins({ sourceRoot: isolatedCwd }).map((plugin) => plugin.name);
   assert.equal(
     names.filter((name) => name === 'location-switch-release').length,
     1,

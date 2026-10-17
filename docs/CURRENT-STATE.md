@@ -114,6 +114,14 @@ docs/WORLD-MODEL-DATA.md the formats.
 ## Ultra Security Package
 
 The left stack has an ULTRA SECURITY PACKAGE panel, collapsed like Data Layers.
+Its last section is the package cards (moved from POWER UP → YOUR DEVICES on
+2026-10-17, owner request): for each phone or tracker, how it connects, its
+address and login, and the report-in key and lines for the phone, with
++ ADD PACKAGE, SAVE PACKAGE, NEW KEY and REMOVE PACKAGE, laid out in the tab's
+own heading, notes, rows and buttons (`src/deviceFeedsSetup.js`, look
+`ultra`, mounted into `#ultra-package-setup` by `src/ultraHelpPanel.js`).
+POWER UP keeps the drones, robots, marine drones and GPS trackers; a save in
+either place redraws the other when it changes what that one shows.
 Camera buttons are limited to the cameras of the selected handset and are sent
 as one command to the paired phone; a press the phone page has not picked up
 reads ASKED · <camera> · OPEN THE CAMERA LINK BELOW ON THE PHONE (LIVE VIDEO
@@ -172,7 +180,7 @@ lon, at, until and incident until STAND DOWN; that poll is how another GEVC
 receives the position and the incident classification. A stored anytime
 flag is ignored and new tokens store it false; SMS and Voice are still
 stored (the token's check covers them) but open nothing, and a new token
-stores them off. The POWER UP setup card for a security package says the same.
+stores them off. The package card at the bottom of the tab says the same.
 Admission is by hash in constant time with one uniform 404, 60 requests and 20
 misses per address a minute. Only the tailnet is answered: a 100.64.0.0/10 or
 fd7a:115c:a1e0::/48 client, behind tailscale serve the one tailnet address it

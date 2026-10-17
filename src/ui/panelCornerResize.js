@@ -18,6 +18,7 @@
  * layouts keep their sizes. A floating CCTV or Street Level window keeps its
  * own edge resizing (panelPositionControls.js) and shows no grip.
  */
+import { tl } from '../i18n/index.js';
 
 export const PANEL_SIZE_KEY_PREFIX = 'gev:panel-size:';
 /** The smallest a box goes by its grip. */
@@ -240,12 +241,16 @@ export function installPanelCornerResize({
     grip.dataset.resizeFor = panel.id;
     grip.tabIndex = 0;
     const name =
-      panel.querySelector?.('.panel-title')?.textContent?.trim() || 'box';
+      panel.querySelector?.('.panel-title')?.textContent?.trim() || tl('box');
+    // The fork's grip: its words follow the fork locales (tl()).
     grip.setAttribute(
       'aria-label',
-      `Resize ${name}: drag the corner or use the arrow keys; double-click for its own size`,
+      tl(
+        'Resize {name}: drag the corner or use the arrow keys; double-click for its own size',
+        { name },
+      ),
     );
-    grip.title = 'Drag to resize · double-click for the default size';
+    grip.title = tl('Drag to resize · double-click for the default size');
     panel.appendChild(grip);
     grips.set(panel.id, grip);
     const size = stored(panel);

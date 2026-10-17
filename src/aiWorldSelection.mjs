@@ -10,8 +10,13 @@
  * EPISODES and YOUR DEVICES. One row per id. A layer's label is its catalog
  * label when the catalog knows its id, else the layer's own name; every label
  * is upper case. A licence class the catalog does not give reads STATIC.
+ *
+ * The text is marked with tl() and tln() from src/i18n/marker.js: Quebec
+ * French on the page (src/i18n/fork-locales.json), English in every other
+ * locale and on the server, which loads this module for stripExcluded().
  */
 
+import { localDigits, msgl, tl, tln } from './i18n/marker.js';
 import { marketAsset } from './marketAssets.mjs';
 import { formatSkill } from './trainingLinks.mjs';
 
@@ -36,20 +41,176 @@ export function stripExcluded(selection) {
 
 /** The entries that are not data layers, always present, in this order. */
 export const AI_WORLD_EXTRAS = Object.freeze([
-  Object.freeze({ id: 'news', label: 'NEWS EVENTS', cls: 'static' }),
+  Object.freeze({ id: 'news', label: msgl('NEWS EVENTS'), cls: 'static' }),
   Object.freeze({
     id: 'demographics',
-    label: 'POPULATION DEMOGRAPHICS',
+    label: msgl('POPULATION DEMOGRAPHICS'),
     cls: 'static',
   }),
   Object.freeze({
     id: 'outbreak-sim',
-    label: 'OUTBREAK SIM EPISODES',
+    label: msgl('OUTBREAK SIM EPISODES'),
     cls: 'static',
   }),
   // The owner's own devices are personal data by definition
   // (docs/WORLD-MODEL-DATA.md, Licence classes).
-  Object.freeze({ id: 'devices', label: 'YOUR DEVICES', cls: 'personal' }),
+  Object.freeze({
+    id: 'devices',
+    label: msgl('YOUR DEVICES'),
+    cls: 'personal',
+  }),
+]);
+
+/**
+ * The labels the server's catalog gives the TRAIN ON rows
+ * (server/shared/worldTape), upper case as the rows show them. Listed so
+ * the rows are translated; a label not here shows as the server gives it.
+ */
+export const AI_WORLD_FEED_LABELS = Object.freeze([
+  msgl('EARTHQUAKES'),
+  msgl('TRANSIT (BUSES, TRAMS, METRO, TRAINS)'),
+  msgl('FLIGHTS (WORLDWIDE)'),
+  msgl('WEATHER RADAR (NOAA MRMS)'),
+  msgl('SATELLITE CLOUDS (GOES AND GLOBAL INFRARED)'),
+  msgl('LIGHTNING DENSITY'),
+  msgl('WIND AND SURFACE FIELDS (GFS, ECMWF IFS)'),
+  msgl('TROPICAL CYCLONES (NHC/CPHC)'),
+  msgl('ACTIVE FIRES (NASA FIRMS)'),
+  msgl('WILDFIRE PERIMETERS (NIFC WFIGS)'),
+  msgl('SATELLITES (CELESTRAK ELEMENTS)'),
+  msgl('ROCKET LAUNCHES (LAUNCH LIBRARY 2)'),
+  msgl('BIKE-SHARE STATIONS (GBFS)'),
+  msgl('RADIO STATIONS (METADATA)'),
+  msgl('RECENT SATELLITE IMAGERY (NASA GIBS)'),
+  msgl('VESSELS (AIS)'),
+  msgl('ROAD TRAFFIC (TOMTOM FLOW)'),
+  msgl('PUBLIC CAMERAS (STILLS)'),
+  msgl('STREET-LEVEL IMAGERY COVERAGE (MAPILLARY)'),
+  msgl('NEWS HEADLINES (REGIONAL)'),
+  msgl('LOCAL ADS-B RECEIVER'),
+  msgl('YOUR DEVICES'),
+  msgl('PRIVATE CAMERAS'),
+  msgl('AIRCRAFT TYPES (ADSBDB)'),
+  msgl('PLATE-READER CAMERAS (OPENSTREETMAP)'),
+  msgl('SUBMARINE CABLES (TELEGEOGRAPHY)'),
+  msgl('DATACENTERS (OPENSTREETMAP)'),
+  msgl('DAMS (OPENSTREETMAP)'),
+  msgl('BHOTE KOSHI 2026 FLOOD (EVENT PACK)'),
+  msgl('BHOTE KOSHI LOCATOR'),
+  msgl('SEA SURFACE TEMPERATURE'),
+  msgl('OBSERVED WEATHER'),
+  msgl('PUBLIC CAMERAS (VIDEO)'),
+  msgl('NEWS URLS'),
+  msgl('FINANCIAL ASSETS (LIVE QUOTES)'),
+  msgl('AIR QUALITY (PM2.5)'),
+  msgl('US STREAM GAUGES'),
+  msgl('POPULATION DEMOGRAPHICS'),
+  msgl('OUTBREAK SIM EPISODES'),
+]);
+
+/**
+ * The licence notes the server's catalog gives the TRAIN ON rows, shown
+ * when the pointer rests on a row's licence class. Listed so they are
+ * translated; a note not here shows as the server gives it.
+ */
+export const AI_WORLD_LICENCES = Object.freeze([
+  msgl('USGS earthquake catalog (U.S. public domain)'),
+  msgl(
+    'Per-feed open realtime data: MBTA/MassDOT, CapMetro, Metro Transit, OVapi, Entur (NLOD), TransLink, HSL (CC BY 4.0)',
+  ),
+  msgl(
+    'OpenSky Network (non-commercial research/education licence); adsb.lol regional fallback (ODbL 1.0)',
+  ),
+  msgl(
+    'NOAA nowCOAST, NWS/OAR MRMS radar (U.S. government data; NOAA disclaimer)',
+  ),
+  msgl(
+    'NOAA nowCOAST; NESDIS GOES and global satellite partners (U.S. government data; NOAA disclaimer)',
+  ),
+  msgl(
+    'NOAA/NWS nowCOAST lightning density, derived from Vaisala NLDN/GLD360 (NOAA Level-5 product; public distribution permitted, not raw detections)',
+  ),
+  msgl(
+    'NOAA GFS (U.S. public domain); ECMWF IFS open data (CC BY 4.0 and the ECMWF Terms of Use; resampled to 1°)',
+  ),
+  msgl(
+    'NOAA/NWS National Hurricane Center and Central Pacific Hurricane Center advisories (U.S. government data; NWS disclaimer)',
+  ),
+  msgl(
+    "NASA FIRMS (U.S. public domain / CC0; acknowledgement of NASA's FIRMS requested)",
+  ),
+  msgl(
+    'National Interagency Fire Center WFIGS perimeters (U.S. public domain)',
+  ),
+  msgl(
+    'CelesTrak (U.S.-government-origin data; citation requested: CelesTrak, Dr. T.S. Kelso)',
+  ),
+  msgl(
+    'The Space Devs Launch Library 2 (data may be used and shared in any form; attribution encouraged)',
+  ),
+  msgl(
+    'GBFS feeds per operator (Lyft, BCycle and others; attribution to each operator and its license_url)',
+  ),
+  msgl(
+    'Radio Browser directory (PDDL 1.0); station metadata only, never audio',
+  ),
+  msgl(
+    "NASA GIBS / Worldview snapshots of HLS (Sentinel-2, Landsat 8/9) and VIIRS (U.S. public domain; acknowledgement of NASA's GIBS requested)",
+  ),
+  msgl(
+    'AISStream.io (free beta, no formal terms of use); AIS is a public broadcast',
+  ),
+  msgl(
+    'TomTom Traffic flow (TomTom terms; storage and derived use not licensed: local only)',
+  ),
+  msgl(
+    'Per camera operator (each record names its operator licence); many listings have unconfirmed terms',
+  ),
+  msgl(
+    'Mapillary contributors, CC BY-SA 4.0 (share-alike: a database derived from it stays CC BY-SA 4.0)',
+  ),
+  msgl(
+    "GDELT Project (open with citation) and Google News RSS (personal, non-commercial); articles are their publishers'",
+  ),
+  msgl(
+    "The owner's own receiver (ADS-B is an unauthenticated public broadcast)",
+  ),
+  msgl("The owner's own devices and their recordings"),
+  msgl("The owner's own home and business cameras"),
+  msgl(
+    'adsbdb (no published licence or quota; aircraft data from PlaneBase): types and registrations only, local use',
+  ),
+  msgl(
+    'OpenStreetMap contributors (ODbL 1.0), from the hourly extract at tiles.dontgetflocked.com',
+  ),
+  msgl('TeleGeography Submarine Cable Map (CC BY-NC-SA 3.0)'),
+  msgl('OpenStreetMap contributors (ODbL 1.0)'),
+  msgl('OpenStreetMap contributors (ODbL 1.0), via Open Infrastructure Map'),
+  msgl(
+    "Vantor Open Data imagery and GeoPera reconstruction (CC BY-NC 4.0); witness posts keep their owners' terms",
+  ),
+  msgl(
+    'GeoPera river centreline (CC BY-NC 4.0; Planet Labs PBC / Vantor open data); incident places from the event pack',
+  ),
+  msgl('NASA OceanColor MODIS Aqua Level-3 SST (U.S. public domain)'),
+  msgl('Open-Meteo (CC BY 4.0)'),
+  msgl(
+    'Per camera operator (each clip names its operator licence). Fragmented MP4 only.',
+  ),
+  msgl("Each item is its publisher's. Only the title and link are stored."),
+  msgl(
+    'Twelve Data forex and gold, OilPriceAPI WTI, copper and fuels, and Yahoo Finance for yields, stock indexes, other commodities, crypto, and whatever a free cap leaves out. Not a recommendation.',
+  ),
+  msgl(
+    'CAMS global air quality via Open-Meteo. Attribution required. Not a health warning.',
+  ),
+  msgl('USGS NWIS instantaneous discharge (US public domain).'),
+  msgl(
+    'GeoNames cities500 (CC BY 4.0); World Bank WDI age structure and urbanisation (CC BY 4.0)',
+  ),
+  msgl(
+    'Generated by the Outbreak model; world from OurAirports, GeoNames (CC BY 4.0), World Bank (CC BY 4.0), OSM rail (ODbL)',
+  ),
 ]);
 
 /** Licence classes, in the order docs/WORLD-MODEL-DATA.md lists them. */
@@ -64,33 +225,33 @@ export const AI_WORLD_CLASSES = Object.freeze([
 
 /** What PREDICTIONS can draw on the globe (the Prediction's domain). */
 export const AI_WORLD_DOMAINS = Object.freeze([
-  Object.freeze({ id: 'outbreak', label: 'OUTBREAK' }),
-  Object.freeze({ id: 'mobility', label: 'MOBILITY' }),
-  Object.freeze({ id: 'trains', label: 'TRAINS' }),
-  Object.freeze({ id: 'traffic', label: 'TRAFFIC' }),
-  Object.freeze({ id: 'weather', label: 'WEATHER' }),
-  Object.freeze({ id: 'hazards', label: 'HAZARDS' }),
-  Object.freeze({ id: 'news', label: 'NEWS' }),
-  Object.freeze({ id: 'tracks', label: 'TRACKS' }),
-  Object.freeze({ id: 'flights', label: 'FLIGHTS' }),
-  Object.freeze({ id: 'vessels', label: 'VESSELS' }),
-  Object.freeze({ id: 'transit', label: 'TRANSIT' }),
-  Object.freeze({ id: 'supply', label: 'SUPPLY' }),
-  Object.freeze({ id: 'markets', label: 'PRICE MOVES' }),
-  Object.freeze({ id: 'air-quality', label: 'AIR QUALITY' }),
-  Object.freeze({ id: 'stream-gauges', label: 'STREAM GAUGES' }),
+  Object.freeze({ id: 'outbreak', label: msgl('OUTBREAK') }),
+  Object.freeze({ id: 'mobility', label: msgl('MOBILITY') }),
+  Object.freeze({ id: 'trains', label: msgl('TRAINS') }),
+  Object.freeze({ id: 'traffic', label: msgl('TRAFFIC') }),
+  Object.freeze({ id: 'weather', label: msgl('WEATHER') }),
+  Object.freeze({ id: 'hazards', label: msgl('HAZARDS') }),
+  Object.freeze({ id: 'news', label: msgl('NEWS') }),
+  Object.freeze({ id: 'tracks', label: msgl('TRACKS') }),
+  Object.freeze({ id: 'flights', label: msgl('FLIGHTS') }),
+  Object.freeze({ id: 'vessels', label: msgl('VESSELS') }),
+  Object.freeze({ id: 'transit', label: msgl('TRANSIT') }),
+  Object.freeze({ id: 'supply', label: msgl('SUPPLY') }),
+  Object.freeze({ id: 'markets', label: msgl('PRICE MOVES') }),
+  Object.freeze({ id: 'air-quality', label: msgl('AIR QUALITY') }),
+  Object.freeze({ id: 'stream-gauges', label: msgl('STREAM GAUGES') }),
 ]);
 
 /** The DELETE scopes, as the menu names them. */
 export const AI_WORLD_DELETE_SCOPES = Object.freeze([
-  Object.freeze({ id: 'all', label: 'ALL DATA' }),
-  Object.freeze({ id: 'tape', label: 'TAPE' }),
-  Object.freeze({ id: 'bins', label: 'BINS' }),
-  Object.freeze({ id: 'datasets', label: 'SIM DATASETS' }),
-  Object.freeze({ id: 'worlds', label: 'WORLDS' }),
-  Object.freeze({ id: 'models', label: 'MODELS' }),
-  Object.freeze({ id: 'predictions', label: 'PREDICTIONS' }),
-  Object.freeze({ id: 'demographics', label: 'DEMOGRAPHICS' }),
+  Object.freeze({ id: 'all', label: msgl('ALL DATA') }),
+  Object.freeze({ id: 'tape', label: msgl('TAPE') }),
+  Object.freeze({ id: 'bins', label: msgl('BINS') }),
+  Object.freeze({ id: 'datasets', label: msgl('SIM DATASETS') }),
+  Object.freeze({ id: 'worlds', label: msgl('WORLDS') }),
+  Object.freeze({ id: 'models', label: msgl('MODELS') }),
+  Object.freeze({ id: 'predictions', label: msgl('PREDICTIONS') }),
+  Object.freeze({ id: 'demographics', label: msgl('DEMOGRAPHICS') }),
 ]);
 
 /** States in which the work moves, so the status is asked for often. */
@@ -107,7 +268,14 @@ export const AI_WORLD_HORIZON_DEFAULT = 24;
 export const AI_WORLD_HORIZON_MIN = 1;
 export const AI_WORLD_HORIZON_MAX = 168;
 
-const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+const BYTE_UNITS = [
+  msgl('B'),
+  msgl('KB'),
+  msgl('MB'),
+  msgl('GB'),
+  msgl('TB'),
+  msgl('PB'),
+];
 const DOMAIN_IDS = new Set(AI_WORLD_DOMAINS.map((domain) => domain.id));
 
 function text(value) {
@@ -122,7 +290,20 @@ export function cleanClass(value) {
 
 /** The tag a row shows for its licence class: OPEN, NC, … STATIC. */
 export function classTag(value) {
-  return cleanClass(value).toUpperCase();
+  switch (cleanClass(value)) {
+    case 'open':
+      return tl('OPEN', { context: 'licence' });
+    case 'nc':
+      return tl('NC', { context: 'licence' });
+    case 'restricted':
+      return tl('RESTRICTED', { context: 'licence' });
+    case 'unclear':
+      return tl('UNCLEAR', { context: 'licence' });
+    case 'personal':
+      return tl('PERSONAL', { context: 'licence' });
+    default:
+      return tl('STATIC', { context: 'licence' });
+  }
 }
 
 function catalogItem(raw) {
@@ -241,7 +422,7 @@ export function sameSelection(a, b) {
 /** Bytes as "1.2 GB" (decimal units, as the storage cap is given). */
 export function formatBytes(n) {
   const bytes = Number(n);
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  if (!Number.isFinite(bytes) || bytes <= 0) return `0 ${tl(BYTE_UNITS[0])}`;
   let unit = 0;
   let value = bytes;
   for (;;) {
@@ -255,17 +436,59 @@ export function formatBytes(n) {
       continue;
     }
     const number = Number.isInteger(shown) ? String(shown) : shown.toFixed(1);
-    return `${number} ${BYTE_UNITS[unit]}`;
+    return `${localDigits(number)} ${tl(BYTE_UNITS[unit])}`;
   }
 }
 
-/** A whole number with thousands separators: 12,345. */
-export function formatCount(n) {
+/** A whole number with thousands separators, the English way: 12,345. */
+function englishCount(n) {
   const value = Math.round(Number(n));
   if (!Number.isFinite(value)) return '0';
   const sign = value < 0 ? '-' : '';
   return `${sign}${String(Math.abs(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 }
+
+/** A whole number with thousands separators: 12,345 (12 345 in Quebec French). */
+export function formatCount(n) {
+  return localDigits(englishCount(n));
+}
+
+/** A count as tln() takes it: the plural form follows this number. */
+function whole(n) {
+  return Math.round(Number(n)) || 0;
+}
+
+/**
+ * The state, stage, scope and reason words the server sends, as stateLabel
+ * makes them: these are translated, any other word shows as sent. The
+ * prediction domains' ids are among them (MARKETS is PRICE MOVES's id).
+ */
+const STATE_WORDS = new Set([
+  ...AI_WORLD_DOMAINS.map((domain) => domain.label),
+  msgl('MARKETS'),
+  msgl('IDLE'),
+  msgl('INITIALIZING'),
+  msgl('RUNNING'),
+  msgl('PAUSED'),
+  msgl('STOPPING'),
+  msgl('STOPPED'),
+  msgl('WAITING'),
+  msgl('DONE'),
+  msgl('OFF'),
+  msgl('ERROR'),
+  msgl('QUOTA'),
+  msgl('RESTART'),
+  msgl('PAUSE'),
+  msgl('CONTINUE'),
+  msgl('STOP'),
+  msgl('TAPE'),
+  msgl('BINS'),
+  msgl('DATASETS'),
+  msgl('WORLDS'),
+  msgl('MODELS'),
+  msgl('PREDICTIONS'),
+  msgl('DEMOGRAPHICS'),
+]);
 
 /** A state name as upper-case words: 'outbreak-sim' → 'OUTBREAK SIM'. */
 export function stateLabel(state) {
@@ -274,7 +497,8 @@ export function stateLabel(state) {
     .replace(/[-_\s]+/g, ' ')
     .trim()
     .toUpperCase();
-  return words || 'UNKNOWN';
+  if (!words) return tl('UNKNOWN');
+  return STATE_WORDS.has(words) ? tl(words) : words;
 }
 
 /** How long ago: JUST NOW, 2 MIN AGO, 5 H AGO, 3 D AGO; '' without a time. */
@@ -282,12 +506,12 @@ export function agoLabel(atMs, nowMs = Date.now()) {
   const at = Number(atMs);
   if (!Number.isFinite(at) || at <= 0) return '';
   const seconds = Math.max(0, (Number(nowMs) - at) / 1000);
-  if (!(seconds >= 60)) return 'JUST NOW';
+  if (!(seconds >= 60)) return tl('JUST NOW');
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} MIN AGO`;
+  if (minutes < 60) return tl('{minutes} MIN AGO', { minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours} H AGO`;
-  return `${Math.floor(hours / 24)} D AGO`;
+  if (hours < 48) return tl('{hours} H AGO', { hours });
+  return tl('{days} D AGO', { days: Math.floor(hours / 24) });
 }
 
 /** A duration: UNDER 1 MIN, 12 MIN, 5 H, 3 D; '' without one. */
@@ -295,16 +519,18 @@ export function durationLabel(ms) {
   const value = Number(ms);
   if (!Number.isFinite(value) || value <= 0) return '';
   const minutes = Math.round(value / 60_000);
-  if (minutes < 1) return 'UNDER 1 MIN';
-  if (minutes < 60) return `${minutes} MIN`;
+  if (minutes < 1) return tl('UNDER 1 MIN');
+  if (minutes < 60) return tl('{minutes} MIN', { minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} H`;
-  return `${Math.round(hours / 24)} D`;
+  if (hours < 48) return tl('{hours} H', { hours });
+  return tl('{days} D', { days: Math.round(hours / 24) });
 }
 
-/** A count and its noun: 1 FILE, 1,200 FILES. */
-export function countLabel(n, word) {
-  return `${formatCount(n)} ${word}${Math.round(Number(n)) === 1 ? '' : 'S'}`;
+/** A count of files: 1 FILE, 1,200 FILES. */
+export function fileCount(n) {
+  return tln(whole(n), '{count} FILE', '{count} FILES', {
+    count: formatCount(n),
+  });
 }
 
 function shortError(value) {
@@ -328,12 +554,12 @@ export function feedStatusText(feed, nowMs = Date.now()) {
   const ago = agoLabel(feed.lastAt, nowMs);
   switch (state) {
     case 'recording':
-      return line(['RECORDING', size || '0 B', ago]);
+      return line([tl('RECORDING'), size || formatBytes(0), ago]);
     case 'static':
       // A one-off snapshot of a layer with no live feed.
-      return line(['SNAPSHOT', size, ago]);
+      return line([tl('SNAPSHOT'), size, ago]);
     case 'error':
-      return line(['ERROR', shortError(feed.error)]);
+      return line([tl('ERROR'), shortError(feed.error)]);
     case 'paused':
     case 'off':
     case 'waiting':
@@ -345,7 +571,8 @@ export function feedStatusText(feed, nowMs = Date.now()) {
 
 /**
  * Which buttons each state allows. PAUSE becomes CONTINUE while paused;
- * a state the tab does not know yet (no answer) acts as idle.
+ * a state the tab does not know yet (no answer) acts as idle. The label is
+ * English, shown through tl().
  */
 export function controlStates(state) {
   switch (state) {
@@ -354,7 +581,7 @@ export function controlStates(state) {
       return {
         initialize: false,
         pause: true,
-        pauseLabel: 'PAUSE',
+        pauseLabel: msgl('PAUSE'),
         pauseAction: 'pause',
         stop: true,
         delete: false,
@@ -363,7 +590,7 @@ export function controlStates(state) {
       return {
         initialize: false,
         pause: true,
-        pauseLabel: 'CONTINUE',
+        pauseLabel: msgl('CONTINUE'),
         pauseAction: 'continue',
         stop: true,
         delete: false,
@@ -372,7 +599,7 @@ export function controlStates(state) {
       return {
         initialize: false,
         pause: false,
-        pauseLabel: 'PAUSE',
+        pauseLabel: msgl('PAUSE'),
         pauseAction: 'pause',
         stop: false,
         delete: false,
@@ -381,7 +608,7 @@ export function controlStates(state) {
       return {
         initialize: true,
         pause: false,
-        pauseLabel: 'PAUSE',
+        pauseLabel: msgl('PAUSE'),
         pauseAction: 'pause',
         stop: false,
         delete: true,
@@ -401,7 +628,9 @@ function stageState(stage) {
 }
 
 function stageError(stage) {
-  return stage?.error ? `ERROR ${shortError(stage.error)}` : '';
+  return stage?.error
+    ? tl('ERROR {error}', { error: shortError(stage.error) })
+    : '';
 }
 
 function formatLoss(value) {
@@ -409,7 +638,41 @@ function formatLoss(value) {
   if (value === null || value === undefined || value === '') return '';
   const loss = Number(value);
   if (!Number.isFinite(loss)) return '';
-  return Math.abs(loss) >= 100 ? loss.toFixed(0) : loss.toPrecision(3);
+  return localDigits(
+    Math.abs(loss) >= 100 ? loss.toFixed(0) : loss.toPrecision(3),
+  );
+}
+
+/**
+ * The server's TRAINING note (server/shared/aiWorldJobs.mjs) in the page's
+ * words. The three it sends are known; anything else shows as sent.
+ */
+function trainerNote(value) {
+  const note = text(value);
+  const needs = /^NEEDS (\d+) BINNED DAYS · (\d+) SO FAR$/.exec(note);
+  if (needs)
+    return tl('NEEDS {need} BINNED DAYS · {have} SO FAR', {
+      need: needs[1],
+      have: needs[2],
+    });
+  const binning = /^BINNING (\S+) · (?:LAST DAY|(\d+) DAYS? LEFT)$/.exec(note);
+  if (binning && binning[2] === undefined)
+    return tl('BINNING {day} · LAST DAY', { day: binning[1] });
+  if (binning) {
+    const left = Number(binning[2]);
+    return tln(
+      left,
+      'BINNING {day} · {count} DAY LEFT',
+      'BINNING {day} · {count} DAYS LEFT',
+      {
+        day: binning[1],
+        count: formatCount(left),
+      },
+    );
+  }
+  if (note === 'TRIED AGAIN WHEN A NEW DAY IS BINNED')
+    return tl('TRIED AGAIN WHEN A NEW DAY IS BINNED');
+  return note;
 }
 
 /** The keys of `stageLines`, in the order the STATUS list shows them. */
@@ -435,14 +698,14 @@ export const AI_WORLD_STAGE_KEYS = Object.freeze([
 export function stageLines(status, nowMs = Date.now()) {
   if (!status || typeof status !== 'object') {
     return {
-      state: 'STATE · WAITING FOR THE SERVER',
-      recorder: 'RECORDING · OFF',
-      generator: 'SIM EPISODES · OFF',
-      trainer: 'TRAINING · OFF',
-      predictor: 'PREDICTING · OFF',
-      storage: 'STORAGE · NOTHING RECORDED',
-      gaps: 'GAPS · NONE',
-      compute: 'COMPUTE · WAITING FOR THE SERVER',
+      state: tl('STATE · WAITING FOR THE SERVER'),
+      recorder: tl('RECORDING · OFF'),
+      generator: tl('SIM EPISODES · OFF'),
+      trainer: tl('TRAINING · OFF'),
+      predictor: tl('PREDICTING · OFF'),
+      storage: tl('STORAGE · NOTHING RECORDED'),
+      gaps: tl('GAPS · NONE'),
+      compute: tl('COMPUTE · WAITING FOR THE SERVER'),
     };
   }
   const stages = status.stages || {};
@@ -462,90 +725,117 @@ export function stageLines(status, nowMs = Date.now()) {
     .join(', ');
   const lastGap = gaps.at(-1);
   const workers = Number(compute.workers) || 0;
+  const feeds = Number(recorder.feeds) || 0;
+  const episodes = Number(generator.episodes) || 0;
+  const eta = durationLabel(generator.etaMs);
+  const loss = formatLoss(trainer.loss);
+  const updated = agoLabel(predictor.updatedAt, nowMs);
   return {
     state: line([
-      'STATE',
+      tl('STATE'),
       stateLabel(status.state),
-      since ? `CHANGED ${since}` : '',
+      since ? tl('CHANGED {ago}', { ago: since }) : '',
     ]),
     recorder: line([
-      'RECORDING',
+      tl('RECORDING'),
       stageState(recorder),
-      Number(recorder.feeds) > 0 ? countLabel(recorder.feeds, 'FEED') : '',
+      feeds > 0
+        ? tln(whole(feeds), '{count} FEED', '{count} FEEDS', {
+            count: formatCount(feeds),
+          })
+        : '',
       Number(recorder.bytesPerDay) > 0
-        ? `${formatBytes(recorder.bytesPerDay)} A DAY`
+        ? tl('{size} A DAY', { size: formatBytes(recorder.bytesPerDay) })
         : '',
       stageError(recorder),
     ]),
     generator: line([
-      'SIM EPISODES',
+      tl('SIM EPISODES'),
       stageState(generator),
       Number(generator.total) > 0
         ? `${formatCount(generator.done)} / ${formatCount(generator.total)}`
         : '',
-      Number(generator.episodes) > 0
-        ? countLabel(generator.episodes, 'EPISODE')
+      episodes > 0
+        ? tln(whole(episodes), '{count} EPISODE', '{count} EPISODES', {
+            count: formatCount(episodes),
+          })
         : '',
-      durationLabel(generator.etaMs)
-        ? `ETA ${durationLabel(generator.etaMs)}`
-        : '',
+      eta ? tl('ETA {duration}', { duration: eta }) : '',
       stageError(generator),
     ]),
     trainer: line([
-      'TRAINING',
+      tl('TRAINING'),
       stageState(trainer),
       // The model's id as written: it names its folder under ai-world/models.
       text(trainer.model),
       Number(trainer.epochs) > 0
-        ? `EPOCH ${formatCount(trainer.epoch)} / ${formatCount(trainer.epochs)}`
+        ? tl('EPOCH {epoch} / {epochs}', {
+            epoch: formatCount(trainer.epoch),
+            epochs: formatCount(trainer.epochs),
+          })
         : '',
-      formatLoss(trainer.loss) ? `LOSS ${formatLoss(trainer.loss)}` : '',
+      loss ? tl('LOSS {loss}', { loss }) : '',
       formatSkill(trainer.skill),
       trainer.channelsGrown
-        ? 'NEW CHANNELS: MODEL GROWN, WHAT IT KNEW KEPT'
+        ? tl('NEW CHANNELS: MODEL GROWN, WHAT IT KNEW KEPT')
         : trainer.channelMismatch
-          ? 'NEW CHANNELS, NEW MODEL'
+          ? tl('NEW CHANNELS, NEW MODEL')
           : '',
       // What it waits for: BINNING 2026-09-13 · 29 DAYS LEFT, NEEDS 3 BINNED
       // DAYS · 1 SO FAR, TRIED AGAIN WHEN A NEW DAY IS BINNED.
-      text(trainer.note),
+      trainerNote(trainer.note),
       stageError(trainer),
     ]),
     predictor: line([
-      'PREDICTING',
+      tl('PREDICTING'),
       stageState(predictor),
       domains,
-      agoLabel(predictor.updatedAt, nowMs)
-        ? `UPDATED ${agoLabel(predictor.updatedAt, nowMs)}`
-        : '',
+      updated ? tl('UPDATED {ago}', { ago: updated }) : '',
       stageError(predictor),
     ]),
     storage: line([
-      'STORAGE',
+      tl('STORAGE'),
       cap > 0
         ? `${formatBytes(used)} / ${formatBytes(cap)}`
-        : `${formatBytes(used)} USED`,
-      cap > 0 ? `${Math.min(100, Math.round((used / cap) * 100))}%` : '',
-      free > 0 ? `${formatBytes(free)} FREE ON DISK` : '',
+        : tl('{size} USED', { size: formatBytes(used) }),
+      cap > 0
+        ? tl('{percent}%', {
+            percent: Math.min(100, Math.round((used / cap) * 100)),
+          })
+        : '',
+      free > 0 ? tl('{size} FREE ON DISK', { size: formatBytes(free) }) : '',
     ]),
     gaps: line([
-      'GAPS',
-      gaps.length ? formatCount(gaps.length) : 'NONE',
-      lastGap?.reason ? `LAST ${stateLabel(lastGap.reason)}` : '',
+      tl('GAPS'),
+      gaps.length ? formatCount(gaps.length) : tl('NONE'),
+      lastGap?.reason
+        ? tl('LAST {reason}', { reason: stateLabel(lastGap.reason) })
+        : '',
     ]),
     compute: line([
-      'COMPUTE',
+      tl('COMPUTE'),
       workers > 0
-        ? `${formatCount(compute.busy)} / ${countLabel(workers, 'WORKER')} BUSY`
-        : 'NO WORKERS',
-      text(compute.gpu) ? `GPU ${text(compute.gpu)}` : 'NO GPU · CPU ONLY',
+        ? tln(
+            whole(workers),
+            '{busy} / {count} WORKER BUSY',
+            '{busy} / {count} WORKERS BUSY',
+            {
+              busy: formatCount(compute.busy),
+              count: formatCount(workers),
+            },
+          )
+        : tl('NO WORKERS'),
+      text(compute.gpu)
+        ? tl('GPU {gpu}', { gpu: text(compute.gpu) })
+        : tl('NO GPU · CPU ONLY'),
     ]),
   };
 }
 
+/** Days as the estimate shows them, English marks: 1.5, 12, 1,234. */
 function dayCount(days) {
   if (!Number.isFinite(days) || days <= 0) return '';
-  return days < 10 ? days.toFixed(1).replace(/\.0$/, '') : formatCount(days);
+  return days < 10 ? days.toFixed(1).replace(/\.0$/, '') : englishCount(days);
 }
 
 /**
@@ -565,27 +855,49 @@ export function estimateLines(estimate, labelFor = (id) => stateLabel(id)) {
     .sort((a, b) => Number(b.bytesPerDay) - Number(a.bytesPerDay));
   const lines = [
     perDay > 0
-      ? `RECORDS ABOUT ${formatBytes(perDay)} A DAY`
-      : 'RECORDS NOTHING LIVE: SNAPSHOTS AND SIM ONLY',
+      ? tl('RECORDS ABOUT {size} A DAY', { size: formatBytes(perDay) })
+      : tl('RECORDS NOTHING LIVE: SNAPSHOTS AND SIM ONLY'),
   ];
   const shownDays = perDay > 0 ? dayCount(days) : '';
+  // The plural follows the days as shown: 1 DAY, 1.5 DAYS.
+  const daysShown = Number(shownDays.replace(/,/g, ''));
   if (cap > 0)
     lines.push(
       shownDays
-        ? `STORAGE CAP ${formatBytes(cap)} · FULL IN ABOUT ${shownDays} DAY${shownDays === '1' ? '' : 'S'}`
-        : `STORAGE CAP ${formatBytes(cap)}`,
+        ? tln(
+            daysShown,
+            'STORAGE CAP {cap} · FULL IN ABOUT {count} DAY',
+            'STORAGE CAP {cap} · FULL IN ABOUT {count} DAYS',
+            {
+              cap: formatBytes(cap),
+              count: localDigits(shownDays),
+            },
+          )
+        : tl('STORAGE CAP {cap}', { cap: formatBytes(cap) }),
     );
   if (feeds.length)
     lines.push(
-      `HEAVIEST · ${feeds
-        .slice(0, 3)
-        .map((feed) => `${labelFor(feed.id)} ${formatBytes(feed.bytesPerDay)}`)
-        .join(' · ')}`,
+      [
+        tl('HEAVIEST'),
+        ...feeds
+          .slice(0, 3)
+          .map(
+            (feed) => `${labelFor(feed.id)} ${formatBytes(feed.bytesPerDay)}`,
+          ),
+      ].join(' · '),
     );
   const workers = Number(estimate.workers) || 0;
-  lines.push(workers > 0 ? countLabel(workers, 'WORKER') : 'NO WORKERS');
   lines.push(
-    text(estimate.gpu) ? `GPU ${text(estimate.gpu)}` : 'NO GPU · CPU ONLY',
+    workers > 0
+      ? tln(whole(workers), '{count} WORKER', '{count} WORKERS', {
+          count: formatCount(workers),
+        })
+      : tl('NO WORKERS'),
+  );
+  lines.push(
+    text(estimate.gpu)
+      ? tl('GPU {gpu}', { gpu: text(estimate.gpu) })
+      : tl('NO GPU · CPU ONLY'),
   );
   return lines;
 }
@@ -601,7 +913,7 @@ export function deletePreviewView(preview) {
         stateLabel(group?.kind),
         text(group?.id),
         text(group?.path),
-        countLabel(group?.files || 0, 'FILE'),
+        fileCount(group?.files || 0),
         formatBytes(group?.bytes),
       ]),
   );
@@ -613,22 +925,26 @@ export function deletePreviewView(preview) {
     files,
     bytes,
     total: line([
-      'TOTAL',
-      countLabel(files, 'FILE'),
+      tl('TOTAL'),
+      fileCount(files),
       formatBytes(bytes),
-      root ? `IN ${root}` : '',
+      root ? tl('IN {root}', { root }) : '',
     ]),
     confirm:
       files > 0
-        ? `DELETE ${countLabel(files, 'FILE')} · ${formatBytes(bytes)}`
-        : 'NOTHING TO DELETE',
+        ? tl('DELETE {files} · {size}', {
+            files: fileCount(files),
+            size: formatBytes(bytes),
+          })
+        : tl('NOTHING TO DELETE'),
     canDelete: files > 0 && Boolean(text(preview?.token)),
   };
 }
 
-/** What AREAS says with no area: the feeds that wait for one. */
-export const AI_WORLD_NO_AREAS =
-  'NO AREAS · CAMERAS, TRAFFIC, NEWS AND IMAGERY RECORD AROUND AN AREA';
+/** What AREAS says with no area: the feeds that wait for one (via tl()). */
+export const AI_WORLD_NO_AREAS = msgl(
+  'NO AREAS · CAMERAS, TRAFFIC, NEWS AND IMAGERY RECORD AROUND AN AREA',
+);
 
 /**
  * The AREAS rows from the server's `status.areas`: `{ key, name, where }`,
@@ -660,11 +976,23 @@ export function areaRows(areas) {
 export function learningLabel(learning) {
   const object = learning && typeof learning === 'object';
   const days = Number(object ? learning.daysRecorded : learning);
-  if (!Number.isFinite(days) || days < 0) return 'LEARNING';
-  const parts = ['LEARNING', `${countLabel(Math.floor(days), 'DAY')} RECORDED`];
+  if (!Number.isFinite(days) || days < 0) return tl('LEARNING');
+  const recorded = Math.floor(days);
+  const parts = [
+    tl('LEARNING'),
+    tln(recorded, '{count} DAY RECORDED', '{count} DAYS RECORDED', {
+      count: formatCount(recorded),
+    }),
+  ];
   const binned = object ? Number(learning.daysBinned) : NaN;
-  if (Number.isFinite(binned) && binned > Math.floor(days))
-    parts.push(`${countLabel(Math.floor(binned), 'DAY')} BINNED`);
+  if (Number.isFinite(binned) && binned > recorded) {
+    const shown = Math.floor(binned);
+    parts.push(
+      tln(shown, '{count} DAY BINNED', '{count} DAYS BINNED', {
+        count: formatCount(shown),
+      }),
+    );
+  }
   return parts.join(' · ');
 }
 
@@ -702,12 +1030,19 @@ export function cleanPredictions(raw, allowed = null) {
 /** A prediction row: READY or LEARNING, plus a held-out score when one exists. */
 export function domainNote(ready, learning, skill) {
   const score = formatSkill(skill);
-  return [ready ? 'READY' : learning, score].filter(Boolean).join(' · ');
+  return [ready ? tl('READY') : learning, score].filter(Boolean).join(' · ');
 }
 
 /** The horizon's value label: 24 H. */
 export function horizonLabel(hours) {
-  return `${clampInt(hours, AI_WORLD_HORIZON_MIN, AI_WORLD_HORIZON_MAX, AI_WORLD_HORIZON_DEFAULT)} H`;
+  return tl('{hours} H', {
+    hours: clampInt(
+      hours,
+      AI_WORLD_HORIZON_MIN,
+      AI_WORLD_HORIZON_MAX,
+      AI_WORLD_HORIZON_DEFAULT,
+    ),
+  });
 }
 
 /** A predicted move as the MARKETS list shows it: `24 H ▲ 0.40%`. */
@@ -716,7 +1051,17 @@ function moveText(value, horizonHours) {
   const pct = Number(value);
   if (!Number.isFinite(pct)) return '';
   const arrow = pct > 0 ? '▲' : pct < 0 ? '▼' : '■';
-  return `${horizonLabel(horizonHours)} ${arrow} ${Math.abs(pct).toFixed(2)}%`;
+  const percent = tl('{percent}%', {
+    percent: localDigits(Math.abs(pct).toFixed(2)),
+  });
+  return `${horizonLabel(horizonHours)} ${arrow} ${percent}`;
+}
+
+/** A quote's unit as the MARKETS list shows it; currency codes as sent. */
+function unitName(unit) {
+  if (unit === 'percent') return tl('percent', { context: 'unit' });
+  if (unit === 'index') return tl('index', { context: 'unit' });
+  return unit || '';
 }
 
 /**
@@ -740,12 +1085,14 @@ export function marketLines(quotes, prediction, horizonHours) {
   for (const quote of Array.isArray(quotes) ? quotes : []) {
     if (typeof quote?.series !== 'string') continue;
     shown.add(quote.series);
-    const label =
-      quote.label || marketAsset(quote.series)?.label || quote.series;
+    const label = tl(
+      quote.label || marketAsset(quote.series)?.label || quote.series,
+    );
     const source = quote.source ? ` · ${quote.source}` : '';
     const move = moveText(moves.get(quote.series)?.value, horizonHours);
+    const value = `${localDigits(quote.value)} ${unitName(quote.unit)}`.trim();
     lines.push(
-      `${label}: ${quote.value} ${quote.unit || ''}`.trim() +
+      tl('{label}: {value}', { label, value }) +
         source +
         (move ? ` · ${move}` : ''),
     );
@@ -754,9 +1101,8 @@ export function marketLines(quotes, prediction, horizonHours) {
     if (shown.has(series)) continue;
     const move = moveText(asset.value, horizonHours);
     if (!move) continue;
-    lines.push(
-      `${asset.label || marketAsset(series)?.label || series}: ${move}`,
-    );
+    const label = tl(asset.label || marketAsset(series)?.label || series);
+    lines.push(tl('{label}: {value}', { label, value: move }));
   }
   return lines;
 }
@@ -767,12 +1113,15 @@ export function marketLines(quotes, prediction, horizonHours) {
  * @param {{adapter?: string, checkpoint?: string, daily?: boolean, last?: object|null}|null} posttrain
  */
 export function postTrainNote(posttrain) {
-  const own =
-    "THE KIT'S OWN WORLD MODEL POST-TRAINS ITSELF EVERY DAY ON ALL RECORDED DAYS, AND GROWS WHEN A NEW LAYER OR ASSET ARRIVES.";
+  const own = tl(
+    "THE KIT'S OWN WORLD MODEL POST-TRAINS ITSELF EVERY DAY ON ALL RECORDED DAYS, AND GROWS WHEN A NEW LAYER OR ASSET ARRIVES.",
+  );
   if (!posttrain?.adapter) return own;
   const last = posttrain.last;
-  const saved = `SAVED ${posttrain.adapter}${posttrain.daily ? ' · DAILY' : ''}`;
-  if (!last) return `${saved} · NOT RUN YET`;
+  const saved = posttrain.daily
+    ? tl('SAVED {adapter} · DAILY', { adapter: posttrain.adapter })
+    : tl('SAVED {adapter}', { adapter: posttrain.adapter });
+  if (!last) return tl('{saved} · NOT RUN YET', { saved });
   // A blank score (null) is no score: Number(null) would read 0.
   const num = (v) =>
     v === null || v === undefined || v === '' ? NaN : Number(v);
@@ -780,10 +1129,17 @@ export function postTrainNote(posttrain) {
   const after = num(last.after);
   const score =
     Number.isFinite(before) && Number.isFinite(after)
-      ? `HELD-OUT LOSS ${before.toFixed(3)} → ${after.toFixed(3)} · ${last.helped ? 'HELPED' : 'DID NOT HELP'}`
-      : 'NO HELD-OUT SCORE';
-  const through = last.trainedThrough
-    ? ` · TRAINED THROUGH ${last.trainedThrough}`
-    : '';
-  return `${saved} · LAST: ${score}${through}`;
+      ? tl('HELD-OUT LOSS {before} → {after} · {verdict}', {
+          before: localDigits(before.toFixed(3)),
+          after: localDigits(after.toFixed(3)),
+          verdict: last.helped ? tl('HELPED') : tl('DID NOT HELP'),
+        })
+      : tl('NO HELD-OUT SCORE');
+  return last.trainedThrough
+    ? tl('{saved} · LAST: {score} · TRAINED THROUGH {day}', {
+        saved,
+        score,
+        day: last.trainedThrough,
+      })
+    : tl('{saved} · LAST: {score}', { saved, score });
 }

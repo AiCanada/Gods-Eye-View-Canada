@@ -1,9 +1,10 @@
 /**
- * POWER UP cards for the owner's own devices: aerial drones, robots, marine
- * drones, GPS trackers, and the Ultra Security Package (a tracker or a phone
- * the map follows and records around). One card per kind, any number of devices
- * in each. Any device can be followed or recorded; a package does both unless
- * its owner says otherwise.
+ * Cards for the owner's own devices: aerial drones, robots, marine drones and
+ * GPS trackers in POWER UP, and the Ultra Security Package (a tracker or a
+ * phone the map follows and records around) at the bottom of the Ultra tab
+ * (moved from POWER UP, owner request 2026-10-17). One card per kind, any
+ * number of devices in each. Any device can be followed or recorded; a
+ * package does both unless its owner says otherwise.
  *
  * Every device is a small form: a name, how it connects (one of the standard
  * methods for that kind of device), the address, an optional camera picture,
@@ -16,9 +17,19 @@
  * only renders what `/api/device-feeds/status` says and posts what was typed.
  * It is told presence flags, never a saved login, so a saved secret shows as
  * "saved" and an empty box keeps it.
+ *
+ * Each host mounts its own copy: `showKind` picks the kinds it shows and
+ * `look` its classes (POWER UP's card look, or the Ultra tab's own labels,
+ * notes, rows and buttons). A copy that saves says so, and the other copy
+ * reads the status again and redraws when what its cards show has changed.
  */
 
-import { DEVICE_FEEDS_CHANGED_EVENT } from './deviceFeedsCore.mjs';
+import {
+  DEVICE_FEEDS_CHANGED_EVENT,
+  DEVICE_RECORD_RADIUS_KM,
+  DEVICE_SECURITY_UNLOCKS,
+} from './deviceFeedsCore.mjs';
+import { localDigits, msgl, tl, tln } from './i18n/index.js';
 import {
   isOwnerRemovalRefusal,
   noteOwnerRemovalRefusal,
@@ -26,16 +37,88 @@ import {
 } from './ui/ownerRemoval.js';
 
 export { DEVICE_FEEDS_CHANGED_EVENT };
+// The cards' text is marked with tl(): Quebec French in the fork locales.
 
 const STATUS_ENDPOINT = '/api/device-feeds/status';
 const CONFIG_ENDPOINT = '/api/device-feeds/config';
 
+/** The Ultra Security Package's kind: its cards are in the Ultra tab. */
+export const ULTRA_PACKAGE_KIND = 'security';
+
+/** Said first by POWER UP's devices section and by the Ultra package card. */
+const PRIVATE_NOTE = msgl(
+  'Add as many as you have. Addresses and logins stay in a protected file on this computer and are never part of a share link. They stand on the map in the Cell layer, which turns on when you save one.',
+);
+
+/**
+ * Class names per host. POWER UP keeps its card look. The Ultra tab's are
+ * the tab's own (src/ui/templates/layer-panels.html, src/ui/styles/ultra.css),
+ * so none of POWER UP's card classes, which are styled page-wide, reach it.
+ */
+export const DEVICE_FEED_LOOKS = Object.freeze({
+  'power-up': Object.freeze({
+    kind: 'key-setup-row device-feeds-kind',
+    list: 'device-feeds-list',
+    feed: 'device-feeds-feed',
+    feedHead: 'device-feeds-feed-head',
+    badge: 'private-cams-transport',
+    state: 'device-feeds-state',
+    method: 'device-feeds-method',
+    bridge: 'device-feeds-bridge',
+    report: 'device-feeds-report',
+    reportLines: 'device-feeds-report-lines',
+    newKey: 'device-feeds-new-key',
+    paths: 'device-feeds-paths',
+    fixed: 'device-feeds-fixed',
+    login: 'private-cams-login device-feeds-login',
+    auth: 'private-cams-auth',
+    options: 'device-feeds-options',
+    option: 'device-feeds-option',
+    recordKm: 'device-feeds-record-km',
+    recording: 'device-feeds-state device-feeds-recording',
+    actions: 'private-cams-actions',
+    save: 'key-setup-apply private-cams-save',
+    remove: 'private-cams-remove-site',
+    note: 'private-cams-note',
+    add: 'private-cams-add',
+  }),
+  ultra: Object.freeze({
+    kind: 'ultra-package-kind',
+    list: 'ultra-package-list',
+    feed: 'ultra-package',
+    feedHead: 'cctv-controls ultra-contact ultra-package-head',
+    badge: 'ultra-package-transport',
+    state: 'ultra-note ultra-package-state',
+    method: 'ultra-package-method',
+    bridge: 'ultra-note ultra-package-bridge',
+    report: 'ultra-reveal ultra-package-report',
+    reportLines: 'ultra-package-report-lines',
+    newKey: 'scene-btn ultra-package-new-key',
+    paths: 'cctv-controls ultra-contact ultra-package-paths',
+    fixed: 'cctv-controls ultra-contact ultra-package-fixed',
+    login: 'cctv-controls ultra-contact ultra-package-login',
+    auth: 'ultra-package-auth',
+    options: 'cctv-controls ultra-contact ultra-package-options',
+    option: 'ultra-match',
+    recordKm: 'ultra-package-record-km',
+    recording: 'ultra-note ultra-package-recording',
+    actions: 'cctv-controls ultra-contact ultra-package-actions',
+    save: 'scene-btn ultra-package-save',
+    remove: 'scene-btn ultra-package-remove',
+    note: 'ultra-note ultra-package-note',
+    add: 'scene-btn ultra-package-add',
+  }),
+});
+
+/** Names each mounted copy, so a copy knows its own saves from the other's. */
+let copies = 0;
+
 const TRANSPORT_LABELS = {
   https: 'HTTPS',
-  'lan-http': 'LOCAL NETWORK',
-  insecure: 'NOT ENCRYPTED',
-  none: 'NO ADDRESS',
-  'reports-in': 'REPORTS IN',
+  'lan-http': msgl('LOCAL NETWORK'),
+  insecure: msgl('NOT ENCRYPTED'),
+  none: msgl('NO ADDRESS'),
+  'reports-in': msgl('REPORTS IN'),
 };
 
 /**
@@ -49,10 +132,13 @@ export function deviceReportInstructions(feed, status, { kindId = '' } = {}) {
     : [];
   const listener = status?.reportListener || {};
   const lines = [];
-  if (listener.error) lines.push(`NOT LISTENING: ${listener.error}`);
+  if (listener.error)
+    lines.push(tl('NOT LISTENING: {error}', { error: listener.error }));
   else if (!addresses.length)
     lines.push(
-      'NOT LISTENING YET: the dev server opens the report port when a reporting device is saved.',
+      tl(
+        'NOT LISTENING YET: the dev server opens the report port when a reporting device is saved.',
+      ),
     );
   const base =
     addresses[0] || `http://<this machine>:${listener.port || 44173}`;
@@ -60,7 +146,10 @@ export function deviceReportInstructions(feed, status, { kindId = '' } = {}) {
   // opens, which sends the phone's position (and camera) itself. No app.
   if (kindId === 'security')
     lines.push(
-      `PHONE LINK (no app needed): open ${base}/ultra/${feed.reportKey}/cam on the phone, allow location, keep it open — the page also has SEND HELP / STAND DOWN`,
+      tl(
+        'PHONE LINK (no app needed): open {link} on the phone, allow location, keep it open — the page also has SEND HELP / STAND DOWN',
+        { link: `${base}/ultra/${feed.reportKey}/cam` },
+      ),
     );
   // Help links are minted in the ULTRA SECURITY PACKAGE box, not here: this
   // card only points the owner at them so the phone and the links share one story.
@@ -69,18 +158,40 @@ export function deviceReportInstructions(feed, status, { kindId = '' } = {}) {
   // no message box (2026-09-30). The card says so.
   if (kindId === 'security')
     lines.push(
-      "SHARE A HELP LINK: ULTRA SECURITY PACKAGE box → SHARE ENCRYPTED ULTRA TOKENS (a link works only while its Network is on and you have pressed SEND HELP for this package: then the holder's own GEVC receives this phone's position and the incident classification, and nothing else. With Network off it opens nothing)",
+      tl(
+        "SHARE A HELP LINK: ULTRA SECURITY PACKAGE box → SHARE ENCRYPTED ULTRA TOKENS (a link works only while its Network is on and you have pressed SEND HELP for this package: then the holder's own GEVC receives this phone's position and the incident classification, and nothing else. With Network off it opens nothing)",
+      ),
     );
   lines.push(
-    `TRACCAR CLIENT: server URL ${base} · device identifier ${feed.reportKey}`,
+    tl('TRACCAR CLIENT: server URL {base} · device identifier {key}', {
+      base,
+      key: feed.reportKey,
+    }),
   );
-  lines.push(`OWNTRACKS (HTTP mode) or OVERLAND: ${base}/${feed.reportKey}`);
   lines.push(
-    `GPSLOGGER (custom URL): ${base}/${feed.reportKey}?lat=%LAT&lon=%LON&timestamp=%TIMESTAMP&speedMps=%SPD&bearing=%DIR&altitude=%ALT`,
+    tl('OWNTRACKS (HTTP mode) or OVERLAND: {link}', {
+      link: `${base}/${feed.reportKey}`,
+    }),
+  );
+  lines.push(
+    tl('GPSLOGGER (custom URL): {link}', {
+      link: `${base}/${feed.reportKey}?lat=%LAT&lon=%LON&timestamp=%TIMESTAMP&speedMps=%SPD&bearing=%DIR&altitude=%ALT`,
+    }),
   );
   if (addresses.length > 1)
-    lines.push(`ALSO ANSWERS ON: ${addresses.slice(1).join(' · ')}`);
+    lines.push(
+      tl('ALSO ANSWERS ON: {addresses}', {
+        addresses: addresses.slice(1).join(' · '),
+      }),
+    );
   return lines;
+}
+
+/** What a card's kind unlocks, in the page's words. */
+function kindUnlocks(kind) {
+  return kind?.id === ULTRA_PACKAGE_KIND
+    ? tl(DEVICE_SECURITY_UNLOCKS, { km: DEVICE_RECORD_RADIUS_KM })
+    : tl(kind?.unlocks || '');
 }
 
 function element(documentRef, tag, className, text) {
@@ -154,9 +265,14 @@ export function collectDeviceFeedUpdate(kindId, feedId, values) {
 /** "3 devices · 2 live" for a card's head. Pure. */
 export function deviceFeedCountText(kind) {
   const feeds = kind?.feeds || [];
-  if (!feeds.length) return 'none added';
+  if (!feeds.length) return tl('none added');
   const live = feeds.filter((feed) => feed.state?.ok).length;
-  return `${feeds.length} ${feeds.length === 1 ? 'device' : 'devices'} · ${live} live`;
+  return tln(
+    feeds.length,
+    '{count} device · {live} live',
+    '{count} devices · {live} live',
+    { live },
+  );
 }
 
 /** "RECORDING · 3 files · 1.2 MB in config/device-recordings/x". Pure. */
@@ -164,29 +280,63 @@ export function deviceRecordingText(feed) {
   const info = feed?.recording;
   if (!info)
     return feed?.record
-      ? 'RECORDING · nothing saved yet (saves while the map is open and the device has a position)'
+      ? tl(
+          'RECORDING · nothing saved yet (saves while the map is open and the device has a position)',
+        )
       : '';
   const size =
     info.bytes >= 1024 * 1024
-      ? `${(info.bytes / (1024 * 1024)).toFixed(1)} MB`
-      : `${Math.max(1, Math.round(info.bytes / 1024))} KB`;
-  const within = feed.recordKm ? ` · within ${feed.recordKm} km` : '';
-  return `${feed.record ? 'RECORDING' : 'RECORDED'}${within} · ${info.files} ${info.files === 1 ? 'day' : 'days'} · ${size} in ${info.folder}`;
+      ? tl('{size} MB', {
+          size: localDigits((info.bytes / (1024 * 1024)).toFixed(1)),
+        })
+      : tl('{size} KB', { size: Math.max(1, Math.round(info.bytes / 1024)) });
+  const within = feed.recordKm
+    ? ` · ${tl('within {km} km', { km: feed.recordKm })}`
+    : '';
+  return `${feed.record ? tl('RECORDING') : tl('RECORDED')}${within} · ${tln(
+    info.files,
+    '{count} day · {size} in {folder}',
+    '{count} days · {size} in {folder}',
+    { size, folder: info.folder },
+  )}`;
 }
 
 /** One line on how a device is doing. Pure. */
 export function deviceFeedStateText(feed) {
   if (!feed?.state)
     return feed?.reportsIn
-      ? 'Waiting for the first report'
+      ? tl('Waiting for the first report')
       : feed?.urlSet
-        ? 'Not asked yet'
+        ? tl('Not asked yet')
         : feed?.pictureSet
-          ? 'Picture only'
+          ? tl('Picture only')
           : '';
   if (feed.state.ok)
-    return feed.reportsIn ? 'LIVE · reporting in' : 'LIVE · position received';
-  return `NO POSITION · ${feed.state.error || 'unreachable'}`;
+    return feed.reportsIn
+      ? tl('LIVE · reporting in')
+      : tl('LIVE · position received');
+  return tl('NO POSITION · {why}', {
+    why: feed.state.error ? tl(feed.state.error) : tl('unreachable'),
+  });
+}
+
+/**
+ * What a copy's cards are drawn from, less what changes by itself (a device's
+ * live state and its recording size). When this changes, the copy redraws.
+ * Pure.
+ */
+export function deviceFeedCardsKey(status, showKind = () => true) {
+  return JSON.stringify([
+    status?.editable === true,
+    status?.reportAddresses || [],
+    status?.reportListener || null,
+    (status?.kinds || [])
+      .filter(showKind)
+      .map((kind) => [
+        kind.id,
+        (kind.feeds || []).map(({ state, recording, ...saved }) => saved),
+      ]),
+  ]);
 }
 
 export function initDeviceFeedSetup({
@@ -195,9 +345,17 @@ export function initDeviceFeedSetup({
   fetchImpl,
   signal,
   onSections = null,
+  // The kinds this copy shows (POWER UP: all but the package; the Ultra tab:
+  // the package alone) and its look ('power-up' or 'ultra').
+  showKind = () => true,
+  look: lookName = 'power-up',
 } = {}) {
   if (!host || !documentRef?.createElement)
     return { refresh() {}, destroy() {} };
+  const look = DEVICE_FEED_LOOKS[lookName] || DEVICE_FEED_LOOKS['power-up'];
+  const ultraLook = look === DEVICE_FEED_LOOKS.ultra;
+  copies += 1;
+  const source = `device-feeds-${copies}`;
   const doFetch = fetchImpl || ((...args) => globalThis.fetch(...args));
   const lifetime = new AbortController();
   if (signal) {
@@ -210,6 +368,8 @@ export function initDeviceFeedSetup({
   let recordRadiusOptions = [50];
   /** The last status rendered: the report addresses and listener state come from it. */
   let currentStatus = null;
+  /** deviceFeedCardsKey of the status drawn last. */
+  let drawnKey = '';
 
   const readStatus = async () => {
     const response = await doFetch(STATUS_ENDPOINT, {
@@ -240,7 +400,9 @@ export function initDeviceFeedSetup({
       throw refused;
     }
     if (!response.ok)
-      throw new Error(payload.error || `HTTP ${response.status}`);
+      throw new Error(
+        payload.error ? tl(payload.error) : `HTTP ${response.status}`,
+      );
     return payload;
   };
 
@@ -252,7 +414,9 @@ export function initDeviceFeedSetup({
     );
     try {
       globalThis.window?.dispatchEvent(
-        new CustomEvent(DEVICE_FEEDS_CHANGED_EVENT, { detail: { count } }),
+        new CustomEvent(DEVICE_FEEDS_CHANGED_EVENT, {
+          detail: { count, source },
+        }),
       );
     } catch {
       /* no window (tests) */
@@ -265,20 +429,20 @@ export function initDeviceFeedSetup({
     // Ultra tab, and its pictures come from its phone: its card here has no
     // FOLLOW, RECORD WITHIN, FIXED LATITUDE/LONGITUDE or CAMERA PICTURE boxes
     // (owner ruling, 2026-10-06). Saving it keeps what those hold.
-    const ultraCell = kind.id === 'security';
-    const block = element(documentRef, 'div', 'device-feeds-feed');
-    const head = element(documentRef, 'div', 'device-feeds-feed-head');
+    const ultraCell = kind.id === ULTRA_PACKAGE_KIND;
+    const block = element(documentRef, 'div', look.feed);
+    const head = element(documentRef, 'div', look.feedHead);
     const name = input(documentRef, {
       name: 'name',
       value: feed?.name || '',
-      placeholder: `${kind.noun} NAME`,
-      label: 'Device name',
+      placeholder: tl('{device} NAME', { device: tl(kind.noun) }),
+      label: tl('Device name'),
     });
     const badge = element(
       documentRef,
       'span',
-      'private-cams-transport',
-      TRANSPORT_LABELS[feed?.transport || 'none'],
+      look.badge,
+      tl(TRANSPORT_LABELS[feed?.transport || 'none']),
     );
     badge.dataset.transport = feed?.transport || 'none';
     head.append(name, badge);
@@ -287,22 +451,22 @@ export function initDeviceFeedSetup({
     const state = element(
       documentRef,
       'p',
-      'device-feeds-state',
+      look.state,
       saved ? deviceFeedStateText(feed) : '',
     );
     state.dataset.ok = feed?.state?.ok ? 'true' : 'false';
     block.append(state);
 
     // How it connects: every standard method for this kind of device.
-    const method = element(documentRef, 'select', 'device-feeds-method');
+    const method = element(documentRef, 'select', look.method);
     method.dataset.field = 'method';
-    method.setAttribute('aria-label', 'Connection method');
+    method.setAttribute('aria-label', tl('Connection method'));
     const directGroup = element(documentRef, 'optgroup');
-    directGroup.label = 'CONNECTS DIRECTLY';
+    directGroup.label = tl('CONNECTS DIRECTLY');
     const bridgeGroup = element(documentRef, 'optgroup');
-    bridgeGroup.label = 'NEEDS A BRIDGE (SEE NOTE)';
+    bridgeGroup.label = tl('NEEDS A BRIDGE (SEE NOTE)');
     for (const option of kind.methods) {
-      const node = element(documentRef, 'option', '', option.label);
+      const node = element(documentRef, 'option', '', tl(option.label));
       node.value = option.id;
       (option.direct ? directGroup : bridgeGroup).append(node);
     }
@@ -311,22 +475,18 @@ export function initDeviceFeedSetup({
       feed?.method || kind.methods.find((option) => option.direct)?.id || '';
     block.append(method);
 
-    const bridgeNote = element(documentRef, 'p', 'device-feeds-bridge');
+    const bridgeNote = element(documentRef, 'p', look.bridge);
     bridgeNote.setAttribute('role', 'note');
     block.append(bridgeNote);
 
     // "Reports to this app": what to type into the phone, once the device is saved.
-    const reportBlock = element(documentRef, 'div', 'device-feeds-report');
-    const reportLines = element(
-      documentRef,
-      'pre',
-      'device-feeds-report-lines',
-    );
+    const reportBlock = element(documentRef, 'div', look.report);
+    const reportLines = element(documentRef, 'pre', look.reportLines);
     const newKey = button(
       documentRef,
-      'device-feeds-new-key',
-      'NEW KEY',
-      'Mint a new key; the phone must be given the new one',
+      look.newKey,
+      tl('NEW KEY'),
+      tl('Mint a new key; the phone must be given the new one'),
     );
     reportBlock.append(reportLines, newKey);
     block.append(reportBlock);
@@ -334,101 +494,102 @@ export function initDeviceFeedSetup({
     const url = input(documentRef, {
       name: 'url',
       value: '',
-      placeholder: 'ADDRESS',
-      label: 'Address the position is read from',
+      placeholder: tl('ADDRESS'),
+      label: tl('Address the position is read from'),
     });
     const picture = input(documentRef, {
       name: 'pictureUrl',
       value: '',
-      placeholder: 'CAMERA PICTURE ADDRESS (OPTIONAL: SNAPSHOT OR MJPEG)',
-      label: 'Camera picture address',
+      placeholder: tl('CAMERA PICTURE ADDRESS (OPTIONAL: SNAPSHOT OR MJPEG)'),
+      label: tl('Camera picture address'),
     });
-    if (feed?.urlSet) url.placeholder = `SAVED: ${feed.url}`;
+    if (feed?.urlSet)
+      url.placeholder = tl('SAVED: {value}', { value: feed.url });
     if (feed?.pictureSet)
-      picture.placeholder = `SAVED: ${feed.pictureUrl} (TYPE NONE TO REMOVE)`;
+      picture.placeholder = tl('SAVED: {value} (TYPE NONE TO REMOVE)', {
+        value: feed.pictureUrl,
+      });
     block.append(url);
     if (!ultraCell) block.append(picture);
 
-    const paths = element(documentRef, 'div', 'device-feeds-paths');
+    const paths = element(documentRef, 'div', look.paths);
     const latPath = input(documentRef, {
       name: 'latPath',
       value: feed?.latPath || '',
-      placeholder: 'LATITUDE JSON PATH (OPTIONAL)',
-      label: 'Latitude JSON path',
+      placeholder: tl('LATITUDE JSON PATH (OPTIONAL)'),
+      label: tl('Latitude JSON path'),
     });
     const lonPath = input(documentRef, {
       name: 'lonPath',
       value: feed?.lonPath || '',
-      placeholder: 'LONGITUDE JSON PATH (OPTIONAL)',
-      label: 'Longitude JSON path',
+      placeholder: tl('LONGITUDE JSON PATH (OPTIONAL)'),
+      label: tl('Longitude JSON path'),
     });
     paths.append(latPath, lonPath);
     block.append(paths);
 
-    const fixed = element(documentRef, 'div', 'device-feeds-fixed');
+    const fixed = element(documentRef, 'div', look.fixed);
     const lat = input(documentRef, {
       name: 'lat',
       value: feed?.lat ?? '',
-      placeholder: 'FIXED LATITUDE (OPTIONAL)',
-      label: 'Fixed latitude',
+      placeholder: tl('FIXED LATITUDE (OPTIONAL)'),
+      label: tl('Fixed latitude'),
     });
     const lon = input(documentRef, {
       name: 'lon',
       value: feed?.lon ?? '',
-      placeholder: 'FIXED LONGITUDE (OPTIONAL)',
-      label: 'Fixed longitude',
+      placeholder: tl('FIXED LONGITUDE (OPTIONAL)'),
+      label: tl('Fixed longitude'),
     });
     fixed.append(lat, lon);
     if (!ultraCell) block.append(fixed);
 
     // Login: every standard type; only the boxes that type uses are shown.
-    const login = element(
-      documentRef,
-      'div',
-      'private-cams-login device-feeds-login',
-    );
-    const auth = element(documentRef, 'select', 'private-cams-auth');
+    const login = element(documentRef, 'div', look.login);
+    const auth = element(documentRef, 'select', look.auth);
     auth.dataset.field = 'auth';
-    auth.setAttribute('aria-label', 'Login type');
+    auth.setAttribute('aria-label', tl('Login type'));
     for (const mode of authModes.filter((item) =>
       kind.authModes.includes(item.id),
     )) {
-      const node = element(documentRef, 'option', '', mode.label);
+      const node = element(documentRef, 'option', '', tl(mode.label));
       node.value = mode.id;
       auth.append(node);
     }
     auth.value = feed?.auth || 'none';
     const username = input(documentRef, {
       name: 'username',
-      placeholder: feed?.usernameSet ? 'USERNAME (SAVED)' : 'USERNAME',
-      label: 'Username',
+      placeholder: feed?.usernameSet ? tl('USERNAME (SAVED)') : tl('USERNAME'),
+      label: tl('Username'),
     });
     const password = input(documentRef, {
       name: 'password',
       type: 'password',
-      placeholder: feed?.passwordSet ? 'PASSWORD (SAVED)' : 'PASSWORD',
-      label: 'Password',
+      placeholder: feed?.passwordSet ? tl('PASSWORD (SAVED)') : tl('PASSWORD'),
+      label: tl('Password'),
     });
     const keyName = input(documentRef, {
       name: 'keyName',
       value: feed?.keyName || '',
-      placeholder: 'KEY NAME',
-      label: 'Header or parameter name',
+      placeholder: tl('KEY NAME'),
+      label: tl('Header or parameter name'),
     });
     const token = input(documentRef, {
       name: 'token',
       type: 'password',
-      placeholder: feed?.tokenSet ? 'TOKEN / KEY (SAVED)' : 'TOKEN / KEY',
-      label: 'Token or key',
+      placeholder: feed?.tokenSet
+        ? tl('TOKEN / KEY (SAVED)')
+        : tl('TOKEN / KEY'),
+      label: tl('Token or key'),
     });
     login.append(auth, username, password, keyName, token);
     block.append(login);
 
     // Follow and record. One device is followed at a time: the server moves
     // the follow here when this one is saved with it on.
-    const options = element(documentRef, 'div', 'device-feeds-options');
+    const options = element(documentRef, 'div', look.options);
     const toggle = (name, labelText, checked, title) => {
-      const label = element(documentRef, 'label', 'device-feeds-option');
+      const label = element(documentRef, 'label', look.option);
       const box = element(documentRef, 'input');
       box.type = 'checkbox';
       box.dataset.field = name;
@@ -440,22 +601,26 @@ export function initDeviceFeedSetup({
     };
     const follow = toggle(
       'follow',
-      'FOLLOW ON THE MAP',
+      tl('FOLLOW ON THE MAP'),
       saved ? feed.follow === true : kind.followDefault === true,
-      'The map stays on this device wherever it goes. One device is followed at a time.',
+      tl(
+        'The map stays on this device wherever it goes. One device is followed at a time.',
+      ),
     );
     const record = toggle(
       'record',
-      'RECORD EVERYTHING WITHIN',
+      tl('RECORD EVERYTHING WITHIN'),
       saved ? feed.record === true : kind.recordDefault === true,
-      'While the map is open, what every layer that is on knows within this distance of this device is saved on this computer as it moves.',
+      tl(
+        'While the map is open, what every layer that is on knows within this distance of this device is saved on this computer as it moves.',
+      ),
     );
     // How far around the device is saved: 1 to 50 km.
-    const recordKm = element(documentRef, 'select', 'device-feeds-record-km');
+    const recordKm = element(documentRef, 'select', look.recordKm);
     recordKm.dataset.field = 'recordKm';
-    recordKm.setAttribute('aria-label', 'Recording distance');
+    recordKm.setAttribute('aria-label', tl('Recording distance'));
     for (const km of recordRadiusOptions) {
-      const node = element(documentRef, 'option', '', `${km} KM`);
+      const node = element(documentRef, 'option', '', tl('{km} KM', { km }));
       node.value = String(km);
       recordKm.append(node);
     }
@@ -469,7 +634,7 @@ export function initDeviceFeedSetup({
     const recording = element(
       documentRef,
       'p',
-      'device-feeds-state device-feeds-recording',
+      look.recording,
       saved ? deviceRecordingText(feed) : '',
     );
     block.append(recording);
@@ -480,12 +645,16 @@ export function initDeviceFeedSetup({
       bridgeNote.hidden = direct;
       bridgeNote.textContent = direct
         ? ''
-        : `This application cannot speak ${spec ? spec.label : 'that method'} directly. ${spec?.bridge || ''}`;
+        : `${tl('This application cannot speak {method} directly.', {
+            method: spec ? tl(spec.label) : tl('that method'),
+          })} ${spec?.bridge ? tl(spec.bridge) : ''}`;
       const pictureOnly = spec?.id === 'snapshot';
       const reportsIn = spec?.reportsIn === true;
       url.hidden = !direct || pictureOnly || reportsIn;
       if (spec?.urlHint && !feed?.urlSet)
-        url.placeholder = `ADDRESS, FOR EXAMPLE ${spec.urlHint}`;
+        url.placeholder = tl('ADDRESS, FOR EXAMPLE {hint}', {
+          hint: spec.urlHint,
+        });
       picture.hidden = !direct;
       paths.hidden = !direct || spec?.id !== 'http-json';
       fixed.hidden = !direct;
@@ -501,7 +670,9 @@ export function initDeviceFeedSetup({
         : [];
       reportLines.textContent = lines.length
         ? lines.join('\n')
-        : 'Save the device: its key and the address for the phone appear here.';
+        : tl(
+            'Save the device: its key and the address for the phone appear here.',
+          );
       newKey.hidden = !reportsIn || !feed?.reportsIn;
       const mode = authModes.find((item) => item.id === auth.value);
       const fields = new Set(mode?.fields || []);
@@ -510,22 +681,24 @@ export function initDeviceFeedSetup({
       keyName.hidden = !fields.has('keyName');
       token.hidden = !fields.has('token');
       if (fields.has('keyName') && !keyName.value)
-        keyName.placeholder = `KEY NAME (DEFAULT ${mode.keyNameDefault})`;
+        keyName.placeholder = tl('KEY NAME (DEFAULT {name})', {
+          name: mode.keyNameDefault,
+        });
       saveButton.disabled = !editable || !direct;
     };
 
-    const actions = element(documentRef, 'div', 'private-cams-actions');
+    const actions = element(documentRef, 'div', look.actions);
     const saveButton = button(
       documentRef,
-      'key-setup-apply private-cams-save',
-      `SAVE ${kind.noun}`,
+      look.save,
+      tl('SAVE {device}', { device: tl(kind.noun) }),
     );
     const removeButton = button(
       documentRef,
-      'private-cams-remove-site',
-      saved ? `REMOVE ${kind.noun}` : 'DISCARD',
+      look.remove,
+      saved ? tl('REMOVE {device}', { device: tl(kind.noun) }) : tl('DISCARD'),
     );
-    const note = element(documentRef, 'span', 'private-cams-note');
+    const note = element(documentRef, 'span', look.note);
     note.setAttribute('role', 'status');
     actions.append(saveButton, removeButton, note);
     block.append(actions);
@@ -537,7 +710,7 @@ export function initDeviceFeedSetup({
     saveButton.addEventListener('click', async () => {
       if (saveButton.disabled) return;
       const before = note.textContent;
-      note.textContent = 'Saving…';
+      note.textContent = tl('Saving…');
       saveButton.disabled = true;
       try {
         const body = collectDeviceFeedUpdate(kind.id, feed?.id || '', {
@@ -577,7 +750,7 @@ export function initDeviceFeedSetup({
         // was. What was typed stays in the fields.
         note.textContent = error?.ownerRemoval
           ? before
-          : error?.message || 'Not saved';
+          : error?.message || tl('Not saved');
         saveButton.disabled = false;
       }
     });
@@ -586,11 +759,14 @@ export function initDeviceFeedSetup({
       if (
         typeof globalThis.confirm === 'function' &&
         !globalThis.confirm(
-          `New key for ${feed.name}? The phone stops reporting until it is given the new one.`,
+          tl(
+            'New key for {name}? The phone stops reporting until it is given the new one.',
+            { name: feed.name },
+          ),
         )
       )
         return;
-      note.textContent = 'Minting…';
+      note.textContent = tl('Minting…');
       try {
         const payload = await post({
           kind: kind.id,
@@ -602,7 +778,7 @@ export function initDeviceFeedSetup({
         render(payload.status);
         announce(payload.status);
       } catch (error) {
-        note.textContent = error?.message || 'No new key';
+        note.textContent = error?.message || tl('No new key');
       }
     });
     removeButton.addEventListener('click', async () => {
@@ -613,12 +789,14 @@ export function initDeviceFeedSetup({
       if (
         typeof globalThis.confirm === 'function' &&
         !globalThis.confirm(
-          `Remove ${feed.name}? Its saved address and login are deleted.`,
+          tl('Remove {name}? Its saved address and login are deleted.', {
+            name: feed.name,
+          }),
         )
       )
         return;
       const before = note.textContent;
-      note.textContent = 'Removing…';
+      note.textContent = tl('Removing…');
       try {
         const payload = await post({ removeFeedId: feed.id });
         render(payload.status);
@@ -627,47 +805,71 @@ export function initDeviceFeedSetup({
         // The owner's phone: the device stays and the note is as it was.
         note.textContent = error?.ownerRemoval
           ? before
-          : error?.message || 'Not removed';
+          : error?.message || tl('Not removed');
       }
     });
 
     if (!editable) {
       for (const control of block.querySelectorAll('input, select, button'))
         control.disabled = true;
-      note.textContent = 'Editing is available under the dev server only.';
+      note.textContent = tl('Editing is available under the dev server only.');
     }
     return block;
   };
 
   const renderKind = (kind) => {
-    const card = element(
-      documentRef,
-      'section',
-      'key-setup-row device-feeds-kind',
-    );
+    const card = element(documentRef, 'section', look.kind);
     card.dataset.kindId = kind.id;
     card.dataset.set = kind.feeds.length ? 'true' : 'false';
-    const head = element(documentRef, 'div', 'key-setup-row-head');
-    const led = element(documentRef, 'span', 'key-setup-led');
-    led.setAttribute('aria-hidden', 'true');
-    head.append(
-      led,
-      element(documentRef, 'strong', '', kind.title),
-      element(
+    if (ultraLook) {
+      // A section of the Ultra tab: its heading with the count beside it,
+      // then its notes, as the tab's other sections have.
+      const head = element(
         documentRef,
-        'span',
-        'private-cams-count',
-        deviceFeedCountText(kind),
-      ),
-    );
-    card.append(
-      head,
-      element(documentRef, 'p', 'key-setup-unlocks', kind.unlocks),
-    );
-    const list = element(documentRef, 'div', 'device-feeds-list');
+        'div',
+        'cctv-summary-label',
+        `${tl(kind.title)} `,
+      );
+      head.append(
+        element(
+          documentRef,
+          'span',
+          'ultra-package-count',
+          deviceFeedCountText(kind),
+        ),
+      );
+      card.append(
+        head,
+        element(documentRef, 'p', 'ultra-note', kindUnlocks(kind)),
+        element(documentRef, 'p', 'ultra-note', tl(PRIVATE_NOTE)),
+      );
+    } else {
+      const head = element(documentRef, 'div', 'key-setup-row-head');
+      const led = element(documentRef, 'span', 'key-setup-led');
+      led.setAttribute('aria-hidden', 'true');
+      head.append(
+        led,
+        element(documentRef, 'strong', '', tl(kind.title)),
+        element(
+          documentRef,
+          'span',
+          'private-cams-count',
+          deviceFeedCountText(kind),
+        ),
+      );
+      card.append(
+        head,
+        element(documentRef, 'p', 'key-setup-unlocks', kindUnlocks(kind)),
+      );
+    }
+    const list = element(documentRef, 'div', look.list);
     for (const feed of kind.feeds) list.append(renderFeed(kind, feed));
     card.append(list);
-    const add = button(documentRef, 'private-cams-add', `+ ADD ${kind.noun}`);
+    const add = button(
+      documentRef,
+      look.add,
+      tl('+ ADD {device}', { device: tl(kind.noun) }),
+    );
     add.disabled = !editable;
     add.addEventListener('click', () => {
       const block = renderFeed(kind, null);
@@ -687,46 +889,61 @@ export function initDeviceFeedSetup({
         ? status.recordRadiusOptionsKm
         : [50];
     currentStatus = status || null;
+    drawnKey = deviceFeedCardsKey(status, showKind);
+    const kinds = (status?.kinds || []).filter(showKind);
     host.textContent = '';
     host.hidden = false;
-    host.append(
-      element(
-        documentRef,
-        'h3',
-        'private-cams-heading',
-        'YOUR DEVICES · PRIVATE TO THIS MACHINE',
-      ),
-      element(
-        documentRef,
-        'p',
-        'key-setup-unlocks',
-        'Add as many as you have. Addresses and logins stay in a protected file on this computer and are never part of a share link. They stand on the map in the Cell layer, which turns on when you save one.',
-      ),
-    );
-    for (const kind of status?.kinds || []) host.append(renderKind(kind));
+    // In the Ultra tab the package's own heading says what the section is.
+    if (!ultraLook)
+      host.append(
+        element(
+          documentRef,
+          'h3',
+          'private-cams-heading',
+          tl('YOUR DEVICES · PRIVATE TO THIS MACHINE'),
+        ),
+        element(documentRef, 'p', 'key-setup-unlocks', tl(PRIVATE_NOTE)),
+      );
+    for (const kind of kinds) host.append(renderKind(kind));
     // The dashboard chip counts each section once: ON when it holds a device.
+    // A copy counts the kinds it shows, so the package is not POWER UP's.
     onSections?.(
-      (status?.kinds || []).map((kind) => ({
+      kinds.map((kind) => ({
         id: `devices-${kind.id}`,
         set: (kind.feeds || []).length > 0,
       })),
     );
   }
 
-  const refresh = async () => {
+  const refresh = async ({ onlyIfChanged = false } = {}) => {
     try {
-      render(await readStatus());
+      const status = await readStatus();
+      // After another copy's save (or the Ultra tab's cell rows), redraw only
+      // when what these cards show has changed, so typing is kept otherwise.
+      if (onlyIfChanged && deviceFeedCardsKey(status, showKind) === drawnKey)
+        return;
+      render(status);
     } catch {
       // No server route (a production build, a LAN visitor): show nothing.
       if (!host.childElementCount) host.hidden = true;
     }
   };
+  // One device is followed at a time, so a save in one copy can change the
+  // other's cards: POWER UP and the Ultra tab each keep the other in step.
+  const onChanged = (event) => {
+    if (event?.detail?.source !== source) void refresh({ onlyIfChanged: true });
+  };
+  globalThis.window?.addEventListener?.(DEVICE_FEEDS_CHANGED_EVENT, onChanged);
   refresh();
 
   return {
     refresh,
     destroy() {
       lifetime.abort();
+      globalThis.window?.removeEventListener?.(
+        DEVICE_FEEDS_CHANGED_EVENT,
+        onChanged,
+      );
       host.textContent = '';
     },
   };

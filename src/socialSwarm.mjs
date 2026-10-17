@@ -8,7 +8,11 @@
  * No DOM and no network: every request and that task are built here, and
  * every answer is read here. A bot reads public posts and public pages
  * only. Nothing here signs in anywhere.
+ *
+ * What the operator reads is marked with tl() from src/i18n/marker.js
+ * (Quebec French on the page); the bots' tasks stay English.
  */
+import { msgl, tl } from './i18n/marker.js';
 import { SOCIAL_PUBLIC_SITES, cleanPlace } from './socialMedia.js';
 
 export const SOCIAL_SWARM_INSTRUCTIONS_MAX = 1000;
@@ -24,16 +28,16 @@ const DAY_MS = 86_400_000;
 export const SOCIAL_SWARM_PROVIDERS = Object.freeze({
   xai: Object.freeze({
     id: 'xai',
-    label: 'Grok',
-    title: 'GROK BOT SWARM',
+    label: 'Grok', // i18n-ignore: product name
+    title: msgl('GROK BOT SWARM'),
     keyTitle: 'GROK BOT',
     // OPEN GROK BOT opens the Grok Bot desktop app on this computer.
     desktop: true,
   }),
   openai: Object.freeze({
     id: 'openai',
-    label: 'OpenAI',
-    title: 'OPENAI BOT SWARM',
+    label: 'OpenAI', // i18n-ignore: product name
+    title: msgl('OPENAI BOT SWARM'),
     keyTitle: 'OPENAI DOTS',
     // OPEN CHATGPT opens the ChatGPT desktop app (dots live inside ChatGPT).
     desktop: true,
@@ -46,50 +50,51 @@ export const SOCIAL_SWARM_BOTS = Object.freeze([
   Object.freeze({ id: 'x', label: 'X', domains: SOCIAL_PUBLIC_SITES.x }),
   Object.freeze({
     id: 'facebook',
-    label: 'Facebook',
+    label: 'Facebook', // i18n-ignore: product name
     domains: SOCIAL_PUBLIC_SITES.facebook,
   }),
   Object.freeze({
     id: 'instagram',
-    label: 'Instagram',
+    label: 'Instagram', // i18n-ignore: product name
     domains: SOCIAL_PUBLIC_SITES.instagram,
   }),
   Object.freeze({
     id: 'threads',
-    label: 'Threads',
+    label: 'Threads', // i18n-ignore: product name
     domains: SOCIAL_PUBLIC_SITES.threads,
   }),
   Object.freeze({
     id: 'tiktok',
-    label: 'TikTok',
+    label: 'TikTok', // i18n-ignore: product name
     domains: SOCIAL_PUBLIC_SITES.tiktok,
   }),
   Object.freeze({
     id: 'truth',
-    label: 'Truth Social',
+    label: 'Truth Social', // i18n-ignore: product name
     domains: SOCIAL_PUBLIC_SITES.truth,
   }),
   Object.freeze({
     id: 'news',
-    label: 'Local news',
+    label: msgl('Local news'),
     domains: Object.freeze([]),
   }),
 ]);
 
 /** The 501 when GROK BOT SWARM has neither an xAI key nor a computer. */
-export const GROK_BOT_UNCONFIGURED =
-  'No GROK BOT key yet. Add it in POWER UP → GROK BOT, or your Grok Bot computer in POWER UP → GROK BOT — COMPUTER.';
+export const GROK_BOT_UNCONFIGURED = msgl(
+  'No GROK BOT key yet. Add it in POWER UP → GROK BOT, or your Grok Bot computer in POWER UP → GROK BOT — COMPUTER.',
+);
 
 /** One log line when the sweep went to the Chief of Staff bot as a whole. */
 export const SOCIAL_SWARM_CHIEF_BOT = Object.freeze({
   id: 'chief',
-  label: 'Chief of Staff',
+  label: msgl('Chief of Staff'),
 });
 
 /** One log line when the sweep was pasted into ChatGPT (OPENAI DOTS). */
 export const SOCIAL_SWARM_CHATGPT_BOT = Object.freeze({
   id: 'chatgpt',
-  label: 'ChatGPT',
+  label: 'ChatGPT', // i18n-ignore: product name
 });
 
 /** What every bot looks for when the instructions box is empty. */
@@ -162,13 +167,17 @@ function swarmScope({ instructions, place, latitude, longitude, now }) {
   if (typed.length > SOCIAL_SWARM_INSTRUCTIONS_MAX) {
     return {
       ok: false,
-      error: `Keep the instructions under ${SOCIAL_SWARM_INSTRUCTIONS_MAX} characters.`,
+      error: tl('Keep the instructions under {max} characters.', {
+        max: SOCIAL_SWARM_INSTRUCTIONS_MAX,
+      }),
     };
   }
   if (KEY_SHAPE.test(typed)) {
     return {
       ok: false,
-      error: 'Take the key out of the instructions. The bots never need one.',
+      error: tl(
+        'Take the key out of the instructions. The bots never need one.',
+      ),
     };
   }
   const name = cleanPlace(place);
@@ -209,9 +218,9 @@ export function planSwarmBot({
     Object.hasOwn(SOCIAL_SWARM_PROVIDERS, provider)
       ? provider
       : '';
-  if (!providerId) return { ok: false, error: 'Unknown swarm.' };
+  if (!providerId) return { ok: false, error: tl('Unknown swarm.') };
   const chosen = SOCIAL_SWARM_BOTS.find((item) => item.id === bot) || null;
-  if (!chosen) return { ok: false, error: 'Unknown bot.' };
+  if (!chosen) return { ok: false, error: tl('Unknown bot.') };
   const scope = swarmScope({ instructions, place, latitude, longitude, now });
   if (!scope.ok) return scope;
   const { typed, where, at } = scope;
@@ -403,11 +412,11 @@ export function swarmBotFoundNothing(text) {
 /** One bot's entry in the box's log: its list, then the links it cited. */
 export function formatSwarmBotLog({ text, sources } = {}) {
   const lines = [
-    swarmBotFoundNothing(text) ? 'NOTHING FOUND' : String(text).trim(),
+    swarmBotFoundNothing(text) ? tl('NOTHING FOUND') : String(text).trim(),
   ];
   const list = Array.isArray(sources) ? sources : [];
   if (list.length) {
-    lines.push('Sources:');
+    lines.push(tl('Sources:'));
     for (const source of list) {
       const url = cleanSourceUrl(source?.url);
       if (!url) continue;

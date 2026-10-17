@@ -29,6 +29,7 @@
  * / DOWNLOAD CSV save it (src/outbreakEpiExport.mjs).
  */
 import { formatAskLogEntry, prependOutputLog } from './askOverview.js';
+import { localDigits, localSay, msgl, tl, tln } from './i18n/index.js';
 import { geocodeKeyless } from './keylessGeocoder.js';
 import { SOCIAL_SWARM_BOTS, SOCIAL_SWARM_PROVIDERS } from './socialSwarm.mjs';
 import { formatSwarmDesktopStatus, runSocialSwarm } from './socialSwarmRun.mjs';
@@ -58,6 +59,7 @@ import {
   cleanForecastHorizon,
   cleanForecastWithin,
   cleanLocation,
+  humanChoiceLabel,
   cleanLocations,
   forecastWindowLabel,
   forecastWindowStart,
@@ -191,7 +193,13 @@ export function trimmedEpidemic(data) {
 export function epidemicTrimmedNote(result) {
   const shown = Array.isArray(result?.places) ? result.places.length : 0;
   return Number.isFinite(result?.trimmed) && result.trimmed > shown
-    ? `Saved result trimmed to ${shown.toLocaleString('en-US')} of ${result.trimmed.toLocaleString('en-US')} places; run again for every place.`
+    ? tl(
+        'Saved result trimmed to {shown} of {total} places; run again for every place.',
+        {
+          shown: localDigits(shown.toLocaleString('en-US')),
+          total: localDigits(result.trimmed.toLocaleString('en-US')),
+        },
+      )
     : '';
 }
 
@@ -246,9 +254,9 @@ export function fullResultStore(idb) {
   };
 }
 
-/** A whole number with thousands commas (0 when unset). */
+/** A whole number with thousands commas (0 when unset), in the page's marks. */
 function count(n) {
-  return Math.round(n || 0).toLocaleString('en-US');
+  return localDigits(Math.round(n || 0).toLocaleString('en-US'));
 }
 
 /** A share (0-1) as a whole percent. */
@@ -256,9 +264,18 @@ function pct(share) {
   return Math.round((share || 0) * 100);
 }
 
-/** "N fewer things", or "N more things" when the difference is negative. */
-function fewer(n, noun) {
-  return n >= 0 ? `${count(n)} fewer ${noun}` : `${count(-n)} more ${noun}`;
+/** "N fewer infected", or "N more infected" when the difference is negative. */
+function fewerInfected(n) {
+  return n >= 0
+    ? tl('{count} fewer infected', { count: count(n) })
+    : tl('{count} more infected', { count: count(-n) });
+}
+
+/** "N fewer deaths", or "N more deaths" when the difference is negative. */
+function fewerDeaths(n) {
+  return n >= 0
+    ? tl('{count} fewer deaths', { count: count(n) })
+    : tl('{count} more deaths', { count: count(-n) });
 }
 
 /** The curve's third legend: Rt, the second strain and the comparison run. */
@@ -266,22 +283,37 @@ function curveExtras(s, cf) {
   const parts = [];
   if (s.rtLastP50 !== null && s.rtLastP50 !== undefined)
     parts.push(
-      `Rt in the runs, day ${s.rtLastDay}: ${s.rtLastP50} (line at 1 = holding steady; generation ${s.generationDays} d)`,
+      tl(
+        'Rt in the runs, day {day}: {rt} (line at 1 = holding steady; generation {days} d)',
+        {
+          day: s.rtLastDay,
+          rt: localDigits(s.rtLastP50),
+          days: localDigits(s.generationDays),
+        },
+      ),
     );
   if (s.strain2Day !== undefined)
     parts.push(
       s.strain2Seeded
-        ? `second strain ${pct(s.strain2ShareEnd)} % of infections` +
+        ? tl('second strain {percent} % of infections', {
+            percent: pct(s.strain2ShareEnd),
+          }) +
             (s.takeoverDayP50 !== null && s.takeoverDayP50 !== undefined
-              ? ` · took over on day ${s.takeoverDayP50}`
+              ? ` · ${tl('took over on day {day}', { day: s.takeoverDayP50 })}`
               : '')
-        : 'second strain not seeded inside the window',
+        : tl('second strain not seeded inside the window'),
     );
   if (cf?.runs > 0)
     parts.push(
-      `vs ${cf.label.toLowerCase()}: ${fewer(cf.averted.infectedP50, 'infected')} (5–95 %: ${count(cf.averted.infectedP5)}–${count(cf.averted.infectedP95)}) · ${fewer(cf.averted.deathsP50, 'deaths')}`,
+      tl('vs {against}: {infected} (5–95 %: {low}–{high}) · {deaths}', {
+        against: tl(cf.label).toLowerCase(),
+        infected: fewerInfected(cf.averted.infectedP50),
+        low: count(cf.averted.infectedP5),
+        high: count(cf.averted.infectedP95),
+        deaths: fewerDeaths(cf.averted.deathsP50),
+      }),
     );
-  else if (cf?.cut) parts.push('comparison skipped (time limit)');
+  else if (cf?.cut) parts.push(tl('comparison skipped (time limit)'));
   return parts;
 }
 
@@ -299,12 +331,28 @@ export function railWorldLine(status) {
   const total = count(status?.tilesTotal);
   const km = count(status?.railKm);
   if (status?.state === 'ready')
-    return `World rail: ${km} km from ${done} map tiles, every continent's.`;
+    return tl("World rail: {km} km from {done} map tiles, every continent's.", {
+      km,
+      done,
+    });
   if (status?.state === 'building')
-    return `World rail: ${done} / ${total} tiles · joining the lines into one network…`;
+    return tl(
+      'World rail: {done} / {total} tiles · joining the lines into one network…',
+      { done, total },
+    );
   if (status?.state === 'error')
-    return `World rail: ${status.error || 'failed'}; rail works as before.`;
-  return `World rail: ${done} / ${total} tiles${status?.railKm ? ` · ${km} km` : ''}; rail works as before until it is done.`;
+    return tl('World rail: {error}; rail works as before.', {
+      error: status.error || tl('failed'),
+    });
+  return status?.railKm
+    ? tl(
+        'World rail: {done} / {total} tiles · {km} km; rail works as before until it is done.',
+        { done, total, km },
+      )
+    : tl(
+        'World rail: {done} / {total} tiles; rail works as before until it is done.',
+        { done, total },
+      );
 }
 
 /** Roads come in three levels, each farther; rail in one. */
@@ -331,6 +379,34 @@ const FILLED_MENUS = Object.freeze({
     ]),
   ),
 });
+
+/** "N of M map tiles did not load; asked again later." when some did not. */
+function tilesNote(data) {
+  return data?.failedTiles
+    ? tl('{failed} of {tiles} map tiles did not load; asked again later.', {
+        failed: data.failedTiles,
+        tiles: data.tiles,
+      })
+    : '';
+}
+
+/** The same, as an aside in brackets, when some tiles did not load. */
+function tilesAside(data) {
+  return data?.failedTiles
+    ? ` ${tl(
+        '({failed} of {tiles} map tiles did not load; asked again later)',
+        {
+          failed: data.failedTiles,
+          tiles: data.tiles,
+        },
+      )}`
+    : '';
+}
+
+/** A number with thousands commas as the server sent it, in the page's marks. */
+function grouped(n) {
+  return localDigits(Number(n).toLocaleString('en-US'));
+}
 
 function timeLabel(ms) {
   const at = new Date(ms);
@@ -496,7 +572,7 @@ export class OutbreakPanel {
       for (const option of factor.options) {
         const el = doc.createElement('option');
         el.value = option.id;
-        el.textContent = option.label;
+        el.textContent = humanChoiceLabel(option);
         select.appendChild(el);
       }
     }
@@ -507,7 +583,7 @@ export class OutbreakPanel {
       for (const option of options) {
         const el = doc.createElement('option');
         el.value = option.id;
-        el.textContent = option.label;
+        el.textContent = tl(option.label);
         select.appendChild(el);
       }
     }
@@ -540,7 +616,9 @@ export class OutbreakPanel {
         const el = doc.createElement('option');
         el.value = String(hours);
         el.textContent =
-          hours < 72 ? `Next ${hours} hours` : `Next ${hours / 24} days`;
+          hours < 72
+            ? tl('Next {hours} hours', { hours })
+            : tl('Next {days} days', { days: hours / 24 });
         this._futureDays.appendChild(el);
       }
     this._forecastList = byId('outbreak-forecast');
@@ -564,7 +642,7 @@ export class OutbreakPanel {
     this._renderEpidemic();
     this._refresh();
     this._send(this._state.show ? { show: true } : {});
-    if (this._epidemic) this._say(this._epidemicStatus('(saved result)'));
+    if (this._epidemic) this._say(this._epidemicStatus(tl('(saved result)')));
     // The whole result, when IndexedDB kept it, replaces the trimmed copy.
     this._restored = this._restoreFullEpidemic();
 
@@ -586,7 +664,7 @@ export class OutbreakPanel {
     this._days?.addEventListener('change', () => {
       this._state.days = Number(this._days.value) || OUTBREAK_SCAN_DAYS_DEFAULT;
       this._save();
-      this._say('Press SCAN TRAVEL to scan from the new start.');
+      this._say(tl('Press SCAN TRAVEL to scan from the new start.'));
     });
     this._scanBtn?.addEventListener('click', () => void this._scan());
     this._hour?.addEventListener('change', () => {
@@ -684,7 +762,9 @@ export class OutbreakPanel {
       this._showContagion();
       this._refresh({ send: true });
       this._say(
-        `HOW CONTAGIOUS set to ${contagionLabel(suggestion.level)} from the disease profile.`,
+        tl('HOW CONTAGIOUS set to {level} from the disease profile.', {
+          level: contagionLabel(suggestion.level),
+        }),
       );
     });
     this._futureBtn?.addEventListener('click', () => void this._futureSpread());
@@ -858,8 +938,13 @@ export class OutbreakPanel {
     if (this._contagionNote)
       this._contagionNote.textContent =
         airportInfectedAfterHours(this._state.contagion) === 0
-          ? 'Zero Hour: entire airport considered infected the moment the outbreak lands, not just connected flights on infected planes'
-          : `Entire airport considered infected after ${airportInfectedAfterHours(this._state.contagion)} h, not just connected flights on infected planes`;
+          ? tl(
+              'Zero Hour: entire airport considered infected the moment the outbreak lands, not just connected flights on infected planes',
+            )
+          : tl(
+              'Entire airport considered infected after {hours} h, not just connected flights on infected planes',
+              { hours: airportInfectedAfterHours(this._state.contagion) },
+            );
   }
 
   /** The suggested HOW CONTAGIOUS level, and what each field added. */
@@ -868,12 +953,17 @@ export class OutbreakPanel {
     if (this._useSuggested) this._useSuggested.disabled = !suggestion;
     if (!this._suggest) return;
     this._suggest.textContent = suggestion
-      ? `Suggested HOW CONTAGIOUS: ${contagionLabel(suggestion.level)} (${suggestion.parts
-          .map((p) => `${p.label} ${p.delta >= 0 ? '+' : ''}${p.delta}`)
-          .join(
-            ', ',
-          )}) · airports infected after ${airportInfectedAfterHours(suggestion.level)} h`
-      : 'Set any of these for a suggested HOW CONTAGIOUS level.';
+      ? tl(
+          'Suggested HOW CONTAGIOUS: {level} ({parts}) · airports infected after {hours} h',
+          {
+            level: contagionLabel(suggestion.level),
+            parts: suggestion.parts
+              .map((p) => `${p.label} ${p.delta >= 0 ? '+' : ''}${p.delta}`)
+              .join(', '),
+            hours: airportInfectedAfterHours(suggestion.level),
+          },
+        )
+      : tl('Set any of these for a suggested HOW CONTAGIOUS level.');
   }
 
   _fillControls() {
@@ -983,15 +1073,27 @@ export class OutbreakPanel {
       };
       if (!quiet)
         this._log(
-          'AIR TRAFFIC · ASSUMED',
-          `${this._traffic.flights.length} more flights out of the ${data.airportsReached} airports the outbreak reaches by ${timeLabel(untilMs)}. An airport gets infected status ${delay} h after the outbreak lands (HOW CONTAGIOUS): from then on every flight leaving it counts, its scanned routes flown daily, or its normal traffic where there is no data.`,
+          tl('AIR TRAFFIC · ASSUMED'),
+          tl(
+            '{flights} more flights out of the {airports} airports the outbreak reaches by {until}. An airport gets infected status {hours} h after the outbreak lands (HOW CONTAGIOUS): from then on every flight leaving it counts, its scanned routes flown daily, or its normal traffic where there is no data.',
+            {
+              flights: this._traffic.flights.length,
+              airports: data.airportsReached,
+              until: timeLabel(untilMs),
+              hours: delay,
+            },
+          ),
         );
       this._refresh({ send: true });
     } catch (error) {
       if (!current()) return;
       // Asked again at most once a minute while the server cannot answer.
       this._trafficRetryAt = this._now() + 60_000;
-      if (!quiet) this._log('AIR TRAFFIC', `Not worked out: ${error.message}`);
+      if (!quiet)
+        this._log(
+          tl('AIR TRAFFIC'),
+          tl('Not worked out: {error}', { error: error.message }),
+        );
     } finally {
       if (current()) this._trafficLoading = false;
     }
@@ -1149,9 +1251,19 @@ export class OutbreakPanel {
         throw new Error(data?.error || `HTTP ${response.status}`);
       this._airRoads = { network: data.network };
       if (data.failedTiles) this._airRoadsRetryAt = this._now() + 300_000;
+      const tiles = tilesNote(data);
       this._log(
-        'ROADS AFTER LANDING',
-        `The roads out of ${data.landings.toLocaleString('en-US')} landing airport${data.landings === 1 ? '' : 's'} (${data.network.lengthKm.toLocaleString('en-US')} km within ${data.radiusKm} km of them) light up green from each landing: 100 km at road speed, then a quarter of it.${data.failedTiles ? ` ${data.failedTiles} of ${data.tiles} map tiles did not load; asked again later.` : ''}`,
+        tl('ROADS AFTER LANDING'),
+        tln(
+          data.landings,
+          'The roads out of {count} landing airport ({km} km within {radius} km of them) light up green from each landing: 100 km at road speed, then a quarter of it.',
+          'The roads out of {count} landing airports ({km} km within {radius} km of them) light up green from each landing: 100 km at road speed, then a quarter of it.',
+          {
+            count: grouped(data.landings),
+            km: grouped(data.network.lengthKm),
+            radius: data.radiusKm,
+          },
+        ) + (tiles ? ` ${tiles}` : ''),
       );
       this._refresh({ send: true });
     } catch {
@@ -1223,11 +1335,38 @@ export class OutbreakPanel {
       // No rail near any landing: nothing to light, and nothing to ask again.
       this._airRails = data.network ? { network: data.network } : null;
       if (!data.network) return;
+      const tiles = tilesNote(data);
+      const skipped = data.skippedLandings
+        ? ` ${tln(
+            data.skippedLandings,
+            '{count} later landing left out.',
+            '{count} later landings left out.',
+            { count: grouped(data.skippedLandings) },
+          )}`
+        : '';
       this._log(
-        'RAIL AFTER LANDING',
-        data.world
-          ? `The world's rail (${data.network.lengthKm.toLocaleString('en-US')} km) lights up orange from ${count(data.seededLandings)} of ${count(data.landings)} landing airport${data.landings === 1 ? '' : 's'} with rail within reach, along the whole network at train speed.${data.failedTiles ? ` ${data.failedTiles} of ${data.tiles} map tiles did not load; asked again later.` : ''}`
-          : `The rail lines round ${data.landings.toLocaleString('en-US')} landing airport${data.landings === 1 ? '' : 's'} (${data.network.lengthKm.toLocaleString('en-US')} km within ${data.radiusKm} km of them) light up orange from each landing at train speed.${data.skippedLandings ? ` ${data.skippedLandings.toLocaleString('en-US')} later landing${data.skippedLandings === 1 ? '' : 's'} left out.` : ''}${data.failedTiles ? ` ${data.failedTiles} of ${data.tiles} map tiles did not load; asked again later.` : ''}`,
+        tl('RAIL AFTER LANDING'),
+        (data.world
+          ? tln(
+              data.landings,
+              "The world's rail ({km} km) lights up orange from {seeded} of {count} landing airport with rail within reach, along the whole network at train speed.",
+              "The world's rail ({km} km) lights up orange from {seeded} of {count} landing airports with rail within reach, along the whole network at train speed.",
+              {
+                km: grouped(data.network.lengthKm),
+                seeded: count(data.seededLandings),
+                count: count(data.landings),
+              },
+            )
+          : tln(
+              data.landings,
+              'The rail lines round {count} landing airport ({km} km within {radius} km of them) light up orange from each landing at train speed.',
+              'The rail lines round {count} landing airports ({km} km within {radius} km of them) light up orange from each landing at train speed.',
+              {
+                count: grouped(data.landings),
+                km: grouped(data.network.lengthKm),
+                radius: data.radiusKm,
+              },
+            ) + skipped) + (tiles ? ` ${tiles}` : ''),
       );
       this._refresh({ send: true });
     } catch {
@@ -1273,8 +1412,8 @@ export class OutbreakPanel {
         if (ours && this._railWorldSaid) this._say('');
         if (was?.state === 'ready' && was.builtAt === data.builtAt) return;
         this._log(
-          'WORLD RAIL',
-          `${railWorldLine(data)} Rail now lights along the whole network from each outbreak location and each landing, and the epidemic model carries rail travellers between the places it joins.`,
+          tl('WORLD RAIL'),
+          `${railWorldLine(data)} ${tl('Rail now lights along the whole network from each outbreak location and each landing, and the epidemic model carries rail travellers between the places it joins.')}`,
         );
         // Asked again, now from the whole world's rail. A load already on
         // its way is dropped (the epoch moves on) so its local 200 km rail
@@ -1377,11 +1516,31 @@ export class OutbreakPanel {
             // A partial answer is asked for again later.
             retryAt: data.failedTiles ? this._now() + 300_000 : 0,
           });
+          const network = {
+            km: grouped(data.network.lengthKm),
+            radius: grouped(data.radiusKm),
+            start: data.network.startKm,
+            aside: tilesAside(data),
+          };
           this._log(
-            `${mode === 'rail' ? 'RAIL LINES' : 'MAIN ROADS'} · ${location.name}${mode === 'road' ? ` · level ${data.level || level}` : ''}`,
+            `${mode === 'rail' ? tl('RAIL LINES') : tl('MAIN ROADS')} · ${location.name}${mode === 'road' ? ` · ${tl('level {level}', { level: data.level || level })}` : ''}`,
             data.world
-              ? `The world's rail, ${data.network.lengthKm.toLocaleString('en-US')} km, from ${data.network.startKm} km away; ${count(data.network.reachedKm)} km along it at the farthest${data.failedTiles ? ` (${data.failedTiles} of ${data.tiles} map tiles did not load; asked again later)` : ''}. The spread follows it, orange once reached.`
-              : `${data.network.lengthKm.toLocaleString('en-US')} km of ${mode === 'rail' ? 'rail line' : 'main road'} within ${data.radiusKm.toLocaleString('en-US')} km, from ${data.network.startKm} km away${data.failedTiles ? ` (${data.failedTiles} of ${data.tiles} map tiles did not load; asked again later)` : ''}. The spread follows it, ${mode === 'rail' ? 'orange' : 'dark red'} once reached.${mode === 'road' && !data.lastLevel ? ' Farther roads are loading.' : ''}`,
+              ? tl(
+                  "The world's rail, {km} km, from {start} km away; {reached} km along it at the farthest{aside}. The spread follows it, orange once reached.",
+                  { ...network, reached: count(data.network.reachedKm) },
+                )
+              : mode === 'rail'
+                ? tl(
+                    '{km} km of rail line within {radius} km, from {start} km away{aside}. The spread follows it, orange once reached.',
+                    network,
+                  )
+                : tl(
+                    '{km} km of main road within {radius} km, from {start} km away{aside}. The spread follows it, dark red once reached.',
+                    network,
+                  ) +
+                  (data.lastLevel
+                    ? ''
+                    : ` ${tl('Farther roads are loading.')}`),
           );
         } else {
           // A farther level that fails keeps the nearer one on the map.
@@ -1499,25 +1658,30 @@ export class OutbreakPanel {
     this._list.replaceChildren(
       ...this._state.locations.map((location) =>
         this._item(
-          `● ${location.name}${location.kind ? ` · ${location.kind}` : ''}${location.source ? ` · ${location.source}` : ''}`,
-          this._button('REMOVE', { outbreakRemove: location.id }),
+          `● ${location.name}${location.kind ? ` · ${tl(location.kind)}` : ''}${location.source ? ` · ${tl(location.source)}` : ''}`,
+          this._button(tl('REMOVE'), { outbreakRemove: location.id }),
         ),
       ),
     );
     if (!this._state.locations.length)
       this._list.appendChild(
-        this._item('No outbreak location. Add one below.'),
+        this._item(tl('No outbreak location. Add one below.')),
       );
   }
 
   _renderSummary(spread) {
     if (this._summary && this._doc) {
-      const lines = spreadSummary(spread, this._state.speeds);
+      const lines = spreadSummary(spread, this._state.speeds, localSay);
       const scan = this._state.scan;
       lines.push(
         scan
-          ? `Scanned from ${timeLabel(scan.startMs)} · flights: ${scan.flightSource || 'none found'}`
-          : 'Not scanned yet: press SCAN TRAVEL.',
+          ? tl('Scanned from {start} · flights: {source}', {
+              start: timeLabel(scan.startMs),
+              source: scan.flightSource
+                ? tl(scan.flightSource)
+                : tl('none found'),
+            })
+          : tl('Not scanned yet: press SCAN TRAVEL.'),
       );
       this._summary.replaceChildren(...lines.map((line) => this._item(line)));
     }
@@ -1525,7 +1689,7 @@ export class OutbreakPanel {
       this._destinations.replaceChildren(
         ...spread.destinations.map((place) =>
           this._item(
-            `✈ ${place.code}${place.name ? ` ${place.name}` : ''} · ${place.future ? 'lands' : 'landed'} ${timeLabel(place.arriveMs)}${place.hop === 2 ? ' · connecting' : ''}${place.future ? ' · future flight' : ''}`,
+            `✈ ${place.code}${place.name ? ` ${place.name}` : ''} · ${place.future ? tl('lands {at}', { at: timeLabel(place.arriveMs) }) : tl('landed {at}', { at: timeLabel(place.arriveMs) })}${place.hop === 2 ? ` · ${tl('connecting')}` : ''}${place.future ? ` · ${tl('future flight')}` : ''}`,
           ),
         ),
       );
@@ -1537,8 +1701,8 @@ export class OutbreakPanel {
     this._forecastList.replaceChildren(
       ...this._state.forecast.map((row, index) =>
         this._item(
-          `WITHIN ${forecastWindowLabel(row.within)} · ${row.name}${row.likelihood ? ` · ${row.likelihood}` : ''}${row.reason ? ` · ${row.reason}` : ''}`,
-          this._button('+ ADD', { outbreakForecast: String(index) }),
+          `${tl('WITHIN {window}', { window: forecastWindowLabel(row.within) })} · ${row.name}${row.likelihood ? ` · ${tl(row.likelihood)}` : ''}${row.reason ? ` · ${row.reason}` : ''}`,
+          this._button(tl('+ ADD'), { outbreakForecast: String(index) }),
         ),
       ),
     );
@@ -1551,11 +1715,14 @@ export class OutbreakPanel {
       name: row.name,
       lat: row.lat,
       lon: row.lon,
-      source: `Future ${forecastWindowLabel(row.within).toLowerCase()}`,
+      // Kept with the location as written now: Quebec French stays French.
+      source: tl('Future {window}', {
+        window: forecastWindowLabel(row.within).toLowerCase(),
+      }),
     });
     if (!location) return;
     if (this._state.locations.some((l) => l.id === location.id)) {
-      this._say(`${location.name} is already listed.`);
+      this._say(tl('{name} is already listed.', { name: location.name }));
       return;
     }
     this._state.locations.push(location);
@@ -1564,7 +1731,9 @@ export class OutbreakPanel {
     this._renderForecast();
     this._refresh({ send: true });
     this._say(
-      `ADDED · ${location.name}. Press SCAN TRAVEL to scan its travel.`,
+      tl('ADDED · {name}. Press SCAN TRAVEL to scan its travel.', {
+        name: location.name,
+      }),
     );
   }
 
@@ -1573,15 +1742,15 @@ export class OutbreakPanel {
     this._found.replaceChildren(
       ...this._state.found.map((row, index) => {
         const li = this._item(
-          `${row.place}${row.evidence ? ` · ${row.evidence}` : ''}${row.via ? ` · ${row.via}` : ''}`,
-          this._button('+ ADD', { outbreakFound: String(index) }),
+          `${row.place}${row.evidence ? ` · ${row.evidence}` : ''}${row.via ? ` · ${tl(row.via)}` : ''}`,
+          this._button(tl('+ ADD'), { outbreakFound: String(index) }),
         );
         if (row.link) {
           const a = this._doc.createElement('a');
           a.href = row.link;
           a.target = '_blank';
           a.rel = 'noopener noreferrer';
-          a.textContent = 'LINK';
+          a.textContent = tl('LINK');
           li.insertBefore(a, li.lastChild);
         }
         return li;
@@ -1611,10 +1780,10 @@ export class OutbreakPanel {
       .trim()
       .slice(0, 80);
     if (!name) {
-      this._say('Type a city or town to add.');
+      this._say(tl('Type a city or town to add.'));
       return false;
     }
-    this._say(`Finding ${name}…`);
+    this._say(tl('Finding {name}…', { name }));
     let place = null;
     try {
       place = await this._geocode(name);
@@ -1622,7 +1791,7 @@ export class OutbreakPanel {
       place = null;
     }
     if (!place || !Number.isFinite(place.lat) || !Number.isFinite(place.lng)) {
-      this._say(`${name} was not found. Try "town, country".`);
+      this._say(tl('{name} was not found. Try "town, country".', { name }));
       return false;
     }
     const location = cleanLocation({
@@ -1632,11 +1801,11 @@ export class OutbreakPanel {
       ...extra,
     });
     if (!location) {
-      this._say(`${name} was not found.`);
+      this._say(tl('{name} was not found.', { name }));
       return false;
     }
     if (this._state.locations.some((l) => l.id === location.id)) {
-      this._say(`${location.name} is already listed.`);
+      this._say(tl('{name} is already listed.', { name: location.name }));
       return false;
     }
     this._state.locations.push(location);
@@ -1644,7 +1813,9 @@ export class OutbreakPanel {
     this._renderLocations();
     this._refresh({ send: true });
     this._say(
-      `ADDED · ${location.name}. Press SCAN TRAVEL to scan its travel.`,
+      tl('ADDED · {name}. Press SCAN TRAVEL to scan its travel.', {
+        name: location.name,
+      }),
     );
     return true;
   }
@@ -1657,7 +1828,9 @@ export class OutbreakPanel {
     this._stopPlay();
     this._hideMap();
     this._say(
-      'MAP CLEARED · the results are kept; tick Display spread on map to show them again.',
+      tl(
+        'MAP CLEARED · the results are kept; tick Display spread on map to show them again.',
+      ),
     );
   }
 
@@ -1676,7 +1849,11 @@ export class OutbreakPanel {
    */
   _clear() {
     if (this._busy) {
-      this._say(`Still working: ${this._busy}. Clear once it is done.`);
+      this._say(
+        tl('Still working: {what}. Clear once it is done.', {
+          what: tl(this._busy),
+        }),
+      );
       return;
     }
     this._stopPlay();
@@ -1698,7 +1875,7 @@ export class OutbreakPanel {
     if (this._output) this._output.textContent = '';
     this._refresh();
     this._hideMap();
-    this._say('DATA CLEARED · press SCAN TRAVEL for a new run.');
+    this._say(tl('DATA CLEARED · press SCAN TRAVEL for a new run.'));
   }
 
   /**
@@ -1735,7 +1912,7 @@ export class OutbreakPanel {
     const row = this._state.found[index];
     if (!row) return;
     const added = await this._addByName(row.place, {
-      source: row.via || 'Found',
+      source: row.via || msgl('Found'),
     });
     if (added) {
       this._state.found.splice(index, 1);
@@ -1780,8 +1957,8 @@ export class OutbreakPanel {
       const option = this._doc.createElement('option');
       option.value = '';
       option.textContent = reachable
-        ? 'No model key yet'
-        : 'Model list unavailable';
+        ? tl('No model key yet')
+        : tl('Model list unavailable');
       select.appendChild(option);
       select.disabled = true;
       return;
@@ -1799,7 +1976,8 @@ export class OutbreakPanel {
   /** One question to the chosen model; its answer text, or throws. */
   async _ask(question, context) {
     const provider = this._model?.value;
-    if (!provider) throw new Error('No model key yet. Add one in POWER UP.');
+    if (!provider)
+      throw new Error(tl('No model key yet. Add one in POWER UP.'));
     const controller = new AbortController();
     const timer = globalThis.setTimeout(
       () => controller.abort(),
@@ -1819,13 +1997,13 @@ export class OutbreakPanel {
       });
       const data = await response.json().catch(() => null);
       if (response.status === 501 || data?.unconfigured)
-        throw new Error('No key for this model. Add one in POWER UP.');
+        throw new Error(tl('No key for this model. Add one in POWER UP.'));
       if (!response.ok || !data?.answer)
         throw new Error(data?.error || `HTTP ${response.status}`);
       return String(data.answer);
     } catch (error) {
       if (error?.name === 'AbortError')
-        throw new Error('The model did not answer in time.');
+        throw new Error(tl('The model did not answer in time.'));
       throw error;
     } finally {
       globalThis.clearTimeout(timer);
@@ -1861,15 +2039,15 @@ export class OutbreakPanel {
 
   async _scan() {
     if (this._busy) {
-      this._say(`Still working: ${this._busy}.`);
+      this._say(tl('Still working: {what}.', { what: tl(this._busy) }));
       return;
     }
     const locations = this._state.locations;
     if (!locations.length) {
-      this._say('Add an outbreak location first.');
+      this._say(tl('Add an outbreak location first.'));
       return;
     }
-    this._setBusy('scanning');
+    this._setBusy(msgl('scanning'));
     // A new scan is a new run: drop lit roads and rail, and any answer
     // still on its way from the last scan (same as CLEAR DATA). The last
     // scan stays only as `previous` until this one finishes, so PLAY or an
@@ -1884,9 +2062,9 @@ export class OutbreakPanel {
     const nowMs = this._now();
     const startMs = scanStartMs(nowMs, this._state.days);
     try {
-      this._say('SCANNING · rail and water near each location…');
+      this._say(tl('SCANNING · rail and water near each location…'));
       const surroundings = await this._scanSurroundings(locations);
-      this._say('SCANNING · flights…');
+      this._say(tl('SCANNING · flights…'));
       const { flights, source } = await this._scanFlights(
         locations,
         startMs,
@@ -1903,7 +2081,7 @@ export class OutbreakPanel {
       // A background answer for the old scan may still be out; it is dropped
       // when it comes, and must not stop this scan asking.
       this._trafficLoading = false;
-      this._say('SCANNING · air traffic out of the airports it reaches…');
+      this._say(tl('SCANNING · air traffic out of the airports it reaches…'));
       await this._loadTraffic();
       this._state.hour = null;
       this._state.show = true;
@@ -1913,14 +2091,14 @@ export class OutbreakPanel {
       void this._flyToOutbreak();
       const spread = this._spread();
       this._log(
-        'OUTBREAK SCAN',
-        spreadSummary(spread, this._state.speeds).join('\n'),
+        tl('OUTBREAK SCAN'),
+        spreadSummary(spread, this._state.speeds, localSay).join('\n'),
       );
       this._say(
-        `SCAN DONE · ${flights.length} flight${flights.length === 1 ? '' : 's'} · ${spread.destinations.length} place${spread.destinations.length === 1 ? '' : 's'} reached by plane`,
+        `${tln(flights.length, 'SCAN DONE · {count} flight', 'SCAN DONE · {count} flights')} · ${tln(spread.destinations.length, '{count} place reached by plane', '{count} places reached by plane')}`,
       );
     } catch (error) {
-      this._say(error?.message || 'The scan failed.');
+      this._say(error?.message || tl('The scan failed.'));
       if (previous) {
         this._state.scan = previous;
         this._refresh({ send: true });
@@ -1947,13 +2125,26 @@ export class OutbreakPanel {
             water: data.water === true,
           };
           if (Number.isFinite(data.trainKmh)) speeds.push(data.trainKmh);
+          const stations =
+            tln(
+              data.stations,
+              '{place}: {count} railway station within 30 km',
+              '{place}: {count} railway stations within 30 km',
+              { place: location.name },
+            ) +
+            (Number.isFinite(data.trainKmh)
+              ? ` ${tl('(rail lines average {kmh} km/h)', { kmh: data.trainKmh })}`
+              : '');
           lines.push(
-            `${location.name}: ${data.stations} railway station${data.stations === 1 ? '' : 's'} within 30 km${Number.isFinite(data.trainKmh) ? ` (rail lines average ${data.trainKmh} km/h)` : ''} · ${data.water ? `water traffic within 100 km (${data.waterPlaces})` : 'no water traffic within 100 km'}`,
+            `${stations} · ${data.water ? tl('water traffic within 100 km ({places})', { places: data.waterPlaces }) : tl('no water traffic within 100 km')}`,
           );
         } catch (error) {
           out[location.id] = {};
           lines.push(
-            `${location.name}: OpenStreetMap did not answer (${error.message}); train and boat both counted (untick one to leave it out).`,
+            tl(
+              '{place}: OpenStreetMap did not answer ({error}); train and boat both counted (untick one to leave it out).',
+              { place: location.name, error: error.message },
+            ),
           );
         }
       }),
@@ -1967,7 +2158,7 @@ export class OutbreakPanel {
       if (this._speedBoxes.train)
         this._speedBoxes.train.value = String(this._state.speeds.train);
     }
-    this._log('RAIL & WATER', lines.join('\n'));
+    this._log(tl('RAIL & WATER'), lines.join('\n'));
     return out;
   }
 
@@ -1991,13 +2182,13 @@ export class OutbreakPanel {
     this._scanAirports = airports.map((a) => a.code);
     if (!airports.length) {
       this._log(
-        'FLIGHTS',
-        'No airport with scheduled flights within 60 km of the outbreak.',
+        tl('FLIGHTS'),
+        tl('No airport with scheduled flights within 60 km of the outbreak.'),
       );
-      return { flights: [], source: 'no airport near' };
+      return { flights: [], source: msgl('no airport near') };
     }
     this._log(
-      'AIRPORTS',
+      tl('AIRPORTS'),
       airports
         .map((a) => `${a.code} ${a.iata || ''} ${a.name} · ${a.km} km`)
         .join('\n'),
@@ -2008,33 +2199,39 @@ export class OutbreakPanel {
     if (response.ok && Array.isArray(data?.flights)) {
       const flights = data.flights.map((f) => cleanFlight(f)).filter(Boolean);
       this._log(
-        'FLIGHT HISTORY · OPENSKY',
+        tl('FLIGHT HISTORY · OPENSKY'),
         flights.length
           ? flights
               .map(
                 (f) =>
-                  `${f.hop === 2 ? '  connecting ' : ''}${f.from.code} → ${f.to.code} ${f.to.name} · ${f.callsign || '—'} · left ${timeLabel(f.departMs)} · landed ${timeLabel(f.arriveMs)}`,
+                  `${f.hop === 2 ? `  ${tl('connecting')} ` : ''}${f.from.code} → ${f.to.code} ${f.to.name} · ${f.callsign || '—'} · ${tl('left {at}', { at: timeLabel(f.departMs) })} · ${tl('landed {at}', { at: timeLabel(f.arriveMs) })}`,
               )
               .join('\n')
-          : 'No flight left these airports in the scan window.',
+          : tl('No flight left these airports in the scan window.'),
       );
-      if (flights.length) return { flights, source: 'OpenSky flight history' };
+      if (flights.length)
+        return { flights, source: msgl('OpenSky flight history') };
     } else {
-      this._log('FLIGHT HISTORY', data?.error || `HTTP ${response.status}`);
+      this._log(tl('FLIGHT HISTORY'), data?.error || `HTTP ${response.status}`);
     }
     if (!this._model?.value) {
       this._log(
-        'FLIGHTS',
-        'No language model key either: no flights are drawn. Add one in POWER UP.',
+        tl('FLIGHTS'),
+        tl(
+          'No language model key either: no flights are drawn. Add one in POWER UP.',
+        ),
       );
-      return { flights: [], source: 'none (no OpenSky account or model key)' };
+      return {
+        flights: [],
+        source: msgl('none (no OpenSky account or model key)'),
+      };
     }
     return this._scheduleFlights(airports, locations[0], startMs);
   }
 
   /** Airline schedules from the chosen model, read from a list of real airports. */
   async _scheduleFlights(airports, near, startMs) {
-    this._say('SCANNING · airline schedules with the language model…');
+    this._say(tl('SCANNING · airline schedules with the language model…'));
     const { response, data } = await this._getJson(
       `${API}/airports/candidates?lat=${near.lat}&lon=${near.lon}`,
     );
@@ -2062,7 +2259,7 @@ export class OutbreakPanel {
       .slice(0, CONNECTING_AIRPORTS_MAX);
     let onward = [];
     if (destinations.length) {
-      this._say('SCANNING · connecting flights with the language model…');
+      this._say(tl('SCANNING · connecting flights with the language model…'));
       try {
         const answer = await this._ask(
           outbreakRoutesQuestion(destinations, { connecting: true }),
@@ -2073,7 +2270,7 @@ export class OutbreakPanel {
           (r) => from.has(r.from) && byCode.has(r.to) && !origins.has(r.to),
         );
       } catch (error) {
-        this._log('CONNECTING FLIGHTS', error.message);
+        this._log(tl('CONNECTING FLIGHTS'), error.message);
       }
     }
     const routes = [
@@ -2091,20 +2288,23 @@ export class OutbreakPanel {
     const flights = timeScheduleRoutes(
       routes,
       startMs,
-      'Airline schedule (LLM)',
+      msgl('Airline schedule (LLM)'),
     );
     this._log(
-      'AIRLINE SCHEDULES · LLM',
+      tl('AIRLINE SCHEDULES · LLM'),
       flights.length
-        ? `${flights.length} routes; times assumed: first flights leave at the scan's start, connections ${CONNECTION_HOURS} h after landing.\n${flights
+        ? `${tl(
+            "{count} routes; times assumed: first flights leave at the scan's start, connections {hours} h after landing.",
+            { count: flights.length, hours: CONNECTION_HOURS },
+          )}\n${flights
             .map(
               (f) =>
-                `${f.hop === 2 ? '  connecting ' : ''}${f.from.code} → ${f.to.code} ${f.to.name}`,
+                `${f.hop === 2 ? `  ${tl('connecting')} ` : ''}${f.from.code} → ${f.to.code} ${f.to.name}`,
             )
             .join('\n')}`
-        : 'The model named no route.',
+        : tl('The model named no route.'),
     );
-    return { flights, source: 'airline schedules (language model)' };
+    return { flights, source: msgl('airline schedules (language model)') };
   }
 
   /** SCAN TRAVEL ends over the outbreak, with the region round it in view. */
@@ -2145,7 +2345,7 @@ export class OutbreakPanel {
    */
   _togglePlay(button, range) {
     if (this._busy) {
-      this._say(`Still working: ${this._busy}.`);
+      this._say(tl('Still working: {what}.', { what: tl(this._busy) }));
       return;
     }
     const running = this._playTimer !== null;
@@ -2161,7 +2361,7 @@ export class OutbreakPanel {
         : Array.from({ length: present }, (_, i) => i + 1);
     let at = 0;
     this._playing = range;
-    if (button) button.textContent = 'STOP';
+    if (button) button.textContent = tl('STOP');
     const step = () => {
       const hour = hours[at];
       this._state.hour = hour === present ? null : hour;
@@ -2181,9 +2381,9 @@ export class OutbreakPanel {
     if (this._playTimer) globalThis.clearTimeout(this._playTimer);
     this._playTimer = null;
     this._playing = '';
-    if (this._playBtn) this._playBtn.textContent = 'PLAY';
+    if (this._playBtn) this._playBtn.textContent = tl('PLAY');
     if (this._futurePlayBtn)
-      this._futurePlayBtn.textContent = 'MAP FUTURE SPREAD';
+      this._futurePlayBtn.textContent = tl('MAP FUTURE SPREAD');
   }
 
   /* --------------------------------------------------------------------- */
@@ -2200,22 +2400,22 @@ export class OutbreakPanel {
    */
   async _futureSpread() {
     if (this._busy) {
-      this._say(`Still working: ${this._busy}.`);
+      this._say(tl('Still working: {what}.', { what: tl(this._busy) }));
       return;
     }
     const locations = this._state.locations;
     if (!locations.length) {
-      this._say('Add an outbreak location first.');
+      this._say(tl('Add an outbreak location first.'));
       return;
     }
     if (!this._model?.value) {
-      this._say('No model key yet. Add one in POWER UP.');
+      this._say(tl('No model key yet. Add one in POWER UP.'));
       return;
     }
     this._stopPlay();
-    this._setBusy('the future spread');
+    this._setBusy(msgl('the future spread'));
     try {
-      this._say('FUTURE SPREAD · new global news search…');
+      this._say(tl('FUTURE SPREAD · new global news search…'));
       const params = new URLSearchParams({
         places: locations.map((l) => l.name).join(';'),
         keywords: this._state.keywords,
@@ -2223,18 +2423,26 @@ export class OutbreakPanel {
       const news = await this._getJson(`${API}/news?${params}`);
       const articles = news.response.ok ? news.data?.articles || [] : [];
       this._log(
-        'FUTURE SPREAD · GLOBAL NEWS',
+        tl('FUTURE SPREAD · GLOBAL NEWS'),
         news.response.ok
-          ? `${articles.length} article${articles.length === 1 ? '' : 's'} in the last 7 days`
+          ? tln(
+              articles.length,
+              '{count} article in the last 7 days',
+              '{count} articles in the last 7 days',
+            )
           : news.data?.error ||
-              'The news search did not answer; the forecast uses the scan alone.',
+              tl(
+                'The news search did not answer; the forecast uses the scan alone.',
+              ),
       );
       const near = locations[0];
       const pool = await this._getJson(
         `${API}/airports/candidates?lat=${near.lat}&lon=${near.lon}`,
       );
       if (!pool.response.ok)
-        throw new Error(pool.data?.error || 'The airport list did not load.');
+        throw new Error(
+          pool.data?.error || tl('The airport list did not load.'),
+        );
       const candidates = pool.data?.airports || [];
       const byCode = new Map();
       for (const a of candidates) {
@@ -2275,8 +2483,20 @@ export class OutbreakPanel {
       for (const [index, within] of windows.entries()) {
         const label = forecastWindowLabel(within);
         const from = forecastWindowStart(within);
+        const span = from
+          ? tl('{from} to {to}', { from: forecastWindowLabel(from), to: label })
+          : tl('within {window}', { window: label });
         this._say(
-          `FUTURE SPREAD · asking the model: ${from ? `${forecastWindowLabel(from)} to ` : 'within '}${label}${windows.length > 1 ? ` (${index + 1} of ${windows.length})` : ''}…`,
+          windows.length > 1
+            ? tl(
+                'FUTURE SPREAD · asking the model: {span} ({index} of {count})…',
+                {
+                  span,
+                  index: index + 1,
+                  count: windows.length,
+                },
+              )
+            : tl('FUTURE SPREAD · asking the model: {span}…', { span }),
         );
         let answer;
         try {
@@ -2304,12 +2524,17 @@ export class OutbreakPanel {
           firstError ??= error;
           failed.push(label);
           this._log(
-            `FUTURE SPREAD · WITHIN ${label}`,
-            `Skipped: ${error?.message || 'the model did not answer'}.`,
+            tl('FUTURE SPREAD · WITHIN {window}', { window: label }),
+            tl('Skipped: {why}.', {
+              why: error?.message || tl('the model did not answer'),
+            }),
           );
           continue;
         }
-        this._log(`FUTURE SPREAD · WITHIN ${label} · LLM`, answer);
+        this._log(
+          tl('FUTURE SPREAD · WITHIN {window} · LLM', { window: label }),
+          answer,
+        );
         const rows = parseForecastLines(answer, within, [
           ...locations,
           ...forecast.map((f) => ({ name: f.name })),
@@ -2329,15 +2554,17 @@ export class OutbreakPanel {
       this._send({ show: true });
       const counts = windows
         .filter((within) => !failed.includes(forecastWindowLabel(within)))
-        .map(
-          (within) =>
-            `${forecast.filter((f) => f.within === within).length} within ${forecastWindowLabel(within).toLowerCase()}`,
+        .map((within) =>
+          tl('{count} within {window}', {
+            count: forecast.filter((f) => f.within === within).length,
+            window: forecastWindowLabel(within).toLowerCase(),
+          }),
         );
       this._say(
-        `FUTURE SPREAD DONE · ${counts.join(' · ')}${failed.length ? ` · no answer for ${failed.map((l) => l.toLowerCase()).join(', ')}` : ''}`,
+        `${tl('FUTURE SPREAD DONE · {counts}', { counts: counts.join(' · ') })}${failed.length ? ` · ${tl('no answer for {windows}', { windows: failed.map((l) => l.toLowerCase()).join(', ') })}` : ''}`,
       );
     } catch (error) {
-      this._say(error?.message || 'The future spread failed.');
+      this._say(error?.message || tl('The future spread failed.'));
     } finally {
       this._setBusy('');
     }
@@ -2349,16 +2576,18 @@ export class OutbreakPanel {
    */
   async _runEpidemic() {
     if (this._busy) {
-      this._say(`Still working: ${this._busy}.`);
+      this._say(tl('Still working: {what}.', { what: tl(this._busy) }));
       return;
     }
     const scan = this._state.scan;
     if (!scan) {
-      this._say('Press SCAN TRAVEL first: the model runs over its flights.');
+      this._say(
+        tl('Press SCAN TRAVEL first: the model runs over its flights.'),
+      );
       return;
     }
     if (!this._state.locations.length) {
-      this._say('Add an outbreak location first.');
+      this._say(tl('Add an outbreak location first.'));
       return;
     }
     const runs = Number(this._epiRuns?.value) || 200;
@@ -2373,15 +2602,21 @@ export class OutbreakPanel {
       : this._state.epidemicSeed;
     this._state.epidemicSeed = seed;
     this._save();
-    this._setBusy('the epidemic model');
+    this._setBusy(msgl('the epidemic model'));
     // While it runs: RUNNING MODEL... on the button, with the seconds so far.
     const startedAt = this._now();
     const running = () => {
       const seconds = Math.floor((this._now() - startedAt) / 1000);
       if (this._epiRunBtn)
-        this._epiRunBtn.textContent = `RUNNING MODEL... ${seconds} s`;
+        this._epiRunBtn.textContent = tl('RUNNING MODEL... {seconds} s', {
+          seconds,
+        });
       this._say(
-        `Running Model... ${runs} runs · ${days} days ahead · ${seconds} s`,
+        tl('Running Model... {runs} runs · {days} days ahead · {seconds} s', {
+          runs,
+          days,
+          seconds,
+        }),
       );
     };
     if (this._epiRunBtn) this._epiRunBtn.disabled = true;
@@ -2451,32 +2686,52 @@ export class OutbreakPanel {
         ? data.sensitivity
         : [];
       this._log(
-        'EPIDEMIC MODEL',
+        tl('EPIDEMIC MODEL'),
         [
           // Every place at risk, however many.
-          ...epidemicLines(data, { max: Infinity }),
-          `Network: ${data.network?.places ?? '?'} places, ${data.network?.flights ?? '?'} scanned flights and ${data.network?.routes ?? '?'} daily routes${data.network?.capped ? ' (capped)' : ''}. People: ${data.populationSource || 'unknown'}.`,
+          ...epidemicLines(data, { max: Infinity, say: localSay }),
+          tl(
+            'Network: {places} places, {flights} scanned flights and {routes} daily routes{capped}. People: {people}.',
+            {
+              places: data.network?.places ?? '?',
+              flights: data.network?.flights ?? '?',
+              routes: data.network?.routes ?? '?',
+              capped: data.network?.capped ? ` ${tl('(capped)')}` : '',
+              people: data.populationSource || tl('unknown'),
+            },
+          ),
           ...(data.railSource === 'pending'
             ? [
-                'Rail: the world rail is still being found; rail travel joins the model once it is built.',
+                tl(
+                  'Rail: the world rail is still being found; rail travel joins the model once it is built.',
+                ),
               ]
             : data.network?.railRoutes
               ? [
-                  `Rail: ${count(data.network.railRoutes)} daily rail routes, ${count(data.railStats?.passengersPerDay)} travellers a day (${data.railSource}).`,
+                  tl(
+                    'Rail: {routes} daily rail routes, {travellers} travellers a day ({source}).',
+                    {
+                      routes: count(data.network.railRoutes),
+                      travellers: count(data.railStats?.passengersPerDay),
+                      source: data.railSource,
+                    },
+                  ),
                 ]
               : []),
           ...(sensitivity.length
             ? [
-                `What moves R most (one at a time): ${sensitivity
-                  .slice(0, 3)
-                  .map(
-                    (r) =>
-                      `${r.key} ${r.low}–${r.high} → R ${r.rLow}–${r.rHigh}`,
-                  )
-                  .join(' · ')}`,
+                tl('What moves R most (one at a time): {list}', {
+                  list: sensitivity
+                    .slice(0, 3)
+                    .map(
+                      (r) =>
+                        `${r.key} ${localDigits(r.low)}–${localDigits(r.high)} → R ${localDigits(r.rLow)}–${localDigits(r.rHigh)}`,
+                    )
+                    .join(' · '),
+                }),
               ]
             : []),
-          'A scenario model for exploring, not a forecast of real cases.',
+          tl('A scenario model for exploring, not a forecast of real cases.'),
         ].join('\n'),
       );
       this._state.show = true;
@@ -2484,17 +2739,19 @@ export class OutbreakPanel {
       this._save();
       this._refresh();
       this._send({ show: true });
-      this._say(this._epidemicStatus('DONE'));
+      this._say(this._epidemicStatus(tl('DONE')));
     } catch (error) {
       this._say(
         error?.name === 'AbortError'
-          ? 'The epidemic model took too long. Try fewer runs.'
-          : `EPIDEMIC MODEL: ${error?.message || 'failed'}`,
+          ? tl('The epidemic model took too long. Try fewer runs.')
+          : tl('EPIDEMIC MODEL: {error}', {
+              error: error?.message || tl('failed'),
+            }),
       );
     } finally {
       globalThis.clearInterval(ticker);
       if (this._epiRunBtn) {
-        this._epiRunBtn.textContent = 'RUN EPIDEMIC MODEL';
+        this._epiRunBtn.textContent = tl('RUN EPIDEMIC MODEL');
         this._epiRunBtn.disabled = false;
       }
       this._setBusy('');
@@ -2507,19 +2764,35 @@ export class OutbreakPanel {
     const atRisk = data.places.filter((pl) => !pl.origin).length;
     const limit =
       data.stoppedAt?.run === 0
-        ? ` · time limit: stopped at day ${Math.ceil(data.stoppedAt.hour / 24)} of ${Math.ceil(data.hours / 24)} (try fewer days)`
+        ? ` · ${tl(
+            'time limit: stopped at day {day} of {days} (try fewer days)',
+            {
+              day: Math.ceil(data.stoppedAt.hour / 24),
+              days: Math.ceil(data.hours / 24),
+            },
+          )}`
         : data.partial && Number.isFinite(data.runsAsked)
           ? data.counterfactual && data.runs >= data.runsAsked
             ? // Every main run finished; the comparison was cut.
-              ` · time limit: ${data.counterfactual.runs ?? 0} of ${data.runs} paired runs`
-            : ` · time limit: ${data.runs} of ${data.runsAsked} runs (try 50)`
+              ` · ${tl('time limit: {done} of {runs} paired runs', {
+                done: data.counterfactual.runs ?? 0,
+                runs: data.runs,
+              })}`
+            : ` · ${tl('time limit: {done} of {runs} runs (try 50)', {
+                done: data.runs,
+                runs: data.runsAsked,
+              })}`
           : '';
     const paired =
       data.counterfactual?.runs > 0
-        ? ` · ${data.counterfactual.runs} paired runs × 2 arms`
+        ? ` · ${tl('{runs} paired runs × 2 arms', { runs: data.counterfactual.runs })}`
         : '';
     return (
-      `EPIDEMIC MODEL ${how} · ${atRisk} places at risk · ${data.runs} runs` +
+      tl('EPIDEMIC MODEL {how} · {places} places at risk · {runs} runs', {
+        how,
+        places: atRisk,
+        runs: data.runs,
+      }) +
       limit +
       paired
     );
@@ -2543,7 +2816,7 @@ export class OutbreakPanel {
         : this._epiList;
     const note = epidemicTrimmedNote(this._epidemic);
     for (const line of [
-      ...epidemicLines(this._epidemic, { max: Infinity }),
+      ...epidemicLines(this._epidemic, { max: Infinity, say: localSay }),
       ...(note ? [note] : []),
     ])
       fragment.appendChild(this._item(line));
@@ -2570,7 +2843,7 @@ export class OutbreakPanel {
       'application/json',
     );
     const note = epidemicTrimmedNote(result);
-    if (note) this._say(`DOWNLOAD RESULTS: ${note}`);
+    if (note) this._say(tl('DOWNLOAD RESULTS: {note}', { note }));
   }
 
   /** DOWNLOAD CSV: the places table, a blank line, then the daily totals. */
@@ -2583,7 +2856,7 @@ export class OutbreakPanel {
       'text/csv',
     );
     const note = epidemicTrimmedNote(result);
-    if (note) this._say(`DOWNLOAD CSV: ${note}`);
+    if (note) this._say(tl('DOWNLOAD CSV: {note}', { note }));
   }
 
   /**
@@ -2664,7 +2937,7 @@ export class OutbreakPanel {
       typeof URL?.createObjectURL !== 'function' ||
       typeof doc?.createElement !== 'function'
     ) {
-      this._say('Downloads need a browser.');
+      this._say(tl('Downloads need a browser.'));
       return false;
     }
     const url = URL.createObjectURL(new Blob([text], { type }));
@@ -2677,7 +2950,7 @@ export class OutbreakPanel {
     link.remove?.();
     // The browser has read the blob by then.
     globalThis.setTimeout(() => URL.revokeObjectURL?.(url), 1000);
-    this._say(`Saved ${name}.`);
+    this._say(tl('Saved {name}.', { name }));
     return true;
   }
 
@@ -2731,8 +3004,13 @@ export class OutbreakPanel {
       height: H,
       role: 'img',
       'aria-label':
-        `Epidemic curve over ${totals.length} days: up to ${max.toLocaleString('en-US')} infected` +
-        (hasRt ? `; Rt line on a 0 to ${RT_CURVE_MAX} scale` : ''),
+        tl('Epidemic curve over {days} days: up to {count} infected', {
+          days: totals.length,
+          count: localDigits(max.toLocaleString('en-US')),
+        }) +
+        (hasRt
+          ? tl('; Rt line on a 0 to {max} scale', { max: RT_CURVE_MAX })
+          : ''),
     });
     const band = [
       ...totals.map((t, i) => `${x(i).toFixed(1)},${y(t.p95).toFixed(1)}`),
@@ -2830,11 +3108,21 @@ export class OutbreakPanel {
       );
     }
     box.appendChild(svg);
-    const count = (n) => (n ?? 0).toLocaleString('en-US');
+    const count = (n) => localDigits((n ?? 0).toLocaleString('en-US'));
     const legend = doc.createElement('p');
     legend.className = 'outbreak-epi-legend';
     const last = totals.at(-1);
-    legend.textContent = `Day ${totals.length}: infected ${count(last.p50)} (5–95 %: ${count(last.p5)}–${count(last.p95)}) · reported ${count(last.reportedP50)} · deaths ${count(last.deathsP50)}`;
+    legend.textContent = tl(
+      'Day {day}: infected {median} (5–95 %: {low}–{high}) · reported {reported} · deaths {deaths}',
+      {
+        day: totals.length,
+        median: count(last.p50),
+        low: count(last.p5),
+        high: count(last.p95),
+        reported: count(last.reportedP50),
+        deaths: count(last.deathsP50),
+      },
+    );
     box.appendChild(legend);
     // The second legend: the peak and the hospital load, when the result has them.
     if (Number.isFinite(peakDay) || last.hospitalP50 !== undefined) {
@@ -2845,18 +3133,28 @@ export class OutbreakPanel {
           Number.isFinite(summary.peakDayP95)
             ? ` (5–95 %: ${summary.peakDayP5}–${summary.peakDayP95})`
             : '';
-        parts.push(`Peak day ${peakDay}${band}`);
+        parts.push(tl('Peak day {day}', { day: peakDay }) + band);
         if (Number.isFinite(summary.peakNewP50))
-          parts.push(`${count(summary.peakNewP50)} new a day`);
+          parts.push(
+            tl('{count} new a day', { count: count(summary.peakNewP50) }),
+          );
       }
-      parts.push(`in hospital ${count(last.hospitalP50)}`);
-      parts.push(`intensive care ${count(last.icuP50)}`);
+      parts.push(tl('in hospital {count}', { count: count(last.hospitalP50) }));
+      parts.push(tl('intensive care {count}', { count: count(last.icuP50) }));
       if (summary.overflowRuns > 0) {
         const share = Math.round(summary.overflowRuns * 100);
         parts.push(
           Number.isFinite(summary.overflowDayP50)
-            ? `hospitals short of beds from ${timeLabel(this._epidemic.startMs + (summary.overflowDayP50 - 1) * 86_400_000)} in ${share} % of runs`
-            : `hospitals short of beds in ${share} % of runs`,
+            ? tl('hospitals short of beds from {at} in {percent} % of runs', {
+                at: timeLabel(
+                  this._epidemic.startMs +
+                    (summary.overflowDayP50 - 1) * 86_400_000,
+                ),
+                percent: share,
+              })
+            : tl('hospitals short of beds in {percent} % of runs', {
+                percent: share,
+              }),
         );
       }
       const peakLegend = doc.createElement('p');
@@ -2890,8 +3188,8 @@ export class OutbreakPanel {
     }
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       this._log(
-        'FUTURE SPREAD',
-        `${row.place} could not be placed on the map.`,
+        tl('FUTURE SPREAD'),
+        tl('{place} could not be placed on the map.', { place: row.place }),
       );
       return null;
     }
@@ -2922,17 +3220,17 @@ export class OutbreakPanel {
 
   async _mediaSearch() {
     if (this._busy) {
-      this._say(`Still working: ${this._busy}.`);
+      this._say(tl('Still working: {what}.', { what: tl(this._busy) }));
       return;
     }
     const locations = this._state.locations;
     if (!locations.length) {
-      this._say('Add an outbreak location first.');
+      this._say(tl('Add an outbreak location first.'));
       return;
     }
-    this._setBusy('the media search');
+    this._setBusy(msgl('the media search'));
     try {
-      this._say('MEDIA SEARCH · global news…');
+      this._say(tl('MEDIA SEARCH · global news…'));
       const params = new URLSearchParams({
         places: locations.map((l) => l.name).join(';'),
         keywords: this._state.keywords,
@@ -2942,19 +3240,21 @@ export class OutbreakPanel {
         throw new Error(data?.error || `HTTP ${response.status}`);
       const articles = data?.articles || [];
       this._log(
-        'GLOBAL MEDIA · GDELT',
+        tl('GLOBAL MEDIA · GDELT'),
         articles.length
           ? articles
               .slice(0, 25)
               .map((a) => `${a.title} · ${a.domain} · ${a.url}`)
               .join('\n')
-          : 'No article in the last 7 days.',
+          : tl('No article in the last 7 days.'),
       );
       if (!articles.length) {
-        this._say('MEDIA SEARCH DONE · no article in the last 7 days');
+        this._say(tl('MEDIA SEARCH DONE · no article in the last 7 days'));
         return;
       }
-      this._say('MEDIA SEARCH · the language model is reading the articles…');
+      this._say(
+        tl('MEDIA SEARCH · the language model is reading the articles…'),
+      );
       const answer = await this._ask(
         outbreakMediaQuestion(
           locations,
@@ -2965,16 +3265,20 @@ export class OutbreakPanel {
           outbreakNews: articles.slice(0, 60),
         },
       );
-      this._log('NEW LOCATIONS · LLM', answer);
+      this._log(tl('NEW LOCATIONS · LLM'), answer);
       const added = this._keepFound(
         parsePlaceLines(answer, locations),
-        'Media',
+        msgl('Media'),
       );
       this._say(
-        `MEDIA SEARCH DONE · ${added} new location${added === 1 ? '' : 's'} found`,
+        tln(
+          added,
+          'MEDIA SEARCH DONE · {count} new location found',
+          'MEDIA SEARCH DONE · {count} new locations found',
+        ),
       );
     } catch (error) {
-      this._say(error?.message || 'The media search failed.');
+      this._say(error?.message || tl('The media search failed.'));
     } finally {
       this._setBusy('');
     }
@@ -2982,12 +3286,12 @@ export class OutbreakPanel {
 
   async _socialSearch() {
     if (this._busy) {
-      this._say(`Still working: ${this._busy}.`);
+      this._say(tl('Still working: {what}.', { what: tl(this._busy) }));
       return;
     }
     const locations = this._state.locations;
     if (!locations.length) {
-      this._say('Add an outbreak location first.');
+      this._say(tl('Add an outbreak location first.'));
       return;
     }
     const providerId = this._swarm?.value === 'openai' ? 'openai' : 'xai';
@@ -2998,10 +3302,13 @@ export class OutbreakPanel {
       this._state.profile,
     );
     const place = locations[0];
-    this._setBusy('the social media search');
+    this._setBusy(msgl('the social media search'));
     let found = 0;
     this._say(
-      `SOCIAL SEARCH · ${provider.title} · ${SOCIAL_SWARM_BOTS.length} BOTS`,
+      tl('SOCIAL SEARCH · {swarm} · {count} BOTS', {
+        swarm: tl(provider.title),
+        count: SOCIAL_SWARM_BOTS.length,
+      }),
     );
     try {
       const result = await runSocialSwarm({
@@ -3014,26 +3321,31 @@ export class OutbreakPanel {
         onBot: ({ bot, text, error, task }) => {
           if (error) {
             this._log(
-              `${provider.title} · ${bot.label}`,
-              `BOT FAILED: ${error}`,
+              `${tl(provider.title)} · ${tl(bot.label)}`,
+              tl('BOT FAILED: {error}', { error }),
             );
             return;
           }
-          this._log(`${provider.title} · ${bot.label}`, text);
+          this._log(`${tl(provider.title)} · ${tl(bot.label)}`, text);
           // The copied task (no key, no computer) names this place: it is not
           // a finding.
           if (task) return;
           found += this._keepFound(parsePlaceLines(text, locations), bot.label);
         },
         onProgress: ({ back, total }) => {
-          this._say(`SOCIAL SEARCH · ${back}/${total} BACK`);
+          this._say(tl('SOCIAL SEARCH · {back}/{total} BACK', { back, total }));
         },
       });
       this._say(
-        result.unconfigured ||
-          (result.via === 'desktop'
+        result.unconfigured
+          ? tl(result.unconfigured)
+          : result.via === 'desktop'
             ? formatSwarmDesktopStatus(result)
-            : `SOCIAL SEARCH DONE · ${found} new location${found === 1 ? '' : 's'} found`),
+            : tln(
+                found,
+                'SOCIAL SEARCH DONE · {count} new location found',
+                'SOCIAL SEARCH DONE · {count} new locations found',
+              ),
       );
     } finally {
       this._setBusy('');

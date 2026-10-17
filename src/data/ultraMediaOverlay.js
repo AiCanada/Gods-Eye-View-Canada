@@ -13,6 +13,8 @@
  * Each tile's size is kept per photo or video in this browser.
  */
 import { ultraMediaUrl } from '../deviceFeedsCore.mjs';
+// The Ultra tab's words: Quebec French in the fork locales.
+import { tl } from '../i18n/index.js';
 
 /** At most this many photos, and this many videos, on the map at once. */
 export const ULTRA_MEDIA_ON_MAP_MAX = 3;
@@ -162,13 +164,13 @@ export function createUltraMediaOverlay({
       media.setAttribute?.('muted', '');
       media.setAttribute?.('playsinline', '');
     } else {
-      media.alt = 'Ultra cell photo';
+      media.alt = tl('Ultra cell photo');
       media.draggable = false;
     }
     media.src = ultraMediaUrl(name);
     const grip = documentRef.createElement('div');
     grip.className = 'ultra-media-resize';
-    grip.title = 'Drag to resize';
+    grip.title = tl('Drag to resize');
     tile.appendChild(title);
     tile.appendChild(media);
     tile.appendChild(grip);
@@ -296,13 +298,19 @@ export function createUltraMediaOverlay({
       photos.slice(0, ULTRA_MEDIA_ON_MAP_MAX).forEach((name, i) =>
         wanted.set(name, {
           kind: 'photo',
-          label: `PHOTO ${((photoStart + i) % Math.max(1, photoTotal)) + 1}/${photoTotal || photos.length}`,
+          label: tl('PHOTO {index}/{total}', {
+            index: ((photoStart + i) % Math.max(1, photoTotal)) + 1,
+            total: photoTotal || photos.length,
+          }),
         }),
       );
       videos.slice(0, ULTRA_MEDIA_ON_MAP_MAX).forEach((name, i) =>
         wanted.set(name, {
           kind: 'clip',
-          label: `VIDEO ${((videoStart + i) % Math.max(1, videoTotal)) + 1}/${videoTotal || videos.length}`,
+          label: tl('VIDEO {index}/{total}', {
+            index: ((videoStart + i) % Math.max(1, videoTotal)) + 1,
+            total: videoTotal || videos.length,
+          }),
         }),
       );
       for (const [name, entry] of [...tiles]) {

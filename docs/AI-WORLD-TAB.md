@@ -56,6 +56,12 @@ box"). Its data format is in [WORLD-MODEL-DATA.md](WORLD-MODEL-DATA.md).
    after.
 9. **INSTRUCTIONS** — the short steps, folded; the full guide is
    `docs/TRAINING-GUIDE.md`.
+10. **CUSTOM LLM TRAINING** — last in the tab (moved from POWER UP on
+    2026-10-17): a language model trained on the ticked recordings, custom
+    URLs and local files, from a base model already on this PC
+    (`src/llmTrainingSetup.js`, routes `/api/llm-training`, part 4 of
+    `docs/TRAINING-GUIDE.md`). The tab mounts it into `#llm-training` and
+    ends it with itself; it stays hidden until its server routes answer.
 
 Like every dashboard box on desktop, the tab resizes from its bottom-right
 corner (`src/ui/panelCornerResize.js`); open, it is 520 px wide by default.

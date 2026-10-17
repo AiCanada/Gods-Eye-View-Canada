@@ -5,6 +5,8 @@
  * the camera picture is there again, untouched underneath.
  */
 import { ultraMediaNames, ultraMediaUrl } from '../deviceFeedsCore.mjs';
+// The Ultra tab's words: Quebec French in the fork locales.
+import { tl } from '../i18n/index.js';
 
 const VIEW_ID = 'cctv-ultra-view';
 
@@ -52,11 +54,13 @@ export function showUltraMediaInCctv(
   const bar = documentRef.createElement('div');
   bar.className = 'cctv-ultra-bar';
   const label = documentRef.createElement('span');
-  label.textContent = `ULTRA ${isVideo ? 'VIDEO' : 'PHOTO'} · ${takenAt(clean)}`;
+  label.textContent = isVideo
+    ? tl('ULTRA VIDEO · {time}', { time: takenAt(clean) })
+    : tl('ULTRA PHOTO · {time}', { time: takenAt(clean) });
   const back = documentRef.createElement('button');
   back.type = 'button';
   back.className = 'scene-btn';
-  back.textContent = '✕ BACK TO CAMERA';
+  back.textContent = tl('✕ BACK TO CAMERA');
   back.addEventListener('click', () => closeUltraMediaInCctv(documentRef));
   bar.appendChild(label);
   bar.appendChild(back);
@@ -69,7 +73,7 @@ export function showUltraMediaInCctv(
     media.loop = true;
     media.playsInline = true;
   } else {
-    media.alt = 'Ultra cell photo';
+    media.alt = tl('Ultra cell photo');
   }
   media.src = ultraMediaUrl(clean);
   view.appendChild(bar);

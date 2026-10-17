@@ -1,6 +1,6 @@
 # Translating God's Eye View
 
-Shipped languages: **English** (source and fallback), **Spanish** (`es`) and **Russian** (`ru`).
+Shipped languages: **English** (source and fallback), **Spanish** (`es`), **Quebec French** (`fr-CA`, shown as Français Québécois), **Inuktitut** (`iu`, written in syllabics) and **Russian** (`ru`).
 
 ## How it works
 
@@ -36,6 +36,10 @@ npm run i18n -- --prune           # drop entries the code no longer uses
 
 Changing English text changes its key: the old translation becomes unused and the new text shows as missing. Translate it and prune.
 
+## The fork's own tabs
+
+The five tabs on the left that God's Eye View Canada adds, and the POWER UP chip's count, are translated only into the languages listed in `src/i18n/fork-locales.json` (now `fr-CA` and `iu`); every other language shows them in English. Their entries live in the same catalog file, and `--missing` lists them with the rest. To translate them into another language, add its code to `src/i18n/fork-locales.json` once its catalog holds them: from then on the check requires them.
+
 ## Fixing a translation
 
 Edit `src/i18n/locales/<code>.json` and run `npm run i18n`. To see your change, open the app with `?lang=<code>`.
@@ -44,7 +48,7 @@ Edit `src/i18n/locales/<code>.json` and run `npm run i18n`. To see your change, 
 
 1. Create `src/i18n/locales/<code>.json`, fill it from `npm run i18n -- --missing <code>` (start from `{}`), and translate every entry.
 2. Import it in `src/i18n/index.js` and add it to `CATALOGS`.
-3. Add the code to `LOCALES` and its own-language name to `LOCALE_NAMES` in `src/i18n/locale.js`. Right-to-left languages also go in `RTL_LOCALES`.
+3. Add the code to `LOCALES` and its own-language name to `LOCALE_NAMES` in `src/i18n/locale.js`. Right-to-left languages also go in `RTL_LOCALES`. A code with a region, such as `fr-CA`, is matched by its exact tag first, and its language alone (`fr`, `fr-FR`) selects it too.
 4. Add `src/i18n/locales/<code>.json` next to `ru.json` in `scripts/package-boundaries.json`.
 5. Write `docs/translations/<code>.md`: glossary, plural forms, units and style (copy the structure of `ru.md`).
 6. Run `npm run i18n` and `npm test`, then check the panels in the app at narrow widths.
@@ -63,4 +67,4 @@ These are contracts, not copy: layer ids and registry keys, status enums and oth
 
 ## Language notes
 
-Each language keeps its glossary, plural forms, units and style in its own file, `docs/translations/<code>.md`: [Spanish](./translations/es.md), [Russian](./translations/ru.md). Read it before translating, and add a term there when you settle on one.
+Each language keeps its glossary, plural forms, units and style in its own file, `docs/translations/<code>.md`: [Spanish](./translations/es.md), [Quebec French](./translations/fr-CA.md), [Inuktitut](./translations/iu.md), [Russian](./translations/ru.md). Read it before translating, and add a term there when you settle on one.

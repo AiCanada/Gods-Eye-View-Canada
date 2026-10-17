@@ -12,8 +12,10 @@
  * login.
  *
  * Pure: no file or network access, so the server, the setup card and the tests
- * share every rule here.
+ * share every rule here. What the cards show is marked with tl() from
+ * src/i18n/marker.js (Quebec French on the page; English on the server).
  */
+import { msgl, tl } from './i18n/marker.js';
 
 export const DEVICE_FEED_STORE = 'config/device-feeds.json';
 /** Fired on window when a device is saved or removed; detail.count is how many remain. */
@@ -78,13 +80,21 @@ export function deviceHiddenIds(value) {
 export const DEVICE_HISTORY_PERIOD_KEY = 'ultra-map-period';
 /** How far back the map draws a device's saved route, under its live trail. */
 export const DEVICE_HISTORY_PERIODS = Object.freeze([
-  Object.freeze({ id: 'live', label: 'Live only', ms: 0 }),
-  Object.freeze({ id: '1h', label: 'Last hour', ms: 3_600_000 }),
-  Object.freeze({ id: '6h', label: 'Last 6 hours', ms: 6 * 3_600_000 }),
-  Object.freeze({ id: '24h', label: 'Last 24 hours', ms: 24 * 3_600_000 }),
-  Object.freeze({ id: '7d', label: 'Last 7 days', ms: 7 * 86_400_000 }),
-  Object.freeze({ id: '30d', label: 'Last 30 days', ms: 30 * 86_400_000 }),
-  Object.freeze({ id: '365d', label: 'Last year', ms: 365 * 86_400_000 }),
+  Object.freeze({ id: 'live', label: msgl('Live only'), ms: 0 }),
+  Object.freeze({ id: '1h', label: msgl('Last hour'), ms: 3_600_000 }),
+  Object.freeze({ id: '6h', label: msgl('Last 6 hours'), ms: 6 * 3_600_000 }),
+  Object.freeze({
+    id: '24h',
+    label: msgl('Last 24 hours'),
+    ms: 24 * 3_600_000,
+  }),
+  Object.freeze({ id: '7d', label: msgl('Last 7 days'), ms: 7 * 86_400_000 }),
+  Object.freeze({
+    id: '30d',
+    label: msgl('Last 30 days'),
+    ms: 30 * 86_400_000,
+  }),
+  Object.freeze({ id: '365d', label: msgl('Last year'), ms: 365 * 86_400_000 }),
 ]);
 /** The route shown before anyone chooses: 30 days, as before the choice existed. */
 export const DEVICE_HISTORY_DEFAULT_PERIOD = '30d';
@@ -144,212 +154,236 @@ const QUERY_NAME = /^[A-Za-z0-9_.-]{1,64}$/;
 export const DEVICE_FEED_METHODS = Object.freeze({
   // The phone's app sends positions here; nothing is asked for. See `parseDeviceReport`.
   'report-in': {
-    label:
+    label: msgl(
       'Reports to this app (Traccar Client, OwnTracks, GPSLogger, Overland on the phone; no server of your own)',
+    ),
     direct: true,
     carries: 'position',
     reportsIn: true,
     urlHint: '',
   },
   'http-json': {
-    label: 'HTTP JSON position (any REST endpoint)',
+    label: msgl('HTTP JSON position (any REST endpoint)'),
     direct: true,
     carries: 'position',
     urlHint: 'https://device.example/api/position',
   },
   mavlink2rest: {
-    label: 'MAVLink via mavlink2rest (ArduPilot, PX4, BlueOS)',
+    label: msgl('MAVLink via mavlink2rest (ArduPilot, PX4, BlueOS)'),
     direct: true,
     carries: 'position',
     urlHint: 'http://192.168.2.2:6040',
   },
   traccar: {
-    label: 'Traccar server (REST API)',
+    label: msgl('Traccar server (REST API)'),
     direct: true,
     carries: 'position',
     urlHint: 'https://traccar.example/api/positions?deviceId=1',
   },
   signalk: {
-    label: 'Signal K server (NMEA 0183 / NMEA 2000 gateway)',
+    label: msgl('Signal K server (NMEA 0183 / NMEA 2000 gateway)'),
     direct: true,
     carries: 'position',
     urlHint: 'http://signalk.local:3000',
   },
   owntracks: {
-    label: 'OwnTracks Recorder (HTTP)',
+    label: msgl('OwnTracks Recorder (HTTP)'),
     direct: true,
     carries: 'position',
     urlHint: 'https://owntracks.example/api/0/last?user=me&device=phone',
   },
   'home-assistant': {
-    label:
+    label: msgl(
       'Home Assistant device tracker (phone companion app, iCloud, Life360, any tracker it knows)',
+    ),
     direct: true,
     carries: 'position',
     urlHint:
       'http://homeassistant.local:8123/api/states/device_tracker.my_phone',
   },
   geojson: {
-    label: 'GeoJSON point or feature URL',
+    label: msgl('GeoJSON point or feature URL'),
     direct: true,
     carries: 'position',
     urlHint: 'https://device.example/position.geojson',
   },
   kml: {
-    label: 'KML feed (Garmin inReach MapShare, shared tracker feeds)',
+    label: msgl('KML feed (Garmin inReach MapShare, shared tracker feeds)'),
     direct: true,
     carries: 'position',
     urlHint: 'https://share.garmin.com/Feed/Share/name',
   },
   'nmea-http': {
-    label: 'NMEA 0183 sentences over HTTP (GGA / RMC text)',
+    label: msgl('NMEA 0183 sentences over HTTP (GGA / RMC text)'),
     direct: true,
     carries: 'position',
     urlHint: 'http://gateway.local/nmea.txt',
   },
   snapshot: {
-    label: 'Still picture only (JPEG/PNG snapshot URL), fixed position',
+    label: msgl('Still picture only (JPEG/PNG snapshot URL), fixed position'),
     direct: true,
     carries: 'picture',
     urlHint: '',
   },
   // ---- need a bridge ------------------------------------------------------
   rtsp: {
-    label: 'RTSP video (most drone, robot and ROV cameras)',
+    label: msgl('RTSP video (most drone, robot and ROV cameras)'),
     direct: false,
     carries: 'picture',
-    bridge:
+    bridge: msgl(
       'MediaMTX or go2rtc: republish as a snapshot or MJPEG URL, then use the picture address.',
+    ),
   },
   rtmp: {
-    label: 'RTMP video (DJI and action-camera live streaming)',
+    label: msgl('RTMP video (DJI and action-camera live streaming)'),
     direct: false,
     carries: 'picture',
-    bridge: 'MediaMTX or go2rtc: republish as a snapshot or MJPEG URL.',
+    bridge: msgl('MediaMTX or go2rtc: republish as a snapshot or MJPEG URL.'),
   },
   webrtc: {
-    label: 'WebRTC / WHEP video',
+    label: msgl('WebRTC / WHEP video'),
     direct: false,
     carries: 'picture',
-    bridge: 'go2rtc: republish as a snapshot or MJPEG URL.',
+    bridge: msgl('go2rtc: republish as a snapshot or MJPEG URL.'),
   },
   srt: {
-    label: 'SRT video',
+    label: msgl('SRT video'),
     direct: false,
     carries: 'picture',
-    bridge: 'MediaMTX: republish as a snapshot or MJPEG URL.',
+    bridge: msgl('MediaMTX: republish as a snapshot or MJPEG URL.'),
   },
   'mavlink-udp': {
-    label: 'MAVLink over UDP / TCP / serial (14550)',
+    label: msgl('MAVLink over UDP / TCP / serial (14550)'),
     direct: false,
     carries: 'position',
-    bridge:
+    bridge: msgl(
       'mavlink2rest (or BlueOS, which includes it): gives the same telemetry over HTTP. Use the mavlink2rest method.',
+    ),
   },
   mqtt: {
-    label: 'MQTT telemetry (OwnTracks MQTT, Meshtastic, fleet brokers)',
+    label: msgl('MQTT telemetry (OwnTracks MQTT, Meshtastic, fleet brokers)'),
     direct: false,
     carries: 'position',
-    bridge:
+    bridge: msgl(
       'OwnTracks Recorder, Node-RED or Home Assistant: expose the last position over HTTP. Use HTTP JSON or OwnTracks.',
+    ),
   },
   ros: {
-    label: 'ROS / ROS 2 (rosbridge WebSocket, Foxglove bridge)',
+    label: msgl('ROS / ROS 2 (rosbridge WebSocket, Foxglove bridge)'),
     direct: false,
     carries: 'both',
-    bridge:
+    bridge: msgl(
       'A small node that serves /fix (NavSatFix) as JSON over HTTP, and web_video_server for the picture (MJPEG).',
+    ),
   },
   'dji-cloud': {
-    label: 'DJI Cloud API (Dock, Pilot 2)',
+    label: msgl('DJI Cloud API (Dock, Pilot 2)'),
     direct: false,
     carries: 'both',
-    bridge:
+    bridge: msgl(
       'A DJI Cloud API server of your own (MQTT + HTTPS): expose the aircraft position as HTTP JSON.',
+    ),
   },
   'nmea-tcp': {
-    label: 'NMEA 0183 over TCP / UDP / serial, NMEA 2000',
+    label: msgl('NMEA 0183 over TCP / UDP / serial, NMEA 2000'),
     direct: false,
     carries: 'position',
-    bridge: 'Signal K server reads all of these. Use the Signal K method.',
+    bridge: msgl(
+      'Signal K server reads all of these. Use the Signal K method.',
+    ),
   },
   ais: {
-    label: 'AIS transponder (class A/B)',
+    label: msgl('AIS transponder (class A/B)'),
     direct: false,
     carries: 'position',
-    bridge:
+    bridge: msgl(
       'Already on the map through the AIS layer; or a Signal K server with an AIS receiver.',
+    ),
   },
   'phone-app': {
-    label:
+    label: msgl(
       'Phone tracking apps through a server of yours (Traccar, OwnTracks Recorder, Home Assistant)',
+    ),
     direct: false,
     carries: 'position',
-    bridge:
+    bridge: msgl(
       'Simplest is "Reports to this app": the phone app sends straight here. Otherwise point it at your Traccar server, OwnTracks Recorder or Home Assistant, then use that method. A phone cannot be found by its number.',
+    ),
   },
   'find-my': {
-    label: 'Apple Find My, Google Find Hub, AirTag, Life360',
+    label: msgl('Apple Find My, Google Find Hub, AirTag, Life360'),
     direct: false,
     carries: 'position',
-    bridge:
+    bridge: msgl(
       'None has a public API. Home Assistant (iCloud or Life360 integration) shows them as a device tracker: use the Home Assistant method.',
+    ),
   },
   'cellular-tracker': {
-    label:
+    label: msgl(
       'Cellular and OBD GPS trackers (GT06, TK103, Teltonika, Queclink, Concox and 200 more)',
+    ),
     direct: false,
     carries: 'position',
-    bridge:
+    bridge: msgl(
       'Traccar server speaks their protocols: point the tracker at it, then use the Traccar method.',
+    ),
   },
   aprs: {
-    label: 'APRS',
+    label: msgl('APRS'),
     direct: false,
     carries: 'position',
-    bridge:
+    bridge: msgl(
       'aprs.fi API (HTTP JSON with an API key): use HTTP JSON with a query-parameter key.',
+    ),
   },
   satellite: {
-    label: 'Satellite trackers (Iridium, Globalstar SPOT, inReach)',
+    label: msgl('Satellite trackers (Iridium, Globalstar SPOT, inReach)'),
     direct: false,
     carries: 'position',
-    bridge:
+    bridge: msgl(
       'Their shared web feed: use the KML or HTTP JSON method with the feed address.',
+    ),
   },
   'vendor-api': {
-    label: 'Vendor cloud or gRPC API (Boston Dynamics, Skydio, fleet portals)',
+    label: msgl(
+      'Vendor cloud or gRPC API (Boston Dynamics, Skydio, fleet portals)',
+    ),
     direct: false,
     carries: 'both',
-    bridge:
+    bridge: msgl(
       'The vendor SDK in a small service of your own that serves position as HTTP JSON.',
+    ),
   },
   'opc-ua': {
-    label: 'OPC UA / Modbus (industrial robots)',
+    label: msgl('OPC UA / Modbus (industrial robots)'),
     direct: false,
     carries: 'position',
-    bridge: 'Node-RED or an OPC UA gateway: expose the pose as HTTP JSON.',
+    bridge: msgl(
+      'Node-RED or an OPC UA gateway: expose the pose as HTTP JSON.',
+    ),
   },
 });
 
 /** Logins a direct method can use. Basic also answers a Digest challenge. */
 export const DEVICE_FEED_AUTH_MODES = Object.freeze({
-  none: { label: 'No login' },
+  none: { label: msgl('No login') },
   basic: {
-    label: 'Username + password (HTTP Basic / Digest)',
+    label: msgl('Username + password (HTTP Basic / Digest)'),
     fields: ['username', 'password'],
   },
   bearer: {
-    label: 'Bearer token (API token, JWT, Home Assistant, Signal K, Traccar)',
+    label: msgl(
+      'Bearer token (API token, JWT, Home Assistant, Signal K, Traccar)',
+    ),
     fields: ['token'],
   },
   header: {
-    label: 'API key in a request header',
+    label: msgl('API key in a request header'),
     fields: ['keyName', 'token'],
     keyNameDefault: 'X-API-Key',
   },
   query: {
-    label: 'API key in the address (query parameter)',
+    label: msgl('API key in the address (query parameter)'),
     fields: ['keyName', 'token'],
     keyNameDefault: 'api_key',
   },
@@ -357,14 +391,23 @@ export const DEVICE_FEED_AUTH_MODES = Object.freeze({
 
 const everyAuth = Object.freeze(Object.keys(DEVICE_FEED_AUTH_MODES));
 
+/**
+ * The Ultra Security Package card's blurb; {km} is DEVICE_RECORD_RADIUS_KM.
+ * The card shows it through tl() (src/deviceFeedsSetup.js).
+ */
+export const DEVICE_SECURITY_UNLOCKS = msgl(
+  'A GPS tracker or a phone you are responsible for, followed live: the map keeps it in view wherever it goes, and everything the map knows within a distance you choose of it, 1 to {km} km (cameras, aircraft, vessels, traffic, every layer that is on), can be saved as it moves. A phone reports through an app installed on it (simplest: straight to this app); it cannot be found by its number.',
+);
+
 /** The four cards, in display order. */
 export const DEVICE_FEED_KINDS = Object.freeze([
   Object.freeze({
     id: 'drone',
-    title: 'AERIAL DRONES · UAV',
-    noun: 'DRONE',
-    unlocks:
+    title: msgl('AERIAL DRONES · UAV'),
+    noun: msgl('DRONE'),
+    unlocks: msgl(
       'Your own uncrewed aircraft on the map, live: position, altitude, heading, and a picture from the camera when one is reachable.',
+    ),
     methods: Object.freeze([
       'mavlink2rest',
       'http-json',
@@ -387,10 +430,11 @@ export const DEVICE_FEED_KINDS = Object.freeze([
   }),
   Object.freeze({
     id: 'robot',
-    title: 'ROBOTS',
-    noun: 'ROBOT',
-    unlocks:
+    title: msgl('ROBOTS'),
+    noun: msgl('ROBOT'),
+    unlocks: msgl(
       'Ground robots, rovers and legged platforms at their live position, with a camera picture when one is reachable.',
+    ),
     methods: Object.freeze([
       'http-json',
       'geojson',
@@ -410,10 +454,11 @@ export const DEVICE_FEED_KINDS = Object.freeze([
   }),
   Object.freeze({
     id: 'marine',
-    title: 'MARINE DRONES · USV / AUV',
-    noun: 'MARINE DRONE',
-    unlocks:
+    title: msgl('MARINE DRONES · USV / AUV'),
+    noun: msgl('MARINE DRONE'),
+    unlocks: msgl(
       'Uncrewed surface vessels and autonomous underwater vehicles at their last reported position (an AUV reports when it surfaces or over its acoustic link).',
+    ),
     methods: Object.freeze([
       'signalk',
       'mavlink2rest',
@@ -437,10 +482,11 @@ export const DEVICE_FEED_KINDS = Object.freeze([
   }),
   Object.freeze({
     id: 'tracker',
-    title: 'GPS TRACKING DEVICES',
-    noun: 'TRACKER',
-    unlocks:
+    title: msgl('GPS TRACKING DEVICES'),
+    noun: msgl('TRACKER'),
+    unlocks: msgl(
       'Any GPS tracker you own: vehicles, assets, people who asked to be followed, pets. A phone app reporting straight here, a Traccar server, OwnTracks, a shared satellite feed, or any JSON endpoint.',
+    ),
     methods: Object.freeze([
       'report-in',
       'traccar',
@@ -465,9 +511,12 @@ export const DEVICE_FEED_KINDS = Object.freeze([
   }),
   Object.freeze({
     id: 'security',
-    title: 'ULTRA SECURITY PACKAGE',
-    noun: 'PACKAGE',
-    unlocks: `A GPS tracker or a phone you are responsible for, followed live: the map keeps it in view wherever it goes, and everything the map knows within a distance you choose of it, 1 to ${DEVICE_RECORD_RADIUS_KM} km (cameras, aircraft, vessels, traffic, every layer that is on), can be saved as it moves. A phone reports through an app installed on it (simplest: straight to this app); it cannot be found by its number.`,
+    title: msgl('ULTRA SECURITY PACKAGE'),
+    noun: msgl('PACKAGE'),
+    unlocks: DEVICE_SECURITY_UNLOCKS.replace(
+      '{km}',
+      String(DEVICE_RECORD_RADIUS_KM),
+    ),
     methods: Object.freeze([
       'report-in',
       'traccar',
@@ -752,35 +801,44 @@ const fail = (error) => ({ ok: false, error });
 export function applyDeviceFeedUpdate(body, previous, { randomValues } = {}) {
   const config = normalizeDeviceFeedConfig(previous);
   if (!body || typeof body !== 'object' || Array.isArray(body))
-    return fail('Expected a JSON object');
+    return fail(msgl('Expected a JSON object'));
   if (body.removeFeedId !== undefined) {
     const id = String(body.removeFeedId);
     const next = config.feeds.filter((feed) => feed.id !== id);
-    if (next.length === config.feeds.length) return fail('No such device');
+    if (next.length === config.feeds.length)
+      return fail(msgl('No such device'));
     return { ok: true, config: { ...config, feeds: next } };
   }
   const kind = KIND_BY_ID.get(body.kind);
-  if (!kind) return fail('Unknown device type');
+  if (!kind) return fail(msgl('Unknown device type'));
   const saved = body.id
     ? config.feeds.find((feed) => feed.id === String(body.id))
     : null;
-  if (body.id && !saved) return fail('No such device');
+  if (body.id && !saved) return fail(msgl('No such device'));
   if (saved && saved.kind !== kind.id)
-    return fail('A device cannot change type');
+    return fail(msgl('A device cannot change type'));
   const feed = saved ? { ...saved } : blankFeed(kind.id);
 
   const name = text(body.name, DEVICE_FEED_NAME_LIMIT);
   if (!name)
     return fail(
-      `Name is required (up to ${DEVICE_FEED_NAME_LIMIT} characters)`,
+      tl('Name is required (up to {max} characters)', {
+        max: DEVICE_FEED_NAME_LIMIT,
+      }),
     );
   feed.name = name;
 
   const method = String(body.method || '');
   const spec = DEVICE_FEED_METHODS[method];
   if (!spec || !kind.methods.includes(method))
-    return fail('Unknown connection method');
-  if (!spec.direct) return fail(`${spec.label} needs a bridge: ${spec.bridge}`);
+    return fail(msgl('Unknown connection method'));
+  if (!spec.direct)
+    return fail(
+      tl('{method} needs a bridge: {bridge}', {
+        method: tl(spec.label),
+        bridge: tl(spec.bridge),
+      }),
+    );
   feed.method = method;
 
   // The card is shown a masked address, never the real one, so an address that
@@ -790,18 +848,24 @@ export function applyDeviceFeedUpdate(body, previous, { randomValues } = {}) {
   const url = address(body.url, feed.url);
   if (url === null)
     return fail(
-      'The address must be http(s), with no login inside it (use the login fields)',
+      msgl(
+        'The address must be http(s), with no login inside it (use the login fields)',
+      ),
     );
   const pictureUrl = address(body.pictureUrl, feed.pictureUrl);
   if (pictureUrl === null)
-    return fail('The picture address must be http(s), with no login inside it');
+    return fail(
+      msgl('The picture address must be http(s), with no login inside it'),
+    );
   feed.url = url;
   feed.pictureUrl = pictureUrl;
   const reportsIn = methodReportsIn(method);
   if (spec.carries === 'position' && !url && !reportsIn)
-    return fail('This method needs the address it reads the position from');
+    return fail(
+      msgl('This method needs the address it reads the position from'),
+    );
   if (method === 'snapshot' && !pictureUrl)
-    return fail('A picture-only device needs its picture address');
+    return fail(msgl('A picture-only device needs its picture address'));
   // A reporting device is known by its key: kept across edits, minted on the
   // first save or when a new one is asked for, and never something the owner types.
   if (reportsIn) {
@@ -820,13 +884,15 @@ export function applyDeviceFeedUpdate(body, previous, { randomValues } = {}) {
     const value = text(body[field], 120);
     if (value === null || (value && !/^[A-Za-z0-9_$.[\]-]+$/.test(value)))
       return fail(
-        'A JSON path is letters, digits, dots and [index] only, for example data.position.lat',
+        msgl(
+          'A JSON path is letters, digits, dots and [index] only, for example data.position.lat',
+        ),
       );
     feed[field] = value;
   }
   if (Boolean(feed.latPath) !== Boolean(feed.lonPath))
     return fail(
-      'Give both JSON paths, or neither (they are found automatically)',
+      msgl('Give both JSON paths, or neither (they are found automatically)'),
     );
 
   if (body.lat !== undefined || body.lon !== undefined) {
@@ -838,18 +904,22 @@ export function applyDeviceFeedUpdate(body, previous, { randomValues } = {}) {
       (lat === null) !== (lon === null)
     )
       return fail(
-        'A fixed position is a latitude (-90 to 90) and a longitude (-180 to 180), both or neither',
+        msgl(
+          'A fixed position is a latitude (-90 to 90) and a longitude (-180 to 180), both or neither',
+        ),
       );
     feed.lat = lat;
     feed.lon = lon;
   }
   if (method === 'snapshot' && (feed.lat === null || feed.lat === undefined))
-    return fail('A picture-only device needs a fixed position to stand at');
+    return fail(
+      msgl('A picture-only device needs a fixed position to stand at'),
+    );
 
   // The key is the login of a reporting device; there is nothing to log in to.
   const auth = reportsIn ? 'none' : String(body.auth || 'none');
   if (!DEVICE_FEED_AUTH_MODES[auth] || !kind.authModes.includes(auth))
-    return fail('Unknown login type');
+    return fail(msgl('Unknown login type'));
   feed.auth = auth;
   for (const secret of ['password', 'token']) {
     if (body[secret] === null) feed[secret] = '';
@@ -858,45 +928,47 @@ export function applyDeviceFeedUpdate(body, previous, { randomValues } = {}) {
         body[secret].length > DEVICE_FEED_VALUE_LIMIT ||
         CONTROL_CHARS.test(body[secret])
       )
-        return fail('That login value is too long or has control characters');
+        return fail(
+          msgl('That login value is too long or has control characters'),
+        );
       feed[secret] = body[secret];
     }
   }
   if (body.username !== undefined) {
     const username = text(body.username);
     if (username === null)
-      return fail('That username is too long or has control characters');
+      return fail(msgl('That username is too long or has control characters'));
     feed.username = username;
   }
   if (body.keyName !== undefined) {
     const keyName = text(body.keyName, 64);
-    if (keyName === null) return fail('That key name is too long');
+    if (keyName === null) return fail(msgl('That key name is too long'));
     feed.keyName = keyName;
   }
   const wanted = DEVICE_FEED_AUTH_MODES[auth];
   if (auth === 'basic' && (!feed.username || !feed.password))
-    return fail('A username and a password are both required');
+    return fail(msgl('A username and a password are both required'));
   if (
     (auth === 'bearer' || auth === 'header' || auth === 'query') &&
     !feed.token
   )
-    return fail('The token or key is required');
+    return fail(msgl('The token or key is required'));
   if (auth === 'header') {
     feed.keyName ||= wanted.keyNameDefault;
     if (!HEADER_NAME.test(feed.keyName))
-      return fail('A header name is letters, digits and dashes');
+      return fail(msgl('A header name is letters, digits and dashes'));
     if (
       /^(host|content-length|connection|cookie|transfer-encoding)$/i.test(
         feed.keyName,
       )
     )
-      return fail('That header cannot carry a key');
+      return fail(msgl('That header cannot carry a key'));
   }
   if (auth === 'query') {
     feed.keyName ||= wanted.keyNameDefault;
     if (!QUERY_NAME.test(feed.keyName))
       return fail(
-        'A parameter name is letters, digits, dot, dash and underscore',
+        msgl('A parameter name is letters, digits, dot, dash and underscore'),
       );
   }
   // Leaving a login type forgets what only that type used.
@@ -913,7 +985,9 @@ export function applyDeviceFeedUpdate(body, previous, { randomValues } = {}) {
     for (const address of [feed.url, feed.pictureUrl]) {
       if (feedTransport(address) === 'insecure')
         return fail(
-          'A login is only sent over https, or over plain http to a device on your own network',
+          msgl(
+            'A login is only sent over https, or over plain http to a device on your own network',
+          ),
         );
     }
   }
@@ -923,7 +997,7 @@ export function applyDeviceFeedUpdate(body, previous, { randomValues } = {}) {
   for (const option of ['follow', 'record']) {
     if (body[option] === undefined) continue;
     if (typeof body[option] !== 'boolean')
-      return fail('Follow and record are on or off');
+      return fail(msgl('Follow and record are on or off'));
     feed[option] = body[option];
   }
   if (feed.follow)
@@ -934,7 +1008,9 @@ export function applyDeviceFeedUpdate(body, previous, { randomValues } = {}) {
   if (body.recordKm !== undefined) {
     if (!DEVICE_RECORD_RADIUS_OPTIONS_KM.includes(Number(body.recordKm)))
       return fail(
-        `The recording distance is one of ${DEVICE_RECORD_RADIUS_OPTIONS_KM.join(', ')} km`,
+        tl('The recording distance is one of {options} km', {
+          options: DEVICE_RECORD_RADIUS_OPTIONS_KM.join(', '),
+        }),
       );
     feed.recordKm = Number(body.recordKm);
   }
@@ -1593,9 +1669,9 @@ export function buildDeviceRecordingLine(
   { at = Date.now(), radiusKm = DEVICE_RECORD_RADIUS_KM } = {},
 ) {
   if (!body || typeof body !== 'object' || Array.isArray(body))
-    return fail('Expected a JSON object');
+    return fail(msgl('Expected a JSON object'));
   if (!target || !validPoint(num(target.lat), num(target.lon)))
-    return fail('The device has no position yet');
+    return fail(msgl('The device has no position yet'));
   const layers = {};
   let kept = 0;
   const sent =

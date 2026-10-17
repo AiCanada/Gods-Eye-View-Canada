@@ -2,19 +2,29 @@
  * Study pairs for the world-model bins. A shared hour is not a cause.
  * A side with no reading stays blank. Channels the list does not name
  * are still in the same hour, so a link can show up that this list missed.
+ *
+ * The text is English, marked with tl() from src/i18n/marker.js (Quebec
+ * French on the page); the server loads this module through
+ * src/aiWorldSelection.mjs.
  */
+import { localDigits, msgl, tl } from './i18n/marker.js';
+
 export const TRAINING_LINKS = Object.freeze([
   Object.freeze({
     id: 'news-prices',
     rank: 'primary',
     reads: ['news.articles', 'news-urls.count', 'markets'],
-    note: 'News and a price share an hour. A headline that names a commodity or a currency is counted on that series. Some stories move a price and some do not. The bin does not decide which.',
+    note: msgl(
+      'News and a price share an hour. A headline that names a commodity or a currency is counted on that series. Some stories move a price and some do not. The bin does not decide which.',
+    ),
   }),
   Object.freeze({
     id: 'unplanned',
     rank: 'secondary',
     reads: ['markets', 'every other non-military number in that hour'],
-    note: 'Any other recorded number can sit beside a price, including a link nobody named in advance.',
+    note: msgl(
+      'Any other recorded number can sit beside a price, including a link nobody named in advance.',
+    ),
   }),
   Object.freeze({
     id: 'vessel-supply',
@@ -29,7 +39,9 @@ export const TRAINING_LINKS = Object.freeze([
       'markets.wheat',
       'markets.copper',
     ],
-    note: 'Tanker, food, metal, and container counts come only from the AIS type or destination text. Other cargo stays cargo. No tonnes are invented.',
+    note: msgl(
+      'Tanker, food, metal, and container counts come only from the AIS type or destination text. Other cargo stays cargo. No tonnes are invented.',
+    ),
   }),
   Object.freeze({
     id: 'traffic-fuel',
@@ -42,7 +54,9 @@ export const TRAINING_LINKS = Object.freeze([
       'markets.gasoline',
       'markets.crude',
     ],
-    note: 'Camera counts and road speed are the measured traffic. Regional fuel use is not metered, so it is not filled in. The gasoline print is a price, not gallons burned.',
+    note: msgl(
+      'Camera counts and road speed are the measured traffic. Regional fuel use is not metered, so it is not filled in. The gasoline print is a price, not gallons burned.',
+    ),
   }),
   Object.freeze({
     id: 'farmland',
@@ -54,7 +68,9 @@ export const TRAINING_LINKS = Object.freeze([
       'observed-weather.cloudCoverPct',
       'markets.wheat',
     ],
-    note: 'Temperature, rain, and cloud sit beside the wheat price. Crop yield is not estimated.',
+    note: msgl(
+      'Temperature, rain, and cloud sit beside the wheat price. Crop yield is not estimated.',
+    ),
   }),
   Object.freeze({
     id: 'farmland-hazards',
@@ -67,54 +83,73 @@ export const TRAINING_LINKS = Object.freeze([
       'observed-weather.windKph',
       'markets.wheat',
     ],
-    note: 'Fire, wind, and quakes are a second look at the same wheat price. They are not scored as damage.',
+    note: msgl(
+      'Fire, wind, and quakes are a second look at the same wheat price. They are not scored as damage.',
+    ),
   }),
   Object.freeze({
     id: 'flights-jet',
     rank: 'primary',
     reads: ['mobility.aircraft', 'markets.jetfuel', 'markets.kerosene'],
-    note: 'Civil aircraft counts sit beside jet fuel and jet kerosene when those prints exist. A missing print stays blank.',
+    note: msgl(
+      'Civil aircraft counts sit beside jet fuel and jet kerosene when those prints exist. A missing print stays blank.',
+    ),
   }),
 ]);
 
 /** Feeds and price series each study pair needs. Military is not in this list. */
 const LINK_NEEDS = Object.freeze({
   'news-prices': Object.freeze([
-    Object.freeze({ feed: 'news', label: 'news' }),
-    Object.freeze({ feed: 'news-urls', label: 'news urls' }),
-    Object.freeze({ feed: 'markets', label: 'prices' }),
+    Object.freeze({ feed: 'news', label: msgl('news') }),
+    Object.freeze({ feed: 'news-urls', label: msgl('news urls') }),
+    Object.freeze({ feed: 'markets', label: msgl('prices') }),
   ]),
   unplanned: Object.freeze([
-    Object.freeze({ feed: 'markets', label: 'prices' }),
+    Object.freeze({ feed: 'markets', label: msgl('prices') }),
   ]),
   'vessel-supply': Object.freeze([
-    Object.freeze({ feed: 'ais-live-vessels', label: 'ships' }),
-    Object.freeze({ feed: 'markets', series: 'crude', label: 'crude' }),
-    Object.freeze({ feed: 'markets', series: 'wheat', label: 'wheat' }),
-    Object.freeze({ feed: 'markets', series: 'copper', label: 'copper' }),
+    Object.freeze({ feed: 'ais-live-vessels', label: msgl('ships') }),
+    Object.freeze({ feed: 'markets', series: 'crude', label: msgl('crude') }),
+    Object.freeze({ feed: 'markets', series: 'wheat', label: msgl('wheat') }),
+    Object.freeze({ feed: 'markets', series: 'copper', label: msgl('copper') }),
   ]),
   'traffic-fuel': Object.freeze([
-    Object.freeze({ feed: 'traffic', label: 'traffic' }),
-    Object.freeze({ feed: 'cctv', label: 'cameras' }),
-    Object.freeze({ feed: 'flights', label: 'flights' }),
-    Object.freeze({ feed: 'markets', series: 'gasoline', label: 'gasoline' }),
-    Object.freeze({ feed: 'markets', series: 'crude', label: 'crude' }),
+    Object.freeze({ feed: 'traffic', label: msgl('traffic') }),
+    Object.freeze({ feed: 'cctv', label: msgl('cameras') }),
+    Object.freeze({ feed: 'flights', label: msgl('flights') }),
+    Object.freeze({
+      feed: 'markets',
+      series: 'gasoline',
+      label: msgl('gasoline'),
+    }),
+    Object.freeze({ feed: 'markets', series: 'crude', label: msgl('crude') }),
   ]),
   farmland: Object.freeze([
-    Object.freeze({ feed: 'wind', label: 'forecast weather' }),
-    Object.freeze({ feed: 'observed-weather', label: 'observed weather' }),
-    Object.freeze({ feed: 'markets', series: 'wheat', label: 'wheat' }),
+    Object.freeze({ feed: 'wind', label: msgl('forecast weather') }),
+    Object.freeze({
+      feed: 'observed-weather',
+      label: msgl('observed weather'),
+    }),
+    Object.freeze({ feed: 'markets', series: 'wheat', label: msgl('wheat') }),
   ]),
   'farmland-hazards': Object.freeze([
-    Object.freeze({ feed: 'local-firms', label: 'fires' }),
-    Object.freeze({ feed: 'earthquakes', label: 'quakes' }),
-    Object.freeze({ feed: 'wind', label: 'wind' }),
-    Object.freeze({ feed: 'markets', series: 'wheat', label: 'wheat' }),
+    Object.freeze({ feed: 'local-firms', label: msgl('fires') }),
+    Object.freeze({ feed: 'earthquakes', label: msgl('quakes') }),
+    Object.freeze({ feed: 'wind', label: msgl('wind') }),
+    Object.freeze({ feed: 'markets', series: 'wheat', label: msgl('wheat') }),
   ]),
   'flights-jet': Object.freeze([
-    Object.freeze({ feed: 'flights', label: 'flights' }),
-    Object.freeze({ feed: 'markets', series: 'jetfuel', label: 'jet fuel' }),
-    Object.freeze({ feed: 'markets', series: 'kerosene', label: 'kerosene' }),
+    Object.freeze({ feed: 'flights', label: msgl('flights') }),
+    Object.freeze({
+      feed: 'markets',
+      series: 'jetfuel',
+      label: msgl('jet fuel'),
+    }),
+    Object.freeze({
+      feed: 'markets',
+      series: 'kerosene',
+      label: msgl('kerosene'),
+    }),
   ]),
 });
 
@@ -165,26 +200,27 @@ export function linkStatus(
     const on =
       selected.has(need.feed) || (feed && feed.state && feed.state !== 'off');
     if (need.series) {
-      if (!priced.has(need.series)) missing.push(need.label);
+      if (!priced.has(need.series)) missing.push(tl(need.label));
       continue;
     }
     if (recorded(feed)) continue;
-    if (on) waiting.push(need.label);
-    else missing.push(need.label);
+    if (on) waiting.push(tl(need.label));
+    else missing.push(tl(need.label));
   }
   if (link?.id === 'unplanned') {
     const other = [...byId.values()].some(
       (feed) => feed.id !== 'markets' && recorded(feed),
     );
-    if (!other) missing.push('another recorded feed');
+    if (!other) missing.push(tl('another recorded feed'));
   }
-  const rank = link?.rank === 'primary' ? 'PRIMARY' : 'SECONDARY';
+  const rank = link?.rank === 'primary' ? tl('PRIMARY') : tl('SECONDARY');
   const state = missing.length
-    ? `MISSING ${missing.join(', ')}`
+    ? tl('MISSING {what}', { what: missing.join(', ') })
     : waiting.length
-      ? `WAITING ${waiting.join(', ')}`
-      : 'BOTH SIDES';
-  return { state, text: `${rank}: ${state}. ${link?.note || ''}` };
+      ? tl('WAITING {what}', { what: waiting.join(', ') })
+      : tl('BOTH SIDES');
+  const note = link?.note ? tl(link.note) : '';
+  return { state, text: tl('{rank}: {state}. {note}', { rank, state, note }) };
 }
 
 /** Held-out error against a persist-the-last-value baseline. Blank if either number is missing. */
@@ -192,7 +228,10 @@ export function formatSkill(skill) {
   const model = Number(skill?.model);
   const base = Number(skill?.persistence);
   if (!Number.isFinite(model) || !Number.isFinite(base)) return '';
-  return `MAE ${model.toFixed(3)} VS PERSISTENCE ${base.toFixed(3)}`;
+  return tl('MAE {model} VS PERSISTENCE {base}', {
+    model: localDigits(model.toFixed(3)),
+    base: localDigits(base.toFixed(3)),
+  });
 }
 
 const LINK_SKILL = Object.freeze({
@@ -226,15 +265,46 @@ export function measuredLinkText(row) {
   const asset = row.asset.toUpperCase();
   const order =
     lag > 0
-      ? `${channel} MOVES ${lag} H BEFORE ${asset}`
+      ? tl('{first} MOVES {lag} H BEFORE {second}', {
+          first: channel,
+          lag,
+          second: asset,
+        })
       : lag < 0
-        ? `${asset} MOVES ${-lag} H BEFORE ${channel}`
-        : `${channel} AND ${asset} IN THE SAME HOUR`;
+        ? tl('{first} MOVES {lag} H BEFORE {second}', {
+            first: asset,
+            lag: -lag,
+            second: channel,
+          })
+        : tl('{first} AND {second} IN THE SAME HOUR', {
+            first: channel,
+            second: asset,
+          });
   const test = Number(row.rTest);
   const later = row.holds
-    ? `HOLDS ON LATER HOURS (R ${Number.isFinite(test) ? test.toFixed(2) : '?'})`
-    : 'NOT CONFIRMED ON LATER HOURS';
-  return `${order} · R ${r.toFixed(2)} · N ${Number(row.n) || 0} · ${later}`;
+    ? tl('HOLDS ON LATER HOURS (R {r})', {
+        r: Number.isFinite(test) ? localDigits(test.toFixed(2)) : '?',
+      })
+    : tl('NOT CONFIRMED ON LATER HOURS');
+  return `${order} · R ${localDigits(r.toFixed(2))} · N ${Number(row.n) || 0} · ${later}`;
+}
+
+/**
+ * Why ml.gevtape.links found no link yet, in the page's words. The three
+ * reasons it gives are known; any other shows as given, upper case.
+ */
+function linkReason(reason) {
+  const words = String(reason).toUpperCase();
+  if (words === 'NO MARKET PRICES IN THE BINS YET')
+    return tl('NO MARKET PRICES IN THE BINS YET');
+  if (words === 'NO OTHER RECORDED CHANNEL YET')
+    return tl('NO OTHER RECORDED CHANNEL YET');
+  const fewer = /^FEWER THAN (\d+) PAIRED HOURS FOR EVERY PAIR$/.exec(words);
+  if (fewer)
+    return tl('FEWER THAN {hours} PAIRED HOURS FOR EVERY PAIR', {
+      hours: fewer[1],
+    });
+  return words;
 }
 
 /**
@@ -244,17 +314,21 @@ export function measuredLinkText(row) {
  */
 export function measuredLinkLines(report, max = 6) {
   if (!report || typeof report !== 'object') return [];
+  const hours = Number(report.hours) || 0;
   if (report.reason)
     return [
-      `MEASURED: ${String(report.reason).toUpperCase()} (${Number(report.hours) || 0} H BINNED)`,
+      tl('MEASURED: {reason} ({hours} H BINNED)', {
+        reason: linkReason(report.reason),
+        hours,
+      }),
     ];
   const rows = (Array.isArray(report.top) ? report.top : [])
     .map(measuredLinkText)
     .filter(Boolean)
     .slice(0, max);
   return rows.length
-    ? rows.map((line) => `MEASURED: ${line}`)
-    : [`MEASURED: NO LINK YET (${Number(report.hours) || 0} H BINNED)`];
+    ? rows.map((line) => tl('MEASURED: {line}', { line }))
+    : [tl('MEASURED: NO LINK YET ({hours} H BINNED)', { hours })];
 }
 
 /** The strongest measured link between a study pair's two sides, or ''. */
@@ -263,5 +337,5 @@ export function linkMeasured(link, report) {
     Array.isArray(report?.studyPairs) ? report.studyPairs : []
   ).find((p) => p?.id === link?.id);
   const text = measuredLinkText(pair?.best);
-  return text ? `MEASURED BEST: ${text}` : '';
+  return text ? tl('MEASURED BEST: {text}', { text }) : '';
 }

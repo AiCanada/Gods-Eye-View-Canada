@@ -5,6 +5,9 @@
 // may be tried. These cases use no live providers.
 //
 // Run with: npm test
+// First: this process works in an empty temp folder, so the Overpass disk
+// cache the proxy and these tests use is not this machine's .gev-cache.
+import { isolatedCwd } from './tooling/isolatedCwd.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
@@ -382,7 +385,7 @@ test('element data that mentions a failure phrase is data, and sets no cooldown'
 });
 
 function proxyHandler() {
-  const plugin = createViteConfig({ mode: 'test' }).plugins.find(p => p.name === 'overpass-proxy');
+  const plugin = createViteConfig({ mode: 'test', sourceRoot: isolatedCwd }).plugins.find(p => p.name === 'overpass-proxy');
   const routes = new Map();
   plugin.configureServer({ middlewares: { use: (route, handler) => routes.set(route, handler) } });
   return routes.get('/api/overpass');

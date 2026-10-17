@@ -297,6 +297,38 @@
   gap: 4px;
 }
 
+/* CUSTOM LLM TRAINING at the bottom of the tab (src/llmTrainingSetup.js):
+   its own column, spaced like the box's, with the box's rows and fields. */
+#ai-world-panel .ai-world-llm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#ai-world-panel .ai-world-llm[hidden] {
+  display: none;
+}
+
+#ai-world-panel .ai-world-llm .ai-world-fields select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#ai-world-panel .ai-world-llm .llm-training-list .ai-world-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#ai-world-panel .ai-world-llm [data-on-machine='false'],
+#ai-world-panel .ai-world-llm .ai-world-llm-warning {
+  color: var(--ai-world-nc);
+}
+
+#ai-world-panel .ai-world-llm .llm-training-state[data-ok='false'] {
+  color: #ff8a8a;
+}
+
 /* HORIZON: the slider, then its value in hours. */
 #ai-world-panel .ai-world-horizon {
   display: flex;

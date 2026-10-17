@@ -8,6 +8,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { cctvProxy } from '../../server/providers/cctv.js';
 
 const STILL = {
@@ -133,8 +136,12 @@ function mount(t, respond) {
     }
   });
 
+  // A temp root: the camera server reads and writes nothing in the checkout,
+  // whose .gev-cache holds this machine's live-pack copies and host budget.
+  const root = mkdtempSync(join(tmpdir(), 'gev-cctv-media-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
   let handler = null;
-  cctvProxy().configureServer({
+  cctvProxy({ sourceRoot: root }).configureServer({
     middlewares: {
       use: (_route, fn) => {
         handler = fn;

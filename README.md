@@ -535,8 +535,9 @@ snapshot address, use username + password.
 
 ### Security at a glance
 
-- An Ultra Security Package (POWER UP → YOUR DEVICES) follows a tracker or a
-  phone on the map and can save what the map knows within 50 km of it, under
+- An Ultra Security Package (its cards are at the bottom of the ULTRA SECURITY
+  PACKAGE tab) follows a tracker or a phone on the map and can save what the
+  map knows within 50 km of it, under
   the git-ignored `config/device-recordings/`, never served as a file. A phone
   is reached only through an app installed on it, never by its number. The
   simplest way is "Reports to this app": the phone's tracking app (Traccar

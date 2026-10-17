@@ -3848,7 +3848,7 @@ test('the Ultra box period list matches the map layer periods', () => {
     values,
     DEVICE_HISTORY_PERIODS.map((period) => period.id),
   );
-  assert.match(select, /<option value="30d" selected>/);
+  assert.match(select, /<option value="30d" selected[^>]*>/);
 });
 
 test('ULTRA CELLS: any number, each with its own ON MAP tick; SHOW ALL and + ADD ULTRA CELL', async () => {

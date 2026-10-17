@@ -15,8 +15,9 @@ stays in `.gev-data/` (never committed, never uploaded).
   world model through a small adapter.
 - **Train or reinforcement-learn a new model of your own** from the recorded
   data and the measured interactions between data layers and assets.
-- **Train a custom language model (LLM)** from POWER UP, on what the app
-  records plus your own URLs and files.
+- **Train a custom language model (LLM)** at the bottom of the ARTIFICIAL
+  INTELLIGENCE WORLD TRAINING SIM tab, on what the app records plus your own
+  URLs and files.
 
 ## Before you start
 
@@ -122,9 +123,10 @@ Everything recorded is ready for your own code:
 - **Read the bins in Python:** `ml.gevtape.torch_data.load_bin_series` and
   `BinWindows`. `docs/WORLD-MODEL-DATA.md` documents every file.
 
-## 4. Train a custom LLM (POWER UP)
+## 4. Train a custom LLM (bottom of the tab)
 
-Open **POWER UP** (bottom right) and scroll to **CUSTOM LLM TRAINING**.
+Open the **ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM** tab (left) and
+scroll to **CUSTOM LLM TRAINING**, the last section of the tab.
 
 1. **MODEL NAME** and **BASE MODEL.** Choose the base in the list under
    the name:
@@ -181,8 +183,8 @@ published anywhere unless you do it.
 
 ## When something does not work
 
-- **AI WORLD SERVER NOT READY**, or the POWER UP section is missing:
-  restart `npm run dev`.
+- **AI WORLD SERVER NOT READY**, or CUSTOM LLM TRAINING is missing at the
+  bottom of the tab: restart `npm run dev`.
 - **LEARNING** under a prediction: not enough recorded days yet.
 - **NO MARKET PRICES IN THE BINS YET** under LINKS: tick FINANCIAL ASSETS and
   record at least a day.

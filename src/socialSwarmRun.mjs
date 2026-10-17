@@ -5,8 +5,10 @@
  * copies the Chief of Staff task, opens Grok Bot, and pastes it into the
  * focused composer (Chief of Staff). Without an OPENAI DOTS key, OPENAI
  * BOT SWARM copies the ChatGPT task, opens ChatGPT, and pastes it. No
- * Chief of Staff webhook.
+ * Chief of Staff webhook. What the operator reads is marked with tl()
+ * (src/i18n/marker.js): Quebec French on the page.
  */
+import { tl } from './i18n/marker.js';
 import {
   GROK_BOT_UNCONFIGURED,
   SOCIAL_SWARM_BOTS,
@@ -220,8 +222,8 @@ async function runGrokBotComputer({
   } catch (error) {
     const reason =
       error?.name === 'AbortError'
-        ? 'no answer in time'
-        : error?.message || 'request failed';
+        ? tl('no answer in time')
+        : error?.message || tl('request failed');
     onBot?.({ bot: SOCIAL_SWARM_CHIEF_BOT, error: reason });
     return {
       found: 0,
@@ -269,7 +271,7 @@ async function runGrokBotDesktop({
   const opened = await openDesktop(
     request,
     GROK_BOT_OPEN_URL,
-    'Grok Bot could not be opened.',
+    tl('Grok Bot could not be opened.'),
     { paste: true, text: plan.text },
   );
   // The task itself, for the log: `task` marks it, so no box reads it as a
@@ -330,7 +332,7 @@ async function runOpenaiDotsDesktop({
   const opened = await openDesktop(
     request,
     OPENAI_DOTS_OPEN_URL,
-    'ChatGPT could not be opened.',
+    tl('ChatGPT could not be opened.'),
     { paste: true, text: plan.text },
   );
   onBot?.({
@@ -359,32 +361,40 @@ export function formatSwarmDesktopStatus(result) {
   const chatgpt = result?.desktopApp === 'chatgpt';
   if (result?.pasted) {
     return chatgpt
-      ? 'CHATGPT OPENED · task sent to ChatGPT. Its report stays in ChatGPT.'
-      : 'GROK BOT OPENED · task sent to your Chief of Staff. Its report stays in Grok Bot.';
+      ? tl(
+          'CHATGPT OPENED · task sent to ChatGPT. Its report stays in ChatGPT.',
+        )
+      : tl(
+          'GROK BOT OPENED · task sent to your Chief of Staff. Its report stays in Grok Bot.',
+        );
   }
   if (result?.opened && result?.copied) {
     return chatgpt
-      ? 'CHATGPT OPENED · paste the task in ChatGPT. Its report stays in ChatGPT.'
-      : 'GROK BOT OPENED · paste the task to your Chief of Staff. Its report stays in Grok Bot.';
+      ? tl(
+          'CHATGPT OPENED · paste the task in ChatGPT. Its report stays in ChatGPT.',
+        )
+      : tl(
+          'GROK BOT OPENED · paste the task to your Chief of Staff. Its report stays in Grok Bot.',
+        );
   }
   if (result?.copied) {
-    if (chatgpt) {
-      return result.openError
-        ? `Task copied. Open ChatGPT and paste it. ${result.openError}`
-        : 'Task copied. Open ChatGPT and paste it.';
-    }
-    return result.openError
-      ? `Task copied. Open Grok Bot and paste it to your Chief of Staff. ${result.openError}`
-      : 'Task copied. Open Grok Bot and paste it to your Chief of Staff.';
+    const copied = chatgpt
+      ? tl('Task copied. Open ChatGPT and paste it.')
+      : tl('Task copied. Open Grok Bot and paste it to your Chief of Staff.');
+    return result.openError ? `${copied} ${result.openError}` : copied;
   }
   if (result?.opened) {
     return chatgpt
-      ? 'CHATGPT OPENED · the task is in the log; paste it in ChatGPT.'
-      : 'GROK BOT OPENED · the task is in the log; paste it to your Chief of Staff.';
+      ? tl('CHATGPT OPENED · the task is in the log; paste it in ChatGPT.')
+      : tl(
+          'GROK BOT OPENED · the task is in the log; paste it to your Chief of Staff.',
+        );
   }
   return chatgpt
-    ? 'The task is in the log. Open ChatGPT and paste it.'
-    : 'The task is in the log. Open Grok Bot and paste it to your Chief of Staff.';
+    ? tl('The task is in the log. Open ChatGPT and paste it.')
+    : tl(
+        'The task is in the log. Open Grok Bot and paste it to your Chief of Staff.',
+      );
 }
 
 /**
@@ -497,7 +507,9 @@ export async function runSocialSwarm({
           data?.error ||
             (providerId === 'xai'
               ? GROK_BOT_UNCONFIGURED
-              : `No ${meta.keyTitle} key yet. Add it in POWER UP → ${meta.keyTitle}.`),
+              : tl('No {key} key yet. Add it in POWER UP → {key}.', {
+                  key: meta.keyTitle,
+                })),
         );
         return;
       }
@@ -510,8 +522,8 @@ export async function runSocialSwarm({
       failed += 1;
       const reason =
         error?.name === 'AbortError'
-          ? 'no answer in time'
-          : error?.message || 'request failed';
+          ? tl('no answer in time')
+          : error?.message || tl('request failed');
       onBot?.({ bot, error: reason });
     } finally {
       globalThis.clearTimeout(timer);

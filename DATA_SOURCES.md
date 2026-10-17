@@ -141,7 +141,7 @@ assets every five minutes.
 
 Prices are kept only when they change. They are a readout, never advice.
 
-**Custom LLM training** (POWER UP) adds sources the owner names: custom URLs
+**Custom LLM training** (bottom of the AI World tab) adds sources the owner names: custom URLs
 (public pages fetched when training starts; each page's own terms apply) and
 local files (the owner's own). Both stay in `.gev-data/llm/` on this machine.
 

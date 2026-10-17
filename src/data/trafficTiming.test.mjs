@@ -168,6 +168,8 @@ test('traffic timing pairs real ordering to the scheduling change and guards re-
       root: fileURLToPath(new URL('../..', import.meta.url)),
       cacheDir,
       configFile: false,
+      // The checkout is the root, but its .env is this machine's: not loaded.
+      envDir: false,
       appType: 'custom',
       logLevel: 'silent',
       // No dependency scan and no watcher: without a config file Vite would

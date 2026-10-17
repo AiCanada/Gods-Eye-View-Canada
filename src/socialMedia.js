@@ -3,8 +3,13 @@
  * query, and the one question each button sends. No DOM. A live map marker
  * is this device's own position, and only when a hooked-up account shares
  * that position.
+ *
+ * What the operator reads is marked with tl() from src/i18n/marker.js
+ * (Quebec French on the page; the server loads this module too). What goes
+ * to the model and to the news search stays English.
  */
 
+import { msgl, tl } from './i18n/marker.js';
 import {
   ULTRA_HELP_NEEDS_KINDS,
   normalizeUltraNeeds,
@@ -26,148 +31,156 @@ const REQUEST_RULES = [
 ].join(' ');
 
 export const SOCIAL_ANALYSIS_PLATFORMS = Object.freeze([
-  Object.freeze({ id: 'all', label: 'All platforms' }),
-  Object.freeze({ id: 'facebook', label: 'Facebook' }),
-  Object.freeze({ id: 'instagram', label: 'Instagram' }),
-  Object.freeze({ id: 'threads', label: 'Threads' }),
+  Object.freeze({ id: 'all', label: 'All platforms' }), // i18n-ignore: the model's word; the menu is in the markup
+  Object.freeze({ id: 'facebook', label: 'Facebook' }), // i18n-ignore: product name
+  Object.freeze({ id: 'instagram', label: 'Instagram' }), // i18n-ignore: product name
+  Object.freeze({ id: 'threads', label: 'Threads' }), // i18n-ignore: product name
   Object.freeze({ id: 'x', label: 'X' }),
-  Object.freeze({ id: 'truth', label: 'Truth Social' }),
-  Object.freeze({ id: 'snapchat', label: 'Snapchat' }),
-  Object.freeze({ id: 'tiktok', label: 'TikTok' }),
+  Object.freeze({ id: 'truth', label: 'Truth Social' }), // i18n-ignore: product name
+  Object.freeze({ id: 'snapchat', label: 'Snapchat' }), // i18n-ignore: product name
+  Object.freeze({ id: 'tiktok', label: 'TikTok' }), // i18n-ignore: product name
 ]);
 
 export const SOCIAL_NEWS_PLATFORMS = Object.freeze([
-  Object.freeze({ id: 'all', label: 'All' }),
-  Object.freeze({ id: 'facebook', label: 'Facebook' }),
-  Object.freeze({ id: 'instagram', label: 'Instagram' }),
-  Object.freeze({ id: 'threads', label: 'Threads' }),
+  Object.freeze({ id: 'all', label: 'All' }), // i18n-ignore: the model's word; the menu is in the markup
+  Object.freeze({ id: 'facebook', label: 'Facebook' }), // i18n-ignore: product name
+  Object.freeze({ id: 'instagram', label: 'Instagram' }), // i18n-ignore: product name
+  Object.freeze({ id: 'threads', label: 'Threads' }), // i18n-ignore: product name
   Object.freeze({ id: 'x', label: 'X' }),
-  Object.freeze({ id: 'truth', label: 'Truth Social' }),
-  Object.freeze({ id: 'tiktok', label: 'TikTok' }),
+  Object.freeze({ id: 'truth', label: 'Truth Social' }), // i18n-ignore: product name
+  Object.freeze({ id: 'tiktok', label: 'TikTok' }), // i18n-ignore: product name
 ]);
 
 export const SOCIAL_LOCATION_OPTIONS = Object.freeze([
   Object.freeze({
     id: 'all',
-    label: 'All location options',
+    label: 'All location options', // i18n-ignore: the model's word; the menu is in the markup
     openUrl: null,
     note: '',
   }),
   Object.freeze({
     id: 'find-my',
-    label: 'Apple Find My',
+    label: 'Apple Find My', // i18n-ignore: product name
     openUrl: 'https://www.icloud.com/find',
-    note: 'Share your own location with contacts you choose, for good or for a while.',
+    note: msgl(
+      'Share your own location with contacts you choose, for good or for a while.',
+    ),
   }),
   Object.freeze({
     id: 'google-maps',
-    label: 'Google Maps',
+    label: 'Google Maps', // i18n-ignore: product name
     openUrl: 'https://www.google.com/maps',
-    note: 'Location Sharing works between iPhone and Android. People you pick see a live icon on their map.',
+    note: msgl(
+      'Location Sharing works between iPhone and Android. People you pick see a live icon on their map.',
+    ),
   }),
   Object.freeze({
     id: 'snap-map',
-    label: 'Snapchat Snap Map',
+    label: 'Snapchat Snap Map', // i18n-ignore: product name
     openUrl: 'https://map.snapchat.com/',
-    note: 'Open Snap Map. You see people you already share with.',
+    note: msgl('Open Snap Map. You see people you already share with.'),
   }),
   Object.freeze({
     id: 'bump',
-    label: 'Bump',
+    label: 'Bump', // i18n-ignore: product name
     openUrl: 'https://apps.apple.com/app/id6471519217',
-    note: 'A friend map. Someone appears after you both accept.',
+    note: msgl('A friend map. Someone appears after you both accept.'),
   }),
   Object.freeze({
     id: 'blink',
-    label: 'Blink',
+    label: 'Blink', // i18n-ignore: product name
     openUrl: 'https://blinkmap.com/',
-    note: 'A map of friends who share back. A bump is two phones you are holding.',
+    note: msgl(
+      'A map of friends who share back. A bump is two phones you are holding.',
+    ),
   }),
   Object.freeze({
     id: 'life360',
-    label: 'Life360',
+    label: 'Life360', // i18n-ignore: product name
     openUrl: 'https://www.life360.com/',
-    note: 'A circle you create. Members of that circle see it.',
+    note: msgl('A circle you create. Members of that circle see it.'),
   }),
   Object.freeze({
     id: 'radarly',
-    label: 'Radarly',
+    label: 'Radarly', // i18n-ignore: product name
     openUrl: 'https://apps.apple.com/app/id6451498749',
-    note: 'Open Radarly yourself.',
+    note: msgl('Open Radarly yourself.'),
   }),
   Object.freeze({
     id: 'buzzly',
-    label: 'Buzzly',
+    label: 'Buzzly', // i18n-ignore: product name
     openUrl: 'https://www.buzzlyapp.com/',
-    note: 'People, groups, and events in the area you share.',
+    note: msgl('People, groups, and events in the area you share.'),
   }),
   Object.freeze({
     id: 'vicinity',
-    label: 'Vicinity',
+    label: 'Vicinity', // i18n-ignore: product name
     openUrl: 'https://thevicinityapp.com/',
-    note: 'Live local chat for a radius you set.',
+    note: msgl('Live local chat for a radius you set.'),
   }),
   Object.freeze({
     id: 'nearjoy',
-    label: 'NearJoy',
+    label: 'NearJoy', // i18n-ignore: product name
     openUrl: 'https://nearjoy.app/',
-    note: 'A nearby alert. It does not publish your exact location to other people.',
+    note: msgl(
+      'A nearby alert. It does not publish your exact location to other people.',
+    ),
   }),
   Object.freeze({
     id: 'happn',
-    label: 'Happn',
+    label: 'Happn', // i18n-ignore: product name
     openUrl: 'https://www.happn.com/',
-    note: 'Open your own Happn account.',
+    note: msgl('Open your own Happn account.'),
   }),
   Object.freeze({
     id: 'pure',
-    label: 'Pure',
+    label: 'Pure', // i18n-ignore: product name
     openUrl: 'https://pure.app/',
-    note: 'Open your own Pure account.',
+    note: msgl('Open your own Pure account.'),
   }),
   Object.freeze({
     id: 'sniffies',
-    label: 'Sniffies',
+    label: 'Sniffies', // i18n-ignore: product name
     openUrl: 'https://sniffies.com/',
-    note: 'Open your own Sniffies account.',
+    note: msgl('Open your own Sniffies account.'),
   }),
   Object.freeze({
     id: 'instagram-map',
-    label: 'Instagram Map',
+    label: 'Instagram Map', // i18n-ignore: the model's word; the menu is in the markup
     openUrl: 'https://www.instagram.com/',
-    note: 'Instagram Map is inside Instagram, for people you share with.',
+    note: msgl('Instagram Map is inside Instagram, for people you share with.'),
   }),
   Object.freeze({
     id: 'facebook-checkin',
-    label: 'Facebook check-ins',
+    label: 'Facebook check-ins', // i18n-ignore: the model's word; the menu is in the markup
     openUrl: 'https://www.facebook.com/',
-    note: 'Public check-ins and one-time place posts.',
+    note: msgl('Public check-ins and one-time place posts.'),
   }),
   Object.freeze({
     id: 'instagram-checkin',
-    label: 'Instagram check-ins',
+    label: 'Instagram check-ins', // i18n-ignore: the model's word; the menu is in the markup
     openUrl: 'https://www.instagram.com/',
-    note: 'Public place tags and one-time location shares.',
+    note: msgl('Public place tags and one-time location shares.'),
   }),
   Object.freeze({
     id: 'x-checkin',
-    label: 'X check-ins',
+    label: 'X check-ins', // i18n-ignore: the model's word; the menu is in the markup
     openUrl: 'https://x.com/explore',
-    note: 'Public posts that name a place.',
+    note: msgl('Public posts that name a place.'),
   }),
 ]);
 
 export const SOCIAL_ACCOUNT_PLATFORMS = Object.freeze([
   Object.freeze({
     id: 'facebook',
-    label: 'Facebook',
+    label: 'Facebook', // i18n-ignore: product name
     openUrl: 'https://www.facebook.com/',
     api: 'Graph API (Core)',
     apiUrl: 'https://developers.facebook.com/',
   }),
   Object.freeze({
     id: 'instagram',
-    label: 'Instagram',
+    label: 'Instagram', // i18n-ignore: product name
     openUrl: 'https://www.instagram.com/',
     api: 'Instagram API',
     apiUrl: 'https://developers.facebook.com/docs/instagram-platform/',
@@ -175,7 +188,7 @@ export const SOCIAL_ACCOUNT_PLATFORMS = Object.freeze([
   }),
   Object.freeze({
     id: 'threads',
-    label: 'Threads',
+    label: 'Threads', // i18n-ignore: product name
     openUrl: 'https://www.threads.net/',
     api: 'Threads API',
     apiUrl: 'https://developers.facebook.com/docs/threads/',
@@ -189,81 +202,81 @@ export const SOCIAL_ACCOUNT_PLATFORMS = Object.freeze([
   }),
   Object.freeze({
     id: 'truth',
-    label: 'Truth Social',
+    label: 'Truth Social', // i18n-ignore: product name
     openUrl: 'https://truthsocial.com/',
   }),
   Object.freeze({
     id: 'snapchat',
-    label: 'Snapchat',
+    label: 'Snapchat', // i18n-ignore: product name
     openUrl: 'https://www.snapchat.com/',
     sharesLocation: true,
   }),
   Object.freeze({
     id: 'tiktok',
-    label: 'TikTok',
+    label: 'TikTok', // i18n-ignore: product name
     openUrl: 'https://www.tiktok.com/',
     api: 'TikTok API',
     apiUrl: 'https://developers.tiktok.com/',
   }),
   Object.freeze({
     id: 'find-my',
-    label: 'Apple Find My',
+    label: 'Apple Find My', // i18n-ignore: product name
     openUrl: 'https://www.icloud.com/find',
     sharesLocation: true,
   }),
   Object.freeze({
     id: 'google-maps',
-    label: 'Google Maps',
+    label: 'Google Maps', // i18n-ignore: product name
     openUrl: 'https://www.google.com/maps',
     sharesLocation: true,
   }),
   Object.freeze({
     id: 'bump',
-    label: 'Bump',
+    label: 'Bump', // i18n-ignore: product name
     openUrl: 'https://apps.apple.com/app/id6471519217',
     sharesLocation: true,
   }),
   Object.freeze({
     id: 'blink',
-    label: 'Blink',
+    label: 'Blink', // i18n-ignore: product name
     openUrl: 'https://blinkmap.com/',
     sharesLocation: true,
   }),
   Object.freeze({
     id: 'life360',
-    label: 'Life360',
+    label: 'Life360', // i18n-ignore: product name
     openUrl: 'https://www.life360.com/',
     sharesLocation: true,
   }),
   Object.freeze({
     id: 'radarly',
-    label: 'Radarly',
+    label: 'Radarly', // i18n-ignore: product name
     openUrl: 'https://apps.apple.com/app/id6451498749',
   }),
   Object.freeze({
     id: 'buzzly',
-    label: 'Buzzly',
+    label: 'Buzzly', // i18n-ignore: product name
     openUrl: 'https://www.buzzlyapp.com/',
   }),
   Object.freeze({
     id: 'vicinity',
-    label: 'Vicinity',
+    label: 'Vicinity', // i18n-ignore: product name
     openUrl: 'https://thevicinityapp.com/',
   }),
   Object.freeze({
     id: 'nearjoy',
-    label: 'NearJoy',
+    label: 'NearJoy', // i18n-ignore: product name
     openUrl: 'https://nearjoy.app/',
   }),
   Object.freeze({
     id: 'happn',
-    label: 'Happn',
+    label: 'Happn', // i18n-ignore: product name
     openUrl: 'https://www.happn.com/',
   }),
-  Object.freeze({ id: 'pure', label: 'Pure', openUrl: 'https://pure.app/' }),
+  Object.freeze({ id: 'pure', label: 'Pure', openUrl: 'https://pure.app/' }), // i18n-ignore: product name
   Object.freeze({
     id: 'sniffies',
-    label: 'Sniffies',
+    label: 'Sniffies', // i18n-ignore: product name
     openUrl: 'https://sniffies.com/',
   }),
   // The gig economy and on-demand delivery. HELP locations from them, and
@@ -271,13 +284,13 @@ export const SOCIAL_ACCOUNT_PLATFORMS = Object.freeze([
   // for now each opens its own site and keeps its login like the others.
   Object.freeze({
     id: 'doordash',
-    label: 'DoorDash',
+    label: 'DoorDash', // i18n-ignore: product name
     openUrl: 'https://www.doordash.com/',
     gig: true,
   }),
   Object.freeze({
     id: 'uber',
-    label: 'Uber',
+    label: 'Uber', // i18n-ignore: product name
     openUrl: 'https://www.uber.com/',
     gig: true,
     api: 'Uber Developers',
@@ -285,7 +298,7 @@ export const SOCIAL_ACCOUNT_PLATFORMS = Object.freeze([
   }),
   Object.freeze({
     id: 'lyft',
-    label: 'Lyft',
+    label: 'Lyft', // i18n-ignore: product name
     openUrl: 'https://www.lyft.com/',
     gig: true,
     api: 'Lyft Concierge API',
@@ -293,19 +306,19 @@ export const SOCIAL_ACCOUNT_PLATFORMS = Object.freeze([
   }),
   Object.freeze({
     id: 'just-eat-takeaway',
-    label: 'Just Eat Takeaway',
+    label: 'Just Eat Takeaway', // i18n-ignore: product name
     openUrl: 'https://www.justeattakeaway.com/',
     gig: true,
   }),
   Object.freeze({
     id: 'delivery-hero',
-    label: 'Delivery Hero',
+    label: 'Delivery Hero', // i18n-ignore: product name
     openUrl: 'https://www.deliveryhero.com/',
     gig: true,
   }),
   Object.freeze({
     id: 'grubhub',
-    label: 'Grubhub',
+    label: 'Grubhub', // i18n-ignore: product name
     openUrl: 'https://www.grubhub.com/',
     gig: true,
   }),
@@ -325,14 +338,18 @@ export function socialPowerUps(rows) {
     if (row?.passwordSaved === true || (item.api && row?.apiKeySaved === true))
       attained += 1;
   }
-  return { attained, total, label: `${attained}/${total} Power Ups Attained` };
+  return {
+    attained,
+    total,
+    label: tl('{attained}/{total} Power Ups Attained', { attained, total }),
+  };
 }
 
-/** OPEN SAVED's name for each choice in its menu. */
+/** OPEN SAVED's name for each choice in its menu (English, shown via tl()). */
 export const SOCIAL_OPEN_SAVED_LABELS = Object.freeze({
-  login: 'OPEN ID & PASS SITES',
-  api: 'OPEN API SITES',
-  all: 'OPEN ALL SAVED SITES',
+  login: msgl('OPEN ID & PASS SITES'),
+  api: msgl('OPEN API SITES'),
+  all: msgl('OPEN ALL SAVED SITES'),
 });
 
 /**
@@ -354,7 +371,7 @@ export function savedSiteUrls(rows, kind = 'login') {
     if (kind !== 'login' && row.apiKeySaved === true && item.apiUrl) {
       urls.push({
         platform: item.id,
-        label: `${item.label} API`,
+        label: `${item.label} API`, // i18n-ignore: product name
         url: item.apiUrl,
       });
     }
@@ -362,9 +379,10 @@ export function savedSiteUrls(rows, kind = 'login') {
   return urls;
 }
 
-/** Shown under the account menu when a gig-economy or delivery platform is picked. */
-export const SOCIAL_GIG_HELP_NOTE =
-  'HELP locations from this platform, and sending HELP through it with Find Ultra Help: under development. OPEN SITE opens its own site.';
+/** Shown under the account menu when a gig-economy or delivery platform is picked (via tl()). */
+export const SOCIAL_GIG_HELP_NOTE = msgl(
+  'HELP locations from this platform, and sending HELP through it with Find Ultra Help: under development. OPEN SITE opens its own site.',
+);
 
 /** Missing means show. The operator's hide choice is stored as '0'. */
 export const SOCIAL_SHOW_LOCATION_KEY = 'godsEyeView.social.showLocation';
@@ -445,7 +463,9 @@ export function locationSharingAccounts(rows) {
 /** @param {{platform?: string, passwordSaved?: boolean}[]} rows */
 export function liveLocationLabel(rows) {
   const labels = locationSharingAccounts(rows).map((row) => row.label);
-  return labels.length ? `You · ${labels.join(', ')}` : '';
+  return labels.length
+    ? tl('You · {accounts}', { accounts: labels.join(', ') })
+    : '';
 }
 
 /**
@@ -515,11 +535,12 @@ const LAYOUT = Object.freeze({
   search: 'Use three headings, in order: ANALYSIS, BREAKING NEWS, FIND HELP.',
 });
 
+/** The log's name for each press (English, shown via tl()). */
 const KIND = Object.freeze({
-  analyze: 'ANALYZE',
-  news: 'BREAKING NEWS',
-  help: 'FIND HELP',
-  search: 'SEARCH',
+  analyze: msgl('ANALYZE'),
+  news: msgl('BREAKING NEWS'),
+  help: msgl('FIND HELP'),
+  search: msgl('SEARCH'),
 });
 
 function hostsFrom(list) {
@@ -637,24 +658,24 @@ export function officialOpenUrl(id, view = {}) {
  */
 export function normalizeSocialHandle(raw) {
   let text = String(raw ?? '').trim();
-  if (!text) return { ok: false, error: 'Type the public handle.' };
+  if (!text) return { ok: false, error: tl('Type the public handle.') };
   if (/^https?:\/\//i.test(text)) {
     let url;
     try {
       url = new URL(text);
     } catch {
-      return { ok: false, error: 'That link is not a public profile.' };
+      return { ok: false, error: tl('That link is not a public profile.') };
     }
     if (url.username || url.password) {
       return {
         ok: false,
-        error: 'Save a public handle. This box does not take a login.',
+        error: tl('Save a public handle. This box does not take a login.'),
       };
     }
     if (/token|key|password|code=/i.test(url.search)) {
       return {
         ok: false,
-        error: 'That link carries a key. Paste the public handle only.',
+        error: tl('That link carries a key. Paste the public handle only.'),
       };
     }
     const parts = url.pathname.split('/').filter(Boolean);
@@ -662,7 +683,7 @@ export function normalizeSocialHandle(raw) {
     if (/\.php$/i.test(text) || text === 'share' || text === 'search') {
       return {
         ok: false,
-        error: 'Paste the public handle, not a search page.',
+        error: tl('Paste the public handle, not a search page.'),
       };
     }
   } else {
@@ -673,20 +694,23 @@ export function normalizeSocialHandle(raw) {
   if (PHONE_SHAPE.test(text)) {
     return {
       ok: false,
-      error: 'That looks like a phone number. Save a public handle.',
+      error: tl('That looks like a phone number. Save a public handle.'),
     };
   }
   if (SECRET_PATTERN.test(text) || SECRET_PREFIX.test(text)) {
     return {
       ok: false,
-      error: 'Save a public handle. This box does not take passwords or keys.',
+      error: tl(
+        'Save a public handle. This box does not take passwords or keys.',
+      ),
     };
   }
   if (!HANDLE_PATTERN.test(text)) {
     return {
       ok: false,
-      error:
+      error: tl(
         'Use a public handle: letters, numbers, dot, underscore, or hyphen.',
+      ),
     };
   }
   return { ok: true, handle: text };
@@ -731,7 +755,7 @@ export function saveSocialAccount(storage, platformId, rawHandle) {
   const platform = SOCIAL_ACCOUNT_PLATFORMS.find(
     (item) => item.id === platformId,
   );
-  if (!platform) return { ok: false, error: 'Pick a platform.' };
+  if (!platform) return { ok: false, error: tl('Pick a platform.') };
   const handle = normalizeSocialHandle(rawHandle);
   if (!handle.ok) return handle;
   const accounts = readStorage(storage).filter(
@@ -888,7 +912,7 @@ export function buildSocialPublicSearch(input = {}) {
     return {
       ok: false,
       empty: false,
-      error: 'Pick a platform.',
+      error: tl('Pick a platform.'),
       labels: [],
       lookbackDays: null,
     };
@@ -903,7 +927,7 @@ export function buildSocialPublicSearch(input = {}) {
     return {
       ok: false,
       empty: true,
-      error: 'Name a place or type what to look up.',
+      error: tl('Name a place or type what to look up.'),
       labels: [],
       lookbackDays: null,
     };
@@ -1090,22 +1114,33 @@ export function normalizePublicNewsReport(data) {
 export function formatSocialSearchBody(report) {
   const normalized = normalizePublicNewsReport(report);
   if (normalized.status === 'unavailable') {
-    return 'Public news lookup did not finish. No public item was returned.';
+    return tl(
+      'Public news lookup did not finish. No public item was returned.',
+    );
   }
   if (!normalized.articles.length) {
-    return 'Public news lookup returned nothing. No public item was returned.';
+    return tl(
+      'Public news lookup returned nothing. No public item was returned.',
+    );
   }
-  const via = normalized.source ? ` via ${normalized.source}` : '';
+  const via = normalized.source
+    ? ` ${tl('via {source}', { source: normalized.source })}`
+    : '';
   const days = normalized.lookbackDays
-    ? `, past ${normalized.lookbackDays} days`
+    ? `, ${tl('past {days} days', { days: normalized.lookbackDays })}`
     : '';
   const kind =
     normalized.match === 'site'
-      ? 'Public pages already in the news index'
+      ? tl('Public pages already in the news index')
       : normalized.match === 'mention'
-        ? 'Public news that mentions these platforms'
-        : 'Public news about this place, not from a platform account';
-  const lines = [`${kind}${via}${days} (${normalized.articles.length}):`];
+        ? tl('Public news that mentions these platforms')
+        : tl('Public news about this place, not from a platform account');
+  const lines = [
+    tl('{heading} ({count}):', {
+      heading: `${kind}${via}${days}`,
+      count: normalized.articles.length,
+    }),
+  ];
   for (const article of normalized.articles) {
     lines.push(
       article.domain
@@ -1171,34 +1206,34 @@ function publicNewsBlock(action, report) {
 export function planSocialRequest(input = {}) {
   const action = input.action;
   const kind = KIND[action];
-  if (!kind) return { ok: false, error: 'Pick an action.' };
+  if (!kind) return { ok: false, error: tl('Pick an action.') };
   const provider = String(input.providerId || '').trim();
   if (!provider)
-    return { ok: false, error: 'No model key yet. Add one in POWER UP.' };
+    return { ok: false, error: tl('No model key yet. Add one in POWER UP.') };
   const typed = cleanNote(input.text);
   if (typed.length > NOTE_MAX)
-    return { ok: false, error: 'That note is too long.' };
+    return { ok: false, error: tl('That note is too long.') };
   if ((action === 'analyze' || action === 'search') && !typed) {
     return {
       ok: false,
       error:
         action === 'analyze'
-          ? 'Type the kind of analysis first.'
-          : 'Type what you want searched.',
+          ? tl('Type the kind of analysis first.')
+          : tl('Type what you want searched.'),
     };
   }
   const analysis = labelsFor(SOCIAL_ANALYSIS_PLATFORMS, input.analysisId);
   const news = labelsFor(SOCIAL_NEWS_PLATFORMS, input.newsId);
   const help = labelsFor(SOCIAL_LOCATION_OPTIONS, input.helpId);
   if (action === 'analyze' && analysis.length === 0)
-    return { ok: false, error: 'Pick a platform.' };
+    return { ok: false, error: tl('Pick a platform.') };
   if (action === 'news' && news.length === 0)
-    return { ok: false, error: 'Pick a platform.' };
+    return { ok: false, error: tl('Pick a platform.') };
   if ((action === 'help' || action === 'search') && help.length === 0) {
-    return { ok: false, error: 'Pick a location option.' };
+    return { ok: false, error: tl('Pick a location option.') };
   }
   if (action === 'search' && (analysis.length === 0 || news.length === 0)) {
-    return { ok: false, error: 'Pick a platform.' };
+    return { ok: false, error: tl('Pick a platform.') };
   }
 
   let task;
@@ -1234,5 +1269,5 @@ export function planSocialRequest(input = {}) {
     publicNewsBlock(action, input.publicNews),
     REQUEST_RULES,
   ].join('\n\n');
-  return { ok: true, provider, kind, question, place: place || null };
+  return { ok: true, provider, kind: tl(kind), question, place: place || null };
 }

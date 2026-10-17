@@ -17,23 +17,33 @@ import { tailnetDashboardPlugin } from '../../Mirror of PC GEVC on Cell/tailnet-
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
-/** Load this checkout's configuration and attach its local provider middleware. */
-export default defineConfig(({ command, mode }) => {
-  const loaded = loadEnv(mode, root, '');
+/**
+ * Load this checkout's configuration and attach its local provider middleware.
+ * Vite passes no `sourceRoot`; a test passes an empty temp folder, so it loads
+ * none of this machine's .env keys, integrity store, data, caches or private
+ * config, and its single-instance lock is not the running dev server's.
+ */
+export default defineConfig(({ command, mode, sourceRoot }) => {
+  // Without one, everything below is exactly as it was: this checkout.
+  const checkout = sourceRoot || root;
+  const loaded = loadEnv(mode, checkout, '');
   for (const [key, value] of Object.entries(loaded)) {
     if (process.env[key] === undefined) process.env[key] = value;
   }
-  bindLocalIntegrityRoot(root);
+  bindLocalIntegrityRoot(checkout);
   return createBrowserViteConfig({
     // The guard goes first: it wraps every route registered after it
     // (the provider routes and the MCP endpoint alike).
     plugins: [
       // Stops the previous dev server of this checkout before the port is taken.
-      singleInstancePlugin({ root }),
+      singleInstancePlugin({ root: checkout }),
       routeGuardPlugin(),
       // `/__gev/health` for the supervisor's liveness probe (dev only).
       healthPlugin(),
-      ...localProviderPlugins({ realtime: { tools: standaloneVoiceTools() } }),
+      ...localProviderPlugins({
+        realtime: { tools: standaloneVoiceTools() },
+        ...(sourceRoot ? { sourceRoot } : {}),
+      }),
       localMcpPlugin(),
       apiNotFoundPlugin(),
       // The same dashboard on this machine's Tailscale address (off unless set).

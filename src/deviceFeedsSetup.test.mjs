@@ -437,7 +437,7 @@ test('an Ultra cell card has no FOLLOW, RECORD WITHIN, FIXED or CAMERA PICTURE b
         undefined,
         `${name} is not on an Ultra card`,
       );
-    assert.ok(field(block, 'method'), 'how it connects stays in POWER UP');
+    assert.ok(field(block, 'method'), 'how it connects stays on the package card');
     // Another type keeps them.
     const tracker = byClass(host, 'device-feeds-kind').find(
       (card) => card.dataset.kindId === 'tracker',

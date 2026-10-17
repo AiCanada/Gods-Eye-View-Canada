@@ -46,12 +46,18 @@ import { gnssIntegrityProxy } from './gnssIntegrity.js';
 
 /**
  * Construct the local provider plugins in their established order.
- * `realtime` configures the voice session token endpoint.
+ * `realtime` configures the voice session token endpoint. `sourceRoot` is the
+ * checkout whose config and data folders the rooted providers use: this one
+ * by default, a temp folder for a test, so no test reads or writes this
+ * machine's recordings, caches or private config.
  */
-function localProviderPlugins({ realtime } = {}) {
+function localProviderPlugins({
+  realtime,
+  sourceRoot = defaultSourceRoot,
+} = {}) {
   // Provider checks apply only after this checkout is bound. A unit test
   // that never binds still uses the keys it set.
-  bindLocalIntegrityRoot(defaultSourceRoot);
+  bindLocalIntegrityRoot(sourceRoot);
   return [
     openSkyProxy(),
     celestrakProxy(),
@@ -71,12 +77,12 @@ function localProviderPlugins({ realtime } = {}) {
     weatherProxy(),
     windProxy(),
     cycloneProxy(),
-    cctvProxy({ sourceRoot: defaultSourceRoot }),
+    cctvProxy({ sourceRoot }),
     // Home and business security cameras: separate from the public CCTV proxy.
-    privateCamerasProxy({ sourceRoot: defaultSourceRoot }),
+    privateCamerasProxy({ sourceRoot }),
     // The owner's own drones, robots, marine drones and GPS trackers.
-    deviceFeedsProxy({ sourceRoot: defaultSourceRoot }),
-    ultraHelpProxy({ sourceRoot: defaultSourceRoot }),
+    deviceFeedsProxy({ sourceRoot }),
+    ultraHelpProxy({ sourceRoot }),
     radioBrowserProxy(),
     gbfsProxy(),
     localReceiversProxy(),
@@ -91,9 +97,9 @@ function localProviderPlugins({ realtime } = {}) {
     // Releases the area-keyed memory caches above when the user changes place.
     locationSwitchReleaseEndpoint(),
     // The operator's own social logins. The password stays in the encrypted store.
-    socialAccountsProxy({ sourceRoot: defaultSourceRoot }),
+    socialAccountsProxy({ sourceRoot }),
     // POWER UP → ROAD511: any number of generic road CCTV API keys.
-    roadCctvKeysProxy({ sourceRoot: defaultSourceRoot }),
+    roadCctvKeysProxy({ sourceRoot }),
     // Social Media Analysis bot swarms: one paid search request per bot, on a press.
     socialSwarmProxy(),
     // Opens the Grok Bot desktop app for OPEN GROK BOT and the no-key swarm.
@@ -110,11 +116,11 @@ function localProviderPlugins({ realtime } = {}) {
     gnssIntegrityProxy(),
     // ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM (owner request 2026-10-13):
     // records every ticked feed, generates sim episodes, trains and predicts.
-    aiWorldProvider(),
+    aiWorldProvider({ root: sourceRoot }),
     // CUSTOM LLM TRAINING (owner request 2026-10-16): the POWER UP section's
     // dataset build and LoRA training on a base model already on this PC.
-    llmTrainingProvider(),
-    keySetupEndpoint({ onEnvSaved: noteOutboundEnvSaved }),
+    llmTrainingProvider({ root: sourceRoot }),
+    keySetupEndpoint({ sourceRoot, onEnvSaved: noteOutboundEnvSaved }),
   ];
 }
 

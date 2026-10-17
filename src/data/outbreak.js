@@ -45,6 +45,8 @@ import {
   forecastWindowLabel,
 } from '../outbreakCore.mjs';
 import { arrivedBy } from '../outbreakEpi.mjs';
+// The map's words are the Outbreak tab's: Quebec French in the fork locales.
+import { localDigits, msgl, tl, tln } from '../i18n/index.js';
 import {
   NETWORK_WAITING_KM,
   bandEndKm,
@@ -119,7 +121,14 @@ const EPIDEMIC_ALPHA_MIN = 0.35;
  */
 const EPIDEMIC_LIKELY = 0.5;
 /** The label suffix of a place whose first case most likely flew in. */
-const IMPORTED_FIRST_SUFFIX = ' · first case imported';
+const importedFirstSuffix = () => ` · ${tl('first case imported')}`;
+/** Each reach ring's name (English, shown through tl()). */
+const REACH_NAMES = Object.freeze({
+  road: msgl('ROAD REACH · {from} · {km} km'),
+  train: msgl('TRAIN REACH · {from} · {km} km'),
+  boat: msgl('BOAT REACH · {from} · {km} km'),
+  plane: msgl('PLANE REACH · {from} · {km} km'),
+});
 /**
  * EPIDEMIC MODEL: a hollow ring round a place where beds ran short in most
  * runs by the hour shown. The panel's hospital-curve blue
@@ -437,7 +446,9 @@ export function createOutbreakLayer({
         id: `outbreak-ring|${key}`,
         sig,
         make: () => ({
-          name: `${circle.mode.toUpperCase()} REACH · ${circle.from} · ${km} km`,
+          name: REACH_NAMES[circle.mode]
+            ? tl(REACH_NAMES[circle.mode], { from: circle.from, km })
+            : `${circle.mode.toUpperCase()} REACH · ${circle.from} · ${km} km`,
           polyline: {
             positions: ring(
               circlePoints(circle.lat, circle.lon, circle.radiusKm, 96),
@@ -588,7 +599,12 @@ export function createOutbreakLayer({
       out.push(
         dot(
           `outbreak-destination|${place.code}`,
-          `REACHED BY PLANE · ${place.name || place.code} · ${place.landings || 1} infected flight${(place.landings || 1) === 1 ? '' : 's'} landed`,
+          tln(
+            place.landings || 1,
+            'REACHED BY PLANE · {place} · {count} infected flight landed',
+            'REACHED BY PLANE · {place} · {count} infected flights landed',
+            { place: place.name || place.code },
+          ),
           place,
           landingDotPx(place.landings),
           '#ff2a2a',
@@ -600,7 +616,10 @@ export function createOutbreakLayer({
       out.push(
         dot(
           `outbreak-forecast|${place.within}|${place.name}`,
-          `FUTURE SPREAD · WITHIN ${forecastWindowLabel(place.within)} · ${place.name}`,
+          tl('FUTURE SPREAD · WITHIN {window} · {place}', {
+            window: forecastWindowLabel(place.within),
+            place: place.name,
+          }),
           place,
           11,
           css,
@@ -639,7 +658,9 @@ export function createOutbreakLayer({
         const share = raw > 0 ? Math.max(0.05, Math.round(raw * 20) / 20) : 0;
         if (share >= EPIDEMIC_SHOW_MIN)
           likely.set(`${place.lat},${place.lon}`, share);
-        const label = `EPIDEMIC MODEL · ${place.code ? `${place.code} ` : ''}${place.name}`;
+        const label = tl('EPIDEMIC MODEL · {place}', {
+          place: `${place.code ? `${place.code} ` : ''}${place.name}`,
+        });
         // Beds short here in most runs by the hour shown (overflowP50,
         // optional): a hollow blue ring, origins included, where beds run
         // short first.
@@ -647,7 +668,9 @@ export function createOutbreakLayer({
           out.push(
             dot(
               `outbreak-beds|${place.id}`,
-              `${label} · beds short from day ${1 + Math.floor(place.overflowP50 / 24)} in most runs`,
+              `${label} · ${tl('beds short from day {day} in most runs', {
+                day: 1 + Math.floor(place.overflowP50 / 24),
+              })}`,
               place,
               BEDS_SHORT_PX,
               BEDS_SHORT_COLOR,
@@ -660,7 +683,7 @@ export function createOutbreakLayer({
         // The model's newer fields are optional: a place without them draws
         // as before. Most likely brought in by a flight: said in the name.
         const imported = epidemicImportedFirst(place);
-        const suffix = imported ? IMPORTED_FIRST_SUFFIX : '';
+        const suffix = imported ? importedFirstSuffix() : '';
         if (share > 0) {
           const size =
             6 +
@@ -672,7 +695,10 @@ export function createOutbreakLayer({
           out.push(
             dot(
               `outbreak-epidemic|${place.id}`,
-              `${label} · ${Math.round(share * 100)} % by now · ${Math.round(place.pArrive * 100)} % in the window${suffix}`,
+              `${label} · ${tl('{now} % by now · {window} % in the window', {
+                now: Math.round(share * 100),
+                window: Math.round(place.pArrive * 100),
+              })}${suffix}`,
               place,
               size,
               EPIDEMIC_COLOR,
@@ -685,7 +711,9 @@ export function createOutbreakLayer({
           out.push(
             dot(
               `outbreak-epidemic|${place.id}`,
-              `${label} · ahead · ${Math.round(place.pArrive * 100)} % in the window${suffix}`,
+              `${label} · ${tl('ahead · {window} % in the window', {
+                window: Math.round(place.pArrive * 100),
+              })}${suffix}`,
               place,
               5,
               EPIDEMIC_COLOR,
@@ -707,7 +735,11 @@ export function createOutbreakLayer({
           id: `outbreak-commute|${commute.from.lat},${commute.from.lon}>${commute.to.lat},${commute.to.lon}`,
           sig: `${look.level}`,
           make: () => ({
-            name: `COMMUTING · ${commute.from.name} ↔ ${commute.to.name} · ${commute.perDay.toLocaleString('en-US')} a day`,
+            name: tl('COMMUTING · {from} ↔ {to} · {count} a day', {
+              from: commute.from.name,
+              to: commute.to.name,
+              count: localDigits(commute.perDay.toLocaleString('en-US')),
+            }),
             polyline: {
               positions: [
                 Cesium.Cartesian3.fromDegrees(
@@ -736,7 +768,7 @@ export function createOutbreakLayer({
       out.push(
         dot(
           `outbreak-origin|${origin.id}`,
-          `OUTBREAK · ${origin.name}`,
+          tl('OUTBREAK · {place}', { place: origin.name }),
           origin,
           13,
           ORIGIN_COLOR,

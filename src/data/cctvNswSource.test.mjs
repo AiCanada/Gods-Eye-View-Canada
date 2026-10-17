@@ -1,3 +1,6 @@
+// First: this process works in an empty temp folder, so the road CCTV keys
+// the media fetches look up are not this machine's config/road-cctv-keys.json.
+import '../tooling/isolatedCwd.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {

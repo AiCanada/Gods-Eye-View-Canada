@@ -13,6 +13,8 @@
  * and copied. Where the API is missing the search still counts and scrolls.
  */
 
+import { tl } from './i18n/index.js';
+
 const HIGHLIGHT_ALL = 'ask-find';
 const HIGHLIGHT_CURRENT = 'ask-find-current';
 /** A search this long is a paste accident, not a search. */
@@ -60,8 +62,8 @@ export function stepFindIndex(current, count, direction) {
 /** "3 of 17", "No matches", or nothing while the field is empty. */
 export function findCountLabel(query, index, count) {
   if (!String(query ?? '')) return '';
-  if (!count) return 'No matches';
-  return `${index + 1} of ${count}`;
+  if (!count) return tl('No matches');
+  return tl('{index} of {count}', { index: index + 1, count });
 }
 
 /**
@@ -82,10 +84,10 @@ export function createOutputFind({
   const input = documentRef.createElement('input');
   input.type = 'text';
   input.className = 'ask-find-input';
-  input.placeholder = 'Find in output...';
+  input.placeholder = tl('Find in output...');
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.setAttribute('aria-label', 'Find in the LLM output');
+  input.setAttribute('aria-label', tl('Find in the LLM output'));
 
   const count = documentRef.createElement('span');
   count.className = 'ask-find-count';
@@ -100,9 +102,9 @@ export function createOutputFind({
     element.setAttribute('aria-label', title);
     return element;
   };
-  const previous = button('<', 'Previous match (Shift+Enter)');
-  const next = button('>', 'Next match (Enter)');
-  const closeButton = button('x', 'Close find (Escape)');
+  const previous = button('<', tl('Previous match (Shift+Enter)'));
+  const next = button('>', tl('Next match (Enter)'));
+  const closeButton = button('x', tl('Close find (Escape)'));
   bar.append(input, count, previous, next, closeButton);
 
   let matches = [];

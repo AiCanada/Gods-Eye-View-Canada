@@ -23,6 +23,7 @@ import {
   resolveBaseModel,
 } from '../../server/shared/llmTraining.mjs';
 import { llmTrainingProvider } from '../../server/providers/llmTraining.js';
+import { LLM_SERVER_LABELS } from '../llmTrainingSetup.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'gev-llm-'));
 const write = (root, rel, text = 'x') => {
@@ -527,4 +528,10 @@ test('the default base is Qwen3.5-0.8B with Qwen3.6-35B-A3B offered; an untouche
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('every label the server gives a data source or a base model is listed for translation', () => {
+  const listed = new Set(LLM_SERVER_LABELS);
+  for (const { label } of [...LLM_SOURCES, ...LLM_BASE_OPTIONS])
+    assert.ok(listed.has(label), label);
 });

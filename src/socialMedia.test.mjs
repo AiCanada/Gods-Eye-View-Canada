@@ -41,8 +41,17 @@ import {
   SocialMediaPanel,
 } from './socialMediaPanel.js';
 
-const html = expandApplicationHtml(
-  readFileSync(new URL('../index.html', import.meta.url), 'utf8'),
+// The tab's text carries the fork-locale markers (data-i18n-local*, Quebec
+// French); these tests read its structure and English, so the markers are
+// set aside: span wrappers first, then the attributes.
+const withoutLocalMarkers = (source) =>
+  source
+    .replace(/<span data-i18n-local>([^<]*)<\/span>/g, '$1')
+    .replace(/ data-i18n-local(?:-[a-z-]+)?(?=[\s/>])/g, '');
+const html = withoutLocalMarkers(
+  expandApplicationHtml(
+    readFileSync(new URL('../index.html', import.meta.url), 'utf8'),
+  ),
 );
 const panelHtml = html.slice(
   html.indexOf('id="social-panel"'),

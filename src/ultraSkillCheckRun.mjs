@@ -10,6 +10,7 @@
  * opens ChatGPT, and pastes it; its report can then be pasted back and
  * read the same way.
  */
+import { msgl, tl } from './i18n/marker.js';
 import { GROK_BOT_UNCONFIGURED } from './socialSwarm.mjs';
 import { GROK_BOT_GATEWAY_TOTAL_MS } from './grokBotGateway.mjs';
 import {
@@ -37,7 +38,7 @@ const COMPUTER_TIMEOUT_MS = GROK_BOT_GATEWAY_TOTAL_MS + 10_000;
 /** Ask's own ceiling plus the same client margin the Outbreak LLM search uses. */
 const LLM_ASK_TIMEOUT_MS = 240_000 + 10_000;
 
-const LLM_UNCONFIGURED = 'No model key yet. Add one in POWER UP.';
+const LLM_UNCONFIGURED = msgl('No model key yet. Add one in POWER UP.');
 
 function llmProviderId(provider) {
   const value = String(provider || '');
@@ -89,10 +90,10 @@ async function runSkillCheckLlm({
   if (only) roster = roster.filter((item) => item.id === only);
   if (!roster.length) {
     const error = !reachable
-      ? 'Could not reach the server for the model list.'
+      ? tl('Could not reach the server for the model list.')
       : only
-        ? 'No key for this model. Add one in POWER UP.'
-        : LLM_UNCONFIGURED;
+        ? tl('No key for this model. Add one in POWER UP.')
+        : tl(LLM_UNCONFIGURED);
     return {
       ok: false,
       unconfigured: error,
@@ -151,7 +152,7 @@ async function runSkillCheckLlm({
   if (!answers.length) {
     return {
       ok: false,
-      error: 'No model answered. Nothing was saved.',
+      error: tl('No model answered. Nothing was saved.'),
       via: 'llm',
       skills,
       verdicts: [],
@@ -215,8 +216,8 @@ async function postJson(request, url, body, timeoutMs) {
 
 function failure(error) {
   return error?.name === 'AbortError'
-    ? 'no answer in time'
-    : error?.message || 'request failed';
+    ? tl('no answer in time')
+    : error?.message || tl('request failed');
 }
 
 /**
@@ -319,7 +320,7 @@ export async function runSkillCheck({
         onBot?.({ bot: SKILL_CHECK_CHIEF_BOT, error: failure(error) });
         return {
           ok: false,
-          error: `Grok Bot: ${failure(error)}`,
+          error: tl('Grok Bot: {error}', { error: failure(error) }),
           via: 'computer',
           skills,
           verdicts: [],
@@ -459,7 +460,9 @@ export async function runSkillCheck({
             data?.error ||
               (providerId === 'xai'
                 ? GROK_BOT_UNCONFIGURED
-                : 'No OPENAI DOTS key yet. Add it in POWER UP → OPENAI DOTS.'),
+                : tl(
+                    'No OPENAI DOTS key yet. Add it in POWER UP → OPENAI DOTS.',
+                  )),
           );
           return;
         }
@@ -494,7 +497,7 @@ export async function runSkillCheck({
   if (!answers.length) {
     return {
       ok: false,
-      error: 'No bot answered. Nothing was saved.',
+      error: tl('No bot answered. Nothing was saved.'),
       via: providerId,
       skills,
       verdicts: [],

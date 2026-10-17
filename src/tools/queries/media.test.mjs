@@ -118,6 +118,13 @@ test('mounted camera provenance on the fork: an area search first, no Street Vie
   // panel, so a tool snapshot of a failing camera spends no Google call.
   const { cctvProxy } = await import('../../../server/providers/cctv.js');
   const { createCctvSource } = await import('../../layers/cctv/source.js');
+  const { createCctvCatalog } =
+    await import('../../../server/providers/cctv/catalog.js');
+  const { createCctvLivePacks } =
+    await import('../../../server/providers/cctv/live-packs.js');
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { default: path } = await import('node:path');
   const fixture = (id, url) => ({
     id,
     name: `Fixture ${id}`,
@@ -166,8 +173,18 @@ test('mounted camera provenance on the fork: an area search first, no Street Vie
       return new Response(null, { status: 404 });
     throw new Error(`no other upstream is contacted (${url.origin})`);
   });
+  // Hermetic: the proxy and its catalogue keep their files in a temp folder,
+  // and the catalogue has no live packs. So neither a checkout's day-old
+  // pack copies (.gev-cache/cctv-*.json) nor a pack download for the area
+  // (Austin's pack is always on) adds cameras to the two fixtures.
+  const root = mkdtempSync(path.join(tmpdir(), 'gev-media-provenance-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const cctvCatalog = createCctvCatalog({
+    sourceRoot: root,
+    livePacks: createCctvLivePacks({ packs: [] }),
+  });
   let middleware;
-  cctvProxy().configureServer({
+  cctvProxy({ sourceRoot: root, catalog: cctvCatalog }).configureServer({
     middlewares: {
       use(route, handler) {
         assert.equal(route, '/api/cctv');
@@ -224,6 +241,11 @@ test('mounted camera provenance on the fork: an area search first, no Street Vie
   assert.ok(
     !calls.includes('https://maps.googleapis.com'),
     'no Street View request for a tool snapshot',
+  );
+  assert.deepEqual(
+    [...new Set(calls)].sort(),
+    ['https://camera.example', 'https://offline.example'],
+    'no upstream but the two fixtures is contacted',
   );
 
   const server = createMcpServer({ catalog, name: 'test', version: '1' });

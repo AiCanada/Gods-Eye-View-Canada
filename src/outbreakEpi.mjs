@@ -111,6 +111,9 @@ import {
   wilsonInterval,
 } from './outbreakEpiStats.mjs';
 import { numberHeap } from './outbreakNetwork.mjs';
+// The menus' option labels and the result lines are English, marked for the
+// page's tl() (Quebec French); the server's own text stays English.
+import { english, msgl } from './i18n/marker.js';
 
 // The statistics the model's consumers read through this module.
 export {
@@ -293,7 +296,7 @@ export const PATHOGEN_PRESETS = Object.freeze([
   // newly emerged respiratory virus are guessed.
   Object.freeze({
     id: 'novel',
-    label: 'Novel outbreak (Irkutsk default, guessed)',
+    label: msgl('Novel outbreak (Irkutsk default, guessed)'),
     note: 'Limited data: typical values for a newly emerged respiratory virus',
     values: Object.freeze({
       transmission: 'droplets',
@@ -316,7 +319,7 @@ export const PATHOGEN_PRESETS = Object.freeze([
   }),
   Object.freeze({
     id: 'flu',
-    label: 'Seasonal influenza',
+    label: msgl('Seasonal influenza'),
     note: 'R0 ~1.3, incubation ~2 d (Biggerstaff 2014; Lessler 2009)',
     values: Object.freeze({
       transmission: 'droplets',
@@ -339,7 +342,7 @@ export const PATHOGEN_PRESETS = Object.freeze([
   }),
   Object.freeze({
     id: 'covid2020',
-    label: 'COVID-19 (2020)',
+    label: msgl('COVID-19 (2020)'),
     note: 'R0 ~2.8, incubation ~5.5 d, k ~0.1 (Lauer 2020; Endo 2020)',
     values: Object.freeze({
       transmission: 'airborne',
@@ -362,7 +365,7 @@ export const PATHOGEN_PRESETS = Object.freeze([
   }),
   Object.freeze({
     id: 'omicron',
-    label: 'COVID-19 Omicron',
+    label: msgl('COVID-19 Omicron'),
     note: 'R0 ~8, incubation ~3 d (Liu & Rocklöv 2022; Jansen 2021)',
     values: Object.freeze({
       transmission: 'airborne',
@@ -385,7 +388,7 @@ export const PATHOGEN_PRESETS = Object.freeze([
   }),
   Object.freeze({
     id: 'measles',
-    label: 'Measles',
+    label: msgl('Measles'),
     note: 'R0 12–18, incubation ~11 d (Guerra 2017)',
     values: Object.freeze({
       transmission: 'airborne',
@@ -408,7 +411,7 @@ export const PATHOGEN_PRESETS = Object.freeze([
   }),
   Object.freeze({
     id: 'sars2003',
-    label: 'SARS (2003)',
+    label: msgl('SARS (2003)'),
     note: 'R0 ~2.5, little presymptomatic spread, k ~0.16 (Lipsitch 2003)',
     values: Object.freeze({
       transmission: 'droplets',
@@ -431,7 +434,7 @@ export const PATHOGEN_PRESETS = Object.freeze([
   }),
   Object.freeze({
     id: 'mers',
-    label: 'MERS',
+    label: msgl('MERS'),
     note: 'R0 <1 between people, camel reservoir (Cauchemez 2016)',
     values: Object.freeze({
       transmission: 'droplets',
@@ -455,7 +458,7 @@ export const PATHOGEN_PRESETS = Object.freeze([
   }),
   Object.freeze({
     id: 'ebola',
-    label: 'Ebola',
+    label: msgl('Ebola'),
     note: 'R0 ~1.8, incubation ~9 d (WHO Ebola Response Team 2014)',
     values: Object.freeze({
       transmission: 'contact',
@@ -478,7 +481,7 @@ export const PATHOGEN_PRESETS = Object.freeze([
   }),
   Object.freeze({
     id: 'mpox',
-    label: 'Mpox (2022)',
+    label: msgl('Mpox (2022)'),
     note: 'R0 ~1.4, incubation ~8 d (Miura 2022)',
     values: Object.freeze({
       transmission: 'contact',
@@ -501,7 +504,7 @@ export const PATHOGEN_PRESETS = Object.freeze([
   }),
   Object.freeze({
     id: 'dengue',
-    label: 'Dengue (mosquito)',
+    label: msgl('Dengue (mosquito)'),
     note: 'R0 1–5, mostly asymptomatic (Bhatt 2013; Mordecai 2017)',
     values: Object.freeze({
       transmission: 'vector',
@@ -524,7 +527,7 @@ export const PATHOGEN_PRESETS = Object.freeze([
   }),
   Object.freeze({
     id: 'h5n1',
-    label: 'H5N1 human-adapted (hypothetical)',
+    label: msgl('H5N1 human-adapted (hypothetical)'),
     note: 'A scenario, not a measured virus: R0 2, bird reservoir',
     values: Object.freeze({
       transmission: 'droplets',
@@ -648,9 +651,9 @@ export const EPI_NUMBER_FIELDS = Object.freeze({
 
 /** Superspreading: the dispersion k of each person's offspring. */
 export const SUPERSPREADING = Object.freeze([
-  Object.freeze({ id: 'low', label: 'Low (k 1, flu-like)', k: 1 }),
-  Object.freeze({ id: 'medium', label: 'Medium (k 0.4)', k: 0.4 }),
-  Object.freeze({ id: 'high', label: 'High (k 0.1, SARS-like)', k: 0.1 }),
+  Object.freeze({ id: 'low', label: msgl('Low (k 1, flu-like)'), k: 1 }),
+  Object.freeze({ id: 'medium', label: msgl('Medium (k 0.4)'), k: 0.4 }),
+  Object.freeze({ id: 'high', label: msgl('High (k 0.1, SARS-like)'), k: 0.1 }),
 ]);
 const DEFAULT_K = 1;
 
@@ -662,27 +665,27 @@ const DEFAULT_K = 1;
 export const EPI_HUMAN_FACTORS = Object.freeze([
   Object.freeze({
     key: 'age',
-    label: 'Age structure',
+    label: msgl('Age structure'),
     options: Object.freeze([
-      { id: 'young', label: 'Young', contact: 1.1, severity: 0.5 },
-      { id: 'mixed', label: 'Mixed', contact: 1, severity: 1 },
-      { id: 'older', label: 'Older', contact: 0.9, severity: 2 },
+      { id: 'young', label: msgl('Young'), contact: 1.1, severity: 0.5 },
+      { id: 'mixed', label: msgl('Mixed'), contact: 1, severity: 1 },
+      { id: 'older', label: msgl('Older'), contact: 0.9, severity: 2 },
     ]),
   }),
   Object.freeze({
     key: 'household',
-    label: 'Household size',
+    label: msgl('Household size'),
     // hh: the share of contacts made at home (Ferguson et al. 2020, Report
     // 9; Madewell et al. 2020), what a lockdown outside the home leaves.
     options: Object.freeze([
-      { id: 'small', label: 'Small (1–2)', contact: 0.95, hh: 0.2 },
-      { id: 'average', label: 'Average (3–4)', contact: 1, hh: 0.3 },
-      { id: 'large', label: 'Large (5+)', contact: 1.1, hh: 0.4 },
+      { id: 'small', label: msgl('Small (1–2)'), contact: 0.95, hh: 0.2 },
+      { id: 'average', label: msgl('Average (3–4)'), contact: 1, hh: 0.3 },
+      { id: 'large', label: msgl('Large (5+)'), contact: 1.1, hh: 0.4 },
     ]),
   }),
   Object.freeze({
     key: 'healthcare',
-    label: 'Healthcare & surveillance',
+    label: msgl('Healthcare & surveillance'),
     // detect: share of symptomatic cases ever reported; reportDays: from
     // symptoms to the report; beds: hospital beds per 1,000 people; icu:
     // intensive-care beds per 1,000 (OECD/WHO: India 0.02, UK 0.07,
@@ -690,7 +693,7 @@ export const EPI_HUMAN_FACTORS = Object.freeze([
     options: Object.freeze([
       {
         id: 'low',
-        label: 'Low (overwhelmed)',
+        label: msgl('Low (overwhelmed)'),
         isolate: 0,
         contact: 1.05,
         detect: 0.1,
@@ -700,7 +703,7 @@ export const EPI_HUMAN_FACTORS = Object.freeze([
       },
       {
         id: 'medium',
-        label: 'Medium',
+        label: msgl('Medium'),
         isolate: 0.1,
         detect: 0.3,
         reportDays: 4,
@@ -709,7 +712,7 @@ export const EPI_HUMAN_FACTORS = Object.freeze([
       },
       {
         id: 'high',
-        label: 'High',
+        label: msgl('High'),
         isolate: 0.25,
         detect: 0.6,
         reportDays: 2,
@@ -720,107 +723,117 @@ export const EPI_HUMAN_FACTORS = Object.freeze([
   }),
   Object.freeze({
     key: 'response',
-    label: 'Public response to reported cases',
+    label: msgl('Public response to reported cases'),
     // awareness: how sharply contacts fall as reported cases rise, per
     // reported case per 100,000 people (Funk et al. 2009).
     options: Object.freeze([
-      { id: 'none', label: 'None', awareness: 0 },
-      { id: 'moderate', label: 'Moderate', awareness: 0.02 },
-      { id: 'strong', label: 'Strong (fear, staying home)', awareness: 0.1 },
+      { id: 'none', label: msgl('None'), awareness: 0 },
+      { id: 'moderate', label: msgl('Moderate'), awareness: 0.02 },
+      {
+        id: 'strong',
+        label: msgl('Strong (fear, staying home)'),
+        awareness: 0.1,
+      },
     ]),
   }),
   Object.freeze({
     key: 'gathering',
-    label: 'Mass gathering',
+    label: msgl('Mass gathering'),
     options: Object.freeze([
-      { id: 'none', label: 'None', boost: 1, days: 0, travel: 1 },
+      { id: 'none', label: msgl('None'), boost: 1, days: 0, travel: 1 },
       {
         id: 'regional',
-        label: 'Regional event',
+        label: msgl('Regional event'),
         boost: 1.2,
         days: 3,
         travel: 1.1,
       },
-      { id: 'major', label: 'Major event', boost: 1.5, days: 5, travel: 1.3 },
+      {
+        id: 'major',
+        label: msgl('Major event'),
+        boost: 1.5,
+        days: 5,
+        travel: 1.3,
+      },
     ]),
   }),
   Object.freeze({
     key: 'holiday',
-    label: 'Holiday travel',
+    label: msgl('Holiday travel'),
     options: Object.freeze([
-      { id: 'normal', label: 'Normal', travel: 1 },
-      { id: 'holiday', label: 'Holiday peak (+30 %)', travel: 1.3 },
+      { id: 'normal', label: msgl('Normal'), travel: 1 },
+      { id: 'holiday', label: msgl('Holiday peak (+30 %)'), travel: 1.3 },
     ]),
   }),
   Object.freeze({
     key: 'transit',
-    label: 'Public transit crowding',
+    label: msgl('Public transit crowding'),
     options: Object.freeze([
-      { id: 'low', label: 'Low', contact: 0.95 },
-      { id: 'medium', label: 'Medium', contact: 1 },
-      { id: 'high', label: 'High', contact: 1.1 },
+      { id: 'low', label: msgl('Low'), contact: 0.95 },
+      { id: 'medium', label: msgl('Medium'), contact: 1 },
+      { id: 'high', label: msgl('High'), contact: 1.1 },
     ]),
   }),
   Object.freeze({
     key: 'reservoir',
-    label: 'Animal reservoir',
+    label: msgl('Animal reservoir'),
     options: Object.freeze([
-      { id: 'no', label: 'No' },
-      { id: 'yes', label: 'Yes (keeps spilling over at patient zero)' },
+      { id: 'no', label: msgl('No') },
+      { id: 'yes', label: msgl('Yes (keeps spilling over at patient zero)') },
     ]),
   }),
   // The first option of each menu below is the neutral one: the model runs
   // as it did before the menu existed.
   Object.freeze({
     key: 'heterogeneity',
-    label: 'Susceptibility variation',
+    label: msgl('Susceptibility variation'),
     // cv: coefficient of variation of susceptibility (Gomes et al. 2022).
     options: Object.freeze([
-      { id: 'none', label: 'None (everyone alike)', cv: 0 },
-      { id: 'moderate', label: 'Moderate (CV 1)', cv: 1 },
-      { id: 'high', label: 'High (CV 2)', cv: 2 },
+      { id: 'none', label: msgl('None (everyone alike)'), cv: 0 },
+      { id: 'moderate', label: msgl('Moderate (CV 1)'), cv: 1 },
+      { id: 'high', label: msgl('High (CV 2)'), cv: 2 },
     ]),
   }),
   Object.freeze({
     key: 'lockdownScope',
-    label: 'Lockdown reach',
+    label: msgl('Lockdown reach'),
     options: Object.freeze([
-      { id: 'all', label: 'Everyone (household too)' },
-      { id: 'community', label: 'Outside the home only' },
+      { id: 'all', label: msgl('Everyone (household too)') },
+      { id: 'community', label: msgl('Outside the home only') },
     ]),
   }),
   Object.freeze({
     key: 'mixing',
-    label: 'Commuting mixing',
+    label: msgl('Commuting mixing'),
     options: Object.freeze([
-      { id: 'home', label: 'Home only (one way)' },
-      { id: 'daytime', label: 'Daytime two-way' },
+      { id: 'home', label: msgl('Home only (one way)') },
+      { id: 'daytime', label: msgl('Daytime two-way') },
     ]),
   }),
   Object.freeze({
     key: 'clock',
-    label: 'Departure clock',
+    label: msgl('Departure clock'),
     options: Object.freeze([
-      { id: 'utc', label: 'UTC hours' },
-      { id: 'local', label: 'Local hours' },
+      { id: 'utc', label: msgl('UTC hours') },
+      { id: 'local', label: msgl('Local hours') },
     ]),
   }),
   Object.freeze({
     key: 'transfers',
-    label: 'Airport transfers',
+    label: msgl('Airport transfers'),
     // transferShare: passengers landing at a large airport who fly on;
     // layoverHours: how long they wait there.
     options: Object.freeze([
-      { id: 'none', label: 'None', transferShare: 0, layoverHours: 0 },
+      { id: 'none', label: msgl('None'), transferShare: 0, layoverHours: 0 },
       {
         id: 'some',
-        label: 'Some connecting passengers',
+        label: msgl('Some connecting passengers'),
         transferShare: 0.15,
         layoverHours: 3,
       },
       {
         id: 'hub-heavy',
-        label: 'Hub heavy',
+        label: msgl('Hub heavy'),
         transferShare: 0.3,
         layoverHours: 2,
       },
@@ -828,29 +841,29 @@ export const EPI_HUMAN_FACTORS = Object.freeze([
   }),
   Object.freeze({
     key: 'responseSignal',
-    label: 'Response signal',
+    label: msgl('Response signal'),
     options: Object.freeze([
-      { id: 'reported', label: 'Reported cases' },
-      { id: 'deaths', label: 'Deaths' },
-      { id: 'both', label: 'Both' },
+      { id: 'reported', label: msgl('Reported cases') },
+      { id: 'deaths', label: msgl('Deaths') },
+      { id: 'both', label: msgl('Both') },
     ]),
   }),
   Object.freeze({
     key: 'responseReach',
-    label: 'Response reach',
+    label: msgl('Response reach'),
     options: Object.freeze([
-      { id: 'local', label: 'Own place' },
-      { id: 'mixed', label: 'Mixed' },
-      { id: 'global', label: 'Everywhere' },
+      { id: 'local', label: msgl('Own place') },
+      { id: 'mixed', label: msgl('Mixed') },
+      { id: 'global', label: msgl('Everywhere') },
     ]),
   }),
   Object.freeze({
     key: 'variants',
-    label: 'Variant emergence',
+    label: msgl('Variant emergence'),
     options: Object.freeze([
-      { id: 'drift', label: 'Steady drift' },
-      { id: 'takeover', label: 'A fitter strain takes over' },
-      { id: 'two-strain', label: 'Second strain (set below)' },
+      { id: 'drift', label: msgl('Steady drift') },
+      { id: 'takeover', label: msgl('A fitter strain takes over') },
+      { id: 'two-strain', label: msgl('Second strain (set below)') },
     ]),
   }),
 ]);
@@ -859,82 +872,82 @@ export const EPI_HUMAN_FACTORS = Object.freeze([
 export const EPI_INTERVENTION_CHOICES = Object.freeze([
   Object.freeze({
     key: 'exitScreening',
-    label: 'Exit screening',
+    label: msgl('Exit screening'),
     options: Object.freeze([
-      { id: 'off', label: 'Off' },
-      { id: 'on', label: 'On' },
+      { id: 'off', label: msgl('Off') },
+      { id: 'on', label: msgl('On') },
     ]),
   }),
   Object.freeze({
     key: 'entryScreening',
-    label: 'Entry screening',
+    label: msgl('Entry screening'),
     options: Object.freeze([
-      { id: 'off', label: 'Off' },
-      { id: 'on', label: 'On' },
+      { id: 'off', label: msgl('Off') },
+      { id: 'on', label: msgl('On') },
     ]),
   }),
   Object.freeze({
     key: 'tracing',
-    label: 'Contact tracing',
+    label: msgl('Contact tracing'),
     options: Object.freeze([
-      { id: 'none', label: 'None', isolate: 0, presym: 0 },
-      { id: 'low', label: 'Low', isolate: 0.05, presym: 0.03 },
-      { id: 'medium', label: 'Medium', isolate: 0.15, presym: 0.08 },
-      { id: 'high', label: 'High', isolate: 0.3, presym: 0.15 },
+      { id: 'none', label: msgl('None'), isolate: 0, presym: 0 },
+      { id: 'low', label: msgl('Low'), isolate: 0.05, presym: 0.03 },
+      { id: 'medium', label: msgl('Medium'), isolate: 0.15, presym: 0.08 },
+      { id: 'high', label: msgl('High'), isolate: 0.3, presym: 0.15 },
     ]),
   }),
   Object.freeze({
     key: 'triggerMode',
-    label: 'Local trigger',
+    label: msgl('Local trigger'),
     options: Object.freeze([
-      { id: 'everywhere', label: 'Everywhere at the start hour' },
-      { id: 'reported', label: 'Reported cases per 100,000' },
-      { id: 'hospital', label: 'Hospital load' },
+      { id: 'everywhere', label: msgl('Everywhere at the start hour') },
+      { id: 'reported', label: msgl('Reported cases per 100,000') },
+      { id: 'hospital', label: msgl('Hospital load') },
     ]),
   }),
   Object.freeze({
     key: 'borderPolicy',
-    label: 'Border policy',
+    label: msgl('Border policy'),
     options: Object.freeze([
-      { id: 'none', label: 'Every flight' },
-      { id: 'origin', label: 'Flights out of the outbreak countries' },
+      { id: 'none', label: msgl('Every flight') },
+      { id: 'origin', label: msgl('Flights out of the outbreak countries') },
       {
         id: 'reported',
-        label: 'Flights out of countries reaching the trigger',
+        label: msgl('Flights out of countries reaching the trigger'),
       },
-      { id: 'all', label: 'Every international flight' },
+      { id: 'all', label: msgl('Every international flight') },
     ]),
   }),
   Object.freeze({
     key: 'importDetection',
-    label: 'Detection of arriving cases',
+    label: msgl('Detection of arriving cases'),
     // importDetect: share of symptomatic arrivals found and reported.
     options: Object.freeze([
-      { id: 'off', label: 'Off', importDetect: 0 },
-      { id: 'low', label: 'Low', importDetect: 0.2 },
-      { id: 'medium', label: 'Medium', importDetect: 0.5 },
-      { id: 'high', label: 'High', importDetect: 0.8 },
+      { id: 'off', label: msgl('Off'), importDetect: 0 },
+      { id: 'low', label: msgl('Low'), importDetect: 0.2 },
+      { id: 'medium', label: msgl('Medium'), importDetect: 0.5 },
+      { id: 'high', label: msgl('High'), importDetect: 0.8 },
     ]),
   }),
   Object.freeze({
     key: 'vaccinePriority',
-    label: 'Vaccination priority',
+    label: msgl('Vaccination priority'),
     options: Object.freeze([
-      { id: 'everywhere', label: 'Everywhere' },
-      { id: 'origin-first', label: 'Outbreak places first' },
+      { id: 'everywhere', label: msgl('Everywhere') },
+      { id: 'origin-first', label: msgl('Outbreak places first') },
     ]),
   }),
   // A second arm without a set of measures (COUNTERFACTUAL_SETS), paired
   // run by run with the main one.
   Object.freeze({
     key: 'compare',
-    label: 'Compare against',
+    label: msgl('Compare against'),
     options: Object.freeze([
-      { id: 'none', label: 'Nothing' },
-      { id: 'all', label: 'No interventions' },
-      { id: 'travel', label: 'No travel measures' },
-      { id: 'distancing', label: 'No lockdown or tracing' },
-      { id: 'vaccination', label: 'No vaccination campaign' },
+      { id: 'none', label: msgl('Nothing') },
+      { id: 'all', label: msgl('No interventions') },
+      { id: 'travel', label: msgl('No travel measures') },
+      { id: 'distancing', label: msgl('No lockdown or tracing') },
+      { id: 'vaccination', label: msgl('No vaccination campaign') },
     ]),
   }),
 ]);
@@ -5665,10 +5678,10 @@ function simulateEnsemble(
 
 /** The comparison line's wording of each set. */
 const CF_PHRASE = Object.freeze({
-  all: 'All measures vs none',
-  travel: 'Travel measures vs none',
-  distancing: 'Lockdown and tracing vs none',
-  vaccination: 'Vaccination campaign vs none',
+  all: msgl('All measures vs none'),
+  travel: msgl('Travel measures vs none'),
+  distancing: msgl('Lockdown and tracing vs none'),
+  vaccination: msgl('Vaccination campaign vs none'),
 });
 
 /**
@@ -5853,20 +5866,26 @@ export function arrivedBy(place, hour) {
  * When it arrives, in words: the median and its 5–95 % window where most
  * runs bring it, else how soon the earliest 5 % do.
  */
-function arrivalWords(place, at) {
+function arrivalWords(place, at, say) {
   if (place.etaP50 !== null && place.etaP50 !== undefined)
-    return ` · median arrival ${at(place.etaP50)} (5–95 %: ${at(place.etaP5)} to ${at(place.etaP95)})`;
+    return ` · ${say.tl('median arrival {at} (5–95 %: {early} to {late})', {
+      at: at(place.etaP50),
+      early: at(place.etaP5),
+      late: at(place.etaP95),
+    })}`;
   if (place.etaP5 !== null && place.etaP5 !== undefined)
-    return ` · earliest 5 % of runs by ${at(place.etaP5)}`;
+    return ` · ${say.tl('earliest 5 % of runs by {at}', { at: at(place.etaP5) })}`;
   return '';
 }
 
 /** When it is first reported there, in words, if it is in most runs. */
-function reportWords(place, at) {
+function reportWords(place, at, say) {
   if (place.reportP50 !== null && place.reportP50 !== undefined)
-    return ` · first reported ${at(place.reportP50)}`;
+    return ` · ${say.tl('first reported {at}', { at: at(place.reportP50) })}`;
   if (place.pReported > 0)
-    return ` · reported in ${Math.round(place.pReported * 100)} % of runs`;
+    return ` · ${say.tl('reported in {percent} % of runs', {
+      percent: Math.round(place.pReported * 100),
+    })}`;
   return '';
 }
 
@@ -5877,62 +5896,209 @@ function count(n) {
 /**
  * The epidemic result in lines, for the box and the language model: the
  * headline lines, then one line for every place it reached, in result order
- * (no limit by default; pass `max` to bound a prompt).
+ * (no limit by default; pass `max` to bound a prompt). The words are
+ * English unless `say` is the page's (localSay from src/i18n/index.js):
+ * the box passes it, a question for the model does not.
  */
 export function epidemicLines(
   result,
-  { startMs = result?.startMs, max = Infinity } = {},
+  { startMs = result?.startMs, max = Infinity, say = english } = {},
 ) {
   if (!result?.places) return [];
   const s = result.summary || {};
   const at = (h) =>
     h === null || h === undefined
-      ? 'after the window'
+      ? say.tl('after the window')
       : `${new Date(startMs + h * HOUR_MS)
           .toISOString()
           .slice(5, 16)
           .replace('T', ' ')} UTC`;
   const pct = (share) => Math.round((share || 0) * 100);
-  const plural = (n, one, many) => (n === 1 ? one : many);
+  // Counts with thousands marks and decimals, in the page's marks.
+  const n = (v) => say.digits(count(v));
+  const dec = (v) => say.digits(String(v));
   // A result from before the upgrade has none of the new fields: every
   // clause below is guarded, so it reads as it always did.
+  const factors = s.rFactors?.length
+    ? ` (${s.rFactors.map((f) => `${f.label} ×${dec(f.factor)}`).join(', ')})`
+    : '';
+  const head = [
+    say.tl('R0 {r0} · R now {r}', { r0: dec(s.r0), r: dec(s.rEffective) }) +
+      factors,
+    s.rControlled !== s.rEffective
+      ? say.tl('with interventions {r}', { r: dec(s.rControlled) })
+      : '',
+    say.tl('doubling {days} d', { days: dec(s.doublingDays ?? '—') }),
+    say.tl('one import takes hold {percent} %', {
+      percent: Math.round((s.establishment || 0) * 100),
+    }),
+    s.heterogeneityCv > 0
+      ? say.tl('herd immunity at {percent} %', { percent: pct(s.hitShare) })
+      : '',
+    s.placesRestricted > 0
+      ? say.tln(
+          s.placesRestricted,
+          'local restrictions in {count} place',
+          'local restrictions in {count} places',
+        )
+      : '',
+    s.countriesClosedP50 > 0
+      ? say.tln(
+          s.countriesClosedP50,
+          'borders closed for {count} country',
+          'borders closed for {count} countries',
+        )
+      : '',
+    s.coverageEnd > 0
+      ? say.tl('R at the end {r} (vaccination {percent} %)', {
+          r: dec(s.rEnd),
+          percent: pct(s.coverageEnd),
+        })
+      : '',
+  ];
+  const partial = !result.partial
+    ? ''
+    : result.stoppedAt?.run === 0
+      ? say.tl('time limit: one run, stopped at day {day}', {
+          day: Math.ceil(result.stoppedAt.hour / 24),
+        })
+      : result.counterfactual && !(result.runs < result.runsAsked)
+        ? say.tl('time limit: fewer paired runs')
+        : say.tl('time limit: fewer runs');
+  const infected = [
+    say.tl(
+      'Infected by the end (median, 95th): {median} · {high} · {runs} runs, seed {seed}',
+      {
+        median: n(s.infectedP50),
+        high: n(s.infectedP95),
+        runs: result.runs,
+        seed: result.seed,
+      },
+    ) + (partial ? ` (${partial})` : ''),
+    Array.isArray(s.infectedP50Ci)
+      ? say.tl('Monte-Carlo range {low}–{high}', {
+          low: n(s.infectedP50Ci[0]),
+          high: n(s.infectedP50Ci[1]),
+        })
+      : '',
+    s.establishmentSeeds !== undefined && s.establishmentSeeds <= 0.99
+      ? say.tl('{percent} % of runs died out', { percent: pct(s.pExtinct) })
+      : '',
+  ];
   const lines = [
-    `R0 ${s.r0} · R now ${s.rEffective}${s.rFactors?.length ? ` (${s.rFactors.map((f) => `${f.label} ×${f.factor}`).join(', ')})` : ''}${s.rControlled !== s.rEffective ? ` · with interventions ${s.rControlled}` : ''} · doubling ${s.doublingDays ?? '—'} d · one import takes hold ${Math.round((s.establishment || 0) * 100)} %${s.heterogeneityCv > 0 ? ` · herd immunity at ${pct(s.hitShare)} %` : ''}${s.placesRestricted > 0 ? ` · local restrictions in ${s.placesRestricted} ${plural(s.placesRestricted, 'place', 'places')}` : ''}${s.countriesClosedP50 > 0 ? ` · borders closed for ${s.countriesClosedP50} ${plural(s.countriesClosedP50, 'country', 'countries')}` : ''}${s.coverageEnd > 0 ? ` · R at the end ${s.rEnd} (vaccination ${pct(s.coverageEnd)} %)` : ''}`,
-    `Infected by the end (median, 95th): ${count(s.infectedP50)} · ${count(s.infectedP95)} · ${result.runs} runs, seed ${result.seed}${result.partial ? (result.stoppedAt?.run === 0 ? ` (time limit: one run, stopped at day ${Math.ceil(result.stoppedAt.hour / 24)})` : result.counterfactual && !(result.runs < result.runsAsked) ? ' (time limit: fewer paired runs)' : ' (time limit: fewer runs)') : ''}${Array.isArray(s.infectedP50Ci) ? ` · Monte-Carlo range ${count(s.infectedP50Ci[0])}–${count(s.infectedP50Ci[1])}` : ''}${s.establishmentSeeds !== undefined && s.establishmentSeeds <= 0.99 ? ` · ${pct(s.pExtinct)} % of runs died out` : ''}`,
+    head.filter(Boolean).join(' · '),
+    infected.filter(Boolean).join(' · '),
   ];
   const lastDay = result.totals?.at?.(-1);
   if (s.reportedP50 !== undefined)
     lines.push(
-      `Reported: ${count(s.reportedP50)} (${Math.round((s.ascertainment || 0) * 100)} % of cases with symptoms, ~${s.reportDays} d late) · deaths ${count(s.deathsP50)} (95th ${count(s.deathsP95)})${s.placesOverwhelmed ? ` · hospitals overwhelmed in ${s.placesOverwhelmed} place${s.placesOverwhelmed === 1 ? '' : 's'}` : ''}${s.peakHospitalP50 !== undefined && lastDay?.admittedP50 > 0 ? ` · hospital peak ${count(s.peakHospitalP50)} (ICU ${count(s.peakIcuP50)})` : ''}${s.importedP50 > 0 ? ` · imported ${count(s.importedP50)} (${pct(s.importedShare)} % of cases)` : ''}${s.testsSaturatedPlaces > 0 ? ` · tests saturated in ${s.testsSaturatedPlaces} ${plural(s.testsSaturatedPlaces, 'place', 'places')}` : ''}`,
+      [
+        say.tl(
+          'Reported: {reported} ({percent} % of cases with symptoms, ~{days} d late) · deaths {deaths} (95th {high})',
+          {
+            reported: n(s.reportedP50),
+            percent: Math.round((s.ascertainment || 0) * 100),
+            days: dec(s.reportDays),
+            deaths: n(s.deathsP50),
+            high: n(s.deathsP95),
+          },
+        ),
+        s.placesOverwhelmed
+          ? say.tln(
+              s.placesOverwhelmed,
+              'hospitals overwhelmed in {count} place',
+              'hospitals overwhelmed in {count} places',
+            )
+          : '',
+        s.peakHospitalP50 !== undefined && lastDay?.admittedP50 > 0
+          ? say.tl('hospital peak {peak} (ICU {icu})', {
+              peak: n(s.peakHospitalP50),
+              icu: n(s.peakIcuP50),
+            })
+          : '',
+        s.importedP50 > 0
+          ? say.tl('imported {count} ({percent} % of cases)', {
+              count: n(s.importedP50),
+              percent: pct(s.importedShare),
+            })
+          : '',
+        s.testsSaturatedPlaces > 0
+          ? say.tln(
+              s.testsSaturatedPlaces,
+              'tests saturated in {count} place',
+              'tests saturated in {count} places',
+            )
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
     );
   if (s.peakDayP50 !== undefined) {
     const peak =
       s.peakReached >= 0.5
-        ? `Peak: day ${s.peakDayP50} (5–95 %: ${s.peakDayP5}–${s.peakDayP95}), ${count(s.peakNewP50)} new a day`
-        : `Peak: not inside the window (day ${s.peakDayP50} so far, ${count(s.peakNewP50)} new a day)`;
+        ? say.tl(
+            'Peak: day {day} (5–95 %: {early}–{late}), {count} new a day',
+            {
+              day: s.peakDayP50,
+              early: s.peakDayP5,
+              late: s.peakDayP95,
+              count: n(s.peakNewP50),
+            },
+          )
+        : say.tl(
+            'Peak: not inside the window (day {day} so far, {count} new a day)',
+            { day: s.peakDayP50, count: n(s.peakNewP50) },
+          );
     const short =
       s.overflowRuns > 0
         ? s.overflowDayP50 === null || s.overflowDayP50 === undefined
-          ? ` · hospitals short of beds in ${pct(s.overflowRuns)} % of runs`
-          : ` · hospitals short of beds from ${at(24 * (s.overflowDayP50 - 1))} in ${pct(s.overflowRuns)} % of runs`
+          ? say.tl('hospitals short of beds in {percent} % of runs', {
+              percent: pct(s.overflowRuns),
+            })
+          : say.tl('hospitals short of beds from {at} in {percent} % of runs', {
+              at: at(24 * (s.overflowDayP50 - 1)),
+              percent: pct(s.overflowRuns),
+            })
         : '';
     const rtDay =
       s.rtLastP50 !== null && s.rtLastP50 !== undefined
         ? result.totals?.[s.rtLastDay - 1]
         : null;
     const rt = rtDay
-      ? ` · Rt in the runs ${s.rtLastP50} on day ${s.rtLastDay} (5–95 %: ${rtDay.rtP5}–${rtDay.rtP95})`
+      ? say.tl('Rt in the runs {rt} on day {day} (5–95 %: {low}–{high})', {
+          rt: dec(s.rtLastP50),
+          day: s.rtLastDay,
+          low: dec(rtDay.rtP5),
+          high: dec(rtDay.rtP95),
+        })
       : '';
-    lines.push(peak + short + rt);
+    lines.push([peak, short, rt].filter(Boolean).join(' · '));
   }
   if (s.strain2Day !== undefined)
     lines.push(
       !s.strain2Seeded
-        ? `Second strain: not seeded inside the window (day ${s.strain2Day + 1})`
-        : `Second strain: from day ${s.strain2Day + 1} at ${s.strain2Place || 'the outbreak places'} · R ${s.rStrain2} · ${pct(s.strain2ShareEnd)} % of infections by the end · ` +
-            (s.takeoverDayP50 !== null && s.takeoverDayP50 !== undefined
-              ? `took over on day ${s.takeoverDayP50} (5–95 %: ${s.takeoverDayP5}–${s.takeoverDayP95})`
-              : `took over in ${pct(s.takeoverRuns)} % of runs`),
+        ? say.tl('Second strain: not seeded inside the window (day {day})', {
+            day: s.strain2Day + 1,
+          })
+        : `${say.tl(
+            'Second strain: from day {day} at {place} · R {r} · {percent} % of infections by the end',
+            {
+              day: s.strain2Day + 1,
+              place: s.strain2Place || say.tl('the outbreak places'),
+              r: dec(s.rStrain2),
+              percent: pct(s.strain2ShareEnd),
+            },
+          )} · ${
+            s.takeoverDayP50 !== null && s.takeoverDayP50 !== undefined
+              ? say.tl('took over on day {day} (5–95 %: {early}–{late})', {
+                  day: s.takeoverDayP50,
+                  early: s.takeoverDayP5,
+                  late: s.takeoverDayP95,
+                })
+              : say.tl('took over in {percent} % of runs', {
+                  percent: pct(s.takeoverRuns),
+                })
+          }`,
     );
   if (
     s.restrictedPersonDaysP50 > 0 ||
@@ -5941,23 +6107,74 @@ export function epidemicLines(
     s.bedDaysShortP50 > 0
   )
     lines.push(
-      `Cost: ${count(s.restrictedPersonDaysP50)} person-days of restriction · ${count(s.passengersBlockedP50)} passengers blocked · ${count(s.travellersCaughtP50)} travellers caught · ${count(s.bedDaysShortP50)} bed-days short`,
+      say.tl(
+        'Cost: {restricted} person-days of restriction · {blocked} passengers blocked · {caught} travellers caught · {beds} bed-days short',
+        {
+          restricted: n(s.restrictedPersonDaysP50),
+          blocked: n(s.passengersBlockedP50),
+          caught: n(s.travellersCaughtP50),
+          beds: n(s.bedDaysShortP50),
+        },
+      ),
     );
   const cf = result.counterfactual;
   if (cf) {
     // A positive difference is fewer with the measures.
-    const fewer = (v, noun) =>
-      v >= 0 ? `${count(v)} fewer ${noun}` : `${count(-v)} more ${noun}`;
+    const infections = (v) =>
+      v >= 0
+        ? say.tl('{count} fewer infections', { count: n(v) })
+        : say.tl('{count} more infections', { count: n(-v) });
+    const deaths = (v) =>
+      v >= 0
+        ? say.tl('{count} fewer deaths', { count: n(v) })
+        : say.tl('{count} more deaths', { count: n(-v) });
+    const patients = (v) =>
+      v >= 0
+        ? say.tl('{count} fewer patients', { count: n(v) })
+        : say.tl('{count} more patients', { count: n(-v) });
     const a = cf.averted;
     lines.push(
       cf.runs > 0 && a
-        ? `${CF_PHRASE[cf.compare]} (${cf.runs} paired runs): ${fewer(a.infectedP50, 'infections')} (5–95 %: ${count(a.infectedP5)}–${count(a.infectedP95)}) · ${fewer(a.deathsP50, 'deaths')} · hospital peak ${fewer(a.peakHospitalP50, 'patients')}`
-        : 'Comparison skipped: the time limit was reached before the comparison could run',
+        ? say.tl(
+            '{compare} ({runs} paired runs): {infections} (5–95 %: {low}–{high}) · {deaths} · hospital peak {patients}',
+            {
+              compare: say.tl(CF_PHRASE[cf.compare]),
+              runs: cf.runs,
+              infections: infections(a.infectedP50),
+              low: n(a.infectedP5),
+              high: n(a.infectedP95),
+              deaths: deaths(a.deathsP50),
+              patients: patients(a.peakHospitalP50),
+            },
+          )
+        : say.tl(
+            'Comparison skipped: the time limit was reached before the comparison could run',
+          ),
     );
   }
   for (const place of result.places.filter((p) => !p.origin).slice(0, max))
     lines.push(
-      `${place.code ? `${place.code} ` : ''}${place.name}: ${Math.round(place.pArrive * 100)} %${arrivalWords(place, at)}${reportWords(place, at)}${place.pImportedFirst > 0 ? ` · first case imported in ${pct(place.pImportedFirst)} %` : ''}${place.localBy50 !== null && place.localBy50 !== undefined ? ` · local spread by ${at(place.localBy50)} in ${pct(place.pLocal)} %` : ''}`,
+      [
+        say.tl('{place}: {percent} %', {
+          place: `${place.code ? `${place.code} ` : ''}${place.name}`,
+          percent: Math.round(place.pArrive * 100),
+        }) +
+          arrivalWords(place, at, say) +
+          reportWords(place, at, say),
+        place.pImportedFirst > 0
+          ? say.tl('first case imported in {percent} %', {
+              percent: pct(place.pImportedFirst),
+            })
+          : '',
+        place.localBy50 !== null && place.localBy50 !== undefined
+          ? say.tl('local spread by {at} in {percent} %', {
+              at: at(place.localBy50),
+              percent: pct(place.pLocal),
+            })
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
     );
   return lines;
 }

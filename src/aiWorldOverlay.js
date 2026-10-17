@@ -13,6 +13,7 @@
  * tab goes.
  */
 import * as Cesium from 'cesium';
+import { localDigits, tl } from './i18n/index.js';
 import {
   clearOverlaySource,
   setOverlayEntries,
@@ -58,7 +59,12 @@ export function marketLabel(point) {
   if (point?.value === null || point?.value === '' || !Number.isFinite(pct))
     return '';
   const arrow = pct > 0 ? '▲' : pct < 0 ? '▼' : '■';
-  return `${point.label || point.series || ''} ${arrow} ${Math.abs(pct).toFixed(2)}%`.trim();
+  // The AI World tab's text: Quebec French in the fork locales (tl()).
+  const label = point.label ? tl(point.label) : point.series || '';
+  const percent = tl('{percent}%', {
+    percent: localDigits(Math.abs(pct).toFixed(2)),
+  });
+  return `${label} ${arrow} ${percent}`.trim();
 }
 
 const EXTRA_COLORS = Object.freeze([
@@ -100,7 +106,7 @@ export function marketCards(points, toPosition) {
       name: '',
       rows: [],
     };
-    hub.name ||= p.hub || '';
+    hub.name ||= p.hub ? tl(p.hub) : '';
     hub.rows.push({ text, value: Number(p.value) });
     hubs.set(key, hub);
   }

@@ -1,3 +1,6 @@
+// First: this process works in an empty temp folder, so the providers' disk
+// caches and working-folder config are not this machine's.
+import { isolatedCwd } from './isolatedCwd.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
@@ -9,7 +12,7 @@ import { apiNotFoundPlugin } from '../../server/standalone/api-not-found.js';
 import { makeFixtureRoot } from './fixtureRoot.mjs';
 
 test('data providers have both hooks; credential editing stays development-only', () => {
-  const plugins = localProviderPlugins();
+  const plugins = localProviderPlugins({ sourceRoot: isolatedCwd });
   assert.ok(plugins.some(({ name }) => name === 'fire-perimeters'));
   assert.ok(plugins.some(({ name }) => name === 'gnss-integrity'));
   for (const plugin of plugins) {
@@ -96,7 +99,13 @@ test('real dev and built-preview servers serve provider JSON and terminate unkno
   for (const isPreview of [false, true]) {
     const config = {
       ...base,
-      plugins: [...localProviderPlugins(), apiNotFoundPlugin()],
+      // The fixture root, not this checkout: the AI World and LLM jobs, the
+      // device and Ultra stores and the camera catalogue start empty there,
+      // so the running app's recordings and state are never read or written.
+      plugins: [
+        ...localProviderPlugins({ sourceRoot: root }),
+        apiNotFoundPlugin(),
+      ],
       server: { host: '127.0.0.1', port: 0, hmr: false },
       preview: { host: '127.0.0.1', port: 0 },
     };

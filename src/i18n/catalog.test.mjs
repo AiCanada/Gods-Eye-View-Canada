@@ -5,6 +5,8 @@ import {
   checkCatalog,
   extractMessages,
   findUnmarked,
+  forkLocales,
+  messagesFor,
   readCatalog,
   shippedLocales,
   unmarkedMarkup,
@@ -26,7 +28,7 @@ for (const locale of shippedLocales()) {
     const { missing, stale, errors } = checkCatalog(
       locale,
       readCatalog(locale),
-      messages,
+      messagesFor(locale),
     );
     assert.deepEqual(
       { missing, stale, errors },
@@ -34,6 +36,19 @@ for (const locale of shippedLocales()) {
     );
   });
 }
+
+test("the fork's own tabs are translated only into the fork locales", () => {
+  assert.deepEqual(forkLocales(), ['fr-CA', 'iu']);
+  const local = extractMessages({ local: true });
+  assert.ok(local.size > 0, 'the five left tabs mark their text with tl()');
+  for (const locale of shippedLocales()) {
+    const scope = messagesFor(locale);
+    const fork = forkLocales().includes(locale);
+    for (const text of local.keys())
+      if (!messages.has(text))
+        assert.equal(scope.has(text), fork, `${locale}: ${text}`);
+  }
+});
 
 test('every UI string is marked for translation or kept on purpose (npm run i18n)', () => {
   assert.deepEqual(

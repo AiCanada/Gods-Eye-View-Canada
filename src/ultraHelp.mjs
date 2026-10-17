@@ -3,7 +3,11 @@
  * Pure: phone camera roles, incident classes, SMS text.
  * A phone is only ever the one the owner paired. Nothing here looks up a
  * person by their number or collects a private phone from the map.
+ *
+ * What the box shows is marked with tl() from src/i18n/marker.js (Quebec
+ * French on the page); the texts and pleas sent to people stay English.
  */
+import { english, msgl, tl } from './i18n/marker.js';
 
 export const ULTRA_POSITION_MAX_AGE_MS = 20 * 60 * 1000;
 /**
@@ -14,17 +18,17 @@ export const ULTRA_POSITION_MAX_AGE_MS = 20 * 60 * 1000;
 export const ULTRA_HELP_CONTACT_LIMIT = 20;
 
 export const ULTRA_CAMERA_ROLES = Object.freeze([
-  Object.freeze({ id: 'front', label: 'Activate Front Cell Cam' }),
-  Object.freeze({ id: 'rear', label: 'Activate Rear Cell Cam' }),
+  Object.freeze({ id: 'front', label: msgl('Activate Front Cell Cam') }),
+  Object.freeze({ id: 'rear', label: msgl('Activate Rear Cell Cam') }),
   Object.freeze({
     id: 'rear-ultrawide',
-    label: 'Activate Rear Ultrawide Cam',
+    label: msgl('Activate Rear Ultrawide Cam'),
   }),
   Object.freeze({
     id: 'rear-tele',
-    label: 'Activate Rear Telephoto Cam',
+    label: msgl('Activate Rear Telephoto Cam'),
   }),
-  Object.freeze({ id: 'inner', label: 'Activate Inside Fold Cell Cam' }),
+  Object.freeze({ id: 'inner', label: msgl('Activate Inside Fold Cell Cam') }),
 ]);
 
 const DUAL = Object.freeze(['front', 'rear', 'rear-ultrawide']);
@@ -44,35 +48,39 @@ const FOLD8 = Object.freeze(['front', 'rear', 'rear-ultrawide', 'inner']);
  * stops at four: front, rear, ultrawide, and telephoto. Unknown ids use it.
  */
 export const ULTRA_PHONE_MODELS = Object.freeze([
-  Object.freeze({ id: 'generic-cell', label: 'Generic cell', cameras: QUAD }),
-  Object.freeze({ id: 'google-pixel', label: 'Google Pixel', cameras: QUAD }),
-  Object.freeze({ id: 'motorola', label: 'Motorola', cameras: DUAL }),
-  Object.freeze({ id: 'oppo', label: 'Oppo', cameras: QUAD }),
-  Object.freeze({ id: 'vivo', label: 'Vivo', cameras: QUAD }),
-  Object.freeze({ id: 'xiaomi', label: 'Xiaomi', cameras: QUAD }),
+  Object.freeze({
+    id: 'generic-cell',
+    label: msgl('Generic cell'),
+    cameras: QUAD,
+  }),
+  Object.freeze({ id: 'google-pixel', label: 'Google Pixel', cameras: QUAD }), // i18n-ignore: product name
+  Object.freeze({ id: 'motorola', label: 'Motorola', cameras: DUAL }), // i18n-ignore: product name
+  Object.freeze({ id: 'oppo', label: 'Oppo', cameras: QUAD }), // i18n-ignore: product name
+  Object.freeze({ id: 'vivo', label: 'Vivo', cameras: QUAD }), // i18n-ignore: product name
+  Object.freeze({ id: 'xiaomi', label: 'Xiaomi', cameras: QUAD }), // i18n-ignore: product name
   Object.freeze({
     id: 'samsung-s26',
-    label: 'Galaxy S26',
+    label: 'Galaxy S26', // i18n-ignore: product name
     cameras: QUAD,
   }),
   Object.freeze({
     id: 'samsung-s22-ultra',
-    label: 'Galaxy S22 Ultra',
+    label: 'Galaxy S22 Ultra', // i18n-ignore: product name
     cameras: QUAD,
   }),
   Object.freeze({
     id: 'samsung-z8',
-    label: 'Galaxy Z8',
+    label: 'Galaxy Z8', // i18n-ignore: product name
     cameras: FOLD8,
   }),
   Object.freeze({
     id: 'samsung-z3',
-    label: 'Galaxy Z3',
+    label: 'Galaxy Z3', // i18n-ignore: product name
     cameras: FOLD3,
   }),
   Object.freeze({
     id: 'samsung-z-fold',
-    label: 'Galaxy Z Fold',
+    label: 'Galaxy Z Fold', // i18n-ignore: product name
     cameras: FOLD8,
   }),
 ]);
@@ -187,40 +195,40 @@ export function ultraDistanceKm(from, to) {
 export const ULTRA_HELP_NEEDS_KINDS = Object.freeze([
   Object.freeze({
     id: 'medicine',
-    label: 'Medicine',
-    entry: 'Medication',
-    placeholders: ['Medication 1', 'Medication 2'],
+    label: msgl('Medicine'),
+    entry: msgl('Medication'),
+    placeholders: [msgl('Medication 1'), msgl('Medication 2')],
   }),
   Object.freeze({
     id: 'transportation',
-    label: 'Transportation',
+    label: msgl('Transportation'),
     destinations: Object.freeze(['home', 'hospital']),
     skill: 'tr',
   }),
   Object.freeze({
     id: 'food',
-    label: 'Food',
-    entry: 'Type of food',
-    placeholders: ['Type of food 1', 'Type of food 2'],
+    label: msgl('Food'),
+    entry: msgl('Type of food'),
+    placeholders: [msgl('Type of food 1'), msgl('Type of food 2')],
   }),
   Object.freeze({
     id: 'liquid',
-    label: 'Liquid',
-    entry: 'Type of liquid',
-    placeholders: ['Type of liquid 1', 'Type of liquid 2'],
+    label: msgl('Liquid'),
+    entry: msgl('Type of liquid'),
+    placeholders: [msgl('Type of liquid 1'), msgl('Type of liquid 2')],
   }),
   Object.freeze({
     id: 'items',
-    label: 'Items',
-    entry: 'Type of item',
-    placeholders: ['Item 1, e.g. Heart Defib', 'Item 2'],
+    label: msgl('Items'),
+    entry: msgl('Type of item'),
+    placeholders: [msgl('Item 1, e.g. Heart Defib'), msgl('Item 2')],
   }),
 ]);
 
 const NEEDS_ENTRY_MAX = 80;
 const NEEDS_DESTINATIONS = Object.freeze({
-  home: 'Home',
-  hospital: 'Hospital',
+  home: msgl('Home'),
+  hospital: msgl('Hospital'),
 });
 
 /**
@@ -236,14 +244,15 @@ const NEEDS_DESTINATIONS = Object.freeze({
  */
 export function normalizeUltraNeeds(input) {
   const kind = ULTRA_HELP_NEEDS_KINDS.find((item) => item.id === input?.kind);
-  if (!kind) return { ok: false, error: 'Choose the help to be delivered.' };
+  if (!kind)
+    return { ok: false, error: tl('Choose the help to be delivered.') };
   if (kind.destinations) {
     const destination = input?.destination;
     if (
       typeof destination !== 'string' ||
       !kind.destinations.includes(destination)
     ) {
-      return { ok: false, error: 'Choose Home or Hospital.' };
+      return { ok: false, error: tl('Choose Home or Hospital.') };
     }
     return { ok: true, value: { kind: kind.id, items: [], destination } };
   }
@@ -260,12 +269,16 @@ export function normalizeUltraNeeds(input) {
   if (!items.length)
     return {
       ok: false,
-      error: `Enter at least one ${kind.entry.toLowerCase()}.`,
+      error: tl('Enter at least one {item}.', {
+        item: tl(kind.entry).toLowerCase(),
+      }),
     };
   if (items.some((value) => value.length > NEEDS_ENTRY_MAX)) {
     return {
       ok: false,
-      error: `Keep each entry under ${NEEDS_ENTRY_MAX} characters.`,
+      error: tl('Keep each entry under {max} characters.', {
+        max: NEEDS_ENTRY_MAX,
+      }),
     };
   }
   return { ok: true, value: { kind: kind.id, items, destination: '' } };
@@ -286,15 +299,24 @@ export function ultraNeeds(input) {
   }
 }
 
-/** One line, e.g. "Medicine: Insulin, Ventolin"; '' when there is nothing usable. */
-export function ultraNeedsSummary(value) {
+/**
+ * One line, e.g. "Medicine: Insulin, Ventolin"; '' when there is nothing
+ * usable. English for a plea; the box passes `say` (localSay) to show it.
+ */
+export function ultraNeedsSummary(value, say = english) {
   const needs = ultraNeeds(value);
   if (!needs) return '';
   const kind = ULTRA_HELP_NEEDS_KINDS.find((item) => item.id === needs.kind);
   if (kind.destinations) {
-    return `${kind.label}: from current location to ${NEEDS_DESTINATIONS[needs.destination]}`;
+    return say.tl('{kind}: from current location to {place}', {
+      kind: say.tl(kind.label),
+      place: say.tl(NEEDS_DESTINATIONS[needs.destination]),
+    });
   }
-  return `${kind.label}: ${needs.items.join(', ')}`;
+  return say.tl('{kind}: {items}', {
+    kind: say.tl(kind.label),
+    items: needs.items.join(', '),
+  });
 }
 
 /** The token skill code the needs call for ('tr' for Transportation), or ''. */
@@ -362,21 +384,24 @@ export function ultraContactKind(value) {
  * carries none. ultraTokens.mjs re-exports this same list.
  */
 export const ULTRA_SKILL_SETS = Object.freeze([
-  Object.freeze({ code: 'dr', label: 'Doctor' }),
-  Object.freeze({ code: 'pm', label: 'Paramedic' }),
-  Object.freeze({ code: 'fr', label: 'First Responder' }),
-  Object.freeze({ code: 'lg', label: 'Lifeguard' }),
-  Object.freeze({ code: 'ff', label: 'Firefighter' }),
-  Object.freeze({ code: 'sr', label: 'Search and Rescue (SAR) Specialist' }),
-  Object.freeze({ code: 'br', label: 'Brave' }),
-  Object.freeze({ code: 'st', label: 'Strong' }),
-  Object.freeze({ code: 'cc', label: 'Crisis Counselor' }),
-  Object.freeze({ code: 'en', label: 'Enforcer' }),
-  Object.freeze({ code: 'ac', label: 'Animal Control' }),
-  Object.freeze({ code: 'hz', label: 'Hazardous Materials (HAZMAT)' }),
-  Object.freeze({ code: 'rg', label: 'Ranger' }),
-  Object.freeze({ code: 'tr', label: 'Transportation' }),
-  Object.freeze({ code: 'ng', label: 'Mr./Mrs. Nice Guy' }),
+  Object.freeze({ code: 'dr', label: msgl('Doctor') }),
+  Object.freeze({ code: 'pm', label: msgl('Paramedic') }),
+  Object.freeze({ code: 'fr', label: msgl('First Responder') }),
+  Object.freeze({ code: 'lg', label: msgl('Lifeguard') }),
+  Object.freeze({ code: 'ff', label: msgl('Firefighter') }),
+  Object.freeze({
+    code: 'sr',
+    label: msgl('Search and Rescue (SAR) Specialist'),
+  }),
+  Object.freeze({ code: 'br', label: msgl('Brave') }),
+  Object.freeze({ code: 'st', label: msgl('Strong') }),
+  Object.freeze({ code: 'cc', label: msgl('Crisis Counselor') }),
+  Object.freeze({ code: 'en', label: msgl('Enforcer') }),
+  Object.freeze({ code: 'ac', label: msgl('Animal Control') }),
+  Object.freeze({ code: 'hz', label: msgl('Hazardous Materials (HAZMAT)') }),
+  Object.freeze({ code: 'rg', label: msgl('Ranger') }),
+  Object.freeze({ code: 'tr', label: msgl('Transportation') }),
+  Object.freeze({ code: 'ng', label: msgl('Mr./Mrs. Nice Guy') }),
 ]);
 
 /**
@@ -456,17 +481,18 @@ export function ultraCustomSkillList(values) {
   const refuse = (error) => ({ ok: false, error, skills: [], differs: false });
   for (const raw of list) {
     if (typeof raw !== 'string' && typeof raw !== 'number')
-      return refuse('A custom skill set needs letters or numbers');
+      return refuse(tl('A custom skill set needs letters or numbers'));
     if (String(raw).trim() === '') continue;
     count += 1;
     if (count > ULTRA_CUSTOM_SKILL_LIMIT)
-      return refuse('At most 5 custom skill sets');
+      return refuse(tl('At most 5 custom skill sets'));
     const built = ultraCustomSkill(raw);
-    if (!built) return refuse('A custom skill set needs letters or numbers');
+    if (!built)
+      return refuse(tl('A custom skill set needs letters or numbers'));
     const prior = seen.get(built.code);
     if (prior !== undefined) {
       if (prior === built.full) continue;
-      return refuse('Two custom skill sets would share one token code');
+      return refuse(tl('Two custom skill sets would share one token code'));
     }
     seen.set(built.code, built.full);
     if (skillText(raw, 80) !== built.label) differs = true;

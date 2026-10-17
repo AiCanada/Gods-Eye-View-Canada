@@ -1,4 +1,5 @@
 import { formatAskLogEntry, prependOutputLog } from './askOverview.js';
+import { msgl, tl, tln } from './i18n/index.js';
 import {
   removeOverlayEntry,
   upsertOverlayEntry,
@@ -59,15 +60,17 @@ const GROK_BOT_OPEN_URL = '/api/social/grok-bot/open';
 const OPENAI_DOTS_OPEN_URL = '/api/social/openai-dots/open';
 const CLIENT_TIMEOUT_MARGIN_MS = 10000;
 const DEFAULT_ASK_TIMEOUT_MS = 240000;
-const LOCATION_REFUSED = 'This browser did not share a location.';
+const LOCATION_REFUSED = msgl('This browser did not share a location.');
 // A plain http page (the phone mirror) gets no location from Chrome.
-const INSECURE_ORIGIN_HINT =
-  'Allow this address under chrome://flags Insecure origins treated as secure (see Mirror README).';
+const INSECURE_ORIGIN_HINT = msgl(
+  'Allow this address under chrome://flags Insecure origins treated as secure (see Mirror README).',
+);
 
+/** The box's text is marked with tl(): Quebec French in the fork locales. */
 function locationRefusedNote() {
   return globalThis.isSecureContext === false
-    ? `${LOCATION_REFUSED} ${INSECURE_ORIGIN_HINT}`
-    : LOCATION_REFUSED;
+    ? `${tl(LOCATION_REFUSED)} ${tl(INSECURE_ORIGIN_HINT)}`
+    : tl(LOCATION_REFUSED);
 }
 
 /** True on the PC itself; false on the owner's phone through the mirror. */
@@ -230,14 +233,17 @@ export class SocialMediaPanel {
         // computer (dots live in ChatGPT). Body `{}`, no paste.
         if (provider.desktop) {
           void this._openDesktop(provider).then((result) => {
-            const opened =
-              provider.id === 'openai' ? 'CHATGPT OPENED' : 'GROK BOT OPENED';
+            const openai = provider.id === 'openai';
             this._setSwarmStatus(
               swarm,
               result.ok
                 ? onThisPc()
-                  ? opened
-                  : `${opened} ON THE PC`
+                  ? openai
+                    ? tl('CHATGPT OPENED')
+                    : tl('GROK BOT OPENED')
+                  : openai
+                    ? tl('CHATGPT OPENED ON THE PC')
+                    : tl('GROK BOT OPENED ON THE PC')
                 : result.error,
             );
           });
@@ -291,7 +297,7 @@ export class SocialMediaPanel {
       this._setLocationNote(locationRefusedNote());
       return;
     }
-    this._setLocationNote("Waiting for this device's location.");
+    this._setLocationNote(tl("Waiting for this device's location."));
     this._watching = true;
     try {
       this._watchId = geo.watchPosition(
@@ -341,8 +347,10 @@ export class SocialMediaPanel {
         : !readShowLocation(this._browserStorage());
       this._setLocationNote(
         hidden
-          ? 'Live position is hidden.'
-          : 'A hooked-up account that shares location displays live position on the map. If allowed by 3rd Party.',
+          ? tl('Live position is hidden.')
+          : tl(
+              'A hooked-up account that shares location displays live position on the map. If allowed by 3rd Party.',
+            ),
       );
     }
   }
@@ -370,7 +378,7 @@ export class SocialMediaPanel {
       await this._placeFix(this.viewer, fix, label);
     } catch {
       if (token !== this._drawToken || !this._watching) return;
-      this._setLocationNote('The map did not take that position.');
+      this._setLocationNote(tl('The map did not take that position.'));
       return;
     }
     if (token !== this._drawToken || !this._watching) {
@@ -381,7 +389,7 @@ export class SocialMediaPanel {
       return;
     }
     this._markerLive = true;
-    this._setLocationNote('Your live position is on the map.');
+    this._setLocationNote(tl('Your live position is on the map.'));
   }
 
   _setBusy(busy) {
@@ -438,7 +446,7 @@ export class SocialMediaPanel {
     if (rows.length === 0) {
       const empty = doc.createElement('li');
       empty.className = 'social-note';
-      empty.textContent = 'No account saved yet.';
+      empty.textContent = tl('No account saved yet.');
       list.append(empty);
       return;
     }
@@ -446,12 +454,12 @@ export class SocialMediaPanel {
       const item = doc.createElement('li');
       const name = doc.createElement('span');
       name.textContent = row.vault
-        ? `${row.label}${row.userId ? ` · ${row.userId}` : ''}${row.passwordSaved ? ' · password saved' : ''}${row.apiKeySaved ? ' · API key saved' : ''}`
+        ? `${row.label}${row.userId ? ` · ${row.userId}` : ''}${row.passwordSaved ? ` · ${tl('password saved')}` : ''}${row.apiKeySaved ? ` · ${tl('API key saved')}` : ''}`
         : `${row.label} · @${row.userId}`;
       const remove = doc.createElement('button');
       remove.type = 'button';
       remove.className = 'scene-btn';
-      remove.textContent = 'REMOVE';
+      remove.textContent = tl('REMOVE');
       remove.addEventListener('click', () => {
         void this._removeAccount(row);
       });
@@ -475,15 +483,18 @@ export class SocialMediaPanel {
    */
   async _runSwarm(swarm) {
     if (swarm.running) {
-      this._setSwarmStatus(swarm, 'The swarm is still out.');
+      this._setSwarmStatus(swarm, tl('The swarm is still out.'));
       return;
     }
     swarm.running = true;
     // Said on the press itself, before the map place is looked up.
     const total = SOCIAL_SWARM_BOTS.length;
     swarm.run.disabled = true;
-    swarm.run.textContent = 'SPINNING UP SWARM…';
-    this._setSwarmStatus(swarm, `SPINNING UP SWARM · ${total} BOTS`);
+    swarm.run.textContent = tl('SPINNING UP SWARM…');
+    this._setSwarmStatus(
+      swarm,
+      tl('SPINNING UP SWARM · {count} BOTS', { count: total }),
+    );
     const instructions = swarm.instructions?.value ?? '';
     try {
       const [context, keys] = await Promise.all([
@@ -497,7 +508,9 @@ export class SocialMediaPanel {
       if (own && own.key === false && !swarm.provider.desktop) {
         this._setSwarmStatus(
           swarm,
-          `No ${swarm.provider.keyTitle} key yet. Add it in POWER UP → ${swarm.provider.keyTitle}.`,
+          tl('No {key} key yet. Add it in POWER UP → {key}.', {
+            key: swarm.provider.keyTitle,
+          }),
         );
         return;
       }
@@ -553,8 +566,8 @@ export class SocialMediaPanel {
     const openai = provider?.id === 'openai';
     const url = openai ? OPENAI_DOTS_OPEN_URL : GROK_BOT_OPEN_URL;
     const failed = openai
-      ? 'ChatGPT could not be opened.'
-      : 'Grok Bot could not be opened.';
+      ? tl('ChatGPT could not be opened.')
+      : tl('Grok Bot could not be opened.');
     try {
       const response = await this._request(url, {
         method: 'POST',
@@ -579,7 +592,10 @@ export class SocialMediaPanel {
     const title = swarm.provider.title;
     this._setSwarmStatus(
       swarm,
-      `SPINNING UP SWARM · ${total} BOTS · ${place || 'this map view'}`,
+      tl('SPINNING UP SWARM · {count} BOTS · {place}', {
+        count: total,
+        place: place || tl('this map view'),
+      }),
     );
     const result = await runSocialSwarm({
       request: (url, init) => this._request(url, init),
@@ -597,20 +613,23 @@ export class SocialMediaPanel {
       onBot: ({ bot, text, sources, error }) => {
         this._prepend(
           formatAskLogEntry(
-            `${title} · ${bot.label}`,
+            `${tl(title)} · ${tl(bot.label)}`,
             error
-              ? `BOT FAILED: ${error}`
+              ? tl('BOT FAILED: {error}', { error })
               : formatSwarmBotLog({ text, sources }),
             { locationName: place },
           ),
         );
       },
       onProgress: ({ back, total: n }) => {
-        this._setSwarmStatus(swarm, `SWARM OUT · ${back}/${n} BACK`);
+        this._setSwarmStatus(
+          swarm,
+          tl('SWARM OUT · {back}/{total} BACK', { back, total: n }),
+        );
       },
     });
     if (result.unconfigured) {
-      this._setSwarmStatus(swarm, result.unconfigured);
+      this._setSwarmStatus(swarm, tl(result.unconfigured));
       return;
     }
     if (result.via === 'desktop') {
@@ -623,7 +642,14 @@ export class SocialMediaPanel {
     });
     this._setSwarmStatus(
       swarm,
-      `SWARM DONE ${time} · ${result.found} with reports · ${result.empty} found nothing${result.failed ? ` · ${result.failed} failed` : ''}`,
+      tl('SWARM DONE {time} · {found} with reports · {empty} found nothing', {
+        time,
+        found: result.found,
+        empty: result.empty,
+      }) +
+        (result.failed
+          ? ` · ${tl('{failed} failed', { failed: result.failed })}`
+          : ''),
     );
   }
 
@@ -635,7 +661,7 @@ export class SocialMediaPanel {
     );
     const gig = platform?.gig === true;
     this._accountNote.hidden = !gig;
-    this._accountNote.textContent = gig ? SOCIAL_GIG_HELP_NOTE : '';
+    this._accountNote.textContent = gig ? tl(SOCIAL_GIG_HELP_NOTE) : '';
   }
 
   /** One Power Up per saved login and per saved API key, out of every option in the menu. */
@@ -655,8 +681,8 @@ export class SocialMediaPanel {
     if (this._helpEntries) this._helpEntries.hidden = transport;
     this._helpItems.forEach((input, index) => {
       if (!input || !kind.placeholders) return;
-      input.placeholder = kind.placeholders[index];
-      input.setAttribute?.('aria-label', kind.placeholders[index]);
+      input.placeholder = tl(kind.placeholders[index]);
+      input.setAttribute?.('aria-label', tl(kind.placeholders[index]));
     });
   }
 
@@ -664,8 +690,13 @@ export class SocialMediaPanel {
     if (!this._helpDefault) return;
     const line = helpDeliverySummary(value);
     this._helpDefault.textContent = line
-      ? `My default: ${line}. SEND HELP on the Ultra tab asks for it too. Sending HELP through these platforms is under development.`
-      : 'No default saved yet. Sending HELP through these platforms is under development.';
+      ? tl(
+          'My default: {line}. SEND HELP on the Ultra tab asks for it too. Sending HELP through these platforms is under development.',
+          { line },
+        )
+      : tl(
+          'No default saved yet. Sending HELP through these platforms is under development.',
+        );
   }
 
   /**
@@ -753,7 +784,7 @@ export class SocialMediaPanel {
     try {
       saved = writeHelpDelivery(this._browserStorage(), input);
     } catch {
-      this._setStatus('This browser is not keeping a default.');
+      this._setStatus(tl('This browser is not keeping a default.'));
       return;
     }
     if (!saved.ok) {
@@ -764,8 +795,10 @@ export class SocialMediaPanel {
     const shared = await this._shareHelpDelivery(saved.value);
     this._setStatus(
       shared
-        ? 'Saved your HELP DELIVERY default on this computer. SEND HELP asks for it.'
-        : 'Saved your HELP DELIVERY default on this computer.',
+        ? tl(
+            'Saved your HELP DELIVERY default on this computer. SEND HELP asks for it.',
+          )
+        : tl('Saved your HELP DELIVERY default on this computer.'),
     );
   }
 
@@ -773,8 +806,9 @@ export class SocialMediaPanel {
   _paintOpenSaved() {
     if (!this._openSaved) return;
     const kind = this._openKind?.value || 'login';
-    this._openSaved.textContent =
-      SOCIAL_OPEN_SAVED_LABELS[kind] || SOCIAL_OPEN_SAVED_LABELS.login;
+    this._openSaved.textContent = tl(
+      SOCIAL_OPEN_SAVED_LABELS[kind] || SOCIAL_OPEN_SAVED_LABELS.login,
+    );
   }
 
   /** Opens each saved site of the chosen kind in its own tab. */
@@ -782,16 +816,20 @@ export class SocialMediaPanel {
     const kind = this._openKind?.value || 'login';
     const sites = savedSiteUrls(this._vault, kind);
     if (!sites.length) {
-      this._setStatus('No saved site of that kind yet.');
+      this._setStatus(tl('No saved site of that kind yet.'));
       return;
     }
     const open = this._openWindow || globalThis.open;
     for (const site of sites) open?.(site.url, '_blank', 'noopener,noreferrer');
-    const count = `${sites.length} saved ${sites.length === 1 ? 'site' : 'sites'}`;
+    const opened = sites.length;
     this._setStatus(
-      sites.length === 1
-        ? `Opened ${count}.`
-        : `Opened ${count}. If fewer tabs appeared, allow pop-ups for this page.`,
+      opened === 1
+        ? tl('Opened 1 saved site.')
+        : tln(
+            opened,
+            'Opened {count} saved site. If fewer tabs appeared, allow pop-ups for this page.',
+            'Opened {count} saved sites. If fewer tabs appeared, allow pop-ups for this page.',
+          ),
     );
   }
 
@@ -828,7 +866,7 @@ export class SocialMediaPanel {
       if (data.locked) {
         this._vault = [];
         this._setStatus(
-          'The encrypted store on this computer could not be opened.',
+          tl('The encrypted store on this computer could not be opened.'),
         );
         this._syncLiveLocation();
         return;
@@ -859,7 +897,7 @@ export class SocialMediaPanel {
   _saveHandle() {
     const storage = this._browserStorage();
     if (!storage) {
-      this._setStatus('This browser is not keeping handles.');
+      this._setStatus(tl('This browser is not keeping handles.'));
       return;
     }
     let saved;
@@ -870,7 +908,7 @@ export class SocialMediaPanel {
         this._handle?.value,
       );
     } catch {
-      this._setStatus('This browser is not keeping handles.');
+      this._setStatus(tl('This browser is not keeping handles.'));
       return;
     }
     if (!saved.ok) {
@@ -879,7 +917,7 @@ export class SocialMediaPanel {
     }
     if (this._handle) this._handle.value = '';
     this._renderAccounts();
-    this._setStatus('Saved that public handle on this computer.');
+    this._setStatus(tl('Saved that public handle on this computer.'));
   }
 
   async _saveAccount() {
@@ -904,19 +942,19 @@ export class SocialMediaPanel {
           body: JSON.stringify({ platform, userId, password, apiKey, mode }),
         });
       } catch {
-        this._setStatus('This computer did not keep that login.');
+        this._setStatus(tl('This computer did not keep that login.'));
         return;
       }
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.ok || typeof data.userId !== 'string') {
         const error = String(
-          data?.error || 'This computer did not keep that login.',
+          data?.error || tl('This computer did not keep that login.'),
         );
         const leaks =
           (password && error.includes(password)) ||
           (apiKey && error.includes(apiKey));
         this._setStatus(
-          leaks ? 'This computer did not keep that login.' : error,
+          leaks ? tl('This computer did not keep that login.') : error,
         );
         return;
       }
@@ -951,10 +989,10 @@ export class SocialMediaPanel {
       this._syncLiveLocation();
       this._setStatus(
         mode === 'api'
-          ? 'Saved that API key encrypted on this computer.'
+          ? tl('Saved that API key encrypted on this computer.')
           : mode === 'both'
-            ? 'Saved that login and API key encrypted on this computer.'
-            : 'Saved that login encrypted on this computer.',
+            ? tl('Saved that login and API key encrypted on this computer.')
+            : tl('Saved that login encrypted on this computer.'),
       );
     } finally {
       this._saving = false;
@@ -980,13 +1018,13 @@ export class SocialMediaPanel {
             return;
           }
           const error = String(
-            data?.error || 'This computer did not remove that login.',
+            data?.error || tl('This computer did not remove that login.'),
           );
           this._setStatus(error);
           return;
         }
       } catch {
-        this._setStatus('This computer did not remove that login.');
+        this._setStatus(tl('This computer did not remove that login.'));
         return;
       }
       this._vault = this._vault.filter(
@@ -999,12 +1037,14 @@ export class SocialMediaPanel {
       try {
         removeSocialAccount(storage, row.platform);
       } catch {
-        this._setStatus('This browser is not keeping handles.');
+        this._setStatus(tl('This browser is not keeping handles.'));
         return;
       }
     }
     this._renderAccounts();
-    this._setStatus(row.vault ? 'Removed that login.' : 'Removed that handle.');
+    this._setStatus(
+      row.vault ? tl('Removed that login.') : tl('Removed that handle.'),
+    );
   }
 
   async _loadModels() {
@@ -1027,8 +1067,8 @@ export class SocialMediaPanel {
       const option = this._doc.createElement('option');
       option.value = '';
       option.textContent = reachable
-        ? 'No model key yet'
-        : 'Model list unavailable';
+        ? tl('No model key yet')
+        : tl('Model list unavailable');
       select.append(option);
       select.disabled = true;
       select.value = '';
@@ -1089,7 +1129,7 @@ export class SocialMediaPanel {
     if (!Number.isFinite(view.latitude) || !Number.isFinite(view.longitude)) {
       return { place: '', view };
     }
-    say?.('Finding the place at the middle of the map...');
+    say?.(tl('Finding the place at the middle of the map...'));
     const town = cleanPlace(await this._nearestCityFromServer(view));
     if (town) return { place: town, view };
     const city = cleanPlace(
@@ -1180,7 +1220,9 @@ export class SocialMediaPanel {
     const url = officialOpenUrl(id, this._openView());
     if (!url) {
       const option = SOCIAL_LOCATION_OPTIONS.find((item) => item.id === id);
-      this._setStatus(option?.note || 'Open that app on your phone.');
+      this._setStatus(
+        option?.note ? tl(option.note) : tl('Open that app on your phone.'),
+      );
       return;
     }
     const open = this._openWindow || globalThis.open;
@@ -1194,7 +1236,7 @@ export class SocialMediaPanel {
 
   async _run(action) {
     if (this._inFlight) {
-      this._setStatus('Still working on the last question.');
+      this._setStatus(tl('Still working on the last question.'));
       return;
     }
     // Held across the view lookup so a second press cannot send twice.
@@ -1212,7 +1254,7 @@ export class SocialMediaPanel {
     }
 
     this._setBusy(true);
-    let phase = action === 'help' ? plan.kind : 'Looking up public news';
+    let phase = action === 'help' ? plan.kind : tl('Looking up public news');
     this._setStatus(`${phase}...`);
     const startedAt = Date.now();
     const ticker = globalThis.setInterval(() => {
@@ -1232,9 +1274,13 @@ export class SocialMediaPanel {
       if (action !== 'help') {
         publicNews = await this._loadPublicNews(planInput, controller.signal);
         this._prepend(
-          formatAskLogEntry('PUBLIC NEWS', formatSocialSearchBody(publicNews), {
-            locationName: plan.place,
-          }),
+          formatAskLogEntry(
+            tl('PUBLIC NEWS'),
+            formatSocialSearchBody(publicNews),
+            {
+              locationName: plan.place,
+            },
+          ),
         );
         phase = plan.kind;
         this._setStatus(`${phase}...`);
@@ -1256,7 +1302,7 @@ export class SocialMediaPanel {
       const data = await response.json().catch(() => null);
       globalThis.clearInterval(ticker);
       if (response.status === 501 || data?.unconfigured) {
-        this._setStatus('No key for this model. Add one in POWER UP.');
+        this._setStatus(tl('No key for this model. Add one in POWER UP.'));
         return;
       }
       if (!response.ok || !data?.answer) {
@@ -1269,7 +1315,9 @@ export class SocialMediaPanel {
     } catch (error) {
       const aborted = error?.name === 'AbortError';
       this._setStatus(
-        aborted ? 'No answer in time.' : error?.message || 'Request failed.',
+        aborted
+          ? tl('No answer in time.')
+          : error?.message || tl('Request failed.'),
       );
     } finally {
       globalThis.clearInterval(ticker);
@@ -1286,7 +1334,8 @@ export class SocialMediaPanel {
       : Number(usage.input_tokens || 0) + Number(usage.output_tokens || 0) ||
         null;
     const model = data?.model ? String(data.model) : '';
-    if (model && total) return `${model} · ${total} tokens`;
+    if (model && total)
+      return tl('{model} · {count} tokens', { model, count: total });
     return model || '';
   }
 

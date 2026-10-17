@@ -12,7 +12,7 @@ const messages = extractMessages();
 const EMPTY = 'DISCONNECT';
 const BLANK = 'CONTACT LOST · LAST KNOWN READOUT · NOT AN ALL-CLEAR';
 
-for (const locale of ['es', 'ru']) {
+for (const locale of ['es', 'fr-CA', 'iu', 'ru']) {
   test(`${locale}: checkCatalog rejects an empty or blank translation`, () => {
     const catalog = { ...readCatalog(locale), [EMPTY]: '', [BLANK]: '  ' };
     const { errors } = checkCatalog(locale, catalog, messages);

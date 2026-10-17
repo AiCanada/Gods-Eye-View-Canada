@@ -21,6 +21,7 @@ import {
 } from './ui/ownerRemoval.js';
 import { showUltraMediaInCctv } from './ui/cctvUltraMediaView.js';
 import { formatAskLogEntry, prependOutputLog } from './askOverview.js';
+import { localDigits, localSay, msgl, tl, tln } from './i18n/index.js';
 import {
   ULTRA_POSITION_MAX_AGE_MS,
   ultraCameraRole,
@@ -46,6 +47,7 @@ import {
   skillVerdictWords,
 } from './ultraSkillCheck.mjs';
 import { readPastedSkillReport, runSkillCheck } from './ultraSkillCheckRun.mjs';
+import { initDeviceFeedSetup, ULTRA_PACKAGE_KIND } from './deviceFeedsSetup.js';
 import {
   DEVICE_FEEDS_CHANGED_EVENT,
   DEVICE_FEEDS_FOCUS_EVENT,
@@ -83,92 +85,113 @@ const REVOKED_ROWS = 10;
 const WATCHING_MS = 60_000;
 /* A quiet link not polled for this long reads OK · STALE instead of WATCHING. */
 const NETWORK_STALE_MS = 2 * 60_000;
-/* The key-setup route's own sentence, painted verbatim after SAVE DIRECTORY. */
-const ENV_SAVED =
-  'Saved to your local .env. Restarting — this page reloads itself.';
+/* The key-setup route's own sentence, painted verbatim after SAVE DIRECTORY
+ * (in the page's words through tl()). */
+const ENV_SAVED = msgl(
+  'Saved to your local .env. Restarting — this page reloads itself.',
+);
 
 const TOKEN_NOTE = {
-  unreadable:
+  unreadable: msgl(
     'The token store exists but cannot be read: fix the file or RESET TOKENS (every link stops working).',
-  'key-invalid':
+  ),
+  'key-invalid': msgl(
     'The token key file is present but not valid: existing tokens still work but cannot be shown or added to; RESET TOKENS to start again.',
-  'no-key':
+  ),
+  'no-key': msgl(
     'The token key file is missing: existing tokens still work but cannot be shown or added to; revoke them or RESET TOKENS, then mint again',
-  'key-changed':
+  ),
+  'key-changed': msgl(
     'The token key file was replaced: existing tokens still work but cannot be shown; revoke them and mint again, or RESET TOKENS.',
-  'key-exposed':
+  ),
+  'key-exposed': msgl(
     'The token key file is no longer restricted to your account: another account on this computer could read it. Restore owner-only access to it, or RESET TOKENS and mint again.',
-  'store-changed':
+  ),
+  'store-changed': msgl(
     'The token store was changed outside this program: a token row was removed, added or reordered. Check the rows below; minting, revoking or editing a token accepts the file as it is, RESET TOKENS starts again.',
-  'no-listener':
+  ),
+  'no-listener': msgl(
     'Share links need the report listener: save the package under POWER UP and keep npm run dev running; SHARE shows the bare token until then',
+  ),
 };
 
 const RELEASE_NOTE = {
-  nobody:
+  nobody: msgl(
     'Nobody receives this yet: tick Network on GENERATE NEW TOKEN, press NETWORK ON on a token below, or PUBLISH MY TOKEN under HELP NETWORK. The plea still goes to your phone for the PREDEFINED HELP # numbers.',
-  'no-position':
+  ),
+  'no-position': msgl(
     'Needs your position: open the phone link on the phone, or press SEND HELP there.',
+  ),
 };
 
 const NETWORK_NOTE = {
-  key: 'The token key file is missing or not valid, so the links in your home list cannot be opened or polled: revoke your tokens or RESET TOKENS, then add or UPDATE HOME LIST again',
-  preview:
+  key: msgl(
+    'The token key file is missing or not valid, so the links in your home list cannot be opened or polled: revoke your tokens or RESET TOKENS, then add or UPDATE HOME LIST again',
+  ),
+  preview: msgl(
     'Polling runs under npm run dev only (vite preview shows the list without checking it)',
-  directory:
+  ),
+  directory: msgl(
     "Directory: none. Paste your group's directory address (an https file: GitHub, Hugging Face or Private Server) and SAVE DIRECTORY: it is written to your local .env, the dev server restarts and this page reloads. Only https Tail Net links are accepted.",
+  ),
   /* The no-directory note's last line, on a line of its own. */
-  activate:
+  activate: msgl(
     'Net Work activated when Tail Net + Ultra Encryption Token is released via HELP request.',
+  ),
 };
 
 /* What a home-list row says about its link. 'quiet' is decided by age. */
 const NETWORK_STATE = {
-  new: 'NOT CHECKED YET',
-  released: 'NEEDS HELP',
-  off: 'NOT SHARING',
-  dead: 'TOKEN DEAD (404)',
-  unreachable: 'UNREACHABLE (is their machine on the tailnet?)',
-  busy: 'BUSY (429)',
-  'not-tailnet': 'NOT A TAILNET ADDRESS',
-  missing: 'NOT IN DIRECTORY',
-  moved: 'MOVED',
-  own: 'YOUR OWN TOKEN',
-  'no-key': 'NO KEY',
-  tampered: 'TAMPERED',
+  new: msgl('NOT CHECKED YET'),
+  released: msgl('NEEDS HELP'),
+  off: msgl('NOT SHARING'),
+  dead: msgl('TOKEN DEAD (404)'),
+  unreachable: msgl('UNREACHABLE (is their machine on the tailnet?)'),
+  busy: msgl('BUSY (429)'),
+  'not-tailnet': msgl('NOT A TAILNET ADDRESS'),
+  missing: msgl('NOT IN DIRECTORY'),
+  moved: msgl('MOVED'),
+  own: msgl('YOUR OWN TOKEN'),
+  'no-key': msgl('NO KEY'),
+  tampered: msgl('TAMPERED'),
 };
 
 const ENTRY_NOTE = {
-  clipboard:
+  clipboard: msgl(
     'Send this to whoever keeps the directory, or paste it into the file yourself. Anyone who can read the directory sees where your phone is and threat type while you have pressed SEND HELP and have Network On.',
-  github:
+  ),
+  github: msgl(
     'Written to the directory. GitHub serves raw files from a cache, so the others may see it only after about five minutes when they press UPDATE HOME LIST. Anyone who can read the directory sees where your phone is and threat type while you have pressed SEND HELP and have Network On.',
+  ),
 };
 
 /* The form placeholders as the page ships them, restored when a saved value
  * goes away again (the poll repaints every three seconds). */
 const PLACEHOLDER = {
-  meName: 'Your name, as your holders see it',
+  meName: msgl('Your name, as your holders see it'),
   directoryUrl:
     'https://raw.githubusercontent.com/<group>/<repo>/main/ultra-directory.json',
-  directoryToken: 'GitHub write token (optional, never shown)',
-  directoryTokenSaved: 'write token saved — paste to replace, never shown',
+  directoryToken: msgl('GitHub write token (optional, never shown)'),
+  directoryTokenSaved: msgl(
+    'write token saved — paste to replace, never shown',
+  ),
 };
 
 /* What a token row and the reveal box say when the skills are sealed under
  * a key this machine does not hold (missing, invalid or replaced). Distinct
  * from an encrypted token minted with no skill sets, which the key opens. */
-const SKILLS_HIDDEN_WORD = 'SKILLS HIDDEN (KEY MISSING OR CHANGED)';
-const SKILLS_HIDDEN_LINE =
-  'Skills hidden: the token key is missing or was changed, so the sealed skill sets cannot be shown';
+const SKILLS_HIDDEN_WORD = msgl('SKILLS HIDDEN (KEY MISSING OR CHANGED)');
+const SKILLS_HIDDEN_LINE = msgl(
+  'Skills hidden: the token key is missing or was changed, so the sealed skill sets cannot be shown',
+);
 
 /* How long the last action's sentence survives the status poll. */
 const NOTICE_MS = 15_000;
 /** What the token button says: at rest, while a token is made, and just after. */
 const MINT_LABEL = Object.freeze({
-  idle: 'GENERATE NEW TOKEN',
-  busy: 'GENERATING…',
-  done: 'GENERATED',
+  idle: msgl('GENERATE NEW TOKEN'),
+  busy: msgl('GENERATING…'),
+  done: msgl('GENERATED'),
 });
 const MINT_DONE_MS = 2_000;
 /** DELETE asks once; a second press within this long deletes. */
@@ -182,13 +205,16 @@ const MEDIA_ON_MAP_BOXES = Object.freeze({
 
 /* The ADD form's own placeholders, restored when RENAME lets go of it. A
  * handout is two things now, an address and a token, never one link. */
-const ADD_ADDRESS_PLACEHOLDER =
-  'Their tailnet address (https://<machine>.<tailnet>.ts.net)';
-const ADD_TOKEN_PLACEHOLDER = 'Their Ultra Token (uht1.…)';
-const ADD_RENAMING_PLACEHOLDER =
-  'Renaming — enter an address and token to add one instead';
-const ADD_INCOMPLETE =
-  'Enter their tailnet address (https://….ts.net) and their Ultra Token (uht1.…)';
+const ADD_ADDRESS_PLACEHOLDER = msgl(
+  'Their tailnet address (https://<machine>.<tailnet>.ts.net)',
+);
+const ADD_TOKEN_PLACEHOLDER = msgl('Their Ultra Token (uht1.…)');
+const ADD_RENAMING_PLACEHOLDER = msgl(
+  'Renaming — enter an address and token to add one instead',
+);
+const ADD_INCOMPLETE = msgl(
+  'Enter their tailnet address (https://….ts.net) and their Ultra Token (uht1.…)',
+);
 /* The shape of an Ultra Token as the panel needs it: enough to tell a token
  * from a path segment when a legacy whole link lands in the address box.
  * The server checks the real pattern; this one only decides where to split. */
@@ -366,7 +392,7 @@ export function paintSkillVerdicts(documentRef, list, verdicts) {
     const li = documentRef.createElement('li');
     li.dataset.verdict = String(row?.verdict || 'none');
     const words = documentRef.createElement('span');
-    words.textContent = [skillVerdictWords(row), row?.reason || '']
+    words.textContent = [skillVerdictWords(row), tl(row?.reason || '')]
       .filter(Boolean)
       .join(' · ');
     li.appendChild(words);
@@ -375,7 +401,7 @@ export function paintSkillVerdicts(documentRef, list, verdicts) {
       link.href = url;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.textContent = ` SOURCE ${index + 1}`;
+      link.textContent = ` ${tl('SOURCE {number}', { number: index + 1 })}`;
       link.title = url;
       li.appendChild(link);
     });
@@ -395,7 +421,7 @@ function paintSkillCheckApps(documentRef) {
   if (!box || box.dataset.ultraAppsReady === '1') return;
   const heading = documentRef.createElement('span');
   heading.className = 'cctv-summary-label';
-  heading.textContent = 'Apps to search';
+  heading.textContent = tl('Apps to search');
   const options = SKILL_CHECK_APP_OPTIONS.map((option) => {
     const label = documentRef.createElement('label');
     label.className = 'ultra-match';
@@ -404,9 +430,11 @@ function paintSkillCheckApps(documentRef) {
     input.id = `ultra-skill-check-app-${String(option.id).replace(/\s+/g, '-')}`;
     input.value = option.label;
     input.dataset.ultraSkillCheckApp = option.id;
-    input.title = `Search ${option.label} for the claimed skills`;
+    input.title = tl('Search {app} for the claimed skills', {
+      app: tl(option.label),
+    });
     const name = documentRef.createElement('span');
-    name.textContent = option.label;
+    name.textContent = tl(option.label);
     label.append(input, name);
     return label;
   });
@@ -494,7 +522,7 @@ export function skillCheckTally(verdicts) {
   return Object.entries(SKILL_CHECK_VERDICTS)
     .map(
       ([id, word]) =>
-        `${list.filter((row) => row?.verdict === id).length} ${word}`,
+        `${list.filter((row) => row?.verdict === id).length} ${tl(word)}`,
     )
     .join(' · ');
 }
@@ -504,8 +532,9 @@ function dayDate(at) {
   return Number.isFinite(when.getTime()) ? when.toLocaleDateString() : '';
 }
 
-function plural(count, word) {
-  return `${count} ${word}${count === 1 ? '' : 's'}`;
+/** 1 holder, 3 holders. */
+function holdersCount(count) {
+  return tln(count, '{count} holder', '{count} holders');
 }
 
 function setClass(element, name, on) {
@@ -532,16 +561,19 @@ function networkTokens(status) {
  * holders who receive it have that skill on their token. '' when none.
  */
 export function ultraNeedsLine(needs, holders = []) {
-  const summary = ultraNeedsSummary(needs);
+  const summary = ultraNeedsSummary(needs, localSay);
   if (!summary) return '';
   const skill = ultraNeedsSkill(needs);
-  if (!skill) return `Asks for ${summary}.`;
+  if (!skill) return tl('Asks for {needs}.', { needs: summary });
   const skilled = holders.filter(
     (token) =>
       Array.isArray(token?.skills) &&
       token.skills.some((item) => item?.code === skill),
   ).length;
-  return `Asks for ${summary} · ${plural(skilled, 'holder')} with that skill.`;
+  return tl('Asks for {needs} · {holders} with that skill.', {
+    needs: summary,
+    holders: holdersCount(skilled),
+  });
 }
 
 /** Received calls for help still running, newest first. */
@@ -598,7 +630,7 @@ function paintReleasePackage(documentRef, status) {
       const option = documentRef.createElement('option');
       option.value = choice.id;
       const live = running.some((item) => item.feedId === choice.id);
-      option.textContent = `${choice.name || choice.id}${choice.removed ? ' · REMOVED' : ''}${live ? ' · HELP ON' : ''}`;
+      option.textContent = `${choice.name || choice.id}${choice.removed ? ` · ${tl('REMOVED')}` : ''}${live ? ` · ${tl('HELP ON')}` : ''}`;
       select.appendChild(option);
     }
     const newest = [...running].sort(
@@ -633,7 +665,7 @@ function paintPublishPackage(documentRef, status) {
     for (const feed of packages) {
       const option = documentRef.createElement('option');
       option.value = feed.id;
-      option.textContent = `FOR ${feed.name || feed.id}`;
+      option.textContent = tl('FOR {name}', { name: feed.name || feed.id });
       select.appendChild(option);
     }
     if (packages.some((feed) => feed.id === current)) select.value = current;
@@ -681,12 +713,14 @@ function paintRelease(documentRef, status, now = Date.now()) {
         ).length;
   const state = byId(documentRef, 'ultra-release-state');
   if (state) {
-    state.textContent = release ? `· ON UNTIL ${clockTime(release.until)}` : '';
+    state.textContent = release
+      ? `· ${tl('ON UNTIL {time}', { time: clockTime(release.until) })}`
+      : '';
     setClass(state, 'ultra-release-on', Boolean(release));
   }
   const send = byId(documentRef, 'ultra-release-send');
   if (send) {
-    send.textContent = release ? 'EXTEND HELP' : 'SEND HELP';
+    send.textContent = release ? tl('EXTEND HELP') : tl('SEND HELP');
     /* A package the store does not show can only be stood down. */
     send.hidden = release?.removed === true;
   }
@@ -698,18 +732,26 @@ function paintRelease(documentRef, status, now = Date.now()) {
       .map((item) => String(item.name || item.feedId || 'Ultra'));
     const also =
       chosen && others.length
-        ? ` · ALSO ASKING FOR HELP: ${others.join(', ')}`
+        ? ` · ${tl('ALSO ASKING FOR HELP: {names}', { names: others.join(', ') })}`
         : '';
     if (release) {
       const outcome = String(release.sms?.outcome || '');
       const asks = ultraNeedsLine(release.needs, holdersList);
-      note.textContent = `HELP SENT ${clockTime(release.at)} · ${plural(holders, 'holder')} · ${watching} watching · until ${clockTime(release.until)} · EXTEND HELP renews four hours${outcome ? ` · ${outcome}` : ''}${also}${asks ? ` · ${asks}` : ''}`;
+      note.textContent = `${tl(
+        'HELP SENT {at} · {holders} · {watching} watching · until {until} · EXTEND HELP renews four hours',
+        {
+          at: clockTime(release.at),
+          holders: holdersCount(holders),
+          watching,
+          until: clockTime(release.until),
+        },
+      )}${outcome ? ` · ${tl(outcome)}` : ''}${also}${asks ? ` · ${asks}` : ''}`;
     } else if (also) {
-      note.textContent = `Nothing sent for this package${also}`;
+      note.textContent = `${tl('Nothing sent for this package')}${also}`;
     } else if (holdersList.length === 0) {
-      note.textContent = RELEASE_NOTE.nobody;
+      note.textContent = tl(RELEASE_NOTE.nobody);
     } else if (!status?.position) {
-      note.textContent = RELEASE_NOTE['no-position'];
+      note.textContent = tl(RELEASE_NOTE['no-position']);
     } else {
       const incident = String(
         byId(documentRef, 'ultra-incident')?.value || 'other',
@@ -718,13 +760,18 @@ function paintRelease(documentRef, status, now = Date.now()) {
         ? status.contacts.length
         : 0;
       const asks = ultraNeedsLine(status?.ownerNeeds, holdersList);
-      note.textContent = `Sends your phone's position, the incident classification and any items or skills needed to encrypted Ultra Token holders for four hours, or until STAND DOWN, and hands your phone one tap that texts the Help to ${plural(contacts, 'saved helper')}. ${watching} watching now.${asks ? ` ${asks}` : ''}`;
+      note.textContent = `${tln(
+        contacts,
+        "Sends your phone's position, the incident classification and any items or skills needed to encrypted Ultra Token holders for four hours, or until STAND DOWN, and hands your phone one tap that texts the Help to {count} saved helper. {watching} watching now.",
+        "Sends your phone's position, the incident classification and any items or skills needed to encrypted Ultra Token holders for four hours, or until STAND DOWN, and hands your phone one tap that texts the Help to {count} saved helpers. {watching} watching now.",
+        { watching },
+      )}${asks ? ` ${asks}` : ''}`;
     }
   }
   const plea = byId(documentRef, 'ultra-release-plea');
   if (plea) {
     const text = release ? String(release.plea || '') : '';
-    plea.textContent = text ? `Plea: ${text}` : '';
+    plea.textContent = text ? tl('Plea: {text}', { text }) : '';
     plea.hidden = !text;
   }
 }
@@ -735,7 +782,7 @@ function paintReleaseRow(documentRef, message, isUnread) {
   row.dataset.unread = isUnread ? '1' : '0';
   const active = message.active === true;
   row.dataset.active = active ? '1' : '0';
-  const from = String(message.from || message.label || 'someone');
+  const from = String(message.from || message.label || tl('someone'));
   /* The server fills `place` with the street address, or the coordinates
    * alone when it was offline; the fallback here is for a row written before
    * the geocode answered. */
@@ -743,15 +790,21 @@ function paintReleaseRow(documentRef, message, isUnread) {
     String(message.place || '').trim() ||
     (hasPosition(message)
       ? `${message.lat.toFixed(4)}, ${message.lon.toFixed(4)}`
-      : 'position unknown');
+      : tl('position unknown'));
   const distance = Number.isFinite(message.distanceKm)
-    ? ` · ${message.distanceKm < 10 ? message.distanceKm.toFixed(1) : Math.round(message.distanceKm)} KM`
+    ? ` · ${tl('{km} KM', { km: localDigits(message.distanceKm < 10 ? message.distanceKm.toFixed(1) : Math.round(message.distanceKm)) })}`
     : '';
-  const ended = active ? '' : ` · ENDED ${clockTime(message.until)}`;
-  const sms = message.sms ? ` · ${message.sms}` : '';
+  const ended = active
+    ? ''
+    : ` · ${tl('ENDED {time}', { time: clockTime(message.until) })}`;
+  const sms = message.sms ? ` · ${tl(message.sms)}` : '';
   const readout = documentRef.createElement('span');
   readout.className = 'sst-readout';
-  readout.textContent = `${from.toUpperCase()} · NEEDS HELP · ${place} · ${clockTime(message.at)}${distance}${ended}${sms}`;
+  readout.textContent = `${tl('{name} · NEEDS HELP · {place} · {time}', {
+    name: from.toUpperCase(),
+    place,
+    time: clockTime(message.at),
+  })}${distance}${ended}${sms}`;
   row.appendChild(readout);
   const pleaLine = documentRef.createElement('span');
   pleaLine.className = 'sst-readout ultra-plea';
@@ -759,7 +812,7 @@ function paintReleaseRow(documentRef, message, isUnread) {
   row.appendChild(pleaLine);
   if (isUnread) {
     row.appendChild(
-      button(documentRef, 'READ', { ultraInboxRead: message.id }),
+      button(documentRef, tl('READ'), { ultraInboxRead: message.id }),
     );
   }
   /* Recipient-free on purpose: the helper forwards the plea to 911 or a
@@ -769,16 +822,16 @@ function paintReleaseRow(documentRef, message, isUnread) {
   open.className = 'scene-btn';
   open.href = ultraHelpSmsLink('', message.text || '');
   open.rel = 'noopener';
-  open.textContent = 'OPEN IN SMS';
+  open.textContent = tl('OPEN IN SMS');
   open.dataset.ultraOpenSms = '1';
   row.appendChild(open);
   if (active && hasPosition(message) && message.networkId) {
     row.appendChild(
-      button(documentRef, 'MAP', { ultraNetworkMap: message.networkId }),
+      button(documentRef, tl('MAP'), { ultraNetworkMap: message.networkId }),
     );
   }
   row.appendChild(
-    button(documentRef, 'REMOVE', { ultraInboxRemove: message.id }),
+    button(documentRef, tl('REMOVE'), { ultraInboxRemove: message.id }),
   );
   return row;
 }
@@ -788,7 +841,8 @@ function paintInbox(documentRef, status) {
   const count = byId(documentRef, 'ultra-inbox-count');
   const unread = Number(status?.unread) || 0;
   if (count) {
-    count.textContent = unread > 0 ? `· ${unread} NEW` : '';
+    count.textContent =
+      unread > 0 ? `· ${tln(unread, '{count} NEW', '{count} NEW')}` : '';
     setClass(count.parentElement, 'ultra-unread', unread > 0);
   }
   if (!inbox) return;
@@ -805,16 +859,16 @@ function paintInbox(documentRef, status) {
     const readout = documentRef.createElement('span');
     readout.className = 'sst-readout';
     const where = hasPosition(message)
-      ? ` · at ${message.lat.toFixed(4)}, ${message.lon.toFixed(4)}`
+      ? ` · ${tl('at {point}', { point: `${message.lat.toFixed(4)}, ${message.lon.toFixed(4)}` })}`
       : '';
     /* The reply number is part of the readout, so the owner sees whom TEXT
      * BACK would reach before the SMS app opens on it. */
     const reply = message.number ? ` (${message.number})` : '';
-    readout.textContent = `${clockTime(message.at)} · ${message.label || 'token'} · ${message.from || 'someone'}${reply}: ${message.text || ''}${where}`;
+    readout.textContent = `${clockTime(message.at)} · ${message.label || tl('token')} · ${tl('{from}: {text}', { from: `${message.from || tl('someone')}${reply}`, text: message.text || '' })}${where}`;
     row.appendChild(readout);
     if (isUnread) {
       row.appendChild(
-        button(documentRef, 'READ', { ultraInboxRead: message.id }),
+        button(documentRef, tl('READ'), { ultraInboxRead: message.id }),
       );
     }
     /* The server only stores a number it validated as E.164; anything else
@@ -827,13 +881,13 @@ function paintInbox(documentRef, status) {
       anchor.className = 'scene-btn';
       anchor.href = textBack;
       anchor.rel = 'noopener';
-      anchor.textContent = 'TEXT BACK';
-      anchor.title = `Text ${message.number}`;
+      anchor.textContent = tl('TEXT BACK');
+      anchor.title = tl('Text {number}', { number: message.number });
       anchor.dataset.ultraTextBack = '1';
       row.appendChild(anchor);
     }
     row.appendChild(
-      button(documentRef, 'REMOVE', { ultraInboxRemove: message.id }),
+      button(documentRef, tl('REMOVE'), { ultraInboxRemove: message.id }),
     );
     rows.push([message.id, row]);
   }
@@ -845,17 +899,23 @@ function paintTokenNote(documentRef, status) {
   if (!note) return;
   const store = status?.tokenStore || 'ok';
   if (TOKEN_NOTE[store]) {
-    note.textContent = TOKEN_NOTE[store];
+    note.textContent = tl(TOKEN_NOTE[store]);
   } else if (!status?.helpBase) {
-    note.textContent = TOKEN_NOTE['no-listener'];
+    note.textContent = tl(TOKEN_NOTE['no-listener']);
   } else {
     /* A Network token works only over Tailscale: say which address the
      * holders enter it beside, or that there is none yet, rather than
      * promise a LAN address works. `networkBase` is the bare origin. */
     const network = status?.networkBase
-      ? `Your tailnet address for holders: ${status.networkBase}`
-      : 'This machine has no tailnet address yet, so a Network token cannot reach another GEVC.';
-    note.textContent = `Only when Network is on and SEND HELP is pressed, GENERATE NEW TOKEN creates an Ultra Token other GEVC users enter beside your tailnet address to receive this phone's location, the incident classification, any items or skills needed, and nothing else. With Network off a token opens nothing. Skills and Gifts are optional: tick the ones this person has, add up to five of your own, or leave them all off. Encrypt hides those skills inside the token string. ${network}`;
+      ? tl('Your tailnet address for holders: {address}', {
+          address: status.networkBase,
+        })
+      : tl(
+          'This machine has no tailnet address yet, so a Network token cannot reach another GEVC.',
+        );
+    note.textContent = `${tl(
+      "Only when Network is on and SEND HELP is pressed, GENERATE NEW TOKEN creates an Ultra Token other GEVC users enter beside your tailnet address to receive this phone's location, the incident classification, any items or skills needed, and nothing else. With Network off a token opens nothing. Skills and Gifts are optional: tick the ones this person has, add up to five of your own, or leave them all off. Encrypt hides those skills inside the token string.",
+    )} ${network}`;
   }
 }
 
@@ -865,8 +925,10 @@ function paintNumberForm(documentRef, status) {
   const number = status?.ownerNumber || '';
   if (input) {
     input.placeholder = number
-      ? `SAVED: ${number.slice(0, 5)}…`
-      : '+15065550100 your cell: calls for help you receive are texted here';
+      ? tl('SAVED: {value}', { value: `${number.slice(0, 5)}…` })
+      : tl(
+          '+15065550100 your cell: calls for help you receive are texted here',
+        );
   }
   if (clear) clear.hidden = !number;
 }
@@ -908,26 +970,29 @@ function paintReveal(documentRef, status) {
   }
   const token = String(revealed.token || '');
   const address = String(revealed.address || '');
-  const lines = [`${revealed.label || 'Token'}:`];
+  const lines = [tl('{label}:', { label: revealed.label || tl('Token') })];
   /* No address with Network off (the token opens nothing) or while the
    * report listener is down: the token line stands alone and says so. */
-  if (address) lines.push(`Tailnet address: ${address}`);
-  lines.push(`Ultra Token: ${token}`);
+  if (address) lines.push(tl('Tailnet address: {address}', { address }));
+  lines.push(tl('Ultra Token: {token}', { token }));
   if (!address) {
     lines.push(
-      'No tailnet address to show (Network is off, or the report listener is not up): the token is handed over with your tailnet address.',
+      tl(
+        'No tailnet address to show (Network is off, or the report listener is not up): the token is handed over with your tailnet address.',
+      ),
     );
   }
   /* A sealed skill list this machine's key cannot open is hidden, not
    * absent: say which, so a replaced or missing key is not read as a token
    * minted with no skills. */
   if (revealed.hidden === true) {
-    lines.push(SKILLS_HIDDEN_LINE);
+    lines.push(tl(SKILLS_HIDDEN_LINE));
   } else if (Array.isArray(revealed.skills)) {
-    const names = skillWords(revealed.skills);
-    lines.push(names.length ? names.join(', ') : 'No skill sets');
+    const names = shownSkills(revealed.skills);
+    lines.push(names.length ? names.join(', ') : tl('No skill sets'));
   }
-  if (revealed.encrypted === true) lines.push('Skills encrypted in the token');
+  if (revealed.encrypted === true)
+    lines.push(tl('Skills encrypted in the token'));
   pre.textContent = lines.join('\n');
   box.dataset.ultraToken = token;
   if (address) box.dataset.ultraAddress = address;
@@ -959,13 +1024,20 @@ function paintPublished(documentRef, status) {
   const how = published.how === 'github' ? 'github' : 'clipboard';
   const entryText = String(published.entryText || '');
   const lines = [
-    `${how === 'github' ? `PUBLISHED to ${published.directory || 'the directory'}` : 'COPY THIS ENTRY'}:`,
+    how === 'github'
+      ? tl('PUBLISHED to {directory}:', {
+          directory: published.directory || tl('the directory'),
+        })
+      : tl('COPY THIS ENTRY:'),
     entryText,
   ];
-  if (published.error) lines.push(`Not written to GitHub: ${published.error}`);
+  if (published.error)
+    lines.push(
+      tl('Not written to GitHub: {error}', { error: published.error }),
+    );
   pre.textContent = lines.join('\n');
   box.dataset.ultraEntry = entryText;
-  if (note) note.textContent = ENTRY_NOTE[how];
+  if (note) note.textContent = tl(ENTRY_NOTE[how]);
   if (mail) {
     /* The mailto: comes from the loopback answer and carries only the entry;
      * it is offered when the entry has to travel by hand. */
@@ -1023,8 +1095,10 @@ function paintCustomSkillPreview(documentRef) {
   if (!built.ok) {
     note.hidden = false;
     note.textContent =
-      built.error === 'Two custom skill sets would share one token code'
-        ? 'Two custom skill sets would share one token code. Change one of them.'
+      built.error === tl('Two custom skill sets would share one token code')
+        ? tl(
+            'Two custom skill sets would share one token code. Change one of them.',
+          )
         : built.error;
     return;
   }
@@ -1034,7 +1108,9 @@ function paintCustomSkillPreview(documentRef) {
     return;
   }
   note.hidden = false;
-  note.textContent = `The token will say: ${built.skills.map((item) => item.label).join(', ')}`;
+  note.textContent = tl('The token will say: {skills}', {
+    skills: built.skills.map((item) => item.label).join(', '),
+  });
 }
 
 function skillWords(skills) {
@@ -1047,30 +1123,35 @@ function skillWords(skills) {
     .filter(Boolean);
 }
 
+/** The skills as the box shows them (the standard ones in the page's words). */
+function shownSkills(skills) {
+  return skillWords(skills).map((label) => tl(label));
+}
+
 function tokenReadout(token) {
   const parts = [
     token.label || token.id,
-    token.network ? 'NET' : '—',
+    token.network ? tl('NET') : '—',
     /* A token carries the location poll alone: shared only while asking,
      * and with Network off it opens nothing at all. */
     token.locationOnly
-      ? 'LOCATION ONLY (DIRECTORY)'
+      ? tl('LOCATION ONLY (DIRECTORY)')
       : token.network
-        ? 'ONLY WHEN ASKING'
-        : 'OPENS NOTHING UNTIL NETWORK ON',
+        ? tl('ONLY WHEN ASKING')
+        : tl('OPENS NOTHING UNTIL NETWORK ON'),
     token.fingerprint || '',
     dayDate(token.createdAt),
   ];
-  const skills = skillWords(token.skills);
+  const skills = shownSkills(token.skills);
   if (skills.length) parts.push(skills.join(', '));
   /* `hidden` is the server's word for a sealed list this key cannot open;
    * an encrypted token that opens to no skills reads ENCRYPTED alone, as a
    * token minted that way should. */
-  if (token.hidden === true) parts.push(SKILLS_HIDDEN_WORD);
-  if (token.encrypted === true) parts.push('ENCRYPTED');
-  if (token.tampered) parts.push('TAMPERED');
-  if (token.orphaned) parts.push('PACKAGE REMOVED');
-  if (token.revokedAt) parts.push('REVOKED');
+  if (token.hidden === true) parts.push(tl(SKILLS_HIDDEN_WORD));
+  if (token.encrypted === true) parts.push(tl('ENCRYPTED'));
+  if (token.tampered) parts.push(tl('TAMPERED'));
+  if (token.orphaned) parts.push(tl('PACKAGE REMOVED'));
+  if (token.revokedAt) parts.push(tl('REVOKED'));
   return parts.filter(Boolean).join(' · ');
 }
 
@@ -1101,21 +1182,25 @@ function paintTokens(documentRef, status) {
         if (token.tampered) row.dataset.tampered = '1';
         row.append(
           readout,
-          button(documentRef, 'REVOKE', { ultraTokenRevoke: token.id }),
-          button(documentRef, 'REMOVE', { ultraTokenRemove: token.id }),
+          button(documentRef, tl('REVOKE'), { ultraTokenRevoke: token.id }),
+          button(documentRef, tl('REMOVE'), { ultraTokenRemove: token.id }),
         );
         rows.push([token.id, row]);
         continue;
       }
       row.append(
         readout,
-        button(documentRef, 'SHARE', { ultraTokenShare: token.id }),
-        button(documentRef, token.network ? 'NETWORK OFF' : 'NETWORK ON', {
-          ultraTokenEdit: token.id,
-          ultraField: 'network',
-          ultraCurrent: token.network ? '1' : '0',
-        }),
-        button(documentRef, 'REVOKE', { ultraTokenRevoke: token.id }),
+        button(documentRef, tl('SHARE'), { ultraTokenShare: token.id }),
+        button(
+          documentRef,
+          token.network ? tl('NETWORK OFF') : tl('NETWORK ON'),
+          {
+            ultraTokenEdit: token.id,
+            ultraField: 'network',
+            ultraCurrent: token.network ? '1' : '0',
+          },
+        ),
+        button(documentRef, tl('REVOKE'), { ultraTokenRevoke: token.id }),
       );
       rows.push([token.id, row]);
     }
@@ -1128,7 +1213,7 @@ function paintTokens(documentRef, status) {
       readout.textContent = tokenReadout(token);
       row.append(
         readout,
-        button(documentRef, 'REMOVE', { ultraTokenRemove: token.id }),
+        button(documentRef, tl('REMOVE'), { ultraTokenRemove: token.id }),
       );
       rows.push([token.id, row]);
     }
@@ -1136,7 +1221,9 @@ function paintTokens(documentRef, status) {
       const row = documentRef.createElement('div');
       row.className = 'cctv-controls';
       row.appendChild(
-        button(documentRef, 'REMOVE ALL REVOKED', { ultraTokenPurge: '1' }),
+        button(documentRef, tl('REMOVE ALL REVOKED'), {
+          ultraTokenPurge: '1',
+        }),
       );
       rows.push(['purge', row]);
     }
@@ -1145,7 +1232,7 @@ function paintTokens(documentRef, status) {
     const row = documentRef.createElement('div');
     row.className = 'cctv-controls';
     row.appendChild(
-      button(documentRef, 'RESET TOKENS', { ultraTokenReset: '1' }),
+      button(documentRef, tl('RESET TOKENS'), { ultraTokenReset: '1' }),
     );
     rows.push(['reset', row]);
   }
@@ -1161,22 +1248,22 @@ function endRenaming(documentRef) {
   if (!form) return;
   delete form.dataset.ultraRenaming;
   const submit = form.querySelector?.('button');
-  if (submit) submit.textContent = 'ADD TO HOME LIST';
+  if (submit) submit.textContent = tl('ADD TO HOME LIST');
   const addressInput = byId(documentRef, 'ultra-network-address');
-  if (addressInput) addressInput.placeholder = ADD_ADDRESS_PLACEHOLDER;
+  if (addressInput) addressInput.placeholder = tl(ADD_ADDRESS_PLACEHOLDER);
   const tokenInput = byId(documentRef, 'ultra-network-token');
-  if (tokenInput) tokenInput.placeholder = ADD_TOKEN_PLACEHOLDER;
+  if (tokenInput) tokenInput.placeholder = tl(ADD_TOKEN_PLACEHOLDER);
 }
 
 function networkStateWord(entry, polling, now) {
-  if (!polling) return 'NOT POLLED';
+  if (!polling) return tl('NOT POLLED');
   if (entry.lastState === 'quiet') {
     const polledAt = Number(entry.lastPolledAt) || 0;
     return polledAt && now - polledAt > NETWORK_STALE_MS
-      ? 'OK · STALE'
-      : 'WATCHING';
+      ? tl('OK · STALE')
+      : tl('WATCHING');
   }
-  return NETWORK_STATE[entry.lastState] || NETWORK_STATE.new;
+  return tl(NETWORK_STATE[entry.lastState] || NETWORK_STATE.new);
 }
 
 function networkNote(network, directory) {
@@ -1184,18 +1271,31 @@ function networkNote(network, directory) {
   if (network.polling !== true) return NETWORK_NOTE.preview;
   if (!directory.configured) return NETWORK_NOTE.directory;
   const writes = directory.canPublish
-    ? 'write token saved, PUBLISH writes to it'
+    ? tl('write token saved, PUBLISH writes to it')
     : directory.github
-      ? 'no write token: PUBLISH copies the entry for you to send'
-      : 'not a GitHub file: PUBLISH copies the entry for you to send';
+      ? tl('no write token: PUBLISH copies the entry for you to send')
+      : tl('not a GitHub file: PUBLISH copies the entry for you to send');
   const last = directory.lastResult;
   let update = '';
   if (last && typeof last === 'object') {
     update = last.error
-      ? ` · last update failed: ${last.error}`
-      : ` · UPDATED ${clockTime(directory.lastUpdateAt)} · ${Number(last.added) || 0} added · ${Number(last.updated) || 0} renamed · ${Number(last.missing) || 0} missing · ${Number(last.moved) || 0} moved · ${Number(last.skipped) || 0} skipped · ${Number(last.total) || 0} listed`;
+      ? ` · ${tl('last update failed: {error}', { error: last.error })}`
+      : ` · ${tl(
+          'UPDATED {time} · {added} added · {renamed} renamed · {missing} missing · {moved} moved · {skipped} skipped · {listed} listed',
+          {
+            time: clockTime(directory.lastUpdateAt),
+            added: Number(last.added) || 0,
+            renamed: Number(last.updated) || 0,
+            missing: Number(last.missing) || 0,
+            moved: Number(last.moved) || 0,
+            skipped: Number(last.skipped) || 0,
+            listed: Number(last.total) || 0,
+          },
+        )}`;
   }
-  return `Directory: ${directory.url || ''} · ${writes}${update} · Anyone who can read the directory sees where the phones in it are while their owners ask for help, and nothing more: keep it private to your group.`;
+  return `${tl('Directory: {address}', { address: directory.url || '' })} · ${writes}${update} · ${tl(
+    'Anyone who can read the directory sees where the phones in it are while their owners ask for help, and nothing more: keep it private to your group.',
+  )}`;
 }
 
 /* Only hosts, names, states and times are ever painted here: the status
@@ -1214,21 +1314,35 @@ function paintNetwork(documentRef, status, now = Date.now()) {
   if (count) {
     count.textContent =
       needHelp > 0
-        ? `· ${needHelp} NEED HELP`
+        ? `· ${tln(needHelp, '{count} NEED HELP', '{count} NEED HELP')}`
         : entries.length
-          ? `· ${plural(entries.length, 'token')}`
+          ? `· ${tln(entries.length, '{count} token', '{count} tokens')}`
           : '';
     setClass(count.parentElement, 'ultra-unread', needHelp > 0);
   }
   const note = byId(documentRef, 'ultra-network-note');
   if (note) {
     const lead = networkNote(network, directory);
-    let text = lead;
+    let text = tl(lead);
     const published = network.published;
     if (published && typeof published === 'object') {
-      text += ` Your token is published (${published.how === 'github' ? 'written to the directory' : 'copied for the maintainer'} ${dayDate(published.at)})${published.live === false ? ' · THAT TOKEN IS REVOKED: publish again' : ''}.`;
+      const how =
+        published.how === 'github'
+          ? tl('written to the directory {day}', { day: dayDate(published.at) })
+          : tl('copied for the maintainer {day}', {
+              day: dayDate(published.at),
+            });
+      text += ` ${
+        published.live === false
+          ? tl(
+              'Your token is published ({how}) · THAT TOKEN IS REVOKED: publish again.',
+              { how },
+            )
+          : tl('Your token is published ({how}).', { how })
+      }`;
     }
-    if (lead === NETWORK_NOTE.directory) text += `\n${NETWORK_NOTE.activate}`;
+    if (lead === NETWORK_NOTE.directory)
+      text += `\n${tl(NETWORK_NOTE.activate)}`;
     note.textContent = text;
   }
   /* Placeholders only: a value is never pre-filled, so the three-second poll
@@ -1236,20 +1350,22 @@ function paintNetwork(documentRef, status, now = Date.now()) {
   const meName = byId(documentRef, 'ultra-network-me-name');
   if (meName) {
     const name = String(network.me?.name || '');
-    meName.placeholder = name ? `SAVED: ${name}` : PLACEHOLDER.meName;
+    meName.placeholder = name
+      ? tl('SAVED: {value}', { value: name })
+      : tl(PLACEHOLDER.meName);
   }
   const urlInput = byId(documentRef, 'ultra-directory-url');
   if (urlInput) {
     urlInput.placeholder =
       directory.configured && directory.url
-        ? `SAVED: ${directory.url}`
+        ? tl('SAVED: {value}', { value: directory.url })
         : PLACEHOLDER.directoryUrl;
   }
   const tokenInput = byId(documentRef, 'ultra-directory-token');
   if (tokenInput) {
     tokenInput.placeholder = directory.canPublish
-      ? PLACEHOLDER.directoryTokenSaved
-      : PLACEHOLDER.directoryToken;
+      ? tl(PLACEHOLDER.directoryTokenSaved)
+      : tl(PLACEHOLDER.directoryToken);
   }
   const select = byId(documentRef, 'ultra-publish-token');
   if (select) {
@@ -1271,7 +1387,7 @@ function paintNetwork(documentRef, status, now = Date.now()) {
       select.replaceChildren();
       const first = documentRef.createElement('option');
       first.value = '';
-      first.textContent = 'DIRECTORY TOKEN (made for you)';
+      first.textContent = tl('DIRECTORY TOKEN (made for you)');
       select.appendChild(first);
       for (const token of candidates) {
         const option = documentRef.createElement('option');
@@ -1307,36 +1423,41 @@ function paintNetwork(documentRef, status, now = Date.now()) {
       const parts = [
         entry.name || entry.host || entry.id,
         entry.host || '',
-        entry.source === 'directory' ? 'DIRECTORY' : 'MANUAL',
+        entry.source === 'directory' ? tl('DIRECTORY') : tl('MANUAL'),
         state,
       ];
       /* The flags repeat the state word for a row that is in that very
        * state; say each thing once. */
-      if (entry.directoryMissing && state !== 'NOT IN DIRECTORY') {
-        parts.push('NOT IN DIRECTORY');
+      if (entry.directoryMissing && state !== tl('NOT IN DIRECTORY')) {
+        parts.push(tl('NOT IN DIRECTORY'));
       }
-      if (entry.moved && state !== 'MOVED') parts.push('MOVED');
+      if (entry.moved && state !== tl('MOVED')) parts.push(tl('MOVED'));
       /* A hand-added link is polled where the owner put it; the directory
        * lists the same person elsewhere, and this is the row it means. */
-      if (entry.directoryDiffers) parts.push('DIRECTORY LISTS ANOTHER HOST');
+      if (entry.directoryDiffers)
+        parts.push(tl('DIRECTORY LISTS ANOTHER HOST'));
       if (Number(entry.lastPolledAt) > 0)
         parts.push(clockTime(entry.lastPolledAt));
-      const peerSkills = skillWords(entry.skills);
+      const peerSkills = shownSkills(entry.skills);
       if (peerSkills.length) parts.push(peerSkills.join(', '));
-      if (entry.encrypted === true) parts.push('ENCRYPTED');
+      if (entry.encrypted === true) parts.push(tl('ENCRYPTED'));
       /* CONFIRM ULTRA TOKEN SKILLS: the last check kept beside the token. */
       const check = entry.skillCheck;
       if (Array.isArray(check?.verdicts) && check.verdicts.length) {
-        parts.push(check.verdicts.map(skillVerdictWords).join(', '));
-        parts.push(`SKILLS CHECKED ${checkedWhen(check.at)}`);
+        parts.push(
+          check.verdicts.map((row) => skillVerdictWords(row)).join(', '),
+        );
+        parts.push(
+          tl('SKILLS CHECKED {when}', { when: checkedWhen(check.at) }),
+        );
       }
       const readout = documentRef.createElement('span');
       readout.className = 'sst-readout';
       readout.textContent = parts.filter(Boolean).join(' · ');
       row.append(
         readout,
-        button(documentRef, 'RENAME', { ultraNetworkRename: entry.id }),
-        button(documentRef, 'REMOVE', { ultraNetworkRemove: entry.id }),
+        button(documentRef, tl('RENAME'), { ultraNetworkRename: entry.id }),
+        button(documentRef, tl('REMOVE'), { ultraNetworkRemove: entry.id }),
       );
       rows.push([entry.id, row]);
     }
@@ -1354,7 +1475,11 @@ function paintNetwork(documentRef, status, now = Date.now()) {
   const configured = relay.configured === true;
   const relayLine = byId(documentRef, 'ultra-sms-relay');
   if (relayLine) {
-    relayLine.textContent = `SMS RELAY · ${configured ? `${String(relay.provider || '').toUpperCase()} (${relay.host || ''})` : 'NOT CONFIGURED (POWER UP → SMS RELAY)'}${relay.lastOutcome ? ` · ${relay.lastOutcome}` : ''}${relay.sentToday ? ` · ${relay.sentToday} SENT TODAY` : ''}`;
+    relayLine.textContent = `${tl('SMS RELAY · {relay}', {
+      relay: configured
+        ? `${String(relay.provider || '').toUpperCase()} (${relay.host || ''})`
+        : tl('NOT CONFIGURED (POWER UP → SMS RELAY)'),
+    })}${relay.lastOutcome ? ` · ${tl(relay.lastOutcome)}` : ''}${relay.sentToday ? ` · ${tl('{count} SENT TODAY', { count: relay.sentToday })}` : ''}`;
   }
   const test = byId(documentRef, 'ultra-sms-test');
   if (test) test.disabled = !configured || !status?.ownerNumber;
@@ -1380,26 +1505,26 @@ export function paintMedia(documentRef, items, selected = new Set()) {
     tick.type = 'checkbox';
     tick.checked = selected.has(item.name);
     tick.dataset.ultraMediaName = item.name;
-    tick.title = 'Show this one on the map';
+    tick.title = tl('Show this one on the map');
     li.appendChild(tick);
     const when = new Date(item.at);
     const label = documentRef.createElement('span');
     const megabytes = (Number(item.bytes) || 0) / (1024 * 1024);
-    label.textContent = `${item.kind === 'clip' ? 'VIDEO' : 'PHOTO'} · ${
+    label.textContent = `${item.kind === 'clip' ? tl('VIDEO') : tl('PHOTO')} · ${
       Number.isNaN(when.getTime()) ? '' : when.toLocaleString()
-    } · ${megabytes >= 0.1 ? megabytes.toFixed(1) : '<0.1'} MB`;
+    } · ${tl('{size} MB', { size: megabytes >= 0.1 ? localDigits(megabytes.toFixed(1)) : localDigits('<0.1') })}`;
     const view = documentRef.createElement('button');
     view.type = 'button';
     view.className = 'ultra-media-view';
-    view.textContent = 'CCTV';
-    view.title = 'Show this one in the CCTV viewer';
+    view.textContent = 'CCTV'; // i18n-ignore: the acronym is the same in every language
+    view.title = tl('Show this one in the CCTV viewer');
     view.dataset.ultraMediaView = item.name;
     view.dataset.ultraMediaKind = item.kind;
     const open = documentRef.createElement('a');
     open.href = `/api/ultra-help/media/${encodeURIComponent(item.name)}`;
     open.target = '_blank';
     open.rel = 'noopener';
-    open.textContent = 'OPEN';
+    open.textContent = tl('OPEN');
     li.appendChild(label);
     li.appendChild(view);
     li.appendChild(open);
@@ -1433,7 +1558,7 @@ export function applyUltraHelpStatus(documentRef, status) {
         cellOption(
           documentRef,
           '',
-          'AUTO · THE PHONE WHOSE PAGE IS OPEN, ELSE THE LAST TO REPORT',
+          tl('AUTO · THE PHONE WHOSE PAGE IS OPEN, ELSE THE LAST TO REPORT'),
         ),
         ...status.packages.map((item) =>
           cellOption(
@@ -1475,38 +1600,67 @@ export function applyUltraHelpStatus(documentRef, status) {
         : null;
     const received = activeReleases(status)[0];
     if (release) {
-      statusLine.textContent = `HELP SENT · UNTIL ${clockTime(release.until)} · ${Number(release.watching) || 0} WATCHING`;
+      statusLine.textContent = tl(
+        'HELP SENT · UNTIL {time} · {count} WATCHING',
+        {
+          time: clockTime(release.until),
+          count: Number(release.watching) || 0,
+        },
+      );
     } else if (received) {
-      statusLine.textContent = `NETWORK · ${String(received.from || received.label || 'someone').toUpperCase()} NEEDS HELP`;
+      statusLine.textContent = tl('NETWORK · {name} NEEDS HELP', {
+        name: String(
+          received.from || received.label || tl('someone'),
+        ).toUpperCase(),
+      });
     } else if (unread > 0) {
-      statusLine.textContent = `HELP · ${unread} NEW`;
+      statusLine.textContent = tln(
+        unread,
+        'HELP · {count} NEW',
+        'HELP · {count} NEW',
+      );
     } else if (status?.pending?.kind === 'camera') {
       // LIVE VIDEO only while the phone page is polling. A press it has not
       // picked up says what is missing: the page, the listener, or this
       // PC's Tailscale address.
-      const label = status.pending.label;
+      const label = tl(status.pending.label);
       statusLine.textContent = status.pageOpen
-        ? `LIVE VIDEO · ${label}`
+        ? tl('LIVE VIDEO · {camera}', { camera: label })
         : status.appLive
-          ? `LIVE VIDEO · ${label} · CAMERA APP`
+          ? tl('LIVE VIDEO · {camera} · CAMERA APP', { camera: label })
           : noTailnet
-            ? `ASKED · ${label} · THIS PC HAS NO TAILSCALE ADDRESS: CONNECT TAILSCALE ON THE PC`
+            ? tl(
+                'ASKED · {camera} · THIS PC HAS NO TAILSCALE ADDRESS: CONNECT TAILSCALE ON THE PC',
+                { camera: label },
+              )
             : status.camLink
-              ? `ASKED · ${label} · OPEN THE CAMERA LINK BELOW, OR START THE CAMERA APP ON THE PHONE`
-              : `ASKED · ${label} · THE REPORT LISTENER IS NOT UP: RESTART THE DEV SERVER`;
+              ? tl(
+                  'ASKED · {camera} · OPEN THE CAMERA LINK BELOW, OR START THE CAMERA APP ON THE PHONE',
+                  { camera: label },
+                )
+              : tl(
+                  'ASKED · {camera} · THE REPORT LISTENER IS NOT UP: RESTART THE DEV SERVER',
+                  { camera: label },
+                );
     } else if (status?.lapsed?.kind === 'camera') {
-      statusLine.textContent = `NOT TAKEN · ${status.lapsed.label} · PRESS AGAIN WITH THE PHONE PAGE OPEN`;
+      statusLine.textContent = tl(
+        'NOT TAKEN · {camera} · PRESS AGAIN WITH THE PHONE PAGE OPEN',
+        { camera: tl(status.lapsed.label) },
+      );
     } else if (status?.appLive) {
-      statusLine.textContent = 'LIVE VIDEO · CAMERA APP';
+      statusLine.textContent = tl('LIVE VIDEO · CAMERA APP');
     } else if (status?.cameraNote) {
-      statusLine.textContent = status.cameraNote;
+      statusLine.textContent = tl(status.cameraNote);
     } else if (noTailnet) {
-      statusLine.textContent =
-        'TAILSCALE · THIS PC HAS NO TAILSCALE ADDRESS: THE PHONE CANNOT REACH IT';
+      statusLine.textContent = tl(
+        'TAILSCALE · THIS PC HAS NO TAILSCALE ADDRESS: THE PHONE CANNOT REACH IT',
+      );
     } else if (status?.position) {
-      statusLine.textContent = `PHONE · ${status.position.lat.toFixed(4)}, ${status.position.lon.toFixed(4)}`;
+      statusLine.textContent = tl('PHONE · {point}', {
+        point: `${status.position.lat.toFixed(4)}, ${status.position.lon.toFixed(4)}`,
+      });
     } else {
-      statusLine.textContent = 'PHONE · WAITING FOR A REPORT';
+      statusLine.textContent = tl('PHONE · WAITING FOR A REPORT');
     }
   }
   // The phone's live picture shows on the map only (the Cell layer's card),
@@ -1518,11 +1672,14 @@ export function applyUltraHelpStatus(documentRef, status) {
       const anchor = documentRef.createElement('a');
       anchor.href = status.camLink;
       // Which saved phone the link is for, when the box knows (two phones).
-      anchor.textContent = `${
-        status.camPackage
-          ? `Open this on the phone (${status.camPackage}): `
-          : 'Open this on the phone: '
-      }it sends the phone’s position and camera (no app needed)`;
+      anchor.textContent = status.camPackage
+        ? tl(
+            'Open this on the phone ({phone}): it sends the phone’s position and camera (no app needed)',
+            { phone: status.camPackage },
+          )
+        : tl(
+            'Open this on the phone: it sends the phone’s position and camera (no app needed)',
+          );
       anchor.rel = 'noopener';
       rows.push(['cam', anchor]);
     }
@@ -1537,8 +1694,9 @@ export function applyUltraHelpStatus(documentRef, status) {
     const tampered = status?.helpStore === 'tampered';
     helpNote.hidden = !tampered;
     if (tampered) {
-      helpNote.textContent =
-        'The helpers file was changed and is not being used. The next save replaces it.';
+      helpNote.textContent = tl(
+        'The helpers file was changed and is not being used. The next save replaces it.',
+      );
     }
   }
   const outboundNote = byId(documentRef, 'ultra-outbound-note');
@@ -1546,17 +1704,23 @@ export function applyUltraHelpStatus(documentRef, status) {
     const lines = [];
     if (status?.directoryStore === 'tampered') {
       lines.push(
-        'The directory address was changed and is not being used. Save it again from the box.',
+        tl(
+          'The directory address was changed and is not being used. Save it again from the box.',
+        ),
       );
     }
     if (status?.relayStore === 'tampered') {
       lines.push(
-        'The SMS relay was changed and is not being used. Save it again from POWER UP.',
+        tl(
+          'The SMS relay was changed and is not being used. Save it again from POWER UP.',
+        ),
       );
     }
     if (status?.feedsStore === 'tampered') {
       lines.push(
-        'The phone package was changed and is not being used. Save the package again.',
+        tl(
+          'The phone package was changed and is not being used. Save the package again.',
+        ),
       );
     }
     outboundNote.hidden = lines.length === 0;
@@ -1574,7 +1738,7 @@ export function applyUltraHelpStatus(documentRef, status) {
       const remove = documentRef.createElement('button');
       remove.type = 'button';
       remove.className = 'scene-btn';
-      remove.textContent = 'REMOVE';
+      remove.textContent = tl('REMOVE');
       remove.dataset.ultraRemove = contact.id;
       row.append(label, remove);
       rows.push([contact.id, row]);
@@ -1625,7 +1789,7 @@ function readAloud(documentRef, status, now = Date.now()) {
   for (const message of messages) {
     if (!message?.id) continue;
     if (message.kind === 'release') {
-      const from = message.from || message.label || 'Someone';
+      const from = message.from || message.label || tl('Someone');
       if (message.active === true) {
         if (message.readAt || spoken.has(message.id)) continue;
         /* The row shows at once, with coordinates; the voice waits a few
@@ -1638,20 +1802,29 @@ function readAloud(documentRef, status, now = Date.now()) {
         }
         firstHeard.delete(message.id);
         spoken.add(message.id);
-        speak(`${from} needs help. ${message.text || ''}`);
+        speak(
+          tl('{name} needs help. {text}', {
+            name: from,
+            text: message.text || '',
+          }),
+        );
       } else if (!stoodDown.has(message.id)) {
         firstHeard.delete(message.id);
         stoodDown.add(message.id);
         /* A call that is over is never announced as new afterwards. */
         spoken.add(message.id);
-        speak(`${from} stood down`);
+        speak(tl('{name} stood down', { name: from }));
       }
       continue;
     }
     if (message.readAt || spoken.has(message.id)) continue;
     spoken.add(message.id);
     speak(
-      `Help message from ${message.from || 'someone'} via ${message.label || 'a help link'}: ${message.text || ''}`,
+      tl('Help message from {name} via {link}: {text}', {
+        name: message.from || tl('someone'),
+        link: message.label || tl('a help link'),
+        text: message.text || '',
+      }),
     );
   }
 }
@@ -1896,10 +2069,10 @@ export function initUltraHelpPanel({
       box.type = 'checkbox';
       box.dataset.ultraCellMap = cell.mapId;
       box.checked = !hiddenCells.has(cell.mapId);
-      box.title = `Show ${cell.name || 'Ultra'} on the map`;
+      box.title = tl('Show {name} on the map', { name: cell.name || 'Ultra' });
       label.appendChild(box);
       const name = documentRef.createElement('span');
-      name.textContent = `${cell.name || 'Ultra'} on map`;
+      name.textContent = tl('{name} on map', { name: cell.name || 'Ultra' });
       label.appendChild(name);
       row.appendChild(label);
       const pathLabel = documentRef.createElement('label');
@@ -1909,10 +2082,13 @@ export function initUltraHelpPanel({
       pathBox.dataset.ultraCellPath = cell.mapId;
       pathBox.checked = !noPathCells.has(cell.mapId);
       pathBox.disabled = hiddenCells.has(cell.mapId);
-      pathBox.title = `Show ${cell.name || 'Ultra'}'s location history (its path over time)`;
+      pathBox.title = tl(
+        "Show {name}'s location history (its path over time)",
+        { name: cell.name || 'Ultra' },
+      );
       pathLabel.appendChild(pathBox);
       const pathName = documentRef.createElement('span');
-      pathName.textContent = 'History';
+      pathName.textContent = tl('History');
       pathLabel.appendChild(pathName);
       row.appendChild(pathLabel);
       /* RECORD WITHIN: what this cell saves around it as it moves, up to
@@ -1921,16 +2097,18 @@ export function initUltraHelpPanel({
       const record = documentRef.createElement('select');
       record.className = 'ultra-cell-record';
       record.dataset.ultraCellRecord = cell.id;
-      record.title = `What ${cell.name || 'Ultra'} records around it`;
+      record.title = tl('What {name} records around it', {
+        name: cell.name || 'Ultra',
+      });
       record.disabled = status?.editable === false || !cell.method;
       const off = documentRef.createElement('option');
       off.value = 'off';
-      off.textContent = 'Record off';
+      off.textContent = tl('Record off');
       record.appendChild(off);
       for (const km of DEVICE_RECORD_RADIUS_OPTIONS_KM) {
         const option = documentRef.createElement('option');
         option.value = String(km);
-        option.textContent = `Record within ${km} km`;
+        option.textContent = tl('Record within {km} km', { km });
         record.appendChild(option);
       }
       record.value =
@@ -1945,13 +2123,13 @@ export function initUltraHelpPanel({
       for (const [action, text, title] of [
         [
           'only',
-          'Only display',
-          `Show ${cell.name || 'Ultra'} alone on the map`,
+          tl('Only display'),
+          tl('Show {name} alone on the map', { name: cell.name || 'Ultra' }),
         ],
         [
           'map',
-          'Take to location on map',
-          `Fly the map to ${cell.name || 'Ultra'}`,
+          tl('Take to location on map'),
+          tl('Fly the map to {name}', { name: cell.name || 'Ultra' }),
         ],
       ]) {
         const button = documentRef.createElement('button');
@@ -1974,8 +2152,8 @@ export function initUltraHelpPanel({
       note.hidden = !(status?.editable === false || !cells.length);
       note.textContent =
         status?.editable === false
-          ? 'Editing is off on this server (preview build).'
-          : 'No Ultra cell yet: name one and press + ADD ULTRA CELL.';
+          ? tl('Editing is off on this server (preview build).')
+          : tl('No Ultra cell yet: name one and press + ADD ULTRA CELL.');
     }
   };
   /* RECORD WITHIN a cell: saved again through the device route, with what
@@ -2002,24 +2180,28 @@ export function initUltraHelpPanel({
         }),
       });
     } catch {
-      say('NOT SAVED — no answer from the dev server');
+      say(tl('NOT SAVED — no answer from the dev server'));
       return;
     }
     if (!response.ok) {
-      let error = 'Recording distance not saved';
+      let error = msgl('Recording distance not saved');
       try {
         error = (await response.json())?.error || error;
       } catch {
         /* Keep the fallback line. */
       }
-      say(error);
+      say(tl(error));
       paintCells(latest, true);
       return;
     }
+    const cellName = String(cell.name || 'Ultra').toUpperCase();
     say(
       off
-        ? `${String(cell.name || 'Ultra').toUpperCase()} · RECORD OFF`
-        : `${String(cell.name || 'Ultra').toUpperCase()} · RECORDS WITHIN ${select.value} KM`,
+        ? tl('{name} · RECORD OFF', { name: cellName })
+        : tl('{name} · RECORDS WITHIN {km} KM', {
+            name: cellName,
+            km: select.value,
+          }),
     );
     dispatchWindow(DEVICE_FEEDS_CHANGED_EVENT, { count: 1 });
     await load();
@@ -2045,21 +2227,21 @@ export function initUltraHelpPanel({
         }),
       });
     } catch {
-      say('ULTRA CELL NOT ADDED — no answer from the dev server');
+      say(tl('ULTRA CELL NOT ADDED — no answer from the dev server'));
       return;
     }
     if (!response.ok) {
-      let error = 'Ultra cell not added';
+      let error = msgl('Ultra cell not added');
       try {
         error = (await response.json())?.error || error;
       } catch {
         /* Keep the fallback line. */
       }
-      say(error);
+      say(tl(error));
       return;
     }
     if (input) input.value = '';
-    say(`ULTRA CELL ADDED · ${name.toUpperCase()}`);
+    say(tl('ULTRA CELL ADDED · {name}', { name: name.toUpperCase() }));
     dispatchWindow(DEVICE_FEEDS_CHANGED_EVENT, { count: 1 });
     await load();
   };
@@ -2087,9 +2269,11 @@ export function initUltraHelpPanel({
     say(
       action === 'release'
         ? body?.standDown
-          ? 'STAND DOWN NOT SENT — no answer from the dev server; press STAND DOWN again'
-          : 'HELP NOT SENT — no answer from the dev server; press again'
-        : 'Not sent: no answer from the dev server',
+          ? tl(
+              'STAND DOWN NOT SENT — no answer from the dev server; press STAND DOWN again',
+            )
+          : tl('HELP NOT SENT — no answer from the dev server; press again')
+        : tl('Not sent: no answer from the dev server'),
     );
     return null;
   };
@@ -2112,7 +2296,7 @@ export function initUltraHelpPanel({
       /* Only the PC removes: the phone's removal is a quiet no-op,
        * with no status line and no notice for the poll to repaint. */
       if (isOwnerRemovalRefusal(response)) return null;
-      let error = 'Request refused';
+      let error = msgl('Request refused');
       let refused = null;
       try {
         refused = await response.json();
@@ -2124,7 +2308,7 @@ export function initUltraHelpPanel({
         noteOwnerRemovalRefusal();
         return null;
       }
-      say(error);
+      say(tl(error));
       return null;
     }
     /* A body cut off on the way is no answer either. */
@@ -2152,7 +2336,7 @@ export function initUltraHelpPanel({
         body: JSON.stringify(body),
       });
     } catch {
-      say('Not saved: no answer from the dev server');
+      say(tl('Not saved: no answer from the dev server'));
       return false;
     }
     let payload = {};
@@ -2162,10 +2346,10 @@ export function initUltraHelpPanel({
       payload = {};
     }
     if (!response.ok || !payload.ok) {
-      say(payload.error || 'Not saved');
+      say(payload.error ? tl(payload.error) : tl('Not saved'));
       return false;
     }
-    say(ENV_SAVED);
+    say(tl(ENV_SAVED));
     return true;
   };
   const copyTimers = new Map();
@@ -2199,7 +2383,7 @@ export function initUltraHelpPanel({
     const pending = copyTimers.get(control);
     if (pending) clearTimeout(pending.timer);
     const original = pending ? pending.label : control.textContent;
-    control.textContent = copied ? 'COPIED' : 'SELECTED';
+    control.textContent = copied ? tl('COPIED') : tl('SELECTED');
     const timer = setTimeout(() => {
       control.textContent = original;
       copyTimers.delete(control);
@@ -2224,7 +2408,7 @@ export function initUltraHelpPanel({
   };
   const runSwarm = async () => {
     if (swarming) {
-      swarmStatus('The swarm is still out.');
+      swarmStatus(tl('The swarm is still out.'));
       return;
     }
     const run = byId(documentRef, 'ultra-swarm-run');
@@ -2233,7 +2417,9 @@ export function initUltraHelpPanel({
     const lon = Number(fix?.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       swarmStatus(
-        'Needs a fresh phone position: open the phone link on the phone and wait for a report.',
+        tl(
+          'Needs a fresh phone position: open the phone link on the phone and wait for a report.',
+        ),
       );
       return;
     }
@@ -2241,7 +2427,9 @@ export function initUltraHelpPanel({
     const at = Number(fix.at);
     if (!fix.at || !Number.isFinite(at)) {
       swarmStatus(
-        "The phone's last position has no time, too old to search from: open the phone link on the phone (it sends a fresh one).",
+        tl(
+          "The phone's last position has no time, too old to search from: open the phone link on the phone (it sends a fresh one).",
+        ),
       );
       return;
     }
@@ -2249,10 +2437,13 @@ export function initUltraHelpPanel({
       const minutes = Math.max(0, Math.round((Date.now() - at) / 60_000));
       const age =
         minutes >= 120
-          ? `${Math.round(minutes / 60)} hours`
-          : `${minutes} minutes`;
+          ? tl('{count} hours', { count: Math.round(minutes / 60) })
+          : tl('{count} minutes', { count: minutes });
       swarmStatus(
-        `The phone's last position is ${age} old, too old to search from: open the phone link on the phone (it sends a fresh one).`,
+        tl(
+          "The phone's last position is {age} old, too old to search from: open the phone link on the phone (it sends a fresh one).",
+          { age },
+        ),
       );
       return;
     }
@@ -2267,10 +2458,13 @@ export function initUltraHelpPanel({
     const label = run?.textContent || title;
     if (run) {
       run.disabled = true;
-      run.textContent = 'SPINNING UP SWARM…';
+      run.textContent = tl('SPINNING UP SWARM…');
     }
     swarmStatus(
-      `SPINNING UP SWARM · ${SOCIAL_SWARM_BOTS.length} BOTS · ${place}`,
+      tl('SPINNING UP SWARM · {count} BOTS · {place}', {
+        count: SOCIAL_SWARM_BOTS.length,
+        place,
+      }),
     );
     try {
       const result = await runSocialSwarm({
@@ -2282,19 +2476,19 @@ export function initUltraHelpPanel({
         longitude: lon,
         onBot({ bot, text, sources, error }) {
           swarmLog(
-            `${title} · ${bot.label}`,
+            `${tl(title)} · ${tl(bot.label)}`,
             error
-              ? `BOT FAILED: ${error}`
+              ? tl('BOT FAILED: {error}', { error })
               : formatSwarmBotLog({ text, sources }),
             place,
           );
         },
         onProgress({ back, total }) {
-          swarmStatus(`SWARM OUT · ${back}/${total} BACK`);
+          swarmStatus(tl('SWARM OUT · {back}/{total} BACK', { back, total }));
         },
       });
       if (result.unconfigured) {
-        swarmStatus(result.unconfigured);
+        swarmStatus(tl(result.unconfigured));
         return;
       }
       if (result.via === 'desktop') {
@@ -2306,7 +2500,14 @@ export function initUltraHelpPanel({
         minute: '2-digit',
       });
       swarmStatus(
-        `SWARM DONE ${time} · ${result.found} with reports · ${result.empty} found nothing${result.failed ? ` · ${result.failed} failed` : ''}`,
+        tl('SWARM DONE {time} · {found} with reports · {empty} found nothing', {
+          time,
+          found: result.found,
+          empty: result.empty,
+        }) +
+          (result.failed
+            ? ` · ${tl('{failed} failed', { failed: result.failed })}`
+            : ''),
       );
     } finally {
       swarming = false;
@@ -2356,11 +2557,14 @@ export function initUltraHelpPanel({
     if (forLine) {
       const sealed =
         entry?.encrypted === true && !skillWords(entry.skills).length
-          ? ' Its skills are encrypted: type the ones they told you.'
+          ? ` ${tl('Its skills are encrypted: type the ones they told you.')}`
           : '';
       forLine.textContent = entry
-        ? `FOR ${entry.name || entry.host || 'this token'} · the verdicts are kept beside this token on this PC.${sealed}`
-        : 'The verdicts are shown, not kept.';
+        ? `${tl(
+            'FOR {name} · the verdicts are kept beside this token on this PC.',
+            { name: entry.name || entry.host || tl('this token') },
+          )}${sealed}`
+        : tl('The verdicts are shown, not kept.');
     }
     paintSkillVerdicts(
       documentRef,
@@ -2369,7 +2573,10 @@ export function initUltraHelpPanel({
     );
     skillCheckLine(
       entry?.skillCheck
-        ? `LAST CHECK ${checkedWhen(entry.skillCheck.at)} · ${skillCheckTally(entry.skillCheck.verdicts)}`
+        ? tl('LAST CHECK {when} · {tally}', {
+            when: checkedWhen(entry.skillCheck.at),
+            tally: skillCheckTally(entry.skillCheck.verdicts),
+          })
         : '',
     );
     byId(documentRef, 'ultra-skill-check-skills')?.focus?.();
@@ -2386,7 +2593,7 @@ export function initUltraHelpPanel({
     const entryId = byId(documentRef, 'ultra-skill-check')?.dataset
       ?.ultraSkillEntry;
     if (!entryId) {
-      skillCheckLine(`DONE · ${tally} · shown only, not kept`);
+      skillCheckLine(tl('DONE · {tally} · shown only, not kept', { tally }));
       return;
     }
     const saved = await post('network', {
@@ -2396,8 +2603,8 @@ export function initUltraHelpPanel({
     });
     skillCheckLine(
       saved
-        ? `DONE · ${tally} · SAVED BESIDE THE TOKEN`
-        : `DONE · ${tally} · NOT SAVED`,
+        ? tl('DONE · {tally} · SAVED BESIDE THE TOKEN', { tally })
+        : tl('DONE · {tally} · NOT SAVED', { tally }),
     );
   };
   const fillSkillsFromPastedToken = async () => {
@@ -2429,13 +2636,15 @@ export function initUltraHelpPanel({
         : [];
       if (!labels.length) {
         skillCheckLine(
-          'Those skills are encrypted. Type the ones they told you, or use CONFIRM ULTRA TOKEN SKILLS on the home-list row.',
+          tl(
+            'Those skills are encrypted. Type the ones they told you, or use CONFIRM ULTRA TOKEN SKILLS on the home-list row.',
+          ),
         );
         return false;
       }
     }
     if (!labels.length) {
-      skillCheckLine('That token names no skills.');
+      skillCheckLine(tl('That token names no skills.'));
       return false;
     }
     if (input) input.value = labels.join(', ');
@@ -2451,18 +2660,20 @@ export function initUltraHelpPanel({
       return;
     }
     const run = byId(documentRef, 'ultra-skill-check-run');
-    const label = run?.textContent || 'CHECK SKILLS';
+    const label = run?.textContent || tl('CHECK SKILLS');
     skillChecking = true;
     if (run) {
       run.disabled = true;
-      run.textContent = 'CHECKING…';
+      run.textContent = tl('CHECKING…');
     }
     const paste = byId(documentRef, 'ultra-skill-check-paste');
     if (paste) paste.hidden = true;
     if (form) delete form.dataset.ultraSkillSkills;
     const provider = byId(documentRef, 'ultra-skill-check-swarm')?.value;
     const askingLlm = skillCheckLlm(provider);
-    skillCheckLine(askingLlm ? 'ASKING THE MODEL…' : 'SPINNING UP SWARM…');
+    skillCheckLine(
+      askingLlm ? tl('ASKING THE MODEL…') : tl('SPINNING UP SWARM…'),
+    );
     try {
       const result = await runSkillCheck({
         request: fetchImpl,
@@ -2471,21 +2682,23 @@ export function initUltraHelpPanel({
         onProgress({ back, total }) {
           skillCheckLine(
             askingLlm
-              ? `MODEL OUT · ${back}/${total} BACK`
-              : `SWARM OUT · ${back}/${total} BACK`,
+              ? tl('MODEL OUT · {back}/{total} BACK', { back, total })
+              : tl('SWARM OUT · {back}/{total} BACK', { back, total }),
           );
         },
       });
       if (disposed) return;
       if (!result.ok) {
-        skillCheckLine(result.error || 'The check did not run.');
+        skillCheckLine(
+          result.error ? tl(result.error) : tl('The check did not run.'),
+        );
         return;
       }
       if (result.via === 'desktop') {
         if (form) form.dataset.ultraSkillSkills = JSON.stringify(result.skills);
         if (paste) paste.hidden = false;
         skillCheckLine(
-          `${formatSwarmDesktopStatus(result)} Paste its report below, then READ REPORT.`,
+          `${formatSwarmDesktopStatus(result)} ${tl('Paste its report below, then READ REPORT.')}`,
         );
         return;
       }
@@ -2493,11 +2706,11 @@ export function initUltraHelpPanel({
         result.via,
         result.verdicts,
         result.failed
-          ? ` · ${result.failed} of ${result.total} bots failed`
+          ? ` · ${tl('{failed} of {total} bots failed', { failed: result.failed, total: result.total })}`
           : '',
       );
     } catch {
-      skillCheckLine('The check did not run.');
+      skillCheckLine(tl('The check did not run.'));
     } finally {
       skillChecking = false;
       if (run) {
@@ -2511,7 +2724,7 @@ export function initUltraHelpPanel({
     const box = byId(documentRef, 'ultra-skill-check-report');
     const text = String(box?.value || '').trim();
     if (!text) {
-      skillCheckLine("Paste the Chief of Staff's report first.");
+      skillCheckLine(tl("Paste the Chief of Staff's report first."));
       return;
     }
     let skills = [];
@@ -2525,7 +2738,7 @@ export function initUltraHelpPanel({
       skills = checked.ok ? checked.claim.skills : [];
     }
     if (!skills.length) {
-      skillCheckLine('Name the skills the report is about first.');
+      skillCheckLine(tl('Name the skills the report is about first.'));
       return;
     }
     const { verdicts } = readPastedSkillReport(text, skills);
@@ -2610,7 +2823,14 @@ export function initUltraHelpPanel({
         : '';
       if (
         !confirmed(
-          `Send help${name ? ` for ${name}` : ''}? ${name ? "That package's" : "Your phone's"} position and the incident go to ${name ? 'its' : 'your'} token holders with NETWORK on for four hours, and the phone gets the plea for your saved helpers.`,
+          name
+            ? tl(
+                "Send help for {name}? That package's position and the incident go to its token holders with NETWORK on for four hours, and the phone gets the plea for your saved helpers.",
+                { name },
+              )
+            : tl(
+                "Send help? Your phone's position and the incident go to your token holders with NETWORK on for four hours, and the phone gets the plea for your saved helpers.",
+              ),
         )
       )
         return;
@@ -2641,7 +2861,7 @@ export function initUltraHelpPanel({
           !releaseFor(status, '') &&
           !runningReleases(status).length
         )
-          say('STOOD DOWN · NO CALL FOR HELP IS ON');
+          say(tl('STOOD DOWN · NO CALL FOR HELP IS ON'));
       });
       return;
     }
@@ -2754,16 +2974,16 @@ export function initUltraHelpPanel({
       if (form) {
         form.dataset.ultraRenaming = entryId;
         const submit = form.querySelector?.('button');
-        if (submit) submit.textContent = 'RENAME';
+        if (submit) submit.textContent = tl('RENAME');
         const addressInput = byId(documentRef, 'ultra-network-address');
         if (addressInput) {
           addressInput.value = '';
-          addressInput.placeholder = ADD_RENAMING_PLACEHOLDER;
+          addressInput.placeholder = tl(ADD_RENAMING_PLACEHOLDER);
         }
         const tokenInput = byId(documentRef, 'ultra-network-token');
         if (tokenInput) {
           tokenInput.value = '';
-          tokenInput.placeholder = ADD_TOKEN_PLACEHOLDER;
+          tokenInput.placeholder = tl(ADD_TOKEN_PLACEHOLDER);
         }
       }
       return;
@@ -2772,7 +2992,9 @@ export function initUltraHelpPanel({
     if (networkRemove) {
       if (
         !confirmed(
-          'Remove this link from your home list? Their calls for help stop reaching you.',
+          tl(
+            'Remove this link from your home list? Their calls for help stop reaching you.',
+          ),
         )
       )
         return;
@@ -2799,7 +3021,7 @@ export function initUltraHelpPanel({
     }
     const revoke = target?.closest?.('[data-ultra-token-revoke]');
     if (revoke) {
-      if (!confirmed('Revoke this token? The link stops working at once.'))
+      if (!confirmed(tl('Revoke this token? The link stops working at once.')))
         return;
       void post('tokens', {
         revoke: true,
@@ -2822,7 +3044,9 @@ export function initUltraHelpPanel({
     if (target?.closest?.('[data-ultra-token-reset]')) {
       if (
         !confirmed(
-          'Reset every help token? Every link stops working, the key file is deleted, and your home list is emptied (UPDATE HOME LIST brings the directory back).',
+          tl(
+            'Reset every help token? Every link stops working, the key file is deleted, and your home list is emptied (UPDATE HOME LIST brings the directory back).',
+          ),
         )
       )
         return;
@@ -3013,23 +3237,23 @@ export function initUltraHelpPanel({
       clearTimeout(mintLabelTimer);
       if (button) {
         button.disabled = true;
-        button.textContent = MINT_LABEL.busy;
+        button.textContent = tl(MINT_LABEL.busy);
       }
       void post('tokens', body).then((status) => {
         if (!status) {
           if (button) {
             button.disabled = false;
-            button.textContent = MINT_LABEL.idle;
+            button.textContent = tl(MINT_LABEL.idle);
           }
           return;
         }
         if (button) {
           /* Ready for the next token at once; the word stays two seconds. */
           button.disabled = false;
-          button.textContent = MINT_LABEL.done;
+          button.textContent = tl(MINT_LABEL.done);
           mintLabelTimer = setTimeout(() => {
-            if (button.textContent === MINT_LABEL.done)
-              button.textContent = MINT_LABEL.idle;
+            if (button.textContent === tl(MINT_LABEL.done))
+              button.textContent = tl(MINT_LABEL.idle);
           }, MINT_DONE_MS);
         }
         if (label) label.value = '';
@@ -3068,7 +3292,7 @@ export function initUltraHelpPanel({
       if (!renaming || handout) {
         /* Half a handout is refused here, before anything is posted. */
         if (!address || !token) {
-          say(ADD_INCOMPLETE);
+          say(tl(ADD_INCOMPLETE));
           return;
         }
       }
@@ -3130,8 +3354,8 @@ export function initUltraHelpPanel({
       const statusLine = byId(documentRef, 'ultra-status');
       if (statusLine) {
         statusLine.textContent = latest
-          ? 'NO ANSWER FROM THE DEV SERVER — showing the last known state'
-          : 'NO ANSWER FROM THE DEV SERVER — is npm run dev running?';
+          ? tl('NO ANSWER FROM THE DEV SERVER — showing the last known state')
+          : tl('NO ANSWER FROM THE DEV SERVER — is npm run dev running?');
       }
     }
   };
@@ -3208,10 +3432,14 @@ export function initUltraHelpPanel({
         : 0;
     // Three of each are on the map at once: say which ones, of how many.
     const position = (list, index) => {
-      if (!list.length) return 'NONE TICKED';
-      if (list.length <= 3) return `ALL ${list.length}`;
+      if (!list.length) return tl('NONE TICKED');
+      if (list.length <= 3) return tl('ALL {count}', { count: list.length });
       const last = ((index + 2) % list.length) + 1;
-      return `${index + 1}–${last} OF ${list.length}`;
+      return tl('{first}–{last} OF {count}', {
+        first: index + 1,
+        last,
+        count: list.length,
+      });
     };
     const photoPos = byId(documentRef, 'ultra-photo-pos');
     if (photoPos) photoPos.textContent = position(photos, mediaIndex.photos);
@@ -3246,8 +3474,10 @@ export function initUltraHelpPanel({
     const count = deleteTargets().length;
     button.disabled = count === 0;
     button.textContent = deleteArmed
-      ? `SURE? DELETE ${count}`
-      : `DELETE ${all ? 'ALL' : 'TICKED'}${count ? ` ${count}` : ''}`;
+      ? tl('SURE? DELETE {count}', { count })
+      : all
+        ? `${tl('DELETE ALL')}${count ? ` ${count}` : ''}`
+        : `${tl('DELETE TICKED')}${count ? ` ${count}` : ''}`;
   };
   const disarmDelete = () => {
     if (deleteArmed) clearTimeout(deleteArmed);
@@ -3286,13 +3516,13 @@ export function initUltraHelpPanel({
           noteOwnerRemovalRefusal();
           return;
         }
-        say('DELETE refused');
+        say(tl('DELETE refused'));
         return;
       }
       const deleted = (await response.json())?.deleted || [];
-      say(`DELETED ${deleted.length}`);
+      say(tl('DELETED {count}', { count: deleted.length }));
     } catch {
-      say('DELETE: no answer from the dev server');
+      say(tl('DELETE: no answer from the dev server'));
       return;
     }
     const box = byId(documentRef, 'ultra-media-delete-all');
@@ -3342,6 +3572,21 @@ export function initUltraHelpPanel({
     paintMedia(documentRef, items, selectedMedia);
     sendMedia();
   };
+  /* ULTRA SECURITY PACKAGE, last in the tab (moved from POWER UP, owner
+   * request 2026-10-17): the package cards, drawn in the tab's own labels,
+   * notes, rows and buttons. Hidden until /api/device-feeds answers. A save
+   * here tells the map and POWER UP's devices section. */
+  const packageHost = byId(documentRef, 'ultra-package-setup');
+  const packageSetup = packageHost
+    ? initDeviceFeedSetup({
+        host: packageHost,
+        documentRef,
+        fetchImpl,
+        signal,
+        look: 'ultra',
+        showKind: (kind) => kind.id === ULTRA_PACKAGE_KIND,
+      })
+    : null;
   void load();
   void loadMedia();
   let mediaTick = 0;
@@ -3363,6 +3608,7 @@ export function initUltraHelpPanel({
       panel.removeEventListener('input', onCustomSkill);
       panel.removeEventListener('submit', onSubmit);
       stopMapWatch();
+      packageSetup?.destroy();
     },
   };
 }
