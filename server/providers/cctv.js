@@ -125,7 +125,7 @@ function streetViewEnabled() {
  *   GET  /api/cctv/sources?lat&lon[&radiusKm] — cameras of one selected area
  *   GET  /api/cctv/health         — per-camera health/status report + counters
  *   GET  /api/cctv/stream/:id     — stream info (feedType, URLs) for a camera
- *   GET  /api/cctv/media/:id      — proxy live video/image media from upstream
+ *   GET  /api/cctv/media/:id      — proxy live video media from upstream
  *   GET  /api/cctv/frame/:id      — single frame (cache, gate, placeholder)
  *   POST /api/cctv/lookup/:id     — look up one camera's still (explicit open)
  *
@@ -368,6 +368,8 @@ export function cctvProxy({
       hlsVia: stream ? 'proxy' : feedType === 'hls' ? 'pull' : undefined,
       sourceKind: source.sourceKind || (source.url ? 'configured' : 'fallback'),
       poseSource: source.poseSource,
+      model: source.model || '',
+      manufacturer: source.manufacturer || '',
       license: source.license,
       // The pack a camera came from, a partner credit and the operator's own
       // camera code, and shipped ground heights (see cctv/groundHeights.js).
@@ -1434,6 +1436,26 @@ export function cctvProxy({
         }
         return;
       }
+    }
+    // Live feeds only (upstream #595). A still camera is served by /frame,
+    // whose fetch keeps redirects on the registered origin, accepts only
+    // image/* and caps the body; relaying it here would bypass all three.
+    if (
+      source &&
+      feedType !== 'none' &&
+      !isVideoFeedType(feedType) &&
+      feedType !== 'mjpeg'
+    ) {
+      res.writeHead(404, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+      });
+      res.end(
+        JSON.stringify({
+          error: 'No live media for this camera; use the frame endpoint',
+        }),
+      );
+      return;
     }
     // A camera with no public still or stream has nothing to proxy; its kept
     // video address (videoUrl) is never served.

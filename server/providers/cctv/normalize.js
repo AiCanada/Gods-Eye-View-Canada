@@ -43,11 +43,21 @@ export function escapeXml(text) {
 /**
  * Coerce a value to a finite number, returning fallback if NaN/Infinity.
  *
+ * Absent, blank and boolean values take the fallback too: `Number` reads
+ * null, '' and false as 0, which would turn a missing coordinate, heading or
+ * elevation into a real zero.
+ *
  * @param {*} value
  * @param {number} [fallback=NaN]
  * @returns {number}
  */
 export function toFiniteNumber(value, fallback = NaN) {
+  if (
+    value == null ||
+    typeof value === 'boolean' ||
+    (typeof value === 'string' && !value.trim())
+  )
+    return fallback;
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
 }
@@ -630,6 +640,19 @@ export function normalizeSourceItem(item) {
     // "CA-ON", "US-TX" or the country code; the catalogue fills it in
     // (cctvRegionKey). Declared here so every entry keeps one shape.
     regionKey: '',
+    // Optional hardware-model passthrough (additive, like poseSource, from
+    // upstream #645): a pack entry that names the camera's hardware model
+    // passes it through for the model specs (#452). Absent everywhere else.
+    model:
+      typeof item.model === 'string' && item.model.trim()
+        ? item.model.trim()
+        : undefined,
+    // Bare model strings collide across vendors (e.g. "3950"), so the
+    // publishing pack's manufacturer rides along for disambiguation.
+    manufacturer:
+      typeof item.manufacturer === 'string' && item.manufacturer.trim()
+        ? item.manufacturer.trim()
+        : undefined,
   };
 }
 

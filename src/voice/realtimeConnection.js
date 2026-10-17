@@ -1,3 +1,5 @@
+import { t } from '../i18n/index.js';
+
 const DISCONNECT_GRACE_MS = 6000;
 // Chrome hides the microphone on a plain http page such as the phone mirror.
 const INSECURE_ORIGIN_HINT =
@@ -66,7 +68,7 @@ export class RealtimeConnection {
         'error',
         globalThis.isSecureContext === false
           ? `WebRTC microphone support unavailable on this http page. ${INSECURE_ORIGIN_HINT}`
-          : 'WebRTC microphone support unavailable',
+          : t('WebRTC microphone support unavailable'),
       );
       return;
     }
@@ -86,7 +88,7 @@ export class RealtimeConnection {
     // — this is what "applies next session" means.
     this.cost.prepareSession();
     this.syncCostUi();
-    this.setStatus('connecting', 'Requesting microphone');
+    this.setStatus('connecting', t('Requesting microphone'));
     this.debugLog('session.starting', {
       epoch,
       tier: this.cost.voiceTier,
@@ -187,9 +189,9 @@ export class RealtimeConnection {
         if (!ownsChannel()) return;
         const detail = this.input.pushToTalkMode
           ? this.input.pushToTalkKeyHeld
-            ? 'Release Space to send'
-            : 'Hold Space to talk'
-          : 'Ask or command';
+            ? t('Release Space to send')
+            : t('Hold Space to talk')
+          : t('Ask or command');
         this.setStatus('listening', detail);
         this.debugLog('data_channel.open', {
           connection: this.connectionDiagnostics(dataChannel),

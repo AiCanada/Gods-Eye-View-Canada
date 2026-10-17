@@ -31,7 +31,9 @@ export function airRecord(area, body) {
 export default {
   id: 'air-quality',
   label: 'Air quality (PM2.5)',
-  layers: [],
+  // Upstream's Air quality layer (ECCC AQHI, Canada only) since the
+  // 2026-10-17 merge: this feed records the same domain everywhere (CAMS PM2.5).
+  layers: ['air-quality'],
   kind: 'feed',
   class: 'open',
   licence:

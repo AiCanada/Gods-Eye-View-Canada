@@ -1,11 +1,12 @@
 import { catalogControlServices } from './catalog.js';
 import { StyleManager } from '../ui/composition.js';
 import { flyToStartupLocation } from '../camera.js';
-import { CITY_POIS } from '../locations.js';
+import { CITY_POIS } from '../cityPois.js';
 import { STARTUP_LOCATION_ID } from '../startupDefaults.js';
 import { initCockpitCloudEffects } from '../cockpitCloudEffects.js';
 import { initSeaSurfaceTemperaturePanel } from '../data/seaSurfaceTemperature.js';
 import { initPrivateSiteLocations } from '../privateSiteLocations.js';
+import { t } from '../i18n/index.js';
 
 /** Construct the existing controls and camera presentation. */
 export function createApplicationControls({
@@ -54,11 +55,11 @@ export function createApplicationControls({
   // If no share link state, fly to the launch location
   if (!styleManager.hasShareState) {
     const city = CITY_POIS[STARTUP_LOCATION_ID];
-    loaderStatus.textContent = `Flying to ${city.name}...`;
+    loaderStatus.textContent = t('Flying to {city}...', { city: city.name });
     defer(flyToStartupLocation(viewer, city.pois[0]));
     styleManager.markActiveLocation(STARTUP_LOCATION_ID);
   } else {
-    loaderStatus.textContent = 'Restoring shared view...';
+    loaderStatus.textContent = t('Restoring shared view...');
   }
 
   return { styleManager, weatherEffects, cockpitCloudEffects };

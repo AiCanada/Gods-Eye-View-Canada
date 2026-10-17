@@ -22,11 +22,11 @@ test('captured reading reformats without changing its sample and produces a port
   assert.equal(section.id, 'reading');
   assert.equal(
     section.lines.find(({ id }) => id === 'scalar').text,
-    'Air temperature · 2 m · 12 °C',
+    'Air temperature · 2 m · 12\u00a0°C',
   );
   assert.equal(
     section.lines.find(({ id }) => id === 'wind').text,
-    '11.2 mph from SW',
+    '11.2\u00a0mph from SW',
   );
   assert.equal(
     section.lines.find(({ id }) => id === 'meta').text,

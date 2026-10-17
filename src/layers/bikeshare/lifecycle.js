@@ -52,7 +52,7 @@ export function createLifecycle({
       layerState._lastUpdate = null;
       layerState._loading = false;
       layerState._loadingOps = 0;
-      layerState._error = null;
+      layerState._failedCityIds.clear();
       layerState._limitWarned = false;
 
       layerState._overlayHost.setVisible(
@@ -78,7 +78,7 @@ export function createLifecycle({
       layerState._enabled = true;
       // A switch that left while this layer was off gets no arrival call; do not stay paused
       layerState._locationSwitching = false;
-      layerState._error = null;
+      layerState._failedCityIds.clear();
       layerState._pointCollection.show = true;
       layerState._overlayHost.setVisible(
         BIKESHARE_SELECTED_OVERLAY_SOURCE_ID,

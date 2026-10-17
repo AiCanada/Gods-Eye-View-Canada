@@ -1,4 +1,5 @@
 import { bindCctvPanelResize } from './cctvPanelResize.js';
+import { t } from '../i18n/index.js';
 
 export function _initCctvPanel() {
   if (!this._cctvPanel) return;
@@ -152,7 +153,7 @@ export function _initCctvPanel() {
       },
       { origin: 'user' },
     );
-    this.actions.showToast('CCTV calibration saved');
+    this.actions.showToast(t('CCTV calibration saved'));
   });
 
   this.listen(this._cctvCalibResetBtn, 'click', () => {

@@ -63,6 +63,7 @@ export const CCTV_CARD_SIZE_STEPS = Object.freeze([
   Object.freeze({ label: 'S', scale: 0.75 }),
   Object.freeze({ label: 'M', scale: 1 }),
   Object.freeze({ label: 'L', scale: 1.5 }),
+  // i18n-ignore: fork text, English only for now
   Object.freeze({ label: 'XL', scale: 2.2 }),
 ]);
 

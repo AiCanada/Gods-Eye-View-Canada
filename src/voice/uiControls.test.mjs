@@ -1121,7 +1121,7 @@ test('every keyboard shortcut has a spoken way in, so a phone without keys loses
     'utf8',
   );
   const toggle = markup.match(
-    /<button[^>]*id="clean-view-toggle"[^>]*title="([^"]+)"[^>]*>[\s\S]*?<span class="pp-label">([^<]+)<\/span>/,
+    /<button[^>]*id="clean-view-toggle"[^>]*title="([^"]+)"[^>]*>[\s\S]*?<span class="pp-label"[^>]*>([^<]+)<\/span>/,
   );
   const exit = markup.match(/<button id="clean-view-exit"[^>]*>([^<]+)</);
   assert.ok(toggle && exit, 'both clean-view buttons are in the markup');

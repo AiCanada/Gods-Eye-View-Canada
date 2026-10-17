@@ -100,7 +100,7 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot, onEnvSaved } = {}) {
   const refuseAdmission = (res, admission) =>
     admission.removal === true
       ? refuseOwnerRemoval(res)
-      : respond(res, admission.status, { error: admission.error });
+      : respond(res, admission.status, refusal(admission));
   // Which store this launch owns. A Pinokio-managed launch (marker set by
   // scripts/pinokio-start.mjs) writes the app-scoped pinokio/ENVIRONMENT that
   // applyPinokioEnvironment() treats as authoritative; every other launch
@@ -153,6 +153,8 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot, onEnvSaved } = {}) {
   };
   // The gate itself is pure and unit-tested (admitKeySetupRequest in
   // src/keySetupCore.mjs) — this just feeds it the request.
+  // `code`/`params` pick the panel's sentence (src/keySetup.js); `error` is for logs.
+  const refusal = ({ error, code, params }) => ({ error, code, params });
   const admit = (req) =>
     admitKeySetupRequest({
       method: req.method,
@@ -215,14 +217,20 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot, onEnvSaved } = {}) {
     configureServer(server) {
       server.middlewares.use('/api/setup/status', (req, res) => {
         if (req.method !== 'GET')
-          return respond(res, 405, { error: 'Method not allowed' });
+          return respond(res, 405, {
+            error: 'Method not allowed',
+            code: 'method',
+          });
         const admission = admit(req);
         if (!admission.ok) return refuseAdmission(res, admission);
         respond(res, 200, providerStatus());
       });
       server.middlewares.use('/api/setup/keys', (req, res) => {
         if (req.method !== 'POST')
-          return respond(res, 405, { error: 'Method not allowed' });
+          return respond(res, 405, {
+            error: 'Method not allowed',
+            code: 'method',
+          });
         const admission = admit(req);
         if (!admission.ok) return refuseAdmission(res, admission);
         let body = '';
@@ -236,15 +244,21 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot, onEnvSaved } = {}) {
         });
         req.on('end', () => {
           if (overflowed)
-            return respond(res, 413, { error: 'Request too large' });
+            return respond(res, 413, {
+              error: 'Request too large',
+              code: 'too-large',
+            });
           let parsed;
           try {
             parsed = JSON.parse(body || '{}');
           } catch {
-            return respond(res, 400, { error: 'Invalid JSON' });
+            return respond(res, 400, {
+              error: 'Invalid JSON',
+              code: 'invalid-json',
+            });
           }
           const verdict = validateKeySetupUpdates(parsed);
-          if (!verdict.ok) return respond(res, 400, { error: verdict.error });
+          if (!verdict.ok) return respond(res, 400, refusal(verdict));
           // The owner's phone may save keys, but removing one stays on the PC.
           if (
             admission.ownerDevice === true &&
@@ -262,6 +276,8 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot, onEnvSaved } = {}) {
             if (isExternallyManaged(name, inStore)) {
               return respond(res, 409, {
                 error: `${name} is configured outside Provider Settings and can only be changed where it was set`,
+                code: 'external',
+                params: { name },
               });
             }
           }
@@ -278,10 +294,16 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot, onEnvSaved } = {}) {
             if (KEY_SETUP_HONEST_FAILURE_CODES.has(error?.code)) {
               return respond(res, 500, {
                 error: `The key was not saved: ${error.message}`,
+                code:
+                  error.code === 'GEV_HARDEN_FAILED'
+                    ? 'harden-failed'
+                    : 'store-unreadable',
               });
             }
             return respond(res, 500, {
               error: `Could not write the ${storeName()} store`,
+              code: 'write-failed',
+              params: { store: storeName() },
             });
           }
           // Live for the server-side proxies immediately; the restart below is

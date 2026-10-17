@@ -6,6 +6,7 @@ import {
   installationRecordsOutliveUnboundedView,
   viewportKey,
 } from './viewport.js';
+import { msg } from '../../i18n/index.js';
 /** Keep named point coverage until its matching polygon takes over. */
 export function retainNamedHandoff(previous, records, box) {
   const named = new Map(
@@ -175,15 +176,16 @@ export function createIngestion({
       let placesError = null;
       if (layerState.googleSearchRequested) {
         layerState.googleSearchRequested = false;
+        // A view across 180° has west > east; its width runs through 180°.
+        const lonSpan = box.east - box.west + (box.east < box.west ? 360 : 0);
         const latitude = (box.south + box.north) / 2;
-        const longitude = (box.west + box.east) / 2;
+        let longitude = box.west + lonSpan / 2;
+        if (longitude > 180) longitude -= 360;
         const radiusM = Math.min(
           50000,
           Math.max(
             1000,
-            Math.round(
-              Math.max(box.north - box.south, box.east - box.west) * 55_000,
-            ),
+            Math.round(Math.max(box.north - box.south, lonSpan) * 55_000),
           ),
         );
         try {
@@ -298,7 +300,7 @@ export function createIngestion({
           payload.status === 'stale'
             ? `Serving cached mapped context · ${payload.records[0]?.retrievedAt || 'date unknown'}`
             : saturated
-              ? 'Too many mapped sites in view to list them all'
+              ? msg('Too many mapped sites in view to list them all')
               : placesError,
         );
         parts.rendering.renderRecords();
@@ -334,7 +336,7 @@ export function createIngestion({
       layerState.failureReason = error?.failureReason || 'unavailable';
       setInstallationStatus(
         'unavailable',
-        error?.message || 'Installation context unavailable',
+        error?.message || msg('Installation context unavailable'),
       );
       if (!isUnavailableCapability(error))
         parts.viewport.scheduleUnavailableRetry(error?.retryAfterMs);

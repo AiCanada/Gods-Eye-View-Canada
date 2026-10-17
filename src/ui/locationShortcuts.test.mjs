@@ -6,7 +6,7 @@ import {
   recordLocationSelection,
   saveLocationHistory,
 } from './locationShortcuts.js';
-import { CITY_POIS } from '../locations.js';
+import { CITY_POIS } from '../cityPois.js';
 
 const poi = (cityId, poiIndex, name) => ({ type: 'poi', cityId, poiIndex, name });
 

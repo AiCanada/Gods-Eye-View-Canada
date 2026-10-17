@@ -4,6 +4,43 @@ import {
   PRIVATE_SOURCE_ENDPOINT,
 } from './policy.js';
 import { privateCamerasShown } from '../../data/privateCctv.js';
+import {
+  lookupModelSpec,
+  horizontalFovRangeDeg,
+  fixedHorizontalFovDeg,
+} from './modelSpecs.js';
+
+/**
+ * Applies datasheet enrichment to a camera in place: when it names a known
+ * hardware `model` (and, when published, a matching `manufacturer`), the spec
+ * record is attached for the HUD and the datasheet's horizontal FOV range
+ * rides along as `specFovMinDeg`/`specFovMaxDeg`. Only fixed-lens hardware
+ * fills the FOV, and only when none was given: an explicit source/seed
+ * `fovDeg` or a curated pose is never overwritten. A PTZ/varifocal range says
+ * what the lens CAN do, not where it is zoomed now.
+ * Unknown models — the common case — change nothing.
+ * @param {Object} camera - Camera being built (mutated).
+ * @param {{model?:string, manufacturer?:string, explicitFov?:boolean}} hardware
+ *   - Hardware model/manufacturer from a source or seed, and whether that
+ *   source or seed stated its own `fovDeg`.
+ * @param {(v:number,min:number,max:number)=>number} clamp - Pose clamp helper.
+ */
+function applyModelEnrichment(camera, hardware, clamp) {
+  const { model, manufacturer, explicitFov } = hardware;
+  const spec = model ? lookupModelSpec(model, manufacturer) : null;
+  if (!spec) return;
+  const range = horizontalFovRangeDeg(spec);
+  if (range) {
+    camera.specFovMinDeg = range.minDeg;
+    camera.specFovMaxDeg = range.maxDeg;
+  }
+  const fixedFov = fixedHorizontalFovDeg(spec);
+  if (fixedFov && !explicitFov && camera.poseSource !== 'curated') {
+    camera.fovDeg = clamp(fixedFov, 20, 125);
+    camera.fovSource = 'datasheet';
+  }
+  camera.spec = spec;
+}
 
 export function createCatalog({ state: layerState, services, parts, source }) {
   const { CITY_POIS } = services.locations;
@@ -248,7 +285,20 @@ export function createCatalog({ state: layerState, services, parts, source }) {
           PRIVATE_FRAME_PATH.test(String(source.frameUrl || ''))
             ? source.frameUrl
             : '',
+        model: String(source.model || ''),
+        manufacturer: String(source.manufacturer || ''),
       };
+      applyModelEnrichment(
+        camera,
+        {
+          // The fork has no seed cameras: the hardware comes from the source.
+          model: source.model,
+          manufacturer: source.model ? source.manufacturer : '',
+          explicitFov:
+            source.fovDeg != null && Number.isFinite(Number(source.fovDeg)),
+        },
+        parts.model.clamp,
+      );
       parts.model.ensureCameraPose(camera);
       catalog.push(camera);
     }

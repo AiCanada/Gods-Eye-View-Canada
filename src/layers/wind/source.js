@@ -1,16 +1,21 @@
 import { readWindBody } from '../../sources/windBody.js';
+import { SCALAR_UNAVAILABLE } from './fields.js';
+
+// Imported by src/tools: no i18n here. The texts stay English data and the
+// wind layer and layer panel show them translated.
+const msg = (text) => text;
 
 /** The provider's optional fields: units, level, and the error naming one missing. */
 const SCALARS = {
   temperature: {
     units: '°C',
     level: '2 m above ground',
-    error: 'Temperature field unavailable',
+    error: SCALAR_UNAVAILABLE.temperature,
   },
   pressure: {
     units: 'hPa',
     level: 'mean sea level',
-    error: 'Mean sea level pressure field unavailable',
+    error: SCALAR_UNAVAILABLE.pressure,
   },
   humidity: {
     units: 'kg/kg',
@@ -32,15 +37,15 @@ export function createWindSource({
   return {
     async getSnapshot({ signal, model = 'gfs', overlay = 'none' } = {}) {
       if (!['gfs', 'ifs'].includes(model))
-        throw new Error('Unknown wind model');
+        throw new Error(msg('Unknown wind model'));
       if (overlay !== 'none' && !Object.hasOwn(SCALARS, overlay))
-        throw new Error('Unknown weather overlay');
+        throw new Error(msg('Unknown weather overlay'));
       const query = `model=${model}${overlay === 'none' ? '' : `&overlay=${overlay}`}`;
       const controller = new AbortController();
       const abort = () => controller.abort(signal.reason);
       signal?.addEventListener('abort', abort, { once: true });
       const timer = setTimeout(
-        () => controller.abort(new Error('Wind request timed out')),
+        () => controller.abort(new Error(msg('Wind request timed out'))),
         timeoutMs,
       );
       const active = controller.signal;
@@ -100,7 +105,7 @@ export function createWindSource({
             `^/api/wind/grid/${model}-[\\w.-]+\\.bin\\?${query}$`,
           ).test(manifest.gridUrl)
         )
-          throw new Error('Malformed wind manifest');
+          throw new Error(msg('Malformed wind manifest'));
         const count = grid.nx * grid.ny;
         const expectedBytes = count * (scalar ? 12 : 8);
         const gridResponse = await fetchImpl(manifest.gridUrl, {
@@ -111,10 +116,10 @@ export function createWindSource({
           throw new Error(`Wind HTTP ${gridResponse.status}`);
         const bytes = await readWindBody(gridResponse, expectedBytes, active);
         if (bytes.byteLength !== expectedBytes)
-          throw new Error('Malformed wind grid');
+          throw new Error(msg('Malformed wind grid'));
         const values = new Float32Array(bytes.buffer);
         if (!values.every(Number.isFinite))
-          throw new Error('Malformed wind grid');
+          throw new Error(msg('Malformed wind grid'));
         return {
           ...manifest,
           u: values.slice(0, count),

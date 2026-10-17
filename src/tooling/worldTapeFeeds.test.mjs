@@ -164,7 +164,14 @@ test('every adapter: a licence class, a known layer, and no faster than its laye
     assert.ok(adapter.cadenceMs >= floor, `${id} polls no faster than that`);
   }
   // Every layer with a source of its own is recorded.
-  const skipped = ['directions', 'military-awareness', 'outbreak'];
+  // gnss-integrity (upstream, merged 2026-10-17) has no feed yet: the tab
+  // lists it as STATIC until one records it.
+  const skipped = [
+    'directions',
+    'military-awareness',
+    'outbreak',
+    'gnss-integrity',
+  ];
   for (const layer of REGISTERED_LAYER_IDS)
     if (!skipped.includes(layer)) assert.ok(ids.includes(layer), layer);
   // The owner's classes.

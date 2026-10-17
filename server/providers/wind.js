@@ -11,6 +11,9 @@ const OVERLAYS = [
   'humidity',
   'precipitation',
 ];
+// Data, not UI copy: the client (src/layers/wind/index.js) marks this exact
+// English with msg() and translates it when shown, so keep the two in sync.
+const UPSTREAM_UNAVAILABLE = 'Wind upstream unavailable';
 
 /** Serve bounded, single-flight, per-model/overlay forecast snapshots from fixed providers. */
 export function windProxy({
@@ -34,7 +37,7 @@ export function windProxy({
       ...(overlay === 'none' ? {} : { overlay }),
       unavailable: true,
       stale: true,
-      reason: 'Wind upstream unavailable',
+      reason: UPSTREAM_UNAVAILABLE,
     },
   });
   const sendJson = (res, value, status = 200) => {
@@ -170,7 +173,7 @@ export function windProxy({
           old.manifest = {
             ...old.manifest,
             stale: true,
-            reason: 'Wind upstream unavailable',
+            reason: UPSTREAM_UNAVAILABLE,
           };
           return old;
         }

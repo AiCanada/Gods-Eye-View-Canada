@@ -45,6 +45,8 @@ export function createLocation({ state: layerState, parts }) {
       if (keep.has(cityId)) continue;
       parts.viewport.deactivateCity(cityId);
       layerState._activeCityIds.delete(cityId);
+      // A city left behind cannot keep the layer DEGRADED.
+      layerState._failedCityIds.delete(cityId);
       released.push(cityId);
     }
 
@@ -153,7 +155,7 @@ export function createLocation({ state: layerState, parts }) {
     layerState._count = 0;
     layerState._loading = false;
     layerState._loadingOps = 0;
-    layerState._error = null;
+    layerState._failedCityIds = new Set();
     layerState._overlayHost = overlayHost || layerState.DEFAULT_OVERLAY_HOST;
   }
 

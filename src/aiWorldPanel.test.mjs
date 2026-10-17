@@ -391,9 +391,10 @@ test('the box sits last in the left stack, collapsed, with the shared chrome and
     html.indexOf('<div id="outbreak-panel"') <
       html.indexOf('<div id="ai-world-panel"'),
   );
+  // data-i18n-skip: the tab's text stays English for now (scripts/i18n.mjs).
   assert.match(
     box,
-    /^<div id="ai-world-panel" class="panel-collapsible collapsed" data-panel-id="ai-world-panel">\s*<div class="panel-glow"><\/div>\s*<div class="ai-world-panel-inner">/,
+    /^<div id="ai-world-panel" class="panel-collapsible collapsed" data-panel-id="ai-world-panel" data-i18n-skip>\s*<div class="panel-glow"><\/div>\s*<div class="ai-world-panel-inner">/,
   );
   assert.match(
     box,

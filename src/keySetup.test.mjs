@@ -8,17 +8,17 @@ import {
   stripKeylessBasemapFromHash,
   bindKeySetupPlacement,
   waitForChatGptOAuth,
+  initKeySetup,
 } from './keySetup.js';
+import { describeUnsavedWork } from './i18n/index.js';
 
 test('setup placement moves the same button only in Cyber and disconnects on teardown', () => {
-  const home = {};
-  const chip = { parentNode: home, hidden: true };
-  const root = {
-    parentNode: home,
-    before: (node) => {
+  const home = {
+    prepend: (node) => {
       node.parentNode = home;
     },
   };
+  const chip = { parentNode: home, hidden: true };
   let moves = 0;
   const toolbar = {
     append: (node) => {
@@ -48,7 +48,6 @@ test('setup placement moves the same button only in Cyber and disconnects on tea
       defaultView: { MutationObserver: Observer },
     },
     chip,
-    root,
   );
   assert.equal(chip.parentNode, home);
   for (const variant of ['cyber', 'operator', 'cyber', 'minimal']) {
@@ -296,4 +295,44 @@ test('aborting pending setup removes its surface and ignores a late response', a
   assert.deepEqual(removed, ['chip', 'root']);
   resolveResponse({ ok: true, json: async () => ({ keys: [] }) });
   assert.equal(await pending, null);
+});
+
+test('a pasted, unsaved key makes the language switch ask first until teardown', async () => {
+  const node = () => ({
+    dataset: {},
+    addEventListener() {},
+    removeEventListener() {},
+    setAttribute() {},
+    querySelector: () => null,
+    remove() {},
+  });
+  const chip = node();
+  const input = { dataset: { envVar: 'GOOGLE_MAPS_API_KEY' }, value: '' };
+  const root = {
+    ...node(),
+    querySelectorAll: (selector) =>
+      selector === 'input[data-env-var]' ? [input] : [],
+  };
+  const controller = new AbortController();
+  const setup = await initKeySetup({
+    documentRef: {
+      getElementById: (id) => (id === 'key-setup-chip' ? chip : root),
+      addEventListener() {},
+      removeEventListener() {},
+    },
+    signal: controller.signal,
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ keys: [], setCount: 0, total: 1 }),
+    }),
+  });
+  assert.ok(setup);
+  assert.deepEqual(describeUnsavedWork(), []);
+  input.value = '   ';
+  assert.deepEqual(describeUnsavedWork(), []);
+  input.value = 'AIza-pasted';
+  assert.deepEqual(describeUnsavedWork(), ['unsaved provider keys']);
+  // The field still holds the key, so only teardown dropping the check clears it.
+  controller.abort();
+  assert.deepEqual(describeUnsavedWork(), []);
 });

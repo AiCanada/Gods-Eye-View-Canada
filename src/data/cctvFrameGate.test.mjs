@@ -408,8 +408,26 @@ test('511 stills: 15-minute card reuse, 60 s active reuse, and a spent budget se
   assert.equal((await health(request)).counters.budgetDenied, 3);
 });
 
-test('the media route respects the 511 budget too', async (t) => {
+test('the media route cannot spend the 511 budget on a still (upstream #595)', async (t) => {
+  // /media relays live feeds only: a 511 still camera is refused before any
+  // upstream call, so the route is no way around the host budget.
   const root = setup(t, [cam('on511-9', { url: 'https://511on.ca/map/Cctv/9' })]);
+  const calls = upstream(t, () => image());
+  const request = install(
+    cctvProxy({
+      sourceRoot: root,
+      hostBudget: createHostBudget({ perMinute: 2, activeReservePerMinute: 1 }),
+    }),
+  );
+  const refused = await request('/media/on511-9');
+  assert.equal(refused.status, 404);
+  assert.equal(calls.length, 0);
+});
+
+test('the media route respects the 511 budget for a live feed too', async (t) => {
+  const root = setup(t, [
+    cam('on511-9', { url: 'https://511on.ca/map/Cctv/9', feedType: 'mjpeg' }),
+  ]);
   const calls = upstream(t, () => image());
   const request = install(
     cctvProxy({

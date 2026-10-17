@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.js';
 import {
   PUSH_TO_TALK_HOLD_DELAY_MS,
   MICROPHONE_VISUALIZER_GATE,
@@ -137,7 +138,7 @@ export class RealtimeInput {
         ) {
           this.pushToTalkHoldControl.blur();
         }
-        this.claimPushToTalkHold('Release Space to send');
+        this.claimPushToTalkHold(t('Release Space to send'));
       }, PUSH_TO_TALK_HOLD_DELAY_MS);
     };
     this.shortcutKeyUpHandler = (event) => {
@@ -302,7 +303,7 @@ export class RealtimeInput {
     if (!this.pushToTalkMode) return;
     this.setMicrophoneEnabled(false);
     if (this.status === 'listening')
-      this.setStatus('listening', 'Hold Space to talk');
+      this.setStatus('listening', t('Hold Space to talk'));
     else this.updateVoiceButtonLabel();
   }
 
@@ -473,8 +474,10 @@ export class RealtimeInput {
    */
   updateVoiceButtonLabel() {
     if (!this.ui.buttonLabel) return;
-    this.ui.buttonLabel.textContent = 'MIC';
+    // The mic button's caption; the first-run tip names it the same way.
+    this.ui.buttonLabel.textContent = t('MIC');
     if (this.ui.helpDetail) {
+      // i18n-ignore: fork text, English only for now
       this.ui.helpDetail.textContent = isTouchDevice()
         ? this.pushToTalkMode && this.pushToTalkKeyHeld
           ? 'Release the mic to send'

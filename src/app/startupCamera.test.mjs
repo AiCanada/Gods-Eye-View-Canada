@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { flyToAustin, flyToStartupLocation } from '../camera.js';
-import { CITY_POIS } from '../locations.js';
+import { CITY_POIS } from '../cityPois.js';
 import { STARTUP_LOCATION_ID } from '../startupDefaults.js';
 
 test('launch fly-in keeps the same teardown contract and centres the POI', (t) => {

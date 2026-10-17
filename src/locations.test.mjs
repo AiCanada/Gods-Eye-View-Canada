@@ -23,12 +23,12 @@ import {
   findCanadianCity,
   presetCityIdForQuery,
   CANADIAN_CITIES,
-  CITY_POIS,
   CITY_OVERVIEW_RANGE_M,
   closestCityForSearch,
   presetCitySearchName,
   selectedPlaceLabel,
 } from './locations.js';
+import { CITY_POIS } from './cityPois.js';
 
 function stubViewer() {
   const flights = [];

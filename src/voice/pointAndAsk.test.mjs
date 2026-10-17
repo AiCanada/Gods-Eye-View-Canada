@@ -346,9 +346,12 @@ test('deixis prompt lint: one short rule, and every sentinel it names exists in 
   // Budget: the whole Realtime prompt (instructions + tools), measured in
   // characters. It was 56,308 after the area/imagery/OSM merge; stating each
   // policy once (WHERE precedence, AREAS routing, AFTER TOOLS speech) brought
-  // it to 51,646. A new tool or rule has to fit under this ceiling.
+  // it to 51,646. A new tool or rule has to fit under this ceiling. The
+  // 2026-10-17 upstream merge (GNSS, air quality and emergency broadcasts on
+  // top of the fork's whole-app voice control and Canadian presets) measured
+  // 52,848, so the fork's ceiling is 53,000.
   const size = instructions.length + JSON.stringify(GEV_REALTIME_TOOLS).length;
-  assert.ok(size <= 52000, `prompt size ${size}`);
+  assert.ok(size <= 53000, `prompt size ${size}`);
 });
 
 

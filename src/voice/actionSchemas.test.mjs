@@ -41,7 +41,10 @@ test('the complete Realtime tool payload pins the manifest-generated layer relea
     // presets and its Cell, Private CCTV and Outbreak layers.
     // Re-derived 2026-10-10 for whole-app voice control: list_ui_controls,
     // use_ui_control and six more set_panel_open boxes.
-    'e99575c7ce099f03c2a21f7bc269600b780da0afab851490f6697745bcf492a9',
+    // Street Level and GNSS extend the manifest; tracked and analyst aircraft describe broadcasts.
+    // Air quality (ECCC AQHI) extends the manifest.
+    // Re-derived 2026-10-17 for the upstream merge: both sides' additions.
+    '090bca4cc6b57d2e9a11bcacf7dd5339cae720adafbbaa88bf4d908337fae9c0',
   );
 });
 

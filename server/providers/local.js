@@ -42,6 +42,7 @@ import { openaiDotsDesktopProxy } from './openaiDotsDesktop.js';
 import { outbreakProxy } from './outbreak.js';
 import { aiWorldProvider } from './aiWorld.js';
 import { llmTrainingProvider } from './llmTraining.js';
+import { gnssIntegrityProxy } from './gnssIntegrity.js';
 
 /**
  * Construct the local provider plugins in their established order.
@@ -105,6 +106,8 @@ function localProviderPlugins({ realtime } = {}) {
     outbreakProxy({ railWorld: true }),
     // Street Level imagery (upstream): Mapillary tiles, cached.
     mapillaryProxy(),
+    // GNSS integrity (upstream #1108): GET /api/gnss-integrity.
+    gnssIntegrityProxy(),
     // ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM (owner request 2026-10-13):
     // records every ticked feed, generates sim episodes, trains and predicts.
     aiWorldProvider(),
@@ -153,6 +156,9 @@ export { LL2_CACHE_TTL_MS, launchLibraryRequestHeaders } from './space.js';
 export { googlePlacesContextProxy } from './places.js';
 export { googleServerApiKey } from './places.js';
 export { keylessGooglePlacesResponse } from './places.js';
+export { keylessGoogleGeocodeResponse } from './places.js';
+export { validateGeocodeAddress } from './places.js';
+export { geocodeBounds } from './places.js';
 export { adsbLolFallbackAnchor } from './aircraft/opensky.js';
 export { readResponseTextCapped } from './common/http.js';
 export { readResponseJsonCapped } from './common/http.js';

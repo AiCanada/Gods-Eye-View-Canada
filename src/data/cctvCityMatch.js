@@ -1,4 +1,4 @@
-import { CITY_POIS } from '../locations.js';
+import { CITY_POIS } from '../cityPois.js';
 
 /**
  * Camera-to-city matching for the CCTV catalogue.

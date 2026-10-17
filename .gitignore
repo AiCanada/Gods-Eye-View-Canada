@@ -78,3 +78,6 @@ native/outbreak-rail-cuda/*.lib
 native/outbreak-rail-cuda/*.obj
 native/outbreak-rail-cuda/*.pdb
 native/outbreak-rail-cuda/*.ilk
+
+# Transient: a release interrupted mid-assembly (npm run changelog recovers it)
+changelog.d/.assembling/

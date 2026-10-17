@@ -4,7 +4,7 @@ import {
   STARTUP_LOCATION_ID,
   applyStartupLayerDefaults,
 } from './startupDefaults.js';
-import { CITY_POIS } from './locations.js';
+import { CITY_POIS } from './cityPois.js';
 import {
   createDefaultLayerState,
   normalizeLayerState,

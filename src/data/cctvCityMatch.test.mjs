@@ -6,7 +6,7 @@ import {
   cityIdByName,
   kmOutsideViewBounds,
 } from './cctvCityMatch.js';
-import { CITY_POIS } from '../locations.js';
+import { CITY_POIS } from '../cityPois.js';
 
 test('a same-named place far away is not the preset city', () => {
   assert.equal(cityIdByName('Hwy 1 Austin', 49.95, -98.93), null, 'Austin, Manitoba is not Austin, Texas');

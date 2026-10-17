@@ -1,8 +1,9 @@
 /**
  * Key setup ("POWER UP") — the pure core.
  *
- * One registry and pure functions; its only import is the proxy-header check
- * shared with the other local gates (localRequestGate.mjs). The dev server's
+ * One registry and pure functions; it imports only the proxy-header check
+ * shared with the other local gates (localRequestGate.mjs) and the msg()
+ * marker (src/i18n/marker.js). The dev server's
  * /api/setup endpoints (vite.config.js) and the in-app panel (keySetup.js)
  * are both thin shells over this module, so what a key is called, what it
  * unlocks, and how a .env line is written each live in exactly one place.
@@ -12,6 +13,7 @@
  * behavior below unit-testable.
  */
 
+import { msg } from './i18n/marker.js';
 import { hasProxySignals } from './localRequestGate.mjs';
 
 /** Longest accepted key/token value. NASA Earthdata Login tokens are JWTs of
@@ -38,8 +40,8 @@ export const KEY_SETUP_APPEND_HEADER =
 export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'google-maps',
-    title: 'GOOGLE MAPS',
-    unlocks: 'The photorealistic 3D planet, place search + Street View',
+    title: 'GOOGLE MAPS', // i18n-ignore: provider product name
+    unlocks: msg('The photorealistic 3D planet, place search + Street View'),
     getUrl: 'https://developers.google.com/maps/documentation/tile/get-api-key',
     envVars: Object.freeze(['GOOGLE_MAPS_API_KEY']),
     tier: 'metered',
@@ -47,8 +49,10 @@ export const KEY_SETUP_KEYS = Object.freeze([
   }),
   Object.freeze({
     id: 'google-maps-server',
-    title: 'GOOGLE MAPS — SERVER',
-    unlocks: 'Places context + Street View fallback; optional separate key',
+    title: 'GOOGLE MAPS — SERVER', // i18n-ignore: provider product name; row is hidden
+    unlocks: msg(
+      'Places context + Street View fallback; optional separate key',
+    ),
     getUrl:
       'https://developers.google.com/maps/documentation/places/web-service/get-api-key',
     envVars: Object.freeze(['GOOGLE_MAPS_SERVER_API_KEY']),
@@ -56,40 +60,40 @@ export const KEY_SETUP_KEYS = Object.freeze([
   }),
   Object.freeze({
     id: 'openai',
-    title: 'OPENAI',
-    unlocks: 'Voice control — API key or ChatGPT OAuth',
+    title: 'OPENAI', // i18n-ignore: provider product name
+    unlocks: msg('Voice control — API key or ChatGPT OAuth'),
     getUrl: 'https://platform.openai.com/api-keys',
     envVars: Object.freeze(['OPENAI_API_KEY']),
     tier: 'metered',
   }),
   Object.freeze({
     id: 'aisstream',
-    title: 'AISSTREAM',
-    unlocks: 'Live ships, worldwide',
+    title: 'AISSTREAM', // i18n-ignore: provider product name
+    unlocks: msg('Live ships, worldwide'),
     getUrl: 'https://aisstream.io',
     envVars: Object.freeze(['AISSTREAM_API_KEY']),
     tier: 'free',
   }),
   Object.freeze({
     id: 'firms',
-    title: 'NASA FIRMS',
-    unlocks: 'Live active-fire detections',
+    title: 'NASA FIRMS', // i18n-ignore: provider product name
+    unlocks: msg('Live active-fire detections'),
     getUrl: 'https://firms.modaps.eosdis.nasa.gov/api/map_key/',
     envVars: Object.freeze(['FIRMS_MAP_KEY']),
     tier: 'free',
   }),
   Object.freeze({
     id: 'tomtom',
-    title: 'TOMTOM',
-    unlocks: 'Real live traffic (keyless runs a simulation)',
+    title: 'TOMTOM', // i18n-ignore: provider product name
+    unlocks: msg('Real live traffic (keyless runs a simulation)'),
     getUrl: 'https://my.tomtom.com/keys',
     envVars: Object.freeze(['TOMTOM_API_KEY']),
     tier: 'free',
   }),
   Object.freeze({
     id: 'cesium-ion',
-    title: 'CESIUM ION',
-    unlocks: 'Bing imagery map stacks + world terrain',
+    title: 'CESIUM ION', // i18n-ignore: provider product name
+    unlocks: msg('Bing imagery map stacks + world terrain'),
     getUrl: 'https://ion.cesium.com/tokens',
     envVars: Object.freeze(['CESIUM_ION_TOKEN']),
     tier: 'free',
@@ -97,17 +101,18 @@ export const KEY_SETUP_KEYS = Object.freeze([
   }),
   Object.freeze({
     id: 'opensky',
-    title: 'OPENSKY',
-    unlocks: 'More flight-polling credits (anonymous works without)',
+    title: 'OPENSKY', // i18n-ignore: provider product name
+    unlocks: msg('More flight-polling credits (anonymous works without)'),
     getUrl: 'https://opensky-network.org',
     envVars: Object.freeze(['OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET']),
     tier: 'free',
   }),
   Object.freeze({
     id: 'mapillary',
-    title: 'MAPILLARY',
-    unlocks:
+    title: 'MAPILLARY', // i18n-ignore: provider product name
+    unlocks: msg(
       'Street-level imagery and coverage in the Street Level layer. Free: register an app in the Mapillary developer dashboard and paste its Client Token',
+    ),
     getUrl: 'https://www.mapillary.com/dashboard/developers',
     envVars: Object.freeze(['MAPILLARY_CLIENT_TOKEN']),
     tier: 'free',
@@ -115,14 +120,15 @@ export const KEY_SETUP_KEYS = Object.freeze([
   }),
   Object.freeze({
     id: 'launch-library',
-    title: 'LAUNCH LIBRARY',
-    unlocks: 'Higher space-missions request allowance',
+    title: 'LAUNCH LIBRARY', // i18n-ignore: provider product name
+    unlocks: msg('Higher space-missions request allowance'),
     getUrl: 'https://thespacedevs.com',
     envVars: Object.freeze(['LL2_API_TOKEN']),
     tier: 'free',
   }),
   Object.freeze({
     id: 'earthdata',
+    // i18n-ignore: fork text, English only for now
     title: 'NASA EARTHDATA',
     unlocks: 'Sea Surface Temperature: OceanColor MODIS Aqua data access',
     getUrl: 'https://urs.earthdata.nasa.gov/profile',
@@ -133,6 +139,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   // call, and only when someone opens a US camera that has no public image.
   Object.freeze({
     id: 'road511',
+    // i18n-ignore: fork text, English only for now
     title: 'ROAD511',
     unlocks:
       'US traffic cams with no public image: looks one up only when you open that camera',
@@ -153,6 +160,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'nvidia',
     group: 'llm',
+    // i18n-ignore: fork text, English only for now
     title: 'NVIDIA NIM',
     unlocks:
       'AI Risk & Truth Assessment: typed questions and one-click overviews of the view',
@@ -161,6 +169,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
     optionalEnvVars: Object.freeze([
       Object.freeze({
         name: 'NVIDIA_MODEL',
+        // i18n-ignore: fork text, English only for now
         label: 'MODEL',
         placeholder: 'moonshotai/kimi-k3',
         // NIM's id for Nemotron 3.5 Super VL, read from its model list on
@@ -173,6 +182,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'xai',
     group: 'llm',
+    // i18n-ignore: fork text, English only for now
     title: 'xAI GROK',
     unlocks:
       'AI Risk & Truth Assessment: adds Grok as a second opinion on the current view',
@@ -181,6 +191,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
     optionalEnvVars: Object.freeze([
       Object.freeze({
         name: 'XAI_MODEL',
+        // i18n-ignore: fork text, English only for now
         label: 'MODEL',
         placeholder: 'grok-4.6',
         options: Object.freeze([]),
@@ -191,6 +202,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'anthropic',
     group: 'llm',
+    // i18n-ignore: fork text, English only for now
     title: 'ANTHROPIC CLAUDE',
     unlocks:
       'AI Risk & Truth Assessment: adds Claude as a second opinion on the current view',
@@ -199,6 +211,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
     optionalEnvVars: Object.freeze([
       Object.freeze({
         name: 'ANTHROPIC_MODEL',
+        // i18n-ignore: fork text, English only for now
         label: 'MODEL',
         placeholder: 'claude-fable-5-1',
         options: Object.freeze([]),
@@ -209,6 +222,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'openrouter',
     group: 'llm',
+    // i18n-ignore: fork text, English only for now
     title: 'OPENROUTER',
     unlocks:
       'AI Risk & Truth Assessment: one key that reaches many models; NVIDIA Nemotron 3.5 Super VL (free) unless another is chosen',
@@ -217,6 +231,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
     optionalEnvVars: Object.freeze([
       Object.freeze({
         name: 'OPENROUTER_MODEL',
+        // i18n-ignore: fork text, English only for now
         label: 'MODEL',
         placeholder: 'nvidia/nemotron-3.5-super-vl:free',
         // OpenRouter's own ids, read from its model list on 2026-09-27 and
@@ -242,6 +257,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'custom',
     group: 'llm',
+    // i18n-ignore: fork text, English only for now
     title: 'CUSTOM LLM',
     unlocks:
       'AI Risk & Truth Assessment: any OpenAI-compatible endpoint, local or hosted',
@@ -262,6 +278,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'grok-bot',
     group: 'grok-bot',
+    // i18n-ignore: fork text, English only for now
     title: 'GROK BOT',
     unlocks:
       'Social Media, Outbreak SOCIAL SEARCH, and Ultra → GROK BOT SWARM: seven bots at once on their own xAI key; answers land in that panel. Without this key, GROK BOT — COMPUTER or Grok Bot with the task pasted to your Chief of Staff',
@@ -270,6 +287,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
     optionalEnvVars: Object.freeze([
       Object.freeze({
         name: 'XAI_SWARM_MODEL',
+        // i18n-ignore: fork text, English only for now
         label: 'MODEL',
         placeholder: 'grok-4.6',
         options: Object.freeze([]),
@@ -280,6 +298,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'grok-bot-chief-of-staff',
     group: 'grok-bot',
+    // i18n-ignore: fork text, English only for now
     title: 'GROK BOT — CHIEF OF STAFF',
     unlocks:
       'A webhook routine of your Chief of Staff bot in Grok Bot (Routines → When a webhook fires; paste its Webhook URL and Webhook key). GROK BOT SWARM uses the GROK BOT API key instead',
@@ -290,6 +309,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'grok-bot-computer',
     group: 'grok-bot',
+    // i18n-ignore: fork text, English only for now
     title: 'GROK BOT — COMPUTER',
     unlocks:
       "GROK BOT SWARM without a GROK BOT API key: send the sweep to a Grok Bot on this computer (or a Tailscale one) and write its report in the panel. Paste the gateway URL and token from that computer's gateway.json. Not a webhook",
@@ -298,7 +318,9 @@ export const KEY_SETUP_KEYS = Object.freeze([
     optionalEnvVars: Object.freeze([
       Object.freeze({
         name: 'GROK_BOT_GATEWAY_AGENT',
+        // i18n-ignore: fork text, English only for now
         label: 'BOT',
+        // i18n-ignore: fork text, English only for now
         placeholder: 'Chief-of-Staff',
         options: Object.freeze([]),
       }),
@@ -307,6 +329,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   }),
   Object.freeze({
     id: 'openai-dots',
+    // i18n-ignore: fork text, English only for now
     title: 'OPENAI DOTS',
     unlocks:
       'Social Media, Outbreak SOCIAL SEARCH, and Ultra → OPENAI DOT SWARM: seven bots at once on their own OpenAI key, apart from voice control. Without this key, ChatGPT with the task pasted',
@@ -315,6 +338,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
     optionalEnvVars: Object.freeze([
       Object.freeze({
         name: 'OPENAI_SWARM_MODEL',
+        // i18n-ignore: fork text, English only for now
         label: 'MODEL',
         placeholder: 'gpt-6-astra',
         options: Object.freeze([]),
@@ -332,6 +356,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'twilio-sms',
     group: 'ultra-sms',
+    // i18n-ignore: fork text, English only for now
     title: 'SMS RELAY — TWILIO',
     unlocks:
       "Ultra Security Package: texts a call for help to your own cell and to your saved helpers automatically (costs money per message at Twilio's rate)",
@@ -346,6 +371,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   Object.freeze({
     id: 'ultra-sms-relay',
     group: 'ultra-sms',
+    // i18n-ignore: fork text, English only for now
     title: 'SMS RELAY — YOUR OWN GATEWAY',
     unlocks:
       'Ultra Security Package: the same texts through an https gateway you run (it receives JSON { to, body } with a bearer token)',
@@ -359,6 +385,7 @@ export const KEY_SETUP_KEYS = Object.freeze([
   // copies the entry for the owner to send instead of writing to GitHub.
   Object.freeze({
     id: 'ultra-directory',
+    // i18n-ignore: fork text, English only for now
     title: 'HELP NETWORK DIRECTORY',
     unlocks:
       'Ultra Security Package → HELP NETWORK: the shared list of help links your group publishes; set it from that box',
@@ -367,7 +394,9 @@ export const KEY_SETUP_KEYS = Object.freeze([
     optionalEnvVars: Object.freeze([
       Object.freeze({
         name: 'ULTRA_DIRECTORY_WRITE_TOKEN',
+        // i18n-ignore: fork text, English only for now
         label: 'GITHUB WRITE TOKEN',
+        // i18n-ignore: fork text, English only for now
         placeholder: 'github_pat_…',
         options: Object.freeze([]),
       }),
@@ -381,6 +410,32 @@ export const KEY_SETUP_KEYS = Object.freeze([
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 /** Socket addresses that count as this machine. */
 const LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+/**
+ * Whether a socket address is one the operator has explicitly declared to be
+ * this machine through GEV_KEY_SETUP_TRUSTED_PEERS: a comma-separated list of
+ * EXACT addresses, never wildcards, prefixes or hostnames. Unset trusts
+ * nothing, which is every launcher but one.
+ *
+ * The shipped use is the Docker launcher (scripts/docker-start.mjs). A port
+ * published on the host's loopback still reaches the container FROM the
+ * container network's gateway, never from 127.0.0.1, so the loopback check
+ * alone refuses the very machine running the server. Admitting that one
+ * address relaxes nothing else: the sharing, Host, Origin, Content-Type and
+ * proxy-header checks all still apply to it.
+ */
+function isTrustedPeerAddress(remoteAddress, env) {
+  const normalize = (value) =>
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^::ffff:/, '');
+  const address = normalize(remoteAddress);
+  if (!address) return false;
+  return String(env?.GEV_KEY_SETUP_TRUSTED_PEERS || '')
+    .split(',')
+    .some((entry) => entry.trim() !== '' && normalize(entry) === address);
+}
 
 /** Parse an exact local request authority from a Host header. */
 function localAuthority(hostHeader, protocol) {
@@ -651,7 +706,9 @@ function requestHasBody(headers = {}) {
  *    DELETE is refused with `removal: true` and no error text (removing is
  *    done on the PC; answer it with sendOwnerRemovalRefusal), and any other
  *    method but GET/HEAD needs an exact Origin and, with a body, JSON;
- *  - loopback socket: refuses LAN peers when the server is bound wide;
+ *  - loopback socket: refuses LAN peers when the server is bound wide. The
+ *    only exception is an exact address listed in
+ *    GEV_KEY_SETUP_TRUSTED_PEERS, and every check below still applies to it;
  *  - local Host header: tunnel and DNS-rebinding traffic carries a foreign
  *    Host even when the socket says loopback;
  *  - exact same Origin on POST: a hostile web page can make a browser POST to
@@ -661,7 +718,10 @@ function requestHasBody(headers = {}) {
  *    preflight this server never answers, closing the simple-request CSRF
  *    write primitive.
  *
- * @returns {{ok: true, ownerDevice: boolean} | {ok: false, status: number, error: string} | {ok: false, status: 403, removal: true}}
+ * A refusal also carries `code`, which the panel turns into its own localized
+ * sentence (keySetup.js); `error` stays the English for logs and API callers.
+ * The owner-device refusal of a DELETE carries neither (`removal: true`).
+ * @returns {{ok: true, ownerDevice: boolean} | {ok: false, status: number, error: string, code: string} | {ok: false, status: 403, removal: true}}
  */
 export function admitKeySetupRequest({
   method,
@@ -682,6 +742,7 @@ export function admitKeySetupRequest({
       ok: false,
       status: 403,
       error: 'Provider Settings does not answer proxied requests',
+      code: 'proxied',
     };
   }
   // Every sharing signal the launcher recognizes (scripts/pinokio-preflight.mjs)
@@ -699,6 +760,7 @@ export function admitKeySetupRequest({
       ok: false,
       status: 403,
       error: 'Provider Settings is disabled while sharing is enabled',
+      code: 'sharing',
     };
   }
   const verb = String(method || '').toUpperCase();
@@ -717,11 +779,18 @@ export function admitKeySetupRequest({
       return { ok: false, status: 403, removal: true };
     }
   } else {
-    if (!LOOPBACK_ADDRESSES.has(String(remoteAddress || ''))) {
+    // Off the owner path only: a Docker host's gateway address listed in
+    // GEV_KEY_SETUP_TRUSTED_PEERS (#208) passes as this machine, and every
+    // check below still applies to it.
+    if (
+      !LOOPBACK_ADDRESSES.has(String(remoteAddress || '')) &&
+      !isTrustedPeerAddress(remoteAddress, env)
+    ) {
       return {
         ok: false,
         status: 403,
         error: 'Provider Settings answers only the machine running the server',
+        code: 'not-loopback',
       };
     }
     authority = localAuthority(hostHeader, protocol);
@@ -730,6 +799,7 @@ export function admitKeySetupRequest({
         ok: false,
         status: 403,
         error: 'Provider Settings answers only local hostnames',
+        code: 'not-local-host',
       };
     }
   }
@@ -740,6 +810,7 @@ export function admitKeySetupRequest({
       ok: false,
       status: 403,
       error: 'Provider Settings requires an exact local Origin',
+      code: 'origin-required',
     };
   }
   if (originMissing && owner && verb !== 'GET' && verb !== 'HEAD') {
@@ -754,7 +825,12 @@ export function admitKeySetupRequest({
     try {
       parsedOrigin = new URL(String(origin));
     } catch {
-      return { ok: false, status: 403, error: 'Unrecognized Origin refused' };
+      return {
+        ok: false,
+        status: 403,
+        error: 'Unrecognized Origin refused',
+        code: 'origin-unrecognized',
+      };
     }
     const exactOrigin =
       parsedOrigin.username === '' &&
@@ -768,6 +844,7 @@ export function admitKeySetupRequest({
         ok: false,
         status: 403,
         error: 'Cross-origin requests are refused',
+        code: 'cross-origin',
       };
     }
   }
@@ -787,6 +864,7 @@ export function admitKeySetupRequest({
       ok: false,
       status: 415,
       error: 'Content-Type must be application/json',
+      code: 'content-type',
     };
   }
   return { ok: true, ownerDevice: !!owner };
@@ -955,7 +1033,19 @@ export function keySetupValueProblem(name, value) {
   return rule && !rule[0](String(value ?? '')) ? rule[1] : '';
 }
 
-/** Tooltip guidance for a control gated by one registry entry. */
+/**
+ * Env-var names a registry entry needs, joined with ' + ', for callers that
+ * build the guidance sentence in the UI language (src/ui/keyGuidance.js).
+ * @param {string} id Registry entry id.
+ * @returns {string|null} null for an unknown or hidden entry.
+ */
+export function keySetupRequirementEnvVars(id) {
+  const entry = KEY_SETUP_KEYS.find((candidate) => candidate.id === id);
+  if (!entry || entry.hidden) return null;
+  return entry.envVars.join(' + ');
+}
+
+/** English tooltip guidance for a control gated by one registry entry. */
 export function keySetupRequirement(id) {
   const entry = KEY_SETUP_KEYS.find((candidate) => candidate.id === id);
   if (!entry || entry.hidden) return '';
@@ -1066,6 +1156,8 @@ export function keySetupStatus(env = {}) {
  * below safe to write without quoting rules. A `null` value means REMOVE:
  * the writer comments the assignment back out, returning the file to its
  * template state for that key.
+ * A refusal carries `code` and `params` for the panel's localized sentence
+ * (keySetup.js) besides the English `error`.
  * @param {unknown} body Parsed JSON from the request.
  */
 /**
@@ -1081,38 +1173,63 @@ export function validateKeySetupUpdates(body) {
     return {
       ok: false,
       error: 'Body must be a JSON object of {ENV_VAR: value}',
+      code: 'not-object',
     };
   }
   const entries = Object.entries(body);
-  if (entries.length === 0) return { ok: false, error: 'No keys provided' };
+  if (entries.length === 0)
+    return { ok: false, error: 'No keys provided', code: 'no-keys' };
   if (entries.length > KEY_SETUP_UPDATE_LIMIT) {
     return {
       ok: false,
       error: `At most ${KEY_SETUP_UPDATE_LIMIT} keys per save`,
+      code: 'too-many',
+      params: { limit: KEY_SETUP_UPDATE_LIMIT },
     };
   }
   const known = knownKeySetupEnvVars();
   const updates = {};
   for (const [name, raw] of entries) {
-    if (!known.has(name)) return { ok: false, error: `Unknown key: ${name}` };
+    if (!known.has(name))
+      return {
+        ok: false,
+        error: `Unknown key: ${name}`,
+        code: 'unknown-key',
+        params: { name },
+      };
     if (raw === null) {
       updates[name] = null;
       continue;
     }
     if (typeof raw !== 'string')
-      return { ok: false, error: `${name} must be a string` };
+      return {
+        ok: false,
+        error: `${name} must be a string`,
+        code: 'not-string',
+        params: { name },
+      };
     const value = raw.trim();
-    if (!value) return { ok: false, error: `${name} is empty` };
+    if (!value)
+      return {
+        ok: false,
+        error: `${name} is empty`,
+        code: 'empty',
+        params: { name },
+      };
     if (value.length > KEY_SETUP_VALUE_LIMIT) {
       return {
         ok: false,
         error: `${name} is longer than any real key (${KEY_SETUP_VALUE_LIMIT} max)`,
+        code: 'too-long',
+        params: { name, limit: KEY_SETUP_VALUE_LIMIT },
       };
     }
     if (!/^[\x21-\x7e]+$/.test(value)) {
       return {
         ok: false,
         error: `${name} may only contain printable characters with no spaces`,
+        code: 'not-printable',
+        params: { name },
       };
     }
     // Reject the dotenv metacharacters that would round-trip WRONG when written
@@ -1124,6 +1241,8 @@ export function validateKeySetupUpdates(body) {
       return {
         ok: false,
         error: `${name} contains a character that is not valid in a key (#, quotes, $, \\, or backtick)`,
+        code: 'invalid-char',
+        params: { name },
       };
     }
     // A few names have a shape of their own (the SMS relay's number, gateway

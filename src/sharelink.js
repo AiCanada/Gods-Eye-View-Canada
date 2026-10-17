@@ -512,6 +512,8 @@ export class ShareLinkManager {
     if (!params) return false;
     params.set(SHARE_CREATED_AT_PARAM, String(Math.floor(nowMs / 1000)));
     const copiedUrl = new URL(window.location.href);
+    // ?lang is the sender's language override; the recipient keeps their own.
+    copiedUrl.searchParams.delete('lang');
     copiedUrl.hash = params.toString();
     // Falls back to a hidden-textarea copy, then the share sheet, so the
     // phone mirror (a plain http page with no navigator.clipboard) still copies.

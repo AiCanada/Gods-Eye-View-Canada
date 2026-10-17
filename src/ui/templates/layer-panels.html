@@ -5,7 +5,7 @@
        its own input, buttons and log, stacked top to bottom; the stack gives
        the panel its height and the rows scroll inside it, so several models
        never overlap. -->
-  <div id="ask-panel" class="panel-collapsible" data-panel-id="ask-panel">
+  <div id="ask-panel" class="panel-collapsible" data-panel-id="ask-panel" data-i18n-skip>
     <div class="panel-glow"></div>
     <div class="ask-panel-inner">
       <div class="panel-header">
@@ -25,59 +25,60 @@
     <div class="panel-glow"></div>
     <div class="cctv-panel-inner" data-rail-scroller>
       <div class="panel-header">
-        <span class="panel-title">CCTV</span>
+        <span class="panel-title" data-i18n>CCTV</span>
         <span class="panel-divider"></span>
-        <button class="panel-collapse-btn" data-collapse-target="cctv-panel" title="Collapse panel">+</button>
+        <button class="panel-collapse-btn" data-collapse-target="cctv-panel" title="Collapse panel" data-i18n-title>+</button>
       </div>
       <div class="cyber-panel-body" data-rail-scroller>
       <div id="cctv-frame-wrap" class="cctv-frame-wrap">
+        <span class="cctv-frame-caption" aria-hidden="true" data-i18n>ACQUIRING FRAME</span>
         <img id="cctv-frame" alt="CCTV feed frame" />
         <canvas id="cctv-video" class="cctv-frame" hidden></canvas>
       </div>
-      <div id="cctv-source-badge" role="status" aria-live="polite">SOURCE · UNKNOWN</div>
-      <div id="cctv-meta">Enable CCTV to load camera intersections</div>
+      <div id="cctv-source-badge" role="status" aria-live="polite" data-i18n>SOURCE · UNKNOWN</div>
+      <div id="cctv-meta" data-i18n>Enable CCTV to load camera intersections</div>
       <div class="cctv-controls">
-        <button id="cctv-enable-btn" class="scene-btn">CCTV OFF</button>
-        <button id="cctv-nearest-btn" class="scene-btn">NEAREST</button>
+        <button id="cctv-enable-btn" class="scene-btn" data-i18n>CCTV OFF</button>
+        <button id="cctv-nearest-btn" class="scene-btn" data-i18n>NEAREST</button>
       </div>
       <div class="cctv-controls">
-        <button id="cctv-prev-btn" class="scene-btn">PREV</button>
-        <select id="cctv-camera-select" aria-label="CCTV camera"></select>
-        <button id="cctv-next-btn" class="scene-btn">NEXT</button>
+        <button id="cctv-prev-btn" class="scene-btn" data-i18n>PREV</button>
+        <select id="cctv-camera-select" aria-label="CCTV camera" data-i18n-aria-label></select>
+        <button id="cctv-next-btn" class="scene-btn" data-i18n>NEXT</button>
       </div>
       <div class="cctv-controls">
-        <button id="cctv-focus-btn" class="scene-btn">FOCUS</button>
-        <button id="cctv-coverage-btn" class="scene-btn">COVERAGE OFF</button>
-        <button id="cctv-auto-hop-btn" class="scene-btn">AUTO HOP OFF</button>
+        <button id="cctv-focus-btn" class="scene-btn" data-i18n>FOCUS</button>
+        <button id="cctv-coverage-btn" class="scene-btn" data-i18n>COVERAGE OFF</button>
+        <button id="cctv-auto-hop-btn" class="scene-btn" data-i18n>AUTO HOP OFF</button>
       </div>
       <div class="cctv-controls">
-        <span id="cctv-region-cap-chip" tabindex="0" role="note" title="No camera area loaded yet. Cameras load for the selected place: at most 1,000 within 50 km." aria-label="No camera area loaded yet. Cameras load for the selected place: at most 1,000 within 50 km.">AREA --</span>
+        <span id="cctv-region-cap-chip" tabindex="0" role="note" title="No camera area loaded yet. Cameras load for the selected place: at most 1,000 within 50 km." aria-label="No camera area loaded yet. Cameras load for the selected place: at most 1,000 within 50 km." data-i18n-skip>AREA --</span>
       </div>
       <div class="cctv-controls">
-        <button id="cctv-projection-btn" class="scene-btn">PROJECTION ON</button>
-        <span id="cctv-quality-chip">CAL · --</span>
+        <button id="cctv-projection-btn" class="scene-btn" data-i18n>PROJECTION ON</button>
+        <span id="cctv-quality-chip" data-i18n-runtime>CAL · --</span>
       </div>
       <div class="cctv-calibration-block">
         <div class="cctv-calibration-header">
-          <div class="cctv-summary-label">CALIBRATION</div>
-          <button id="cctv-adjust-btn" class="scene-btn" title="Drag the camera in the world: rings rotate, arrows move, handles set range/FOV">ADJUST</button>
+          <div class="cctv-summary-label" data-i18n>CALIBRATION</div>
+          <button id="cctv-adjust-btn" class="scene-btn" title="Drag the camera in the world: rings rotate, arrows move, handles set range/FOV" data-i18n-title data-i18n>ADJUST</button>
         </div>
-        <div id="cctv-cal-readout" class="cctv-cal-readout" aria-label="Camera pose — click a value to type">
-          <button class="cctv-cal-value" data-cal-field="heading" title="Heading (compass °) — click to type">HDG --</button>
-          <button class="cctv-cal-value" data-cal-field="pitch" title="Pitch (° up/down) — click to type">PITCH --</button>
-          <button class="cctv-cal-value" data-cal-field="fov" title="Horizontal FOV (°) — click to type">FOV --</button>
-          <button class="cctv-cal-value" data-cal-field="range" title="Range / monitor-plane distance (m) — click to type">RANGE --</button>
-          <button class="cctv-cal-value" data-cal-field="height" title="Mount height above ground (m) — click to type">HGT --</button>
-          <button class="cctv-cal-value" data-cal-field="north" title="North offset from catalog position (m) — click to type">ΔN --</button>
-          <button class="cctv-cal-value" data-cal-field="east" title="East offset from catalog position (m) — click to type">ΔE --</button>
+        <div id="cctv-cal-readout" class="cctv-cal-readout" aria-label="Camera pose — click a value to type" data-i18n-aria-label>
+          <button class="cctv-cal-value" data-cal-field="heading" title="Heading (compass °) — click to type" data-i18n-title data-i18n-runtime>HDG --</button>
+          <button class="cctv-cal-value" data-cal-field="pitch" title="Pitch (° up/down) — click to type" data-i18n-title data-i18n-runtime>PITCH --</button>
+          <button class="cctv-cal-value" data-cal-field="fov" title="Horizontal FOV (°) — click to type" data-i18n-title data-i18n-runtime>FOV --</button>
+          <button class="cctv-cal-value" data-cal-field="range" title="Range / monitor-plane distance (m) — click to type" data-i18n-title data-i18n-runtime>RANGE --</button>
+          <button class="cctv-cal-value" data-cal-field="height" title="Mount height above ground (m) — click to type" data-i18n-title data-i18n-runtime>HGT --</button>
+          <button class="cctv-cal-value" data-cal-field="north" title="North offset from catalog position (m) — click to type" data-i18n-title>ΔN --</button>
+          <button class="cctv-cal-value" data-cal-field="east" title="East offset from catalog position (m) — click to type" data-i18n-title>ΔE --</button>
         </div>
         <div class="cctv-controls cctv-calibration-actions">
-          <button id="cctv-calib-save-btn" class="scene-btn">SAVE CAL</button>
-          <button id="cctv-calib-reset-btn" class="scene-btn">RESET CAL</button>
+          <button id="cctv-calib-save-btn" class="scene-btn" data-i18n>SAVE CAL</button>
+          <button id="cctv-calib-reset-btn" class="scene-btn" data-i18n>RESET CAL</button>
         </div>
       </div>
-      <div class="cctv-summary-label">SCENE SUMMARY</div>
-      <div id="cctv-summary">Enable CCTV to start camera-linked intelligence summaries.</div>
+      <div class="cctv-summary-label" data-i18n>SCENE SUMMARY</div>
+      <div id="cctv-summary" data-i18n>Enable CCTV to start camera-linked intelligence summaries.</div>
       </div>
     </div>
   </div>
@@ -87,68 +88,68 @@
     <div class="panel-glow"></div>
     <div class="street-level-panel-inner" data-rail-scroller>
       <div class="panel-header">
-        <span class="panel-title">STREET LEVEL</span>
+        <span class="panel-title" data-i18n>STREET LEVEL</span>
         <span class="panel-divider"></span>
-        <button id="sl-status" class="sl-status" type="button" aria-pressed="false" title="Turn Street Level on or off">OFF</button>
-        <button class="panel-collapse-btn" data-collapse-target="street-level-panel" title="Expand panel">◀</button>
+        <button id="sl-status" class="sl-status" type="button" aria-pressed="false" title="Turn Street Level on or off" data-i18n-title data-i18n>OFF</button>
+        <button class="panel-collapse-btn" data-collapse-target="street-level-panel" title="Expand panel" data-i18n-title>◀</button>
       </div>
       <div id="sl-body" class="sl-body">
         <div class="sl-main">
           <div id="sl-viewer-wrap" class="sl-viewer-wrap" hidden>
             <div class="sl-viewer-bar">
               <div class="sl-viewer-tools">
-                <button id="sl-viewer-expand" class="scene-btn" type="button" aria-pressed="false" title="Expand the street-level view (Esc shrinks it)"><span class="sl-btn-icon" aria-hidden="true">⤢</span><span class="sl-btn-text">EXPAND</span></button>
-                <div class="sl-seg" role="radiogroup" aria-label="Image fit">
-                  <button type="button" class="sl-seg-btn is-active" data-sl-render="letterbox" role="radio" aria-checked="true" title="Fit: show the whole photo, with dark bars where its shape differs from the frame">FIT</button>
-                  <button type="button" class="sl-seg-btn" data-sl-render="fill" role="radio" aria-checked="false" tabindex="-1" title="Fill: fill the frame edge to edge, cropping the photo">FILL</button>
+                <button id="sl-viewer-expand" class="scene-btn" type="button" aria-pressed="false" title="Expand the street-level view (Esc shrinks it)" data-i18n-title><span class="sl-btn-icon" aria-hidden="true">⤢</span><span class="sl-btn-text" data-i18n>EXPAND</span></button>
+                <div class="sl-seg" role="radiogroup" aria-label="Image fit" data-i18n-aria-label>
+                  <button type="button" class="sl-seg-btn is-active" data-sl-render="letterbox" role="radio" aria-checked="true" title="Fit: show the whole photo, with dark bars where its shape differs from the frame" data-i18n-title data-i18n>FIT</button>
+                  <button type="button" class="sl-seg-btn" data-sl-render="fill" role="radio" aria-checked="false" tabindex="-1" title="Fill: fill the frame edge to edge, cropping the photo" data-i18n-title data-i18n>FILL</button>
                 </div>
-                <button id="sl-follow-btn" class="scene-btn" type="button" aria-pressed="false" aria-label="Camera follows view" title="Camera follows view: move the globe camera wherever the street-level view looks"><span class="sl-btn-icon" aria-hidden="true">⌖</span><span class="sl-btn-text">FOLLOW</span></button>
+                <button id="sl-follow-btn" class="scene-btn" type="button" aria-pressed="false" aria-label="Camera follows view" title="Camera follows view: move the globe camera wherever the street-level view looks" data-i18n-aria-label data-i18n-title><span class="sl-btn-icon" aria-hidden="true">⌖</span><span class="sl-btn-text" data-i18n>FOLLOW</span></button>
               </div>
               <div class="sl-viewer-tools sl-viewer-tools-right">
-                <button id="sl-viewer-close" class="sl-viewer-x" type="button" title="Close the image and deselect it on the map" aria-label="Close the street-level image">×</button>
+                <button id="sl-viewer-close" class="sl-viewer-x" type="button" title="Close the image and deselect it on the map" aria-label="Close the street-level image" data-i18n-title data-i18n-aria-label>×</button>
               </div>
             </div>
             <div class="sl-viewer-stage">
               <div id="sl-viewer-placeholder" class="sl-viewer-placeholder" hidden></div>
-              <div id="sl-viewer" class="sl-viewer" aria-label="Street-level viewer"></div>
+              <div id="sl-viewer" class="sl-viewer" aria-label="Street-level viewer" data-i18n-aria-label></div>
             </div>
             <div id="sl-image-meta" class="sl-image-meta">
               <span id="sl-image-by" class="sl-image-by"></span>
               <span class="sl-image-right">
                 <span id="sl-image-when" class="sl-image-when"></span>
-                <a id="sl-image-link" class="sl-image-link" href="#" target="_blank" rel="noopener noreferrer" title="Open this image on the provider's site" hidden></a>
+                <a id="sl-image-link" class="sl-image-link" href="#" target="_blank" rel="noopener noreferrer" title="Open this image on the provider's site" data-i18n-title hidden></a>
               </span>
             </div>
           </div>
           <div class="sl-settings">
-            <div class="sl-providers" role="group" aria-label="Imagery providers">
-              <span class="cctv-summary-label">PROVIDERS</span>
+            <div class="sl-providers" role="group" aria-label="Imagery providers" data-i18n-aria-label>
+              <span class="cctv-summary-label" data-i18n>PROVIDERS</span>
               <div id="sl-provider-chips" class="sl-chips"></div>
             </div>
             <div id="sl-error" class="sl-error" role="alert" hidden><span aria-hidden="true">⚠</span> <span id="sl-error-text"></span></div>
             <!-- A missing key gates the filters only: the chips above stay
                  focusable so their tooltip can say how to add the key. -->
             <fieldset id="sl-controls" class="sl-controls">
-              <div id="sl-pano-row" class="sl-filters" role="group" aria-label="Imagery filters">
-                <span class="cctv-summary-label">IMAGERY</span>
-                <div class="sl-seg" role="radiogroup" aria-label="Panorama filter">
-                  <button type="button" class="sl-seg-btn is-active" data-sl-pano="all" role="radio" aria-checked="true">ALL</button>
+              <div id="sl-pano-row" class="sl-filters" role="group" aria-label="Imagery filters" data-i18n-aria-label>
+                <span class="cctv-summary-label" data-i18n>IMAGERY</span>
+                <div class="sl-seg" role="radiogroup" aria-label="Panorama filter" data-i18n-aria-label>
+                  <button type="button" class="sl-seg-btn is-active" data-sl-pano="all" role="radio" aria-checked="true" data-i18n>ALL</button>
                   <button type="button" class="sl-seg-btn" data-sl-pano="pano" role="radio" aria-checked="false" tabindex="-1">360°</button>
-                  <button type="button" class="sl-seg-btn" data-sl-pano="flat" role="radio" aria-checked="false" tabindex="-1">FLAT</button>
+                  <button type="button" class="sl-seg-btn" data-sl-pano="flat" role="radio" aria-checked="false" tabindex="-1" data-i18n>FLAT</button>
                 </div>
               </div>
               <div id="sl-since-row" class="sl-since">
-                <label class="cctv-summary-label" for="sl-since">SINCE</label>
+                <label class="cctv-summary-label" for="sl-since" data-i18n>SINCE</label>
                 <input id="sl-since" class="sl-range" type="range" min="0" max="8" step="1" value="0" aria-valuetext="ANY DATE" aria-describedby="sl-since-label sl-since-note" />
-                <output id="sl-since-label" class="sl-since-label" for="sl-since">ANY DATE</output>
+                <output id="sl-since-label" class="sl-since-label" for="sl-since" data-i18n>ANY DATE</output>
                 <small id="sl-since-note" class="sl-since-note" hidden></small>
               </div>
             </fieldset>
-            <ul id="sl-legend" class="sl-legend" aria-label="Coverage colours"></ul>
+            <ul id="sl-legend" class="sl-legend" aria-label="Coverage colours" data-i18n-aria-label></ul>
             <!-- The hint says how to open imagery; the button does it without a pointer. -->
             <div class="sl-meta-row">
               <div id="sl-coverage-meta" class="sl-meta"></div>
-              <button id="sl-nearest-btn" class="scene-btn sl-nearest-btn" type="button" hidden>OPEN STREET VIEW</button>
+              <button id="sl-nearest-btn" class="scene-btn sl-nearest-btn" type="button" hidden data-i18n-runtime>OPEN STREET VIEW</button>
             </div>
           </div>
         </div>
@@ -158,7 +159,7 @@
 
 
   <!-- Ultra Security Package: the owner's paired phone, not the CCTV catalogues. -->
-  <div id="ultra-panel" class="panel-collapsible collapsed" data-panel-id="ultra-panel">
+  <div id="ultra-panel" class="panel-collapsible collapsed" data-panel-id="ultra-panel" data-i18n-skip>
     <div class="panel-glow"></div>
     <div class="ultra-panel-inner">
       <div class="panel-header">
@@ -455,7 +456,7 @@
     <!-- Social Media Analysis: a left-stack box under CCTV. The user id and
          password stay encrypted on this computer. Analyze, Breaking News, and
          Search look up public news for the map place, then send one question. -->
-    <div id="social-panel" class="panel-collapsible collapsed" data-panel-id="social-panel">
+    <div id="social-panel" class="panel-collapsible collapsed" data-panel-id="social-panel" data-i18n-skip>
       <div class="panel-glow"></div>
       <div class="social-panel-inner">
         <div class="panel-header">
@@ -638,7 +639,7 @@
          any can be added or removed), the travel out of them since the scan
          began, and how far each way of travel could have carried it, drawn
          on the map by the Outbreak layer for the hour picked. -->
-    <div id="outbreak-panel" class="panel-collapsible collapsed" data-panel-id="outbreak-panel">
+    <div id="outbreak-panel" class="panel-collapsible collapsed" data-panel-id="outbreak-panel" data-i18n-skip>
       <div class="panel-glow"></div>
       <div class="outbreak-panel-inner">
         <div class="panel-header">
@@ -1068,7 +1069,7 @@
          PREDICTIONS picks what the globe draws. The rows, the status and the
          lists are filled by src/aiWorldPanel.js from /api/ai-world
          (docs/AI-WORLD-TAB.md). -->
-    <div id="ai-world-panel" class="panel-collapsible collapsed" data-panel-id="ai-world-panel">
+    <div id="ai-world-panel" class="panel-collapsible collapsed" data-panel-id="ai-world-panel" data-i18n-skip>
       <div class="panel-glow"></div>
       <div class="ai-world-panel-inner">
         <div class="panel-header">
