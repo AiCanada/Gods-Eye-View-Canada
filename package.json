@@ -63,7 +63,8 @@
     "outbreak:real-data": "node scripts/outbreak-real-data.mjs",
     "outbreak:env": "node scripts/outbreak-env.mjs",
     "world-tape:bin": "node scripts/world-tape-bin.mjs",
-    "world-tape:backfill": "node scripts/world-tape-backfill.mjs"
+    "world-tape:backfill": "node scripts/world-tape-backfill.mjs",
+    "tensorflow:wsl-setup": "node scripts/tensorflow-wsl-setup.mjs"
   },
   "dependencies": {
     "@jtarrio/signals": "^0.10.0",

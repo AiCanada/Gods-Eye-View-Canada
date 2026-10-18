@@ -791,6 +791,14 @@ export function createAiWorldManager({
       '--out',
       modelDir(model),
       ...(resume || hasCheckpoint(model) ? ['--resume'] : []),
+      // Training curves for the tab's TENSORBOARD section
+      // (server/shared/tensorflowJobs.mjs reads the same folder).
+      ...(task[0] === 'ml.gevtape.train'
+        ? [
+            '--tensorboard',
+            path.join(dataRoot, 'ai-world', 'tensorboard', model),
+          ]
+        : []),
     ];
     stages.trainer = {
       state: 'running',

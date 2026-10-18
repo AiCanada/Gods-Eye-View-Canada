@@ -73,6 +73,11 @@
   overflow-wrap: anywhere;
 }
 
+/* STATUS's measured links: one link per line. */
+#ai-world-panel .ai-world-measured {
+  white-space: pre-line;
+}
+
 /* TRAIN ON scrolls inside its own band, so INITIALIZE, PAUSE, STOP and
    DELETE stay in reach with every layer listed. A scrolling list in the
    box's flex column would otherwise shrink to nothing when the left stack
@@ -327,6 +332,46 @@
 
 #ai-world-panel .ai-world-llm .llm-training-state[data-ok='false'] {
   color: #ff8a8a;
+}
+
+/* TENSORFLOW (src/tensorflowSetup.js): where the jobs run and the job,
+   then four sections folded like INSTRUCTIONS, each its own column. */
+#ai-world-panel .ai-world-tf-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#ai-world-panel .ai-world-tf-tools[hidden] {
+  display: none;
+}
+
+#ai-world-panel .ai-world-tf[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#ai-world-panel .ai-world-tf .ai-world-fields select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#ai-world-panel .ai-world-tf .tf-board-open {
+  text-decoration: none;
+}
+
+#ai-world-panel .ai-world-tf .tf-board-open[hidden] {
+  display: none;
+}
+
+#ai-world-panel .ai-world-tf-tools .tf-run[data-ok='false'] {
+  color: #ff8a8a;
+}
+
+#ai-world-panel .ai-world-tf .ai-world-list[hidden] {
+  display: none;
 }
 
 /* HORIZON: the slider, then its value in hours. */

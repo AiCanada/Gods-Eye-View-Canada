@@ -2,10 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatSkill,
-  linkFeedIds,
-  linkMeasured,
-  linkSkill,
-  linkStatus,
   measuredLinkLines,
   measuredLinkText,
   TRAINING_LINKS,
@@ -345,6 +341,7 @@ test('STATUS: the job, each stage, storage against the cap, gaps and compute', (
   assert.equal(waiting.state, 'STATE · WAITING FOR THE SERVER');
   assert.equal(waiting.recorder, 'RECORDING · OFF');
   assert.equal(waiting.compute, 'COMPUTE · WAITING FOR THE SERVER');
+  assert.equal(waiting.links, '', 'no measured links before a report');
   const lines = stageLines(
     {
       state: 'running',
@@ -401,6 +398,7 @@ test('STATUS: the job, each stage, storage against the cap, gaps and compute', (
     gaps: 'GAPS · 2 · LAST PAUSED',
     compute:
       'COMPUTE · 3 / 8 WORKERS BUSY · GPU NVIDIA GeForce RTX 4060 Laptop GPU',
+    links: '',
   });
   const bare = stageLines(
     { state: 'idle', stages: {}, compute: { gpu: null } },
@@ -532,46 +530,28 @@ test('the DELETE preview: one line per group, the total and the confirm label', 
   assert.equal(deletePreviewView(null).canDelete, false);
 });
 
-test('a study pair names a missing side and does not invent the other', () => {
-  const news = TRAINING_LINKS.find((link) => link.id === 'news-prices');
-  const none = linkStatus(news, {});
-  assert.match(none.text, /MISSING news, news urls, prices/);
-  const both = linkStatus(news, {
-    selection: ['news', 'news-urls', 'markets'],
-    feeds: [
-      { id: 'news', records: 2, lastAt: 1 },
-      { id: 'news-urls', recordsToday: 1 },
-      { id: 'markets', lastAt: 1 },
-    ],
-    quotes: [{ series: 'crude', value: 70 }],
-  });
-  assert.match(both.text, /BOTH SIDES/);
-  const jet = linkStatus(
-    TRAINING_LINKS.find((link) => link.id === 'flights-jet'),
-    {
-      selection: ['flights'],
-      feeds: [{ id: 'flights', records: 4, lastAt: 1 }],
-      quotes: [{ series: 'jetfuel', value: 80 }],
-    },
-  );
-  assert.match(jet.text, /MISSING kerosene/);
-  assert.equal(linkFeedIds().includes('military'), false);
-  assert.equal(linkFeedIds().includes('ais-live-vessels'), true);
+test('held-out error reads beside its persistence baseline; the study pairs read no military feed', () => {
   assert.equal(formatSkill(null), '');
   assert.equal(
     formatSkill({ model: 0.12, persistence: 0.2 }),
     'MAE 0.120 VS PERSISTENCE 0.200',
   );
-  const scored = linkSkill(news, {
-    'news-markets': { model: 0.4, persistence: 0.5 },
-    markets: { model: 0.1 },
-  });
-  assert.equal(scored, 'news-markets MAE 0.400 VS PERSISTENCE 0.500');
   assert.equal(domainNote(true, 'LEARNING', null), 'READY');
   assert.equal(
     domainNote(false, 'LEARNING', { model: 0.2, persistence: 0.4 }),
     'LEARNING · MAE 0.200 VS PERSISTENCE 0.400',
   );
+  // scripts/world-tape-bin.mjs writes these beside the bins for ml.gevtape.links.
+  for (const link of TRAINING_LINKS) {
+    assert.match(link.id, /^[a-z-]+$/);
+    assert.ok(['primary', 'secondary'].includes(link.rank), link.id);
+    assert.ok(link.reads.length > 0, link.id);
+    assert.equal(typeof link.note, 'string', link.id);
+    assert.ok(
+      link.reads.every((read) => !read.startsWith('military')),
+      link.id,
+    );
+  }
 });
 
 test('PREDICTIONS: known domains once each, a 1–168 h horizon, LEARNING until the predictor can draw', () => {
@@ -702,7 +682,7 @@ test('MARKETS: each quote, its predicted move beside it, and a predicted asset w
   );
 });
 
-test('LINKS: measured links say who moves first, how strongly, and whether later hours agree', () => {
+test('STATUS: measured links say who moves first, how strongly, and whether later hours agree', () => {
   const row = {
     channel: 'hazards.quakes',
     asset: 'crude',
@@ -737,14 +717,24 @@ test('LINKS: measured links say who moves first, how strongly, and whether later
   assert.deepEqual(measuredLinkLines({ hours: 500, top: [] }), [
     'MEASURED: NO LINK YET (500 H BINNED)',
   ]);
-  const farmland = TRAINING_LINKS.find((link) => link.id === 'farmland');
-  assert.match(
-    linkMeasured(farmland, { studyPairs: [{ id: 'farmland', best: row }] }),
-    /^MEASURED BEST: HAZARDS.QUAKES MOVES 3 H BEFORE CRUDE/,
+  // Under STATUS, one measured link per line after the other metrics.
+  assert.equal(
+    stageLines(
+      {
+        state: 'running',
+        stages: {},
+        links: { hours: 0, reason: 'no market prices in the bins yet' },
+      },
+      NOW,
+    ).links,
+    'MEASURED: NO MARKET PRICES IN THE BINS YET (0 H BINNED)',
   );
   assert.equal(
-    linkMeasured(farmland, { studyPairs: [{ id: 'farmland', best: null }] }),
-    '',
+    stageLines(
+      { state: 'running', stages: {}, links: { hours: 500, top: [row, row] } },
+      NOW,
+    ).links.split('\n').length,
+    2,
   );
 });
 

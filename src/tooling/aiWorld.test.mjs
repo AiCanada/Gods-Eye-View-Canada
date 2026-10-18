@@ -976,6 +976,11 @@ test('the job bins every finished day it has not binned, oldest first and one at
     assert.equal(manager.status().learning.daysBinned, 3);
     assert.equal(trains().length, 1, 'three binned days: the world trains');
     assert.ok(trains()[0].args.includes('world'));
+    assert.equal(
+      trains()[0].args[trains()[0].args.indexOf('--tensorboard') + 1],
+      path.join(data, 'ai-world', 'tensorboard', 'world'),
+      'training curves where the TENSORBOARD section reads them',
+    );
     assert.equal(manager.status().stages.trainer.state, 'running');
     assert.equal(manager.status().stages.trainer.note, null);
     manager.stop();

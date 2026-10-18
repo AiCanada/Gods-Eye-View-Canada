@@ -1,5 +1,37 @@
 # Changelog
 
+- TENSORFLOW in the AI World tab (owner request 2026-10-17; ruling: all
+  four, Python 3.13, the GPU through WSL2): four expandable sections near the
+  bottom of the tab (`src/tensorflowSetup.js`, routes `/api/tensorflow`,
+  `server/shared/tensorflowJobs.mjs`). TENSORFLOW TRAINING trains a Keras
+  world model (`ml.gevtape.tf_world`, `tf_train`) on the kit's bins, holds
+  out the same days and scores it against persistence per domain; it starts
+  as persistence, carries on from its saved model and grows to new channels.
+  TENSORBOARD serves the curves of every trainer, the kit's PyTorch ones
+  included, through `/api/tensorflow/board/` (the phone mirror reaches it);
+  the curves are written by `ml.gevtape.board`, a standard-library writer, so
+  the PyTorch trainer does not load TensorFlow. EXPORT FOR TENSORFLOW adds
+  TFRecords (observed entries only), a SavedModel and a TFLite file checked
+  against Keras to the licence-filtered training set (`tf_export`). POST-TRAIN
+  A TENSORFLOW MODEL brings a Keras model up to date through an adapter
+  (`tf_posttrain`, `ml/adapters/keras_world.py`). Jobs run on the GPU in
+  WSL2 when `npm run tensorflow:wsl-setup` has set it up
+  (`scripts/tensorflow-wsl-setup.sh`, `tensorflow-wsl-run.sh`: TensorFlow
+  2.21 with its CUDA wheels, no sudo), else on the CPU with `py -3.13`. The
+  child-process protocol moved to `ml/gevtape/protocol.py` and the adapter
+  loader to `ml/gevtape/adapters.py` (both still imported through `train` and
+  `posttrain`), and `torch_data` imports without torch. New strings in Quebec
+  French, Inuktitut and Ancient Egyptian.
+
+- AI World tab (owner request 2026-10-17): the LINKS section is gone, with
+  its seven study-pair lines and the TICK LINK FEEDS button; the measured
+  links (`MEASURED: …`, from `ml.gevtape.links`) now show last under STATUS,
+  one per line, once there is a report. `src/trainingLinks.mjs` keeps the
+  study pairs, which `scripts/world-tape-bin.mjs` still writes beside the
+  bins, and the measured-link text; the 36 strings only the removed lines
+  used are gone from the Quebec French, Inuktitut and Ancient Egyptian
+  catalogs.
+
 - Hover help in Ancient Egyptian and Inuktitut (owner request 2026-10-17): a
   mouse that rests two seconds on hieroglyphs or syllabics shows the English
   the text was translated from, in a small box above the pointer. While either

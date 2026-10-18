@@ -19,30 +19,47 @@ standard library (no pyarrow, datasets, zarr, h5py or gymnasium), and nothing
 needs installing. Run every command from the repository root so `ml` imports
 as a package.
 
+The TensorFlow modules (`tf_*`, the AI World tab's TENSORFLOW sections) need
+TensorFlow 2.21 instead of torch: on the GPU in WSL2 (`npm run
+tensorflow:wsl-setup` once, then `bash scripts/tensorflow-wsl-run.sh -m
+ml.gevtape.tf_train ...`), or on the CPU with `py -3.13 -m pip install
+tensorflow`. They import nothing from torch, nor do `protocol`, `board`,
+`adapters` or the windows of `torch_data`, so they run in a Python that has
+none. Their tests (`ml/tests/test_tensorflow.py`) skip without TensorFlow.
+
 ## Layout
 
-| Module                  | What it is                                                                 |
-| ----------------------- | -------------------------------------------------------------------------- |
-| `gevtape/formats.py`    | channel names (STATE/CUM/AUX/GLOBAL channels, actions, flow and event kinds), schema strings, licence classes, bin channels |
-| `gevtape/reader.py`     | `load_world`, `iter_episodes` (streams `shards/*.tar.gz`), `read_index`, `load_dataset_meta`, `daily_obs`, `country_graph`, `iter_tape`, `load_bins`, `load_demographics`, `load_real`, `load_worldbank`, discovery under a `.gev-data` root |
-| `gevtape/check.py`      | dataset validator (CLI)                                                     |
-| `gevtape/torch_data.py` | `EpisodeWindows`, `BinWindows`, `TrackWindows` (IterableDatasets) and the feature functions shared with serving |
-| `gevtape/models.py`     | `OutbreakSurrogate`, `WorldModel`, `TrackPredictor`                        |
-| `gevtape/train.py`      | trainer child process (CLI)                                                 |
-| `gevtape/serve.py`      | prediction child process (CLI)                                              |
-| `gevtape/calibrate.py`  | the outbreak surrogate on real data: zero-shot, fine-tuned, from scratch (CLI, trainer protocol) |
-| `gevtape/env.py`        | `OutbreakEnv`, a Gymnasium-style client for `scripts/outbreak-env.mjs`     |
-| `gevtape/synth.py`      | small synthetic `.gev-data` trees in the documented formats (tests, smoke runs) |
-| `gevtape/geo.py`        | great-circle helpers                                                        |
-| `gevtape/links.py`      | measured layer-asset links: lagged correlations, fitted then checked on later hours (CLI, trainer protocol) |
-| `gevtape/world_env.py`  | `WorldMarketEnv` (reinforcement learning on the recorded hours, Gymnasium-style), `KitWorldModel`, `as_gymnasium` |
-| `gevtape/export.py`     | a self-contained, licence-filtered training set with its card (CLI)        |
-| `gevtape/posttrain.py`  | post-train an existing world model through an adapter (CLI, trainer protocol) |
-| `gevtape/llm_data.py`   | custom LLM dataset from the recordings, custom URLs and local files (CLI)  |
-| `gevtape/llm_train.py`  | LoRA training and post-training of a local base model (CLI, trainer protocol) |
-| `gevtape/llm_chat.py`   | ask a trained custom LLM (CLI)                                              |
-| `adapters/kit_world.py` | the post-training adapter for the kit's own world model, and the template for others |
-| `tests/`                | stdlib unittest suite                                                       |
+| Module                    | What it is                                                                                                                                                                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gevtape/formats.py`      | channel names (STATE/CUM/AUX/GLOBAL channels, actions, flow and event kinds), schema strings, licence classes, bin channels                                                                                                                  |
+| `gevtape/reader.py`       | `load_world`, `iter_episodes` (streams `shards/*.tar.gz`), `read_index`, `load_dataset_meta`, `daily_obs`, `country_graph`, `iter_tape`, `load_bins`, `load_demographics`, `load_real`, `load_worldbank`, discovery under a `.gev-data` root |
+| `gevtape/check.py`        | dataset validator (CLI)                                                                                                                                                                                                                      |
+| `gevtape/torch_data.py`   | `EpisodeWindows`, `BinWindows`, `TrackWindows` (IterableDatasets) and the feature functions shared with serving                                                                                                                              |
+| `gevtape/models.py`       | `OutbreakSurrogate`, `WorldModel`, `TrackPredictor`                                                                                                                                                                                          |
+| `gevtape/train.py`        | trainer child process (CLI)                                                                                                                                                                                                                  |
+| `gevtape/serve.py`        | prediction child process (CLI)                                                                                                                                                                                                               |
+| `gevtape/calibrate.py`    | the outbreak surrogate on real data: zero-shot, fine-tuned, from scratch (CLI, trainer protocol)                                                                                                                                             |
+| `gevtape/env.py`          | `OutbreakEnv`, a Gymnasium-style client for `scripts/outbreak-env.mjs`                                                                                                                                                                       |
+| `gevtape/synth.py`        | small synthetic `.gev-data` trees in the documented formats (tests, smoke runs)                                                                                                                                                              |
+| `gevtape/geo.py`          | great-circle helpers                                                                                                                                                                                                                         |
+| `gevtape/links.py`        | measured layer-asset links: lagged correlations, fitted then checked on later hours (CLI, trainer protocol)                                                                                                                                  |
+| `gevtape/world_env.py`    | `WorldMarketEnv` (reinforcement learning on the recorded hours, Gymnasium-style), `KitWorldModel`, `as_gymnasium`                                                                                                                            |
+| `gevtape/export.py`       | a self-contained, licence-filtered training set with its card (CLI)                                                                                                                                                                          |
+| `gevtape/posttrain.py`    | post-train an existing world model through an adapter (CLI, trainer protocol)                                                                                                                                                                |
+| `gevtape/llm_data.py`     | custom LLM dataset from the recordings, custom URLs and local files (CLI)                                                                                                                                                                    |
+| `gevtape/llm_train.py`    | LoRA training and post-training of a local base model (CLI, trainer protocol)                                                                                                                                                                |
+| `gevtape/llm_chat.py`     | ask a trained custom LLM (CLI)                                                                                                                                                                                                               |
+| `gevtape/protocol.py`     | the child-process protocol (`Emitter`, `Control`, `DataError`), shared by every runner, no framework imported                                                                                                                                |
+| `gevtape/board.py`        | TensorBoard scalars written with the standard library (every trainer's `--tensorboard`)                                                                                                                                                      |
+| `gevtape/adapters.py`     | where post-training adapters live and how one is loaded (`module:Class`)                                                                                                                                                                     |
+| `gevtape/tf_world.py`     | the Keras world model: windows as per-place rows, the model, growth to new channels, the persistence score                                                                                                                                   |
+| `gevtape/tf_train.py`     | TensorFlow trainer child process (CLI, trainer protocol)                                                                                                                                                                                     |
+| `gevtape/tf_export.py`    | TFRecord dataset, SavedModel and TFLite, on top of `export` (CLI, trainer protocol)                                                                                                                                                          |
+| `gevtape/tf_posttrain.py` | post-train a Keras world model through an adapter (CLI, trainer protocol)                                                                                                                                                                    |
+| `gevtape/tf_probe.py`     | what this Python has: TensorFlow, TensorBoard, GPUs (one protocol line)                                                                                                                                                                      |
+| `adapters/kit_world.py`   | the post-training adapter for the kit's own world model, and the template for others                                                                                                                                                         |
+| `adapters/keras_world.py` | the post-training adapter for the Keras world model, and the template for other Keras models                                                                                                                                                 |
+| `tests/`                  | stdlib unittest suite                                                                                                                                                                                                                        |
 
 ## Data it reads
 
@@ -62,11 +79,11 @@ as a package.
   ai-world/models/outbreak-real/        written by calibrate: also calibration.md
 ```
 
-| Model      | Trains on                                  | Predicts (domains)                    |
-| ---------- | ------------------------------------------ | ------------------------------------- |
-| `outbreak` | sim episodes of the newest dataset's world (country level) + the world graph + demographics | `outbreak` |
-| `world`    | the bins of the newest bins world          | `mobility` (mobility, trains, traffic), `weather`, `hazards`, `news` |
-| `tracks`   | moving things on the tape                  | `tracks`                              |
+| Model      | Trains on                                                                                   | Predicts (domains)                                                   |
+| ---------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `outbreak` | sim episodes of the newest dataset's world (country level) + the world graph + demographics | `outbreak`                                                           |
+| `world`    | the bins of the newest bins world                                                           | `mobility` (mobility, trains, traffic), `weather`, `hazards`, `news` |
+| `tracks`   | moving things on the tape                                                                   | `tracks`                                                             |
 
 ## Commands
 
@@ -102,13 +119,13 @@ py -3.13 -m ml.gevtape.train --data .gev-data --model outbreak --out .gev-data/a
 short episodes), hours for `world` (24/24). stdout carries only protocol
 lines; stdin takes `{"cmd":"pause"}` and `{"cmd":"stop"}`:
 
-| stdout event                                                   | when                                        |
-| -------------------------------------------------------------- | ------------------------------------------- |
-| `{"event":"progress","model","epoch","epochs","step","loss"}`  | every `--log-every` steps (epoch 1-based)   |
-| `{"event":"metrics","skill":{"metric":"mae","model","persistence"},...}` | after each epoch's held-out evaluation |
-| `{"event":"checkpoint","path"}`                                | after each epoch, and on pause / stop       |
-| `{"event":"paused"}` / `{"event":"done"}`                      | then exit 0                                 |
-| `{"event":"error","message"}`                                  | then exit 1                                 |
+| stdout event                                                             | when                                      |
+| ------------------------------------------------------------------------ | ----------------------------------------- |
+| `{"event":"progress","model","epoch","epochs","step","loss"}`            | every `--log-every` steps (epoch 1-based) |
+| `{"event":"metrics","skill":{"metric":"mae","model","persistence"},...}` | after each epoch's held-out evaluation    |
+| `{"event":"checkpoint","path"}`                                          | after each epoch, and on pause / stop     |
+| `{"event":"paused"}` / `{"event":"done"}`                                | then exit 0                               |
+| `{"event":"error","message"}`                                            | then exit 1                               |
 
 Pause and stop take effect at the next step boundary: checkpoint, then
 `paused` (pause) or `done` (stop), exit 0. `--resume` continues from
@@ -139,11 +156,11 @@ world domains: the domain's first channel by default, or e.g. `t2m`),
 or without enough history, the answer is a Prediction with
 `learning: {daysRecorded, needed}` and no points or tracks.
 
-| Domain    | Starting point and output                                                          | `learning` when missing |
-| --------- | ---------------------------------------------------------------------------------- | ----------------------- |
-| outbreak  | the newest arm-A episode of the newest dataset, rolled on `ceil(horizon/24)` days with its last day's decisions held; each country's predicted active infections spread over its tracked places by their infections now | `daysRecorded`: days per episode of the newest dataset; `needed`: the model's context + horizon (14 without one) |
-| mobility, weather, hazards, news | the world model over the last recorded hours of bins, `horizon` hours on (≤ 168); one point per tracked place that observed the channel in the context | bin days with the domain's groups; 7 |
-| tracks    | the last two hours of each track feed's newest tape; tracks seen in the last 15 minutes; path = last fix, then 5 / 15 / 30 / 60 min (those ≤ horizon) | tape days of track feeds; 1 |
+| Domain                           | Starting point and output                                                                                                                                                                                               | `learning` when missing                                                                                          |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| outbreak                         | the newest arm-A episode of the newest dataset, rolled on `ceil(horizon/24)` days with its last day's decisions held; each country's predicted active infections spread over its tracked places by their infections now | `daysRecorded`: days per episode of the newest dataset; `needed`: the model's context + horizon (14 without one) |
+| mobility, weather, hazards, news | the world model over the last recorded hours of bins, `horizon` hours on (≤ 168); one point per tracked place that observed the channel in the context                                                                  | bin days with the domain's groups; 7                                                                             |
+| tracks                           | the last two hours of each track feed's newest tape; tracks seen in the last 15 minutes; path = last fix, then 5 / 15 / 30 / 60 min (those ≤ horizon)                                                                   | tape days of track feeds; 1                                                                                      |
 
 Calibrate the outbreak surrogate on real data (needs a trained
 `outbreak` model and `real/owid-oxcgrt/`):
@@ -234,12 +251,12 @@ world snapshot; a country with neither is left out), against persistence
 (the last observed value). Results go to `metrics.json` (`zeroShot`,
 `fineTuned`, `scratch`, each by channel and horizon day) and `calibration.md`.
 
-| real channel | sim surrogate                    |
-| ------------ | -------------------------------- |
-| newCases     | daily rise of `cum.reported`     |
-| newDeaths    | daily rise of `state.D`          |
-| hospital     | `state.H` (ward occupancy)       |
-| icu          | `state.U`                        |
+| real channel | sim surrogate                |
+| ------------ | ---------------------------- |
+| newCases     | daily rise of `cum.reported` |
+| newDeaths    | daily rise of `state.D`      |
+| hospital     | `state.H` (ward occupancy)   |
+| icu          | `state.U`                    |
 
 New cases and deaths are 7-day trailing means (`--smooth`). Actions:
 lockdown → `place.lockdown`, travelBan → `place.banned`, tracing →

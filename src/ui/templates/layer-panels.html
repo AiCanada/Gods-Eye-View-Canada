@@ -1090,6 +1090,7 @@
             <li data-i18n-local>PREDICTIONS: tick a domain once it is trained (PRICE MOVES draws each asset's predicted move where it trades) and set the HORIZON.</li>
             <li data-i18n-local>POST-TRAIN: keep another world model up to date with an adapter and its checkpoint.</li>
             <li data-i18n-local>Your own model: export the data, or use the reinforcement-learning environment. A custom LLM trains in CUSTOM LLM TRAINING, at the bottom of this tab.</li>
+            <li data-i18n-local>TENSORFLOW: open a section to train a Keras world model, see every training curve in TensorBoard, export TFRecords, a SavedModel and TFLite, or post-train a Keras model. The GPU needs npm run tensorflow:wsl-setup once.</li>
           </ol>
           <p class="social-note" data-i18n-local>Full instructions: docs/TRAINING-GUIDE.md</p>
         </details>
@@ -1117,11 +1118,6 @@
         <div class="cctv-summary-label" data-i18n-local>FINANCIAL ASSETS</div>
         <p class="social-note" data-i18n-local>Live quotes: currencies, yields, commodities, stock indexes, volatility and crypto. Once trained, each shows its predicted move, and PRICE MOVES draws them where each benchmark is set. Not a recommendation. The same hour is kept beside news, ships, traffic, weather, and flights. That is not a claim one moved the other.</p>
         <ul id="ai-world-markets" class="ai-world-list" aria-label="Live financial asset quotes" data-i18n-local-aria-label></ul>
-        <div class="cctv-summary-label" data-i18n-local>LINKS</div>
-        <ul id="ai-world-links" class="ai-world-list" aria-label="Training links" data-i18n-local-aria-label></ul>
-        <div class="cctv-controls ai-world-actions">
-          <button id="ai-world-links-tick" class="scene-btn" type="button" data-i18n-local>TICK LINK FEEDS</button>
-        </div>
         <div class="cctv-summary-label" data-i18n-local>CONTROLS</div>
         <div class="cctv-controls ai-world-actions">
           <button id="ai-world-init" class="scene-btn" type="button" title="Shows the storage and compute estimate first, then starts on CONFIRM INITIALIZE" data-i18n-local-title data-i18n-local>INITIALIZE</button>
@@ -1174,6 +1170,7 @@
           <li id="ai-world-stage-storage" data-i18n-local>STORAGE · NOTHING RECORDED</li>
           <li id="ai-world-stage-gaps" data-i18n-local>GAPS · NONE</li>
           <li id="ai-world-stage-compute" data-i18n-local>COMPUTE · WAITING FOR THE SERVER</li>
+          <li id="ai-world-stage-links" class="ai-world-measured" hidden></li>
         </ul>
         <!-- POST-TRAIN: keep an existing world model up to date on the newest
              recordings (ml.gevtape.posttrain). The kit's own world model does
@@ -1224,6 +1221,12 @@
           <output id="ai-world-horizon-value" class="ai-world-horizon-value" for="ai-world-horizon">24 H</output>
         </div>
         <div id="ai-world-output" class="ask-output" role="status" aria-live="polite" tabindex="0"></div>
+        <!-- TENSORFLOW (owner request 2026-10-17): four expandable sections,
+             TENSORFLOW TRAINING, TENSORBOARD, EXPORT FOR TENSORFLOW and
+             POST-TRAIN A TENSORFLOW MODEL (src/tensorflowSetup.js,
+             /api/tensorflow), on the GPU through WSL2 when it is set up.
+             Hidden until the server answers. -->
+        <div id="tensorflow-tools" class="ai-world-tf-tools" hidden></div>
         <!-- CUSTOM LLM TRAINING (owner request 2026-10-17: moved here from
              POWER UP, at the bottom of the tab): a language model trained on
              what the app records and on the owner's URLs and files

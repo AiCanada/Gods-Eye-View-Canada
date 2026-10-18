@@ -19,6 +19,8 @@ on a background thread. Anything human-readable goes to stderr.
                      data there is now)
 <out>/metrics.json   skill against persistence on held-out data (MAE)
 <out>/manifest.json  the data it trained on and the licence classes seen
+--tensorboard DIR    loss and held-out scores for TensorBoard (the AI World
+                     tab's TENSORBOARD section; ml.gevtape.board)
 
 Models: outbreak (sim episodes, country level), world (hourly bins on the
 tracked places), tracks (moving things on the tape).
@@ -28,12 +30,9 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import json
-import math
 import os
 import random
 import sys
-import threading
 import time
 import traceback
 import zlib
@@ -50,117 +49,19 @@ from . import geo
 from . import models as M
 from . import reader as R
 from . import torch_data as td
+from .board import Board
+# The protocol plumbing lives in ml.gevtape.protocol (no torch there, for the
+# TensorFlow runners); it is imported here so `from .train import ...` holds.
+from .protocol import (LOCAL_ONLY_NOTE, MODEL_FORMAT, Control, DataError, Emitter, _clean,  # noqa: F401
+                       atomic_json, log, now_ms)
 
 CHECKPOINT_FORMAT = "gevtape-checkpoint/1"
-MODEL_FORMAT = "gevtape-model/1"
-LOCAL_ONLY_NOTE = ("Trained locally for the AI World tab. Not for publication: only 'open' "
-                   "data may ever enter something published, and only with the owner's say.")
 
 DEFAULTS = {
     "outbreak": {"batch_size": 16, "lr": 2e-3, "context": 7, "horizon": 7, "stride": 1},
     "world": {"batch_size": 8, "lr": 2e-3, "context": 24, "horizon": 24, "stride": 1},
     "tracks": {"batch_size": 256, "lr": 2e-3, "context": 8, "horizon": 60, "stride": 1},
 }
-
-
-class DataError(RuntimeError):
-    """The data needed for a model is missing or too short."""
-
-
-# --------------------------------------------------------------------------
-# Protocol plumbing
-# --------------------------------------------------------------------------
-
-
-def _clean(value):
-    """JSON-safe: non-finite floats become null, numpy scalars plain numbers."""
-    if isinstance(value, dict):
-        return {str(k): _clean(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_clean(v) for v in value]
-    if isinstance(value, (np.floating, float)):
-        v = float(value)
-        return v if math.isfinite(v) else None
-    if isinstance(value, np.integer):
-        return int(value)
-    if isinstance(value, np.bool_):
-        return bool(value)
-    return value
-
-
-class Emitter:
-    """Writes protocol events as JSON lines (ASCII, LF only) to stdout or a given stream."""
-
-    def __init__(self, stream=None):
-        self.stream = stream if stream is not None else sys.stdout
-        self.lock = threading.Lock()
-
-    def __call__(self, event: str, **fields):
-        line = json.dumps(_clean({"event": event, **fields}), separators=(",", ":"))
-        with self.lock:
-            raw = getattr(self.stream, "buffer", None)
-            if raw is not None:  # bytes: no CRLF translation on Windows
-                self.stream.flush()
-                raw.write(line.encode("ascii") + b"\n")
-                raw.flush()
-            else:
-                self.stream.write(line + "\n")
-                self.stream.flush()
-
-
-class Control:
-    """Pause / stop requests, set from stdin (listen) or directly (tests)."""
-
-    def __init__(self):
-        self.pause = threading.Event()
-        self.stop = threading.Event()
-
-    def requested(self):
-        if self.stop.is_set():
-            return "stop"
-        if self.pause.is_set():
-            return "pause"
-        return None
-
-    def handle(self, line: str):
-        try:
-            cmd = json.loads(line).get("cmd")
-        except (ValueError, AttributeError):
-            return
-        if cmd == "pause":
-            self.pause.set()
-        elif cmd == "stop":
-            self.stop.set()
-
-    def listen(self, fd: int):
-        """Read commands from a file descriptor on a daemon thread (os.read: no
-        buffered-reader lock is held, so interpreter shutdown never waits on it)."""
-
-        def run():
-            buf = b""
-            while True:
-                try:
-                    chunk = os.read(fd, 4096)
-                except OSError:
-                    return
-                if not chunk:
-                    return  # EOF: the server closed our stdin; keep training
-                buf += chunk
-                while b"\n" in buf:
-                    line, buf = buf.split(b"\n", 1)
-                    self.handle(line.decode("utf-8", "replace"))
-
-        t = threading.Thread(target=run, name="gevtape-stdin", daemon=True)
-        t.start()
-        return t
-
-
-def log(*parts):
-    print(*parts, file=sys.stderr, flush=True)
-
-
-def now_ms() -> int:
-    return int(time.time() * 1000)
 
 
 def resolve_device(name: str) -> torch.device:
@@ -206,14 +107,6 @@ def set_rng_state(st: dict):
             torch.cuda.set_rng_state_all(st["cuda"])
         except RuntimeError:
             pass  # a different GPU count; CUDA draws are not used by these models
-
-
-def atomic_json(path: Path, obj):
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
-        json.dump(_clean(obj), f, indent=1)
-        f.write("\n")
-    os.replace(tmp, path)
 
 
 def atomic_torch_save(path: Path, obj):
@@ -853,6 +746,7 @@ def build_parser():
     ap.add_argument("--bf16", action="store_true", help="bfloat16 autocast on CUDA")
     ap.add_argument("--log-every", type=int, default=10, help="progress event every N steps")
     ap.add_argument("--sleep-ms", type=int, default=0, help="pause between steps (share the machine; tests)")
+    ap.add_argument("--tensorboard", default=None, help="TensorBoard log folder for this run")
     return ap
 
 
@@ -930,6 +824,7 @@ def run(args, emit, control) -> int:
     target = round_start + args.epochs  # absolute epoch count this round reaches
     dataset = task.train_dataset()
     amp = args.bf16 and device.type == "cuda"
+    board = Board(args.tensorboard)
 
     def save(epoch, in_epoch):
         atomic_torch_save(ckpt_path, {
@@ -972,8 +867,9 @@ def run(args, emit, control) -> int:
             in_epoch = i + 1
             recent.append(float(loss.detach()))
             if step % max(1, args.log_every) == 0:
-                emit("progress", model=args.model, epoch=shown(epoch), epochs=args.epochs, step=step,
-                     loss=float(np.mean(recent)))
+                mean = float(np.mean(recent))
+                emit("progress", model=args.model, epoch=shown(epoch), epochs=args.epochs, step=step, loss=mean)
+                board.scalars(step, {"train/loss": mean})
                 recent = []
             if args.sleep_ms:
                 time.sleep(args.sleep_ms / 1000.0)
@@ -984,10 +880,12 @@ def run(args, emit, control) -> int:
         if batches == 0:
             raise DataError("no training batches: is every episode/series shorter than context + horizon?")
         if recent:
-            emit("progress", model=args.model, epoch=shown(epoch), epochs=args.epochs, step=step,
-                 loss=float(np.mean(recent)))
+            mean = float(np.mean(recent))
+            emit("progress", model=args.model, epoch=shown(epoch), epochs=args.epochs, step=step, loss=mean)
+            board.scalars(step, {"train/loss": mean})
         skip = 0
         metrics = task.evaluate(model, device)
+        board.skill(step, metrics)
         emit("metrics", **{k: v for k, v in metrics.items() if k in ("skill", "domains", "counterfactual",
                                                                     "constantVelocity", "inSample")},
              model=args.model, epoch=shown(epoch))

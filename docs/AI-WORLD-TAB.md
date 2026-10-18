@@ -28,7 +28,10 @@ box"). Its data format is in [WORLD-MODEL-DATA.md](WORLD-MODEL-DATA.md).
    PAUSE / CONTINUE (one button), STOP and DELETE (lists exactly what will
    be deleted, then a second press inside the panel deletes it).
 4. **Status** — per stage (recording, sim episodes, training, predicting),
-   storage against the cap, pauses as gaps, compute in use.
+   storage against the cap, pauses as gaps, compute in use, then the
+   measured links from `status.links` (`ml.gevtape.links`, run after each
+   day is binned), one per line: who moves first, by how many hours, how
+   strongly, and whether later hours agree, or why there is none yet.
 5. **PREDICTIONS** — the domains to draw, the horizon, and each one's skill
    against persistence ("LEARNING · N DAYS RECORDED" until there is enough).
    The choice goes out as the `ai-world:predictions` event; the globe
@@ -44,24 +47,31 @@ box"). Its data format is in [WORLD-MODEL-DATA.md](WORLD-MODEL-DATA.md).
    `assets`, never placed.
 6. **FINANCIAL ASSETS** — the latest quote of each of the 42 assets, with
    its predicted move at the horizon once the world model predicts markets.
-7. **LINKS** — the study pairs (`src/trainingLinks.mjs`), then the measured
-   links from `status.links` (`ml.gevtape.links`, run after each day is
-   binned). Each says who moves first, by how many hours, how strongly, and
-   whether later hours agree.
-8. **POST-TRAIN** — an adapter (`module:Class` in `ml/adapters/` or
+7. **POST-TRAIN** — an adapter (`module:Class` in `ml/adapters/` or
    `.gev-data/ai-world/adapters/`) and an existing model's checkpoint
    inside `.gev-data/`. SAVE keeps them, POST-TRAIN NOW queues a run (the
    work must be running), and POST-TRAIN DAILY ON NEW DATA runs it a day
    after the last one. The line shows the last held-out loss before and
    after.
-9. **INSTRUCTIONS** — the short steps, folded; the full guide is
+8. **INSTRUCTIONS** — the short steps, folded; the full guide is
    `docs/TRAINING-GUIDE.md`.
+9. **TENSORFLOW** — four expandable sections (owner request 2026-10-17):
+   TENSORFLOW TRAINING, TENSORBOARD, EXPORT FOR TENSORFLOW and POST-TRAIN A
+   TENSORFLOW MODEL, under a line saying where the jobs run and the job's
+   state with PAUSE / CONTINUE and STOP (`src/tensorflowSetup.js`, routes
+   `/api/tensorflow`, [TENSORFLOW](#tensorflow-apitensorflow) below, part 5
+   of `docs/TRAINING-GUIDE.md`). Mounted into `#tensorflow-tools`; hidden
+   until its server routes answer. The sections are built once and updated
+   in place, so an open one stays open while the status polls.
 10. **CUSTOM LLM TRAINING** — last in the tab (moved from POWER UP on
     2026-10-17): a language model trained on the ticked recordings, custom
     URLs and local files, from a base model already on this PC
     (`src/llmTrainingSetup.js`, routes `/api/llm-training`, part 4 of
     `docs/TRAINING-GUIDE.md`). The tab mounts it into `#llm-training` and
     ends it with itself; it stays hidden until its server routes answer.
+
+The study pairs (`src/trainingLinks.mjs`) are not listed in the tab; they go
+beside the bins as `links.json` for `ml.gevtape.links`.
 
 Like every dashboard box on desktop, the tab resizes from its bottom-right
 corner (`src/ui/panelCornerResize.js`); open, it is 520 px wide by default.
@@ -307,3 +317,73 @@ One JSON object per line on stdout; the server writes commands on stdin.
   tracks: [{ id, kind, path: [[lat, lon, tMs]], sd? }],
 }
 ```
+
+## TENSORFLOW (`/api/tensorflow`)
+
+The four TENSORFLOW sections (owner request 2026-10-17: "include tensorflow
+functions in AI world tab as seperate expandape options within the tab";
+ruling: all four, Python 3.13, the GPU through WSL2). The jobs run in
+`server/shared/tensorflowJobs.mjs`, one at a time; the routes are
+`server/providers/tensorflow.js`, admitted as the tab's other routes are.
+The owner's phone may use all of it: nothing here removes anything.
+
+**Where a job runs.** TensorFlow has had no GPU on native Windows since 2.11.
+`npm run tensorflow:wsl-setup` (once; `scripts/tensorflow-wsl-setup.mjs` runs
+`scripts/tensorflow-wsl-setup.sh` in WSL2, distro `GEV_WSL_DISTRO`, default
+`Ubuntu`, no sudo) installs uv, Python 3.13 and `tensorflow[and-cuda]` into
+`~/.gev/tf-venv`, and `scripts/tensorflow-wsl-run.sh` starts that Python with
+the CUDA wheels' libraries on `LD_LIBRARY_PATH` (without them TensorFlow
+cannot open `libcusolver` and drops to the CPU). The server asks both runners with `ml.gevtape.tf_probe` when the tab first asks for the status (a server that never shows the tab starts no Python), and again on CHECK AGAIN: WSL2 when it
+has TensorFlow and a GPU, else the Windows Python 3.13 (`GEV_TF_PYTHON`, else
+`GEV_PYTHON`, else `py -3.13`) on the CPU, else WSL2 on its CPU.
+`GEV_TF_RUNNER=wsl|windows` picks one that has TensorFlow. Paths go to WSL2
+as `/mnt/<drive>/…`; a repository or data folder without a drive letter
+stays on Windows. TensorFlow takes GPU memory as it needs it, so the kit's
+own PyTorch trainer can share the card.
+
+| Section                       | Runs                                                                                                                                                                                                                                                                                                                                                                                                                                       | Writes                                                                                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| TENSORFLOW TRAINING           | `ml.gevtape.tf_train`: a Keras world model (`ml.gevtape.tf_world`) on the same bins, held-out days and score as the kit's world model. Each place is read by itself (no neighbour graph); the model predicts a change from persistence that starts at zero, so an untrained model scores exactly as persistence does. A new channel grows the model (`tf_world.grow_model`). TRAIN carries on from the saved model; NEW MODEL starts over. | `.gev-data/ai-world/tensorflow/models/tf-world/`: `model.keras` (with its optimizer), `state.json`, `metrics.json`, `manifest.json`           |
+| TENSORBOARD                   | TensorBoard on `127.0.0.1:6006` (`GEV_TENSORBOARD_PORT`) with `--path_prefix /api/tensorflow/board`, from the Python that has it (Windows first). OPEN TENSORBOARD goes through this app at `/api/tensorflow/board/`, so the phone mirror reaches it too.                                                                                                                                                                                  | reads `.gev-data/ai-world/tensorboard/<run>/`: `world`, `outbreak`, `tracks` (the kit's trainer, `--tensorboard`), `tf-world`, `tf-posttrain` |
+| EXPORT FOR TENSORFLOW         | `ml.gevtape.tf_export`: everything `ml.gevtape.export` writes, with the same class filter (EVERY CLASS or OPEN ONLY), then TFRecords, the SavedModel and TFLite.                                                                                                                                                                                                                                                                           | a new `.gev-data/ai-world/tensorflow/exports/<UTC time>/` (below)                                                                             |
+| POST-TRAIN A TENSORFLOW MODEL | `ml.gevtape.tf_posttrain` with an adapter (`keras_world:KerasWorldAdapter` by default, `ml/adapters/keras_world.py`) and a model inside `.gev-data/` (the TENSORFLOW TRAINING one by default). The last days are held out; the line gives the held-out loss before and after.                                                                                                                                                              | `.gev-data/ai-world/tensorflow/posttrain/`: `model/`, `metrics.json`, `posttrain-state.json`                                                  |
+
+Every trainer writes TensorBoard scalars through `ml.gevtape.board`, a
+standard-library writer (an Event protocol buffer framed as a TFRecord), so
+the PyTorch trainer does not load TensorFlow for it: `train/loss`,
+`held-out/mae`, `held-out/persistence`, and `domain/<domain>/mae` and
+`/persistence`.
+
+An export folder holds `tfrecord/YYYY-MM-DD.tfrecord` (one
+`tf.train.Example` per hour: `hour_ms`, then the observed entries only as
+`place`, `channel` and `value`, so a missing entry was never observed, not
+zero), `tfrecord/spec.json` (the channel order, K, the features),
+`savedmodel/` (signature `serve`), `model.tflite` (run against Keras on
+held-out rows; `tensorflow.json` gives the largest difference), `TENSORFLOW.md`
+(reading it with `tf.data`) and `tensorflow.json` (files, sizes, sha256, the
+licence mix). The model learned from every class it trained on whatever the
+export keeps, so an export is marked publishable only when the dataset and the
+model are both open only; the owner decides each release.
+
+| Route                              | Body                                                                                                                    | Answer                                                                                                            |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `GET  /status`                     | —                                                                                                                       | `{ runner, run, settings, posttrain, last, model, posttrained, exports, board }`                                  |
+| `POST /check`                      | `{}`                                                                                                                    | status; asks both runners again                                                                                   |
+| `POST /settings`                   | `{ epochs?, device?: 'auto'\|'cpu', classes?: 'all'\|'open', withModel?, posttrain?: { adapter, checkpoint, epochs } }` | status; 400 for a value out of range, an adapter outside the adapter folders or a checkpoint outside `.gev-data/` |
+| `POST /train`                      | `{ fresh? }`                                                                                                            | status (`run.state` `starting` at once); 409 while a job runs                                                     |
+| `POST /export`                     | `{}`                                                                                                                    | status; 409 while a job runs                                                                                      |
+| `POST /posttrain`                  | `{}`                                                                                                                    | status; 400 with no model at the checkpoint; 409 while a job runs                                                 |
+| `POST /pause`                      | `{}`                                                                                                                    | status; training and post-training only; 409 otherwise                                                            |
+| `POST /continue`                   | `{}`                                                                                                                    | status; the paused job again with `--resume`; 409 unless paused                                                   |
+| `POST /stop`                       | `{}`                                                                                                                    | status; `{"cmd":"stop"}` (an export is ended)                                                                     |
+| `POST /board-start`, `/board-stop` | `{}`                                                                                                                    | status                                                                                                            |
+| `*    /board/…`                    | TensorBoard's own                                                                                                       | passed through to TensorBoard (its POSTs only read curves; cookies are kept back); 503 while it is not running    |
+
+`run` is `{ kind: 'train'|'export'|'posttrain', state: 'starting'|'running'|'paused'|'stopped'|'done'|'error', epoch, epochs, step, loss, stage, done, total, device, error, busy, result }`;
+`runner` is `{ kind: 'wsl'|'windows'|null, distro, python, tensorflow, gpu, checking, checkedAt, wsl, windows }`.
+The TensorFlow runners speak the trainers' child-process protocol above
+(`ml.gevtape.protocol` holds it with nothing from either framework); the
+first progress event of a training says what it runs on
+(`{"device":"GPU NVIDIA …","tensorflow":"2.21.0"}`), an export's progress
+carries a `stage` (`dataset`, `tfrecord`, `savedmodel`, `tflite`) and ends
+with `{"event":"export",…}`.

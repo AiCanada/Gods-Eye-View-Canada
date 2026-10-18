@@ -40,9 +40,7 @@ the licence classes of the data. Same JSON-lines protocol as ml.gevtape.train
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
-import re
 import sys
 import traceback
 from pathlib import Path
@@ -52,34 +50,8 @@ from torch.utils.data import default_collate
 
 from . import reader as R
 from . import torch_data as td
+from .adapters import ADAPTER_SPEC, REPO_ROOT, adapter_dirs, load_adapter_class  # noqa: F401
 from .train import Control, DataError, Emitter, atomic_json, now_ms, resolve_device
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-ADAPTER_SPEC = re.compile(r"^([a-z_][a-z0-9_]{0,63}):([A-Za-z_][A-Za-z0-9_]{0,63})$")
-
-
-def adapter_dirs(data_root):
-    """Where adapters may live: this repository's ml/adapters, then the owner's folder."""
-    return [REPO_ROOT / "ml" / "adapters", Path(data_root) / "ai-world" / "adapters"]
-
-
-def load_adapter_class(spec, data_root):
-    """The class `module:Class` names, from a file in an adapter folder only."""
-    match = ADAPTER_SPEC.match(str(spec or ""))
-    if not match:
-        raise DataError("--adapter is module:Class (a file in ml/adapters/ or .gev-data/ai-world/adapters/)")
-    module, cls = match.groups()
-    for folder in adapter_dirs(data_root):
-        path = folder / f"{module}.py"
-        if path.is_file():
-            loaded = importlib.util.spec_from_file_location(f"gev_adapter_{module}", path)
-            mod = importlib.util.module_from_spec(loaded)
-            loaded.loader.exec_module(mod)
-            found = getattr(mod, cls, None)
-            if not isinstance(found, type):
-                raise DataError(f"{path} has no class {cls}")
-            return found, path
-    raise DataError(f"no adapter {module}.py in {', '.join(str(d) for d in adapter_dirs(data_root))}")
 
 
 def latest_bins(data_root):

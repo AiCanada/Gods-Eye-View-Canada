@@ -18,6 +18,9 @@ stays in `.gev-data/` (never committed, never uploaded).
 - **Train a custom language model (LLM)** at the bottom of the ARTIFICIAL
   INTELLIGENCE WORLD TRAINING SIM tab, on what the app records plus your own
   URLs and files.
+- **Use TensorFlow**: train a Keras world model on the same data, watch every
+  training curve in TensorBoard, export TFRecords, a SavedModel and TFLite,
+  and post-train a Keras model, each in its own section of the tab.
 
 ## Before you start
 
@@ -62,11 +65,9 @@ and a double-click on it puts the tab's own size back.
    **FINANCIAL ASSETS** list shows each quote with its predicted move. Set
    **HORIZON** for how far ahead. Every prediction shows its held-out score
    against persistence. None of it is advice.
-7. **LINKS.** The study pairs (news and prices, ships and commodities,
-   traffic and fuel, weather and wheat, flights and jet fuel), and below
-   them the **measured** links: which recorded channel moves before which
-   asset, by how many hours, how strongly, and whether the link held on
-   hours the measurement never saw. A correlation is not a cause.
+7. **MEASURED links**, last under **STATUS**: which recorded channel moves
+   before which asset, by how many hours, how strongly, and whether the link
+   held on hours the measurement never saw. A correlation is not a cause.
 8. **PAUSE / CONTINUE / STOP / DELETE.** PAUSE stops polling and saves the
    trainers where they are; CONTINUE carries on; STOP ends everything and
    keeps the data. DELETE lists exactly what it would remove and deletes
@@ -78,8 +79,8 @@ and a double-click on it puts the tab's own size back.
   recorded days, old and new, so it keeps what it learned and adds the
   newest days. When a new data layer or asset appears, the model is
   **grown**: what it knew is kept, and the new channels start from
-  persistence. The status says *NEW CHANNELS: MODEL GROWN, WHAT IT KNEW
-  KEPT*.
+  persistence. The status says _NEW CHANNELS: MODEL GROWN, WHAT IT KNEW
+  KEPT_.
 - **Another world model** (yours, or one from elsewhere):
   1. Copy `ml/adapters/kit_world.py` to `.gev-data/ai-world/adapters/<yours>.py`
      and change its four parts: load your model, take a training step on a
@@ -147,6 +148,7 @@ scroll to **CUSTOM LLM TRAINING**, the last section of the tab.
    terminal, for example
    `hf download Qwen/Qwen3.5-0.8B --local-dir .gev-data/llm/base/Qwen3.5-0.8B`.
    The app itself never downloads a model.
+
 2. **DATA SOURCES.** Tick what to train from:
    - news headlines;
    - asset prices;
@@ -173,6 +175,44 @@ scroll to **CUSTOM LLM TRAINING**, the last section of the tab.
 With POST-TRAIN DAILY, a day after each run the dataset is rebuilt from what
 was recorded since, and the model is post-trained in place.
 
+## 5. TensorFlow (the TENSORFLOW sections)
+
+Four sections near the bottom of the tab, each folded until you open it.
+Above them, **RUNS ON** says where the jobs run, and the job line shows the
+one that runs, with **PAUSE / CONTINUE** and **STOP**.
+
+1. **Once, for the GPU**: TensorFlow has no GPU on native Windows, so it runs
+   in WSL2. In a terminal in the repository: `npm run tensorflow:wsl-setup`
+   (Ubuntu by default; in PowerShell `$env:GEV_WSL_DISTRO = "Ubuntu-24.04"`
+   picks another). It needs no password and installs Python 3.13 and
+   TensorFlow into `~/.gev/` inside WSL2; the last line names the GPU. Then
+   press **CHECK AGAIN**: RUNS ON reads `GPU NVIDIA … · WSL2 UBUNTU`. Without
+   it, the jobs run on the CPU with `py -3.13` (`py -3.13 -m pip install
+tensorflow`).
+2. **TENSORFLOW TRAINING** trains a Keras world model on the binned days,
+   holds out the last ones and scores it against persistence, overall and per
+   domain, as the app's own world model is scored. Set **EPOCHS** and
+   **DEVICE**, **SAVE**, then **TRAIN** (it carries on from the saved model)
+   or **NEW MODEL** (it starts over). It needs three binned days, like the
+   app's own model.
+3. **TENSORBOARD**: **START TENSORBOARD**, then **OPEN TENSORBOARD**. It shows
+   the curves of every trainer: the app's world, outbreak and tracks models
+   and the TensorFlow ones. It opens through the app, so it works from the
+   phone too. **STOP TENSORBOARD** when you are done.
+4. **EXPORT FOR TENSORFLOW** writes a new folder in
+   `.gev-data/ai-world/tensorflow/exports/`: the data as TFRecords, the Keras
+   model as a SavedModel and as TFLite, and `TENSORFLOW.md`, which shows how
+   to read it all with `tf.data`. **OPEN ONLY (SHAREABLE)** keeps only open
+   data; the model still learned from every class it trained on, so the
+   export says THIS PC ONLY unless both are open.
+5. **POST-TRAIN A TENSORFLOW MODEL** brings a Keras model up to date on the
+   newest days. The adapter `keras_world:KerasWorldAdapter` and the checkpoint
+   `ai-world/tensorflow/models/tf-world` post-train the model from step 2;
+   for another Keras model, copy `ml/adapters/keras_world.py` into
+   `.gev-data/ai-world/adapters/`, change how it reads its inputs, and name
+   its folder as the checkpoint. **SAVE**, then **POST-TRAIN NOW**; the line
+   shows the held-out loss before and after.
+
 ## Licences and privacy
 
 Every record carries its source's licence class: open, nc
@@ -183,10 +223,12 @@ published anywhere unless you do it.
 
 ## When something does not work
 
-- **AI WORLD SERVER NOT READY**, or CUSTOM LLM TRAINING is missing at the
-  bottom of the tab: restart `npm run dev`.
+- **AI WORLD SERVER NOT READY**, or CUSTOM LLM TRAINING or the TENSORFLOW
+  sections are missing near the bottom of the tab: restart `npm run dev`.
+- **RUNS ON · CPU ONLY** with a GPU in the PC: run `npm run
+tensorflow:wsl-setup`, then CHECK AGAIN (step 5.1).
 - **LEARNING** under a prediction: not enough recorded days yet.
-- **NO MARKET PRICES IN THE BINS YET** under LINKS: tick FINANCIAL ASSETS and
+- **NO MARKET PRICES IN THE BINS YET** under STATUS: tick FINANCIAL ASSETS and
   record at least a day.
 - **BASE MODEL NOT ON THIS MACHINE**: see step 4.1.
 - **HELD: NO MILITARY LIST TO SCREEN AIRCRAFT WITH**: the flights feeds wait

@@ -2850,6 +2850,7 @@
       "src/marketAssets.mjs",
       "src/ui/panelCornerResize.js",
       "src/llmTrainingSetup.js",
+      "src/tensorflowSetup.js",
       "src/aiWorldOverlay.js",
       "src/askOutputFind.js",
       "src/askOverview.js",

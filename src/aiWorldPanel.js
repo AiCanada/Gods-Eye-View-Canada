@@ -25,14 +25,7 @@
 import { formatAskLogEntry, prependOutputLog } from './askOverview.js';
 import { msgl, tl, tln } from './i18n/index.js';
 import { initLlmTrainingSetup } from './llmTrainingSetup.js';
-import {
-  TRAINING_LINKS,
-  linkFeedIds,
-  linkMeasured,
-  linkSkill,
-  linkStatus,
-  measuredLinkLines,
-} from './trainingLinks.mjs';
+import { initTensorflowSetup } from './tensorflowSetup.js';
 import {
   isOwnerRemovalRefusal,
   noteOwnerRemovalRefusal,
@@ -178,6 +171,7 @@ export class AiWorldPanel {
     this._areaBusy = false;
     this._unsubscribe = null;
     this._llm = null;
+    this._tensorflow = null;
 
     const byId = (id) => doc?.getElementById?.(id) || null;
     this._root = byId('ai-world-panel');
@@ -238,9 +232,6 @@ export class AiWorldPanel {
     this._newsInput = byId('ai-world-news-url');
     this._newsAdd = byId('ai-world-news-add');
     this._marketsList = byId('ai-world-markets');
-    this._linksList = byId('ai-world-links');
-    this._linksTick = byId('ai-world-links-tick');
-    this._quotes = [];
 
     this._predictions = this._loadPredictions();
     // Nothing is drawn until the predictor can draw something.
@@ -265,7 +256,6 @@ export class AiWorldPanel {
     this._on(this._pauseBtn, 'click', () => void this._pauseOrContinue());
     this._on(this._stopBtn, 'click', () => void this._command('stop'));
     this._on(this._deleteBtn, 'click', () => this._openDelete());
-    this._on(this._linksTick, 'click', () => this._tickLinkFeeds());
     this._on(this._capInput, 'change', () => {
       if (this._capInput) this._capInput.value = String(this._capGb());
       this._scheduleEstimate();
@@ -329,11 +319,19 @@ export class AiWorldPanel {
     void this._loadCatalog();
     void this._loadNewsUrls();
     void this._loadMarkets();
-    this._paintLinks();
     void this._poll();
 
-    // CUSTOM LLM TRAINING sits at the bottom of this tab (owner request
-    // 2026-10-17, moved from POWER UP): its own routes, polling and lifetime.
+    // The TENSORFLOW sections (owner request 2026-10-17), then CUSTOM LLM
+    // TRAINING at the bottom of this tab (moved from POWER UP the same day):
+    // each with its own routes, polling and lifetime.
+    const tfHost = byId('tensorflow-tools');
+    if (tfHost)
+      this._tensorflow = initTensorflowSetup({
+        host: tfHost,
+        documentRef: doc,
+        fetchImpl: this._fetch || undefined,
+        signal: this._signal || undefined,
+      });
     const llmHost = byId('llm-training');
     if (llmHost)
       this._llm = initLlmTrainingSetup({
@@ -368,6 +366,8 @@ export class AiWorldPanel {
     this._unsubscribe = null;
     this._llm?.destroy();
     this._llm = null;
+    this._tensorflow?.destroy();
+    this._tensorflow = null;
     this._signal?.removeEventListener?.('abort', this._onAbort);
   }
 
@@ -1378,10 +1378,12 @@ export class AiWorldPanel {
   /* --------------------------------------------------------------------- */
 
   _renderStages() {
-    this._paintLinks();
     const lines = stageLines(this._status, this._now());
     for (const key of AI_WORLD_STAGE_KEYS)
       this._setText(this._stageEls[key], lines[key]);
+    // The measured links show only once ml.gevtape.links has reported.
+    const links = this._stageEls.links;
+    if (links && links.hidden !== !lines.links) links.hidden = !lines.links;
   }
 
   _availableDomains() {
@@ -1691,39 +1693,6 @@ export class AiWorldPanel {
     this._paintNews(Array.isArray(data?.urls) ? data.urls : []);
   }
 
-  _paintLinks() {
-    if (!this._linksList || !this._doc) return;
-    const text = TRAINING_LINKS.map((link) => {
-      const status = linkStatus(link, {
-        selection: this._selection,
-        feeds: this._status?.feeds,
-        quotes: this._quotes,
-      });
-      const skill = linkSkill(link, this._status?.stages?.trainer?.domains);
-      const measured = linkMeasured(link, this._status?.links);
-      return [status.text, skill, measured].filter(Boolean).join(' ');
-    })
-      .concat(measuredLinkLines(this._status?.links))
-      .join('\n');
-    if (text === this._linksText) return;
-    this._linksText = text;
-    this._linksList.replaceChildren(
-      ...text.split('\n').map((line) => {
-        const li = this._doc.createElement('li');
-        li.textContent = line;
-        return li;
-      }),
-    );
-  }
-
-  _tickLinkFeeds() {
-    const next = [...this._selection];
-    for (const id of linkFeedIds()) if (!next.includes(id)) next.push(id);
-    this._selection = next;
-    this._selectionChanged();
-    this._paintLinks();
-  }
-
   async _loadMarkets() {
     this._marketsAt = this._now();
     const { response, data } = await this._getJson('markets').catch(() => ({
@@ -1732,8 +1701,6 @@ export class AiWorldPanel {
     }));
     if (!response?.ok || !this._doc || this._destroyed) return;
     const quotes = Array.isArray(data?.quotes) ? data.quotes : [];
-    this._quotes = quotes;
-    this._paintLinks();
     // The world model's predicted moves, once it predicts markets.
     let prediction = null;
     const horizon = this._predictions.horizonHours;

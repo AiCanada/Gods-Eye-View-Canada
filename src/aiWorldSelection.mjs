@@ -18,7 +18,7 @@
 
 import { localDigits, msgl, tl, tln } from './i18n/marker.js';
 import { marketAsset } from './marketAssets.mjs';
-import { formatSkill } from './trainingLinks.mjs';
+import { formatSkill, measuredLinkLines } from './trainingLinks.mjs';
 
 /**
  * Military layers stay on the map. They are not training rows, not part of
@@ -685,12 +685,14 @@ export const AI_WORLD_STAGE_KEYS = Object.freeze([
   'storage',
   'gaps',
   'compute',
+  'links',
 ]);
 
 /**
  * The STATUS lines: the job's state, then each stage (recording, sim
- * episodes, training, predicting), storage against the cap, gaps and
- * compute. Without a status yet, each says it is waiting.
+ * episodes, training, predicting), storage against the cap, gaps, compute,
+ * and the measured links (one per line, blank until there is a report).
+ * Without a status yet, each says it is waiting.
  * @param {object|null} status The server's `status`.
  * @param {number} [nowMs]
  * @returns {Record<string, string>}
@@ -706,6 +708,7 @@ export function stageLines(status, nowMs = Date.now()) {
       storage: tl('STORAGE · NOTHING RECORDED'),
       gaps: tl('GAPS · NONE'),
       compute: tl('COMPUTE · WAITING FOR THE SERVER'),
+      links: '',
     };
   }
   const stages = status.stages || {};
@@ -829,6 +832,7 @@ export function stageLines(status, nowMs = Date.now()) {
         ? tl('GPU {gpu}', { gpu: text(compute.gpu) })
         : tl('NO GPU · CPU ONLY'),
     ]),
+    links: measuredLinkLines(status.links).join('\n'),
   };
 }
 

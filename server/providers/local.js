@@ -42,6 +42,7 @@ import { openaiDotsDesktopProxy } from './openaiDotsDesktop.js';
 import { outbreakProxy } from './outbreak.js';
 import { aiWorldProvider } from './aiWorld.js';
 import { llmTrainingProvider } from './llmTraining.js';
+import { tensorflowProvider } from './tensorflow.js';
 import { gnssIntegrityProxy } from './gnssIntegrity.js';
 
 /**
@@ -120,6 +121,10 @@ function localProviderPlugins({
     // CUSTOM LLM TRAINING (owner request 2026-10-16): the POWER UP section's
     // dataset build and LoRA training on a base model already on this PC.
     llmTrainingProvider({ root: sourceRoot }),
+    // The AI World tab's TENSORFLOW sections (owner request 2026-10-17):
+    // Keras training, TensorBoard, TFRecord/SavedModel/TFLite export and
+    // post-training, on the GPU through WSL2 when it is set up.
+    tensorflowProvider({ root: sourceRoot }),
     keySetupEndpoint({ sourceRoot, onEnvSaved: noteOutboundEnvSaved }),
   ];
 }

@@ -27,7 +27,15 @@ import zlib
 from pathlib import Path
 
 import numpy as np
-from torch.utils.data import IterableDataset, get_worker_info
+
+try:
+    from torch.utils.data import IterableDataset, get_worker_info
+except ImportError:  # the TensorFlow Python (ml.gevtape.tf_train) has no torch: plain iterables
+    class IterableDataset:  # noqa: D101
+        pass
+
+    def get_worker_info():
+        return None
 
 from . import formats as F
 from . import geo
