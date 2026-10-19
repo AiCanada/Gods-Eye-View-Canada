@@ -30,6 +30,7 @@ import {
   addNewsUrl as pushNewsUrl,
   removeNewsUrl as dropNewsUrl,
 } from './newsUrls.mjs';
+import { NO_TRACKER, trackChild } from './mlflowTrack.mjs';
 
 export const AI_WORLD_STATES = Object.freeze([
   'idle',
@@ -252,11 +253,13 @@ export function createChild({
   onExit = () => {},
   log = () => {},
   spawnImpl = spawn,
+  env,
 }) {
   const child = spawnImpl(command, args, {
     cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
+    ...(env ? { env } : {}),
   });
   let buffer = '';
   const tail = [];
@@ -326,6 +329,8 @@ export function createAiWorldManager({
   gpu = () => detectGpu(),
   feeds = feedMap(),
   datasetWorkers,
+  /** MLFLOW TRACKING: each trainer child as an MLflow run (mlflowTrack.mjs). */
+  tracker = NO_TRACKER,
 }) {
   const stateFile = path.join(dataRoot, 'ai-world', 'state.json');
   const areasFile = path.join(dataRoot, 'ai-world', 'areas.json');
@@ -809,6 +814,16 @@ export function createAiWorldManager({
       error: null,
       note: null,
     };
+    const tracked = trackChild(tracker, {
+      experiment: `ai-world/${model}`,
+      name: `${model} ${new Date(now()).toISOString().slice(0, 16).replace('T', ' ')}`,
+      args,
+      tags: {
+        'gev.model': model,
+        'gev.framework': model === 'links' ? 'numpy' : 'pytorch',
+        'mlflow.source.name': task[0],
+      },
+    });
     const child = createChild({
       command: python[0],
       args,
@@ -816,6 +831,7 @@ export function createAiWorldManager({
       spawnImpl,
       log: (l) => log(`[train] ${l}`),
       onEvent: (event) => {
+        tracked.event(event);
         if (event.event === 'progress')
           stages.trainer = {
             ...stages.trainer,
@@ -848,6 +864,14 @@ export function createAiWorldManager({
       },
       onExit: ({ code, tail }) => {
         const wasPaused = stages.trainer.state === 'paused';
+        tracked.exit({
+          code,
+          stopped: persisted.state !== 'running',
+          files: ['metrics.json', 'manifest.json'].map((name) => [
+            path.join(modelDir(model), name),
+            name,
+          ]),
+        });
         trainer = null;
         if (code !== 0 && !wasPaused && persisted.state === 'running') {
           lastTrainerFailure = { model, daysBinned: binnedDays() };

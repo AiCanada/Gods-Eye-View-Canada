@@ -1,5 +1,31 @@
 # Changelog
 
+- MLFLOW in the AI World tab (owner request 2026-10-17; ruling: all six,
+  local only): six expandable sections below TENSORFLOW
+  (`src/mlflowSetup.js`, routes `/api/mlflow`, `server/shared/mlflowJobs.mjs`),
+  on MLflow 3.17 (Apache 2.0) in the Windows Python 3.13, everything in
+  `.gev-data/mlflow/` with MLflow's usage telemetry off. MLFLOW TRACKING keeps
+  every training run of the tab (the kit's PyTorch models, the TensorFlow
+  jobs, CUSTOM LLM TRAINING) as an MLflow run, written through the server's
+  REST API from the protocol events the job managers already read
+  (`server/shared/mlflowTrack.mjs`), so GPU runs in WSL2 are tracked with
+  nothing installed there: parameters, the loss by step, the held-out error
+  against persistence per domain, device, licence classes and the run's
+  metrics.json and manifest.json. MLFLOW UI runs the MLflow server on
+  127.0.0.1 and opens it through `/api/mlflow/ui/` (from the phone mirror too,
+  where removals are refused). MODEL REGISTRY registers a trained world model
+  (PyTorch or Keras) or a custom LLM as a pyfunc version with CHAMPION and
+  CHALLENGER aliases (`ml.gevtape.mlflow_register`, `mlflow_models`); MODEL
+  SERVING serves a version (`mlflow models serve`, `/api/mlflow/serve/`) with
+  one request shape for every world model; EVALUATION scores the registered
+  world models side by side against persistence on the held-out days
+  (`ml.gevtape.mlflow_evaluate`); LLM TRACING asks a custom LLM and keeps the
+  question and answer as an MLflow trace (`ml.gevtape.llm_chat --trace`). The
+  MLflow server and a served model are ended with their whole process tree
+  (`server/shared/processTree.mjs`: on Windows the `py` launcher lets
+  uvicorn run on otherwise). New strings in Quebec French, Inuktitut and
+  Ancient Egyptian.
+
 - TENSORFLOW in the AI World tab (owner request 2026-10-17; ruling: all
   four, Python 3.13, the GPU through WSL2): four expandable sections near the
   bottom of the tab (`src/tensorflowSetup.js`, routes `/api/tensorflow`,

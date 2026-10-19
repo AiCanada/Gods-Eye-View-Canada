@@ -2851,6 +2851,7 @@
       "src/ui/panelCornerResize.js",
       "src/llmTrainingSetup.js",
       "src/tensorflowSetup.js",
+      "src/mlflowSetup.js",
       "src/aiWorldOverlay.js",
       "src/askOutputFind.js",
       "src/askOverview.js",

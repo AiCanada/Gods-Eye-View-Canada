@@ -43,6 +43,7 @@ import { outbreakProxy } from './outbreak.js';
 import { aiWorldProvider } from './aiWorld.js';
 import { llmTrainingProvider } from './llmTraining.js';
 import { tensorflowProvider } from './tensorflow.js';
+import { mlflowProvider } from './mlflow.js';
 import { gnssIntegrityProxy } from './gnssIntegrity.js';
 
 /**
@@ -59,6 +60,7 @@ function localProviderPlugins({
   // Provider checks apply only after this checkout is bound. A unit test
   // that never binds still uses the keys it set.
   bindLocalIntegrityRoot(sourceRoot);
+  const mlflow = mlflowProvider({ root: sourceRoot });
   return [
     openSkyProxy(),
     celestrakProxy(),
@@ -115,16 +117,19 @@ function localProviderPlugins({
     mapillaryProxy(),
     // GNSS integrity (upstream #1108): GET /api/gnss-integrity.
     gnssIntegrityProxy(),
+    // The AI World tab's MLFLOW sections (owner request 2026-10-17): first,
+    // so the jobs of the three providers after it are tracked from the start.
+    mlflow,
     // ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM (owner request 2026-10-13):
     // records every ticked feed, generates sim episodes, trains and predicts.
-    aiWorldProvider({ root: sourceRoot }),
+    aiWorldProvider({ root: sourceRoot, tracker: mlflow.tracker }),
     // CUSTOM LLM TRAINING (owner request 2026-10-16): the POWER UP section's
     // dataset build and LoRA training on a base model already on this PC.
-    llmTrainingProvider({ root: sourceRoot }),
+    llmTrainingProvider({ root: sourceRoot, tracker: mlflow.tracker }),
     // The AI World tab's TENSORFLOW sections (owner request 2026-10-17):
     // Keras training, TensorBoard, TFRecord/SavedModel/TFLite export and
     // post-training, on the GPU through WSL2 when it is set up.
-    tensorflowProvider({ root: sourceRoot }),
+    tensorflowProvider({ root: sourceRoot, tracker: mlflow.tracker }),
     keySetupEndpoint({ sourceRoot, onEnvSaved: noteOutboundEnvSaved }),
   ];
 }

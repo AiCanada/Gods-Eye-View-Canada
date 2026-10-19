@@ -334,8 +334,9 @@
   color: #ff8a8a;
 }
 
-/* TENSORFLOW (src/tensorflowSetup.js): where the jobs run and the job,
-   then four sections folded like INSTRUCTIONS, each its own column. */
+/* TENSORFLOW (src/tensorflowSetup.js) and MLFLOW (src/mlflowSetup.js):
+   where the jobs run and the job, then sections folded like INSTRUCTIONS,
+   each its own column. */
 #ai-world-panel .ai-world-tf-tools {
   display: flex;
   flex-direction: column;
@@ -346,32 +347,43 @@
   display: none;
 }
 
-#ai-world-panel .ai-world-tf[open] {
+#ai-world-panel .ai-world-tf[open],
+#ai-world-panel .ai-world-mlflow[open] {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-#ai-world-panel .ai-world-tf .ai-world-fields select {
+#ai-world-panel .ai-world-tf .ai-world-fields select,
+#ai-world-panel .ai-world-mlflow .ai-world-fields select {
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
 }
 
-#ai-world-panel .ai-world-tf .tf-board-open {
+#ai-world-panel .ai-world-tf .tf-board-open,
+#ai-world-panel .ai-world-mlflow a.scene-btn {
   text-decoration: none;
 }
 
-#ai-world-panel .ai-world-tf .tf-board-open[hidden] {
+#ai-world-panel .ai-world-tf .tf-board-open[hidden],
+#ai-world-panel .ai-world-mlflow a.scene-btn[hidden] {
   display: none;
 }
 
-#ai-world-panel .ai-world-tf-tools .tf-run[data-ok='false'] {
+#ai-world-panel .ai-world-tf-tools .tf-run[data-ok='false'],
+#ai-world-panel .ai-world-mlflow-tools .mlflow-run[data-ok='false'] {
   color: #ff8a8a;
 }
 
-#ai-world-panel .ai-world-tf .ai-world-list[hidden] {
+#ai-world-panel .ai-world-tf .ai-world-list[hidden],
+#ai-world-panel .ai-world-mlflow .ai-world-list[hidden] {
   display: none;
+}
+
+#ai-world-panel .ai-world-mlflow .mlflow-answer {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* HORIZON: the slider, then its value in hours. */

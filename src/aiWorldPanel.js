@@ -26,6 +26,7 @@ import { formatAskLogEntry, prependOutputLog } from './askOverview.js';
 import { msgl, tl, tln } from './i18n/index.js';
 import { initLlmTrainingSetup } from './llmTrainingSetup.js';
 import { initTensorflowSetup } from './tensorflowSetup.js';
+import { initMlflowSetup } from './mlflowSetup.js';
 import {
   isOwnerRemovalRefusal,
   noteOwnerRemovalRefusal,
@@ -172,6 +173,7 @@ export class AiWorldPanel {
     this._unsubscribe = null;
     this._llm = null;
     this._tensorflow = null;
+    this._mlflow = null;
 
     const byId = (id) => doc?.getElementById?.(id) || null;
     this._root = byId('ai-world-panel');
@@ -332,6 +334,14 @@ export class AiWorldPanel {
         fetchImpl: this._fetch || undefined,
         signal: this._signal || undefined,
       });
+    const mlflowHost = byId('mlflow-tools');
+    if (mlflowHost)
+      this._mlflow = initMlflowSetup({
+        host: mlflowHost,
+        documentRef: doc,
+        fetchImpl: this._fetch || undefined,
+        signal: this._signal || undefined,
+      });
     const llmHost = byId('llm-training');
     if (llmHost)
       this._llm = initLlmTrainingSetup({
@@ -368,6 +378,8 @@ export class AiWorldPanel {
     this._llm = null;
     this._tensorflow?.destroy();
     this._tensorflow = null;
+    this._mlflow?.destroy();
+    this._mlflow = null;
     this._signal?.removeEventListener?.('abort', this._onAbort);
   }
 

@@ -23,6 +23,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createChild, defaultPython } from './aiWorldJobs.mjs';
+import { NO_TRACKER, trackChild } from './mlflowTrack.mjs';
 import { cleanNewsUrl } from './newsUrls.mjs';
 import { fetchPublic } from './publicFetch.mjs';
 
@@ -257,6 +258,8 @@ export function createLlmTrainingManager({
     clearInterval: (id) => globalThis.clearInterval(id),
   },
   log = () => {},
+  /** MLFLOW TRACKING: each training run as an MLflow run (mlflowTrack.mjs). */
+  tracker = NO_TRACKER,
 } = {}) {
   const llmRoot = path.join(dataRoot, 'llm');
   const stateFile = path.join(llmRoot, 'state.json');
@@ -435,36 +438,62 @@ export function createLlmTrainingManager({
         : persisted.config.postTrainFrom
           ? modelDir(persisted.config.postTrainFrom)
           : '';
-      const trained = await runPython(
-        [
-          '-m',
-          'ml.gevtape.llm_train',
-          '--data-dir',
-          dataDir(name),
-          '--base',
-          resolveBaseModel(base, { env, dataRoot }) || base,
-          '--out',
-          modelDir(name),
-          '--epochs',
-          String(epochs),
-          ...(from && fs.existsSync(path.join(from, 'adapter.json'))
-            ? ['--from', from]
-            : []),
-          ...(resume ? ['--resume'] : []),
-        ],
-        (event) => {
-          if (event.event === 'progress')
-            stage = {
-              ...stage,
-              epoch: event.epoch ?? stage.epoch,
-              epochs: event.epochs ?? stage.epochs,
-              step: event.step ?? stage.step,
-              steps: event.steps ?? stage.steps,
-              loss: event.loss ?? stage.loss,
-            };
-          if (event.event === 'error') persisted.error = String(event.message);
+      const trainArgs = [
+        '-m',
+        'ml.gevtape.llm_train',
+        '--data-dir',
+        dataDir(name),
+        '--base',
+        resolveBaseModel(base, { env, dataRoot }) || base,
+        '--out',
+        modelDir(name),
+        '--epochs',
+        String(epochs),
+        ...(from && fs.existsSync(path.join(from, 'adapter.json'))
+          ? ['--from', from]
+          : []),
+        ...(resume ? ['--resume'] : []),
+      ];
+      const tracked = trackChild(tracker, {
+        experiment: 'ai-world/llm',
+        name: `${name} ${new Date(now()).toISOString().slice(0, 16).replace('T', ' ')}`,
+        args: trainArgs,
+        params: { sources: sources.join(','), postTrain: String(postTrain) },
+        tags: {
+          'gev.model': name,
+          'gev.framework': 'transformers',
+          'gev.base': base,
+          'mlflow.source.name': 'ml.gevtape.llm_train',
         },
-      );
+      });
+      const trained = await runPython(trainArgs, (event) => {
+        tracked.event(event);
+        if (event.event === 'progress')
+          stage = {
+            ...stage,
+            epoch: event.epoch ?? stage.epoch,
+            epochs: event.epochs ?? stage.epochs,
+            step: event.step ?? stage.step,
+            steps: event.steps ?? stage.steps,
+            loss: event.loss ?? stage.loss,
+          };
+        if (event.event === 'error') persisted.error = String(event.message);
+      });
+      const meta = read(path.join(modelDir(name), 'adapter.json'), null);
+      if (meta)
+        tracked.run.log({
+          ...(meta.heldOutLossBefore != null
+            ? { 'held-out/loss-before': meta.heldOutLossBefore }
+            : {}),
+          ...(meta.heldOutLossAfter != null
+            ? { 'held-out/loss-after': meta.heldOutLossAfter }
+            : {}),
+        });
+      tracked.exit({
+        code: trained.code,
+        stopped: pauseRequested || abort.signal.aborted,
+        files: [[path.join(modelDir(name), 'adapter.json'), 'adapter.json']],
+      });
       if (pauseRequested) return setState('paused');
       if (abort.signal.aborted) return setState('stopped');
       if (trained.code !== 0)

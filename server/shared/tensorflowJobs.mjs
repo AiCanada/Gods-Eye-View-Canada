@@ -30,6 +30,7 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { cleanPostTrain, createChild, defaultPython } from './aiWorldJobs.mjs';
+import { NO_TRACKER, trackChild } from './mlflowTrack.mjs';
 
 export const TENSORFLOW_API = '/api/tensorflow';
 /** Where TensorBoard is served, through the dev server. */
@@ -127,6 +128,8 @@ export function createTensorflowManager({
   log = () => {},
   /** Windows paths as WSL2 sees them (a seam for tests). */
   wslPath = toWslPath,
+  /** MLFLOW TRACKING: each job as an MLflow run (mlflowTrack.mjs). */
+  tracker = NO_TRACKER,
 } = {}) {
   const tfRoot = path.join(dataRoot, 'ai-world', 'tensorflow');
   const stateFile = path.join(tfRoot, 'state.json');
@@ -418,15 +421,45 @@ export function createTensorflowManager({
       MODULES[kind],
       argsFor(kind, resume),
     );
+    const exportOut = run.out;
+    const tracked = trackChild(tracker, {
+      experiment: `ai-world/tensorflow-${kind}`,
+      name: `tensorflow ${kind} ${new Date(now()).toISOString().slice(0, 16).replace('T', ' ')}`,
+      args,
+      tags: {
+        'gev.model': `tensorflow-${kind}`,
+        'gev.framework': 'tensorflow',
+        'gev.runner': where,
+        'mlflow.source.name': MODULES[kind],
+      },
+    });
+    const artifactFiles = () =>
+      kind === 'train'
+        ? ['metrics.json', 'manifest.json'].map((n) => [
+            path.join(trainDir, n),
+            n,
+          ])
+        : kind === 'posttrain'
+          ? [[path.join(posttrainDir, 'metrics.json'), 'metrics.json']]
+          : exportOut
+            ? ['tensorflow.json', 'TENSORFLOW.md'].map((n) => [
+                path.join(exportOut, n),
+                n,
+              ])
+            : [];
     const child = createChild({
       command: cmd,
       args,
       cwd: root,
       spawnImpl,
       log: (line) => log(`[tf-${kind}] ${line}`),
-      onEvent,
+      onEvent: (event) => {
+        tracked.event(event);
+        onEvent(event);
+      },
       onExit: ({ code, tail }) => {
         const stopping = job?.stopping === true;
+        tracked.exit({ code, stopped: stopping, files: artifactFiles() });
         timers.clearTimeout(job?.killTimer);
         job = null;
         if (run.paused) finish('paused');

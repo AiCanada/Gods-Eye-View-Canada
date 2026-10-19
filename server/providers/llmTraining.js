@@ -40,6 +40,8 @@ export function llmTrainingProvider({
   createManager = createLlmTrainingManager,
   env = process.env,
   log = (line) => console.log(`[llm-training] ${line}`),
+  /** MLFLOW TRACKING (server/providers/mlflow.js), when it is installed. */
+  tracker,
 } = {}) {
   const allow = makeRateLimiter({ windowMs: 60_000, max: 30, globalMax: 60 });
   let manager = null;
@@ -109,7 +111,7 @@ export function llmTrainingProvider({
   };
 
   const install = (server) => {
-    manager = createManager({ root, env, log });
+    manager = createManager({ root, env, log, tracker });
     server.httpServer?.once?.('close', () => manager.close());
     server.middlewares.use('/api/llm-training', async (req, res) => {
       try {

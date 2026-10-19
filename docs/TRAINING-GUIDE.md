@@ -21,6 +21,9 @@ stays in `.gev-data/` (never committed, never uploaded).
 - **Use TensorFlow**: train a Keras world model on the same data, watch every
   training curve in TensorBoard, export TFRecords, a SavedModel and TFLite,
   and post-train a Keras model, each in its own section of the tab.
+- **Use MLflow**: every training run kept and compared, models registered as
+  champion or challenger, served, evaluated side by side, and a custom LLM's
+  answers kept as traces, all on this PC.
 
 ## Before you start
 
@@ -213,6 +216,36 @@ tensorflow`).
    its folder as the checkpoint. **SAVE**, then **POST-TRAIN NOW**; the line
    shows the held-out loss before and after.
 
+## 6. MLflow (the MLFLOW sections)
+
+Six sections below TENSORFLOW, each folded until you open it. MLflow is open
+source (Apache 2.0) and everything stays on this PC in `.gev-data/mlflow/`;
+its usage telemetry is turned off. Once: `py -3.13 -m pip install mlflow`
+(about 100 to 150 MB), then CHECK AGAIN.
+
+1. **MLFLOW TRACKING**: leave **TRACK EVERY TRAINING RUN** ticked. Every
+   training run in the tab (the world, outbreak and tracks models, the
+   TensorFlow jobs, the custom LLM) is kept with its settings, its loss by
+   step and its held-out score against persistence per domain. The first run
+   starts the MLflow server by itself.
+2. **MLFLOW UI**: **START MLFLOW** (if it is not running), then **OPEN
+   MLFLOW** to see the runs side by side, their charts and the registered
+   models. It opens through the app, so it works from the phone too (where
+   nothing can be deleted).
+3. **MODEL REGISTRY**: choose a trained model, keep or change its **NAME**,
+   pick **CHAMPION** (the version to use) or **CHALLENGER** (one to try) if
+   you like, then **REGISTER**. Each press makes a new version. **SET ALIAS**
+   moves CHAMPION or CHALLENGER to another version.
+4. **MODEL SERVING**: choose a version, **START SERVING**, then **TEST**. Your
+   own tools can then POST to `http://127.0.0.1:5001/invocations` (the section
+   says what a request holds).
+5. **EVALUATION**: **EVALUATE NOW** scores every registered world model's
+   champion, challenger and newest version on the held-out days, against
+   persistence, and marks the BEST; then SET ALIAS can make it the champion.
+6. **LLM TRACING**: choose a custom LLM trained in part 4, type a
+   **QUESTION**, **ASK**. The answer shows, and **OPEN THE TRACE** shows the
+   question and the answer as a trace in MLflow.
+
 ## Licences and privacy
 
 Every record carries its source's licence class: open, nc
@@ -226,7 +259,10 @@ published anywhere unless you do it.
 - **AI WORLD SERVER NOT READY**, or CUSTOM LLM TRAINING or the TENSORFLOW
   sections are missing near the bottom of the tab: restart `npm run dev`.
 - **RUNS ON · CPU ONLY** with a GPU in the PC: run `npm run
-tensorflow:wsl-setup`, then CHECK AGAIN (step 5.1).
+  tensorflow:wsl-setup`, then CHECK AGAIN (step 5.1).
+- **MLFLOW IS NOT INSTALLED**: `py -3.13 -m pip install mlflow`, then CHECK
+  AGAIN. **MLFLOW SERVER · OFF (TRACKING WAITS…)**: you stopped it; START
+  MLFLOW and the waiting runs go in.
 - **LEARNING** under a prediction: not enough recorded days yet.
 - **NO MARKET PRICES IN THE BINS YET** under STATUS: tick FINANCIAL ASSETS and
   record at least a day.

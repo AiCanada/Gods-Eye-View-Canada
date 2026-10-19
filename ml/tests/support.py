@@ -21,6 +21,9 @@ def child_env() -> dict:
     env = dict(os.environ)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
+    # MLflow's usage telemetry stays off, as in the app (server/shared/mlflowJobs.mjs).
+    env["MLFLOW_DISABLE_TELEMETRY"] = "true"
+    env["DO_NOT_TRACK"] = "true"
     return env
 
 

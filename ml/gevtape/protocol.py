@@ -117,6 +117,17 @@ def log(*parts):
     print(*parts, file=sys.stderr, flush=True)
 
 
+def utf8_streams():
+    """stdout and stderr as UTF-8 (unencodable text replaced): on Windows a
+    child's pipes are the ANSI code page, and MLflow prints emoji when a run
+    ends, which would raise UnicodeEncodeError in the middle of a job."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def now_ms() -> int:
     return int(time.time() * 1000)
 

@@ -1091,6 +1091,7 @@
             <li data-i18n-local>POST-TRAIN: keep another world model up to date with an adapter and its checkpoint.</li>
             <li data-i18n-local>Your own model: export the data, or use the reinforcement-learning environment. A custom LLM trains in CUSTOM LLM TRAINING, at the bottom of this tab.</li>
             <li data-i18n-local>TENSORFLOW: open a section to train a Keras world model, see every training curve in TensorBoard, export TFRecords, a SavedModel and TFLite, or post-train a Keras model. The GPU needs npm run tensorflow:wsl-setup once.</li>
+            <li data-i18n-local>MLFLOW: every training run is tracked in MLflow on this PC; open MLFLOW UI to compare runs, register a model as a CHAMPION or CHALLENGER version, serve it, evaluate the registered world models against persistence, or ask a custom LLM with a trace.</li>
           </ol>
           <p class="social-note" data-i18n-local>Full instructions: docs/TRAINING-GUIDE.md</p>
         </details>
@@ -1227,6 +1228,12 @@
              /api/tensorflow), on the GPU through WSL2 when it is set up.
              Hidden until the server answers. -->
         <div id="tensorflow-tools" class="ai-world-tf-tools" hidden></div>
+        <!-- MLFLOW (owner request 2026-10-17): six expandable sections,
+             MLFLOW TRACKING, MLFLOW UI, MODEL REGISTRY, MODEL SERVING,
+             EVALUATION and LLM TRACING (src/mlflowSetup.js, /api/mlflow),
+             all on this PC in .gev-data/mlflow/. Hidden until the server
+             answers. -->
+        <div id="mlflow-tools" class="ai-world-tf-tools ai-world-mlflow-tools" hidden></div>
         <!-- CUSTOM LLM TRAINING (owner request 2026-10-17: moved here from
              POWER UP, at the bottom of the tab): a language model trained on
              what the app records and on the owner's URLs and files

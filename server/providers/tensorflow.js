@@ -71,6 +71,8 @@ export function tensorflowProvider({
   createManager = createTensorflowManager,
   env = process.env,
   log = (line) => console.log(`[tensorflow] ${line}`),
+  /** MLFLOW TRACKING (server/providers/mlflow.js), when it is installed. */
+  tracker,
 } = {}) {
   const allow = makeRateLimiter({ windowMs: 60_000, max: 30, globalMax: 60 });
   let manager = null;
@@ -158,7 +160,7 @@ export function tensorflowProvider({
   };
 
   const install = (server) => {
-    manager = createManager({ root, env, log });
+    manager = createManager({ root, env, log, tracker });
     server.httpServer?.once?.('close', () => manager.close());
     server.middlewares.use(TENSORFLOW_API, async (req, res) => {
       try {
