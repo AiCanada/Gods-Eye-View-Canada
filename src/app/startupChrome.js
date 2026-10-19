@@ -2,6 +2,7 @@ import { initFirstRunExperience } from '../firstRunExperience.js';
 import { initUltraHelpPanel } from '../ultraHelpPanel.js';
 import { initAiWorldPanel } from '../aiWorldPanel.js';
 import { initAiWorldOverlay } from '../aiWorldOverlay.js';
+import { initDistillPanel } from '../distillPanel.js';
 import { viewCenterPoint } from '../locationClick.js';
 import { installPanelCornerResize } from '../ui/panelCornerResize.js';
 
@@ -23,6 +24,9 @@ export function startApplicationChrome({
   // Its predictions on the globe: drawn from the box's choice of domains,
   // removed with the shell.
   initializeAiWorldOverlay = initAiWorldOverlay,
+  // Fork: the AI Distillation box (owner request 2026-10-19) lives as long
+  // as the shell does. It is a no-op on a page without #distill-panel.
+  initializeDistill = initDistillPanel,
   // Every dashboard box resizes from its corner on desktop (owner request
   // 2026-10-16); removed with the shell.
   initializePanelResize = installPanelCornerResize,
@@ -70,6 +74,7 @@ export function startApplicationChrome({
   const aiWorldOverlay = signal.aborted
     ? null
     : initializeAiWorldOverlay?.({ signal, dataManager });
+  const distill = signal.aborted ? null : initializeDistill?.({ signal });
   const panelResize = signal.aborted
     ? null
     : initializePanelResize?.({ signal });
@@ -87,6 +92,7 @@ export function startApplicationChrome({
     ultraHelp?.destroy?.();
     aiWorld?.destroy?.();
     aiWorldOverlay?.destroy?.();
+    distill?.destroy?.();
     panelResize?.destroy?.();
     (await keySetup.catch(() => null))?.destroy();
   };

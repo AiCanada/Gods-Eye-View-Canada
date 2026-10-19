@@ -26,6 +26,7 @@ export const PANEL_SIZE_MIN = Object.freeze({ width: 240, height: 160 });
 /** Boxes with a larger floor (their rows need the room). */
 export const PANEL_SIZE_MIN_BY_ID = Object.freeze({
   'ai-world-panel': Object.freeze({ width: 360, height: 240 }),
+  'distill-panel': Object.freeze({ width: 360, height: 240 }),
 });
 /** One arrow-key step, in pixels (Shift: four). */
 export const PANEL_SIZE_STEP = 20;

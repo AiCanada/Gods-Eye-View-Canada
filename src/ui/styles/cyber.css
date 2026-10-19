@@ -210,6 +210,7 @@
     .social-panel-inner,
     .outbreak-panel-inner,
     .ai-world-panel-inner,
+    .distill-panel-inner,
     #pp-toggles:not(.collapsed),
     #pp-toggles.collapsed > .pp-header-row
   ) {
@@ -236,7 +237,8 @@
     .ultra-panel-inner,
     .social-panel-inner,
     .outbreak-panel-inner,
-    .ai-world-panel-inner
+    .ai-world-panel-inner,
+    .distill-panel-inner
   )
   > .panel-header {
   min-height: 28px;
@@ -324,7 +326,8 @@
     .ultra-panel-inner,
     .social-panel-inner,
     .outbreak-panel-inner,
-    .ai-world-panel-inner
+    .ai-world-panel-inner,
+    .distill-panel-inner
   )
   > .panel-header
   .panel-title {
@@ -346,7 +349,8 @@
     .ultra-panel-inner,
     .social-panel-inner,
     .outbreak-panel-inner,
-    .ai-world-panel-inner
+    .ai-world-panel-inner,
+    .distill-panel-inner
   )
   > .panel-header
   .panel-title::before {
@@ -376,7 +380,8 @@
     .ultra-panel-inner,
     .social-panel-inner,
     .outbreak-panel-inner,
-    .ai-world-panel-inner
+    .ai-world-panel-inner,
+    .distill-panel-inner
   )
   > .panel-header
   .panel-divider {
@@ -443,7 +448,8 @@
     #ultra-panel,
     #social-panel,
     #outbreak-panel,
-    #ai-world-panel
+    #ai-world-panel,
+    #distill-panel
   ):not(.collapsed) {
   left: 10px;
   width: calc(100% - 10px);
@@ -1728,7 +1734,8 @@
       #ultra-panel,
       #social-panel,
       #outbreak-panel,
-      #ai-world-panel
+      #ai-world-panel,
+      #distill-panel
     ) {
     --panel-expanded-width: var(--cyber-panel-width);
     width: var(--panel-expanded-width);
@@ -1743,7 +1750,8 @@
       #ultra-panel,
       #social-panel,
       #outbreak-panel,
-      #ai-world-panel
+      #ai-world-panel,
+      #distill-panel
     ).collapsed {
     width: var(--cyber-panel-collapsed-width);
   }
@@ -1757,7 +1765,8 @@
       #ultra-panel,
       #social-panel,
       #outbreak-panel,
-      #ai-world-panel
+      #ai-world-panel,
+      #distill-panel
     ).collapsed
     :is(
       .data-panel-inner,
@@ -1766,7 +1775,8 @@
       .ultra-panel-inner,
       .social-panel-inner,
       .outbreak-panel-inner,
-      .ai-world-panel-inner
+      .ai-world-panel-inner,
+      .distill-panel-inner
     ) {
     box-sizing: border-box;
     height: 50px;
@@ -2948,7 +2958,8 @@
     #sst-panel,
     #social-panel,
     #outbreak-panel,
-    #ai-world-panel
+    #ai-world-panel,
+    #distill-panel
   ).collapsed
   > :is(
     .ask-panel-inner,
@@ -2956,7 +2967,8 @@
     .sst-panel-inner,
     .social-panel-inner,
     .outbreak-panel-inner,
-    .ai-world-panel-inner
+    .ai-world-panel-inner,
+    .distill-panel-inner
   )
   > .panel-header
   .panel-title {
@@ -2971,7 +2983,8 @@
     #sst-panel,
     #social-panel,
     #outbreak-panel,
-    #ai-world-panel
+    #ai-world-panel,
+    #distill-panel
   ).collapsed
   > :is(
     .ask-panel-inner,
@@ -2979,7 +2992,8 @@
     .sst-panel-inner,
     .social-panel-inner,
     .outbreak-panel-inner,
-    .ai-world-panel-inner
+    .ai-world-panel-inner,
+    .distill-panel-inner
   )
   > .panel-header
   .panel-title::before {

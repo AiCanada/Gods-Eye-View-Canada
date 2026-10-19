@@ -159,7 +159,10 @@ scroll to **CUSTOM LLM TRAINING**, the last section of the tab.
    - the measured layer-asset links;
    - the data layers' hourly readings;
    - your custom URLs;
-   - your local sources.
+   - your local sources;
+   - the distilled answers: every ground truth from the AI DISTILLATION
+     tab, the question as the prompt and the ground truth as the answer
+     (`docs/AI-DISTILLATION.md`).
 3. **CUSTOM URLS.** Add any public https page; its text is fetched when
    training starts.
 4. **LOCAL SOURCES.** Add files or folders on this PC: text, Markdown, CSV,
@@ -259,7 +262,7 @@ published anywhere unless you do it.
 - **AI WORLD SERVER NOT READY**, or CUSTOM LLM TRAINING or the TENSORFLOW
   sections are missing near the bottom of the tab: restart `npm run dev`.
 - **RUNS ON · CPU ONLY** with a GPU in the PC: run `npm run
-  tensorflow:wsl-setup`, then CHECK AGAIN (step 5.1).
+tensorflow:wsl-setup`, then CHECK AGAIN (step 5.1).
 - **MLFLOW IS NOT INSTALLED**: `py -3.13 -m pip install mlflow`, then CHECK
   AGAIN. **MLFLOW SERVER · OFF (TRACKING WAITS…)**: you stopped it; START
   MLFLOW and the waiting runs go in.

@@ -51,6 +51,13 @@ export const LLM_SOURCES = Object.freeze([
   }),
   Object.freeze({ id: 'urls', label: 'CUSTOM URLS', class: 'unclear' }),
   Object.freeze({ id: 'local', label: 'LOCAL SOURCES', class: 'personal' }),
+  // AI DISTILLATION's ground truths (owner request 2026-10-19): outputs of
+  // the teachers' models, whose terms may limit training on them.
+  Object.freeze({
+    id: 'distilled',
+    label: 'DISTILLED ANSWERS (AI DISTILLATION)',
+    class: 'restricted',
+  }),
 ]);
 const SOURCE_IDS = new Set(LLM_SOURCES.map((s) => s.id));
 export const LLM_URL_MAX = 100;

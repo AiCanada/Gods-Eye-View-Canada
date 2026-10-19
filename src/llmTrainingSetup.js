@@ -44,6 +44,7 @@ export const LLM_SERVER_LABELS = Object.freeze([
   msgl('DATA LAYER READINGS (HOURLY BINS)'),
   msgl('CUSTOM URLS'),
   msgl('LOCAL SOURCES'),
+  msgl('DISTILLED ANSWERS (AI DISTILLATION)'),
   msgl('QWEN3.5-0.8B · DEFAULT · 1.7 GB · TRAINS ON THE GPU'),
   msgl('QWEN3.6-35B-A3B · 72 GB · GPU + RAM · SLOW'),
 ]);

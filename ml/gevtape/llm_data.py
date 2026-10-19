@@ -43,9 +43,10 @@ import numpy as np
 
 from . import reader as R
 
-SOURCES = ("news", "prices", "news-moves", "links", "readings", "urls", "local")
+SOURCES = ("news", "prices", "news-moves", "links", "readings", "urls", "local", "distilled")
+# Distilled answers are the outputs of the teachers' models: their providers' terms may limit training on them.
 SOURCE_CLASS = {"news": "nc", "prices": "unclear", "news-moves": "nc", "links": "unclear",
-                "readings": "unclear", "urls": "unclear", "local": "personal"}
+                "readings": "unclear", "urls": "unclear", "local": "personal", "distilled": "restricted"}
 TEXT_EXTENSIONS = frozenset({".txt", ".md", ".markdown", ".rst", ".csv", ".tsv", ".json", ".jsonl", ".ndjson",
                              ".html", ".htm", ".xml", ".log", ".py", ".js", ".mjs", ".ts", ".yaml", ".yml"})
 MAX_FILE_BYTES = 2 * 1024 * 1024
@@ -261,6 +262,28 @@ def local_docs(paths):
 # ---------------------------------------------------------------- build
 
 
+def distilled_pairs(distill_dir):
+    """AI DISTILLATION's ground truths (.gev-data/distill/<id>/dataset.jsonl): question, then ground truth."""
+    root = Path(distill_dir)
+    if not root.is_dir():
+        return
+    for path in sorted(root.glob("*/dataset.jsonl")):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            question = str(record.get("question") or "").strip()
+            answer = str(record.get("groundTruth") or "").strip()
+            if question and answer:
+                yield {"messages": [{"role": "user", "content": question},
+                                    {"role": "assistant", "content": answer}]}
+
+
 def _key(example):
     return hashlib.sha1(json.dumps(example, sort_keys=True).encode("utf-8")).hexdigest()
 
@@ -281,6 +304,7 @@ def build(data_root, out, sources, *, urls_dir=None, paths=()):
         "readings": lambda: reading_docs(root),
         "urls": lambda: url_docs(urls_dir),
         "local": lambda: local_docs(paths),
+        "distilled": lambda: distilled_pairs(root / "distill"),
     }
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)

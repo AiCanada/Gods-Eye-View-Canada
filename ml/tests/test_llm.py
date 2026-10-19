@@ -92,6 +92,27 @@ class LlmDataTest(unittest.TestCase):
         finally:
             tmp.close()
 
+    def test_distilled_ground_truths_become_question_and_answer_pairs(self):
+        tmp = TempDir()
+        try:
+            root = tmp.path / ".gev-data"
+            run = root / "distill" / "h3-abc"
+            run.mkdir(parents=True)
+            rows = [{"question": "What moved before crude?", "groundTruth": "Shipping rates.", "class": "restricted"},
+                    {"question": "No answer", "groundTruth": ""}]
+            (run / "dataset.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows) + "not json\n",
+                                               encoding="utf-8")
+            out = tmp.path / "data"
+            m = D.build(root, out, ["distilled"])
+            self.assertEqual(m["counts"]["distilled"], 1, "a record with no ground truth is not an example")
+            self.assertEqual(m["classes"], ["restricted"])
+            lines = [json.loads(x) for f in ("train.jsonl", "heldout.jsonl")
+                     for x in (out / f).read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(lines[0]["messages"], [{"role": "user", "content": "What moved before crude?"},
+                                                    {"role": "assistant", "content": "Shipping rates."}])
+        finally:
+            tmp.close()
+
 
 class LlmTrainTest(unittest.TestCase):
     @classmethod

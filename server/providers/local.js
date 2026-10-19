@@ -44,6 +44,7 @@ import { aiWorldProvider } from './aiWorld.js';
 import { llmTrainingProvider } from './llmTraining.js';
 import { tensorflowProvider } from './tensorflow.js';
 import { mlflowProvider } from './mlflow.js';
+import { distillProvider } from './distill.js';
 import { gnssIntegrityProxy } from './gnssIntegrity.js';
 
 /**
@@ -130,6 +131,9 @@ function localProviderPlugins({
     // Keras training, TensorBoard, TFRecord/SavedModel/TFLite export and
     // post-training, on the GPU through WSL2 when it is set up.
     tensorflowProvider({ root: sourceRoot, tracker: mlflow.tracker }),
+    // AI DISTILLATION (owner request 2026-10-19): teacher LLMs and bots
+    // answer, review and correct, one question at a time, for ground truths.
+    distillProvider({ root: sourceRoot }),
     keySetupEndpoint({ sourceRoot, onEnvSaved: noteOutboundEnvSaved }),
   ];
 }

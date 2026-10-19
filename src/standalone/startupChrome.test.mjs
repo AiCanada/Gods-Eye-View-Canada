@@ -63,6 +63,14 @@ function fixture() {
         },
       };
     },
+    // The AI Distillation box, counted the same way.
+    initDistillPanel() {
+      return {
+        destroy: () => {
+          aiWorldDestroyed += 1;
+        },
+      };
+    },
     // Every box's corner grip, counted the same way.
     installPanelCornerResize() {
       return {
@@ -128,9 +136,9 @@ test('welcome waits for restoration, minimum delay, and the cover transition', a
   // The Ultra box is started beside Provider Settings and goes down with it:
   // its poll and its map events must not outlive the shell.
   assert.equal(f.ultraCount(), 1);
-  // So do the AI World box, its overlay and the boxes' corner grips:
-  // neither its status poll, its predictions nor a grip may outlive the shell.
-  assert.equal(f.aiWorldCount(), 3);
+  // So do the AI World box, its overlay, the AI Distillation box and the
+  // boxes' corner grips: no status poll, prediction or grip outlives the shell.
+  assert.equal(f.aiWorldCount(), 4);
   assert.equal(f.timers.size, 0);
 });
 

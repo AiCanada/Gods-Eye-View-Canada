@@ -502,14 +502,15 @@ test('Cyber side panels share one width and one framed surface material', () => 
     cyberStyles,
     /#global-context-panel #radio-panel\.collapsed \{\s*width: 100%;/,
   );
-  // The AI World Training Sim tab (2026-10-13) is the left stack's last member.
+  // The AI World Training Sim tab (2026-10-13) and AI Distillation
+  // (2026-10-19) are the left stack's last members.
   assert.match(
     cyberStyles,
-    /#left-panel-stack\s*> :is\(\s*#data-panel,\s*#scene-panel,\s*#ask-panel,\s*#ultra-panel,\s*#social-panel,\s*#outbreak-panel,\s*#ai-world-panel\s*\)\.collapsed \{\s*width: var\(--cyber-panel-collapsed-width\);/,
+    /#left-panel-stack\s*> :is\(\s*#data-panel,\s*#scene-panel,\s*#ask-panel,\s*#ultra-panel,\s*#social-panel,\s*#outbreak-panel,\s*#ai-world-panel,\s*#distill-panel\s*\)\.collapsed \{\s*width: var\(--cyber-panel-collapsed-width\);/,
   );
   assert.match(
     cyberStyles,
-    /:is\(\s*#data-panel,\s*#scene-panel,\s*#ask-panel,\s*#ultra-panel,\s*#social-panel,\s*#outbreak-panel,\s*#ai-world-panel\s*\)\.collapsed\s+:is\(\s*\.data-panel-inner,\s*\.scene-panel-inner,\s*\.ask-panel-inner,\s*\.ultra-panel-inner,\s*\.social-panel-inner,\s*\.outbreak-panel-inner,\s*\.ai-world-panel-inner\s*\) \{[\s\S]*?height: 50px;[\s\S]*?min-height: 50px;/,
+    /:is\(\s*#data-panel,\s*#scene-panel,\s*#ask-panel,\s*#ultra-panel,\s*#social-panel,\s*#outbreak-panel,\s*#ai-world-panel,\s*#distill-panel\s*\)\.collapsed\s+:is\(\s*\.data-panel-inner,\s*\.scene-panel-inner,\s*\.ask-panel-inner,\s*\.ultra-panel-inner,\s*\.social-panel-inner,\s*\.outbreak-panel-inner,\s*\.ai-world-panel-inner,\s*\.distill-panel-inner\s*\) \{[\s\S]*?height: 50px;[\s\S]*?min-height: 50px;/,
   );
   assert.match(
     cyberStyles,

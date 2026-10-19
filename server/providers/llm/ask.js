@@ -398,17 +398,39 @@ export function buildLlmAskCall(
   env = process.env,
   answerTokens = null,
 ) {
-  const sampling = llmModelSampling(settings.model);
-  const budget = answerTokens ?? llmMaxTokens(env);
-  const payload = {
-    model: settings.model,
-    messages: [
+  return buildLlmChatCall(
+    provider,
+    settings,
+    [
       { role: 'system', content: LLM_ASK_INSTRUCTIONS },
       {
         role: 'user',
         content: `SCENE:\n${JSON.stringify(context ?? {})}\n\nQUESTION:\n${question}`,
       },
     ],
+    env,
+    answerTokens,
+  );
+}
+
+/**
+ * One /chat/completions call with these messages, asked the way the Ask
+ * panel asks this provider and model (sampling, thinking, reasoning effort).
+ * AI DISTILLATION's teachers use it with their own messages
+ * (server/shared/distillTeachers.mjs).
+ */
+export function buildLlmChatCall(
+  provider,
+  settings,
+  messages,
+  env = process.env,
+  answerTokens = null,
+) {
+  const sampling = llmModelSampling(settings.model);
+  const budget = answerTokens ?? llmMaxTokens(env);
+  const payload = {
+    model: settings.model,
+    messages,
     max_tokens: sampling ? Math.max(budget, sampling.minTokens) : budget,
     temperature: sampling ? sampling.temperature : 0.3,
     stream: false,

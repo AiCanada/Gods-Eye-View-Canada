@@ -2852,6 +2852,8 @@
       "src/llmTrainingSetup.js",
       "src/tensorflowSetup.js",
       "src/mlflowSetup.js",
+      "src/distillPanel.js",
+      "src/distillCore.mjs",
       "src/aiWorldOverlay.js",
       "src/askOutputFind.js",
       "src/askOverview.js",

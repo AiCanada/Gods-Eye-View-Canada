@@ -31,22 +31,10 @@ import {
   readSkillCheckAnswer,
 } from '../../src/ultraSkillCheck.mjs';
 import {
-  GROK_BOT_GATEWAY_ANSWER_BYTES,
-  GROK_BOT_GATEWAY_COMMAND_MS,
   GROK_BOT_GATEWAY_DEFAULT_AGENT,
-  GROK_BOT_GATEWAY_POLL_MS,
-  GROK_BOT_GATEWAY_TOTAL_MS,
-  GROK_BOT_GATEWAY_WAIT_MS,
-  gatewayAgentAwaitingUser,
-  gatewayAgentBusy,
-  gatewayAgentId,
-  gatewayErrorText,
   grokBotGatewayOrigin,
-  listGatewayAgents,
-  pickGatewayAgent,
-  readGatewayReply,
-  sendPromptAccepted,
 } from '../../src/grokBotGateway.mjs';
+import { askGrokBotComputer, readCapped } from '../shared/grokBotComputer.mjs';
 
 /** One bot's body is a few hundred bytes; this is far beyond any of them. */
 const SWARM_BODY_BYTES = 8 * 1024;
@@ -494,9 +482,6 @@ function webhookError(status, raw, key) {
     : `Grok Bot refused the task (HTTP ${status})`;
 }
 
-/** Bots on a sweep now (gateway origin + bot id): one sweep a bot at a time. */
-const computerSweeps = new Set();
-
 /**
  * GROK BOT SWARM without a Grok Bot key: one prompt of the swarm's task to
  * a bot on the Grok Bot computer (POWER UP → GROK BOT — COMPUTER), then wait
@@ -661,161 +646,26 @@ async function handleGrokBotComputer(
     send(res, 400, { error: plan.error });
     return;
   }
-  const deadlineAll = startedAt + GROK_BOT_GATEWAY_TOTAL_MS;
   const disconnect = new AbortController();
   res.on('close', () => disconnect.abort());
-  const command = async (name, payload) => {
-    const left = Math.min(
-      GROK_BOT_GATEWAY_COMMAND_MS,
-      deadlineAll - Date.now(),
-    );
-    if (left <= 0) {
-      const err = new Error('Out of time');
-      err.name = 'TimeoutError';
-      throw err;
-    }
-    const response = await fetchImpl(`${gate.origin}/api/${name}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${gate.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-      redirect: 'error',
-      signal: AbortSignal.any([AbortSignal.timeout(left), disconnect.signal]),
-    });
-    const answer = await readCapped(response, GROK_BOT_GATEWAY_ANSWER_BYTES);
-    let data = {};
-    try {
-      data = answer ? JSON.parse(answer) : {};
-    } catch {
-      data = { message: answer };
-    }
-    if (!response.ok) {
-      const err = new Error(
-        gatewayErrorText(
-          data?.error?.message || data?.error || data?.message || answer,
-          response.status,
-          gate.token,
-        ),
-      );
-      err.status = 502;
-      throw err;
-    }
-    return data;
-  };
-  let lock = '';
-  let taken = false;
   try {
-    const roster = listGatewayAgents(await command('listAgents', {}));
-    const chosen = pickGatewayAgent(roster, gate.named);
-    if (!chosen) {
-      send(res, 502, {
-        error: roster.length
-          ? `No Grok Bot named ${gate.agent}. Set BOT on POWER UP → GROK BOT — COMPUTER.`
-          : 'No bots on that Grok Bot computer.',
-      });
-      return;
-    }
-    const agentId = gatewayAgentId(chosen);
-    const key = `${gate.origin} ${agentId}`;
-    if (computerSweeps.has(key)) {
-      send(res, 409, { error: job.busy });
-      return;
-    }
-    computerSweeps.add(key);
-    lock = key;
-    // The last line before the task: a new report must differ from it. When
-    // it cannot be read, a report counts only after the bot was seen working.
-    let before = '';
-    let beforeKnown = true;
-    try {
-      before = readGatewayReply(
-        await command('getAgentTranscriptTail', { id: agentId, limit: 12 }),
-      );
-    } catch (error) {
-      if (disconnect.signal.aborted) return;
-      if (error?.name === 'TimeoutError' && Date.now() >= deadlineAll) {
-        throw error;
-      }
-      beforeKnown = false;
-    }
-    const sent = await command('sendPrompt', {
-      agentId,
+    const reply = await askGrokBotComputer({
+      gate,
       prompt: [job.intro, plan.text].filter(Boolean).join('\n\n'),
+      fetchImpl,
+      signal: disconnect.signal,
+      startedAt,
+      busyMessage: job.busy,
     });
-    if (!sendPromptAccepted(sent)) {
-      send(res, 502, { error: 'Grok Bot did not take the task.' });
-      return;
-    }
-    taken = true;
-    // Room for one last pair of calls after the wait.
-    const deadline = Math.min(
-      Date.now() + GROK_BOT_GATEWAY_WAIT_MS,
-      deadlineAll - GROK_BOT_GATEWAY_COMMAND_MS,
-    );
-    let reply = '';
-    let awaiting = false;
-    let sawBusy = false;
-    let stillBusy = false;
-    for (;;) {
-      if (disconnect.signal.aborted) return;
-      const live = listGatewayAgents(await command('listAgents', {}));
-      const row =
-        live.find((item) => gatewayAgentId(item) === agentId) || chosen;
-      if (gatewayAgentAwaitingUser(row)) {
-        awaiting = true;
-        break;
-      }
-      const busy = gatewayAgentBusy(row);
-      if (busy) sawBusy = true;
-      stillBusy = busy;
-      const tail = readGatewayReply(
-        await command('getAgentTranscriptTail', { id: agentId, limit: 12 }),
-      );
-      if (tail && !busy && (beforeKnown ? tail !== before : sawBusy)) {
-        reply = tail;
-        break;
-      }
-      if (Date.now() + GROK_BOT_GATEWAY_POLL_MS > deadline) break;
-      await new Promise((resolve) => {
-        const timer = setTimeout(resolve, GROK_BOT_GATEWAY_POLL_MS);
-        disconnect.signal.addEventListener('abort', () => clearTimeout(timer), {
-          once: true,
-        });
-      });
-    }
-    if (awaiting) {
-      send(res, 504, {
-        error:
-          'Grok Bot is waiting for you in the app (an approval). Finish it there, then press again.',
-      });
-      return;
-    }
-    if (!reply) {
-      send(res, 504, {
-        error: stillBusy
-          ? 'Grok Bot is still working. Its report will be in its chat in Grok Bot.'
-          : 'Grok Bot did not finish in time.',
-      });
-      return;
-    }
     send(res, 200, job.answer(reply, plan));
   } catch (error) {
     if (disconnect.signal.aborted) return;
-    const timedOut =
-      error?.name === 'TimeoutError' || error?.name === 'AbortError';
     send(res, error?.status || 504, {
-      error: timedOut
-        ? taken
-          ? 'Grok Bot did not finish in time. Its report will be in its chat in Grok Bot.'
-          : 'Grok Bot did not take the task in time.'
-        : error?.message && !String(error.message).includes(gate.token)
+      error:
+        error?.message && !String(error.message).includes(gate.token)
           ? error.message
           : 'The task could not reach Grok Bot.',
     });
-  } finally {
-    if (lock) computerSweeps.delete(lock);
   }
 }
 
@@ -938,28 +788,6 @@ async function handleChiefOfStaff(req, res, allow, allowedHosts, fetchImpl) {
         : 'The task could not reach Grok Bot.',
     });
   }
-}
-
-/** Up to `limit` bytes of an answer as text; the rest is not read. */
-async function readCapped(response, limit) {
-  const chunks = [];
-  let total = 0;
-  try {
-    for await (const chunk of response.body || []) {
-      total += chunk.length;
-      if (total > limit) break;
-      chunks.push(Buffer.from(chunk));
-    }
-  } catch {
-    /* what arrived is enough */
-  } finally {
-    try {
-      await response.body?.cancel();
-    } catch {
-      /* already closed */
-    }
-  }
-  return Buffer.concat(chunks).toString('utf8');
 }
 
 /**

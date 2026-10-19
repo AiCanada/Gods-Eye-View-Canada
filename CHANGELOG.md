@@ -1,5 +1,37 @@
 # Changelog
 
+- AI DISTILLATION, a new left tab under the AI World tab (owner request
+  2026-10-19; rulings: unlimited sub-headings, each its own saved run; the
+  custom LLMs trained here are teachers too; heading 2 offers both the best
+  graded answer and one a reviewer writes; every Grok Bot and OpenAI Dots
+  fallback). Seven headings, one question at a time: one teacher's answer;
+  many teachers graded by adversarial reviewers; self-correction once and
+  twice with the response id sent back; a second, different teacher; and
+  their mixes (`src/distillCore.mjs` plans each heading's turns). The owner
+  adds as many sub-headings under each as wanted, each with its own
+  questions (typed or from a CSV file), teachers, prompts and dataset in
+  `.gev-data/distill/` (`server/shared/distillJobs.mjs`, routes
+  `/api/distill`). The teachers are the Ask panel's LLMs, GROK BOT (its key,
+  the Grok Bot computer, the Chief of Staff webhook, the app), OPENAI DOTS
+  (its key, the ChatGPT app) and the custom LLMs from CUSTOM LLM TRAINING
+  (`server/shared/distillTeachers.mjs`). The apps' replies come back by
+  themselves, best effort (owner, 2026-10-19: "use same method in fallback
+  methods to copy and paste answers back in GEVC", "still uses DOTs
+  automation follow best effort"): the prompt is pasted as the swarm pastes
+  a task, tagged on its last line, and `scripts/read-desktop-reply.ps1`
+  waits for the reply after the tag through Windows UI Automation, then
+  brings it back with ChatGPT's own Copy response button or reads Grok Bot's
+  text (`server/shared/desktopReply.mjs`, one app at a time; the Chief of
+  Staff webhook's reply is read from the Grok Bot window too). When that
+  fails, the run waits until the owner pastes the reply. ESTIMATE shows the
+  paid calls before CONFIRM START; PAUSE, CONTINUE and STOP as in the other
+  tabs; EXPORT as JSONL or CSV; CUSTOM LLM TRAINING gains the source
+  DISTILLED ANSWERS (class restricted). The Grok Bot computer's ask is shared
+  with the social swarm (`server/shared/grokBotComputer.mjs`), and the Ask
+  panel's chat call is reusable (`buildLlmChatCall`). From the phone mirror
+  every removal is refused. New strings in Quebec French, Inuktitut and
+  Ancient Egyptian. Guide: `docs/AI-DISTILLATION.md`.
+
 - MLFLOW in the AI World tab (owner request 2026-10-17; ruling: all six,
   local only): six expandable sections below TENSORFLOW
   (`src/mlflowSetup.js`, routes `/api/mlflow`, `server/shared/mlflowJobs.mjs`),

@@ -256,6 +256,7 @@
   #left-panel-stack > #social-panel,
   #left-panel-stack > #outbreak-panel,
   #left-panel-stack > #ai-world-panel,
+  #left-panel-stack > #distill-panel,
   #left-panel-stack > #street-level-panel,
   #left-panel-stack > #global-context-panel,
   #left-panel-stack > #scene-panel,
@@ -266,6 +267,7 @@
   #left-panel-stack > #social-panel.collapsed,
   #left-panel-stack > #outbreak-panel.collapsed,
   #left-panel-stack > #ai-world-panel.collapsed,
+  #left-panel-stack > #distill-panel.collapsed,
   #left-panel-stack > #street-level-panel.collapsed,
   #left-panel-stack > #global-context-panel.collapsed,
   #left-panel-stack > #scene-panel.collapsed {

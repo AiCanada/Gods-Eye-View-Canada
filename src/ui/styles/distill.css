@@ -1,0 +1,261 @@
+/* AI Distillation. A left-stack box under the AI World Training Sim: its
+   glass, the collapse chrome and its inputs come from the shared rules
+   (social.css, scenes.css, cyber.css name #distill-panel beside
+   #ai-world-panel). This file is only the box's own rows and sections, laid
+   out like the AI World box's (aiWorld.css). */
+#distill-panel {
+  --distill-ready: #19e6b0;
+  --distill-paste: #ffd21a;
+  --distill-off: #9aa4ad;
+  --distill-restricted: #ff2a2a;
+}
+
+#distill-panel:not(.collapsed) .panel-header .panel-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+#distill-panel:not(.collapsed) .panel-header .panel-divider {
+  flex: 0 0 12px;
+}
+
+#distill-panel .panel-header .panel-collapse-btn {
+  flex: 0 0 auto;
+}
+
+#distill-panel .distill-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#distill-panel .distill-body[hidden] {
+  display: none;
+}
+
+/* INSTRUCTIONS, the headings and each sub-heading fold like the AI World
+   box's INSTRUCTIONS. */
+#distill-panel .distill-howto summary,
+#distill-panel .distill-heading > summary,
+#distill-panel .distill-feature > summary,
+#distill-panel .distill-prompts > summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+#distill-panel .distill-heading > summary {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+#distill-panel .distill-heading[open],
+#distill-panel .distill-feature[open],
+#distill-panel .distill-prompts[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#distill-panel .distill-heading {
+  padding: 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#distill-panel .distill-feature {
+  margin-left: 8px;
+  padding: 6px 0 6px 8px;
+  border-left: 2px solid rgba(0, 212, 255, 0.35);
+}
+
+#distill-panel .distill-howto ol {
+  margin: 6px 0;
+  padding-left: 16px;
+  list-style: decimal;
+}
+
+#distill-panel .distill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+#distill-panel .distill-list:empty,
+#distill-panel .distill-list[hidden] {
+  display: none;
+}
+
+#distill-panel .distill-list li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#distill-panel .distill-howto ol.distill-list {
+  list-style: decimal;
+  padding-left: 16px;
+}
+
+#distill-panel .distill-note,
+#distill-panel .distill-label {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+#distill-panel .distill-label {
+  letter-spacing: 1.2px;
+  color: var(--text-primary);
+}
+
+/* Teachers: one row each, its state as a swatch. */
+#distill-panel .distill-teacher {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+#distill-panel .distill-swatch {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  background: color-mix(in srgb, currentColor 25%, transparent);
+  color: var(--distill-off);
+}
+
+#distill-panel [data-state='ready'] .distill-swatch {
+  color: var(--distill-ready);
+}
+
+#distill-panel [data-state='paste'] .distill-swatch {
+  color: var(--distill-paste);
+}
+
+/* A tick box per teacher (heading 2's answers and reviewers). */
+#distill-panel .distill-ticks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px 10px;
+}
+
+#distill-panel .distill-tick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+#distill-panel .distill-tick input {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+#distill-panel .distill-tick:has(input:disabled) {
+  opacity: 0.55;
+}
+
+#distill-panel .distill-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+#distill-panel .distill-fields select,
+#distill-panel .distill-fields input {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#distill-panel textarea {
+  width: 100%;
+  min-height: 64px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid rgba(0, 212, 255, 0.28);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+#distill-panel textarea[readonly] {
+  min-height: 90px;
+  color: var(--text-dim);
+}
+
+#distill-panel .distill-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#distill-panel a.scene-btn {
+  text-decoration: none;
+}
+
+#distill-panel a.scene-btn[hidden] {
+  display: none;
+}
+
+#distill-panel input[type='file'] {
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+/* The run's line and a reply to paste back. */
+#distill-panel .distill-run[data-ok='false'],
+#distill-panel .distill-error {
+  color: #ff8a8a;
+}
+
+#distill-panel .distill-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--distill-paste) 55%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--distill-paste) 8%, transparent);
+}
+
+#distill-panel .distill-pending[hidden] {
+  display: none;
+}
+
+#distill-panel .distill-danger {
+  border-color: rgba(255, 42, 42, 0.6);
+  color: #ff8a8a;
+}
