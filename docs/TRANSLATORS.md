@@ -38,7 +38,7 @@ Changing English text changes its key: the old translation becomes unused and th
 
 ## The fork's own tabs
 
-The five tabs on the left that God's Eye View Canada adds, and the POWER UP chip's count, are translated only into the languages listed in `src/i18n/fork-locales.json` (now `fr-CA`, `iu` and `egy`); every other language shows them in English. Their entries live in the same catalog file, and `--missing` lists them with the rest. To translate them into another language, add its code to `src/i18n/fork-locales.json` once its catalog holds them: from then on the check requires them.
+The six tabs on the left that God's Eye View Canada adds, and the POWER UP chip's count, are translated only into the languages listed in `src/i18n/fork-locales.json` (now `es`, `fr-CA`, `iu` and `egy`); every other language shows them in English. Their entries live in the same catalog file, and `--missing` lists them with the rest. To translate them into another language, add its code to `src/i18n/fork-locales.json` once its catalog holds them: from then on the check requires them.
 
 ## Fixing a translation
 

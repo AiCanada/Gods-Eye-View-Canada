@@ -163,15 +163,14 @@ test('the roster: the Ask panel models with keys, Grok Bot and OpenAI Dots by ev
     '{}',
   );
   const none = teacherRoster({ env: {}, dataRoot });
-  // Every Ask panel model is listed, none ready without its key.
-  const llms = none.filter((x) => x.kind === 'llm');
-  assert.ok(llms.length >= 4);
-  assert.ok(llms.every((x) => x.id.startsWith('llm:') && !x.ready));
   assert.deepEqual(
-    none
-      .filter((x) => x.kind !== 'llm')
-      .map((x) => `${x.id}:${x.ready}:${x.routes.join('/')}`),
+    none.map((x) => `${x.id}:${x.ready}:${x.routes.join('/')}`),
     [
+      'llm:nvidia:false:',
+      'llm:xai:false:',
+      'llm:openrouter:false:',
+      'llm:custom:false:',
+      'llm:anthropic:false:',
       'grok-bot:true:desktop',
       'openai-dots:true:desktop',
       'local:mine:true:local',

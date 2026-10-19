@@ -4,7 +4,7 @@
  * and open AI dots"): who can answer, and one call to each.
  *
  *   llm:<id>      the Ask panel's models (NVIDIA NIM, xAI Grok, OpenRouter,
- *                 the custom endpoint and the rest), their POWER UP keys,
+ *                 Anthropic, the custom endpoint), their POWER UP keys,
  *                 one /chat/completions call (server/providers/llm/ask.js)
  *   grok-bot      GROK BOT, every way the swarm reaches it, in order: its own
  *                 key (xAI Responses, web search), the Grok Bot computer (the

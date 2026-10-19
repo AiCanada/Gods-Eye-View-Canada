@@ -293,7 +293,7 @@ test('tn() shows a caller-formatted count and still picks the form by number', (
   }
 });
 
-test('the fork tabs: tl() and tln() are Quebec French in fr-CA, English in Spanish and Russian', () => {
+test('the fork tabs: tl() and tln() are Quebec French in fr-CA, Spanish in es, English in Russian', () => {
   const title = 'AI RISK & TRUTH ASSESSMENT';
   const files = (count) => tln(count, '{count} FILE', '{count} FILES');
   setLocale('fr-CA');
@@ -303,15 +303,21 @@ test('the fork tabs: tl() and tln() are Quebec French in fr-CA, English in Spani
   assert.equal(files(2), '2 FICHIERS');
   assert.equal(files(1000000), '1000000 DE FICHIERS');
   assert.equal(tl('NOT IN A CATALOG {n}', { n: 3 }), 'NOT IN A CATALOG 3');
-  for (const locale of ['es', 'ru']) {
-    setLocale(locale);
-    assert.equal(tl(title), title, locale);
-    assert.equal(tl('OPEN', { context: 'licence' }), 'OPEN', locale);
-    assert.equal(files(2), '2 FILES', locale);
-    // English even where the locale translates the same text elsewhere.
-    assert.notEqual(t('Live Flights'), 'Live Flights', locale);
-    assert.equal(tl('Live Flights'), 'Live Flights', locale);
-  }
+  // Spanish has the fork tabs too (owner, 2026-10-19: "Finish coding for all Espanola").
+  setLocale('es');
+  assert.equal(tl(title), 'EVALUACIÓN DE RIESGO Y VERDAD CON IA');
+  assert.equal(tl('OPEN', { context: 'licence' }), 'ABIERTA');
+  assert.equal(files(1), '1 ARCHIVO');
+  assert.equal(files(2), '2 ARCHIVOS');
+  assert.equal(files(1000000), '1000000 DE ARCHIVOS');
+  assert.equal(tl('NOT IN A CATALOG {n}', { n: 3 }), 'NOT IN A CATALOG 3');
+  setLocale('ru');
+  assert.equal(tl(title), title);
+  assert.equal(tl('OPEN', { context: 'licence' }), 'OPEN');
+  assert.equal(files(2), '2 FILES');
+  // English even where the locale translates the same text elsewhere.
+  assert.notEqual(t('Live Flights'), 'Live Flights');
+  assert.equal(tl('Live Flights'), 'Live Flights');
 });
 
 test('Inuktitut: its tag, syllabic text, the dual plural, the fork tabs and Canadian number marks', () => {

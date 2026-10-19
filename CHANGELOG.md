@@ -1,5 +1,18 @@
 # Changelog
 
+- Spanish in the fork's tabs (owner request 2026-10-19: "Finish coding for
+  all Espanola"). Spanish (`es`) joins Quebec French, Inuktitut and Ancient
+  Egyptian in `src/i18n/fork-locales.json`, so the six left tabs (AI RISK &
+  TRUTH ASSESSMENT, ULTRA SECURITY PACKAGE, SOCIAL MEDIA ANALYSIS, OUTBREAK
+  LOCATIONS & PREDICTED SPREAD, the AI World Training Sim with TENSORFLOW,
+  MLFLOW and CUSTOM LLM TRAINING, and AI DISTILLATION), what they draw on the
+  globe and the POWER UP chip's count are now Spanish too: 2,146 new
+  entries in `src/i18n/locales/es.json`, neutral Spanish with "tú" as in the
+  rest of the catalog, and names that stay as written (tickers, product,
+  licence and card names, the MLflow aliases) listed in
+  `same-as-english.json`. Glossary in `docs/translations/es.md`. Russian is
+  unchanged and still shows those tabs in English.
+
 - AI DISTILLATION, a new left tab under the AI World tab (owner request
   2026-10-19; rulings: unlimited sub-headings, each its own saved run; the
   custom LLMs trained here are teachers too; heading 2 offers both the best

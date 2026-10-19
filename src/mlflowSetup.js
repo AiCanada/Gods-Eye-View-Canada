@@ -16,8 +16,8 @@
  * (server/providers/mlflow.js). Built once and updated in place, so an open
  * section stays open and a box being typed in keeps its text.
  *
- * The text is marked with tl() and tln(): Quebec French, Inuktitut and
- * Ancient Egyptian in the fork locales, English in every other.
+ * The text is marked with tl() and tln(): Spanish, Quebec French,
+ * Inuktitut and Ancient Egyptian in the fork locales, English in every other.
  */
 import { agoLabel, formatCount } from './aiWorldSelection.mjs';
 import { localDigits, msgl, tl, tln } from './i18n/index.js';

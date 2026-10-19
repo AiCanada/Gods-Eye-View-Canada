@@ -211,10 +211,11 @@ function lookupLocal(text) {
 }
 
 /**
- * The fork's own tabs (the five on the left: AI Risk & Truth Assessment,
+ * The fork's own tabs (the six on the left: AI Risk & Truth Assessment,
  * Ultra Security Package, Social Media Analysis, Outbreak, the AI World
- * Training Sim) are translated only into the locales listed in
- * src/i18n/fork-locales.json (Quebec French, Inuktitut, Ancient Egyptian).
+ * Training Sim, AI Distillation) are translated only into the locales listed
+ * in src/i18n/fork-locales.json (Spanish, Quebec French, Inuktitut, Ancient
+ * Egyptian).
  * tl() and tln() mark their text as t() and tn() do; any other locale shows
  * the English, without a missing-translation warning, even where its catalog
  * has the same English for the rest of the page. `npm run i18n` requires

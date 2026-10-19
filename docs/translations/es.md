@@ -73,3 +73,54 @@ The `many` form is the `other` text with «de» after the number: «{count} de c
 | PITCH / HGT (CCTV calibration chips)          | INCL. / ALT.                                                      |
 | NOT AN ALL-CLEAR                              | NO IMPLICA TODO DESPEJADO                                         |
 | click / click to …                            | haz clic / clic para …                                            |
+
+## The fork's own tabs
+
+Spanish is listed in `src/i18n/fork-locales.json` (owner request,
+2026-10-19: "Finish coding for all Espanola"), so it also translates God's
+Eye View Canada's tabs on the left, what they draw on the globe and the
+POWER UP chip's count; Russian shows them in English ([I18N.md](../I18N.md),
+"The fork's own tabs"). Their glossary:
+
+| English                                       | Español                                                          |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| AI RISK & TRUTH ASSESSMENT (tab)              | EVALUACIÓN DE RIESGO Y VERDAD CON IA                             |
+| ULTRA SECURITY PACKAGE / package              | PAQUETE DE SEGURIDAD ULTRA / paquete                             |
+| SOCIAL MEDIA ANALYSIS                         | ANÁLISIS DE REDES SOCIALES                                       |
+| OUTBREAK LOCATIONS & PREDICTED SPREAD         | LUGARES DE BROTES Y PROPAGACIÓN PREVISTA                         |
+| ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM    | SIMULADOR DE ENTRENAMIENTO DEL MUNDO CON INTELIGENCIA ARTIFICIAL |
+| AI DISTILLATION                               | DESTILACIÓN DE IA                                                |
+| POWER UP (in a sentence)                      | ENCENDER, as the chip reads                                      |
+| this PC / this computer                       | este PC                                                          |
+| outbreak / spread / commuting                 | brote / propagación / desplazamientos diarios                    |
+| SCAN TRAVEL / HOW CONTAGIOUS                  | ESCANEAR VIAJES / NIVEL DE CONTAGIO                              |
+| superspreading / fatality / lockdown          | supercontagio / letalidad / confinamiento                        |
+| SEND HELP / STAND DOWN / EXTEND HELP          | PEDIR AYUDA / FIN DE ALERTA / PROLONGAR AYUDA                    |
+| helper / token / token holder                 | ayudante / token / destinatario del token                        |
+| Ultra cell                                    | teléfono Ultra                                                   |
+| NETWORK ON / NETWORK OFF / HELP NETWORK       | RED ACTIVA / RED INACTIVA / RED DE AYUDA                         |
+| home list (UPDATE HOME LIST)                  | mi lista (ACTUALIZAR MI LISTA)                                   |
+| skill / CONFIRMED / NO CONFIRMATION           | habilidad / CONFIRMADO / SIN CONFIRMACIÓN                        |
+| REJECTED CLAIM                                | AFIRMACIÓN RECHAZADA                                             |
+| bot / swarm / Chief of Staff                  | bot / enjambre / jefe de gabinete                                |
+| check-ins (social platforms)                  | registros de visitas                                             |
+| world model / train / post-train              | modelo del mundo / entrenar / postentrenar                       |
+| binned day / BINNING / bins                   | día agregado / AGREGANDO / agregados                             |
+| epoch / loss / held-out                       | época / pérdida / reservado (datos reservados)                   |
+| checkpoint / adapter / INFER                  | punto de control / adaptador / INFERIR                           |
+| FINANCIAL ASSETS / PRICE MOVES                | ACTIVOS FINANCIEROS / MOVIMIENTOS DE PRECIOS                     |
+| licence classes OPEN, NC, RESTRICTED, UNCLEAR | ABIERTA, NC, RESTRINGIDA, INCIERTA                               |
+| PERSONAL, STATIC                              | PERSONAL, ESTÁTICA                                               |
+| ground truth / teacher / reviewer / writer    | verdad fundamental / profesor / revisor / redactor               |
+| heading (AI DISTILLATION) / prompt            | sección / prompt                                                 |
+| adversarial review / grade                    | revisión adversaria / calificar                                  |
+| run (a job) / call (a paid request)           | ejecución / llamada                                              |
+
+The MLflow aliases CHAMPION and CHALLENGER stay in English: they are the
+names the registry stores. The licence notes on the AI World rows are
+translated; licence names (CC BY 4.0, ODbL 1.0), provider and dataset names,
+and a citation the provider asks for ("CelesTrak, Dr. T.S. Kelso") stay as
+written. Card names on POWER UP's cards stay in English, as in every
+language: GROK BOT, GROK BOT — COMPUTER, OPENAI DOTS, SMS RELAY, OPENSKY.
+What stays English in every language for now is listed under "Not translated
+yet" in [fr-CA.md](./fr-CA.md).

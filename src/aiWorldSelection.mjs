@@ -11,9 +11,10 @@
  * label when the catalog knows its id, else the layer's own name; every label
  * is upper case. A licence class the catalog does not give reads STATIC.
  *
- * The text is marked with tl() and tln() from src/i18n/marker.js: Quebec
- * French on the page (src/i18n/fork-locales.json), English in every other
- * locale and on the server, which loads this module for stripExcluded().
+ * The text is marked with tl() and tln() from src/i18n/marker.js: the fork
+ * locales' language on the page (src/i18n/fork-locales.json), English in
+ * every other locale and on the server, which loads this module for
+ * stripExcluded().
  */
 
 import { localDigits, msgl, tl, tln } from './i18n/marker.js';

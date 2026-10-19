@@ -48,7 +48,7 @@ test('the check asks Ancient Egyptian for the three plural forms the page counts
 });
 
 test("the fork's own tabs are translated only into the fork locales", () => {
-  assert.deepEqual(forkLocales(), ['fr-CA', 'iu', 'egy']);
+  assert.deepEqual(forkLocales(), ['es', 'fr-CA', 'iu', 'egy']);
   const local = extractMessages({ local: true });
   assert.ok(local.size > 0, 'the five left tabs mark their text with tl()');
   for (const locale of shippedLocales()) {

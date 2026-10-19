@@ -114,7 +114,7 @@ spelled the same in French (MISSION, STATION, SOURCE, Radio, Pause, Style).
 
 Quebec French is listed in `src/i18n/fork-locales.json`, so it also
 translates God's Eye View Canada's five tabs on the left, what they draw on
-the globe and the POWER UP chip's count; Spanish and Russian show them in
+the globe and the POWER UP chip's count; Russian shows them in
 English ([I18N.md](../I18N.md), "The fork's own tabs"). Their glossary:
 
 | English                                       | Français québécois                           |
