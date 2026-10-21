@@ -108,7 +108,12 @@ export const CCTV_LIVE_PACKS = Object.freeze([
     region: 'ON',
     box: ONTARIO_BOX,
     enabled: (env) => envEnabled(env, 'CCTV_ONTARIO_ENABLED'),
-    key: () => 'ontario-511',
+    // The 511on.ca list needs ONTARIO_511_API_KEY now: a key saved later
+    // refetches at once. Only whether one is set, never its value.
+    key: (env) =>
+      String(env.ONTARIO_511_API_KEY ?? '').trim()
+        ? 'ontario-511-key'
+        : 'ontario-511',
     load: loadOntarioSourcesFromOpenData,
   },
   {

@@ -268,7 +268,7 @@ export function keySetupPlaceholder(key, envVar) {
     : t('{envVar} saved — paste to replace', { envVar });
 }
 
-const TIER_DOTS = Object.freeze({ metered: '🔴', free: '🟡' });
+const TIER_DOTS = Object.freeze({ metered: '🔴', paid: '🔴', free: '🟡' });
 
 function updateCloudVoiceAuthControl(auth, busy = false) {
   const mode = readStoredCloudVoiceAuthMode();
@@ -312,7 +312,9 @@ function buildRow(documentRef, key) {
   tier.title =
     key.tier === 'metered'
       ? t('Metered — a billing-enabled account')
-      : t('Free key — register, paste, done');
+      : key.tier === 'paid'
+        ? t('Optional paid token — public access works without one')
+        : t('Free key — register, paste, done');
   head.append(led, title, tier);
   if (key.clientExposed) {
     const exposed = documentRef.createElement('span');

@@ -26,6 +26,7 @@ import { trackBackfillProxies } from './aircraft/tracks.js';
 import { openAiRealtimeProxy } from './openai.js';
 import { llmAskProxy } from './llm.js';
 import { seaSurfaceTemperatureProxy } from './sst.js';
+import { geminiLiveProxy } from './gemini.js';
 import { googlePlacesContextProxy } from './places.js';
 import { mapillaryProxy } from './mapillary.js';
 import { keySetupEndpoint } from '../standalone/key-setup.js';
@@ -49,13 +50,15 @@ import { gnssIntegrityProxy } from './gnssIntegrity.js';
 
 /**
  * Construct the local provider plugins in their established order.
- * `realtime` configures the voice session token endpoint. `sourceRoot` is the
+ * `realtime` configures the OpenAI voice session token endpoint; `gemini`
+ * explicitly opts into Gemini Live. `sourceRoot` is the
  * checkout whose config and data folders the rooted providers use: this one
  * by default, a temp folder for a test, so no test reads or writes this
  * machine's recordings, caches or private config.
  */
 function localProviderPlugins({
   realtime,
+  gemini,
   sourceRoot = defaultSourceRoot,
 } = {}) {
   // Provider checks apply only after this checkout is bound. A unit test
@@ -95,6 +98,7 @@ function localProviderPlugins({
     aisLiveProxy(),
     trackBackfillProxies(),
     openAiRealtimeProxy({ realtime }),
+    ...(gemini ? [geminiLiveProxy({ realtime: gemini })] : []),
     llmAskProxy(),
     seaSurfaceTemperatureProxy(),
     googlePlacesContextProxy(),

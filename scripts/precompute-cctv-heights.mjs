@@ -354,8 +354,10 @@ async function main() {
   });
   if (options.area.radiusKm)
     query.set('radiusKm', String(options.area.radiusKm));
+  // A live pack the area needs may still be downloading (Tarktee gets 30 s),
+  // so allow more than that.
   const response = await fetch(`${base}/api/cctv/sources?${query}`, {
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(60_000),
   });
   if (!response.ok) throw new Error(`Catalog HTTP ${response.status}`);
   const catalog = await response.json();

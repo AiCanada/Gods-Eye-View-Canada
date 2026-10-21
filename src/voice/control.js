@@ -40,11 +40,15 @@ export function createVoiceControl({ reset = false } = {}) {
     root.dataset.speaker = 'idle';
     // i18n-ignore: fork text, English only for now
     root.innerHTML = `
+      <label id="gev-voice-provider-field" class="gev-voice-provider-field" hidden>
+        <span>${t('Voice provider')}</span>
+        <select id="gev-voice-provider" aria-label="${t('Voice provider')}" title="${t('Changing provider reconnects voice if it is on.')}"></select>
+      </label>
       <div class="gev-voice-heading">
         <div class="gev-voice-kicker">${t('AI AGENT')}</div>
         <div id="gev-voice-status">${voiceStatusLabel('idle')}</div>
         <div class="gev-voice-cost">
-          <button id="gev-voice-provider" class="gev-voice-tier-btn gev-voice-provider-btn" type="button" title="Voice provider — applies when the mic next turns on">OAI</button>
+          <button id="gev-voice-provider-cycle" class="gev-voice-tier-btn gev-voice-provider-btn" type="button" title="Voice provider — applies when the mic next turns on">OAI</button>
           <button id="gev-voice-tier" class="gev-voice-tier-btn" type="button" aria-pressed="false" title="${t('Voice model tier — applies next session')}">${t('STD')}</button>
           <span id="gev-voice-cost-value" class="gev-voice-cost-value" data-level="ok" title="${t('Estimated session cost')}">~$0.00</span>
         </div>
@@ -112,6 +116,8 @@ export function createVoiceControl({ reset = false } = {}) {
   }
   return {
     root,
+    providerField: root.querySelector('#gev-voice-provider-field'),
+    providerSelect: root.querySelector('#gev-voice-provider'),
     button: root.querySelector('#gev-voice-button'),
     buttonLabel: root.querySelector('.gev-mic-label'),
     status: root.querySelector('#gev-voice-status'),
@@ -119,7 +125,9 @@ export function createVoiceControl({ reset = false } = {}) {
     helpDetail: root.querySelector('.gev-voice-help-detail'),
     errorDetail: root.querySelector('#gev-voice-error-detail'),
     tierButton: root.querySelector('#gev-voice-tier'),
-    providerButton: root.querySelector('#gev-voice-provider'),
+    // Fork: the OpenAI engine's own cycle through the fork's other voice
+    // providers (gevVoiceProviders.js); the select above picks OpenAI or Gemini.
+    providerButton: root.querySelector('#gev-voice-provider-cycle'),
     costValue: root.querySelector('#gev-voice-cost-value'),
     card: root.querySelector('#gev-voice-card'),
   };

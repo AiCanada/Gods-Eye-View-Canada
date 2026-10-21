@@ -1227,9 +1227,7 @@ body.ui-clean-view #scene-panel,
 body.ui-clean-view #social-panel,
 body.ui-clean-view #outbreak-panel,
 body.ui-clean-view #ai-world-panel,
-body.ui-clean-view #distill-panel,
-/* The expanded viewer lives on <body>, outside every panel. */
-body.ui-clean-view .sl-viewer-wrap-expanded {
+body.ui-clean-view #distill-panel {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;

@@ -181,9 +181,10 @@ export default {
     for (const area of list) {
       if (limited) break;
       const box = areaBox(area);
-      let { tiles } = tilesForBbox(box, 12);
+      const corners = [box.west, box.south, box.east, box.north];
+      let tiles = tilesForBbox(corners, 12);
       if (tiles.length > MAX_TILES)
-        tiles = tilesForBbox(box, 11, { limit: MAX_TILES }).tiles;
+        tiles = tilesForBbox(corners, 11, { limit: MAX_TILES });
       for (const tile of tiles) {
         const response = await fetch(
           `/api/mapillary/tiles/coverage/${tile.z}/${tile.x}/${tile.y}`,

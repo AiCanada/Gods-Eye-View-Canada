@@ -2,22 +2,44 @@ import {
   coalesceProxyRequest,
   readResponseTextCapped,
 } from '../common/http.js';
-import { retryAfterMs } from './tiles.js';
-import {
-  MAPILLARY_GRAPH_HOST,
-  IMAGES_FIELDS,
-  IMAGES_MAX_SIDE_DEG,
-  IMAGES_LIMIT,
-  IMAGES_CACHE_TTL_MS,
-  IMAGES_MEMORY_BUDGET_BYTES,
-  IMAGES_MEMORY_ENTRY_OVERHEAD_BYTES,
-  IMAGES_MAX_BYTES,
-  IMAGES_FETCH_TIMEOUT_MS,
-  IMAGES_UPSTREAM_CONCURRENCY,
-  IMAGES_QUEUE_MAX,
-  TILE_KEY_REJECTED_HOLD_MS,
-  mapillaryToken,
-} from './constants.js';
+import { mapillaryToken, retryAfterWait } from './tiles.js';
+
+/** Graph API root for image searches; the token rides in a header, never the URL. */
+export const MAPILLARY_GRAPH_HOST = 'https://graph.mapillary.com';
+/** Fields asked of an image search: no thumbnail links, which point off-host. */
+export const IMAGES_FIELDS =
+  'id,captured_at,compass_angle,computed_compass_angle,geometry,sequence,is_pano,camera_type';
+/**
+ * Mapillary answers bbox searches only under 0.01 square degrees; 0.05° a
+ * side keeps a box at a quarter of that.
+ */
+export const IMAGES_MAX_SIDE_DEG = 0.05;
+/** Images asked for per search: the API's own maximum (and default). */
+export const IMAGES_LIMIT = 2000;
+/** Searches are cached as long as coverage tiles. */
+export const IMAGES_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+/** Cached answers are kept as JSON text, charged by length. */
+export const IMAGES_MEMORY_BUDGET_BYTES = 32 * 1024 * 1024;
+/** Per-entry cost on top of its text, so empty answers still count. */
+export const IMAGES_MEMORY_ENTRY_OVERHEAD_BYTES = 1024;
+/** A full 2,000-image answer is ~600 KB; anything past this is wrong. */
+export const IMAGES_MAX_BYTES = 4 * 1024 * 1024;
+export const IMAGES_FETCH_TIMEOUT_MS = 30_000;
+/** Upstream searches at once; up to IMAGES_QUEUE_MAX more wait their turn. */
+export const IMAGES_UPSTREAM_CONCURRENCY = 4;
+export const IMAGES_QUEUE_MAX = 32;
+/**
+ * Image searches per client IP per minute, cache hits included. A world tape
+ * poll makes at most 256 (8 areas × 32), so it never trips this even all at
+ * once; four clients at the cap stay near a tenth of Mapillary's 10,000
+ * searches a minute per app.
+ */
+export const IMAGES_ROUTE_MAX_PER_MIN = 300;
+/**
+ * How long a 401/403 answers image searches before asking Mapillary again. A
+ * changed token is tried at once.
+ */
+export const IMAGES_KEY_REJECTED_HOLD_MS = 5 * 60 * 1000;
 
 /** Thrown for a search this proxy refuses (or cannot take) before asking Mapillary. */
 export class ImagesRequestError extends Error {
@@ -301,11 +323,13 @@ async function searchUpstream(bbox, token) {
       if (error.keyRejected)
         _upstreamHold = {
           status: response.status,
-          until: Date.now() + TILE_KEY_REJECTED_HOLD_MS,
+          until: Date.now() + IMAGES_KEY_REJECTED_HOLD_MS,
           token,
         };
       else if (response.status === 429) {
-        const wait = retryAfterMs(response.headers.get('retry-after'));
+        // Retry-After in seconds or as a date; a minute when missing, ten
+        // at most, as for tiles.
+        const wait = retryAfterWait(response.headers.get('retry-after')) * 1000;
         _upstreamHold = { status: 429, until: Date.now() + wait, token };
         error.retryAfterSec = Math.ceil(wait / 1000);
       }

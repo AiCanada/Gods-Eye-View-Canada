@@ -284,7 +284,8 @@ export const DATA_CREDITS = [
     html:
       'CCTV cameras &amp; frames (Ontario): ' +
       '<a href="https://511on.ca/" target="_blank" rel="noopener">Ontario 511</a> ' +
-      '(<a href="https://www.ontario.ca/page/open-government-licence-ontario" target="_blank" rel="noopener">Open Government Licence - Ontario</a>)',
+      '(<a href="https://www.ontario.ca/page/open-government-licence-ontario" target="_blank" rel="noopener">Open Government Licence - Ontario</a>) ' +
+      '· provided as is, without warranty; actual road conditions may differ',
   },
   {
     key: 'fintraffic-cctv',
@@ -304,7 +305,10 @@ export const DATA_CREDITS = [
     html:
       'Road cameras (Norway): contains data under the ' +
       '<a href="https://data.norge.no/nlod/en/2.0" target="_blank" rel="noopener">Norwegian licence for Open Government data (NLOD)</a> ' +
-      'distributed by Statens vegvesen',
+      'distributed by Statens vegvesen · camera ground heights © ' +
+      '<a href="https://kartverket.no/en/api-and-data/terrengdata" target="_blank" rel="noopener">Kartverket</a> ' +
+      '(<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>); ' +
+      'modified: heights over water set to 0 m and rounded to 0.1 m',
   },
   {
     key: 'nyc-cctv',
@@ -312,6 +316,22 @@ export const DATA_CREDITS = [
       'CCTV cameras &amp; frames (New York City, when enabled): ' +
       '<a href="https://webcams.nyctmc.org/" target="_blank" rel="noopener">NYC DOT Traffic Management Center</a>. ' +
       NYC_DOT_DISCLAIMER,
+  },
+  {
+    key: 'mapillary',
+    html: 'Street Level: imagery © <a href="https://www.mapillary.com" target="_blank" rel="noopener">Mapillary</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>',
+  },
+  {
+    key: 'google-street-view',
+    html: 'Street Level: Street View imagery © <a href="https://www.google.com/streetview/" target="_blank" rel="noopener">Google</a>',
+  },
+  {
+    key: 'kartaview',
+    html: 'Street Level: imagery © <a href="https://kartaview.org" target="_blank" rel="noopener">KartaView</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>',
+  },
+  {
+    key: 'panoramax',
+    html: 'Street Level: imagery © <a href="https://panoramax.fr" target="_blank" rel="noopener">Panoramax</a> contributors, licence per picture',
   },
   {
     key: 'gbfs',

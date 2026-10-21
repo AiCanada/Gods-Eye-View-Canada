@@ -249,7 +249,7 @@ export const CALTRANS_CCTV_URL = (district) =>
 export const TFL_JAMCAM_URL = 'https://api.tfl.gov.uk/Place/Type/JamCam';
 export const TFL_IMAGE_ORIGIN =
   'https://s3-eu-west-1.amazonaws.com/jamcams.tfl.gov.uk/';
-/** Ontario 511: keyless CARS/511 camera catalog; frame URLs are still images. */
+/** Ontario 511: CARS/511 camera catalog, which needs a developer key (ONTARIO_511_API_KEY); frame URLs are still images. */
 export const ONTARIO_511_CAMERAS_URL =
   'https://511on.ca/api/v2/get/cameras?format=json&lang=en';
 export const ONTARIO_511_IMAGE_ORIGIN = 'https://511on.ca/map/Cctv/';
@@ -285,6 +285,8 @@ export const TARKTEE_LOCATIONS_URL =
 export const TARKTEE_IMAGES_URL =
   'https://tarktee.transpordiamet.ee/api/v1/datex/roadCameraImages';
 export const TARKTEE_IMAGE_ORIGIN = 'https://tarktee.transpordiamet.ee/images/';
+/** Hard ceiling per Tarktee DATEX XML document (~120–165 KB live). */
+export const TARKTEE_MAX_CATALOG_BYTES = 4 * 1024 * 1024;
 /** Warendorf (Germany): the Marktplatz municipal webcam from a curated catalog file. */
 export const DEFAULT_WARENDORF_SOURCE_FILE =
   'config/cctv_sources.warendorf.json';
@@ -340,6 +342,49 @@ export const VEGVESEN_MAX_CATALOG_BYTES = 8 * 1024 * 1024;
 /** Mainland Norway with its coast and the Finnmark border, for Statens vegvesen. */
 export const NORWAY_BOX = { south: 57.9, north: 71.3, west: 4.4, east: 31.3 };
 
+/** Kartverket's keyless point-height API (CC BY 4.0): terrain height above
+ * sea level (NN2000), used as the Vegvesen cameras' ground prior because the
+ * camera feed's points are 2D. */
+export const KARTVERKET_HEIGHT_URL =
+  'https://ws.geonorge.no/hoydedata/v1/punkt';
+/** Points per request. The API takes up to 50, but above ~20 it answers the
+ * extra points from contour lines (`hoydekurver`, metres to ~20 m off) or not
+ * at all; at 20 nearly every camera resolves from the 1 m terrain model. */
+export const KARTVERKET_MAX_POINTS = 20;
+/** Requests in flight at once. The whole country is ~36 requests of
+ * 0.6-9.5 s each, so a cold lookup takes ~6-13 s. */
+export const KARTVERKET_CONCURRENCY = 8;
+/** Deadline for one complete lookup, shared by every request. A lookup cut
+ * short by it is resumed on the next refresh, without a backoff. */
+export const KARTVERKET_LOOKUP_TIMEOUT_MS = 30 * 1000;
+/** One request that takes longer than this counts as a failing service. */
+export const KARTVERKET_REQUEST_TIMEOUT_MS = 10 * 1000;
+/** The Vegvesen lane's budget, measured from the start of the loader (catalog
+ * fetch included), for waiting on heights. Under the 15 s per-provider fetch
+ * timeout so this pack is never the catalog's slowest lane. A lookup still
+ * running after it keeps filling the cache for the next refresh. */
+export const KARTVERKET_CATALOG_WAIT_MS = 12 * 1000;
+/** The lane only waits when more than this share of its cameras has no
+ * answer yet (a cold cache). A few new cameras or expired misses are looked
+ * up in the background instead of holding the refresh. */
+export const KARTVERKET_WAIT_MISSING_SHARE = 0.1;
+/** A point Kartverket has no height for (some ferry quays and bridges) is not
+ * asked about again for this long. */
+export const KARTVERKET_NULL_TTL_MS = 6 * 60 * 60 * 1000;
+/** After a failing request (408, 429, 5xx, a network error, a request
+ * timeout or an unreadable body), no lookup starts for this long, or for the
+ * Retry-After the service sent, bounded to [1 min, 1 h]. Longer than the
+ * 15-minute catalog refresh (CCTV_SOURCE_CACHE_MS), so a failing service
+ * costs one attempt per backoff, not one per refresh. */
+export const KARTVERKET_FAILURE_BACKOFF_MS = 30 * 60 * 1000;
+export const KARTVERKET_MAX_BACKOFF_MS = 60 * 60 * 1000;
+export const KARTVERKET_MAX_RESPONSE_BYTES = 256 * 1024;
+/** Plausible Norwegian terrain: below sea level only at the shore, and no road
+ * camera sits above ~1,500 m. Anything outside is treated as no height. */
+export const KARTVERKET_HEIGHT_RANGE_M = Object.freeze({ min: -20, max: 2500 });
+/** Same identity the other CCTV upstream requests send. */
+export const KARTVERKET_USER_AGENT = 'gods-eye-view-cctv-proxy/1.0';
+
 /** NYC DOT Traffic Management Center cameras: one keyless JSON list for the
  * five boroughs (~980 cameras). Frames are stills synthesized from each
  * camera UUID on the city's webcam host — never taken from the payload. */
@@ -371,6 +416,10 @@ export const DELDOT_CCTV_URL = 'https://tmc.deldot.gov/json/videocamera.json';
  * stalled upstream can't leave it pending forever — a hung fetch aborts, the
  * loader returns [], and the pack retries later. */
 export const CCTV_SOURCE_FETCH_TIMEOUT_MS = 15 * 1000;
+/** Tarktee's two DATEX feeds (120 and 160 KB) answered in 2 to 16.6 s across
+ * ten requests on 2026-10-18, so the shared 15 s timeout dropped the Estonian
+ * pack on about a third of loads. Both must arrive for any camera to load. */
+export const TARKTEE_FETCH_TIMEOUT_MS = 30 * 1000;
 /** Individual CCTV image fetches must settle before the active 10-second
  * client refresh cadence. A bounded miss falls through to the synthetic frame
  * instead of leaving the browser preview pending. */

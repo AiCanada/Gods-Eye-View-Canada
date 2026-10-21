@@ -32,6 +32,7 @@ export default defineConfig(({ command, mode, sourceRoot }) => {
     if (process.env[key] === undefined) process.env[key] = value;
   }
   bindLocalIntegrityRoot(checkout);
+  const tools = standaloneVoiceTools();
   return createBrowserViteConfig({
     // The guard goes first: it wraps every route registered after it
     // (the provider routes and the MCP endpoint alike).
@@ -42,7 +43,8 @@ export default defineConfig(({ command, mode, sourceRoot }) => {
       // `/__gev/health` for the supervisor's liveness probe (dev only).
       healthPlugin(),
       ...localProviderPlugins({
-        realtime: { tools: standaloneVoiceTools() },
+        realtime: { tools },
+        gemini: { tools },
         ...(sourceRoot ? { sourceRoot } : {}),
       }),
       localMcpPlugin(),

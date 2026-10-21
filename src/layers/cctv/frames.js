@@ -3,6 +3,7 @@ import {
   FRAME_SIGNATURE_H,
   PROJECTION_CANVAS_WIDTH,
   PROJECTION_CANVAS_HEIGHT,
+  PROJECTION_MATTE_COLOR,
   PROJECTION_TEXTURE_SWAP_MS,
   ACTIVE_FRAME_REFRESH_MS,
   FRAME_ENDPOINT,
@@ -18,6 +19,37 @@ import {
   browserDirectFrameUrl,
   isBrowserDirect,
 } from '../../data/cctvBrowserDirect.js';
+
+/**
+ * Contain-fits a source frame into the projection canvas: scaled to the
+ * largest size that fits, centered, with the margins left for the matte fill.
+ * Falls back to the full canvas when either dimension is missing or zero.
+ *
+ * @param {number} sourceW - Source width in pixels.
+ * @param {number} sourceH - Source height in pixels.
+ * @returns {{x:number,y:number,w:number,h:number}} Draw rectangle in canvas pixels.
+ */
+export function fitToProjection(sourceW, sourceH) {
+  if (!sourceW || !sourceH)
+    return {
+      x: 0,
+      y: 0,
+      w: PROJECTION_CANVAS_WIDTH,
+      h: PROJECTION_CANVAS_HEIGHT,
+    };
+  const scale = Math.min(
+    PROJECTION_CANVAS_WIDTH / sourceW,
+    PROJECTION_CANVAS_HEIGHT / sourceH,
+  );
+  const w = Math.round(sourceW * scale);
+  const h = Math.round(sourceH * scale);
+  return {
+    x: Math.round((PROJECTION_CANVAS_WIDTH - w) / 2),
+    y: Math.round((PROJECTION_CANVAS_HEIGHT - h) / 2),
+    w,
+    h,
+  };
+}
 
 export function createFrames({ state: layerState, services, parts, source }) {
   /**
@@ -250,7 +282,7 @@ export function createFrames({ state: layerState, services, parts, source }) {
     ctx.clearRect(0, 0, w, h);
     const g = ctx.createLinearGradient(0, 0, w, h);
     g.addColorStop(0, '#05111a');
-    g.addColorStop(1, '#01070c');
+    g.addColorStop(1, PROJECTION_MATTE_COLOR);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
 
@@ -428,7 +460,14 @@ export function createFrames({ state: layerState, services, parts, source }) {
         // base color (planeMaterial color = WHITE at 82% opacity) for the frame or
         // two Cesium needs to rebind, which IS the periodic white flash from the
         // owner field tests (2026-07-04 and 2026-07-30).
-        const signature = projectionFrameSignature(runtime);
+        const fit = fitToProjection(
+          runtime.image.naturalWidth,
+          runtime.image.naturalHeight,
+        );
+        // Pixels are hashed at a fixed size, so the fit carries the aspect.
+        const pixels = projectionFrameSignature(runtime);
+        const signature =
+          pixels === null ? null : `${pixels}:${fit.w}x${fit.h}`;
         runtime.drawnImageStamp = runtime.imageStamp;
         if (signature !== null && signature === runtime.lastFrameSignature) {
           // Identical pixels — leave the canvas, and therefore the bound
@@ -436,19 +475,14 @@ export function createFrames({ state: layerState, services, parts, source }) {
           return;
         }
         runtime.lastFrameSignature = signature;
-        runtime.ctx.clearRect(
+        runtime.ctx.fillStyle = PROJECTION_MATTE_COLOR;
+        runtime.ctx.fillRect(
           0,
           0,
           PROJECTION_CANVAS_WIDTH,
           PROJECTION_CANVAS_HEIGHT,
         );
-        runtime.ctx.drawImage(
-          runtime.image,
-          0,
-          0,
-          PROJECTION_CANVAS_WIDTH,
-          PROJECTION_CANVAS_HEIGHT,
-        );
+        runtime.ctx.drawImage(runtime.image, fit.x, fit.y, fit.w, fit.h);
         runtime.canvasStamp = (runtime.canvasStamp || 0) + 1;
         runtime.lastPlaceholderPaintAt = 0;
       }

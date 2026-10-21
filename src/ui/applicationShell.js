@@ -278,6 +278,7 @@ export class StyleManager extends ShellFacade {
         _contextControls: this._contextControls,
         _cctvControls: this._cctvControls,
         _radioControls: this._radioControls,
+        _streetLevelControls: this._streetLevelControls,
       }),
       operations: {
         _updateTrafficSyncChip: (...args) =>
@@ -1114,13 +1115,11 @@ export class StyleManager extends ShellFacade {
     this._streetLevelControls?.destroy();
     this._streetLevelControls = null;
     if (!this._streetLevelPanel || !streetLevelLayer) return;
-    // Photo framing and FOLLOW release tracking like any explicit flight.
+    // Photo framing yields to newer navigation and releases tracking like
+    // any deferred flight.
     streetLevelLayer.attachNavigation?.({
-      run: (noun, move) => this._runExplicitNavigation(noun, move),
       begin: (noun) => this._beginDeferredNavigation(noun),
       reassert: (generation) => this._reassertNavigationHandoff(generation),
-      subscribeHandoff: (listener) =>
-        this._navigation.subscribeCameraHandoff(listener),
     });
     this._streetLevelControls = new StreetLevelControls({
       root: this._streetLevelPanel,
@@ -1135,7 +1134,6 @@ export class StyleManager extends ShellFacade {
           this._dataManager?.setLayerParams('street-level', params, options),
         setPanelCollapsed: (collapsed, options) =>
           this.setPanelCollapsed('street-level-panel', collapsed, options),
-        dockPanel: () => this._panelChrome.dockPanel('street-level-panel'),
         showToast: (message) => this._showToast(message),
         // Lets the panel open for a user, voice or tool switch-on, not a restore.
         subscribeEnableRequests: (listener) =>
@@ -1233,19 +1231,6 @@ export class StyleManager extends ShellFacade {
     });
     return true;
   }
-
-  /**
-   * Makes a panel draggable via its handle element. Implements:
-   * - Z-order promotion: each pointerdown increments the global z-counter
-   *   so the clicked panel floats above siblings.
-   * - Viewport clamping: drag moves are clamped to a 6px inset from all edges.
-   * - Right-rail pinning: pp-toggles panel is re-anchored right after drag.
-   * - CCTV viewport sync: cctv-panel recalculates scroll height after drag.
-   * @param {string} panelId - DOM id of the panel.
-   * @param {HTMLElement} panelEl - The panel DOM element.
-   * @param {HTMLElement} handleEl - The drag handle element within the panel.
-   * @returns {void}
-   */
 
   /**
    * Programmatically collapses or expands a panel, persists the state,
@@ -1918,11 +1903,12 @@ export class StyleManager extends ShellFacade {
     this._initCockpitDisplayPortal();
   }
 
-  /** A portable panel was resized or docked: refit any viewport inside it. */
+  /**
+   * A portable panel was resized or docked: refit any viewport inside it.
+   * Street Level's viewer follows its own size (a ResizeObserver).
+   */
   _onPanelResized(panelId) {
     if (panelId === 'cctv-panel') this._syncCctvPanelViewport();
-    if (panelId === 'street-level-panel')
-      this._streetLevelControls?.onPanelResized();
   }
 
   /**

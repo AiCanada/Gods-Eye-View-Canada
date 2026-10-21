@@ -1,5 +1,60 @@
 # Changelog
 
+- Upstream merge, 2026-10-21 (fourth): the 248 upstream commits after
+  93ea088f, up to 713285b5 (20 pull requests and four direct commits).
+  - What came in: Gemini Live voice beside OpenAI, chosen in the GEV MIC's
+    provider select, with its key in POWER UP (#872); Street Level slimmed to
+    one provider registry, coverage lines at street zooms only (above 60 km
+    the panel says to zoom in), EXPAND as the browser's full screen, a
+    memory-only tile proxy, and no FOLLOW, legend or viewer prewarm (#974);
+    Statens vegvesen cameras on Kartverket ground heights (#945); Ontario 511
+    cameras again, now with a free developer key, `ONTARIO_511_API_KEY`
+    (#1228); hardened Tarktee catalog reads with a 30 s timeout (#1233,
+    #1234); CCTV stills keep their aspect (#1201) and video cameras show
+    violet (#1200); voice reports what really happened when it switches CCTV
+    (#1205), with the CCTV QA script run headful (#1133); the terrain route's
+    cross-site gate and cache bounds (#975, #686); Space Missions marked
+    STALE on cached Launch Library data, with the provider's request guidance
+    and no key needed for public access (#1197, #1199); cached satellite
+    records marked STALE (#1283); aircraft route labels kept to the scheduled
+    leg (#1284); ambiguous region names resolved only with a geocoded anchor
+    (#1235); a typed OpenAI command the channel refuses no longer starts a
+    reply (#1220); Context Radio ownership (#816); a model-free World Packet
+    (#880); and `group_by` and `stats` for the aircraft and vessels area
+    tools (#1056).
+  - Left out: the live camera loaders for Hong Kong (#990), Taiwan's
+    freeways (#1237) and FL511 Florida (#605). The fork's packs already hold
+    those cameras (971 Transport Department cameras and about 1,700 freeway
+    cameras in the international pack, 4,956 FL511 cameras in the US pack),
+    and each loader adds a per-pack camera cap. #1234's background refresh of
+    upstream's catalog is not taken either: the fork's catalogue is rebuilt
+    from its pack files and the live packs an area loads.
+  - Kept from the fork against #974: the CCTV and Street Level windows stay
+    portable (drag a header out of the rail, resize from any edge, the CCTV
+    window minimizes to the rail, a finger held on a header picks it up), so
+    `panelPositionControls.js`, `panelResize.js`, the panel QA scripts and
+    their tests stay as they were. The Street Level viewer follows its window
+    with #974's own size observer.
+  - Fitted to the fork: the AI World tape's Mapillary image search
+    (`/api/mapillary/images`) now lives in the single `mapillary.js` plugin,
+    its settings in `images.js`; the tape's street-level feed uses the new
+    `tilesForBbox` form, and the coverage decoder keeps the image id, on-foot
+    and quality fields the tape records. Vegvesen height lookups use the live
+    pack's own fetch and settings, and a list still missing many heights is
+    marked partial, so the pack asks again after five minutes instead of
+    keeping it for a day. Adding an Ontario key refetches that pack at once.
+    The terrain cache shared across in-process restarts belongs to the
+    default cache file only, and a merged cache file keeps the same entry
+    ceiling as memory. The GEV MIC select picks OpenAI or Gemini; the fork's
+    voice provider button keeps choosing the engine inside OpenAI and hides
+    while Gemini is chosen (it has its own id now). POWER UP accepts 48 names
+    in one save for its 33 keys and 8 optional boxes. The 61 new strings are
+    in Quebec French, Inuktitut and Ancient Egyptian too, and Spanish and
+    Russian keep the two panel-window strings upstream dropped.
+  - On this machine: Ontario 511 cameras load from the live pack only with
+    `ONTARIO_511_API_KEY` set. The running dev server picks the merge up at
+    its next restart.
+
 - Spanish in the fork's tabs (owner request 2026-10-19: "Finish coding for
   all Espanola"). Spanish (`es`) joins Quebec French, Inuktitut and Ancient
   Egyptian in `src/i18n/fork-locales.json`, so the six left tabs (AI RISK &
@@ -1103,9 +1158,8 @@
   [NotProniss](https://github.com/NotProniss) (#1084).
 
 - Street Level: Panoramax is the fourth provider, keyless. Light its chip
-  (orange; off by default, one provider at a time): from orbit dots show
-  where the federated commons has pictures, and below about 60 km its
-  sequences draw as lines from `api.panoramax.xyz` vector tiles. A click on a
+  (orange; off by default, one provider at a time): below about 60 km the
+  federated commons' sequences draw as lines from `api.panoramax.xyz` vector tiles. A click on a
   line opens that sequence's picture nearest the click without moving the
   camera, flat or 360°, with cones along the sequence around it and ‹ › /
   ← → following the picture's own links. The 360° and since filters apply,
@@ -1163,10 +1217,10 @@
   Maps JavaScript API) and click a street, or press OPEN STREET VIEW, to
   open Google's own panorama in
   the panel, with its arrows, the address and month in the caption, a link
-  to Google Maps and FOLLOW. Share links carry it in the provider switches
+  to Google Maps. Share links carry it in the provider switches
   (`r.google-1`). One provider is lit at a time (lighting one switches the
   other off), Mapillary by default since it is free. Street View's panoramas
-  are all 360°, so the IMAGERY and SINCE filters and the legend apply to
+  are all 360°, so the IMAGERY and SINCE filters apply to
   Mapillary only and hide while GOOGLE STREET VIEW is lit; its globe marker
   is a Google-blue view cone.
 
@@ -1215,21 +1269,16 @@
   proposed diagnosis in #927, and [kvnloo](https://github.com/kvnloo) for identifying
   the repair race. Windows/Claude Desktop Cowork confirmation remains outstanding.
 
-- Street Level: a street-level imagery layer modelled on the iD editor's photo
-  overlay, with Mapillary as its first provider (free client token, CC BY-SA 4.0
-  imagery). One right-rail panel holds a chip per provider, shared 360°/flat and
-  captured-since filters, and an embedded viewer with EXPAND, FIT/FILL and
-  FOLLOW (Google 3D only). Coverage lines and image cones are drawn from orbit
-  down to a single street; on Google 3D they sit on the bare earth, refined
-  against the rendered mesh near the camera, so trees and buildings hide them.
-  Share links carry the provider switches, the filters and the panel's collapsed
-  state. A server proxy caches Mapillary coverage tiles (24 h, 1 GiB on disk),
-  refuses cross-site requests, rate-limits per IP and backs off when Mapillary
-  rejects the token or rate-limits.
-
-- The CCTV and Street Level panels are portable: drag the header to float the
-  panel, resize it from any edge or corner, and double-click the header to dock
-  it again. The position persists across reloads.
+- Street Level: street-level imagery from providers, Mapillary first (free
+  client token, CC BY-SA 4.0). A right-rail panel holds a chip per provider,
+  360°/flat and captured-since filters and an embedded viewer with EXPAND and
+  FIT/FILL. Coverage lines (below 60 km) and image cones drape on terrain and
+  Google 3D tiles; opening a photo frames it with one camera flight. Share
+  links carry the provider switches, the filters and the panel's collapsed
+  state. A server proxy adds the token to Mapillary coverage tiles, trims and
+  caches them for 24 h, refuses cross-site requests and redirects, and limits
+  load per IP and upstream. The panel reads KEY REQUIRED without a token and
+  KEY REJECTED when Mapillary refuses it.
 
 - Add Norway's city bikes to the Bike Share layer: Oslo, Bergen and
   Trondheim Bysykkel (Urban Sharing), Kolumbus Bysykkel in Stavanger and

@@ -423,7 +423,7 @@ test('the key registry keeps its invariants as entries are added', () => {
     ids.add(entry.id);
     assert.ok(entry.title && entry.unlocks, `${entry.id} needs a title and an unlocks line`);
     assert.match(entry.getUrl, /^https:\/\//, `${entry.id} getUrl must be https`);
-    assert.ok(['free', 'metered'].includes(entry.tier), `${entry.id} tier`);
+    assert.ok(['free', 'metered', 'paid'].includes(entry.tier), `${entry.id} tier`);
     assert.ok(Array.isArray(entry.envVars) && entry.envVars.length > 0, `${entry.id} envVars`);
     for (const name of entry.envVars) {
       assert.match(name, /^[A-Z][A-Z0-9_]*$/, `${name} is not an env var name`);
