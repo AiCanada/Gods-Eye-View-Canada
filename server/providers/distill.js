@@ -14,8 +14,11 @@
  *   POST   /questions         { id, text } or { id, csv }
  *   DELETE /questions         { id }
  *   DELETE /dataset           { id }
- *   POST   /estimate          { id, fresh? }           paid calls before START
- *   POST   /start             { id, confirm: true, fresh? }
+ *   GET    /records?id=&at=   one record, `at` counted back from the newest
+ *   DELETE /records           { id, at }              drop that question's records; it is listed for RETRY
+ *   POST   /estimate          { id, fresh?, retry? }   paid calls before START
+ *   POST   /start             { id, confirm: true, fresh?, retry?, pauseAfter?, calls? }
+ *                             calls: the estimate confirmed; refused when it changed
  *   POST   /pause  /continue  /stop
  *   POST   /paste             { answer }               a reply from a manual route
  *   POST   /skip
@@ -86,6 +89,15 @@ export function distillProvider({
     }
     if (method === 'GET' && route === '/status')
       return send(res, 200, manager.status());
+    if (method === 'GET' && route === '/records')
+      return send(
+        res,
+        200,
+        manager.record({
+          id: url.searchParams.get('id'),
+          at: url.searchParams.get('at'),
+        }),
+      );
     if (method === 'GET' && route === '/export') {
       const file = manager.exportData({
         id: url.searchParams.get('id'),
@@ -127,6 +139,8 @@ export function distillProvider({
         return send(res, 200, manager.clearQuestions(body));
       if (route === '/dataset')
         return send(res, 200, manager.clearDataset(body));
+      if (route === '/records')
+        return send(res, 200, manager.dropRecords(body));
     }
     if (method === 'POST') {
       if (route === '/features')

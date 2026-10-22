@@ -1,7 +1,9 @@
 /**
  * AI DISTILLATION's teachers (owner request 2026-10-19: "use all LLM's and
  * Grok bot and OpenAI dots", then "use all the fall back options for grokbot
- * and open AI dots"): who can answer, and one call to each.
+ * and open AI dots"): who can answer, and one call to each. The same roster
+ * serves as the students (owner request 2026-10-21): a student is asked the
+ * same way, and the teachers grade and upgrade what it answered.
  *
  *   llm:<id>      the Ask panel's models (NVIDIA NIM, xAI Grok, OpenRouter,
  *                 Anthropic, the custom endpoint), their POWER UP keys,
@@ -54,7 +56,24 @@ export const DISTILL_ANSWER_TOKENS = 4096;
 const BOT_TIMEOUT_MS = 180_000;
 const WEBHOOK_TIMEOUT_MS = 20_000;
 const LOCAL_TIMEOUT_MS = 15 * 60_000;
+/** A Grok Bot computer on a swarm task is waited for this long before the next route. */
+const COMPUTER_BUSY_WAIT_MS = 10 * 60_000;
+const COMPUTER_BUSY_POLL_MS = 5_000;
 const ANSWER_MAX = 40_000;
+
+const defaultSleep = (ms, signal) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+    signal?.addEventListener?.(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(Object.assign(new Error('Stopped'), { name: 'AbortError' }));
+      },
+      { once: true },
+    );
+  });
 /** What a reply brought back from an app records as its model. */
 const APP_MODELS = Object.freeze({
   'grok-bot': 'Grok Bot app',
@@ -203,6 +222,7 @@ const capped = (text) =>
  * @param {{route: string, responseId: string}|null} [ask.previous] this teacher's last reply
  * @param {object} [ask.desktop] the app round trip (createDesktopRound)
  * @param {(step: {route: string, app: string}) => void} [ask.onStep] told when an app is answering
+ * @param {(ms: number, signal?: AbortSignal) => Promise<void>} [ask.sleep] the wait for a busy Grok Bot computer
  * @returns {Promise<{text: string, responseId: string, model: string, route: string, tried: Array} | {manual: true, route: string, app: string, prompt: string, tried: Array}>}
  */
 export async function askTeacher(
@@ -222,6 +242,9 @@ export async function askTeacher(
     spawnImpl,
     desktop = createDesktopRound({ env }),
     onStep,
+    sleep = defaultSleep,
+    clock = Date.now,
+    askComputer = askGrokBotComputer,
   },
 ) {
   const tried = [];
@@ -275,7 +298,12 @@ export async function askTeacher(
           teacher.id === 'grok-bot' ? 'xai' : 'openai',
           env,
         );
-        const follow = previous?.route === 'key' && previous.responseId;
+        // The same conversation goes on from the key's own response id; one
+        // made here (gev-…, when the key gave none) would be refused.
+        const follow =
+          previous?.route === 'key' &&
+          previous.responseId &&
+          !String(previous.responseId).startsWith('gev-');
         const payload = {
           model: upstream.model,
           ...(follow
@@ -327,16 +355,31 @@ export async function askTeacher(
       if (route === 'computer') {
         const gate = grokBotGateway(env);
         // The same bot's chat goes on: a review turn needs only its own message.
-        const text = capped(
-          await askGrokBotComputer({
+        const once = () =>
+          askComputer({
             gate,
             prompt: previous?.route === 'computer' ? prompt : full,
             fetchImpl,
             signal,
-            busyMessage:
-              'Grok Bot is already on a task from this map. Its next question waits.',
-          }),
-        );
+            busyMessage: 'Grok Bot is on a task from this map.',
+          });
+        // On a swarm task it is waited for, up to ten minutes, before the next route.
+        const until = clock() + COMPUTER_BUSY_WAIT_MS;
+        let report;
+        for (;;) {
+          try {
+            report = await once();
+            break;
+          } catch (error) {
+            if (
+              error?.code !== 'busy' ||
+              clock() + COMPUTER_BUSY_POLL_MS > until
+            )
+              throw error;
+            await sleep(COMPUTER_BUSY_POLL_MS, signal);
+          }
+        }
+        const text = capped(report);
         if (!text) throw new Error('Grok Bot returned no answer.');
         return {
           text,

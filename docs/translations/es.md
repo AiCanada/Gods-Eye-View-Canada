@@ -112,6 +112,7 @@ POWER UP chip's count; Russian shows them in English ([I18N.md](../I18N.md),
 | licence classes OPEN, NC, RESTRICTED, UNCLEAR | ABIERTA, NC, RESTRINGIDA, INCIERTA                               |
 | PERSONAL, STATIC                              | PERSONAL, ESTÁTICA                                               |
 | ground truth / teacher / reviewer / writer    | verdad fundamental / profesor / revisor / redactor               |
+| student / upgrade (an answer)                 | alumno / mejorar                                                 |
 | heading (AI DISTILLATION) / prompt            | sección / prompt                                                 |
 | adversarial review / grade                    | revisión adversaria / calificar                                  |
 | run (a job) / call (a paid request)           | ejecución / llamada                                              |

@@ -9,6 +9,14 @@
  * saved run: its name, questions, teachers, prompts and dataset). Every run
  * goes one question at a time and ends each question with a ground truth
  * answer to train off of.
+ *
+ * Students (owner request 2026-10-21: "choose students … students answer
+ * original question … Teachers grade student answer and upgrade response from
+ * student and fix any errors"): any sub-heading may also pick students, from
+ * the same roster. They answer the original question first (turn 0); the
+ * heading's first teacher turn then grades each student answer, fixes its
+ * errors and writes the upgraded answer (an `upgrade` turn in place of the
+ * cold `answer`), and the rest of the heading goes on from there.
  */
 import { msgl } from './i18n/marker.js';
 
@@ -90,6 +98,8 @@ export const DISTILL_PROMPT_MAX = 6000;
 export const DISTILL_DEFAULT_PROMPTS = Object.freeze({
   system:
     'You are a careful expert teacher. Answer the question accurately and completely. Reason step by step where it helps, then give the answer. Say plainly what is uncertain; never invent facts, sources, quotes or numbers.',
+  upgrade:
+    'QUESTION:\n{question}\n\nSTUDENT ANSWERS:\n{answers}\n\nYou are the teacher. Grade each student answer from 0 to 10 for correctness and completeness, one line each in the form "S1: 7/10", and say what is wrong or missing in it. Then fix every error and write the upgraded answer: correct, complete, and better than every student answer, after a line that reads exactly:\nGROUND TRUTH ANSWER:',
   review:
     'ORIGINAL QUESTION:\n{question}\n\nRESPONSE ID: {responseId}\nRESPONSE (from {teacher}):\n{response}\n\nReview this response adversarially: look for every error, gap, unsupported claim, wrong number and weak step, and check it against what you know. Work harder than the response did to find the ground truth answer. Write your review, then the corrected, complete answer after a line that reads exactly:\nGROUND TRUTH ANSWER:',
   grade:
@@ -97,11 +107,12 @@ export const DISTILL_DEFAULT_PROMPTS = Object.freeze({
   write:
     'QUESTION:\n{question}\n\nANSWERS:\n{answers}\n\nADVERSARIAL REVIEWS:\n{reviews}\n\nUsing the answers and the reviews, write the single best ground truth answer: correct, complete and free of every error the reviews found. Write it after a line that reads exactly:\nGROUND TRUTH ANSWER:',
 });
-const GROUND_TRUTH_MARK = /GROUND TRUTH ANSWER:\s*/i;
+/** The line a review or an upgrade ends with; Markdown bold or a heading around it is allowed. */
+const GROUND_TRUTH_MARK = /GROUND TRUTH ANSWER[*_]*:[*_\s]*/gi;
 
 /**
- * The turns of a heading, from a sub-heading's teachers. Each turn names its
- * teacher, its role, and which earlier turn it reviews.
+ * The turns of a heading, from a sub-heading's teachers and students. Each
+ * turn names its teacher, its role, and which earlier turn it reviews.
  *
  *   1  answer(t1)
  *   2  answer(each of `teachers`), then grade(each of `reviewers`), then write(writer)
@@ -111,9 +122,34 @@ const GROUND_TRUTH_MARK = /GROUND TRUTH ANSWER:\s*/i;
  *   6  answer(t1), review(t2 of 1), review(t3 of 2)   t3 = t2 (default) or t1
  *   7  answer(t1), review(t1 of 1), review(t2 of 2)   t2 differs from t1
  *
- * @returns {{ok: true, turns: Array<{turn: number, role: string, teacher: string, of?: number, same?: boolean}>} | {ok: false, error: string}}
+ * With `students`: student(each of `students`) comes first, as turn 0, and
+ * every `answer` above becomes an `upgrade`: that teacher gets the question
+ * and the students' answers, grades each one, fixes its errors and writes
+ * the upgraded answer. A review's `of` counts the teachers' turns only.
+ *
+ * @returns {{ok: true, turns: Array<{turn: number, role: string, teacher: string, of?: number, same?: boolean, student?: number, answer?: number}>} | {ok: false, error: string}}
  */
 export function planTurns(heading, config = {}) {
+  const students = unique(config.students);
+  const plan = teacherTurns(heading, config);
+  if (!plan.ok || !students.length) return plan;
+  return {
+    ok: true,
+    turns: [
+      ...students.map((teacher, i) => ({
+        turn: 0,
+        role: 'student',
+        teacher,
+        student: i + 1,
+      })),
+      ...plan.turns.map((t) =>
+        t.role === 'answer' ? { ...t, role: 'upgrade' } : t,
+      ),
+    ],
+  };
+}
+
+function teacherTurns(heading, config) {
   const t1 = String(config.t1 || '');
   const t2 = String(config.t2 || '');
   const need = (id, what) =>
@@ -237,13 +273,17 @@ export function callsPerQuestion(turns) {
   return Array.isArray(turns) ? turns.length : 0;
 }
 
-/** A run's estimate: questions left, calls each, and the teachers that wait for a paste. */
+/**
+ * A run's estimate: questions left, calls each (the students' answers among
+ * them), and the teachers that wait for a paste.
+ */
 export function estimateRun({ turns, questionsLeft, manual = [] }) {
   const each = callsPerQuestion(turns);
   const waits = turns.filter((t) => manual.includes(t.teacher)).length;
   return {
     questions: questionsLeft,
     callsPerQuestion: each,
+    studentsPerQuestion: turns.filter((t) => t.role === 'student').length,
     calls: each * questionsLeft,
     pastesPerQuestion: waits,
     pastes: waits * questionsLeft,
@@ -280,17 +320,38 @@ export function reviewsBlock(reviews) {
     .join('\n\n');
 }
 
-/** The answer after "GROUND TRUTH ANSWER:", or the whole text when there is none. */
+/**
+ * The answer after the last "GROUND TRUTH ANSWER:" line, or the whole text
+ * when there is none. The last one: a review of an earlier review may quote
+ * that review's line before writing its own.
+ */
 export function groundTruthOf(text) {
   const value = String(text ?? '');
-  const match = GROUND_TRUTH_MARK.exec(value);
-  const after = match ? value.slice(match.index + match[0].length).trim() : '';
+  let after = '';
+  for (const match of value.matchAll(GROUND_TRUTH_MARK))
+    after = value.slice(match.index + match[0].length).trim();
   return after || value.trim();
 }
 
 /**
+ * A score within a line, after its id: "7/10", "7.5 / 10", "7 out of 10"
+ * (never "7/100"). What lies between must not name another id.
+ */
+const SCORE_AFTER = String.raw`(?:(?!\b[A-Z]\d{1,3}\b|\b(?:student|answer|response)\s*#?\s*\d)[^\n]){0,60}?(\d{1,2}(?:\.\d+)?)\s*(?:\/\s*10|out of 10)\b`;
+const SCORE_BY_ID = new RegExp(
+  String.raw`\b([A-Z]\d{1,3})\b${SCORE_AFTER}`,
+  'gi',
+);
+const SCORE_BY_WORD = new RegExp(
+  String.raw`\b(student|answer|response)\s*#?\s*(\d{1,3})\b${SCORE_AFTER}`,
+  'gi',
+);
+
+/**
  * A reviewer's grades from its reply: the JSON it was asked for, else lines
- * like "R2: 8/10". Scores outside 0-10 are clamped; ids not given are dropped.
+ * like "R2: 8/10", "**S1** — 7 out of 10" or "Student 1: 6/10" (a student's
+ * answer is S1 …, a teacher's R1 …). Scores outside 0-10 are clamped; ids
+ * not given are dropped.
  * @returns {{scores: Record<string, number>, critiques: Record<string, string>, best: string|null}}
  */
 export function readGrades(text, ids) {
@@ -317,14 +378,20 @@ export function readGrades(text, ids) {
     if (known.has(said)) best = said;
     if (Object.keys(scores).length) break;
   }
-  if (!Object.keys(scores).length)
-    for (const match of raw.matchAll(
-      /\b(R\d{1,3})\b[^\n\d]{0,20}?(\d{1,2}(?:\.\d+)?)\s*(?:\/\s*10|out of 10)/gi,
-    )) {
-      const id = match[1].toUpperCase();
+  if (!Object.keys(scores).length) {
+    const take = (id, score) => {
       if (known.has(id) && !(id in scores))
-        scores[id] = Math.max(0, Math.min(10, Number(match[2])));
-    }
+        scores[id] = Math.max(0, Math.min(10, Number(score)));
+    };
+    for (const match of raw.matchAll(SCORE_BY_ID))
+      take(match[1].toUpperCase(), match[2]);
+    // "Student 1" is S1; "answer 2" and "response 2" are R2.
+    for (const match of raw.matchAll(SCORE_BY_WORD))
+      take(
+        `${match[1][0].toUpperCase() === 'S' ? 'S' : 'R'}${match[2]}`,
+        match[3],
+      );
+  }
   return { scores, critiques, best };
 }
 

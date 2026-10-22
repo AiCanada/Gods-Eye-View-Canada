@@ -13,16 +13,20 @@ dots"). The datasets feed CUSTOM LLM TRAINING in the AI World tab
 
 1. **Status**: one line, what the tab is doing.
 2. **INSTRUCTIONS**: the short steps, folded; this file is the full guide.
-3. **TEACHERS**: every model that can answer, with a swatch for its state:
-   READY (green), PASTE (yellow: every route left needs the owner to paste
-   the reply back) or NOT SET UP (grey). Each row names the route it uses now
-   and, after THEN, the ones it falls back to. An app route reads `APP · THE
-REPLY COMES BACK BY ITSELF` where this PC can bring the reply back (see
+3. **TEACHERS AND STUDENTS**: every model that can answer, as a teacher or
+   as a student, with a swatch for its state: READY (green), PASTE (yellow:
+   every route left needs the owner to paste the reply back) or NOT SET UP
+   (grey). Each row names the route it uses now and, after THEN, the ones it
+   falls back to. An app route reads `APP · THE REPLY COMES BACK BY ITSELF`
+   where this PC can bring the reply back (see
    [Replies from the apps](#replies-from-the-apps)).
-4. **The run**: `RUN · <state> · QUESTION n/total · n CALLS`, with PAUSE /
-   CONTINUE (one button) and STOP; while an app answers it adds `GROK BOT IS
-ANSWERING: ITS REPLY COMES BACK BY ITSELF` (or CHATGPT). The last errors are listed under it
-   (`QUESTION n: <error>`).
+4. **The run**: `RUN · <state> · QUESTION n/total · n CALLS`, then who is
+   answering (`TURN 2 · NVIDIA NIM`, `STUDENT 1 · GROK BOT`) and, over the
+   failed questions, `RETRY 1/3`; with PAUSE / CONTINUE (one button) and
+   STOP; while an app answers it adds `GROK BOT IS ANSWERING: ITS REPLY
+COMES BACK BY ITSELF` (or CHATGPT). A refusal, or a note such as `PROMPT
+COPIED`, takes the line for fifteen seconds, then the run is back. The last
+   errors are listed under it (`QUESTION n: <error>`).
 5. **The paste-back box**: shown only while a fallback waits for the owner
    (see [Paste-back](#paste-back)).
 6. **The seven headings**, each folded. Inside each: ADD HEADING with a name
@@ -34,18 +38,49 @@ Each sub-heading is a saved run of its own:
 - **Questions**: one a line (a blank line between keeps a long one whole),
   ADD QUESTIONS; or LOAD CSV (the column headed `question`, `questions`,
   `prompt` or `input`, or else the first column of every row); CLEAR
-  QUESTIONS.
+  QUESTIONS. A question is kept once: one typed again is refused (`That
+question is there already.`).
+- **STUDENTS (NONE TO ALL)**, ticked from the same list as the teachers:
+  they answer each question first, and the teachers grade their answers, fix
+  the errors and upgrade them (see [Students](#students)).
 - **The teachers its heading asks for** (see the table below).
 - **Web search**: GROK BOT and OPENAI DOTS search the web while they answer
   (on by default).
 - **PROMPTS**, folded: the teacher instructions and the prompts that carry
-  the review, the grading and the writing (see [Prompts](#prompts)).
-- **SAVE SETTINGS**, and **START OVER FROM THE FIRST QUESTION**.
+  the grading and upgrading of the students' answers, the review, the
+  grading and the writing (see [Prompts](#prompts)).
+- **SAVE SETTINGS**.
+- **RUN**: FROM WHERE IT STOPPED, START OVER FROM THE FIRST QUESTION, or
+  RETRY THE FAILED QUESTIONS (offered once a question has failed, with the
+  count); and **ONE QUESTION, THEN PAUSE**, to try the prompts on one
+  question before paying for the rest.
 - **ESTIMATE**, then **CONFIRM START**: the paid calls the run will make and
-  the replies it will wait for, before it starts.
+  the replies it will wait for, before it starts, with the plan of each
+  question under it (`EACH QUESTION: STUDENT 1 GROK BOT, TURN 1 NVIDIA NIM
+GRADES THE STUDENTS AND UPGRADES, TURN 2 NVIDIA NIM REVIEWS`). Both use the
+  saved settings: with edits not yet saved the line reads `SAVE SETTINGS
+FIRST`. An estimate holds for what it was made for: another RUN choice,
+  settings saved, questions added or a question failed since clears it and
+  CONFIRM START waits for ESTIMATE again; a start whose count of calls no
+  longer matches is refused (`The estimate changed: press ESTIMATE again.`).
 - **EXPORT JSONL**, **EXPORT CSV**, the number of ground truths, and the
   line `CLASS RESTRICTED: THE TEACHERS’ TERMS MAY LIMIT TRAINING ON THEIR
 ANSWERS`.
+- **STUDENT REPORT**: each student's mean grade over the dataset so far
+  (`TRAINED HERE · MINE: 6.4/10 OVER 12 GRADED ANSWERS`), and **LAST GROUND
+TRUTH**, folded: the last record's question, its ground truth and the
+  students' grades, so a run can be judged without an export. Folded, it
+  carries the heads the status sends (300 and 600 characters, on one line);
+  opened, it fetches the whole record once, with its line breaks. `DID NOT
+ANSWER: GROK BOT` names a student, teacher or reviewer whose every route
+  failed while the question still went through. **OLDER** and **NEWER** look
+  back through the records one at a time (`GROUND TRUTH 4 OF 12 · QUESTION
+4`); **DROP THIS RECORD** (PC only, a second press within six seconds) takes
+  that question's records out of the dataset and lists the question as
+  failed, so RETRY THE FAILED QUESTIONS does it again.
+- The sub-heading's own line counts its questions, how many are done (ground
+  truths written, not how far the run got), how many failed, and its ground
+  truths.
 - **CLEAR DATASET** and **DELETE HEADING**: each asks for a second press
   within six seconds.
 
@@ -65,8 +100,10 @@ second.
 | 7. Self-Correction + differing teachers                            | t1 answers, t1 reviews itself, then t2 (different) reviews turn 2                                                                                                                                                                                                                                                      | turn 3                                                                                                                                                                                             |
 
 A review turn ends with a line that reads `GROUND TRUTH ANSWER:`; the ground
-truth is what follows it, or the whole reply when a teacher leaves the line
-out. Headings 5, 6 and 7 refuse to start when t2 is t1.
+truth is what follows the last such line (a review of an earlier review may
+quote that review's line; Markdown bold around it is read too), or the whole
+reply when a teacher leaves the line out. Headings 5, 6 and 7 refuse to
+start when t2 is t1.
 
 A teacher's own turns stay in one conversation as far as its route allows:
 `previous_response_id` on a key's Responses API (GROK BOT, OPENAI DOTS), the
@@ -76,19 +113,55 @@ and the response, so any teacher can read it cold. A reply with no id of its
 own (chat models, pasted replies, the local models) gets `gev-` and twelve
 hex digits of its text's SHA-1.
 
+## Students
+
+Any sub-heading may pick students too (owner request 2026-10-21: "Add
+ability to choose students … students answer original question. Teachers
+grade student answer and upgrade response from student and fix any
+errors"). They come from the same list as the teachers; the custom LLMs
+trained here are the natural students, so a model's own answers come back
+graded and corrected for its next training.
+
+- With students ticked, each question starts with turn 0: every student
+  answers the original question, three at a time, as S1, S2 … with its
+  response id (STUDENT n in the paste box when its route needs a paste).
+- The heading's first teacher turn becomes an **upgrade** instead of a cold
+  answer. The teacher gets the question and every student answer, grades
+  each one from 0 to 10 with what is wrong or missing (`S1: 7/10 …`), then
+  fixes every error and writes the upgraded answer after `GROUND TRUTH
+ANSWER:`. In heading 1 that upgraded answer is the ground truth
+  (`pickedBy: 'upgrade'`); in heading 2 every ticked teacher upgrades and the
+  reviewers grade the upgraded answers; in headings 3-7 the review turns go
+  on from the upgrade, on the same teacher's conversation.
+- The record keeps the students' answers as turns (`role: 'student'`,
+  `turn: 0`, `id: 'S1'`) and each upgrading teacher's grades in
+  `studentGrades` (`scores`, `critiques`); EXPORT CSV adds the `students`
+  and `student_grades` columns.
+- A student that fails (every route failed, or its paste was skipped) is
+  left out and named in the record's `failures` (the LAST GROUND TRUTH box
+  reads `DID NOT ANSWER: …`); when no student answers, the question fails.
+  ESTIMATE counts the students' answers among the calls (`n STUDENT ANSWERS
+AMONG THEM`).
+- The prompt is GRADING AND UPGRADING THE STUDENTS’ ANSWERS in PROMPTS.
+
 ## Teachers
 
 | Teacher                                                                                 | How it answers, in order                                                                                                                                                                                                                                                                                                                                       |
 | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | The Ask panel's LLMs (NVIDIA NIM, xAI Grok, OpenRouter, Anthropic, the custom endpoint) | its POWER UP key, one `/chat/completions` call through the Ask panel's settings (`buildLlmChatCall`, `server/providers/llm/ask.js`), up to 4,096 answer tokens                                                                                                                                                                                                 |
-| GROK BOT                                                                                | 1. its own key (`GROK_BOT_API_KEY`, xAI Responses API, web search); 2. the Grok Bot computer (the swarm's gateway: the prompt goes to a free bot and its report comes back); 3. the Chief of Staff webhook (the task is sent; the reply is read back from the Grok Bot window); 4. the Grok Bot app (opened with the prompt pasted in; the reply is read back) |
+| GROK BOT                                                                                | 1. its own key (`GROK_BOT_API_KEY`, xAI Responses API, web search); 2. the Grok Bot computer (the swarm's gateway: the prompt goes to the bot and its report comes back; a bot on a swarm task is waited for, up to ten minutes, before the next route); 3. the Chief of Staff webhook (the task is sent; the reply is read back from the Grok Bot window); 4. the Grok Bot app (opened with the prompt pasted in; the reply is read back) |
 | OPENAI DOTS                                                                             | 1. its own key (`OPENAI_DOTS_API_KEY`, OpenAI Responses API, web search); 2. the ChatGPT app (opened with the prompt pasted in; the reply comes back through its Copy response button)                                                                                                                                                                         |
 | TRAINED HERE · `<name>`                                                                 | a custom LLM from CUSTOM LLM TRAINING (`.gev-data/llm/<name>/model`), asked through `py -3.13 -m ml.gevtape.llm_chat --json` on this PC                                                                                                                                                                                                                        |
 
 A route that fails passes to the next one; the turn records every try
 (`tried`). Errors never carry a key. The Grok Bot computer is shared with
 the social swarm (`server/shared/grokBotComputer.mjs`), so the two never
-hand the same bot two prompts at once.
+hand the same bot two prompts at once. A bot's key goes on with its own
+`previous_response_id` on a review turn; when the key gave no id (a `gev-…`
+id was made here), the turn starts over with the system prompt instead of
+sending an id the API would refuse. The list is read again for every call:
+a key added mid-run counts, and a custom LLM deleted mid-run fails its turn
+with `… is not on the list any more.`
 
 ## Replies from the apps
 
@@ -146,24 +219,38 @@ one at a time, in order. ESTIMATE says how many replies a run will wait for.
 ## Running
 
 - One run at a time, across every heading.
-- **CONFIRM START** begins at the first question not yet done; START OVER
-  ticked begins at question 1 again (the dataset is kept: clear it first for
-  a clean one).
+- **CONFIRM START** begins at the first question not yet done (FROM WHERE IT
+  STOPPED); START OVER FROM THE FIRST QUESTION begins at question 1 again
+  (the dataset is kept: clear it first for a clean one); RETRY THE FAILED
+  QUESTIONS goes over the questions that failed, in order, and takes each
+  one that passes off the list (one that fails again stays on it). Nothing
+  changes until CONFIRM START, not even START OVER.
+- **ONE QUESTION, THEN PAUSE** pauses the run after one question; CONTINUE
+  runs the rest.
 - **PAUSE** finishes the question it is on, then stops (`PAUSES AFTER THIS
-QUESTION`); **CONTINUE** goes on at the next. **STOP** ends the run at
-  once; the question it was on is not kept.
-- A question that fails (every route of a teacher failed, no reviewer gave a
-  grade to read) is counted as failed, its error is listed, and the run goes
-  on with the next.
+QUESTION`); **CONTINUE** goes on at the next, keeping the run's count of
+  calls and its errors, and a retry the questions it still owes. **STOP**
+  ends the run at once; the question it was on is not kept.
+- A question that fails (every route of a teacher failed, no student
+  answered, no reviewer gave a grade to read) is counted as failed, listed
+  for RETRY, its error is shown, and the run goes on with the next.
 - While a sub-heading's run is going (running or waiting for a paste), its
   questions and settings cannot be changed; pause or stop it first.
 
 ## Prompts
 
-PROMPTS holds four boxes; an empty box, or the default text, means the
+PROMPTS holds up to five boxes; an empty box, or the default text, means the
 default.
 
 - **TEACHER INSTRUCTIONS**: the system prompt of every call.
+- **GRADING AND UPGRADING THE STUDENTS’ ANSWERS** (`{question} {answers}`):
+  the first teacher turn when students are ticked; asks for a `S1: 7/10`
+  line per student with what is wrong, then the upgraded answer after
+  `GROUND TRUTH ANSWER:`. Grades are read from the JSON a reviewer is asked
+  for, else from lines such as `S1: 7/10`, `**S1** — 2 errors, 6/10`,
+  `Student 1: 7.5 / 10` or `Answer 2: 9 out of 10` (`Student n` is `Sn`;
+  `Answer n` and `Response n` are `Rn`; a score belongs to the last id
+  before it on its line; `7/100` is not a grade).
 - **ADVERSARIAL REVIEW** (`{question} {responseId} {teacher} {response}`):
   headings 3-7's review turns.
 - **GRADING** (`{question} {answers}`): heading 2's reviewers; asks for JSON
@@ -180,8 +267,14 @@ Everything is under the gitignored `.gev-data/distill/`:
 state.json                 the sub-headings: id, heading, name, settings
 <id>/questions.json        the questions, in order
 <id>/dataset.jsonl         one record per ground truth
-<id>/run.json              { cursor, done, failed }: where the run goes on
+<id>/run.json              { cursor, done, failed, failedQuestions, retryQueue }:
+                           where the run goes on, the questions that failed
+                           (1-based), the ones a retry under way still owes
 ```
+
+The status reads each dataset as it grows (the file is only ever appended
+to): the count, each student's mean grade and the last record come from the
+lines added since the last poll, never from the whole file again.
 
 A record:
 
@@ -191,17 +284,20 @@ A record:
   heading: 3, feature: 'name', featureId: 'h3-1a2b3c4d5e',
   question: '…',
   groundTruth: '…',
-  pickedBy: 'single' | 'final-turn' | 'answer' | 'best-graded' | 'writer',
-  turns: [{ turn, role: 'answer' | 'review' | 'grade' | 'write', teacher, label,
-            route, model, responseId, text, tried?, at }],
+  pickedBy: 'single' | 'final-turn' | 'upgrade' | 'answer' | 'best-graded' | 'writer',
+  turns: [{ turn, role: 'student' | 'answer' | 'upgrade' | 'review' | 'grade' | 'write',
+            teacher, label, route, model, responseId, text, tried?, at, id? }],  // id: S1 …, R1 …
+  studentGrades: [{ teacher, label, scores: { S1: 7 }, critiques }],  // with students
   grades: [{ reviewer, label, scores: { R1: 8 }, critiques, best }, { best, mean, votes }],  // heading 2
+  failures: [{ role: 'student', teacher, label, error }],  // who did not answer while the question went through
   class: 'restricted',
   createdAt: 1760000000000,
 }
 ```
 
 - **EXPORT JSONL** downloads `dataset.jsonl` as it is; **EXPORT CSV** gives
-  `id, heading, question, ground_truth, picked_by, teachers, class`.
+  `id, heading, question, ground_truth, picked_by, teachers, students,
+student_grades, class`.
 - **Training**: in CUSTOM LLM TRAINING tick **DISTILLED ANSWERS (AI
   DISTILLATION)**. Every record of every sub-heading becomes one chat example,
   the question as the user's turn and the ground truth as the assistant's
@@ -216,8 +312,9 @@ CSV file, 80 characters a name, 6,000 characters a prompt.
 ## The owner's phone
 
 From the tailnet mirror everything works except the removals: CLEAR
-QUESTIONS, CLEAR DATASET and DELETE HEADING do nothing and say nothing
-(`403 pc-only`), as every removal from the phone (owner ruling 2026-10-11).
+QUESTIONS, CLEAR DATASET, DROP THIS RECORD and DELETE HEADING do nothing and
+say nothing (`403 pc-only`), as every removal from the phone (owner ruling
+2026-10-11).
 
 ## Server routes (`/api/distill`)
 
@@ -232,17 +329,31 @@ DELETE /features          { id }
 POST   /questions         { id, text } or { id, csv }
 DELETE /questions         { id }
 DELETE /dataset           { id }
-POST   /estimate          { id, fresh? }           paid calls before START
-POST   /start             { id, confirm: true, fresh? }
+GET    /records?id=&at=   one record, `at` counted back from the newest (0: the last)
+DELETE /records           { id, at }              drop that question's records; it is listed for RETRY
+POST   /estimate          { id, fresh?, retry? }   paid calls before START
+POST   /start             { id, confirm: true, fresh?, retry?, pauseAfter?, calls? }
+                          calls: the count confirmed; refused when the estimate changed
 POST   /pause  /continue  /stop
 POST   /paste             { answer }               a reply from a manual route
 POST   /skip
 GET    /export?id=&format=jsonl|csv
 ```
 
-`config`: `t1`, `t2`, `teachers`, `reviewers`, `review`, `pick`
+`config`: `t1`, `t2`, `students`, `teachers`, `reviewers`, `review`, `pick`
 (`best-graded` or `writer`), `writer`, `turn3From` (`turn2` or `turn1`),
-`webSearch`, `prompts` (`system`, `review`, `grade`, `write`).
+`webSearch`, `prompts` (`system`, `upgrade`, `review`, `grade`, `write`).
+
+Each sub-heading in `/status` carries, besides its settings: `questions`,
+`preview`, `cursor`, `done`, `failed`, `failedQuestions`, `records`,
+`students` (`teacher`, `label`, `answers`, `graded`, `mean`) and `last` (the
+last record's `question` and `groundTruth` heads, `more` when either was
+cut, `pickedBy`, `teachers`, `students`, `failed`, `grades`, `createdAt`);
+`GET /records` gives the same view of one record with the texts whole, their
+lines kept.
+The run carries `now` (who is answering: `teacher`, `label`, `question`,
+`turn`, `student` or `answer` or `reviewer`), `retry`, `retryAt`, `retryOf`
+and `pauseAfter`.
 
 The code: `src/distillCore.mjs` (the headings' turns, the estimate, reading
 grades and CSV), `src/distillPanel.js` (the tab),

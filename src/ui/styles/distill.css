@@ -40,7 +40,8 @@
 #distill-panel .distill-howto summary,
 #distill-panel .distill-heading > summary,
 #distill-panel .distill-feature > summary,
-#distill-panel .distill-prompts > summary {
+#distill-panel .distill-prompts > summary,
+#distill-panel .distill-last > summary {
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: 9px;
@@ -56,10 +57,22 @@
 
 #distill-panel .distill-heading[open],
 #distill-panel .distill-feature[open],
-#distill-panel .distill-prompts[open] {
+#distill-panel .distill-prompts[open],
+#distill-panel .distill-last[open] {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* A record's question and ground truth keep their lines once fetched whole. */
+#distill-panel .distill-text {
+  white-space: pre-wrap;
+}
+
+/* The last ground truth is folded under its sub-heading; none yet, none shown. */
+#distill-panel .distill-last[hidden],
+#distill-panel .distill-note[hidden] {
+  display: none;
 }
 
 #distill-panel .distill-heading {

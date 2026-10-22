@@ -1,5 +1,74 @@
 # Changelog
 
+- AI DISTILLATION, a further review pass (owner request 2026-10-22:
+  "continue upgrade of AI Distillation tab with full review"). CONFIRM
+  START runs what was estimated: the estimate shows the plan of each
+  question (`EACH QUESTION: STUDENT 1 GROK BOT, TURN 1 NVIDIA NIM GRADES THE
+  STUDENTS AND UPGRADES, …`), another RUN choice, settings saved, questions
+  added or a question failed since clears it, and the server refuses a start
+  whose count of calls changed (`POST /start` takes `calls`). Grades are
+  read from more forms (`**S1** — 2 errors, 6/10`, `Student 1: 7.5 / 10`,
+  `Answer 2: 9 out of 10`; a score goes to the last id before it; `7/100`
+  is no grade). A bot key's review turn no longer sends back an id made here
+  when the key gave none. A student, teacher or reviewer that failed while
+  the question went through is kept on the record (`failures`) and named in
+  the LAST GROUND TRUTH box (`DID NOT ANSWER: …`); opened, that box fetches
+  the whole record with its lines instead of the status's one-line head. A
+  custom LLM deleted mid-run fails its turn plainly; a question typed again
+  is refused instead of dropped in silence; the sub-heading's line counts
+  the questions done, not how far the run got; heading 2 without REVIEW
+  marks a student upgrade as `upgrade`. Strings in Spanish, Quebec French,
+  Inuktitut and Ancient Egyptian; guide and TESTING.md updated.
+
+- AI DISTILLATION reviewed and upgraded (owner request 2026-10-21: "continue
+  upgrade of AI Distillation tab with full review"). A failed question is
+  now listed in the sub-heading's `run.json` and shown on its line
+  (`2 FAILED`); RUN offers FROM WHERE IT STOPPED, START OVER FROM THE FIRST
+  QUESTION or RETRY THE FAILED QUESTIONS, which runs only those, in order,
+  and takes each one that passes off the list (CONTINUE keeps a paused
+  retry's queue; the estimate reads `n FAILED QUESTIONS TO RETRY`). ONE
+  QUESTION, THEN PAUSE runs one question and pauses, to try the prompts
+  before paying for the rest. The run line names who is answering (`TURN 2 ·
+  NVIDIA NIM`, `STUDENT 1 · GROK BOT`, `RETRY 1/3`), and a refusal or a
+  note on it gives way to the run after fifteen seconds instead of staying
+  until the next press. Each sub-heading shows a STUDENT REPORT (each
+  student's mean grade over its dataset) and LAST GROUND TRUTH (the last
+  record's question, ground truth and grades, folded), with OLDER and NEWER
+  to look back through the records and DROP THIS RECORD (PC only, two
+  presses) to take a question's records out and list it for RETRY (routes
+  `GET` and `DELETE /records`); the status reads a dataset only as it
+  grows, byte-exact across a write under way, never the whole file per poll
+  (`server/shared/distillJobs.mjs`). A Grok Bot computer busy with a swarm
+  task is waited for, up to ten minutes, before the next route is tried
+  (`server/shared/distillTeachers.mjs`). Strings in Spanish, Quebec French,
+  Inuktitut and Ancient Egyptian; guide and TESTING.md updated.
+
+- Students in AI DISTILLATION (owner request 2026-10-21: "Add ability to
+  choose students … students answer original question. Teachers grade
+  student answer and upgrade response from student and fix any errors").
+  Every sub-heading gains STUDENTS (NONE TO ALL), ticked from the same list
+  as the teachers (the custom LLMs trained here are the natural students).
+  With students, each question starts with their answers (turn 0, S1, S2 …,
+  three at a time), and the heading's first teacher turn becomes an upgrade:
+  the teacher grades each student answer from 0 to 10 with what is wrong,
+  fixes every error and writes the upgraded answer, which heading 1 keeps as
+  the ground truth, heading 2's reviewers grade, and headings 3-7 review on
+  (`planTurns` in `src/distillCore.mjs`, `server/shared/distillJobs.mjs`).
+  Records keep the students' answers and each teacher's grades of them
+  (`studentGrades`); EXPORT CSV adds `students` and `student_grades`;
+  ESTIMATE counts the student answers; a student on a paste route waits as
+  STUDENT n; PROMPTS gains GRADING AND UPGRADING THE STUDENTS' ANSWERS.
+  Fixed on the way: START OVER no longer resets a run's progress before the
+  estimate is confirmed; CONTINUE keeps the run's count of calls and its
+  errors; PAUSES AFTER THIS QUESTION no longer lingers on a paused or
+  stopped run; the ground truth is read after the last `GROUND TRUTH
+  ANSWER:` line (a review may quote the one it reviews), with Markdown bold
+  around it accepted; grades written as `S1: 7/10` are read like `R1: 7/10`;
+  when every reviewer fails the error names them; ESTIMATE and CONFIRM START
+  with unsaved settings say SAVE SETTINGS FIRST instead of silently using
+  the saved ones. New strings in Spanish, Quebec French, Inuktitut and
+  Ancient Egyptian. Guide: `docs/AI-DISTILLATION.md`, "Students".
+
 - Upstream merge, 2026-10-21 (fourth): the 248 upstream commits after
   93ea088f, up to 713285b5 (20 pull requests and four direct commits).
   - What came in: Gemini Live voice beside OpenAI, chosen in the GEV MIC's
