@@ -683,3 +683,60 @@ test('the motion-JPEG scanner works chunk by chunk, and a wrong declared length 
   const tricky = Buffer.concat([Buffer.from(`--cam${CRLF}${CRLF}`), body, Buffer.from(`${CRLF}--cam${CRLF}`)]);
   assert.deepEqual(firstJpegInMotionStream(tricky, 'cam'), body);
 });
+
+test('CCTV upstream frame fetch accepts only raster image types and sends their canonical type', async () => {
+  const frame = (contentType, body = 'frame') => {
+    const state = { cancelled: false };
+    const headers = contentType === null ? {} : { 'Content-Type': contentType };
+    const response = new Response(new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new TextEncoder().encode(body));
+        controller.close();
+      },
+      cancel() {
+        state.cancelled = true;
+      },
+    }, { highWaterMark: 0 }), { status: 200, headers });
+    return { response, state };
+  };
+  for (const [contentType, canonical] of [
+    ['image/jpeg', 'image/jpeg'],
+    ['image/JPEG; charset=x', 'image/jpeg'],
+    [' Image/PNG ', 'image/png'],
+    ['image/gif', 'image/gif'],
+    ['image/webp;q=1', 'image/webp'],
+    ['image/avif', 'image/avif'],
+    // Fork: old JPEG labels some camera servers still send.
+    ['image/jpg', 'image/jpeg'],
+    ['Image/PJPEG', 'image/jpeg'],
+  ]) {
+    const { response } = frame(contentType);
+    const result = await fetchCctvImageFromUpstream('https://example.com/frame.jpg', {
+      fetchImpl: async () => response,
+    });
+    assert.equal(result?.contentType, canonical, contentType);
+    assert.equal(result.body.toString(), 'frame');
+  }
+  for (const [contentType, body] of [
+    ['image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg"/>'],
+    ['Image/SVG+XML; charset=utf-8', '<svg xmlns="http://www.w3.org/2000/svg"/>'],
+    ['text/html', '<!doctype html><p>x</p>'],
+    ['text/html; charset=utf-8', '<!doctype html><p>x</p>'],
+    ['application/xml', '<x/>'],
+    ['text/xml', '<x/>'],
+    [null, 'frame'],
+    ['', 'frame'],
+    ['image', 'frame'],
+    ['image/', 'frame'],
+    ['image/jpeg/x', 'frame'],
+    ['image/jpeg, text/html', 'frame'],
+    ['application/octet-stream', 'frame'],
+  ]) {
+    const { response, state } = frame(contentType, body);
+    const result = await fetchCctvImageFromUpstream('https://example.com/frame.jpg', {
+      fetchImpl: async () => response,
+    });
+    assert.equal(result, null, String(contentType));
+    assert.equal(state.cancelled, true, `${contentType}: body cancelled`);
+  }
+});

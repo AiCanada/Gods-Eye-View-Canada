@@ -10,8 +10,9 @@ import net from 'node:net';
 import { Readable } from 'node:stream';
 import { CCTV_PROXY_USER_AGENT } from './upstream-headers.js';
 import { isPublicAddress } from './frame-resolver.js';
-import { hashSeed, escapeXml } from './normalize.js';
+import { hashSeed, escapeXml, pinnedCameraUrl } from './normalize.js';
 import {
+  CALGARY_IMAGE_ORIGIN,
   CCTV_FRAME_FETCH_TIMEOUT_MS,
   CCTV_FRAME_MAX_BODY_BYTES,
   CCTV_FRAME_MAX_REDIRECTS,
@@ -20,6 +21,10 @@ import {
   CCTV_MEDIA_MAX_BODY_BYTES,
   NSW_IMAGE_ORIGIN,
   NSW_IMAGE_USER_AGENT,
+  TALLINN_IMAGE_ORIGIN,
+  TARKTEE_IMAGE_ORIGIN,
+  TFL_IMAGE_ORIGIN,
+  WARENDORF_IMAGE_ORIGINS,
 } from './constants.js';
 /**
  * Generate a synthetic SVG billboard image for a CCTV camera placeholder.
@@ -106,6 +111,80 @@ export function toReadable(body) {
 }
 
 /**
+ * Split a Content-Type value into its lower-case essence and parameters.
+ *
+ * @param {string|null|undefined} value
+ * @returns {{essence:string,params:Map<string,string>}|null} Null when the
+ *   value is missing or is not a `type/subtype` media type.
+ */
+export function parseMediaType(value) {
+  const [head, ...rest] = String(value ?? '').split(';');
+  const essence = head.trim().toLowerCase();
+  if (!/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(essence)) return null;
+  const params = new Map();
+  for (const part of rest) {
+    const eq = part.indexOf('=');
+    if (eq <= 0) continue;
+    const name = part.slice(0, eq).trim().toLowerCase();
+    let paramValue = part.slice(eq + 1).trim();
+    if (/^".*"$/.test(paramValue)) paramValue = paramValue.slice(1, -1);
+    if (name && !params.has(name)) params.set(name, paramValue);
+  }
+  return { essence, params };
+}
+
+/** Still-image types a camera frame may be served as. */
+const CCTV_RASTER_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/avif',
+]);
+
+/** Fork: old JPEG labels some camera servers still send, read as JPEG. */
+const CCTV_RASTER_IMAGE_ALIASES = new Map([
+  ['image/jpg', 'image/jpeg'],
+  ['image/pjpeg', 'image/jpeg'],
+]);
+
+/**
+ * The canonical type of a raster camera frame, or null for any other type.
+ *
+ * @param {string|null|undefined} contentType
+ * @returns {string|null}
+ */
+export function cctvRasterImageType(contentType) {
+  const parsed = parseMediaType(contentType)?.essence;
+  const essence = CCTV_RASTER_IMAGE_ALIASES.get(parsed) || parsed;
+  return CCTV_RASTER_IMAGE_TYPES.has(essence) ? essence : null;
+}
+
+/**
+ * The type to relay a live feed as, or null when the upstream type does not
+ * match the feed kind. MJPEG keeps its part boundary, without which the body
+ * cannot be split into frames.
+ *
+ * @param {string} feedType - Normalized feed type (mp4, webm or mjpeg).
+ * @param {string|null|undefined} contentType
+ * @returns {string|null}
+ */
+export function cctvLiveMediaType(feedType, contentType) {
+  const parsed = parseMediaType(contentType);
+  if (!parsed) return null;
+  if (feedType === 'mp4' || feedType === 'webm')
+    return parsed.essence === `video/${feedType}` ? parsed.essence : null;
+  if (feedType !== 'mjpeg' || parsed.essence !== 'multipart/x-mixed-replace')
+    return null;
+  const boundary = parsed.params.get('boundary') || '';
+  if (!/^[0-9A-Za-z'()+_,./:=? -]{0,69}[0-9A-Za-z'()+_,./:=?-]$/.test(boundary))
+    return null;
+  return /^[0-9A-Za-z'+_.-]+$/.test(boundary)
+    ? `multipart/x-mixed-replace; boundary=${boundary}`
+    : `multipart/x-mixed-replace; boundary="${boundary}"`;
+}
+
+/**
  * Pipe an upstream fetch Response (image or video) to the client HTTP response.
  *
  * Forwards Content-Type, Content-Length, Content-Range, Accept-Ranges, and
@@ -116,6 +195,8 @@ export function toReadable(body) {
  * @param {Response} upstream - fetch() Response object.
  * @param {object} [opts]
  * @param {string} [opts.sourceHeader='upstream'] - Value for X-CCTV-Source header.
+ * @param {string} [opts.contentType] - Validated type to send instead of the
+ *   upstream's own.
  * @param {number} [opts.idleTimeoutMs=CCTV_MEDIA_IDLE_TIMEOUT_MS] - Silence
  *   allowed between upstream chunks before the stream is released. Injectable
  *   only to keep the deadline unit-testable.
@@ -126,10 +207,10 @@ export async function proxyMediaResponse(
   {
     sourceHeader = 'upstream',
     idleTimeoutMs = CCTV_MEDIA_IDLE_TIMEOUT_MS,
+    contentType = upstream.headers.get('content-type') ||
+      'application/octet-stream',
   } = {},
 ) {
-  const contentType =
-    upstream.headers.get('content-type') || 'application/octet-stream';
   const cacheControl = upstream.headers.get('cache-control') || 'no-store';
   const contentLength = upstream.headers.get('content-length');
   const contentRange = upstream.headers.get('content-range');
@@ -516,10 +597,15 @@ export async function fetchCctvMediaUpstream(
   if (downstream?.aborted) controller.abort();
   else downstream?.addEventListener?.('abort', onDownstreamAbort);
   try {
-    return await fetchImpl(keyedCctvUrl(url), {
-      headers,
-      signal: controller.signal,
-    });
+    // Redirects stay on the registered origin, as for frames (upstream
+    // #1317).
+    const upstream = await fetchWithinHost(
+      keyedCctvUrl(url),
+      { headers, signal: controller.signal },
+      fetchImpl,
+    );
+    if (!upstream) throw new Error('Media redirect refused');
+    return upstream;
   } finally {
     clearTimeout(timeoutId);
     downstream?.removeEventListener?.('abort', onDownstreamAbort);
@@ -608,8 +694,36 @@ export async function fetchTxdotSnapshot(
 const MAX_SAME_HOST_REDIRECTS = 2;
 
 /**
+ * Directories camera catalogs are pinned to, by host. A redirect on one of
+ * these hosts must stay inside the pinned directory too, so a same-origin
+ * redirect cannot leave it (another bucket on a shared storage host).
+ */
+const CCTV_PINNED_PREFIXES_BY_HOST = new Map();
+for (const prefix of [
+  TFL_IMAGE_ORIGIN,
+  TALLINN_IMAGE_ORIGIN,
+  TARKTEE_IMAGE_ORIGIN,
+  ...WARENDORF_IMAGE_ORIGINS,
+  NSW_IMAGE_ORIGIN,
+  CALGARY_IMAGE_ORIGIN,
+]) {
+  const host = new URL(prefix).hostname;
+  CCTV_PINNED_PREFIXES_BY_HOST.set(host, [
+    ...(CCTV_PINNED_PREFIXES_BY_HOST.get(host) || []),
+    prefix,
+  ]);
+}
+
+/** Whether a redirect target stays inside its host's pinned directory. */
+function withinPinnedPrefix(url) {
+  const prefixes = CCTV_PINNED_PREFIXES_BY_HOST.get(url.hostname);
+  return !prefixes || prefixes.some((p) => pinnedCameraUrl(url.href, p));
+}
+
+/**
  * Fetch a registered frame URL following redirects ONLY within the original
- * origin (scheme, host and port; at most MAX_SAME_HOST_REDIRECTS hops).
+ * origin (scheme, host and port; at most MAX_SAME_HOST_REDIRECTS hops) and,
+ * on a pinned camera host, within its pinned directory.
  * Default redirect-following would let an upstream steer a host-pinned
  * request, and its host-specific headers, to any origin, another port, or a
  * plaintext downgrade.
@@ -650,7 +764,7 @@ export async function fetchWithinHost(url, init, fetchImpl = fetch) {
     } catch {
       return null;
     }
-    if (next.origin !== origin) return null;
+    if (next.origin !== origin || !withinPinnedPrefix(next)) return null;
     current = next;
   }
   return null;
@@ -924,13 +1038,10 @@ export function requestCctvImageWithReferer(
               Array.isArray(value) ? value.join(', ') : String(value),
             );
         }
-        const contentType = headers.get('content-type') || '';
+        const contentType =
+          cctvRasterImageType(headers.get('content-type')) || '';
         const status = response.statusCode || 0;
-        if (
-          status < 200 ||
-          status >= 300 ||
-          !contentType.startsWith('image/')
-        ) {
+        if (status < 200 || status >= 300 || !contentType) {
           response.resume();
           resolve({ status, headers, body: null, contentType });
           return;
@@ -1133,13 +1244,15 @@ export async function fetchCctvImageFromUpstream(
         ? { ok: true, body: frame, contentType: 'image/jpeg' }
         : null;
     }
-    if (!upstream.ok || !contentType.startsWith('image/')) {
+    const imageType = cctvRasterImageType(contentType);
+    if (!upstream.ok || !imageType) {
+      cancelQuietly(upstream);
       controller.abort();
       return null;
     }
     const body = await readCappedResponseBytes(upstream, maxBytes);
     if (!body) return null;
-    return { ok: true, body, contentType };
+    return { ok: true, body, contentType: imageType };
   } catch {
     return null;
   } finally {

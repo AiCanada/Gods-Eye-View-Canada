@@ -1,5 +1,40 @@
 # Changelog
 
+- Upstream merge, 2026-10-22 (fifth): the 57 upstream commits after
+  713285b5, up to 7be5937f (10 pull requests).
+  - What came in: shared panel controls, so ordinary selectors, sliders,
+    action buttons, dropdowns, number fields and read-only badges look and
+    behave the same everywhere (#1301, #1287, #1302, #1305, #1306, #1309);
+    Street Level's SINCE note on the value's own line, `(by upload date)`
+    (#1286); bounded Overpass request checks and refused cross-site POSTs
+    (#1264); catalogue stars and a soft Milky Way instead of the blocky sky
+    box, with the Sun and Moon kept and the Milky Way fading under the Anime
+    style (#1243); and provider response hardening (#1317): CCTV stills are
+    relayed only as JPEG, PNG, GIF, WebP or AVIF, live camera media only in
+    its feed's own type, media redirects stay on the camera's host, catalog
+    image URLs are pinned by parsed URL, GBFS answers are re-sent as JSON,
+    every `/api` answer carries `Content-Security-Policy: default-src
+    'none'; sandbox` and `nosniff`, and the CCTV routes refuse cross-site
+    browser requests.
+  - Left out: nothing of the ten. #1317's pinned directories for the Hong
+    Kong, King County and WSDOT loaders are not listed, since the fork does
+    not run those loaders.
+  - Fitted to the fork: #1317's checks sit in the fork's own CCTV frame,
+    media and Street View paths. The still path, by fetch or by the
+    node:https retry, answers only those image types (the first picture of a
+    motion-JPEG stream still counts), and `image/jpg` and `image/pjpeg` are
+    read as JPEG, since some camera servers still send them; live media keeps
+    the road CCTV keys and now follows redirects only on its own host; the
+    opt-in Street View fallback is skipped for a request that came through a
+    proxy; the HLS route is unchanged. The CCTV area chip (at most 1,000
+    cameras within 50 km) is a shared badge too, amber when the area is
+    full. The Scenes panel in the context column and the Radio panel below
+    the last tab take the shared button and field classes. The changed
+    Street Level note is in Quebec French, Inuktitut and Ancient Egyptian.
+  - On this machine: the running dev server picks the merge up at its next
+    restart. The Street View fallback is off here
+    (`CCTV_STREETVIEW_FALLBACK` unset), so the proxy rule changes nothing.
+
 - AI DISTILLATION, a further review pass (owner request 2026-10-22:
   "continue upgrade of AI Distillation tab with full review"). CONFIRM
   START runs what was estimated: the estimate shows the plan of each

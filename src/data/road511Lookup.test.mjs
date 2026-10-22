@@ -342,11 +342,18 @@ function install(plugin, { hook = 'configureServer', config } = {}) {
     config,
   });
   return async (url, { method = 'GET', headers = {} } = {}) => {
+    // A refusal from the shared cross-site gate answers through statusCode and
+    // setHeader, as a real server response allows, instead of writeHead.
     const res = {
+      statusCode: 200,
+      setHeader(name, value) {
+        this.headers = { ...this.headers, [name]: value };
+      },
       writeHead(status, responseHeaders) {
         Object.assign(this, { status, headers: responseHeaders });
       },
       end(body) {
+        this.status ??= this.statusCode;
         this.body = body;
       },
     };

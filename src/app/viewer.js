@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import { installRenderRecovery } from './renderRecovery.js';
 import { applyModelAtmosphereWorkaround } from './atmosphereCompat.js';
+import { StarrySky } from '../sky/starrySky.js';
 
 /**
  * Wheel events this module dispatched itself (a combined trackpad step or a
@@ -238,11 +239,9 @@ export function installTrackpadPinchZoom(
   };
 }
 
-/** Create the standard globe viewer in caller-owned, visible containers. */
-export function createApplicationViewer({ container, creditContainer }) {
-  if (!container || !creditContainer)
-    throw new TypeError('Viewer and credit containers are required');
-  const viewer = new Cesium.Viewer(container, {
+/** Cesium.Viewer options of the standard globe viewer. */
+export function applicationViewerOptions(creditContainer) {
+  return {
     timeline: false,
     animation: false,
     baseLayerPicker: false,
@@ -255,6 +254,9 @@ export function createApplicationViewer({ container, creditContainer }) {
     selectionIndicator: false,
     infoBox: false,
     baseLayer: false,
+    // Replaces the blocky Tycho-2 default. An option, not `skyBox: false`,
+    // which would also stop CesiumWidget from creating the Sun and Moon.
+    skyBox: new StarrySky(),
     creditContainer,
     // Frame errors are handled by installRenderRecovery, which restarts the
     // loop and raises this same modal itself once an error proves permanent.
@@ -262,7 +264,17 @@ export function createApplicationViewer({ container, creditContainer }) {
     showRenderLoopErrors: false,
     msaaSamples: 4,
     contextOptions: { webgl: { preserveDrawingBuffer: true } },
-  });
+  };
+}
+
+/** Create the standard globe viewer in caller-owned, visible containers. */
+export function createApplicationViewer({ container, creditContainer }) {
+  if (!container || !creditContainer)
+    throw new TypeError('Viewer and credit containers are required');
+  const viewer = new Cesium.Viewer(
+    container,
+    applicationViewerOptions(creditContainer),
+  );
   try {
     viewer.targetFrameRate = 60;
     // Before any tile builds a draw command: Cesium's per-vertex model

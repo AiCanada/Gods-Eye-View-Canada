@@ -102,8 +102,13 @@ test('the DISPLAY rail styles live in their current owner, not the shim', () => 
   // these rules lived in the root style.css. That file is an import shim now,
   // and putting rules back into it would silently undo the split.
   const shim = read('style.css');
-  assert.ok(
-    shim.split('\n').length < 40,
+  // Fork: its own tabs add imports, so the shim is judged by what it holds
+  // (imports and comments only), not by its length.
+  assert.deepEqual(
+    shim
+      .split('\n')
+      .filter((line) => line.trim() && !/^\s*(@import |\/\*)/.test(line)),
+    [],
     'style.css is an import shim, not a stylesheet',
   );
   assert.doesNotMatch(

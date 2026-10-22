@@ -1048,7 +1048,7 @@
   "Panoramax is busy": "Panoramax est occupé",
   "Panoramax sent an unreadable answer": "Panoramax a envoyé une réponse illisible",
   "No street-level imagery providers configured": "Aucun fournisseur d'imagerie au niveau de la rue n'est configuré",
-  "{names}: by upload date": "{names} : par date de téléversement",
+  "(by upload date)": "(par date de téléversement)",
   "Open the Street Level panel to view imagery": "Ouvrez le panneau Niveau de la rue pour voir l'imagerie",
   "Image could not be opened": "Impossible d'ouvrir l'image",
   "TeleGeography load failed": "Échec du chargement de TeleGeography",

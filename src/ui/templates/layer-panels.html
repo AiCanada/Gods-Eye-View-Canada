@@ -35,28 +35,28 @@
         <img id="cctv-frame" alt="CCTV feed frame" />
         <canvas id="cctv-video" class="cctv-frame" hidden></canvas>
       </div>
-      <div id="cctv-source-badge" role="status" aria-live="polite" data-i18n>SOURCE · UNKNOWN</div>
+      <div id="cctv-source-badge" class="gev-status-badge" role="status" aria-live="polite" data-i18n>SOURCE · UNKNOWN</div>
       <div id="cctv-meta" data-i18n>Enable CCTV to load camera intersections</div>
       <div class="cctv-controls">
         <button id="cctv-enable-btn" class="scene-btn" data-i18n>CCTV OFF</button>
-        <button id="cctv-nearest-btn" class="scene-btn" data-i18n>NEAREST</button>
+        <button id="cctv-nearest-btn" type="button" class="gev-action-button scene-btn" data-i18n>NEAREST</button>
       </div>
       <div class="cctv-controls">
-        <button id="cctv-prev-btn" class="scene-btn" data-i18n>PREV</button>
-        <select id="cctv-camera-select" aria-label="CCTV camera" data-i18n-aria-label></select>
-        <button id="cctv-next-btn" class="scene-btn" data-i18n>NEXT</button>
+        <button id="cctv-prev-btn" type="button" class="gev-action-button scene-btn" data-i18n>PREV</button>
+        <select class="gev-field" id="cctv-camera-select" aria-label="CCTV camera" data-i18n-aria-label></select>
+        <button id="cctv-next-btn" type="button" class="gev-action-button scene-btn" data-i18n>NEXT</button>
       </div>
       <div class="cctv-controls">
-        <button id="cctv-focus-btn" class="scene-btn" data-i18n>FOCUS</button>
+        <button id="cctv-focus-btn" type="button" class="gev-action-button scene-btn" data-i18n>FOCUS</button>
         <button id="cctv-coverage-btn" class="scene-btn" data-i18n>COVERAGE OFF</button>
         <button id="cctv-auto-hop-btn" class="scene-btn" data-i18n>AUTO HOP OFF</button>
       </div>
       <div class="cctv-controls">
-        <span id="cctv-region-cap-chip" tabindex="0" role="note" title="No camera area loaded yet. Cameras load for the selected place: at most 1,000 within 50 km." aria-label="No camera area loaded yet. Cameras load for the selected place: at most 1,000 within 50 km." data-i18n-skip>AREA --</span>
+        <span id="cctv-region-cap-chip" class="gev-status-badge gev-status-badge--box" tabindex="0" role="note" title="No camera area loaded yet. Cameras load for the selected place: at most 1,000 within 50 km." aria-label="No camera area loaded yet. Cameras load for the selected place: at most 1,000 within 50 km." data-i18n-skip>AREA --</span>
       </div>
       <div class="cctv-controls">
         <button id="cctv-projection-btn" class="scene-btn" data-i18n>PROJECTION ON</button>
-        <span id="cctv-quality-chip" data-i18n-runtime>CAL · --</span>
+        <span id="cctv-quality-chip" class="gev-status-badge gev-status-badge--box" data-i18n-runtime>CAL · --</span>
       </div>
       <div class="cctv-calibration-block">
         <div class="cctv-calibration-header">
@@ -73,8 +73,8 @@
           <button class="cctv-cal-value" data-cal-field="east" title="East offset from catalog position (m) — click to type" data-i18n-title>ΔE --</button>
         </div>
         <div class="cctv-controls cctv-calibration-actions">
-          <button id="cctv-calib-save-btn" class="scene-btn" data-i18n>SAVE CAL</button>
-          <button id="cctv-calib-reset-btn" class="scene-btn" data-i18n>RESET CAL</button>
+          <button id="cctv-calib-save-btn" type="button" class="gev-action-button scene-btn" data-i18n>SAVE CAL</button>
+          <button id="cctv-calib-reset-btn" type="button" class="gev-action-button scene-btn" data-i18n>RESET CAL</button>
         </div>
       </div>
       <div class="cctv-summary-label" data-i18n>SCENE SUMMARY</div>
@@ -98,9 +98,9 @@
           <div class="sl-viewer-bar">
             <div class="sl-viewer-tools">
               <button id="sl-viewer-expand" class="scene-btn" type="button" aria-pressed="false" title="Show the street-level view full screen (Esc shrinks it)" data-i18n-title><span class="sl-btn-icon" aria-hidden="true">⤢</span><span class="sl-btn-text" data-i18n>EXPAND</span></button>
-              <div class="sl-seg" role="radiogroup" aria-label="Image fit" data-i18n-aria-label>
-                <button type="button" class="sl-seg-btn is-active" data-sl-render="letterbox" role="radio" aria-checked="true" title="Fit: show the whole photo, with dark bars where its shape differs from the frame" data-i18n-title data-i18n>FIT</button>
-                <button type="button" class="sl-seg-btn" data-sl-render="fill" role="radio" aria-checked="false" tabindex="-1" title="Fill: fill the frame edge to edge, cropping the photo" data-i18n-title data-i18n>FILL</button>
+              <div class="gev-segmented sl-seg" role="radiogroup" aria-label="Image fit" data-i18n-aria-label>
+                <button type="button" class="gev-segment sl-seg-btn is-active" data-sl-render="letterbox" role="radio" aria-checked="true" title="Fit: show the whole photo, with dark bars where its shape differs from the frame" data-i18n-title data-i18n>FIT</button>
+                <button type="button" class="gev-segment sl-seg-btn" data-sl-render="fill" role="radio" aria-checked="false" tabindex="-1" title="Fill: fill the frame edge to edge, cropping the photo" data-i18n-title data-i18n>FILL</button>
               </div>
             </div>
             <div class="sl-viewer-tools sl-viewer-tools-right">
@@ -129,17 +129,19 @@
         <fieldset id="sl-controls" class="sl-controls">
           <div id="sl-pano-row" class="sl-filters" role="group" aria-label="Imagery filters" data-i18n-aria-label>
             <span class="cctv-summary-label" data-i18n>IMAGERY</span>
-            <div class="sl-seg" role="radiogroup" aria-label="Panorama filter" data-i18n-aria-label>
-              <button type="button" class="sl-seg-btn is-active" data-sl-pano="all" role="radio" aria-checked="true" data-i18n>ALL</button>
-              <button type="button" class="sl-seg-btn" data-sl-pano="pano" role="radio" aria-checked="false" tabindex="-1">360°</button>
-              <button type="button" class="sl-seg-btn" data-sl-pano="flat" role="radio" aria-checked="false" tabindex="-1" data-i18n>FLAT</button>
+            <div class="gev-segmented sl-seg" role="radiogroup" aria-label="Panorama filter" data-i18n-aria-label>
+              <button type="button" class="gev-segment sl-seg-btn is-active" data-sl-pano="all" role="radio" aria-checked="true" data-i18n>ALL</button>
+              <button type="button" class="gev-segment sl-seg-btn" data-sl-pano="pano" role="radio" aria-checked="false" tabindex="-1">360°</button>
+              <button type="button" class="gev-segment sl-seg-btn" data-sl-pano="flat" role="radio" aria-checked="false" tabindex="-1" data-i18n>FLAT</button>
             </div>
           </div>
           <div id="sl-since-row" class="sl-since">
             <label class="cctv-summary-label" for="sl-since" data-i18n>SINCE</label>
             <input id="sl-since" class="sl-range" type="range" min="0" max="8" step="1" value="0" aria-valuetext="ANY DATE" aria-describedby="sl-since-label sl-since-note" />
-            <output id="sl-since-label" class="sl-since-label" for="sl-since" data-i18n>ANY DATE</output>
-            <small id="sl-since-note" class="sl-since-note" hidden></small>
+            <span class="sl-since-value">
+              <output id="sl-since-label" class="sl-since-label" for="sl-since" data-i18n>ANY DATE</output>
+              <small id="sl-since-note" class="sl-since-note" hidden></small>
+            </span>
           </div>
         </fieldset>
         <!-- The hint says how to open imagery; the button does it without a pointer. -->
