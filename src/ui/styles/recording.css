@@ -21,7 +21,8 @@ body.recording-mode #scene-panel,
 body.recording-mode #social-panel,
 body.recording-mode #outbreak-panel,
 body.recording-mode #ai-world-panel,
-body.recording-mode #distill-panel {
+body.recording-mode #distill-panel,
+body.recording-mode #abundance-panel {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;

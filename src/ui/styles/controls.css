@@ -1092,7 +1092,8 @@ body.ui-clean-view #scene-panel,
 body.ui-clean-view #social-panel,
 body.ui-clean-view #outbreak-panel,
 body.ui-clean-view #ai-world-panel,
-body.ui-clean-view #distill-panel {
+body.ui-clean-view #distill-panel,
+body.ui-clean-view #abundance-panel {
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;

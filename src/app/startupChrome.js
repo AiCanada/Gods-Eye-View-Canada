@@ -3,6 +3,8 @@ import { initUltraHelpPanel } from '../ultraHelpPanel.js';
 import { initAiWorldPanel } from '../aiWorldPanel.js';
 import { initAiWorldOverlay } from '../aiWorldOverlay.js';
 import { initDistillPanel } from '../distillPanel.js';
+import { initAbundancePanel } from '../abundancePanel.js';
+import { initAbundanceOverlay } from '../abundanceOverlay.js';
 import { viewCenterPoint } from '../locationClick.js';
 import { installPanelCornerResize } from '../ui/panelCornerResize.js';
 
@@ -27,6 +29,11 @@ export function startApplicationChrome({
   // Fork: the AI Distillation box (owner request 2026-10-19) lives as long
   // as the shell does. It is a no-op on a page without #distill-panel.
   initializeDistill = initDistillPanel,
+  // Fork: the Global Abundance Map box (owner request 2026-10-22) and its
+  // colours on the globe live as long as the shell does. Both are no-ops on
+  // a page without #abundance-panel.
+  initializeAbundance = initAbundancePanel,
+  initializeAbundanceOverlay = initAbundanceOverlay,
   // Every dashboard box resizes from its corner on desktop (owner request
   // 2026-10-16); removed with the shell.
   initializePanelResize = installPanelCornerResize,
@@ -75,6 +82,10 @@ export function startApplicationChrome({
     ? null
     : initializeAiWorldOverlay?.({ signal, dataManager });
   const distill = signal.aborted ? null : initializeDistill?.({ signal });
+  const abundance = signal.aborted ? null : initializeAbundance?.({ signal });
+  const abundanceOverlay = signal.aborted
+    ? null
+    : initializeAbundanceOverlay?.({ signal, dataManager });
   const panelResize = signal.aborted
     ? null
     : initializePanelResize?.({ signal });
@@ -93,6 +104,8 @@ export function startApplicationChrome({
     aiWorld?.destroy?.();
     aiWorldOverlay?.destroy?.();
     distill?.destroy?.();
+    abundance?.destroy?.();
+    abundanceOverlay?.destroy?.();
     panelResize?.destroy?.();
     (await keySetup.catch(() => null))?.destroy();
   };

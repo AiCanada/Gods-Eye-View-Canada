@@ -1,5 +1,29 @@
 # Changelog
 
+- GLOBAL ABUNDANCE MAP, a new left tab under AI DISTILLATION (owner request
+  2026-10-22: "Global abundance grid, idea to replace resource scarcity with
+  algorithmic orchestration … display Global abundance on MAP … use GDP per
+  person, Life Span, Health, Income, Inflation, Expense/Cost, Education,
+  Infrastructure, % in Prison, Utils, Happiness, etc. … by
+  country/state/province/city, all or just selected indicators"). Fourteen
+  indicators (the owner's eleven plus water, safety and work) from the World
+  Bank, Our World in Data and the OECD regional database, fetched by the dev
+  server and kept thirty days (`/api/abundance`,
+  `server/shared/abundanceData.mjs`); every country, state or province and
+  city from the bundled Natural Earth packs (a new populated places pack,
+  `scripts/build-admin-packs.mjs --only places`), a state taking its
+  country's figure where it has none and a city its state's or country's,
+  each figure saying where it came from. The score is each place's mean
+  place among the others over the ticked indicators (ALL or some); the globe
+  colours countries and states as ground polygons and cities as dots from
+  scarce (red) to abundant (green), reads the place under the pointer and
+  keeps a clicked one with a card; RANKING lists the most and least
+  abundant; ABUNDANCE GRID, a first model of the orchestration layer, links
+  every scarce place to its nearest abundant one as arcs; LOAD CSV puts the
+  owner's own figures on top. Strings in Spanish, Quebec French, Inuktitut
+  and Ancient Egyptian; guide docs/GLOBAL-ABUNDANCE-MAP.md; TESTING.md
+  section 10.
+
 - Upstream merge, 2026-10-22 (sixth): the 44 upstream commits after
   7be5937f, up to 5d95e9ad (6 pull requests).
   - What came in: Simplified Chinese (`zh-CN`) in the language picker, with

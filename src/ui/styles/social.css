@@ -4,7 +4,8 @@
 #social-panel,
 #outbreak-panel,
 #ai-world-panel,
-#distill-panel {
+#distill-panel,
+#abundance-panel {
   --panel-expanded-width: 360px;
   position: fixed;
   top: calc(var(--left-stack-top) + (var(--left-stack-gap) * 3));
@@ -27,7 +28,8 @@
 #social-panel .panel-glow,
 #outbreak-panel .panel-glow,
 #ai-world-panel .panel-glow,
-#distill-panel .panel-glow {
+#distill-panel .panel-glow,
+#abundance-panel .panel-glow {
   position: absolute;
   inset: -18px;
   background: radial-gradient(
@@ -43,7 +45,8 @@
 #social-panel .social-show-location,
 #outbreak-panel .social-show-location,
 #ai-world-panel .social-show-location,
-#distill-panel .social-show-location {
+#distill-panel .social-show-location,
+#abundance-panel .social-show-location {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -56,7 +59,8 @@
 #social-panel .cctv-controls select option,
 #outbreak-panel .cctv-controls select option,
 #ai-world-panel .cctv-controls select option,
-#distill-panel .cctv-controls select option {
+#distill-panel .cctv-controls select option,
+#abundance-panel .cctv-controls select option {
   color: #141414;
   background-color: #f4f6f8;
 }
@@ -65,14 +69,17 @@
 #outbreak-panel .cctv-controls select,
 #ai-world-panel .cctv-controls select,
 #distill-panel .cctv-controls select,
+#abundance-panel .cctv-controls select,
 #social-panel .cctv-controls input,
 #outbreak-panel .cctv-controls input,
 #ai-world-panel .cctv-controls input,
 #distill-panel .cctv-controls input,
+#abundance-panel .cctv-controls input,
 #social-panel .social-query,
 #outbreak-panel .social-query,
 #ai-world-panel .social-query,
-#distill-panel .social-query {
+#distill-panel .social-query,
+#abundance-panel .social-query {
   flex: 1 1 auto;
   min-width: 0;
   background: rgba(255, 255, 255, 0.06);
@@ -87,7 +94,8 @@
 #social-panel .social-show-location input,
 #outbreak-panel .social-show-location input,
 #ai-world-panel .social-show-location input,
-#distill-panel .social-show-location input {
+#distill-panel .social-show-location input,
+#abundance-panel .social-show-location input {
   flex: 0 0 auto;
   width: auto;
   min-width: 0;
@@ -100,7 +108,8 @@
 #social-panel .social-query,
 #outbreak-panel .social-query,
 #ai-world-panel .social-query,
-#distill-panel .social-query {
+#distill-panel .social-query,
+#abundance-panel .social-query {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -112,7 +121,8 @@
 #social-panel .scene-btn,
 #outbreak-panel .scene-btn,
 #ai-world-panel .scene-btn,
-#distill-panel .scene-btn {
+#distill-panel .scene-btn,
+#abundance-panel .scene-btn {
   flex: 0 0 auto;
 }
 

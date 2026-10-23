@@ -30,7 +30,8 @@
 .social-panel-inner,
 .outbreak-panel-inner,
 .ai-world-panel-inner,
-.distill-panel-inner {
+.distill-panel-inner,
+.abundance-panel-inner {
   position: relative;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);

@@ -46,6 +46,7 @@ import { llmTrainingProvider } from './llmTraining.js';
 import { tensorflowProvider } from './tensorflow.js';
 import { mlflowProvider } from './mlflow.js';
 import { distillProvider } from './distill.js';
+import { abundanceProvider } from './abundance.js';
 import { gnssIntegrityProxy } from './gnssIntegrity.js';
 
 /**
@@ -138,6 +139,9 @@ function localProviderPlugins({
     // AI DISTILLATION (owner request 2026-10-19): teacher LLMs and bots
     // answer, review and correct, one question at a time, for ground truths.
     distillProvider({ root: sourceRoot }),
+    // GLOBAL ABUNDANCE MAP (owner request 2026-10-22): the World Bank, Our
+    // World in Data and OECD figures behind the abundance score, cached.
+    abundanceProvider({ root: sourceRoot }),
     keySetupEndpoint({ sourceRoot, onEnvSaved: noteOutboundEnvSaved }),
   ];
 }

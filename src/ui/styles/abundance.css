@@ -1,0 +1,226 @@
+/* Global Abundance Map. A left-stack box under AI Distillation: its glass,
+   the collapse chrome and its inputs come from the shared rules (social.css,
+   scenes.css, cyber.css name #abundance-panel beside #distill-panel). This
+   file is only the box's own rows, lists and legend, laid out like the AI
+   Distillation box's (distill.css). */
+#abundance-panel {
+  --abundance-scarce: #ff2a2a;
+  --abundance-middle: #ffd21a;
+  --abundance-abundant: #19e6b0;
+  --abundance-none: #5a6670;
+}
+
+#abundance-panel:not(.collapsed) .panel-header .panel-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+#abundance-panel:not(.collapsed) .panel-header .panel-divider {
+  flex: 0 0 12px;
+}
+
+#abundance-panel .panel-header .panel-collapse-btn {
+  flex: 0 0 auto;
+}
+
+#abundance-panel .abundance-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#abundance-panel .abundance-body[hidden] {
+  display: none;
+}
+
+/* INSTRUCTIONS folds like the AI Distillation box's. */
+#abundance-panel .abundance-howto summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+#abundance-panel .abundance-howto ol {
+  margin: 6px 0;
+  padding-left: 16px;
+  list-style: decimal;
+}
+
+#abundance-panel .abundance-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+#abundance-panel .abundance-list:empty,
+#abundance-panel .abundance-list[hidden] {
+  display: none;
+}
+
+#abundance-panel .abundance-list li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#abundance-panel .abundance-howto ol.abundance-list {
+  list-style: decimal;
+  padding-left: 16px;
+}
+
+#abundance-panel .abundance-note,
+#abundance-panel .abundance-label {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+#abundance-panel .abundance-note[hidden],
+#abundance-panel .abundance-label[hidden],
+#abundance-panel .abundance-selected-name[hidden],
+#abundance-panel .scene-btn[hidden] {
+  display: none;
+}
+
+#abundance-panel .abundance-label {
+  letter-spacing: 1.2px;
+  color: var(--text-primary);
+}
+
+/* LEVEL and the two ticks on one line; the ticks keep the shared look. */
+#abundance-panel .abundance-controls {
+  flex-wrap: wrap;
+}
+
+#abundance-panel .outbreak-mode {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--text-primary);
+}
+
+#abundance-panel .outbreak-mode input[type='checkbox'] {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+#abundance-panel .outbreak-swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  background: color-mix(in srgb, currentColor 25%, transparent);
+  color: var(--accent, #00d4ff);
+}
+
+#abundance-panel .abundance-all {
+  font-weight: 700;
+  letter-spacing: 1.2px;
+}
+
+#abundance-panel .abundance-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* INDICATORS: the tick and name, then what it measures and how many places
+   have a figure, on the lines below. */
+#abundance-panel .abundance-indicators {
+  max-height: min(40vh, 380px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 212, 255, 0.46) rgba(255, 255, 255, 0.06);
+  padding-right: 4px;
+}
+
+#abundance-panel .abundance-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+#abundance-panel .abundance-measure,
+#abundance-panel .abundance-cover {
+  padding-left: 39px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+#abundance-panel .abundance-measure:empty,
+#abundance-panel .abundance-cover:empty {
+  display: none;
+}
+
+/* LEGEND: the ramp the map uses, scarce to abundant. */
+#abundance-panel .abundance-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+}
+
+#abundance-panel .abundance-legend-bar {
+  flex: 1 1 auto;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--abundance-scarce),
+    var(--abundance-middle),
+    var(--abundance-abundant)
+  );
+}
+
+#abundance-panel .abundance-selected-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* RANKING rows are pressable: a press keeps that place selected. */
+#abundance-panel .abundance-ranking li[data-unit] {
+  cursor: pointer;
+}
+
+#abundance-panel .abundance-ranking li[data-unit]:hover,
+#abundance-panel .abundance-ranking li[data-unit]:focus-visible {
+  color: var(--accent, #00d4ff);
+  outline: none;
+}
+
+#abundance-panel .abundance-actions {
+  flex-wrap: wrap;
+}
+
+#abundance-panel .abundance-run[data-state='error'] {
+  color: var(--abundance-scarce);
+}

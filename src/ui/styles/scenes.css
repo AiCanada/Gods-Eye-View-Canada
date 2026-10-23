@@ -17,7 +17,8 @@
 #left-panel-stack > #social-panel,
 #left-panel-stack > #outbreak-panel,
 #left-panel-stack > #ai-world-panel,
-#left-panel-stack > #distill-panel {
+#left-panel-stack > #distill-panel,
+#left-panel-stack > #abundance-panel {
   position: relative;
   top: auto;
   right: auto;
@@ -30,7 +31,7 @@
   pointer-events: auto;
 }
 
-/* AI Risk & Truth Assessment first, the Ultra Security Package under it, CCTV, Social Media Analysis, Outbreak, the AI World Training Sim, then AI Distillation. */
+/* AI Risk & Truth Assessment first, the Ultra Security Package under it, CCTV, Social Media Analysis, Outbreak, the AI World Training Sim, AI Distillation, then the Global Abundance Map. */
 #left-panel-stack > #ask-panel {
   order: 1;
 }
@@ -62,6 +63,11 @@
   order: 7;
 }
 
+/* Global Abundance Map last, under AI Distillation (owner request 2026-10-22). */
+#left-panel-stack > #abundance-panel {
+  order: 8;
+}
+
 /*
  * Runtime focus mode: the layout engine applies this when the expanded
  * panels' measured natural height plus sibling labels cannot fit inside the
@@ -76,7 +82,8 @@
 #left-panel-stack > #social-panel:not(.collapsed),
 #left-panel-stack > #outbreak-panel:not(.collapsed),
 #left-panel-stack > #ai-world-panel:not(.collapsed),
-#left-panel-stack > #distill-panel:not(.collapsed) {
+#left-panel-stack > #distill-panel:not(.collapsed),
+#left-panel-stack > #abundance-panel:not(.collapsed) {
   box-sizing: border-box;
   flex: 0 1 var(--left-panel-allocated-height, auto);
   height: var(--left-panel-allocated-height, auto);
@@ -95,7 +102,8 @@
     #social-panel,
     #outbreak-panel,
     #ai-world-panel,
-    #distill-panel
+    #distill-panel,
+    #abundance-panel
   ):not(.collapsed) {
   box-sizing: border-box;
   flex: 0 0 var(--left-panel-allocated-height);
@@ -120,7 +128,8 @@
 #left-panel-stack.layout-overlap > #social-panel:not(.collapsed),
 #left-panel-stack.layout-overlap > #outbreak-panel:not(.collapsed),
 #left-panel-stack.layout-overlap > #ai-world-panel:not(.collapsed),
-#left-panel-stack.layout-overlap > #distill-panel:not(.collapsed) {
+#left-panel-stack.layout-overlap > #distill-panel:not(.collapsed),
+#left-panel-stack.layout-overlap > #abundance-panel:not(.collapsed) {
   position: absolute;
   top: var(--panel-overlap-top, 0px);
   left: 0;
@@ -141,7 +150,8 @@
 #left-panel-stack > #social-panel:not(.collapsed) .social-panel-inner,
 #left-panel-stack > #outbreak-panel:not(.collapsed) .outbreak-panel-inner,
 #left-panel-stack > #ai-world-panel:not(.collapsed) .ai-world-panel-inner,
-#left-panel-stack > #distill-panel:not(.collapsed) .distill-panel-inner {
+#left-panel-stack > #distill-panel:not(.collapsed) .distill-panel-inner,
+#left-panel-stack > #abundance-panel:not(.collapsed) .abundance-panel-inner {
   height: 100%;
   max-height: 100%;
 }
@@ -152,7 +162,8 @@
 #left-panel-stack > #social-panel:not(.collapsed) .social-panel-inner,
 #left-panel-stack > #outbreak-panel:not(.collapsed) .outbreak-panel-inner,
 #left-panel-stack > #ai-world-panel:not(.collapsed) .ai-world-panel-inner,
-#left-panel-stack > #distill-panel:not(.collapsed) .distill-panel-inner {
+#left-panel-stack > #distill-panel:not(.collapsed) .distill-panel-inner,
+#left-panel-stack > #abundance-panel:not(.collapsed) .abundance-panel-inner {
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
@@ -462,6 +473,7 @@ html:not([lang='en']) #scene-panel .scene-controls .scene-btn {
 #outbreak-panel.collapsed .outbreak-panel-inner > :not(.panel-header),
 #ai-world-panel.collapsed .ai-world-panel-inner > :not(.panel-header),
 #distill-panel.collapsed .distill-panel-inner > :not(.panel-header),
+#abundance-panel.collapsed .abundance-panel-inner > :not(.panel-header),
 #scene-panel.collapsed .scene-controls,
 #scene-panel.collapsed .scene-shot-list,
 #scene-panel.collapsed .scene-progress,
@@ -482,7 +494,8 @@ html:not([lang='en']) #scene-panel .scene-controls .scene-btn {
 #social-panel.collapsed,
 #outbreak-panel.collapsed,
 #ai-world-panel.collapsed,
-#distill-panel.collapsed {
+#distill-panel.collapsed,
+#abundance-panel.collapsed {
   width: var(--left-collapsed-width);
 }
 
@@ -505,7 +518,8 @@ html:not([lang='en']) #scene-panel .scene-controls .scene-btn {
 #social-panel.collapsed .social-panel-inner,
 #outbreak-panel.collapsed .outbreak-panel-inner,
 #ai-world-panel.collapsed .ai-world-panel-inner,
-#distill-panel.collapsed .distill-panel-inner {
+#distill-panel.collapsed .distill-panel-inner,
+#abundance-panel.collapsed .abundance-panel-inner {
   overflow: hidden;
 }
 
@@ -518,7 +532,8 @@ html:not([lang='en']) #scene-panel .scene-controls .scene-btn {
 #social-panel.collapsed .panel-title,
 #outbreak-panel.collapsed .panel-title,
 #ai-world-panel.collapsed .panel-title,
-#distill-panel.collapsed .panel-title {
+#distill-panel.collapsed .panel-title,
+#abundance-panel.collapsed .panel-title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -532,7 +547,8 @@ html:not([lang='en']) #scene-panel .scene-controls .scene-btn {
 #social-panel.collapsed .panel-title::after,
 #outbreak-panel.collapsed .panel-title::after,
 #ai-world-panel.collapsed .panel-title::after,
-#distill-panel.collapsed .panel-title::after {
+#distill-panel.collapsed .panel-title::after,
+#abundance-panel.collapsed .panel-title::after {
   content: attr(data-collapsed-title);
   font-size: 8px;
   letter-spacing: 1.8px;
@@ -544,7 +560,8 @@ html:not([lang='en']) #scene-panel .scene-controls .scene-btn {
 #social-panel.collapsed .panel-title,
 #outbreak-panel.collapsed .panel-title,
 #ai-world-panel.collapsed .panel-title,
-#distill-panel.collapsed .panel-title {
+#distill-panel.collapsed .panel-title,
+#abundance-panel.collapsed .panel-title {
   white-space: normal;
   text-overflow: clip;
   max-width: calc(100% - 36px);
@@ -554,7 +571,8 @@ html:not([lang='en']) #scene-panel .scene-controls .scene-btn {
 #social-panel.collapsed .panel-collapse-btn,
 #outbreak-panel.collapsed .panel-collapse-btn,
 #ai-world-panel.collapsed .panel-collapse-btn,
-#distill-panel.collapsed .panel-collapse-btn {
+#distill-panel.collapsed .panel-collapse-btn,
+#abundance-panel.collapsed .panel-collapse-btn {
   flex: 0 0 22px;
 }
 
@@ -562,7 +580,8 @@ html:not([lang='en']) #scene-panel .scene-controls .scene-btn {
 #social-panel.collapsed .panel-title::after,
 #outbreak-panel.collapsed .panel-title::after,
 #ai-world-panel.collapsed .panel-title::after,
-#distill-panel.collapsed .panel-title::after {
+#distill-panel.collapsed .panel-title::after,
+#abundance-panel.collapsed .panel-title::after {
   display: block;
   line-height: 1.3;
   letter-spacing: 1.1px;
@@ -579,6 +598,7 @@ html:not([lang='en']) #scene-panel .scene-controls .scene-btn {
 #outbreak-panel.collapsed .outbreak-panel-inner,
 #ai-world-panel.collapsed .ai-world-panel-inner,
 #distill-panel.collapsed .distill-panel-inner,
+#abundance-panel.collapsed .abundance-panel-inner,
 #scene-panel.collapsed .scene-panel-inner,
 #param-slider-panel.collapsed,
 #location-bar.collapsed .location-inner {
@@ -597,6 +617,7 @@ html:not([lang='en']) #scene-panel .scene-controls .scene-btn {
 #outbreak-panel.collapsed .panel-header,
 #ai-world-panel.collapsed .panel-header,
 #distill-panel.collapsed .panel-header,
+#abundance-panel.collapsed .panel-header,
 #scene-panel.collapsed .panel-header,
 #param-slider-panel.collapsed .param-panel-header {
   margin-bottom: 2px;

@@ -10,6 +10,7 @@ range geometry with no network dependency.
 | `marine.json` | `ne_10m_geography_marine_polys` (seas, gulfs, straits, bays, …) | 292 named |
 | `countries.json` | `ne_10m_admin_0_countries` (countries) | 256 |
 | `states_provinces.json` | `ne_10m_admin_1_states_provinces` (states, provinces and other first-level units) | 4,587 named |
+| `places.json` | `ne_10m_populated_places_simple` (cities and towns, points only) | 7,342 |
 
 **Source:** Natural Earth 10m physical vectors, via the canonical
 [nvkelso/natural-earth-vector](https://github.com/nvkelso/natural-earth-vector)
@@ -103,3 +104,22 @@ Includes England, Scotland, Wales and Northern Ireland from
 `ne_10m_admin_0_map_units.geojson` at the same commit (SHA-256
 `57da82be755f4afccd8f3b14251bb2752f5df1395f47d2d86f817470c4a48862`).
 Result: 945,843 bytes; 260 features, 2,088 parts, 122,788 vertices.
+
+## Populated places (`places.json`)
+
+Every Natural Earth 10m populated place as a point, for the GLOBAL ABUNDANCE
+MAP's city level (owner request 2026-10-22), read by `src/abundanceUnits.mjs`
+and `src/abundanceShapes.js`: `id` (Natural Earth's own `ne_id`, the unit id
+the server and the globe share), `name`, `alt` (ASCII, alternate and
+megacity names), `country`, `iso` (ADM0_A3), `iso2`, `adm1` (the state or
+province name), `lon`, `lat` (3 decimals), `pop` (`pop_max`), `capital` (a
+national capital) and `rank` (`scalerank`). No polygons, so the pack stays
+small (1.1 MB).
+
+**Source:** `geojson/ne_10m_populated_places_simple.geojson` from the same
+commit (SHA-256
+`fd3fa867a320cbd5c5b6bb5bc550afeec2939fb2cef688e508007282a55ac42f`); the
+countries file above supplies an ISO 3166-1 alpha-2 code where a place has
+none.
+
+**Regenerate:** `node scripts/build-admin-packs.mjs --only places`.

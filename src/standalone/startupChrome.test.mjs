@@ -71,6 +71,21 @@ function fixture() {
         },
       };
     },
+    // The Global Abundance Map box and its colours on the globe, the same.
+    initAbundancePanel() {
+      return {
+        destroy: () => {
+          aiWorldDestroyed += 1;
+        },
+      };
+    },
+    initAbundanceOverlay() {
+      return {
+        destroy: () => {
+          aiWorldDestroyed += 1;
+        },
+      };
+    },
     // Every box's corner grip, counted the same way.
     installPanelCornerResize() {
       return {
@@ -138,7 +153,7 @@ test('welcome waits for restoration, minimum delay, and the cover transition', a
   assert.equal(f.ultraCount(), 1);
   // So do the AI World box, its overlay, the AI Distillation box and the
   // boxes' corner grips: no status poll, prediction or grip outlives the shell.
-  assert.equal(f.aiWorldCount(), 4);
+  assert.equal(f.aiWorldCount(), 6);
   assert.equal(f.timers.size, 0);
 });
 

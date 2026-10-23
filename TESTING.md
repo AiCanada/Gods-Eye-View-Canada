@@ -304,6 +304,20 @@ While recording, call out anything in these areas — this is the feedback I mos
 7. **Training.** ✅ In CUSTOM LLM TRAINING, DISTILLED ANSWERS (AI DISTILLATION) is a source, class RESTRICTED, and a run with it ticked trains on the ground truths.
 8. **The phone.** From the phone mirror: ✅ adding a sub-heading, questions and a run work; ✅ CLEAR QUESTIONS, CLEAR DATASET and DELETE HEADING do nothing and say nothing (`403 pc-only`), and the files are still there on the PC.
 
+## 10. Global Abundance Map (owner request 2026-10-22)
+
+> The sources are public and keyless; the first open fetches them (about two minutes, the OECD queries ten seconds apart) into the gitignored `.gev-cache/abundance/`. The guide is `docs/GLOBAL-ABUNDANCE-MAP.md`.
+
+1. **The tab.** ✅ GLOBAL ABUNDANCE MAP is the last left tab, under AI DISTILLATION, collapsed, and opens like the others. ✅ The status line reads `FETCHING THE SOURCES · n/24 · …` on the first open, then `COUNTRIES · 2xx PLACES WITH FIGURES · DATA TO 2025 · FETCHED JUST NOW`; DATA lists `WORLD BANK · 13 SERIES`, `OUR WORLD IN DATA · 2 SERIES` and `OECD REGIONS AND CITIES · 9 SERIES`, each with when it was fetched.
+2. **Countries.** With SHOW ON MAP ticked and ALL indicators: ✅ every country is coloured, Norway and Switzerland green, the Sahel red, countries with no figures grey; ✅ unticking all but INFLATION recolours by inflation alone (lowest green); ✅ the INDICATORS rows read `… OWN FIGURES · 2024`; ✅ RANKING's MOST ABUNDANT and LEAST ABUNDANT list ten each, and a row click keeps that country selected.
+3. **The pointer.** ✅ Resting the pointer on Canada fills SELECTED with `ABUNDANCE … OF 100 · 14 OF 14 INDICATORS` and one line per indicator with its value, year, `PLACE n OF 100` and the measure; ✅ a click keeps it (CLEAR lets go) and a card with the same lines sits on the country; ✅ leaving the pointer goes back to the kept one.
+4. **States and provinces.** LEVEL → STATES AND PROVINCES: ✅ Ontario, Texas and Bavaria carry their own GDP, life span, health, income, education, safety and work figures (`OWN FIGURES` counts in the rows), and the rest `FROM THEIR COUNTRY`; ✅ a Japanese prefecture or a French département has its own GDP (the TL3 fallback); ✅ a region the OECD has no data for reads `FROM ITS COUNTRY` on every line.
+5. **Cities.** LEVEL → CITIES: ✅ dots sized by population, Toronto and Montréal with their own GDP (`GDP PER PERSON OF THE URBAN AREA …`) and the rest from the province; ✅ a village reads its country's figures.
+6. **The grid.** Tick ABUNDANCE GRID at the country level: ✅ arcs link the scarcest countries to their nearest abundant ones, listed as `… → … · GAP n · n KM` (at most sixty); unticking clears them.
+7. **Your CSV.** LOAD CSV with a file holding `id,gdp` and `CAN,99999`: ✅ the line reads `YOUR CSV · 1 ROW · 1 MATCHED`, Canada's GDP line ends `YOUR CSV`, and `.gev-data/abundance/country.csv` exists; ✅ CLEAR CSV puts the World Bank figure back. ✅ From the phone mirror LOAD CSV works and CLEAR CSV does nothing and says nothing (`403 pc-only`).
+8. **Refresh.** REFRESH DATA: ✅ the button greys, the line counts the sources, the map keeps its colours meanwhile, and the DATA lines read `JUST NOW` at the end; ✅ with the network off, a failed source reads `… · 1 SOURCE FAILED` and the cached figures stay.
+9. **The choice.** Reload the page: ✅ the level, the ticks, SHOW ON MAP and ABUNDANCE GRID come back as left; ✅ in `?lang=fr-CA` the tab, its rows and the card read in Quebec French.
+
 ## If something looks off
 
 - **Grey globe / slow tiles:** wait a few seconds after a camera flight; photoreal streams in.

@@ -159,6 +159,9 @@ own tabs"). Their glossary:
 | SOCIAL MEDIA ANALYSIS                      | 𓇋𓊪𓏝 𓈖 𓌃𓂧𓏏𓀁 𓈖 𓂋𓐍𓅚𓀀𓁐𓏥         | _ꞽp n md.t n rḫy.t_            | reckoning of the speech of the people                     |
 | OUTBREAK LOCATIONS & PREDICTED SPREAD      | 𓊨𓊨𓊨𓏏 𓈖 𓇋𓄿𓂧𓏏𓅪 𓎛𓈖𓂝 𓊪𓄲𓂋 𓋴𓂋𓃱𓈖𓏏𓅱 | _s.wt n ꞽꜣd.t ḥnꜥ pẖr sr.n.tw_ | places of the pestilence and the spreading foretold       |
 | ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM | 𓏏𓏏𓅱 𓈖 𓇼𓄿𓀜 𓈖 𓇾𓈇𓏤 𓈖 𓅜𓐍        | _twt n sbꜣ n tꜣ n ꜣḫ_          | image of the teaching of the world of the akh             |
+| GLOBAL ABUNDANCE MAP                       | 𓇾𓈇𓏤 𓈖 𓃀𓂝𓎛𓈗 𓈖 𓇾𓈇𓏤𓏥           | _tꜣ n bꜥḥ n tꜣ.w_              | map of the abundance of the lands                         |
+| abundant / scarce                          | 𓃀𓂝𓎛𓈗 / 𓎼𓄿𓅱𓅪                  | _bꜥḥ / gꜣw_                    | inundation, plenty / lack, want                           |
+| indicator / figure                         | 𓋴𓐍𓂋𓏲𓏛 / 𓏏𓈖𓅱𓏛                 | _sḫr / ṯnw_                    | condition / number                                        |
 | SEND HELP / STAND DOWN                     | 𓉔𓄿𓃀𓂻 𓅓𓂻𓅓𓐟𓀁 / 𓊵𓏏𓊪            | _hꜣb mꞽ-m-sꜣ / ḥtp_            | send the cry "come help" / be at peace                    |
 | EXTEND HELP                                | 𓋴𓋴𓐍𓎺 𓅓𓂻𓅓𓐟𓀁                  | _swsḫ mꞽ-m-sꜣ_                 | widen the help                                            |
 | token holder / helper                      | 𓇋𓂋𓏭 𓎗𓅱 / 𓏶𓊨𓏏𓂝𓏤              | _ꞽr.ꞽ wḏ / ꞽm.ꞽ-s.t-ꜥ_         | keeper of the decree / one at hand (an Old Kingdom title) |

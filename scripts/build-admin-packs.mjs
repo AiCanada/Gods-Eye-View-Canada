@@ -7,13 +7,16 @@
  *     Natural Earth 10m admin-1 states and provinces (public domain).
  *   src/data/local_data/us_census_counties/counties.json
  *     US Census Bureau cartographic boundary counties (public domain).
+ *   src/data/local_data/natural_earth/places.json
+ *     Natural Earth 10m populated places (public domain): the cities the
+ *     GLOBAL ABUNDANCE MAP draws, read by src/abundanceUnits.mjs.
  *
  * Both sources are pinned by URL and SHA-256, so a rerun reproduces the packs
  * byte for byte. Downloads are cached outside the repository (default: the
  * system temp directory) and are never committed.
  *
  * Usage:
- *   node scripts/build-admin-packs.mjs [--cache <dir>] [--only countries|admin1|counties]
+ *   node scripts/build-admin-packs.mjs [--cache <dir>] [--only countries|admin1|counties|places]
  *
  * The provenance READMEs beside each pack record these parameters.
  */
@@ -682,6 +685,79 @@ async function buildAdmin1() {
   };
 }
 
+/**
+ * The populated places pack: every Natural Earth 10m populated place with
+ * its country, its state or province, its point and its population, for the
+ * GLOBAL ABUNDANCE MAP's city level (owner request 2026-10-22). No geometry
+ * beyond the point, so the pack stays small. `ne_id` is Natural Earth's own
+ * stable id and is the unit id on the globe and the server.
+ */
+async function buildPlaces() {
+  const source = await fetchPinned('places');
+  const countries = JSON.parse((await fetchPinned('countries')).bytes);
+  const iso2ByIso3 = new Map();
+  for (const { properties: p } of countries.features) {
+    const iso2 = p.ISO_A2_EH || p.ISO_A2;
+    if (p.ADM0_A3 && /^[A-Z]{2}$/.test(iso2 || ''))
+      iso2ByIso3.set(p.ADM0_A3, iso2);
+  }
+  const features = [];
+  for (const { properties: p } of JSON.parse(source.bytes).features) {
+    const name = String(p.name || '').trim();
+    if (!name || !Number.isFinite(p.longitude) || !Number.isFinite(p.latitude))
+      continue;
+    const iso2 =
+      p.iso_a2 && /^[A-Z]{2}$/.test(p.iso_a2)
+        ? p.iso_a2
+        : iso2ByIso3.get(p.adm0_a3) || null;
+    const alt = uniqueNames(
+      [
+        p.nameascii,
+        p.meganame,
+        ...String(p.namealt || '').split(','),
+        ...String(p.ls_name || '').split(','),
+      ],
+      [name],
+    );
+    features.push({
+      id: p.ne_id,
+      name,
+      ...(alt.length ? { alt } : {}),
+      country: p.adm0name,
+      iso: p.adm0_a3,
+      ...(iso2 ? { iso2 } : {}),
+      ...(p.adm1name ? { adm1: p.adm1name } : {}),
+      lon: Math.round(p.longitude * 1000) / 1000,
+      lat: Math.round(p.latitude * 1000) / 1000,
+      pop: Math.max(0, Math.round(p.pop_max || 0)),
+      ...(p.adm0cap === 1 ? { capital: true } : {}),
+      rank: p.scalerank,
+    });
+  }
+  features.sort(
+    (a, b) =>
+      a.country.localeCompare(b.country) ||
+      a.name.localeCompare(b.name) ||
+      a.id - b.id,
+  );
+  return {
+    meta: {
+      title: 'Natural Earth 10m populated places',
+      source: 'ne_10m_populated_places_simple',
+      url: SOURCES.places.url,
+      sha256: source.digest,
+      countrySource: SOURCES.countries.url,
+      commit: NE_COMMIT,
+      license:
+        'Public domain (https://www.naturalearthdata.com/about/terms-of-use/)',
+      schema:
+        'features[]: id (ne_id), name, alt?[], country, iso (adm0_a3), iso2?, adm1? (state or province name), lon, lat (3 decimals), pop (pop_max), capital? (a national capital), rank (scalerank: lower is more prominent)',
+      script: 'scripts/build-admin-packs.mjs',
+    },
+    features,
+  };
+}
+
 async function buildCounties() {
   const params = PARAMS.counties;
   const source = await fetchPinned('counties');
@@ -732,6 +808,12 @@ async function writePack(relative, pack) {
   await mkdir(path.dirname(file), { recursive: true });
   const text = JSON.stringify(pack) + '\n';
   await writeFile(file, text);
+  if (!pack.features[0]?.polygons) {
+    console.log(
+      `${relative}: ${pack.features.length} features, ${Buffer.byteLength(text)} bytes`,
+    );
+    return;
+  }
   const parts = pack.features.reduce((n, f) => n + f.polygons.length, 0);
   const vertices = pack.features.reduce(
     (n, f) => n + f.polygons.flat().reduce((m, ring) => m + ring.length / 2, 0),
@@ -756,4 +838,9 @@ if (!only || only === 'counties')
   await writePack(
     'src/data/local_data/us_census_counties/counties.json',
     await buildCounties(),
+  );
+if (!only || only === 'places')
+  await writePack(
+    'src/data/local_data/natural_earth/places.json',
+    await buildPlaces(),
   );
