@@ -2,10 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   baseModelHint,
+  fetchCommand,
   initLlmTrainingSetup,
   llmControlStates,
   llmModelLines,
   llmStateText,
+  pipelineNeeds,
+  pipelineText,
 } from './llmTrainingSetup.js';
 
 class FakeElement {
@@ -75,13 +78,58 @@ function status(extra = {}) {
     bases: [
       {
         id: 'Qwen/Qwen3.5-0.8B',
-        label: 'QWEN3.5-0.8B · DEFAULT',
+        family: 'qwen3_5',
+        familyLabel: 'QWEN 3.5',
+        label: '0.8B',
+        gb: 2,
+        fit: 'gpu',
         onMachine: true,
+        default: true,
+        get: 'hf download Qwen/Qwen3.5-0.8B --local-dir .gev-data/llm/base/Qwen3.5-0.8B',
       },
       {
         id: 'Qwen/Qwen3.6-35B-A3B',
-        label: 'QWEN3.6-35B-A3B · 72 GB',
+        family: 'qwen3_6',
+        familyLabel: 'QWEN 3.6',
+        label: '35B-A3B',
+        gb: 70,
+        fit: 'split',
         onMachine: false,
+        default: true,
+        get: 'hf download Qwen/Qwen3.6-35B-A3B --local-dir .gev-data/llm/base/Qwen3.6-35B-A3B',
+      },
+      {
+        id: 'google/gemma-4-E2B-it',
+        family: 'gemma4',
+        familyLabel: 'GEMMA 4',
+        label: 'E2B',
+        gb: 10,
+        fit: 'split',
+        onMachine: false,
+        get: 'hf download google/gemma-4-E2B-it --local-dir .gev-data/llm/base/gemma-4-E2B-it',
+      },
+    ],
+    pipeline: {
+      family: 'qwen3_5',
+      label: 'QWEN 3.5',
+      licence: 'Apache-2.0',
+      system: true,
+      thinking: 'kwarg',
+      lora: 'attention-deltanet',
+      data: ['text', 'image'],
+      needs: { transformers: '4.57', kernels: [], baseline: '4.57' },
+      teacherOnly: false,
+      experimental: false,
+      size: '0.8B',
+      gb: 2,
+      fit: 'gpu',
+    },
+    teachers: [
+      {
+        family: 'deepseek_v4',
+        label: 'DEEPSEEK V4',
+        sizes: [{ label: 'PRO 1.6T-A49B' }, { label: 'FLASH 284B-A13B' }],
+        served: ['OpenRouter'],
       },
     ],
     sources: [
@@ -98,7 +146,7 @@ function status(extra = {}) {
   };
 }
 
-function mount(answer) {
+function mount(answer, options = {}) {
   const host = new FakeElement('div');
   const calls = [];
   const fetchImpl = async (url, init) => {
@@ -122,6 +170,7 @@ function mount(answer) {
     documentRef: doc,
     fetchImpl,
     timers: { setTimeout: () => 0, clearTimeout() {} },
+    ...options,
   });
   const find = (pred) => host.all().find(pred);
   const button = (text) =>
@@ -273,7 +322,7 @@ test('a base model not on this PC: the one command to fetch it, nothing download
   );
 });
 
-test('the base chooser offers Qwen3.5-0.8B and Qwen3.6-35B-A3B, says which are on this PC, and fills the box', async () => {
+test('the base chooser offers every family, one group each, says how a size fits and which are on this PC, and fills the box', async () => {
   const m = mount(() => ({
     payload: status({
       config: { ...status().config, base: 'Qwen/Qwen3.5-0.8B' },
@@ -282,10 +331,20 @@ test('the base chooser offers Qwen3.5-0.8B and Qwen3.6-35B-A3B, says which are o
   await settle();
   const choice = m.find((n) => n.dataset.field === 'base-choice');
   assert.deepEqual(
-    choice.children.map((o) => o.textContent),
+    choice.children
+      .filter((n) => n.tagName === 'OPTGROUP')
+      .map((g) => g.attributes.get('label')),
+    ['QWEN 3.5', 'QWEN 3.6', 'GEMMA 4'],
+  );
+  assert.deepEqual(
+    choice
+      .all()
+      .filter((n) => n.tagName === 'OPTION')
+      .map((o) => o.textContent),
     [
-      'QWEN3.5-0.8B · DEFAULT · ON THIS PC',
-      'QWEN3.6-35B-A3B · 72 GB · NOT ON THIS PC',
+      '0.8B · 2 GB · TRAINS ON THE GPU · ON THIS PC',
+      '35B-A3B · 70 GB · GPU + RAM · SLOW · NOT ON THIS PC',
+      'E2B · 10 GB · GPU + RAM · SLOW · NOT ON THIS PC',
       'ANOTHER MODEL (TYPE IT IN THE BOX)',
     ],
   );
@@ -295,6 +354,98 @@ test('the base chooser offers Qwen3.5-0.8B and Qwen3.6-35B-A3B, says which are o
   assert.equal(
     m.find((n) => n.dataset.field === 'base').value,
     'Qwen/Qwen3.6-35B-A3B',
+  );
+  m.setup.destroy();
+});
+
+test('the PIPELINE line says what a family takes and trains, what it still needs, the teachers only, and COPY THE COMMAND', async () => {
+  assert.equal(
+    pipelineText(status().pipeline),
+    'QWEN 3.5 · TEXT, IMAGES · SYSTEM ROLE · THINKING OFF IN TRAINING · LORA ON ATTENTION AND DELTANET · Apache-2.0 · TRAINS ON THE GPU',
+  );
+  assert.equal(pipelineNeeds(status().pipeline), '');
+  const glimmer = {
+    family: 'muse_glimmer',
+    label: 'META MUSE GLIMMER',
+    licence: 'Apache-2.0',
+    system: true,
+    thinking: 'strength',
+    lora: 'attention-mlp',
+    data: ['text', 'image'],
+    needs: { transformers: '5.15', kernels: [], baseline: '4.57' },
+    fit: 'split',
+  };
+  assert.equal(
+    pipelineNeeds(glimmer),
+    'NEEDS TRANSFORMERS 5.15 OR NEWER: py -3.13 -m pip install -U transformers',
+  );
+  const nemotron = {
+    family: 'nemotron_h',
+    label: 'NVIDIA NEMOTRON',
+    system: true,
+    thinking: 'kwarg',
+    lora: 'attention-mamba-mlp',
+    data: ['text'],
+    needs: { transformers: '4.57', kernels: ['causal-conv1d', 'mamba-ssm'], baseline: '4.57' },
+    fit: '',
+  };
+  assert.match(pipelineNeeds(nemotron), /^EXPERIMENTAL: THE FAST PATH NEEDS THE LINUX MAMBA KERNELS/);
+  assert.equal(
+    pipelineText(nemotron),
+    'NVIDIA NEMOTRON · TEXT · SYSTEM ROLE · THINKING OFF IN TRAINING · LORA ON ATTENTION, MAMBA AND MLP',
+  );
+  assert.equal(
+    pipelineText({ family: 'generic', label: 'OTHER', system: true, thinking: 'none', lora: 'attention-deltanet', data: ['text'] }),
+    'OTHER · TEXT · SYSTEM ROLE · LORA ON ATTENTION AND DELTANET',
+  );
+  assert.equal(pipelineText(null), '');
+  assert.equal(
+    fetchCommand('google/gemma-4-E4B-it'),
+    'hf download google/gemma-4-E4B-it --local-dir .gev-data/llm/base/gemma-4-E4B-it',
+  );
+  assert.equal(fetchCommand('C:\\models\\mine'), '');
+  assert.deepEqual(
+    llmModelLines([{ name: 'g', base: 'google/gemma-4-E4B-it', pipelineLabel: 'GEMMA 4' }]),
+    ['G · google/gemma-4-E4B-it · GEMMA 4'],
+  );
+  // In the section: the line under the base, what it needs, the teachers, and the copy button for a base not here.
+  const copied = [];
+  const m = mount(
+    () => ({
+      payload: status({
+        baseOnMachine: false,
+        config: { ...status().config, base: 'google/gemma-4-E4B-it' },
+        pipeline: glimmer,
+      }),
+    }),
+    {
+      copyText: async (text) => {
+        copied.push(text);
+        return true;
+      },
+    },
+  );
+  await settle();
+  assert.equal(
+    m.find((n) => n.className === 'social-note llm-training-pipeline').textContent,
+    `PIPELINE: ${pipelineText(glimmer)}`,
+  );
+  assert.match(
+    m.find((n) => n.className.includes('llm-training-needs')).textContent,
+    /NEEDS TRANSFORMERS 5\.15/,
+  );
+  assert.equal(
+    m.find((n) => n.className.includes('llm-training-teachers')).textContent,
+    'TEACHERS ONLY, TOO BIG FOR THIS PC: DEEPSEEK V4 (PRO 1.6T-A49B, FLASH 284B-A13B) · USE THEM IN AI DISTILLATION THROUGH OPENROUTER OR THE CUSTOM ENDPOINT',
+  );
+  m.button('COPY THE COMMAND').click();
+  await settle();
+  assert.deepEqual(copied, [
+    'hf download google/gemma-4-E4B-it --local-dir .gev-data/llm/base/gemma-4-E4B-it',
+  ]);
+  assert.equal(
+    m.find((n) => n.className.includes('llm-training-state')).textContent,
+    'COMMAND COPIED',
   );
   m.setup.destroy();
 });

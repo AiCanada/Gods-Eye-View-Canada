@@ -43,8 +43,12 @@ from pathlib import Path
 import torch
 from torch import nn
 
+from .llm_pipelines import needs_met, pipeline_for, render_target
 from .train import Control, DataError, Emitter, atomic_json, now_ms, resolve_device
 
+# Which layers get adapters and how a target is rendered come from the base
+# model's family (ml.gevtape.llm_pipelines, owner request 2026-10-22); these
+# are the generic family's targets, and what --targets overrides.
 DEFAULT_TARGETS = ("q_proj", "k_proj", "v_proj", "o_proj", "in_proj_qkv", "in_proj_z", "out_proj")
 DEFAULT_BASE = "Qwen/Qwen3.5-0.8B"  # the default; Qwen/Qwen3.6-35B-A3B is the large option
 GIB = 1024 ** 3
@@ -74,10 +78,19 @@ class LoRALinear(nn.Module):
         return out + (delta * self.scale).to(out.dtype)
 
 
-def add_lora(model, rank=8, alpha=16, targets=DEFAULT_TARGETS):
-    """Wrap the named linear layers; returns the wrapped module names."""
+def add_lora(model, rank=8, alpha=16, targets=DEFAULT_TARGETS, skip=()):
+    """Wrap the named linear layers; returns the wrapped module names.
+
+    `skip` names module path parts left frozen whatever their layers are
+    called: a vision or audio tower, a perception encoder, per-layer
+    embeddings, routers, routed experts (the family's pipeline lists them).
+    """
     names = []
+    skip = tuple(skip or ())
     for name, module in list(model.named_modules()):
+        parts = name.split(".") if name else []
+        if any(part.startswith(prefix) for part in parts for prefix in skip):
+            continue
         for child_name, child in list(module.named_children()):
             if isinstance(child, nn.Linear) and child_name in targets:
                 setattr(module, child_name, LoRALinear(child, rank, alpha))
@@ -227,15 +240,10 @@ def load_base(base, device, *, loader=None, placement="auto", emit=None):
     return tok, model
 
 
-def example_text(example, tok):
+def example_text(example, tok, pipeline=None):
+    """A chat example through the family's own template with thinking off; a text example as it is."""
     if isinstance(example.get("messages"), list):
-        msgs = [m for m in example["messages"] if isinstance(m, dict) and isinstance(m.get("content"), str)]
-        if getattr(tok, "chat_template", None):
-            try:
-                return tok.apply_chat_template(msgs, tokenize=False)
-            except Exception:
-                pass
-        return "\n".join(f"{m.get('role', 'user').title()}: {m['content']}" for m in msgs)
+        return render_target(tok, example["messages"], pipeline)
     return str(example.get("text") or "")
 
 
@@ -257,10 +265,10 @@ def read_jsonl(path, limit=None):
     return out
 
 
-def encode(examples, tok, max_len):
+def encode(examples, tok, max_len, pipeline=None):
     rows = []
     for ex in examples:
-        text = example_text(ex, tok)
+        text = example_text(ex, tok, pipeline)
         if not text.strip():
             continue
         ids = tok(text, truncation=True, max_length=max_len)["input_ids"]
@@ -318,15 +326,23 @@ def run(args, emit, control, *, loader=None) -> int:
         raise DataError(f"{previous} was trained on {prior_meta.get('base')}, not {args.base}")
     rank = int(prior_meta.get("rank") or args.rank)
     alpha = float(prior_meta.get("alpha") or args.alpha)
-    targets = tuple(prior_meta.get("targets") or args.targets.split(","))
+    # The family's pipeline: a teacher-only model or a missing class is refused before anything loads.
+    pipeline = pipeline_for(base)
+    ok, why = needs_met(pipeline)
+    if not ok:
+        raise DataError(why)
+    targets = tuple(prior_meta.get("targets") or (args.targets.split(",") if args.targets else [])
+                    or pipeline.get("targets") or DEFAULT_TARGETS)
+    emit("progress", model="llm", pipeline=pipeline["family"], pipelineLabel=pipeline.get("label", ""),
+         targets=list(targets))
     tok, model = load_base(base, device, loader=loader, placement=args.placement, emit=emit)
     device = getattr(model, "gev_input_device", device)
-    wrapped = add_lora(model, rank, alpha, targets)
+    wrapped = add_lora(model, rank, alpha, targets, skip=pipeline.get("skip") or ())
     if prior_state is not None:
         load_lora_state(model, prior_state)
     pad_id = tok.pad_token_id if tok.pad_token_id is not None else 0
-    train_rows = encode(train_ex, tok, args.max_len)
-    held_rows = encode(held_ex, tok, args.max_len)
+    train_rows = encode(train_ex, tok, args.max_len, pipeline)
+    held_rows = encode(held_ex, tok, args.max_len, pipeline)
     before = state.get("heldOutLossBefore")
     if before is None:
         before = mean_loss(model, held_rows, pad_id, device, args.batch_size)
@@ -336,6 +352,9 @@ def run(args, emit, control, *, loader=None) -> int:
     emit("progress", model="llm", epoch=start_epoch, epochs=args.epochs, examples=len(train_rows))
     meta = {
         "format": "gev-lora/1", "base": base, "rank": rank, "alpha": alpha, "targets": list(targets),
+        "pipeline": pipeline["family"], "pipelineLabel": pipeline.get("label", ""),
+        "thinking": (pipeline.get("format") or {}).get("thinking", "none"),
+        "dataTypes": list(pipeline.get("data") or ["text"]), "licence": pipeline.get("licence", ""),
         "wrapped": len(wrapped), "dataDir": str(data_dir), "data": manifest,
         "dataThrough": manifest.get("dataThrough"), "classes": manifest.get("classes", []),
         "postTrainedFrom": prior_meta.get("name") or (str(previous) if previous and previous != out else
@@ -399,7 +418,8 @@ def build_parser():
     p.add_argument("--epochs", type=int, default=1)
     p.add_argument("--rank", type=int, default=8)
     p.add_argument("--alpha", type=float, default=16.0)
-    p.add_argument("--targets", default=",".join(DEFAULT_TARGETS))
+    p.add_argument("--targets", default=None,
+                   help="the linear layers to adapt (default: the base model family's, ml.gevtape.llm_pipelines)")
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--max-len", type=int, default=512)
     p.add_argument("--batch-size", type=int, default=4)

@@ -7,8 +7,12 @@
  * DELETE routes (a URL or a local source off the list), which it is refused
  * with no message, as every removal is (owner ruling 2026-10-11).
  *
- *   GET    /status       settings, sources, URLs, local sources, run, models
- *   POST   /config       name, base model, ticked sources, epochs, post-train
+ *   GET    /status       settings, sources, URLs, local sources, run, models;
+ *                        the bases offered (every family's sizes, how each
+ *                        fits this PC), the chosen base's pipeline and the
+ *                        teacher-only families (server/shared/llmPipelines.mjs)
+ *   POST   /config       name, base model (a teacher-only one is refused),
+ *                        ticked sources, epochs, post-train
  *   POST   /urls         add a custom URL      DELETE /urls   take one off
  *   POST   /paths        add a local source    DELETE /paths  take one off
  *   POST   /initialize   fetch, build, train

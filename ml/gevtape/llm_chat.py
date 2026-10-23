@@ -19,6 +19,7 @@ import time
 
 import torch
 
+from .llm_pipelines import family as pipeline_family, pipeline_for, render_target
 from .llm_train import add_lora, load_base, load_lora_state, read_adapter
 from .protocol import utf8_streams
 from .train import DataError, resolve_device
@@ -27,21 +28,25 @@ TRACE_EXPERIMENT = "ai-world/llm-traces"
 
 
 def load(model_dir, *, device="auto", loader=None):
-    """(tokenizer, model, input device, adapter meta) of a trained custom LLM, ready to answer."""
+    """(tokenizer, model, input device, adapter meta) of a trained custom LLM, ready to answer.
+
+    The meta carries `_pipeline`, the family's rules the adapters were trained
+    under (ml.gevtape.llm_pipelines): the same ones shape every prompt.
+    """
     meta, state = read_adapter(model_dir)
+    pipeline = pipeline_family(meta["pipeline"]) if meta.get("pipeline") else pipeline_for(meta["base"])
     dev = resolve_device(device)
     tok, model = load_base(meta["base"], dev, loader=loader)
     dev = getattr(model, "gev_input_device", dev)
-    add_lora(model, meta["rank"], meta["alpha"], tuple(meta["targets"]))
+    add_lora(model, meta["rank"], meta["alpha"], tuple(meta["targets"]), skip=pipeline.get("skip") or ())
     load_lora_state(model, state)
     model.eval()
-    return tok, model, dev, meta
+    return tok, model, dev, {**meta, "_pipeline": pipeline}
 
 
-def generate(tok, model, dev, prompt, *, max_new=200):
+def generate(tok, model, dev, prompt, *, max_new=200, pipeline=None):
     msgs = [{"role": "user", "content": prompt}]
-    text = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True) \
-        if getattr(tok, "chat_template", None) else f"User: {prompt}\nAssistant:"
+    text = render_target(tok, msgs, pipeline, add_generation_prompt=True)
     ids = tok(text, return_tensors="pt").to(dev)
     with torch.no_grad():
         out = model.generate(**ids, max_new_tokens=max_new, do_sample=False,
@@ -50,8 +55,8 @@ def generate(tok, model, dev, prompt, *, max_new=200):
 
 
 def ask(model_dir, prompt, *, max_new=200, device="auto", loader=None):
-    tok, model, dev, _ = load(model_dir, device=device, loader=loader)
-    return generate(tok, model, dev, prompt, max_new=max_new)
+    tok, model, dev, meta = load(model_dir, device=device, loader=loader)
+    return generate(tok, model, dev, prompt, max_new=max_new, pipeline=meta.get("_pipeline"))
 
 
 def traced(name, inputs, attributes=None):
@@ -106,15 +111,18 @@ def main(argv=None) -> int:
             experiment_id = mlflow.set_experiment(TRACE_EXPERIMENT).experiment_id
         started = time.time()
         tok, model, dev, meta = load(args.model, device=args.device)
+        pipeline = meta.get("_pipeline")
         attributes = {"gev.model": str(args.model), "gev.base": str(meta.get("base")),
+                      "gev.pipeline": str(meta.get("pipeline") or (pipeline or {}).get("family", "")),
                       "max_new_tokens": args.max_new, "device": str(dev)}
         if args.trace:
             with traced("custom LLM", {"prompt": args.prompt}, attributes) as (set_outputs, box):
-                answer = generate(tok, model, dev, args.prompt, max_new=args.max_new)
+                answer = generate(tok, model, dev, args.prompt, max_new=args.max_new, pipeline=pipeline)
                 set_outputs({"answer": answer})
             trace_id = box["traceId"]
         else:
-            answer, trace_id = generate(tok, model, dev, args.prompt, max_new=args.max_new), None
+            answer = generate(tok, model, dev, args.prompt, max_new=args.max_new, pipeline=pipeline)
+            trace_id = None
     except (DataError, OSError, ImportError) as e:
         if args.json:
             print(json.dumps({"event": "error", "message": str(e)}), flush=True)

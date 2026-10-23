@@ -130,7 +130,8 @@ class CustomLlm(mlflow.pyfunc.PythonModel):
             with llm_chat.traced("custom LLM", {"prompt": prompt},
                                  {"gev.model": self.config.get("name", ""), "gev.base": str(self.meta.get("base"))}) \
                     as (set_outputs, _):
-                answer = llm_chat.generate(self.tok, self.model, self.dev, prompt, max_new=max_new)
+                answer = llm_chat.generate(self.tok, self.model, self.dev, prompt, max_new=max_new,
+                                           pipeline=self.meta.get("_pipeline"))
                 set_outputs({"answer": answer})
             answers.append(answer)
         return answers

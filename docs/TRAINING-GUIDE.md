@@ -132,25 +132,48 @@ Everything recorded is ready for your own code:
 Open the **ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM** tab (left) and
 scroll to **CUSTOM LLM TRAINING**, the last section of the tab.
 
-1. **MODEL NAME** and **BASE MODEL.** Choose the base in the list under
-   the name:
-   - **Qwen3.5-0.8B** (`Qwen/Qwen3.5-0.8B`, the default, Apache-2.0,
-     1.7 GB) trains on the GPU alone. A small dataset takes about a minute.
-   - **Qwen3.6-35B-A3B** (`Qwen/Qwen3.6-35B-A3B`, Apache-2.0) is the large
-     option: a mixture-of-experts model with 35 B parameters, about 3 B
-     active for each token, and about 72 GB of weights. It does not fit an
-     8 GB GPU, so it is split. As many layers as fit go on the GPU and the
-     rest run from RAM (it needs about 85 GB free of the 128 GB), with
-     gradient checkpointing. It is slow (minutes a step): keep datasets and
-     epochs small, and post-train daily instead of retraining.
-   - **Another model:** type any model id or folder in the box.
+1. **MODEL NAME** and **BASE MODEL.** The list under the name holds every
+   open size of five model families, one group each (owner request
+   2026-10-22: "Each LLM will have its own training pipeline determining the
+   type of data and format"). Each size says how it fits this PC: **TRAINS
+   ON THE GPU** (its weights take at most 70 % of the GPU), **GPU + RAM ·
+   SLOW** (as many layers as fit go on the GPU and the rest run from RAM,
+   with gradient checkpointing; minutes a step, so keep datasets and epochs
+   small and post-train daily instead of retraining) or **TOO BIG FOR THIS
+   PC**; and whether it is **ON THIS PC**. **Another model:** type any model
+   id or folder in the box.
 
-   The list says which bases are on this PC. A base must be there before
-   training, in `.gev-data/llm/base/<name>/`, the Hugging Face cache, or a
-   folder you name. If it says **NOT ON THIS PC**, fetch it once in a
-   terminal, for example
-   `hf download Qwen/Qwen3.5-0.8B --local-dir .gev-data/llm/base/Qwen3.5-0.8B`.
-   The app itself never downloads a model.
+   Each family trains through its own pipeline (`ml/gevtape/llm_pipelines.json`,
+   `ml.gevtape.llm_pipelines`): which layers the LoRA adapters go on, what
+   stays frozen (vision and audio towers, perception encoders, per-layer
+   embeddings, routers, routed experts), how the family's own chat template
+   renders a training target with thinking off, its system-role rule, the
+   data types it can take (text today; images and audio are listed for the
+   families that read them, for later), and what it needs installed. The
+   **PIPELINE** line under the list reads it back, for instance `GEMMA 4 ·
+   TEXT, IMAGES, AUDIO · SYSTEM ROLE · THINKING OFF IN TRAINING · LORA ON
+   ATTENTION AND MLP · Apache-2.0 · GPU + RAM · SLOW`. A folder you name is
+   told from its `config.json`; a trained model keeps its pipeline in
+   `adapter.json`, and asking it uses the same rules.
+
+   | Family (research of 2026-10-22)                                                                                       | Sizes offered                                                                                 | Pipeline                                                                                                                                                                                                                          |
+   | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | **QWEN 3.5** (`Qwen/Qwen3.5-<size>`, Apache-2.0; 3 Gated DeltaNet layers to 1 Gated Attention layer, a vision encoder) | 0.8B (the default, GPU), 2B (GPU), 4B, 9B, 27B, 35B-A3B (split), 122B-A10B, 397B-A17B (too big) | adapters on `q/k/v/o_proj` and the DeltaNet `in_proj_qkv/in_proj_z/out_proj`; vision frozen; thinking is off by default and every target is rendered with `enable_thinking: false`                                                 |
+   | **QWEN 3.6** (`Qwen/Qwen3.6-27B`, `Qwen/Qwen3.6-35B-A3B`, Apache-2.0; the Qwen 3.5 classes)                            | 27B, 35B-A3B (both split)                                                                     | as Qwen 3.5; thinking is on by default, so the targets are rendered with it off                                                                                                                                                   |
+   | **NVIDIA NEMOTRON** (`nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16`, OpenMDW-1.1; Mamba-2 + attention + MoE)     | 3.5 Lightning 30B-A3B (split); 3 Super, 3.5 Super VL, 3 Ultra (too big)                       | adapters on the attention, the Mamba `in_proj/out_proj` and the shared-expert MLP; text only; `enable_thinking: false`; EXPERIMENTAL: the fast path needs the Linux `causal-conv1d` and `mamba-ssm` kernels, Windows takes transformers' slow path |
+   | **GEMMA 4** (`google/gemma-4-{E2B,E4B,12B,26B-A4B,31B}-it`, Apache-2.0; needs transformers 5.5)                        | E2B, E4B, 12B, 26B-A4B, 31B (all split on an 8 GB GPU)                                        | adapters on the attention and `gate/up/down_proj`; towers, per-layer embeddings, routers and experts frozen; a native system role; thinking is a `<\|think\|>` token at the start of the system prompt, so a target without it is a non-thinking one |
+   | **META MUSE GLIMMER** (`meta-models/Muse-Glimmer-30B`, Apache-2.0; needs transformers 5.15)                            | 30B (split)                                                                                   | adapters on the attention and MLP (names to be confirmed against the installed class); the 1.8B perception encoder frozen; targets rendered with `reasoning_strength: low` and no reasoning turn; EXPERIMENTAL                     |
+   | **Teachers only**: META MUSE SPARK OPEN (816B, about 530 GB) and DEEPSEEK V4 (Pro 1.6T, Flash 284B, MIT)              | none                                                                                          | too big for any training here: use them as teachers in AI DISTILLATION through OpenRouter or the custom endpoint (`docs/AI-DISTILLATION.md`)                                                                                      |
+
+   A base must be on this PC before training, in `.gev-data/llm/base/<name>/`,
+   the Hugging Face cache, or a folder you name. If it says **NOT ON THIS
+   PC**, the line under it gives the one command to run in a terminal, with
+   **COPY THE COMMAND**, for example
+   `hf download Qwen/Qwen3.5-0.8B --local-dir .gev-data/llm/base/Qwen3.5-0.8B`
+   (Muse Glimmer also needs `py -3.13 -m pip install -U transformers`; the
+   line says so). The app itself never downloads a model. Sizes marked TOO
+   BIG FOR THIS PC and the teacher-only families are refused before anything
+   loads.
 
 2. **DATA SOURCES.** Tick what to train from:
    - news headlines;

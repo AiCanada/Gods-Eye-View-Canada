@@ -269,7 +269,8 @@
     "{verb}...",
     "ΔE",
     "ΔN",
-    "▲ {frp} MW"
+    "▲ {frp} MW",
+    "AUDIO"
   ],
   "fr-CA": [
     "1090 MHz",
@@ -549,7 +550,10 @@
     "ΔE",
     "ΔN",
     "Ⅱ PAUSE",
-    "▲ {frp} MW"
+    "▲ {frp} MW",
+    "IMAGES",
+    "AUDIO",
+    "PIPELINE"
   ],
   "ru": [
     "AIS: --",

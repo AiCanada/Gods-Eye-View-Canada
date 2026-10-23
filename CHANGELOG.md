@@ -1,5 +1,29 @@
 # Changelog
 
+- CUSTOM LLM TRAINING: a training pipeline per model family (owner request
+  2026-10-22: "Each LLM will have its own training pipeline determining the
+  type of data and format; research pipelines for Qwen 3.5, 3.6, Nvidia
+  Nemotron, Meta Spark Open, Gemma 4, DeepSeek-V4-Pro"). A registry,
+  `ml/gevtape/llm_pipelines.json` read by `ml.gevtape.llm_pipelines` and
+  `server/shared/llmPipelines.mjs`, says for each family which layers the
+  LoRA adapters go on, what stays frozen (vision and audio towers, perception
+  encoders, per-layer embeddings, routers, routed experts), how its own chat
+  template renders a training target with thinking off (`enable_thinking:
+  false` for Qwen and Nemotron, no `<|think|>` token for Gemma 4,
+  `reasoning_strength: low` for Muse Glimmer), the data types it takes, its
+  licence and what it needs installed. The trainer, the chat tool and the
+  MLflow model take their rules from it (a base is told from its config.json,
+  or its name where the classes are shared), and refuse a teacher-only or
+  unsupported base before anything loads. BASE MODEL lists every open size of
+  Qwen 3.5, Qwen 3.6, NVIDIA Nemotron 3.5 Lightning (experimental, slow path
+  on Windows), Gemma 4 and Meta Muse Glimmer, one group each, with how it fits
+  this PC (TRAINS ON THE GPU, GPU + RAM · SLOW, TOO BIG FOR THIS PC), a
+  PIPELINE line, the one `hf download` command with COPY THE COMMAND, and a
+  line naming the teachers only (Muse Spark Open, DeepSeek V4: AI
+  DISTILLATION through OpenRouter or the custom endpoint). Strings in Spanish,
+  Quebec French, Inuktitut and Ancient Egyptian; guide part 4 and TESTING.md
+  updated.
+
 - Upstream merge, 2026-10-22 (fifth): the 57 upstream commits after
   713285b5, up to 7be5937f (10 pull requests).
   - What came in: shared panel controls, so ordinary selectors, sliders,

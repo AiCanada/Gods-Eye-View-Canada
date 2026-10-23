@@ -23,6 +23,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createChild, defaultPython } from './aiWorldJobs.mjs';
+import {
+  baseOptions,
+  machineMemory,
+  pipelineView,
+  readPipelineRegistry,
+  teacherFamilies,
+} from './llmPipelines.mjs';
 import { NO_TRACKER, trackChild } from './mlflowTrack.mjs';
 import { cleanNewsUrl } from './newsUrls.mjs';
 import { fetchPublic } from './publicFetch.mjs';
@@ -63,20 +70,15 @@ const SOURCE_IDS = new Set(LLM_SOURCES.map((s) => s.id));
 export const LLM_URL_MAX = 100;
 export const LLM_PATH_MAX = 50;
 /**
- * The base models offered (owner rulings 2026-10-16): Qwen3.5-0.8B is the
+ * The two bases of the owner's rulings of 2026-10-16: Qwen3.5-0.8B is the
  * default, small enough for the GPU alone; Qwen3.6-35B-A3B is the large
- * option (about 72 GB, split across GPU and RAM, slow). Any other model id or
+ * option. Every family's sizes come from the pipeline registry
+ * (ml/gevtape/llm_pipelines.json, llmPipelines.mjs); any other model id or
  * folder can be typed.
  */
 export const LLM_BASE_OPTIONS = Object.freeze([
-  Object.freeze({
-    id: 'Qwen/Qwen3.5-0.8B',
-    label: 'QWEN3.5-0.8B · DEFAULT · 1.7 GB · TRAINS ON THE GPU',
-  }),
-  Object.freeze({
-    id: 'Qwen/Qwen3.6-35B-A3B',
-    label: 'QWEN3.6-35B-A3B · 72 GB · GPU + RAM · SLOW',
-  }),
+  Object.freeze({ id: 'Qwen/Qwen3.5-0.8B' }),
+  Object.freeze({ id: 'Qwen/Qwen3.6-35B-A3B' }),
 ]);
 export const LLM_DEFAULT_BASE = LLM_BASE_OPTIONS[0].id;
 /** Earlier default, moved to the new one when the owner never changed it. */
@@ -127,24 +129,54 @@ export function resolveBaseModel(base, { env = process.env, dataRoot } = {}) {
 
 /** Whether a Hugging Face id (or a folder) is already on this machine. */
 export function baseModelOnMachine(base, env = process.env) {
-  if (path.isAbsolute(base))
-    return fs.existsSync(path.join(base, 'config.json'));
+  return baseModelFolder(base, { env }) !== null;
+}
+
+/**
+ * The folder that holds a base model's config.json here: the folder named,
+ * `.gev-data/llm/base/<name>`, or the Hugging Face cache's snapshot. Null
+ * when it is not here.
+ */
+export function baseModelFolder(base, { env = process.env, dataRoot } = {}) {
+  const has = (folder) => fs.existsSync(path.join(folder, 'config.json'));
+  if (path.isAbsolute(base)) return has(base) ? base : null;
+  if (dataRoot) {
+    const local = path.join(dataRoot, 'llm', 'base', base.split('/').pop());
+    if (has(local)) return local;
+  }
   const hubs = [
     env.HF_HUB_CACHE,
     env.HF_HOME && path.join(env.HF_HOME, 'hub'),
     path.join(os.homedir(), '.cache', 'huggingface', 'hub'),
   ].filter(Boolean);
   const folder = `models--${base.replace('/', '--')}`;
-  return hubs.some((hub) => {
+  for (const hub of hubs) {
     const snapshots = path.join(hub, folder, 'snapshots');
     try {
-      return fs
+      const found = fs
         .readdirSync(snapshots)
-        .some((s) => fs.existsSync(path.join(snapshots, s, 'config.json')));
+        .map((s) => path.join(snapshots, s))
+        .find(has);
+      if (found) return found;
     } catch {
-      return false;
+      /* not in this cache */
     }
-  });
+  }
+  return null;
+}
+
+/** A base model's config.json as parsed, or null (not here, or not JSON). */
+export function baseModelConfig(base, options = {}) {
+  const folder = baseModelFolder(base, options);
+  if (!folder) return null;
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(path.join(folder, 'config.json'), 'utf8'),
+    );
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -267,8 +299,16 @@ export function createLlmTrainingManager({
   log = () => {},
   /** MLFLOW TRACKING: each training run as an MLflow run (mlflowTrack.mjs). */
   tracker = NO_TRACKER,
+  /** The families' pipelines (ml/gevtape/llm_pipelines.json, shipped with the code). */
+  registry = readPipelineRegistry(),
+  /** This machine's GPU and RAM bytes, read once when first asked. */
+  memory = null,
 } = {}) {
   const llmRoot = path.join(dataRoot, 'llm');
+  const mem = () => {
+    if (!memory) memory = machineMemory();
+    return memory;
+  };
   const stateFile = path.join(llmRoot, 'state.json');
   const urlsDir = path.join(llmRoot, 'sources', 'urls');
   const read = (file, fallback) => {
@@ -338,6 +378,8 @@ export function createLlmTrainingManager({
       .map(({ name, meta }) => ({
         name,
         base: meta.base,
+        pipeline: meta.pipeline ?? null,
+        pipelineLabel: meta.pipelineLabel ?? '',
         dataThrough: meta.dataThrough ?? null,
         heldOutLossBefore: meta.heldOutLossBefore ?? null,
         heldOutLossAfter: meta.heldOutLossAfter ?? null,
@@ -534,17 +576,25 @@ export function createLlmTrainingManager({
 
   const manager = {
     status() {
+      const base = persisted.config.base;
       return {
         state: persisted.state,
         error: persisted.error,
         config: persisted.config,
-        bases: LLM_BASE_OPTIONS.map((option) => ({
-          ...option,
-          onMachine: Boolean(resolveBaseModel(option.id, { env, dataRoot })),
-        })),
-        baseOnMachine: Boolean(
-          resolveBaseModel(persisted.config.base, { env, dataRoot }),
+        // Every family's sizes, which fit here, and which are on this PC.
+        bases: baseOptions(registry, {
+          ...mem(),
+          onMachine: (id) => Boolean(resolveBaseModel(id, { env, dataRoot })),
+        }),
+        baseOnMachine: Boolean(resolveBaseModel(base, { env, dataRoot })),
+        // The chosen base's pipeline: its family from its config when it is here, else from its name.
+        pipeline: pipelineView(
+          registry,
+          base,
+          baseModelConfig(base, { env, dataRoot }),
+          mem(),
         ),
+        teachers: teacherFamilies(registry),
         sources: LLM_SOURCES,
         urls: persisted.urls.map((url) => ({
           url,
@@ -570,15 +620,26 @@ export function createLlmTrainingManager({
         ),
       );
       const from = cleanLlmName(body.postTrainFrom || '');
+      const base =
+        body.base === undefined
+          ? persisted.config.base
+          : cleanBaseModel(body.base);
+      // A teacher-only family (Muse Spark Open, DeepSeek V4) trains nowhere here.
+      const chosen = pipelineView(
+        registry,
+        base,
+        baseModelConfig(base, { env, dataRoot }),
+      );
+      if (chosen.teacherOnly)
+        throw refuse(
+          `${chosen.label} trains nowhere on this PC: use it as a teacher in AI DISTILLATION.`,
+        );
       persisted.config = {
         name:
           body.name === undefined
             ? persisted.config.name
             : cleanLlmName(body.name),
-        base:
-          body.base === undefined
-            ? persisted.config.base
-            : cleanBaseModel(body.base),
+        base,
         sources,
         epochs,
         postTrainFrom:

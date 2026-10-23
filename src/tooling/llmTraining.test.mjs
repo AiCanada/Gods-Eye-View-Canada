@@ -23,6 +23,14 @@ import {
   resolveBaseModel,
 } from '../../server/shared/llmTraining.mjs';
 import { llmTrainingProvider } from '../../server/providers/llmTraining.js';
+import {
+  baseOptions,
+  fitFor,
+  machineMemory,
+  pipelineView,
+  readPipelineRegistry,
+  teacherFamilies,
+} from '../../server/shared/llmPipelines.mjs';
 import { LLM_SERVER_LABELS } from '../llmTrainingSetup.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'gev-llm-'));
@@ -509,15 +517,34 @@ test('the default base is Qwen3.5-0.8B with Qwen3.6-35B-A3B offered; an untouche
       spawnImpl,
       env: { HF_HUB_CACHE: path.join(root, 'empty') },
       timers: noTimers,
+      memory: { gpuBytes: 8 * 1024 ** 3, ramBytes: 128 * 1024 ** 3 },
     });
     const status = manager.status();
     assert.equal(status.config.base, 'Qwen/Qwen3.5-0.8B');
     assert.deepEqual(
-      status.bases.map((b) => [b.id, b.onMachine]),
+      status.bases
+        .filter((b) => b.default && b.family.startsWith('qwen'))
+        .map((b) => [b.id, b.onMachine, b.familyLabel]),
       [
-        ['Qwen/Qwen3.5-0.8B', true],
-        ['Qwen/Qwen3.6-35B-A3B', false],
+        ['Qwen/Qwen3.5-0.8B', true, 'QWEN 3.5'],
+        ['Qwen/Qwen3.6-35B-A3B', false, 'QWEN 3.6'],
       ],
+    );
+    assert.ok(
+      status.bases.some((b) => b.id === 'google/gemma-4-E4B-it'),
+      'every family is offered',
+    );
+    assert.deepEqual(
+      [status.pipeline.family, status.pipeline.lora, status.pipeline.fit],
+      ['qwen3_5', 'attention-deltanet', 'gpu'],
+    );
+    assert.deepEqual(
+      status.teachers.map((t) => t.label),
+      ['META MUSE SPARK OPEN', 'DEEPSEEK V4'],
+    );
+    assert.throws(
+      () => manager.setConfig({ base: 'deepseek-ai/DeepSeek-V4-Pro' }),
+      /DEEPSEEK V4 trains nowhere on this PC: use it as a teacher in AI DISTILLATION/,
     );
     assert.equal(status.baseOnMachine, true, 'found in .gev-data/llm/base/');
     manager.initialize();
@@ -530,8 +557,86 @@ test('the default base is Qwen3.5-0.8B with Qwen3.6-35B-A3B offered; an untouche
   }
 });
 
-test('every label the server gives a data source or a base model is listed for translation', () => {
+test('every label the server gives a data source is listed for translation; a family and a size go by their names', () => {
   const listed = new Set(LLM_SERVER_LABELS);
-  for (const { label } of [...LLM_SOURCES, ...LLM_BASE_OPTIONS])
-    assert.ok(listed.has(label), label);
+  for (const { label } of LLM_SOURCES) assert.ok(listed.has(label), label);
+  for (const option of LLM_BASE_OPTIONS)
+    assert.equal(option.label, undefined, option.id);
+});
+
+test('the pipeline registry: every family with its sizes, which fit this PC, the teachers only, and a base told from its config', () => {
+  const registry = readPipelineRegistry();
+  assert.deepEqual(
+    registry.families.map((f) => f.family),
+    [
+      'qwen3_5',
+      'qwen3_6',
+      'nemotron_h',
+      'gemma4',
+      'muse_glimmer',
+      'muse_spark',
+      'deepseek_v4',
+      'generic',
+    ],
+  );
+  const memory = { gpuBytes: 8 * 1024 ** 3, ramBytes: 128 * 1024 ** 3 };
+  const options = baseOptions(registry, {
+    ...memory,
+    onMachine: (id) => id === 'Qwen/Qwen3.5-0.8B',
+  });
+  const fit = Object.fromEntries(options.map((o) => [o.id, o.fit]));
+  assert.equal(fit['Qwen/Qwen3.5-0.8B'], 'gpu');
+  assert.equal(fit['Qwen/Qwen3.5-2B'], 'gpu');
+  assert.equal(fit['google/gemma-4-E2B-it'], 'split', '10 GB of bf16 weights: not within 70 % of 8 GB');
+  assert.equal(fit['Qwen/Qwen3.6-35B-A3B'], 'split');
+  assert.equal(fit['Qwen/Qwen3.5-122B-A10B'], 'none');
+  const e4b = options.find((o) => o.id === 'google/gemma-4-E4B-it');
+  assert.deepEqual(
+    [e4b.familyLabel, e4b.label, e4b.gb, e4b.onMachine, e4b.get],
+    [
+      'GEMMA 4',
+      'E4B',
+      16,
+      false,
+      'hf download google/gemma-4-E4B-it --local-dir .gev-data/llm/base/gemma-4-E4B-it',
+    ],
+  );
+  assert.equal(options.find((o) => o.id === 'Qwen/Qwen3.5-0.8B').onMachine, true);
+  assert.ok(!options.some((o) => o.family === 'deepseek_v4'), 'a teacher is never offered to train');
+  assert.ok(options.find((o) => o.family === 'nemotron_h').experimental);
+  assert.deepEqual(
+    teacherFamilies(registry).map((t) => [t.label, t.sizes.map((s) => s.label)]),
+    [
+      ['META MUSE SPARK OPEN', ['816B-A42B']],
+      ['DEEPSEEK V4', ['PRO 1.6T-A49B', 'FLASH 284B-A13B']],
+    ],
+  );
+  // A typed folder is told from its config.json; an id from the registry; a name where the classes are shared.
+  const nemotron = pipelineView(registry, 'C:\\models\\mine', { model_type: 'nemotron_h' }, memory);
+  assert.deepEqual(
+    [nemotron.family, nemotron.lora, nemotron.experimental, nemotron.needs.kernels, nemotron.fit],
+    ['nemotron_h', 'attention-mamba-mlp', true, ['causal-conv1d', 'mamba-ssm'], ''],
+  );
+  const gemma = pipelineView(registry, 'google/gemma-4-E4B-it', null, memory);
+  assert.deepEqual(
+    [gemma.family, gemma.thinking, gemma.lora, gemma.data, gemma.fit, gemma.gb, gemma.needs.transformers, gemma.licence],
+    ['gemma4', 'system-token', 'attention-mlp', ['text', 'image', 'audio'], 'split', 16, '5.5', 'Apache-2.0'],
+  );
+  assert.equal(pipelineView(registry, 'Qwen/Qwen3.6-27B').family, 'qwen3_6');
+  assert.equal(pipelineView(registry, path.join('C:', 'models', 'Qwen3.6-mine')).family, 'qwen3_6');
+  assert.equal(pipelineView(registry, 'nobody/else', { model_type: 'llama' }).family, 'generic');
+  assert.equal(pipelineView(registry, 'nobody/else', { model_type: 'llama' }).lora, 'attention-deltanet');
+  assert.equal(pipelineView(registry, 'deepseek-ai/DeepSeek-V4-Flash').teacherOnly, true);
+  assert.equal(fitFor(0, memory), 'split', 'a size nobody knows: split');
+  // This machine's memory: nvidia-smi when there is one, else no GPU.
+  const none = machineMemory({
+    execFileImpl: () => {
+      throw new Error('no such file');
+    },
+    totalmem: () => 64 * 1024 ** 3,
+  });
+  assert.deepEqual(none, { gpuBytes: 0, ramBytes: 64 * 1024 ** 3 });
+  assert.equal(machineMemory({ execFileImpl: () => '8188\n', totalmem: () => 1 }).gpuBytes, 8188 * 1024 * 1024);
+  assert.equal(fitFor(10e9, none), 'split', 'no GPU: RAM');
+  assert.equal(readPipelineRegistry(os.tmpdir()).families.length, 0, 'no registry there: nothing offered');
 });

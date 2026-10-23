@@ -1,0 +1,486 @@
+{
+  "version": 1,
+  "note": "Each LLM family's training pipeline (owner request 2026-10-22). Read by ml/gevtape/llm_pipelines.py (the trainer, the chat tool, the MLflow model) and server/shared/llmPipelines.mjs (the base list and the PIPELINE line). bytes = params x 2 (bf16). Research of 2026-10-22: docs/TRAINING-GUIDE.md, part 4.",
+  "baseline": {
+    "transformers": "4.57"
+  },
+  "families": [
+    {
+      "family": "qwen3_5",
+      "label": "QWEN 3.5",
+      "match": {
+        "name": [
+          "qwen3.5",
+          "qwen3_5"
+        ],
+        "model_type": [
+          "qwen3_5",
+          "qwen3_5_text",
+          "qwen3_5_moe",
+          "qwen3_5_moe_text"
+        ],
+        "architectures": [
+          "Qwen3_5ForConditionalGeneration",
+          "Qwen3_5ForCausalLM",
+          "Qwen3_5MoeForConditionalGeneration",
+          "Qwen3_5MoeForCausalLM"
+        ]
+      },
+      "licence": "Apache-2.0",
+      "sizes": [
+        {
+          "id": "Qwen/Qwen3.5-0.8B",
+          "label": "0.8B",
+          "params": 900000000,
+          "default": true
+        },
+        {
+          "id": "Qwen/Qwen3.5-2B",
+          "label": "2B",
+          "params": 2000000000
+        },
+        {
+          "id": "Qwen/Qwen3.5-4B",
+          "label": "4B",
+          "params": 4000000000
+        },
+        {
+          "id": "Qwen/Qwen3.5-9B",
+          "label": "9B",
+          "params": 9000000000
+        },
+        {
+          "id": "Qwen/Qwen3.5-27B",
+          "label": "27B",
+          "params": 27000000000
+        },
+        {
+          "id": "Qwen/Qwen3.5-35B-A3B",
+          "label": "35B-A3B",
+          "params": 35000000000
+        },
+        {
+          "id": "Qwen/Qwen3.5-122B-A10B",
+          "label": "122B-A10B",
+          "params": 122000000000
+        },
+        {
+          "id": "Qwen/Qwen3.5-397B-A17B",
+          "label": "397B-A17B",
+          "params": 397000000000
+        }
+      ],
+      "targets": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "in_proj_qkv",
+        "in_proj_z",
+        "out_proj"
+      ],
+      "skip": [
+        "visual",
+        "vision_tower",
+        "vision_model",
+        "mtp"
+      ],
+      "format": {
+        "system": true,
+        "thinking": "kwarg",
+        "train": {
+          "enable_thinking": false
+        },
+        "generate": {
+          "enable_thinking": false
+        }
+      },
+      "data": [
+        "text",
+        "image"
+      ],
+      "needs": {
+        "transformers": "4.57"
+      },
+      "notes": "Three Gated DeltaNet layers to one Gated Attention layer; a vision encoder stays frozen; thinking is off by default."
+    },
+    {
+      "family": "qwen3_6",
+      "label": "QWEN 3.6",
+      "match": {
+        "name": [
+          "qwen3.6",
+          "qwen3_6"
+        ],
+        "model_type": [],
+        "architectures": []
+      },
+      "licence": "Apache-2.0",
+      "sizes": [
+        {
+          "id": "Qwen/Qwen3.6-27B",
+          "label": "27B",
+          "params": 27000000000
+        },
+        {
+          "id": "Qwen/Qwen3.6-35B-A3B",
+          "label": "35B-A3B",
+          "params": 35000000000,
+          "default": true
+        }
+      ],
+      "targets": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "in_proj_qkv",
+        "in_proj_z",
+        "out_proj"
+      ],
+      "skip": [
+        "visual",
+        "vision_tower",
+        "vision_model",
+        "mtp"
+      ],
+      "format": {
+        "system": true,
+        "thinking": "kwarg",
+        "train": {
+          "enable_thinking": false
+        },
+        "generate": {
+          "enable_thinking": false
+        }
+      },
+      "data": [
+        "text",
+        "image"
+      ],
+      "needs": {
+        "transformers": "4.57"
+      },
+      "notes": "The Qwen 3.5 architecture (the same classes); thinking is on by default, so every training target is rendered with it off."
+    },
+    {
+      "family": "nemotron_h",
+      "label": "NVIDIA NEMOTRON",
+      "match": {
+        "name": [
+          "nemotron"
+        ],
+        "model_type": [
+          "nemotron_h"
+        ],
+        "architectures": [
+          "NemotronHForCausalLM"
+        ]
+      },
+      "licence": "OpenMDW-1.1 (Lightning, Ultra); NVIDIA Nemotron Open Model License (Super)",
+      "sizes": [
+        {
+          "id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+          "label": "3.5 LIGHTNING 30B-A3B",
+          "params": 32000000000,
+          "default": true
+        },
+        {
+          "id": "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16",
+          "label": "3 SUPER 120B-A12B",
+          "params": 120000000000
+        },
+        {
+          "id": "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16",
+          "label": "3.5 SUPER VL 120B-A12B",
+          "params": 120000000000
+        },
+        {
+          "id": "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+          "label": "3 ULTRA 550B-A55B",
+          "params": 550000000000
+        }
+      ],
+      "targets": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "in_proj",
+        "out_proj",
+        "up_proj",
+        "down_proj"
+      ],
+      "skip": [
+        "mtp",
+        "vision_tower",
+        "vision_model"
+      ],
+      "format": {
+        "system": true,
+        "thinking": "kwarg",
+        "train": {
+          "enable_thinking": false
+        },
+        "generate": {
+          "enable_thinking": false
+        }
+      },
+      "data": [
+        "text"
+      ],
+      "needs": {
+        "transformers": "4.57",
+        "kernels": [
+          "causal-conv1d",
+          "mamba-ssm"
+        ]
+      },
+      "experimental": true,
+      "notes": "Hybrid: Mamba-2, attention and mixture-of-experts layers; the adapters go on the attention, the Mamba projections and the shared-expert MLP. The fast path needs the Linux Mamba kernels; Windows takes transformers' slow path."
+    },
+    {
+      "family": "gemma4",
+      "label": "GEMMA 4",
+      "match": {
+        "name": [
+          "gemma-4",
+          "gemma4"
+        ],
+        "model_type": [
+          "gemma4",
+          "gemma4_text"
+        ],
+        "architectures": [
+          "Gemma4ForConditionalGeneration",
+          "Gemma4ForCausalLM"
+        ]
+      },
+      "licence": "Apache-2.0",
+      "sizes": [
+        {
+          "id": "google/gemma-4-E2B-it",
+          "label": "E2B",
+          "params": 5100000000,
+          "default": true
+        },
+        {
+          "id": "google/gemma-4-E4B-it",
+          "label": "E4B",
+          "params": 8000000000
+        },
+        {
+          "id": "google/gemma-4-12B-it",
+          "label": "12B",
+          "params": 12000000000
+        },
+        {
+          "id": "google/gemma-4-26B-A4B-it",
+          "label": "26B-A4B",
+          "params": 25200000000
+        },
+        {
+          "id": "google/gemma-4-31B-it",
+          "label": "31B",
+          "params": 30700000000
+        }
+      ],
+      "targets": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj"
+      ],
+      "skip": [
+        "vision_tower",
+        "audio_tower",
+        "embed_tokens_per_layer",
+        "per_layer",
+        "router",
+        "experts"
+      ],
+      "format": {
+        "system": true,
+        "thinking": "system-token",
+        "token": "<|think|>",
+        "train": {},
+        "generate": {}
+      },
+      "data": [
+        "text",
+        "image",
+        "audio"
+      ],
+      "needs": {
+        "transformers": "5.5"
+      },
+      "notes": "A native system role; thinking is switched on by a <|think|> token at the start of the system prompt, so a training target without it is a non-thinking one. Per-layer embeddings, towers, routers and experts stay frozen."
+    },
+    {
+      "family": "muse_glimmer",
+      "label": "META MUSE GLIMMER",
+      "match": {
+        "name": [
+          "muse-glimmer",
+          "muse_glimmer"
+        ],
+        "model_type": [
+          "muse_glimmer",
+          "muse_glimmer_text"
+        ],
+        "architectures": [
+          "MuseGlimmerForConditionalGeneration",
+          "MuseGlimmerForCausalLM"
+        ]
+      },
+      "licence": "Apache-2.0",
+      "sizes": [
+        {
+          "id": "meta-models/Muse-Glimmer-30B",
+          "label": "30B",
+          "params": 29600000000,
+          "default": true
+        }
+      ],
+      "targets": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj"
+      ],
+      "skip": [
+        "vision_tower",
+        "vision_model",
+        "perception"
+      ],
+      "format": {
+        "system": true,
+        "thinking": "strength",
+        "train": {
+          "reasoning_strength": "low"
+        },
+        "generate": {
+          "reasoning_strength": "low"
+        }
+      },
+      "data": [
+        "text",
+        "image"
+      ],
+      "needs": {
+        "transformers": "5.15"
+      },
+      "experimental": true,
+      "notes": "Dense, with a 1.8B perception encoder that stays frozen; its turns are <|start|>role<|message|>...<|eot|> and its reasoning goes in assistant-to-self turns, which a training target leaves out. The adapter names are to be confirmed against the installed class."
+    },
+    {
+      "family": "muse_spark",
+      "label": "META MUSE SPARK OPEN",
+      "teacherOnly": true,
+      "match": {
+        "name": [
+          "muse-spark",
+          "muse_spark"
+        ],
+        "model_type": [
+          "muse_spark"
+        ],
+        "architectures": []
+      },
+      "licence": "Meta's Muse Spark licence (a visible notice; a separate agreement for large model services)",
+      "sizes": [
+        {
+          "id": "",
+          "label": "816B-A42B",
+          "params": 816000000000
+        }
+      ],
+      "served": [
+        "OpenRouter",
+        "Together AI",
+        "Fireworks"
+      ],
+      "notes": "816B parameters, 42B active, about 530 GB at its smallest: a teacher, never a student here."
+    },
+    {
+      "family": "deepseek_v4",
+      "label": "DEEPSEEK V4",
+      "teacherOnly": true,
+      "match": {
+        "name": [
+          "deepseek-v4",
+          "deepseek_v4"
+        ],
+        "model_type": [
+          "deepseek_v4"
+        ],
+        "architectures": [
+          "DeepseekV4ForCausalLM"
+        ]
+      },
+      "licence": "MIT",
+      "sizes": [
+        {
+          "id": "deepseek-ai/DeepSeek-V4-Pro",
+          "label": "PRO 1.6T-A49B",
+          "params": 1600000000000
+        },
+        {
+          "id": "deepseek-ai/DeepSeek-V4-Flash",
+          "label": "FLASH 284B-A13B",
+          "params": 284000000000
+        }
+      ],
+      "served": [
+        "DeepSeek API",
+        "OpenRouter"
+      ],
+      "notes": "1.6T and 284B parameters, 865 GB and 160 GB on disk, no smaller official model: a teacher through the Ask panel's providers, never a student here."
+    },
+    {
+      "family": "generic",
+      "label": "OTHER",
+      "match": {
+        "name": [],
+        "model_type": [],
+        "architectures": []
+      },
+      "licence": "",
+      "sizes": [],
+      "targets": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "in_proj_qkv",
+        "in_proj_z",
+        "out_proj"
+      ],
+      "skip": [
+        "visual",
+        "vision_tower",
+        "vision_model",
+        "audio_tower"
+      ],
+      "format": {
+        "system": true,
+        "thinking": "none",
+        "train": {},
+        "generate": {}
+      },
+      "data": [
+        "text"
+      ],
+      "needs": {
+        "transformers": "4.57"
+      },
+      "notes": "Any other model: adapters on the attention projections, the tokenizer's own template as it is."
+    }
+  ]
+}

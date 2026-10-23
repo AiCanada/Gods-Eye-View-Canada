@@ -73,8 +73,12 @@ box"). Its data format is in [WORLD-MODEL-DATA.md](WORLD-MODEL-DATA.md).
     2026-10-17): a language model trained on the ticked recordings, custom
     URLs and local files, from a base model already on this PC
     (`src/llmTrainingSetup.js`, routes `/api/llm-training`, part 4 of
-    `docs/TRAINING-GUIDE.md`). The tab mounts it into `#llm-training` and
-    ends it with itself; it stays hidden until its server routes answer.
+    `docs/TRAINING-GUIDE.md`). Each base family (Qwen 3.5 and 3.6, NVIDIA
+    Nemotron, Gemma 4, Meta Muse Glimmer) trains through its own pipeline
+    (`ml/gevtape/llm_pipelines.json`, owner request 2026-10-22); the
+    teacher-only families (Muse Spark Open, DeepSeek V4) are named as such.
+    The tab mounts it into `#llm-training` and ends it with itself; it
+    stays hidden until its server routes answer.
 
 The study pairs (`src/trainingLinks.mjs`) are not listed in the tab; they go
 beside the bins as `links.json` for `ml.gevtape.links`.

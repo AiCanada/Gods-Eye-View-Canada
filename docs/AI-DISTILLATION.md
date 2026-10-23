@@ -163,6 +163,12 @@ sending an id the API would refuse. The list is read again for every call:
 a key added mid-run counts, and a custom LLM deleted mid-run fails its turn
 with `… is not on the list any more.`
 
+Models too big for any training on this PC (Meta Muse Spark Open, DeepSeek
+V4 Pro and Flash; `docs/TRAINING-GUIDE.md`, part 4) belong here as teachers:
+reach them through the Ask panel's OpenRouter or custom-endpoint provider
+with its key in POWER UP, and their answers become ground truths a smaller
+student trains on.
+
 ## Replies from the apps
 
 The apps' routes bring the reply back by themselves where they can (owner,

@@ -20,6 +20,7 @@
  */
 import { classTag } from './aiWorldSelection.mjs';
 import { localDigits, msgl, tl, tln } from './i18n/index.js';
+import { copyText as defaultCopyText } from './ui/copyText.js';
 import {
   isOwnerRemovalRefusal,
   noteOwnerRemovalRefusal,
@@ -32,9 +33,8 @@ const POLL_IDLE_MS = 15_000;
 const BUSY = new Set(['fetching', 'building', 'training']);
 
 /**
- * The labels the server gives the data sources and the offered base models
- * (server/shared/llmTraining.mjs), listed so they are translated; any other
- * label shows as the server gives it.
+ * The labels the server gives the data sources (server/shared/llmTraining.mjs),
+ * listed so they are translated; a model family and a size go by their names.
  */
 export const LLM_SERVER_LABELS = Object.freeze([
   msgl('NEWS HEADLINES'),
@@ -45,9 +45,93 @@ export const LLM_SERVER_LABELS = Object.freeze([
   msgl('CUSTOM URLS'),
   msgl('LOCAL SOURCES'),
   msgl('DISTILLED ANSWERS (AI DISTILLATION)'),
-  msgl('QWEN3.5-0.8B · DEFAULT · 1.7 GB · TRAINS ON THE GPU'),
-  msgl('QWEN3.6-35B-A3B · 72 GB · GPU + RAM · SLOW'),
 ]);
+
+/**
+ * The words of each family's pipeline (ml/gevtape/llm_pipelines.json, owner
+ * request 2026-10-22): how a size fits this PC, the data a family takes,
+ * where its adapters go.
+ */
+const FIT_WORDS = Object.freeze({
+  gpu: msgl('TRAINS ON THE GPU'),
+  split: msgl('GPU + RAM · SLOW'),
+  none: msgl('TOO BIG FOR THIS PC'),
+});
+const DATA_WORDS = Object.freeze({
+  text: msgl('TEXT'),
+  image: msgl('IMAGES'),
+  audio: msgl('AUDIO'),
+});
+const LORA_WORDS = Object.freeze({
+  attention: msgl('LORA ON ATTENTION'),
+  'attention-mlp': msgl('LORA ON ATTENTION AND MLP'),
+  'attention-deltanet': msgl('LORA ON ATTENTION AND DELTANET'),
+  'attention-mamba': msgl('LORA ON ATTENTION AND MAMBA'),
+  'attention-mamba-mlp': msgl('LORA ON ATTENTION, MAMBA AND MLP'),
+});
+const PIP_INSTALL = 'py -3.13 -m pip install -U transformers';
+const upper = (v) => String(v ?? '').toUpperCase();
+
+/** Whether version `a` is newer than `b` ("5.15" than "4.57"). */
+function newerThan(a, b) {
+  const x = String(a || '')
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
+  const y = String(b || '')
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(x.length, y.length); i++)
+    if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+}
+
+/**
+ * The PIPELINE line: the family, the data it takes, its system role, that
+ * thinking is off in training, where the adapters go, its licence, the fit.
+ */
+export function pipelineText(p) {
+  if (!p?.family) return '';
+  return [
+    p.label,
+    (p.data || []).map((d) => tl(DATA_WORDS[d] || upper(d))).join(', '),
+    p.system === false ? tl('NO SYSTEM ROLE') : tl('SYSTEM ROLE'),
+    p.thinking && p.thinking !== 'none' ? tl('THINKING OFF IN TRAINING') : '',
+    tl(LORA_WORDS[p.lora] || LORA_WORDS.attention),
+    p.licence || '',
+    p.fit ? tl(FIT_WORDS[p.fit] || upper(p.fit)) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** What a pipeline still needs here: a newer transformers, or the Linux kernels of its fast path. */
+export function pipelineNeeds(p) {
+  if (!p?.family) return '';
+  const parts = [];
+  const wanted = p.needs?.transformers || '';
+  if (wanted && newerThan(wanted, p.needs?.baseline || ''))
+    parts.push(
+      tl('NEEDS TRANSFORMERS {version} OR NEWER: {command}', {
+        version: wanted,
+        command: PIP_INSTALL,
+      }),
+    );
+  if ((p.needs?.kernels || []).length)
+    parts.push(
+      tl(
+        'EXPERIMENTAL: THE FAST PATH NEEDS THE LINUX MAMBA KERNELS; WINDOWS TAKES THE SLOW PATH',
+      ),
+    );
+  return parts.join(' · ');
+}
+
+/** The one command that fetches a Hugging Face id into .gev-data/llm/base/ (the app downloads nothing). */
+export function fetchCommand(base) {
+  const text = String(base || '');
+  return /^[\w.-]+\/[\w.-]+$/.test(text)
+    ? `hf download ${text} --local-dir .gev-data/llm/base/${text.split('/').pop()}`
+    : '';
+}
 
 /** The run states, as the status line names them. */
 const STATE_NAMES = Object.freeze({
@@ -135,7 +219,8 @@ export function llmModelLines(models) {
     const from = m.postTrainedFrom
       ? ` · ${tl('POST-TRAINED FROM {name}', { name: m.postTrainedFrom })}`
       : '';
-    return `${String(m.name).toUpperCase()} · ${m.base}${through}${score}${from}`;
+    const family = m.pipelineLabel ? ` · ${m.pipelineLabel}` : '';
+    return `${String(m.name).toUpperCase()} · ${m.base}${family}${through}${score}${from}`;
   });
 }
 
@@ -145,13 +230,11 @@ export function llmModelLines(models) {
  */
 export function baseModelHint(status) {
   if (!status || status.baseOnMachine) return '';
-  const base = String(status.config?.base || '');
-  return /^[\w.-]+\/[\w.-]+$/.test(base)
+  const command = fetchCommand(status.config?.base);
+  return command
     ? tl(
         'NOT ON THIS PC YET. GET IT ONCE (IT IS A LARGE DOWNLOAD): {command}   (or name a model folder on this PC)',
-        {
-          command: `hf download ${base} --local-dir .gev-data/llm/base/${base.split('/').pop()}`,
-        },
+        { command },
       )
     : tl(
         'NO MODEL IN THAT FOLDER: it needs the model files (config.json and the weights).',
@@ -197,6 +280,7 @@ export function initLlmTrainingSetup({
     setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms),
     clearTimeout: (id) => globalThis.clearTimeout(id),
   },
+  copyText = defaultCopyText,
 } = {}) {
   if (!host || !documentRef?.createElement)
     return { refresh() {}, destroy() {} };
@@ -302,23 +386,47 @@ export function initLlmTrainingSetup({
       base,
     );
     host.append(fields);
-    // The offered bases, each saying whether it is on this PC; choosing one
-    // fills the box (any other id or folder can still be typed there).
+    // The offered bases, one group per family, each size saying how it fits
+    // this PC and whether it is here; choosing one fills the box (any other
+    // id or folder can still be typed there).
     const baseRow = element(doc, 'div', 'cctv-controls ai-world-actions');
     const choice = element(doc, 'select', 'llm-training-base-choice');
     choice.setAttribute('aria-label', tl('Choose a base model'));
     choice.dataset.field = 'base-choice';
     let known = false;
+    const groups = new Map();
     for (const option of next.bases || []) {
-      const node = element(
-        doc,
-        'option',
-        '',
-        `${tl(option.label)} · ${option.onMachine ? tl('ON THIS PC') : tl('NOT ON THIS PC')}`,
-      );
-      node.value = option.id;
-      choice.append(node);
-      if (option.id === next.config?.base) known = true;
+      const key = String(option.family || '');
+      if (!groups.has(key))
+        groups.set(key, {
+          label: option.familyLabel || option.family || '',
+          options: [],
+        });
+      groups.get(key).options.push(option);
+    }
+    for (const group of groups.values()) {
+      const optgroup = element(doc, 'optgroup');
+      optgroup.label = group.label;
+      optgroup.setAttribute('label', group.label);
+      for (const option of group.options) {
+        const node = element(
+          doc,
+          'option',
+          '',
+          [
+            option.label || option.id,
+            option.gb ? `${option.gb} GB` : '',
+            option.fit ? tl(FIT_WORDS[option.fit] || upper(option.fit)) : '',
+            option.onMachine ? tl('ON THIS PC') : tl('NOT ON THIS PC'),
+          ]
+            .filter(Boolean)
+            .join(' · '),
+        );
+        node.value = option.id;
+        optgroup.append(node);
+        if (option.id === next.config?.base) known = true;
+      }
+      choice.append(optgroup);
     }
     const other = element(
       doc,
@@ -342,11 +450,69 @@ export function initLlmTrainingSetup({
     if ((next.bases || []).length) baseRow.append(choice);
     baseRow.append(onMachine);
     host.append(baseRow);
+    // The chosen base's pipeline: its family's rules, and what it still needs here.
+    const pipeline = next.pipeline;
+    if (pipeline?.family) {
+      const line = element(
+        doc,
+        'p',
+        'social-note llm-training-pipeline',
+        `${tl('PIPELINE')}: ${pipelineText(pipeline)}`,
+      );
+      line.dataset.family = pipeline.family;
+      host.append(line);
+      const needs = pipelineNeeds(pipeline);
+      if (needs)
+        host.append(
+          element(
+            doc,
+            'p',
+            'social-note ai-world-llm-warning llm-training-needs',
+            needs,
+          ),
+        );
+    }
     const fetchHint = baseModelHint(next);
-    if (fetchHint)
+    if (fetchHint) {
       host.append(
         element(doc, 'p', 'social-note ai-world-llm-warning', fetchHint),
       );
+      const command = fetchCommand(next.config?.base);
+      if (command) {
+        const copyRow = element(doc, 'div', 'cctv-controls ai-world-actions');
+        const copy = button(doc, 'scene-btn', tl('COPY THE COMMAND'));
+        copy.dataset.action = 'copy-command';
+        copy.addEventListener('click', async () => {
+          const ok = await copyText(command).catch(() => false);
+          note = ok
+            ? tl('COMMAND COPIED')
+            : tl('COPY THE COMMAND FROM THE LINE ABOVE');
+          render(status);
+        });
+        copyRow.append(copy);
+        host.append(copyRow);
+      }
+    }
+    // The families that are teachers only: too big for any training here.
+    if ((next.teachers || []).length) {
+      const models = next.teachers
+        .map(
+          (t) =>
+            `${t.label} (${(t.sizes || []).map((s) => s.label).join(', ')})`,
+        )
+        .join(', ');
+      host.append(
+        element(
+          doc,
+          'p',
+          'social-note llm-training-teachers',
+          tl(
+            'TEACHERS ONLY, TOO BIG FOR THIS PC: {models} · USE THEM IN AI DISTILLATION THROUGH OPENROUTER OR THE CUSTOM ENDPOINT',
+            { models },
+          ),
+        ),
+      );
+    }
 
     // Data sources, each with its licence class, as TRAIN ON shows them.
     host.append(
