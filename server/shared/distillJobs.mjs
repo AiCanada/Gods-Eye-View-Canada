@@ -566,10 +566,11 @@ export function createDistillManager({
       ...(extra.studentGrades ? { studentGrades: extra.studentGrades } : {}),
       ...(extra.grades ? { grades: extra.grades } : {}),
       ...(missed.length ? { failures: missed } : {}),
-      ...((() => {
-        const chain = reasoningChain(turns) || String(extra.reasoning || '').trim();
+      ...(() => {
+        const chain =
+          reasoningChain(turns) || String(extra.reasoning || '').trim();
         return chain ? { reasoning: chain } : {};
-      })()),
+      })(),
       class: DISTILL_CLASS,
       createdAt: now(),
     });
