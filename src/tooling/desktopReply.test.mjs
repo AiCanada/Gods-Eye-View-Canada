@@ -313,7 +313,11 @@ test("a teacher's app route: the reply comes back by itself, else it waits for t
   assert.match(answered.responseId, /^gev-[0-9a-f]{12}$/);
   assert.deepEqual(asked, [
     { route: 'desktop', app: 'chatgpt' },
-    { app: 'chatgpt', prompt: 'SYS\n\nQ?' },
+    {
+      app: 'chatgpt',
+      prompt:
+        'SYS\n\nWrite the reasoning trace you actually use between <think> and </think>, then the answer. Do not invent a trace you did not use.\n\nQ?',
+    },
   ]);
   const late = await askTeacher(grokBot, {
     system: 'SYS',
@@ -330,7 +334,12 @@ test("a teacher's app route: the reply comes back by itself, else it waits for t
   });
   assert.deepEqual(
     [late.manual, late.sent, late.note, late.prompt],
-    [true, true, 'no finished reply in time', 'SYS\n\nQ?'],
+    [
+      true,
+      true,
+      'no finished reply in time',
+      'SYS\n\nWrite the reasoning trace you actually use between <think> and </think>, then the answer. Do not invent a trace you did not use.\n\nQ?',
+    ],
   );
   // Not on Windows (or no reader): the paste box, as before.
   const plain = await askTeacher(grokBot, {
