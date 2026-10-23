@@ -23,9 +23,17 @@ import egy from './locales/egy.json' with { type: 'json' };
 import frCA from './locales/fr-CA.json' with { type: 'json' };
 import iu from './locales/iu.json' with { type: 'json' };
 import ru from './locales/ru.json' with { type: 'json' };
+import zhCN from './locales/zh-CN.json' with { type: 'json' };
 import { useLocalText } from './marker.js';
 
-const CATALOGS = Object.freeze({ es, 'fr-CA': frCA, iu, ru, egy });
+const CATALOGS = Object.freeze({
+  es,
+  'fr-CA': frCA,
+  iu,
+  ru,
+  'zh-CN': zhCN,
+  egy,
+});
 /**
  * The locale Intl formats numbers, dates and relative times in. Intl has
  * plural rules for Inuktitut (one, two, other) but no number or date data,

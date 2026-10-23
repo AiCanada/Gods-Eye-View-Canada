@@ -8,7 +8,15 @@ export const LOCALE_STORAGE_KEY = 'gev:locale:v1';
 export const DEFAULT_LOCALE = 'en';
 
 /** Shipped locales; order does not matter. Adding one: docs/TRANSLATORS.md. */
-export const LOCALES = Object.freeze(['en', 'es', 'fr-CA', 'iu', 'ru', 'egy']);
+export const LOCALES = Object.freeze([
+  'en',
+  'es',
+  'fr-CA',
+  'iu',
+  'ru',
+  'zh-CN',
+  'egy',
+]);
 
 /**
  * Each locale named in its own language, for the selector. Inuktitut is
@@ -22,6 +30,7 @@ export const LOCALE_NAMES = Object.freeze({
   'fr-CA': 'Français Québécois',
   iu: 'Inuktitut',
   ru: 'Русский',
+  'zh-CN': '简体中文',
   egy: 'Ancient Egyptian',
 });
 
@@ -40,18 +49,23 @@ export function pluralRulesLocale(locale) {
 const RTL_LOCALES = Object.freeze([]);
 
 /**
- * Map any language tag to a shipped locale: 'ru-RU' and 'RU' → 'ru'. A
- * locale with a region matches its exact tag first ('fr_ca' → 'fr-CA'), and
- * its language alone stands for it: Quebec French is the only French shipped,
- * so 'fr' and 'fr-FR' → 'fr-CA'.
+ * Map any language tag to a shipped locale: 'ru-RU' and 'RU' → 'ru',
+ * 'zh', 'zh-CN' and 'zh-Hans-SG' → 'zh-CN'. A locale with a region matches
+ * its exact tag first ('fr_ca' → 'fr-CA'), and its language alone stands for
+ * it: Quebec French is the only French shipped, so 'fr' and 'fr-FR' → 'fr-CA'.
  * @returns {string|null}
  */
 export function normalizeLocale(candidate) {
   if (typeof candidate !== 'string') return null;
   const tag = candidate.trim().toLowerCase().replace(/_/g, '-');
+  const [primary, ...rest] = tag.split('-');
+  // Traditional Chinese readers are not given Simplified: no zh-TW yet.
+  if (primary === 'zh')
+    return rest.some((part) => ['hant', 'tw', 'hk', 'mo'].includes(part))
+      ? null
+      : 'zh-CN';
   const exact = LOCALES.find((code) => code.toLowerCase() === tag);
   if (exact) return exact;
-  const primary = tag.split('-')[0];
   return LOCALES.find((code) => code.split('-')[0] === primary) ?? null;
 }
 

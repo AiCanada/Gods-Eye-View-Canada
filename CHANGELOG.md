@@ -1,5 +1,32 @@
 # Changelog
 
+- Upstream merge, 2026-10-22 (sixth): the 44 upstream commits after
+  7be5937f, up to 5d95e9ad (6 pull requests).
+  - What came in: Simplified Chinese (`zh-CN`) in the language picker, with
+    Chinese dates, hemisphere letters kept as letters in coordinates, and a
+    CJK type stack (#1298); Docker Compose passing
+    `GEV_KEY_SETUP_TRUSTED_PEERS` and `GEV_ALLOWED_HOSTS` through, with
+    `none` turning off gateway access to Provider Settings (#1265); one
+    shared OpenSky refresh at a time, with a cool-down after failures and
+    dated last-good data kept on a 5xx (#1269); share links refusing
+    inherited style keys (#1271); the forecast layer staying on when its
+    first load is replaced (#1275); and one 64-point upstream chunk per
+    terrain height request, a larger request answered 413 (#1276).
+  - Left out: nothing.
+  - Fitted to the fork: Simplified Chinese sits beside the fork's
+    languages (Spanish, Quebec French, Inuktitut, Russian, Ancient
+    Egyptian) and, like Russian, shows the fork's own tabs in English. It
+    has the fork's seven other strings too (fly to a city or a call for
+    help, the panel snap-back and resize hints, and the voice control
+    words). `zh` and `zh-Hans` tags pick it, and Traditional tags do not,
+    while `fr` still means Quebec French. OpenSky's shared refresh keeps the
+    fork's local provider check on Basic credentials. The terrain route
+    reads its disk cache after the request checks, then restores the
+    fork's released cells. Upstream's seven new strings are in Quebec
+    French, Inuktitut and Ancient Egyptian too.
+  - On this machine: the running dev server picks the merge up at its next
+    restart.
+
 - CUSTOM LLM TRAINING: a training pipeline per model family (owner request
   2026-10-22: "Each LLM will have its own training pipeline determining the
   type of data and format; research pipelines for Qwen 3.5, 3.6, Nvidia

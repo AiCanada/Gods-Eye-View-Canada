@@ -66,8 +66,8 @@ export function pruneTerrainMemoryOutside(
  * cache and serve-stale shape. Cache entries and stale fallback are keyed per
  * 5dp point, so reordered and partially overlapping batches reuse prior work.
  * Only missing/stale points go upstream; the response is rebuilt in exact
- * request order. Larger requests are chunked sequentially, and one failing
- * chunk does not discard the chunks that resolved.
+ * request order. Each request is bounded to one 64-point upstream chunk;
+ * larger client workloads are split by the browser terrain service.
  *
  * Bounds, because every distinct 5dp point is its own key: coordinates must be
  * in WGS-84 range (rejected at parse), the point cache has an entry ceiling
@@ -101,7 +101,7 @@ export function terrainHeightsProxy(options = {}) {
   // 2026-08-21). 64 points costs 5.6-12 s, inside the timeout at both ends of
   // that range.
   const UPSTREAM_CHUNK = 64;
-  const MAX_POINTS = 2000;
+  const MAX_POINTS = UPSTREAM_CHUNK;
   /**
    * Entry ceiling for the point cache, and with it the file written from it.
    *
@@ -436,7 +436,6 @@ export function terrainHeightsProxy(options = {}) {
           res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
           return;
         }
-        await loadDiskOnce();
         const parsedUrl = new URL(req.url || '', 'http://internal');
         const rawPoints = parsedUrl.searchParams.get('points');
         const points = parseTerrainPoints(rawPoints);
@@ -448,12 +447,13 @@ export function terrainHeightsProxy(options = {}) {
           return;
         }
         if (points.length > MAX_POINTS) {
-          send(500, {
+          send(413, {
             error: `too many points (${points.length}); max ${MAX_POINTS} per request`,
           });
           return;
         }
 
+        await loadDiskOnce();
         await restoreReleasedCells(points);
         const outcome = await resolveTerrainHeightRequest({
           points,
