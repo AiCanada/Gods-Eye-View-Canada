@@ -97,7 +97,7 @@ export const DISTILL_PROMPT_MAX = 6000;
 /** What each prompt says unless the sub-heading changes it. {placeholders} are filled per question. */
 export const DISTILL_DEFAULT_PROMPTS = Object.freeze({
   system:
-    'You are a careful expert teacher. Answer the question accurately and completely. Reason step by step where it helps, then give the answer. Say plainly what is uncertain; never invent facts, sources, quotes or numbers.',
+    'You are a careful expert teacher. Answer the question accurately and completely. When you work through the problem, write the reasoning trace you actually use between <think> and </think>, then the answer. Say plainly what is uncertain; never invent facts, sources, quotes, numbers, or a trace you did not use.',
   upgrade:
     'QUESTION:\n{question}\n\nSTUDENT ANSWERS:\n{answers}\n\nYou are the teacher. Grade each student answer from 0 to 10 for correctness and completeness, one line each in the form "S1: 7/10", and say what is wrong or missing in it. Then fix every error and write the upgraded answer: correct, complete, and better than every student answer, after a line that reads exactly:\nGROUND TRUTH ANSWER:',
   review:
@@ -302,7 +302,9 @@ export function answersBlock(answers) {
   return answers
     .map(
       (a) =>
-        `${a.label} (RESPONSE ID ${a.responseId}, from ${a.teacher}):\n${a.text}`,
+        `${a.label} (RESPONSE ID ${a.responseId}, from ${a.teacher}):\n${a.text}${
+          a.reasoning ? `\n\nREASONING TRACE:\n${a.reasoning}` : ''
+        }`,
     )
     .join('\n\n');
 }
@@ -325,6 +327,78 @@ export function reviewsBlock(reviews) {
  * when there is none. The last one: a review of an earlier review may quote
  * that review's line before writing its own.
  */
+const THINK_TAG = /<think>([\s\S]*?)<\/think>/gi;
+
+/** Pull <think> blocks out of a reply. An empty remainder keeps the original text. */
+export function splitThinkTags(text) {
+  const value = String(text ?? '');
+  const parts = [];
+  const rest = value
+    .replace(THINK_TAG, (_, inner) => {
+      const piece = String(inner || '').trim();
+      if (piece) parts.push(piece);
+      return '';
+    })
+    .trim();
+  return {
+    text: rest || value.trim(),
+    reasoning: rest ? parts.join('\n\n') : '',
+  };
+}
+
+function pushTrace(bits, value) {
+  const piece = String(value || '').trim();
+  if (piece) bits.push(piece);
+}
+
+/** Reasoning a chat or Responses body carried beside the answer. */
+export function reasoningFromBody(data) {
+  const bits = [];
+  const message = data?.choices?.[0]?.message;
+  pushTrace(bits, message?.reasoning);
+  pushTrace(bits, message?.reasoning_content);
+  pushTrace(bits, message?.thinking);
+  if (Array.isArray(message?.content)) {
+    for (const part of message.content) {
+      if (part?.type === 'reasoning' || part?.type === 'thinking')
+        pushTrace(bits, part.text || part.reasoning || part.thinking);
+    }
+  }
+  for (const item of Array.isArray(data?.output) ? data.output : []) {
+    if (item?.type !== 'reasoning') continue;
+    pushTrace(bits, item.text);
+    if (typeof item.summary === 'string') pushTrace(bits, item.summary);
+    for (const part of Array.isArray(item.summary) ? item.summary : [])
+      pushTrace(bits, part?.text || part);
+    for (const part of Array.isArray(item.content) ? item.content : [])
+      pushTrace(bits, part?.text);
+  }
+  return bits.join('\n\n');
+}
+
+/** The answer, and the reasoning trace from the body and from <think> tags. */
+/** Every turn's trace, labeled. Turns with no trace are left out. */
+export function reasoningChain(turns) {
+  const parts = [];
+  for (const turn of Array.isArray(turns) ? turns : []) {
+    const trace = String(turn?.reasoning || '').trim();
+    if (!trace) continue;
+    const who = String(turn.label || turn.teacher || 'teacher').trim();
+    const role = String(turn.role || 'answer').trim();
+    parts.push(`${role} ${who}:\n${trace}`);
+  }
+  return parts.join('\n\n');
+}
+
+export function replyParts(data, text) {
+  const split = splitThinkTags(text);
+  const reasoning = [reasoningFromBody(data), split.reasoning]
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+  return { text: split.text, reasoning };
+}
+
 export function groundTruthOf(text) {
   const value = String(text ?? '');
   let after = '';

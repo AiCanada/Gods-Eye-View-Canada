@@ -51,6 +51,7 @@ import {
   estimateRun,
   fillPrompt,
   groundTruthOf,
+  reasoningChain,
   planTurns,
   questionsFromCsv,
   questionsFromText,
@@ -288,12 +289,14 @@ export function createDistillManager({
     const text = (value) => (lines ? String(value ?? '').trim() : flat(value));
     const q = clip(text(r.question), question);
     const g = clip(text(r.groundTruth), truth);
+    const trace = clip(text(r.reasoning), truth);
     return {
       id: r.id,
       questionNumber: questionNumberOf(r.id, featureId),
       question: q.text,
       groundTruth: g.text,
-      more: q.cut || g.cut,
+      reasoning: trace.text,
+      more: q.cut || g.cut || trace.cut,
       pickedBy: r.pickedBy,
       teachers: [
         ...new Set(
@@ -544,6 +547,7 @@ export function createDistillManager({
       model: got.model,
       responseId: got.responseId,
       text: got.text,
+      ...(got.reasoning ? { reasoning: got.reasoning } : {}),
       tried: got.tried?.length ? got.tried : undefined,
       at: now(),
     });
@@ -562,6 +566,10 @@ export function createDistillManager({
       ...(extra.studentGrades ? { studentGrades: extra.studentGrades } : {}),
       ...(extra.grades ? { grades: extra.grades } : {}),
       ...(missed.length ? { failures: missed } : {}),
+      ...((() => {
+        const chain = reasoningChain(turns) || String(extra.reasoning || '').trim();
+        return chain ? { reasoning: chain } : {};
+      })()),
       class: DISTILL_CLASS,
       createdAt: now(),
     });
@@ -612,6 +620,7 @@ export function createDistillManager({
         responseId: s.responseId,
         teacher: s.label,
         text: s.text,
+        reasoning: s.reasoning,
       })),
     );
     /** A teacher's first turn: the question cold, or the students' answers to grade and upgrade. */
@@ -671,6 +680,7 @@ export function createDistillManager({
             [...students, a],
             {
               suffix: answers.length > 1 ? `R${i + 1}` : '',
+              ...(a.reasoning ? { reasoning: a.reasoning } : {}),
               ...withStudents([a]),
             },
           ),
@@ -681,6 +691,7 @@ export function createDistillManager({
           responseId: a.responseId,
           teacher: a.label,
           text: answerOf(a),
+          reasoning: a.reasoning,
         })),
       );
       const gradeTurns = plan.turns.filter((t) => t.role === 'grade');
@@ -728,7 +739,11 @@ export function createDistillManager({
             groundTruthOf(got.text),
             'writer',
             [...students, ...answers, ...reviewTurns, turn],
-            { grades, ...withStudents(answers) },
+            {
+              grades,
+              ...(turn.reasoning ? { reasoning: turn.reasoning } : {}),
+              ...withStudents(answers),
+            },
           ),
         ];
       }
@@ -750,6 +765,7 @@ export function createDistillManager({
               ...grades,
               { best: best.label, mean: best.mean, votes: best.votes },
             ],
+            ...(chosen?.reasoning ? { reasoning: chosen.reasoning } : {}),
             ...withStudents(answers),
           },
         ),
@@ -768,7 +784,9 @@ export function createDistillManager({
           question,
           responseId: reviewed.responseId,
           teacher: reviewed.label,
-          response: reviewed.text,
+          response: reviewed.reasoning
+            ? `${reviewed.text}\n\nREASONING TRACE:\n${reviewed.reasoning}`
+            : reviewed.text,
         });
       }
       const got = await callTeacher(step.teacher, {
@@ -783,7 +801,12 @@ export function createDistillManager({
         history: [
           ...talk.history,
           { role: 'user', content: prompt },
-          { role: 'assistant', content: got.text },
+          {
+            role: 'assistant',
+            content: got.reasoning
+              ? `<think>\n${got.reasoning}\n</think>\n${got.text}`
+              : got.text,
+          },
         ],
         previous: { route: got.route, responseId: got.responseId },
       });
@@ -800,7 +823,10 @@ export function createDistillManager({
             ? 'final-turn'
             : 'single',
         [...students, ...turns],
-        withStudents(turns),
+        {
+          ...(last.reasoning ? { reasoning: last.reasoning } : {}),
+          ...withStudents(turns),
+        },
       ),
     ];
   };
@@ -1298,6 +1324,7 @@ export function createDistillManager({
           'heading',
           'question',
           'ground_truth',
+          'reasoning',
           'picked_by',
           'teachers',
           'students',
@@ -1319,6 +1346,7 @@ export function createDistillManager({
           r.heading,
           r.question,
           r.groundTruth,
+          r.reasoning || '',
           r.pickedBy,
           names(turns.filter((t) => t.role !== 'student')).join(' | '),
           names(turns.filter((t) => t.role === 'student')).join(' | '),

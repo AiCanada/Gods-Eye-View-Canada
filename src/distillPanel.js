@@ -845,6 +845,7 @@ export function initDistillPanel({
     refs.lastSummary = element(doc, 'summary', '');
     refs.lastQuestion = element(doc, 'p', 'distill-note distill-text');
     refs.lastTruth = element(doc, 'p', 'distill-note distill-text');
+    refs.lastReason = element(doc, 'p', 'distill-note distill-text');
     refs.lastGrades = element(doc, 'p', 'distill-note');
     refs.lastFailed = element(doc, 'p', 'distill-note');
     refs.older = button(doc, tl('OLDER'), 'older');
@@ -884,6 +885,8 @@ export function initDistillPanel({
       refs.lastQuestion,
       element(doc, 'p', 'distill-label', tl('GROUND TRUTH')),
       refs.lastTruth,
+      element(doc, 'p', 'distill-label', tl('REASONING TRACE')),
+      refs.lastReason,
       refs.lastGrades,
       refs.lastFailed,
       browseRow,
@@ -1162,6 +1165,8 @@ export function initDistillPanel({
             : `${tl('LAST GROUND TRUTH')} · ${who}`;
         refs.lastQuestion.textContent = last.question || '';
         refs.lastTruth.textContent = last.groundTruth || '';
+        refs.lastReason.hidden = !last.reasoning;
+        refs.lastReason.textContent = last.reasoning || '';
         refs.lastGrades.hidden = !last.grades?.length;
         refs.lastGrades.textContent = last.grades?.length
           ? `${tl('STUDENT GRADES')}: ${last.grades.join(' · ')}`

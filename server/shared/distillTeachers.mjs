@@ -47,6 +47,7 @@ import {
   swarmUpstream,
 } from '../providers/socialSwarm.js';
 import { readSwarmAnswer } from '../../src/socialSwarm.mjs';
+import { replyParts } from '../../src/distillCore.mjs';
 import { createChild, defaultPython } from './aiWorldJobs.mjs';
 import { askGrokBotComputer, readCapped } from './grokBotComputer.mjs';
 import { createDesktopRound, desktopTag, tagPrompt } from './desktopReply.mjs';
@@ -212,6 +213,14 @@ const capped = (text) =>
     .trim()
     .slice(0, ANSWER_MAX);
 
+/** The answer and its reasoning trace, each capped. An empty trace is omitted. */
+const traced = (text, data) => {
+  const parts = replyParts(data, text);
+  const answer = capped(parts.text);
+  const reasoning = capped(parts.reasoning);
+  return { text: answer, ...(reasoning ? { reasoning } : {}) };
+};
+
 /**
  * One answer from a teacher.
  * @param {object} teacher a teacherRoster() row
@@ -248,7 +257,10 @@ export async function askTeacher(
   },
 ) {
   const tried = [];
-  const full = `${system}\n\n${prompt}`;
+  const asked = /<think>/i.test(String(system || ''))
+    ? system
+    : `${system || ''}\n\nWrite the reasoning trace you actually use between <think> and </think>, then the answer. Do not invent a trace you did not use.`.trim();
+  const full = `${asked}\n\n${prompt}`;
   const abortable = (ms) =>
     signal
       ? AbortSignal.any([AbortSignal.timeout(ms), signal])
@@ -264,7 +276,7 @@ export async function askTeacher(
           provider,
           settings,
           [
-            { role: 'system', content: system },
+            { role: 'system', content: asked },
             ...history,
             { role: 'user', content: prompt },
           ],
@@ -283,10 +295,15 @@ export async function askTeacher(
           throw new Error(
             refusalText(provider.label, response.status, data, settings.apiKey),
           );
-        const text = capped(data?.choices?.[0]?.message?.content);
+        const message = data?.choices?.[0]?.message;
+        const raw = Array.isArray(message?.content)
+          ? message.content.map((part) => part?.text || '').join('\n')
+          : message?.content;
+        const { text, reasoning } = traced(raw, data);
         if (!text) throw new Error(`${provider.label} returned no answer.`);
         return {
           text,
+          ...(reasoning ? { reasoning } : {}),
           responseId: String(data?.id || localResponseId(text)),
           model: String(data?.model || settings.model),
           route,
@@ -313,7 +330,7 @@ export async function askTeacher(
               }
             : {
                 input: [
-                  { role: 'system', content: system },
+                  { role: 'system', content: asked },
                   { role: 'user', content: prompt },
                 ],
               }),
@@ -339,13 +356,15 @@ export async function askTeacher(
         const sources = answer.sources
           .map((s) => `- ${s.title ? `${s.title}: ` : ''}${s.url}`)
           .join('\n');
+        const parts = traced(answer.text, data);
         const text = capped(
-          sources ? `${answer.text}\n\nSources:\n${sources}` : answer.text,
+          sources ? `${parts.text}\n\nSources:\n${sources}` : parts.text,
         );
-        if (!answer.text)
+        if (!parts.text)
           throw new Error(`${upstream.label} returned no answer.`);
         return {
           text,
+          ...(parts.reasoning ? { reasoning: parts.reasoning } : {}),
           responseId: String(data?.id || localResponseId(text)),
           model: String(data?.model || upstream.model),
           route,
@@ -379,10 +398,11 @@ export async function askTeacher(
             await sleep(COMPUTER_BUSY_POLL_MS, signal);
           }
         }
-        const text = capped(report);
+        const { text, reasoning } = traced(report, null);
         if (!text) throw new Error('Grok Bot returned no answer.');
         return {
           text,
+          ...(reasoning ? { reasoning } : {}),
           responseId: localResponseId(text),
           model: gate.named || gate.agent,
           route,
@@ -426,10 +446,11 @@ export async function askTeacher(
           onStep?.({ route, app: 'grok-bot' });
           try {
             const got = await desktop.read({ app: 'grok-bot', tag, signal });
-            const text = capped(got.text);
+            const { text, reasoning } = traced(got.text, null);
             if (text)
               return {
                 text,
+                ...(reasoning ? { reasoning } : {}),
                 responseId: localResponseId(text),
                 model: APP_MODELS['grok-bot'],
                 route,
@@ -459,10 +480,11 @@ export async function askTeacher(
           onStep?.({ route, app });
           try {
             const got = await desktop.ask({ app, prompt: full, signal });
-            const text = capped(got.text);
+            const { text, reasoning } = traced(got.text, null);
             if (text)
               return {
                 text,
+                ...(reasoning ? { reasoning } : {}),
                 responseId: localResponseId(text),
                 model: APP_MODELS[app] || app,
                 route,
@@ -489,7 +511,7 @@ export async function askTeacher(
         };
       }
       if (route === 'local') {
-        const text = capped(
+        const { text, reasoning } = traced(
           await askLocal({
             teacher,
             prompt: full,
@@ -499,10 +521,12 @@ export async function askTeacher(
             spawnImpl,
             signal,
           }),
+          null,
         );
         if (!text) throw new Error(`${teacher.label} returned no answer.`);
         return {
           text,
+          ...(reasoning ? { reasoning } : {}),
           responseId: localResponseId(text),
           model: teacher.model,
           route,

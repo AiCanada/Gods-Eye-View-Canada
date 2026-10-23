@@ -262,6 +262,23 @@ def local_docs(paths):
 # ---------------------------------------------------------------- build
 
 
+def _reasoning_chain(record):
+    """Every turn's trace, labeled. A record with none uses its own reasoning field."""
+    parts = []
+    for turn in record.get("turns") or []:
+        if not isinstance(turn, dict):
+            continue
+        trace = str(turn.get("reasoning") or "").strip()
+        if not trace:
+            continue
+        who = str(turn.get("label") or turn.get("teacher") or "teacher").strip()
+        role = str(turn.get("role") or "answer").strip()
+        parts.append(f"{role} {who}:\n{trace}")
+    if parts:
+        return "\n\n".join(parts)
+    return str(record.get("reasoning") or "").strip()
+
+
 def distilled_pairs(distill_dir):
     """AI DISTILLATION's ground truths (.gev-data/distill/<id>/dataset.jsonl): question, then ground truth."""
     root = Path(distill_dir)
@@ -279,9 +296,11 @@ def distilled_pairs(distill_dir):
                 continue
             question = str(record.get("question") or "").strip()
             answer = str(record.get("groundTruth") or "").strip()
+            trace = _reasoning_chain(record)
             if question and answer:
+                content = f"<think>\n{trace}\n</think>\n{answer}" if trace else answer
                 yield {"messages": [{"role": "user", "content": question},
-                                    {"role": "assistant", "content": answer}]}
+                                    {"role": "assistant", "content": content}]}
 
 
 def _key(example):

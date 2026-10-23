@@ -110,6 +110,24 @@ class LlmDataTest(unittest.TestCase):
                      for x in (out / f).read_text(encoding="utf-8").splitlines()]
             self.assertEqual(lines[0]["messages"], [{"role": "user", "content": "What moved before crude?"},
                                                     {"role": "assistant", "content": "Shipping rates."}])
+            traced = {"question": "Why?", "groundTruth": "Because.", "reasoning": "checked the tape"}
+            (run / "dataset.jsonl").write_text(json.dumps(traced) + "\n", encoding="utf-8")
+            out2 = tmp.path / "data2"
+            D.build(root, out2, ["distilled"])
+            got = [json.loads(x) for f in ("train.jsonl", "heldout.jsonl")
+                   for x in (out2 / f).read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(got[0]["messages"][1]["content"], "<think>\nchecked the tape\n</think>\nBecause.")
+            chain = {"question": "Why?", "groundTruth": "Because.",
+                     "turns": [{"role": "student", "label": "GROK BOT", "reasoning": "guessed"},
+                               {"role": "review", "label": "NVIDIA NIM", "reasoning": "checked the guess"}]}
+            (run / "dataset.jsonl").write_text(json.dumps(chain) + "\n", encoding="utf-8")
+            out3 = tmp.path / "data3"
+            D.build(root, out3, ["distilled"])
+            chained = [json.loads(x) for f in ("train.jsonl", "heldout.jsonl")
+                       for x in (out3 / f).read_text(encoding="utf-8").splitlines()]
+            self.assertIn("student GROK BOT:\nguessed", chained[0]["messages"][1]["content"])
+            self.assertIn("review NVIDIA NIM:\nchecked the guess", chained[0]["messages"][1]["content"])
+            self.assertTrue(chained[0]["messages"][1]["content"].endswith("Because."))
         finally:
             tmp.close()
 

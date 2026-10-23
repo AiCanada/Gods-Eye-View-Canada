@@ -12,6 +12,10 @@ import {
   bestGraded,
   estimateRun,
   groundTruthOf,
+  reasoningChain,
+  reasoningFromBody,
+  replyParts,
+  splitThinkTags,
   planTurns,
   questionsFromCsv,
   questionsFromText,
@@ -203,6 +207,29 @@ test('questions from the box and from a CSV file; grades and the ground truth re
   );
   assert.equal(bestGraded(['R1'], [{ scores: {} }]), null);
   assert.equal(
+    splitThinkTags('<think>check the map</think>\nParis.').reasoning,
+    'check the map',
+  );
+  assert.equal(splitThinkTags('<think>only this</think>').text, '<think>only this</think>');
+  assert.equal(
+    reasoningChain([
+      { role: 'student', label: 'GROK BOT', reasoning: 'guessed' },
+      { role: 'upgrade', label: 'NVIDIA NIM', text: 'no trace' },
+      { role: 'review', label: 'NVIDIA NIM', reasoning: 'checked the guess' },
+    ]),
+    'student GROK BOT:\nguessed\n\nreview NVIDIA NIM:\nchecked the guess',
+  );
+  assert.equal(
+    reasoningFromBody({
+      choices: [{ message: { content: 'Paris.', reasoning_content: 'looked it up' } }],
+    }),
+    'looked it up',
+  );
+  assert.deepEqual(replyParts({ output: [{ type: 'reasoning', text: 'step' }] }, 'Paris.'), {
+    text: 'Paris.',
+    reasoning: 'step',
+  });
+  assert.equal(
     groundTruthOf('The review.\nGROUND TRUTH ANSWER:\n  Paris.'),
     'Paris.',
   );
@@ -391,7 +418,10 @@ test('Grok Bot falls back route by route: a refused key, then the webhook, which
   assert.equal(got.manual, true);
   assert.equal(got.route, 'webhook');
   assert.equal(got.sent, true);
-  assert.equal(got.prompt, 'SYS\n\nQ?');
+  assert.equal(
+    got.prompt,
+    'SYS\n\nWrite the reasoning trace you actually use between <think> and </think>, then the answer. Do not invent a trace you did not use.\n\nQ?',
+  );
   assert.equal(got.tried[0].route, 'key');
   assert.match(got.tried[0].error, /HTTP 401/);
   assert.doesNotMatch(got.tried[0].error, /xai-secret/);
@@ -722,11 +752,11 @@ test('students answer first; the teacher grades them, fixes the errors and upgra
   const csv = manager.exportData({ id: one, format: 'csv' });
   assert.match(
     csv.body,
-    /^id,heading,question,ground_truth,picked_by,teachers,students,student_grades,class\r\n/,
+    /^id,heading,question,ground_truth,reasoning,picked_by,teachers,students,student_grades,class\r\n/,
   );
   assert.match(
     csv.body,
-    /Q1\?,a upgraded,upgrade,A,B \| C,S1: 4\/10 \(A\) \| S2: 7\/10 \(A\),restricted/,
+    /Q1\?,a upgraded,,upgrade,A,B \| C,S1: 4\/10 \(A\) \| S2: 7\/10 \(A\),restricted/,
   );
 });
 
@@ -1164,11 +1194,11 @@ test('sub-headings without limit, their settings checked, questions kept once, t
   assert.equal(csv.filename, 'distill-my-1.csv');
   assert.match(
     csv.body,
-    /^id,heading,question,ground_truth,picked_by,teachers,students,student_grades,class\r\n/,
+    /^id,heading,question,ground_truth,reasoning,picked_by,teachers,students,student_grades,class\r\n/,
   );
   assert.match(
     csv.body,
-    /"Third, with comma\?","a says Third, with comma\?",single,A,,,restricted/,
+    /"Third, with comma\?","a says Third, with comma\?",,single,A,,,restricted/,
   );
   assert.equal(
     manager.exportData({ id }).body.split('\n').filter(Boolean).length,

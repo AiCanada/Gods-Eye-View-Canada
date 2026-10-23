@@ -105,6 +105,8 @@ quote that review's line; Markdown bold around it is read too), or the whole
 reply when a teacher leaves the line out. Headings 5, 6 and 7 refuse to
 start when t2 is t1.
 
+Each reply keeps a reasoning trace when the model sends one (a chat `reasoning` or `reasoning_content` field, a Responses `reasoning` item, or a `<think>` block). Every call asks for that trace unless the system prompt already does. The trace is stored on that turn. The ground-truth record keeps the whole chain, each step labeled with who wrote it. The next turn and the same teacher's conversation see the trace they are reviewing. CUSTOM LLM TRAINING's distilled pairs put that chain in front of the ground truth, inside `<think>`, and leave it out when no teacher sent a trace.
+
 A teacher's own turns stay in one conversation as far as its route allows:
 `previous_response_id` on a key's Responses API (GROK BOT, OPENAI DOTS), the
 earlier turns as messages for a chat model, the same chat on the Grok Bot
