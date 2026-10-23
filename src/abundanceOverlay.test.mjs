@@ -11,6 +11,7 @@ import {
   arcPositions,
   cleanCard,
   cleanView,
+  horizonDistance,
   initAbundanceOverlay,
   pickedUnitId,
   pointSize,
@@ -130,8 +131,17 @@ function fakeWorld() {
   const added = [];
   let renders = 0;
   let picked = null;
+  const frames = [];
+  const camera = { positionCartographic: { height: 500_000 } };
   const viewer = {
+    camera,
     scene: {
+      postRender: {
+        addEventListener(fn) {
+          frames.push(fn);
+          return () => frames.splice(frames.indexOf(fn), 1);
+        },
+      },
       canvas: {},
       primitives: {
         add: (p) => (added.push(p), p),
@@ -160,6 +170,8 @@ function fakeWorld() {
   };
   return {
     viewer,
+    camera,
+    frames,
     documentRef,
     listeners,
     sent,
@@ -214,6 +226,10 @@ test('the view and the card are cleaned; a dot grows with its city; an arc rises
   assert.equal(Math.round(arc[2][0]), 45);
   assert.ok(arc[2][2] > 100_000 && arc[2][2] <= 1_500_000);
   assert.equal(arcPositions({ lat: 5, lon: 5 }, { lat: 5, lon: 5 }, 2)[1][2], 20_000);
+  assert.equal(horizonDistance(0), 0);
+  assert.equal(Math.round(horizonDistance(500_000) / 1000), 2573);
+  assert.equal(horizonDistance(-5), 0);
+  assert.equal(horizonDistance('x'), 0);
   assert.equal(pickedUnitId({ id: 'TST|1' }), 'TST');
   assert.equal(pickedUnitId({ primitive: { id: 'x' } }), 'x');
   assert.equal(pickedUnitId({ id: { id: 42 } }), '42');
@@ -302,10 +318,21 @@ test('countries are coloured ground polygons once ready; cities are points; link
   assert.deepEqual(points.items[0].color, { css: '#80ff80', a: 0.55 });
   assert.deepEqual(points.items[1].color, { css: '#5a6670', a: 0.22 });
   assert.ok(points.items[0].pixelSize > points.items[1].pixelSize);
+  // The depth test is off only inside the horizon, so the far side's dots stay behind the globe.
+  const horizon = horizonDistance(500_000);
+  assert.equal(points.items[0].disableDepthTestDistance, horizon);
+  assert.equal(w.frames.length, 1);
+  w.camera.positionCartographic.height = 520_000;
+  w.frames[0]();
+  assert.equal(points.items[0].disableDepthTestDistance, horizon, 'a small move changes nothing');
+  w.camera.positionCartographic.height = 2_000_000;
+  w.frames[0]();
+  assert.equal(points.items[1].disableDepthTestDistance, horizonDistance(2_000_000));
 
   overlay.destroy();
   assert.equal(w.added.length, 0);
   assert.equal(w.listeners.size, 0);
+  assert.equal(w.frames.length, 0, 'the horizon listener goes too');
   assert.ok(w.renders() > 0);
 });
 

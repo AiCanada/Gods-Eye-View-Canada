@@ -35,6 +35,10 @@ const NO_DATA_ALPHA = 0.22;
 const LINK_COLOR = '#d7f3ff';
 const HOVER_THROTTLE_MS = 120;
 const READY_POLL_MS = 250;
+/** The horizon rule treats the globe as a sphere of this radius, in metres. */
+const EARTH_RADIUS_M = 6_371_000;
+/** The dots follow the horizon when it moves by this share. */
+const HORIZON_STEP = 0.1;
 
 const OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
@@ -150,6 +154,20 @@ export function arcPositions(a, b, steps = 24) {
   return out;
 }
 
+/**
+ * How far from the camera a city dot may be and still skip the depth test:
+ * the distance to the horizon for a camera this high above the ellipsoid.
+ * Inside it a dot is on the visible cap, so only the ground could hide it,
+ * and the ground must not (the dot sits on the ellipsoid, often under a
+ * city's real height); beyond it the Earth itself is in the way, and the
+ * depth test keeps the far side's cities from showing through the globe and
+ * sliding over the oceans as the camera turns (owner report 2026-10-23).
+ */
+export function horizonDistance(cameraHeight) {
+  const h = Math.max(0, Number(cameraHeight) || 0);
+  return Math.sqrt(h * (2 * EARTH_RADIUS_M + h));
+}
+
 /** The unit id a pick names, from the part id the shapes were drawn under. */
 export function pickedUnitId(picked) {
   const raw = picked?.id ?? picked?.primitive?.id;
@@ -191,6 +209,12 @@ export function initAbundanceOverlay({
   if (!scene?.primitives || !documentRef) return null;
   const lines = scene.primitives.add(new cesium.PolylineCollection());
   let view = cleanView(null);
+  const cameraHeight = () => {
+    const h = viewer.camera?.positionCartographic?.height;
+    return Number.isFinite(h) ? h : 0;
+  };
+  /** How far a city dot may be and still skip the depth test: the horizon now. */
+  let depthFree = horizonDistance(cameraHeight());
   /** The level drawn: { level, kind, fill?, points?, parts: Map(id → [partId]), byId: Map(id → point) }. */
   let built = null;
   let loading = null;
@@ -330,6 +354,7 @@ export function initAbundanceOverlay({
   const buildPoints = (data) => {
     const points = scene.primitives.add(new cesium.PointPrimitiveCollection());
     const byId = new Map();
+    depthFree = horizonDistance(cameraHeight());
     for (const shape of data.shapes) {
       if (!Number.isFinite(shape.lat) || !Number.isFinite(shape.lon)) continue;
       byId.set(
@@ -341,7 +366,7 @@ export function initAbundanceOverlay({
           color: colorOf(shape.id),
           outlineColor: cssColor('#000000', 0.5),
           outlineWidth: 1,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          disableDepthTestDistance: depthFree,
         }),
       );
     }
@@ -354,6 +379,18 @@ export function initAbundanceOverlay({
       byId,
     };
   };
+
+  /** The horizon moves with the camera; the dots follow it once it has moved a tenth. */
+  const followHorizon = () => {
+    if (!built?.points) return;
+    const next = horizonDistance(cameraHeight());
+    if (depthFree > 0 && Math.abs(next - depthFree) < depthFree * HORIZON_STEP)
+      return;
+    depthFree = next;
+    for (const point of built.byId.values())
+      point.disableDepthTestDistance = depthFree;
+  };
+  const unfollow = scene.postRender?.addEventListener?.(followHorizon) ?? null;
 
   /** The level's shapes drawn once; a later level while they load wins. */
   const ensureLevel = () => {
@@ -524,6 +561,7 @@ export function initAbundanceOverlay({
     documentRef.removeEventListener(ABUNDANCE_VIEW_EVENT, onView);
     documentRef.removeEventListener(ABUNDANCE_CARD_EVENT, onCard);
     handler?.destroy?.();
+    if (typeof unfollow === 'function') unfollow();
     removeBuilt();
     lines.removeAll();
     scene.primitives.remove?.(lines);
