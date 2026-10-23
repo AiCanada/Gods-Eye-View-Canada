@@ -1,5 +1,37 @@
 # Changelog
 
+- GLOBAL ABUNDANCE MAP, the detail round (owner request 2026-10-23: "A real
+  legend when one indicator is ticked … Weights per indicator (sliders) …
+  all data upgrades, and integration"). A weight slider on every INDICATORS
+  row (×0.5 to ×3) with RESET WEIGHTS, the score a weighted mean; with one
+  indicator ticked the legend reads the figure behind each end and the
+  middle in that indicator's units; every figure carries its change over
+  five years (`▲ +2,500 SINCE 2019`, from six years of each source); two
+  more indicators, AIR (PM2.5 breathed, World Bank and OECD urban areas,
+  the cities from the OECD's release 1.2 because its release 1.5 of
+  2026-10-09 is corrupt; an OECD release whose figures collapse in a year
+  is refused, and a cached answer is read only for the URL it answered) and
+  GREEN SPACE (forest share; green area per person in OECD urban centres);
+  the states pack carries each unit's larger region, so an OECD region that
+  names no unit (Scotland, a French région, an Italian regione, a Hungarian
+  region) gives its figure to the units inside it, marked FROM ITS LARGER
+  REGION, and a small region whose name lists places gives its figure to
+  each place it names (matched by name only, so a list never lands on its
+  first place alone, and a large region's list name never on one place);
+  the OECD's English names are settled against the pack's local ones. OECD
+  requests ask for English (Node's default `accept-language: *` got HTTP
+  500 from the OECD), and a World Bank answer one value deep is asked again
+  by years, so inflation and forest area carry their change too; a zero
+  GDP, life span, income, education or PM2.5 figure is no figure (the OECD
+  writes 0 for regions it has none for), and a change that rounds to
+  nothing reads ■ 0, not ▼ -0. The AI
+  World tab's TRAIN ON gains a GLOBAL ABUNDANCE row that writes each world
+  place's abundance places beside the demographics, read by the Python
+  reader. The city dots on the globe skip the depth test only inside the
+  horizon, so the far side's cities no longer show through the Earth.
+  Strings in the four fork locales; guide, data sources, world-model data
+  format and TESTING.md section 10 updated.
+
 - GLOBAL ABUNDANCE MAP, a new left tab under AI DISTILLATION (owner request
   2026-10-22: "Global abundance grid, idea to replace resource scarcity with
   algorithmic orchestration … display Global abundance on MAP … use GDP per

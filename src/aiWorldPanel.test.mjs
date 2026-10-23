@@ -453,7 +453,7 @@ test('the box sits last in the left stack, collapsed, with the shared chrome and
   assert.match(box, /<\/div>\n    <\/div>\n  <\/div>\n?$/);
 });
 
-test('TRAIN ON: one row per layer, the catalog-only items and the four extras, each with its class and live status', async () => {
+test('TRAIN ON: one row per layer, the catalog-only items and the five extras, each with its class and live status', async () => {
   const m = mount({
     routes: idleServer({
       status: () => ({
@@ -480,6 +480,7 @@ test('TRAIN ON: one row per layer, the catalog-only items and the four extras, e
     'gdelt-events',
     'news',
     'demographics',
+    'abundance',
     'outbreak-sim',
     'devices',
   ]);
@@ -491,13 +492,14 @@ test('TRAIN ON: one row per layer, the catalog-only items and the four extras, e
       'GDELT EVENTS',
       'NEWS EVENTS',
       'POPULATION DEMOGRAPHICS',
+      'GLOBAL ABUNDANCE',
       'OUTBREAK SIM EPISODES',
       'YOUR DEVICES',
     ],
   );
   assert.deepEqual(
     rows(m).map((li) => li.children[1].textContent),
-    ['STATIC', 'OPEN', 'OPEN', 'NC', 'STATIC', 'STATIC', 'PERSONAL'],
+    ['STATIC', 'OPEN', 'OPEN', 'NC', 'STATIC', 'OPEN', 'STATIC', 'PERSONAL'],
   );
   assert.deepEqual(
     rows(m).map((li) => li.children[2].textContent),
@@ -506,6 +508,7 @@ test('TRAIN ON: one row per layer, the catalog-only items and the four extras, e
       'RECORDING · 12.4 MB · 2 MIN AGO',
       '',
       'ERROR · HTTP 429',
+      '',
       '',
       '',
       '',
@@ -523,7 +526,7 @@ test('TRAIN ON: one row per layer, the catalog-only items and the four extras, e
   );
   assert.deepEqual(
     boxes(m).map((box) => box.checked),
-    [false, true, false, false, false, false, false],
+    [false, true, false, false, false, false, false, false],
   );
   const all = m.get('ai-world-all');
   assert.equal(all.checked, false);
@@ -1229,6 +1232,7 @@ test('a 404 says AI WORLD SERVER NOT READY, asks again in 60 s, and the box stay
     'transit',
     'news',
     'demographics',
+    'abundance',
     'outbreak-sim',
     'devices',
   ]);
@@ -1276,6 +1280,7 @@ test('a 404 says AI WORLD SERVER NOT READY, asks again in 60 s, and the box stay
     'gdelt-events',
     'news',
     'demographics',
+    'abundance',
     'outbreak-sim',
     'devices',
   ]);
@@ -1320,6 +1325,7 @@ test('the rows follow the DataManager, looked at once for a burst of notices, an
     'gdelt-events',
     'news',
     'demographics',
+    'abundance',
     'outbreak-sim',
     'devices',
   ]);

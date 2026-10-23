@@ -42,9 +42,11 @@ export function abundanceProvider({
   createStore = createAbundanceStore,
   env = process.env,
   log = (line) => console.log(`[abundance] ${line}`),
+  /** A store made beforehand (shared with the AI World tab), else one is made on install. */
+  store: given = null,
 } = {}) {
   const allow = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 120 });
-  let store = null;
+  let store = given;
 
   const handle = async (req, res) => {
     const url = new URL(req.url || '/', 'http://localhost');
@@ -121,7 +123,7 @@ export function abundanceProvider({
   };
 
   const install = (server) => {
-    store = createStore({ root, log });
+    store = given || createStore({ root, log });
     server.httpServer?.once?.('close', () => store.close());
     server.middlewares.use(ABUNDANCE_API, async (req, res) => {
       try {

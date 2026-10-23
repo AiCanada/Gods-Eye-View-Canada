@@ -58,7 +58,10 @@ const oecd = (flow, version, key, measure) => ({
 
 /**
  * The indicators, in the owner's order. `better` says which way abundance
- * lies; `decimals` how a value is written. Each level names its own source
+ * lies; `decimals` how a value is written; `positive` that every real
+ * figure is above zero, so a zero is no figure (the OECD writes 0 for a
+ * region it has none for: tertiary education in half its small regions).
+ * Each level names its own source
  * and measure; a level without one takes the figure of the unit above it
  * (a state its country's, a city its state's or country's) and says so.
  */
@@ -67,6 +70,7 @@ export const ABUNDANCE_INDICATORS = Object.freeze([
     id: 'gdp',
     label: msgl('GDP PER PERSON'),
     better: 'high',
+    positive: true,
     decimals: 0,
     unit: '$',
     country: worldBank(
@@ -90,6 +94,7 @@ export const ABUNDANCE_INDICATORS = Object.freeze([
     id: 'life',
     label: msgl('LIFE SPAN'),
     better: 'high',
+    positive: true,
     decimals: 1,
     unit: msgl('YEARS'),
     country: worldBank('SP.DYN.LE00.IN', msgl('LIFE EXPECTANCY AT BIRTH')),
@@ -120,6 +125,7 @@ export const ABUNDANCE_INDICATORS = Object.freeze([
     id: 'income',
     label: msgl('INCOME'),
     better: 'high',
+    positive: true,
     decimals: 0,
     unit: '$',
     country: worldBank(
@@ -156,6 +162,7 @@ export const ABUNDANCE_INDICATORS = Object.freeze([
     id: 'education',
     label: msgl('EDUCATION'),
     better: 'high',
+    positive: true,
     decimals: 0,
     unit: '%',
     country: worldBank(
@@ -254,6 +261,43 @@ export const ABUNDANCE_INDICATORS = Object.freeze([
       msgl('UNEMPLOYMENT IN THE URBAN AREA, % OF THE LABOUR FORCE AGED 15–64'),
     ),
   },
+  {
+    id: 'air',
+    label: msgl('AIR'),
+    better: 'low',
+    positive: true,
+    decimals: 1,
+    unit: 'µg/m³',
+    country: worldBank(
+      'EN.ATM.PM25.MC.M3',
+      msgl('FINE PARTICLES (PM2.5) BREATHED OVER A YEAR'),
+    ),
+    // Release 1.2 (2021-2023), not 1.5: the OECD's 1.5 release of
+    // 2026-10-09 is corrupt. Every 2023 value is near zero, for every urban
+    // area and all four pollutants, and its 2021 and 2022 values are 1 to 5
+    // times 1.2's for the same city and year (Halifax 32.2 against 7.0,
+    // Edmonton 65.4 against 12.5, London 30.3 against 10.9). Release 1.2
+    // has no DESIGNATION dimension: seven key positions.
+    city: oecd(
+      'DSD_FUA_ENV@DF_POLLUTION',
+      '1.2',
+      '.A.PM25_POP_EXP.MCG_M3._Z._Z.{level}',
+      msgl('FINE PARTICLES (PM2.5) BREATHED IN THE URBAN AREA OVER A YEAR'),
+    ),
+  },
+  {
+    id: 'green',
+    label: msgl('GREEN SPACE'),
+    better: 'high',
+    decimals: 0,
+    country: worldBank('AG.LND.FRST.ZS', msgl('FOREST, % OF THE LAND')),
+    city: oecd(
+      'DSD_FUA_ENV@DF_GREEN_AREA',
+      '1.2',
+      '.A.GREEN_AREA.M2_PS._Z._Z.{level}',
+      msgl('GREEN SPACE IN THE URBAN CENTRE, M² PER PERSON'),
+    ),
+  },
 ]);
 
 export const ABUNDANCE_INDICATOR_IDS = Object.freeze(
@@ -277,7 +321,38 @@ export function cleanLevel(level) {
 }
 
 /** Where a unit's figure came from: its own source, the owner's CSV, or the unit above. */
-export const FIGURE_FROM = Object.freeze(['own', 'csv', 'region', 'country']);
+export const FIGURE_FROM = Object.freeze([
+  'own',
+  'csv',
+  'region',
+  'country',
+  'area',
+]);
+
+/** The weight a ticked indicator carries in the score: ×0.5 to ×3, by halves; 1 by default. */
+export const WEIGHT_MIN = 0.5;
+export const WEIGHT_MAX = 3;
+export const WEIGHT_STEP = 0.5;
+
+/** A weight within range, rounded to the step; 1 for anything else. */
+export function cleanWeight(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  const stepped = Math.round(n / WEIGHT_STEP) * WEIGHT_STEP;
+  return Math.min(WEIGHT_MAX, Math.max(WEIGHT_MIN, stepped));
+}
+
+/** Known indicators' weights other than 1, as { id: weight }. */
+export function cleanWeights(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const id of ABUNDANCE_INDICATOR_IDS) {
+    if (!(id in raw)) continue;
+    const w = cleanWeight(raw[id]);
+    if (w !== 1) out[id] = w;
+  }
+  return out;
+}
 
 /**
  * The SDMX key of an OECD source for one level: TL2 and TL3 regions for the
@@ -352,30 +427,63 @@ export function scoreUnits(
   units,
   indicatorIds,
   indicators = ABUNDANCE_INDICATORS,
+  weights = {},
 ) {
   const wanted = new Set(cleanIndicatorIds(indicatorIds));
   const chosen = indicators.filter((i) => wanted.has(i.id));
-  const byIndicator = chosen.map((i) => [i.id, indicatorRanks(units, i)]);
+  const byIndicator = chosen.map((i) => [
+    i.id,
+    indicatorRanks(units, i),
+    cleanWeight(weights?.[i.id] ?? 1),
+  ]);
   const out = new Map();
   for (const u of units || []) {
     let sum = 0;
+    let weight = 0;
     let counted = 0;
     const ranks = {};
-    for (const [id, map] of byIndicator) {
+    for (const [id, map, w] of byIndicator) {
       const r = map.get(u.id);
       if (r === undefined) continue;
       ranks[id] = r;
-      sum += r;
+      sum += r * w;
+      weight += w;
       counted += 1;
     }
     out.set(u.id, {
-      score: counted ? sum / counted : null,
+      score: counted && weight > 0 ? sum / weight : null,
       ranks,
       counted,
       of: chosen.length,
     });
   }
   return out;
+}
+
+/**
+ * The lowest, median and highest figure of one indicator among the units,
+ * for the legend; null with none.
+ * @returns {{min: number, median: number, max: number, n: number}|null}
+ */
+export function indicatorStats(units, indicator) {
+  const values = [];
+  for (const u of units || []) {
+    const v = Number(u?.values?.[indicator?.id]?.v);
+    if (Number.isFinite(v)) values.push(v);
+  }
+  if (!values.length) return null;
+  values.sort((a, b) => a - b);
+  const mid = (values.length - 1) / 2;
+  const median =
+    values.length % 2
+      ? values[mid]
+      : (values[Math.floor(mid)] + values[Math.ceil(mid)]) / 2;
+  return {
+    min: values[0],
+    median,
+    max: values[values.length - 1],
+    n: values.length,
+  };
 }
 
 /** The colour ramp: scarce (red) through amber to abundant (green). */
@@ -481,17 +589,19 @@ export function coverageOf(units, indicatorIds = ABUNDANCE_INDICATOR_IDS) {
   const out = {};
   for (const id of cleanIndicatorIds(indicatorIds)) {
     let own = 0;
+    let area = 0;
     let inherited = 0;
     let year = null;
     for (const u of units || []) {
       const f = u?.values?.[id];
       if (!f || !Number.isFinite(Number(f.v))) continue;
       if (f.from === 'own' || f.from === 'csv') own += 1;
+      else if (f.from === 'area') area += 1;
       else inherited += 1;
       if (Number.isFinite(f.year) && (year === null || f.year > year))
         year = f.year;
     }
-    out[id] = { own, inherited, year };
+    out[id] = { own, area, inherited, year };
   }
   return out;
 }
@@ -505,7 +615,9 @@ export function formatFigure(indicator, value) {
     : 1;
   const [whole, fraction] = Math.abs(v).toFixed(decimals).split('.');
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return `${v < 0 ? '-' : ''}${grouped}${fraction ? `.${fraction}` : ''}`;
+  // A small negative that rounds to nothing is no negative: 0, never -0.
+  const zero = /^0+$/.test(whole) && /^0*$/.test(fraction || '');
+  return `${v < 0 && !zero ? '-' : ''}${grouped}${fraction ? `.${fraction}` : ''}`;
 }
 
 /**
@@ -528,6 +640,11 @@ export function expandTable(table) {
         year: column.year?.[k] ?? null,
         from: FIGURE_FROM[column.from?.[k]] || 'own',
       };
+      const d = column.d?.[k];
+      if (d !== null && d !== undefined && Number.isFinite(Number(d))) {
+        values[id].d = Number(d);
+        values[id].y0 = column.y0?.[k] ?? null;
+      }
     }
     return { ...u, values };
   });
@@ -544,7 +661,10 @@ export function packTable(units) {
     const v = [];
     const year = [];
     const from = [];
+    const d = [];
+    const y0 = [];
     let any = false;
+    let trend = false;
     for (const u of units || []) {
       const f = u?.values?.[id];
       if (f && Number.isFinite(Number(f.v))) {
@@ -552,13 +672,23 @@ export function packTable(units) {
         v.push(Number(f.v));
         year.push(Number.isFinite(f.year) ? f.year : null);
         from.push(Math.max(0, FIGURE_FROM.indexOf(f.from)));
+        if (Number.isFinite(f.d)) {
+          trend = true;
+          d.push(f.d);
+          y0.push(Number.isFinite(f.y0) ? f.y0 : null);
+        } else {
+          d.push(null);
+          y0.push(null);
+        }
       } else {
         v.push(null);
         year.push(null);
         from.push(0);
+        d.push(null);
+        y0.push(null);
       }
     }
-    if (any) figures[id] = { v, year, from };
+    if (any) figures[id] = trend ? { v, year, from, d, y0 } : { v, year, from };
   }
   return { units: list, figures };
 }

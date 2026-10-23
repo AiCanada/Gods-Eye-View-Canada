@@ -274,6 +274,7 @@
     "{value} KM/H",
     "{value} KM/S",
     "{verb}...",
+    "×{n}",
     "ΔE",
     "ΔN",
     "▲ {frp} MW"
@@ -282,6 +283,7 @@
     "1090 MHz",
     "978 MHz UAT",
     "Action",
+    "AIR",
     "ALIAS",
     "Alias",
     "ALTITUDE",
@@ -563,6 +565,7 @@
     "{value} KM",
     "{value} KM/H",
     "{value} KM/S",
+    "×{n}",
     "ΔE",
     "ΔN",
     "Ⅱ PAUSE",
@@ -818,6 +821,7 @@
     "{value} KM",
     "{value} KM/H",
     "{value} KM/S",
+    "×{n}",
     "ΔE",
     "ΔN",
     "▲ {frp} MW"
@@ -1048,6 +1052,7 @@
     "{value} KM",
     "{value} KM/H",
     "{value} KM/S",
+    "×{n}",
     "ΔE",
     "ΔN",
     "▲ {frp} MW"

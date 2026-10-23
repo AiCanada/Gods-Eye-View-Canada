@@ -331,6 +331,8 @@ export function createAiWorldManager({
   datasetWorkers,
   /** MLFLOW TRACKING: each trainer child as an MLflow run (mlflowTrack.mjs). */
   tracker = NO_TRACKER,
+  /** The GLOBAL ABUNDANCE MAP's store (server/shared/abundanceData.mjs), for the GLOBAL ABUNDANCE row. */
+  abundance = null,
 }) {
   const stateFile = path.join(dataRoot, 'ai-world', 'state.json');
   const areasFile = path.join(dataRoot, 'ai-world', 'areas.json');
@@ -602,6 +604,29 @@ export function createAiWorldManager({
       log(`[demographics] ${error.message}`);
     } finally {
       demographicsBusy = false;
+    }
+  };
+
+  // --- Global abundance (a static item: the map's country figures, per place) --
+  let abundanceBusy = false;
+  const startAbundance = async () => {
+    if (!selected('abundance') || abundanceBusy || !abundance) return;
+    abundanceBusy = true;
+    try {
+      const world = latestWorld(worldsDir);
+      if (!world) {
+        log('[abundance] no world yet: nothing to write');
+        return;
+      }
+      abundance.writeWorldFeatures(
+        loadWorldSnapshot(world.dir),
+        path.join(dataRoot, 'demographics'),
+      );
+      log('[abundance] written');
+    } catch (error) {
+      log(`[abundance] ${error?.message || error}`);
+    } finally {
+      abundanceBusy = false;
     }
   };
 
@@ -1279,7 +1304,10 @@ export function createAiWorldManager({
         recorder.setFeeds(feedIds());
       if (persisted.state === 'running' && selected('outbreak-sim'))
         startGenerator();
-      if (persisted.state === 'running') startDemographics();
+      if (persisted.state === 'running') {
+        startDemographics();
+        startAbundance();
+      }
       return manager.status();
     },
     estimate({ selection = persisted.selection, capGb } = {}) {
@@ -1335,6 +1363,7 @@ export function createAiWorldManager({
       startTimers();
       startGenerator();
       startDemographics();
+      startAbundance();
       schedule();
       return manager.status();
     },
@@ -1689,6 +1718,7 @@ export function createAiWorldManager({
         startTimers();
         startGenerator();
         startDemographics();
+        startAbundance();
         schedule();
       } else if (was === 'paused') {
         recorder.setFeeds(feedIds());

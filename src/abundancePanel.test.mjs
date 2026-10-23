@@ -10,12 +10,15 @@ import {
   figureText,
   importText,
   initAbundancePanel,
+  legendValues,
   linkText,
   readChoice,
   scoreText,
   sourceLines,
   statusText,
+  trendText,
   unitLines,
+  valueWithUnit,
 } from './abundancePanel.js';
 import {
   ABUNDANCE_CARD_EVENT,
@@ -181,8 +184,8 @@ function mount(answers, { stored = null } = {}) {
 }
 
 test('the words: the choice, the status line, coverage, a figure, a place, a link, the sources and the CSV', () => {
-  assert.deepEqual(readChoice(null), { level: 'country', indicators: [...ABUNDANCE_INDICATOR_IDS], show: true, grid: false });
-  assert.deepEqual(readChoice('{"level":"city","indicators":["work","gdp","x"],"show":false,"grid":true}'), { level: 'city', indicators: ['gdp', 'work'], show: false, grid: true });
+  assert.deepEqual(readChoice(null), { level: 'country', indicators: [...ABUNDANCE_INDICATOR_IDS], show: true, grid: false, weights: {} });
+  assert.deepEqual(readChoice('{"level":"city","indicators":["work","gdp","x"],"show":false,"grid":true,"weights":{"gdp":2,"work":7,"x":3,"life":1}}'), { level: 'city', indicators: ['gdp', 'work'], show: false, grid: true, weights: { gdp: 2, work: 3 } });
   assert.deepEqual(readChoice('not json').level, 'country');
   assert.equal(statusText({ level: 'country', table: null, status: null, loading: true }), 'LOADING COUNTRIES…');
   assert.equal(statusText({ level: 'region', table: null, status: { refreshing: { done: 3, total: 24, current: 'OECD DF_GDP' } } }), 'FETCHING THE SOURCES · 3/24 · OECD DF_GDP');
@@ -195,12 +198,38 @@ test('the words: the choice, the status line, coverage, a figure, a place, a lin
   assert.equal(coverageText({ own: 1, inherited: 62, year: 2024 }, 'region'), '1 OWN FIGURE · 62 FROM THEIR COUNTRY · 2024');
   assert.equal(coverageText({ own: 20, inherited: 7000, year: null }, 'city'), '20 OWN FIGURES · 7,000 FROM THEIR STATE OR COUNTRY');
   assert.equal(coverageText(null, 'country'), '');
+  assert.equal(coverageText({ own: 3, area: 40, inherited: 10, year: 2023 }, 'region'), '3 OWN FIGURES · 40 FROM THEIR LARGER REGION · 10 FROM THEIR COUNTRY · 2023');
   assert.equal(scoreText({ score: 71.6, counted: 12, of: 14 }), 'ABUNDANCE 72 OF 100 · 12 OF 14 INDICATORS');
   assert.equal(scoreText({ score: null }), 'NO FIGURES FOR THE CHOSEN INDICATORS');
   assert.equal(figureText(indicatorById('gdp'), { v: 54321.4, year: 2024, from: 'own' }, 87.2, 'country'), 'GDP PER PERSON · 54,321 $ · 2024 · PLACE 87 OF 100 · GDP PER PERSON, PPP, INTERNATIONAL $');
   assert.equal(figureText(indicatorById('inflation'), { v: 2.5, year: 2025, from: 'country' }, 60, 'region'), 'INFLATION · 2.5 % · 2025 · PLACE 60 OF 100 · FROM ITS COUNTRY · CONSUMER PRICES, % A YEAR');
   assert.equal(figureText(indicatorById('life'), { v: 82.07, year: null, from: 'csv' }, undefined, 'country'), 'LIFE SPAN · 82.1 YEARS · YOUR CSV · LIFE EXPECTANCY AT BIRTH');
   assert.equal(figureText(indicatorById('happiness'), { v: 7.123, year: 2024, from: 'own' }, 90, 'country'), 'HAPPINESS · 7.12 · 2024 · PLACE 90 OF 100 · LIFE SATISFACTION, 0 TO 10 (WORLD HAPPINESS REPORT)');
+  // A figure's change since an earlier year rides after its year; a symbol unit stays as it is.
+  assert.equal(figureText(indicatorById('gdp'), { v: 54321, year: 2024, from: 'own', d: 2500.4, y0: 2019 }, 87, 'country'), 'GDP PER PERSON · 54,321 $ · 2024 · ▲ +2,500 SINCE 2019 · PLACE 87 OF 100 · GDP PER PERSON, PPP, INTERNATIONAL $');
+  assert.equal(figureText(indicatorById('air'), { v: 12.34, year: 2023, from: 'area', d: -3.2, y0: 2018 }, 40, 'region'), 'AIR · 12.3 µg/m³ · 2023 · ▼ -3.2 SINCE 2018 · PLACE 40 OF 100 · FROM ITS LARGER REGION · FINE PARTICLES (PM2.5) BREATHED OVER A YEAR');
+  // A larger region's figure is the OECD's regional one, and says so in its measure.
+  assert.equal(figureText(indicatorById('education'), { v: 59.6, year: 2025, from: 'area' }, 39, 'region'), 'EDUCATION · 60 % · 2025 · PLACE 39 OF 100 · FROM ITS LARGER REGION · ADULTS 25–64 WITH TERTIARY EDUCATION, %');
+  assert.equal(trendText(indicatorById('work'), { v: 5, d: 0, y0: 2020 }), '■ 0.0 SINCE 2020');
+  assert.equal(trendText(indicatorById('work'), { v: 5 }), '');
+  // A change that rounds to nothing in the indicator's decimals reads no change, not ▼ -0.
+  assert.equal(trendText(indicatorById('water'), { v: 98, d: -0.2, y0: 2020 }), '■ 0 SINCE 2020');
+  assert.equal(trendText(indicatorById('work'), { v: 5, d: -0.04, y0: 2020 }), '■ 0.0 SINCE 2020');
+  assert.equal(trendText(indicatorById('work'), { v: 5, d: -0.06, y0: 2020 }), '▼ -0.1 SINCE 2020');
+  assert.equal(trendText(indicatorById('work'), { v: 5, d: 0.06, y0: 2020 }), '▲ +0.1 SINCE 2020');
+  assert.equal(valueWithUnit(indicatorById('life'), 81.26), '81.3 YEARS');
+  assert.equal(valueWithUnit(indicatorById('green'), 150), '150');
+  // The legend's values: the scarce end is the highest figure where lower is better.
+  const places = [
+    { id: 'a', values: { gdp: { v: 1000 }, inflation: { v: 1 } } },
+    { id: 'b', values: { gdp: { v: 3000 }, inflation: { v: 4 } } },
+    { id: 'c', values: { gdp: { v: 20000 }, inflation: { v: 12 } } },
+    { id: 'd', values: {} },
+  ];
+  assert.deepEqual(legendValues(places, indicatorById('gdp')), { low: '1,000 $', mid: '3,000 $', high: '20,000 $' });
+  assert.deepEqual(legendValues(places, indicatorById('inflation')), { low: '12.0 %', mid: '4.0 %', high: '1.0 %' });
+  assert.equal(legendValues(places, indicatorById('work')), null);
+  assert.equal(legendValues([], indicatorById('gdp')), null);
   const lines = unitLines(
     { id: '1', name: 'Testville', country: 'Testland', adm1: 'North Testland', pop: 500000, values: { gdp: { v: 70000, year: 2022, from: 'own' }, work: { v: 4, year: 2024, from: 'region' } } },
     { score: 80, counted: 2, of: 2, ranks: { gdp: 90, work: 70 } },
@@ -212,7 +241,7 @@ test('the words: the choice, the status line, coverage, a figure, a place, a lin
     'POPULATION 500,000',
     'ABUNDANCE 80 OF 100 · 2 OF 2 INDICATORS',
     'GDP PER PERSON · 70,000 $ · 2022 · PLACE 90 OF 100 · GDP PER PERSON OF THE URBAN AREA, PPP, US $',
-    'WORK · 4.0 % · 2024 · PLACE 70 OF 100 · FROM ITS STATE OR PROVINCE · UNEMPLOYMENT, % OF THE LABOUR FORCE',
+    'WORK · 4.0 % · 2024 · PLACE 70 OF 100 · FROM ITS STATE OR PROVINCE · UNEMPLOYMENT, % OF THE LABOUR FORCE AGED 15–64',
   ]);
   assert.deepEqual(unitLines(null), []);
   assert.equal(linkText({ from: 'a', to: 'b', gap: 61.4, km: 1234 }, new Map([['a', { name: 'Rich' }], ['b', { name: 'Poor' }]])), 'Rich → Poor · GAP 61 · 1,234 KM');
@@ -244,6 +273,9 @@ test('the tab loads the level, scores the places, hands the globe its view, and 
   m.control('ranking-bottom').click();
   assert.deepEqual(ranking.children.map((li) => li.textContent), ['3. Farland · 0', '2. Midland · 50', '1. Testland · 100']);
   // Unticking GDP leaves inflation alone: Midland has no figure for it.
+  // With every indicator ticked the legend reads the score; with one, that indicator's figures.
+  const legendText = () => ['abundance-legend-value'].flatMap((c) => m.world.body.all().filter((n) => n.className === c).map((n) => n.textContent));
+  assert.deepEqual(legendText(), ['0', '50', '100']);
   m.box('gdp').checked = false;
   m.box('gdp').fire('change');
   const after = m.views().at(-1);
@@ -255,6 +287,11 @@ test('the tab loads the level, scores the places, hands the globe its view, and 
   all.checked = true;
   all.fire('change');
   assert.equal(m.box('gdp').checked, true);
+  for (const id of ABUNDANCE_INDICATOR_IDS) if (id !== 'inflation' && m.box(id).checked) { m.box(id).checked = false; m.box(id).fire('change'); }
+  assert.deepEqual(m.panel.choice.indicators, ['inflation']);
+  assert.deepEqual(legendText(), ['10.0 %', '6.3 %', '2.5 %']);
+  all.checked = true;
+  all.fire('change');
   // SHOW ON MAP off: the globe is told so; the grid on: links appear.
   const show = m.find((n) => n.tagName === 'INPUT' && n.parent?.children[2]?.textContent === 'SHOW ON MAP');
   show.checked = false;
@@ -274,6 +311,46 @@ test('the tab loads the level, scores the places, hands the globe its view, and 
   assert.deepEqual(m.views().at(-1).units, []);
 });
 
+test('a weight slider counts an indicator more; RESET WEIGHTS puts every weight back; the choice is kept', async () => {
+  const m = mount();
+  await settle();
+  const slider = (id) => m.find((n) => n.tagName === 'INPUT' && n.type === 'range' && n.dataset.indicator === id);
+  const times = (id) => slider(id).parent.children[2].textContent;
+  const reset = m.control('reset-weights');
+  assert.equal(reset.hidden, true);
+  assert.equal(times('gdp'), '×1');
+  // GDP and inflation ticked: Testland is first on both, Farland last on both; Midland has only GDP.
+  for (const id of ABUNDANCE_INDICATOR_IDS) if (id !== 'gdp' && id !== 'inflation') { m.box(id).checked = false; m.box(id).fire('change'); }
+  const scoreOf = (id) => Math.round(m.views().at(-1).units.find((u) => u.id === id).score);
+  assert.equal(scoreOf('MID'), 50);
+  // A heavier inflation does not move Midland (no figure for it) but changes nothing for ties either.
+  slider('inflation').value = '3';
+  slider('inflation').fire('input');
+  assert.equal(times('inflation'), '×3');
+  assert.deepEqual(m.panel.choice.weights, { inflation: 3 });
+  assert.equal(reset.hidden, false);
+  assert.deepEqual(JSON.parse(m.storage.getItem(ABUNDANCE_CHOICE_KEY)).weights, { inflation: 3 });
+  assert.equal(scoreOf('TST'), 100);
+  // A place half-way on GDP and worst on inflation: inflation's weight pulls its score down.
+  const m2 = mount({ data: () => ({ ...table('country'), ...(() => { const t = table('country'); t.figures.inflation.v[2] = 20; return { figures: t.figures }; })() }) });
+  await settle();
+  for (const id of ABUNDANCE_INDICATOR_IDS) if (id !== 'gdp' && id !== 'inflation') { m2.box(id).checked = false; m2.box(id).fire('change'); }
+  const mid = () => Math.round(m2.views().at(-1).units.find((u) => u.id === 'MID').score);
+  assert.equal(mid(), 25);
+  const s2 = m2.find((n) => n.tagName === 'INPUT' && n.type === 'range' && n.dataset.indicator === 'inflation');
+  s2.value = '3';
+  s2.fire('change');
+  assert.equal(mid(), 13);
+  m2.control('reset-weights').click();
+  assert.equal(mid(), 25);
+  assert.deepEqual(m2.panel.choice.weights, {});
+  assert.equal(m2.control('reset-weights').hidden, true);
+  // An unticked indicator's slider is off.
+  assert.equal(m2.find((n) => n.tagName === 'INPUT' && n.type === 'range' && n.dataset.indicator === 'work').disabled, true);
+  m.panel.destroy();
+  m2.panel.destroy();
+});
+
 test('a pick from the globe fills SELECTED; a click keeps it and publishes its card; the ranking rows do the same', async () => {
   const m = mount();
   await settle();
@@ -282,7 +359,7 @@ test('a pick from the globe fills SELECTED; a click keeps it and publishes its c
   assert.equal(name.hidden, true);
   m.world.pick({ id: 'MID', level: 'country', hover: true });
   assert.equal(name.textContent, 'Midland');
-  assert.equal(selected.children[0].textContent, 'ABUNDANCE 50 OF 100 · 1 OF 14 INDICATORS');
+  assert.equal(selected.children[0].textContent, 'ABUNDANCE 50 OF 100 · 1 OF 16 INDICATORS');
   assert.equal(selected.children[1].textContent, 'GDP PER PERSON · 30,000 $ · 2023 · PLACE 50 OF 100 · GDP PER PERSON, PPP, INTERNATIONAL $');
   assert.equal(m.cards().length, 0, 'a hover publishes no card');
   m.world.pick({ id: null, level: 'country', hover: true });
@@ -294,7 +371,7 @@ test('a pick from the globe fills SELECTED; a click keeps it and publishes its c
   assert.equal(card.selected, 'TST');
   assert.equal(card.card.title, 'Testland');
   assert.deepEqual([card.card.lat, card.card.lon], [5, 5]);
-  assert.equal(card.card.details[0], 'ABUNDANCE 100 OF 100 · 2 OF 14 INDICATORS');
+  assert.equal(card.card.details[0], 'ABUNDANCE 100 OF 100 · 2 OF 16 INDICATORS');
   assert.equal(card.card.accent, '#19e6b0');
   // A hover shows the hovered place; leaving it goes back to the kept one.
   m.world.pick({ id: 'FAR', level: 'country', hover: true });

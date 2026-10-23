@@ -36,6 +36,8 @@ export function aiWorldProvider({
   log = (line) => console.log(`[ai-world] ${line}`),
   /** MLFLOW TRACKING (server/providers/mlflow.js), when it is installed. */
   tracker,
+  /** The GLOBAL ABUNDANCE MAP's store, for the GLOBAL ABUNDANCE row of TRAIN ON. */
+  abundance = null,
 } = {}) {
   const allow = makeRateLimiter({ windowMs: 60_000, max: 30, globalMax: 60 });
   let manager = null;
@@ -231,6 +233,7 @@ export function aiWorldProvider({
       apiFetch: () => createApiFetch({ apiBase: apiBase() }),
       log,
       tracker,
+      abundance,
     });
     const restore = () => {
       port = httpServer?.address?.()?.port ?? null;

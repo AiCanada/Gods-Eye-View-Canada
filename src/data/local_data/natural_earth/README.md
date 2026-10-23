@@ -54,6 +54,11 @@ only to mark ambiguous names; none of it is bundled.
 
 **License:** public domain, as above.
 
+Each unit also carries `group`, the larger region it sits in (Natural Earth's
+`region`; for the United Kingdom the constituent country and, in England,
+the English region), so the GLOBAL ABUNDANCE MAP can hand an OECD region's
+figure to the units inside it (`src/abundanceUnits.mjs`, `findGroup`).
+
 **Regenerate:** `node scripts/build-admin-packs.mjs --only admin1` downloads
 the pinned files (to the system temp directory, or `--cache <dir>`), checks
 their SHA-256 and rewrites the pack byte for byte. Parameters are in the

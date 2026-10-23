@@ -1,5 +1,6 @@
 import datetime as dt
 import gzip
+import json
 import shutil
 import unittest
 import warnings
@@ -46,6 +47,22 @@ class ReaderTest(unittest.TestCase):
         self.assertEqual(wd.demographics.shape, (16, 5))
         self.assertEqual(wd.demographics_columns[0], "log10Population")
         arr, meta = R.load_demographics(self.p["root"], "nope")
+        self.assertIsNone(arr)
+        # The GLOBAL ABUNDANCE MAP's figures per place, beside the demographics.
+        self.assertIsNone(wd.abundance)
+        d = self.p["root"] / "demographics"
+        synth.write_npy(d / f"abundance-{w.world_id}.npy", np.full((16, 3), 0.5, np.float32))
+        (d / f"abundance-{w.world_id}.json").write_text(
+            json.dumps({"worldId": w.world_id, "channels": ["abundance_gdp", "abundance_life", "abundance"]}),
+            encoding="utf-8")
+        wa = R.load_world(self.p["world_dir"], data_root=self.p["root"])
+        self.assertEqual(wa.abundance.shape, (16, 3))
+        self.assertEqual(wa.abundance_columns, ["abundance_gdp", "abundance_life", "abundance"])
+        self.assertEqual(wa.demographics.shape, (16, 5))
+        synth.write_npy(d / f"abundance-{w.world_id}.npy", np.zeros((3, 3), np.float32))
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            arr, meta = R.load_abundance(self.p["root"], w.world_id, 16)
         self.assertIsNone(arr)
 
     def test_load_world_rejects_bad_shapes(self):

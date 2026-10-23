@@ -157,6 +157,8 @@ class World:
     countries: list            # ISO2 codes, '' last for none
     demographics: np.ndarray | None = None   # [n, 5] when loaded with a data root
     demographics_columns: list | None = None
+    abundance: np.ndarray | None = None      # [n, 17] when loaded with a data root
+    abundance_columns: list | None = None
 
     @property
     def world_id(self) -> str:
@@ -271,9 +273,12 @@ def load_world(path, data_root=None) -> World:
         top = int(np.nanmax(nodes[:, 5])) + 1 if n else 1
         countries = [str(i) for i in range(max(top - 1, 0))] + [""]
     demo, demo_cols = None, None
+    abund, abund_cols = None, None
     if data_root is not None:
         demo, dmeta = load_demographics(data_root, str(meta.get("worldId") or p.name), n)
         demo_cols = (dmeta or {}).get("channels")
+        abund, ameta = load_abundance(data_root, str(meta.get("worldId") or p.name), n)
+        abund_cols = (ameta or {}).get("channels")
     return World(
         path=p, meta=meta, nodes=nodes,
         ids=lists["id"], codes=lists["code"], names=lists["name"],
@@ -284,7 +289,26 @@ def load_world(path, data_root=None) -> World:
         tracked=tracked.astype(np.int64),
         countries=[str(c) for c in countries],
         demographics=demo, demographics_columns=demo_cols,
+        abundance=abund, abundance_columns=abund_cols,
     )
+
+
+def _load_static_places(d, stem, n=None):
+    """(float32 [n, C] or None, <stem>.json or None) from a static per-place table."""
+    arr_path = d / f"{stem}.npy"
+    if not arr_path.is_file():
+        return None, None
+    arr = np.asarray(load_npy(arr_path), dtype=np.float32)
+    if arr.ndim != 2 or (n is not None and arr.shape[0] != n):
+        warnings.warn(f"{arr_path}: shape {arr.shape} does not fit the world's {n} places; ignored")
+        return None, None
+    meta = None
+    if (d / f"{stem}.json").is_file():
+        try:
+            meta = read_json(d / f"{stem}.json")
+        except (OSError, ValueError):
+            meta = None
+    return arr, meta
 
 
 def load_demographics(data_root, world_id, n=None):
@@ -294,21 +318,19 @@ def load_demographics(data_root, world_id, n=None):
     country has no figure). None when absent or when its rows are not the
     world's n places.
     """
-    d = Path(data_root) / "demographics"
-    arr_path = d / f"places-{world_id}.npy"
-    if not arr_path.is_file():
-        return None, None
-    arr = np.asarray(load_npy(arr_path), dtype=np.float32)
-    if arr.ndim != 2 or (n is not None and arr.shape[0] != n):
-        warnings.warn(f"{arr_path}: shape {arr.shape} does not fit the world's {n} places; ignored")
-        return None, None
-    meta = None
-    if (d / f"places-{world_id}.json").is_file():
-        try:
-            meta = read_json(d / f"places-{world_id}.json")
-        except (OSError, ValueError):
-            meta = None
-    return arr, meta
+    return _load_static_places(Path(data_root) / "demographics", f"places-{world_id}", n)
+
+
+def load_abundance(data_root, world_id, n=None):
+    """(float32 [n, C] or None, abundance-<worldId>.json or None) from <root>/demographics/.
+
+    The GLOBAL ABUNDANCE MAP's figures per place, by its country: one
+    column per indicator with the country's place among the others (0 the
+    least abundant, 1 the most), then their mean; NaN where the country has
+    no figure. `channels` in the .json names the columns. None when absent
+    or when its rows are not the world's n places.
+    """
+    return _load_static_places(Path(data_root) / "demographics", f"abundance-{world_id}", n)
 
 
 def world_files_digest(path, order: Iterable[str] = F.WORLD_FILES, *, with_names: bool = False) -> str:

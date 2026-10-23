@@ -296,6 +296,9 @@ BIN_CHANNELS = {
 BIN_GROUPS = tuple(BIN_CHANNELS)
 # demographics/places-<worldId>.npy: float32 [n, 5] per world place.
 DEMOGRAPHICS_WIDTH = 5  # log10 population, then four shares (0-1), NaN where unknown
+# demographics/abundance-<worldId>.npy: float32 [n, C] per world place: the
+# GLOBAL ABUNDANCE MAP's indicators as the country's place among the others
+# (0-1), then their mean; the columns are named in abundance-<worldId>.json.
 PREDICTION_DOMAINS = ("outbreak", "mobility", "weather", "hazards", "news",
                       "tracks")
 # Which bin groups the world model predicts for each Prediction domain.

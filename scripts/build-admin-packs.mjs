@@ -564,6 +564,30 @@ async function buildCountries() {
   };
 }
 
+/**
+ * The larger region a unit sits in, for figures a source gives that region
+ * and not the unit (the GLOBAL ABUNDANCE MAP's OECD regions): Natural
+ * Earth's `region` (a French région for a département, an Italian regione
+ * for a province, a Japanese region for a prefecture). The United Kingdom's
+ * units take their constituent country (Scotland, Wales, Northern Ireland)
+ * and, in England, the English region, with Natural Earth's two spellings
+ * of the East of England and Greater London written one way.
+ */
+const ENGLAND_REGIONS = Object.freeze({
+  east: 'East of England',
+  eastern: 'East of England',
+  'greater london': 'London',
+});
+export function admin1Group(p) {
+  const region = String(p.region || '').trim();
+  if (p.iso_a2 === 'GB') {
+    const part = String(p.geonunit || '').trim();
+    if (['Scotland', 'Wales', 'Northern Ireland'].includes(part)) return part;
+    return ENGLAND_REGIONS[region.toLowerCase()] || region || null;
+  }
+  return region || null;
+}
+
 async function buildAdmin1() {
   const params = PARAMS.admin1;
   const source = await fetchPinned('admin1');
@@ -633,6 +657,7 @@ async function buildAdmin1() {
       else if (elsewhere.length) ambAbroad.push(key);
     }
     const postal = String(p.postal || '').trim();
+    const group = admin1Group(p);
     features.push({
       name,
       ...(nameEn ? { nameEn } : {}),
@@ -640,6 +665,7 @@ async function buildAdmin1() {
       ...(/^[A-Z]{2}$/.test(postal) ? { postal } : {}),
       type: p.type_en || p.type || null,
       ...(Number.isFinite(p.min_label) ? { rank: p.min_label } : {}),
+      ...(group ? { group } : {}),
       country: p.admin,
       iso2: p.iso_a2 && p.iso_a2 !== '-99' ? p.iso_a2 : null,
       iso: p.iso_3166_2 && !p.iso_3166_2.includes('~') ? p.iso_3166_2 : null,
@@ -676,7 +702,7 @@ async function buildAdmin1() {
       license:
         'Public domain (https://www.naturalearthdata.com/about/terms-of-use/)',
       schema:
-        'features[]: name, nameEn?, alt?[], postal?, type, rank? (min_label: the zoom at which Natural Earth labels the unit; lower is more prominent), country, iso2, iso (ISO 3166-2), amb?[] (normalized names that are also a country or a city — alone or with the country named), ambAbroad?[] (names shared only with a city in another country — ambiguous alone, settled by naming the country), cityState? (the unit is its own city), label? [lon, lat] label point, d? (decimals when not meta.decimals), polygons[][ring] (first ring outer, rest holes; each ring open and encoded as integers in 10^-d degrees, first vertex absolute then [dLon, dLat] deltas)',
+        'features[]: name, nameEn?, alt?[], postal?, type, rank? (min_label: the zoom at which Natural Earth labels the unit; lower is more prominent), group? (the larger region the unit sits in: Natural Earth region, or the UK constituent country and English region), country, iso2, iso (ISO 3166-2), amb?[] (normalized names that are also a country or a city — alone or with the country named), ambAbroad?[] (names shared only with a city in another country — ambiguous alone, settled by naming the country), cityState? (the unit is its own city), label? [lon, lat] label point, d? (decimals when not meta.decimals), polygons[][ring] (first ring outer, rest holes; each ring open and encoded as integers in 10^-d degrees, first vertex absolute then [dLon, dLat] deltas)',
       decimals: params.decimals,
       curation: { ...params, ambiguity },
       script: 'scripts/build-admin-packs.mjs',

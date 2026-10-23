@@ -433,6 +433,17 @@ fetched from the API the rail volumes already use and kept thirty days in
 `places-<worldId>.npy`: float32 [n, 5] per world place — log10 population,
 then the four shares (NaN where the country has no figure).
 
+`abundance-<worldId>.npy` and `.json` (the GLOBAL ABUNDANCE row of TRAIN
+ON, owner request 2026-10-23): float32 [n, 17] per world place, by its
+country — the GLOBAL ABUNDANCE MAP's sixteen indicators as the country's
+place among the others (0 the least abundant, 1 the most), then their mean;
+NaN where the country has no figure. The `.json` names the channels
+(`abundance_gdp` … `abundance`) and the sources (World Bank WDI and Our
+World in Data, CC BY 4.0; the OECD regional database, OECD terms). Written
+by `server/shared/abundanceData.mjs` whenever the row is ticked and a world
+exists; read by `ml.gevtape.reader.load_abundance` and attached to the world
+as `abundance` / `abundance_columns`, beside `demographics`.
+
 ## Real epidemics and policy (`real/owid-oxcgrt/`)
 
 Our World in Data's COVID-19 data and the Oxford COVID-19 Government

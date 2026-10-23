@@ -17,6 +17,7 @@ import {
   ABUNDANCE_LEVELS,
   cleanLevel,
   coverageOf,
+  indicatorRanks,
   oecdKey,
   packTable,
   parseAbundanceCsv,
@@ -24,13 +25,15 @@ import {
 } from '../../src/abundanceCore.mjs';
 import {
   cityUnits,
+  compoundParts,
+  listUnits,
   countryUnits,
   createCountryCodes,
   createUnitMatcher,
   ISO3_FIXES,
   regionUnits,
 } from '../../src/abundanceUnits.mjs';
-import { readWorldBankIndicator } from '../../src/demographics.mjs';
+import { npyBytes } from '../../src/outbreakEpiShard.mjs';
 
 const DEFAULT_PACKS_DIR = fileURLToPath(
   new URL('../../src/data/local_data/natural_earth/', import.meta.url),
@@ -45,15 +48,118 @@ const OECD_PAUSE_MS = 10_000;
 const RETRY_PAUSE_MS = 60_000;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) GodsEyeViewCanada/0.2 (global abundance map)';
+/**
+ * Node's fetch sends `accept-language: *` unless told otherwise, and the
+ * OECD answers a labelled CSV asked that way with HTTP 500 "Internal server
+ * error" (2026-10-23; the same URL from curl, which sends none, answered).
+ * The labels are matched against English names, so every source is asked
+ * in English.
+ */
+const REQUEST_HEADERS = {
+  'User-Agent': USER_AGENT,
+  Accept: '*/*',
+  'Accept-Language': 'en',
+};
 /** A CSV the owner loads: at most this many rows are kept. */
 const IMPORT_ROWS_MAX = 20_000;
 
+/** The latest figures and the years behind them, for the change over five years. */
+const YEARS_KEPT = 6;
+/** A change is shown against a figure at least this many years older. */
+export const TREND_YEARS = 5;
+const TREND_YEARS_MIN = 3;
+/** Raw answers of another shape are not read: the file names carry this. */
+const CACHE_VERSION = 2;
+/** A year is judged for collapse only with at least this many areas. */
+const COLLAPSE_MIN_AREAS = 20;
+
 const WORLD_BANK_URL = (code) =>
-  `https://api.worldbank.org/v2/country/all/indicator/${code}?format=json&per_page=20000&mrnev=1`;
+  `https://api.worldbank.org/v2/country/all/indicator/${code}?format=json&per_page=20000&mrnev=${YEARS_KEPT}`;
+/** The years asked for again when a latest-values answer came back one value deep. */
+const WORLD_BANK_RANGE_YEARS = 15;
+const WORLD_BANK_RANGE_URL = (code, year) =>
+  `https://api.worldbank.org/v2/country/all/indicator/${code}?format=json&per_page=20000&date=${year - WORLD_BANK_RANGE_YEARS}:${year}`;
 const OWID_URL = (slug) =>
   `https://ourworldindata.org/grapher/${slug}.csv?v=1&csvType=full&useColumnShortNames=true`;
 const OECD_URL = (flow, version, key) =>
-  `https://sdmx.oecd.org/public/rest/data/OECD.CFE.EDS,${flow},${version}/${key}?lastNObservations=1&dimensionAtObservation=AllDimensions&format=csvfilewithlabels`;
+  `https://sdmx.oecd.org/public/rest/data/OECD.CFE.EDS,${flow},${version}/${key}?lastNObservations=${YEARS_KEPT}&dimensionAtObservation=AllDimensions&format=csvfilewithlabels`;
+
+/**
+ * The latest point of a series and the one to measure its change against:
+ * the newest at least TREND_YEARS older, else the oldest kept when it is
+ * TREND_YEARS_MIN or more older; null with none.
+ * @param {Array<{year: number, value: number}>} points any order
+ */
+export function latestAndPast(points) {
+  const list = (points || [])
+    .filter((p) => Number.isFinite(p?.value) && Number.isFinite(p?.year))
+    .sort((a, b) => b.year - a.year);
+  if (!list.length) return null;
+  const latest = list[0];
+  const past =
+    list.find((p) => latest.year - p.year >= TREND_YEARS) ||
+    (latest.year - list[list.length - 1].year >= TREND_YEARS_MIN
+      ? list[list.length - 1]
+      : null);
+  return {
+    value: latest.value,
+    year: latest.year,
+    past:
+      past && past !== latest ? { value: past.value, year: past.year } : null,
+  };
+}
+
+/**
+ * One World Bank indicator (format=json, mrnev=N) as { ISO2: [{year, value}] },
+ * newest first; aggregates and empty rows are left out.
+ */
+export function readWorldBankSeries(payload) {
+  const rows = Array.isArray(payload) ? payload[1] : null;
+  const out = {};
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const code = row?.country?.id;
+    const value = Number(row?.value);
+    if (!/^[A-Z]{2}$/.test(code || '') || row?.value === null) continue;
+    if (
+      !Number.isFinite(value) ||
+      !/^[A-Z]{3}$/.test(row?.countryiso3code || '')
+    )
+      continue;
+    const year = Number(row.date);
+    if (!Number.isFinite(year)) continue;
+    (out[code] ||= []).push({ year, value });
+  }
+  for (const list of Object.values(out)) list.sort((a, b) => b.year - a.year);
+  return out;
+}
+
+/**
+ * Two answers for one series joined: newest first, each year once (the
+ * first answer's figure kept), at most YEARS_KEPT points per country.
+ */
+export function mergeSeries(first, second) {
+  const out = {};
+  const codes = new Set([
+    ...Object.keys(first || {}),
+    ...Object.keys(second || {}),
+  ]);
+  for (const code of codes) {
+    const byYear = new Map();
+    for (const point of [...(first?.[code] || []), ...(second?.[code] || [])])
+      if (!byYear.has(point.year)) byYear.set(point.year, point);
+    out[code] = [...byYear.values()]
+      .sort((a, b) => b.year - a.year)
+      .slice(0, YEARS_KEPT);
+  }
+  return out;
+}
+
+/** The most points any country has in one series answer. */
+const seriesDepth = (payload) =>
+  Object.values(payload || {}).reduce(
+    (most, list) => Math.max(most, list.length),
+    0,
+  );
 
 /**
  * Every distinct source the indicators name, with the indicators and
@@ -72,6 +178,7 @@ export function abundanceSources(indicators = ABUNDANCE_INDICATORS) {
     sources.set(id, {
       id,
       kind: source.kind,
+      ...(source.code ? { code: source.code } : {}),
       label: source.label,
       url: source.url,
       indicators: [source.indicator],
@@ -85,6 +192,7 @@ export function abundanceSources(indicators = ABUNDANCE_INDICATORS) {
       if (src.kind === 'worldbank')
         add(`wb:${src.code}`, {
           kind: 'worldbank',
+          code: src.code,
           label: `World Bank WDI ${src.code}`,
           url: WORLD_BANK_URL(src.code),
           indicator: indicator.id,
@@ -94,6 +202,7 @@ export function abundanceSources(indicators = ABUNDANCE_INDICATORS) {
         for (const code of [src.of, src.by])
           add(`wb:${code}`, {
             kind: 'worldbank',
+            code,
             label: `World Bank WDI ${code}`,
             url: WORLD_BANK_URL(code),
             indicator: indicator.id,
@@ -139,7 +248,11 @@ export function readOwidCsv(text, column) {
     const year = Number(row[yearAt]);
     if (!Number.isFinite(value) || !Number.isFinite(year)) continue;
     if (code.startsWith('OWID_') && !ISO3_FIXES[code]) continue;
-    if (!out[code] || out[code].year < year) out[code] = { value, year };
+    (out[code] ||= []).push({ year, value });
+  }
+  for (const list of Object.values(out)) {
+    list.sort((a, b) => b.year - a.year);
+    list.splice(YEARS_KEPT);
   }
   return out;
 }
@@ -149,6 +262,44 @@ export function readOwidCsv(text, column) {
  * code, its name, the country (regional flows carry it; urban areas do not),
  * the territorial level, the value and the year.
  */
+/**
+ * The years in which a release's figures collapse: the median over its
+ * areas below a twentieth of the median of its other years. A real series
+ * never does this; a broken release does (the OECD's urban air pollution
+ * release 1.5, 2026-10-09, wrote near-zero values for every area in 2023).
+ * Exact zeros are left out: the OECD writes 0 where it has no figure (half
+ * its small regions' tertiary education), which is no collapse. Years with
+ * fewer than COLLAPSE_MIN_AREAS other values are not judged.
+ * @param {Array<{year: number, value: number}>} rows
+ * @returns {number[]}
+ */
+export function collapsedYears(rows) {
+  const byYear = new Map();
+  for (const row of rows || []) {
+    if (!Number.isFinite(row?.year) || !Number.isFinite(row?.value)) continue;
+    if (row.value === 0) continue;
+    const list = byYear.get(row.year) || [];
+    list.push(Math.abs(row.value));
+    byYear.set(row.year, list);
+  }
+  const median = (list) => {
+    const sorted = [...list].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)];
+  };
+  const medians = [...byYear]
+    .filter(([, list]) => list.length >= COLLAPSE_MIN_AREAS)
+    .map(([year, list]) => [year, median(list)]);
+  if (medians.length < 2) return [];
+  const out = [];
+  for (const [year, value] of medians) {
+    const typical = median(
+      medians.filter(([other]) => other !== year).map(([, v]) => v),
+    );
+    if (typical > 0 && value < typical / 20) out.push(year);
+  }
+  return out.sort((a, b) => a - b);
+}
+
 export function readOecdCsv(text) {
   const rows = parseCsvRows(text);
   if (!rows.length) return [];
@@ -178,7 +329,7 @@ export function readOecdCsv(text) {
 }
 
 function safeName(id) {
-  return String(id).replace(/[^A-Za-z0-9._-]+/g, '_');
+  return `${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}.v${CACHE_VERSION}`;
 }
 
 /**
@@ -227,7 +378,14 @@ export function createAbundanceStore({
   const readCache = (source) => {
     try {
       const kept = JSON.parse(fs.readFileSync(cacheFile(source.id), 'utf8'));
-      if (kept && typeof kept === 'object' && kept.payload)
+      // An answer to another URL (another release, key or query) is not
+      // this source's answer.
+      if (
+        kept &&
+        typeof kept === 'object' &&
+        kept.payload &&
+        kept.url === source.url
+      )
         raw.set(source.id, {
           fetchedAt: Number(kept.fetchedAt) || 0,
           rows: Number(kept.rows) || 0,
@@ -258,11 +416,33 @@ export function createAbundanceStore({
     }
   };
 
-  const fetchOnce = (source) =>
-    fetchImpl(source.url, {
-      headers: { 'User-Agent': USER_AGENT, Accept: '*/*' },
+  const fetchUrl = (url) =>
+    fetchImpl(url, {
+      headers: { ...REQUEST_HEADERS },
       signal: AbortSignal.timeout(timeoutMs),
     });
+  const fetchOnce = (source) => fetchUrl(source.url);
+
+  /**
+   * The World Bank has answered mrnev=N with one value per country while
+   * the same series asked by years held them all (2026-10-23: inflation
+   * and forest area). A one-deep answer is asked again by years and the
+   * two are joined, so the change over five years is there; the first
+   * answer stands alone when the second fails.
+   */
+  const deepenWorldBank = async (source, payload) => {
+    if (!source.code || seriesDepth(payload) > 1) return payload;
+    const year = new Date(now()).getUTCFullYear();
+    try {
+      const again = await fetchUrl(WORLD_BANK_RANGE_URL(source.code, year));
+      if (again.ok)
+        return mergeSeries(payload, readWorldBankSeries(await again.json()));
+      log(`${source.label} by years: HTTP ${again.status}`);
+    } catch (error) {
+      log(`${source.label} by years: ${error?.message || error}`);
+    }
+    return payload;
+  };
 
   const fetchSource = async (source) => {
     let response = await fetchOnce(source);
@@ -275,7 +455,10 @@ export function createAbundanceStore({
     }
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     if (source.kind === 'worldbank') {
-      const payload = readWorldBankIndicator(await response.json());
+      const payload = await deepenWorldBank(
+        source,
+        readWorldBankSeries(await response.json()),
+      );
       return { payload, rows: Object.keys(payload).length };
     }
     const text = await response.text();
@@ -287,6 +470,13 @@ export function createAbundanceStore({
       return { payload, rows: Object.keys(payload).length };
     }
     const payload = readOecdCsv(text);
+    // A release whose figures collapse in a year is broken: refused, so
+    // the source shows as failed and the last good answer stays in use.
+    const collapsed = collapsedYears(payload);
+    if (collapsed.length)
+      throw new Error(
+        `broken release: the ${collapsed.join(', ')} figures are near zero`,
+      );
     return { payload, rows: payload.length };
   };
 
@@ -374,61 +564,108 @@ export function createAbundanceStore({
     null;
 
   /** Own figures for one level from its sources; `countriesByIso2` for the country level's keys. */
+  /** A series' latest figure with its change, as a unit's value. */
+  const figure = (series, from, source) => {
+    const latest = latestAndPast(series);
+    if (!latest) return null;
+    const out = { v: latest.value, year: latest.year, from, source };
+    if (latest.past) {
+      out.d = Math.round((latest.value - latest.past.value) * 1000) / 1000;
+      out.y0 = latest.past.year;
+    }
+    return out;
+  };
+
   const applyOwn = (level, units, matcher, codes) => {
     const byId = new Map(units.map((u) => [u.id, u]));
-    const set = (unit, indicator, value, year, source) => {
-      if (!unit || !Number.isFinite(value)) return;
-      if (unit.values[indicator.id]?.from === 'own') return;
-      unit.values[indicator.id] = {
-        v: value,
-        year: Number.isFinite(year) ? year : null,
-        from: 'own',
-        source,
-      };
+    const set = (unit, indicator, series, source, from = 'own') => {
+      const target = unit && byId.get(unit.id);
+      if (!target) return;
+      const kept = target.values[indicator.id];
+      if (kept?.from === 'own' || (kept && from === 'area')) return;
+      const usable = indicator.positive
+        ? (series || []).filter((p) => p.value > 0)
+        : series;
+      const f = figure(usable, from, source);
+      if (f) target.values[indicator.id] = f;
     };
     for (const indicator of indicators) {
       const src = indicator[level];
       if (!src) continue;
       if (src.kind === 'worldbank') {
         const payload = payloadOf(`wb:${src.code}`);
-        for (const [iso2, { value, year }] of Object.entries(payload || {}))
-          set(codes.fromIso2(iso2), indicator, value, year, 'worldbank');
+        for (const [iso2, series] of Object.entries(payload || {}))
+          set(codes.fromIso2(iso2), indicator, series, 'worldbank');
       } else if (src.kind === 'ratio') {
         const of = payloadOf(`wb:${src.of}`) || {};
         const by = payloadOf(`wb:${src.by}`) || {};
-        for (const [iso2, top] of Object.entries(of)) {
-          const bottom = by[iso2];
-          if (!bottom || !(bottom.value > 0)) continue;
-          set(
-            codes.fromIso2(iso2),
-            indicator,
-            Math.round((top.value / bottom.value) * 1000) / 1000,
-            Math.min(top.year, bottom.year),
-            'worldbank',
+        for (const [iso2, tops] of Object.entries(of)) {
+          const bottoms = new Map(
+            (by[iso2] || []).map((p) => [p.year, p.value]),
           );
+          const series = (tops || [])
+            .filter((p) => bottoms.get(p.year) > 0)
+            .map((p) => ({
+              year: p.year,
+              value: Math.round((p.value / bottoms.get(p.year)) * 1000) / 1000,
+            }));
+          set(codes.fromIso2(iso2), indicator, series, 'worldbank');
         }
       } else if (src.kind === 'owid') {
         const payload = payloadOf(`owid:${src.slug}`);
-        for (const [iso3, { value, year }] of Object.entries(payload || {}))
-          set(codes.fromIso3(iso3), indicator, value, year, 'owid');
+        for (const [iso3, series] of Object.entries(payload || {}))
+          set(codes.fromIso3(iso3), indicator, series, 'owid');
       } else if (src.kind === 'oecd') {
         const rows = payloadOf(`oecd:${src.flow}:${oecdKey(src, level)}`);
         if (!Array.isArray(rows)) continue;
-        // Large regions before small ones: a state before its districts.
-        const ordered = [...rows].sort(
+        // One series per area, large regions before small ones: a state
+        // before its districts.
+        const areas = new Map();
+        for (const row of rows) {
+          const key = `${row.level}|${row.area}`;
+          const area = areas.get(key) || {
+            level: row.level,
+            area: row.area,
+            name: row.name,
+            iso3: row.iso3,
+            points: [],
+          };
+          area.points.push({ year: row.year, value: row.value });
+          areas.set(key, area);
+        }
+        const ordered = [...areas.values()].sort(
           (a, b) => (a.level === 'TL3') - (b.level === 'TL3'),
         );
-        for (const row of ordered) {
-          const iso2 = countryIso2Of(codes, row);
-          const unit = iso2 ? matcher.find(iso2, row.name) : null;
-          set(
-            unit && byId.get(unit.id),
-            indicator,
-            row.value,
-            row.year,
-            'oecd',
-          );
+        // The unit the area names. A region's name listing places
+        // ("Hartlepool and Stockton-on-Tees") is matched whole only by name:
+        // the prefix rule would give the list's figure to its first place
+        // alone. A small region's list gives it to each place it names; a
+        // large region's ("Castile and León") is a larger region, never its
+        // parts. An urban area named after two places is one city: found by
+        // its first name ("Brighton and Hove"), else by the places it names
+        // ("Cheshire West and Chester").
+        const grouped = [];
+        for (const area of ordered) {
+          const iso2 = countryIso2Of(codes, area);
+          if (!iso2) continue;
+          const listed = compoundParts(area.name).length > 1;
+          const strict = listed && level === 'region';
+          const unit = matcher.find(iso2, area.name, { prefix: !strict });
+          if (unit) {
+            set(unit, indicator, area.points, 'oecd');
+            continue;
+          }
+          const parts =
+            listed && (level !== 'region' || area.level === 'TL3')
+              ? listUnits(matcher, iso2, area.name)
+              : [];
+          for (const part of parts) set(part, indicator, area.points, 'oecd');
+          if (!parts.length) grouped.push([iso2, area]);
         }
+        // A larger region's figure for every unit inside it that has none.
+        for (const [iso2, area] of grouped)
+          for (const unit of matcher.findGroup(iso2, area.name))
+            set(unit, indicator, area.points, 'oecd', 'area');
       }
     }
   };
@@ -495,6 +732,7 @@ export function createAbundanceStore({
         year: f.year,
         from: f.from === 'own' || f.from === 'csv' ? from : f.from,
         source: f.source,
+        ...(Number.isFinite(f.d) ? { d: f.d, y0: f.y0 } : {}),
       };
     }
   };
@@ -668,6 +906,61 @@ export function createAbundanceStore({
       builds.clear();
       return { ok: true, level: key, status: status() };
     },
+    /**
+     * The countries' places among the others, 0 to 1, per indicator and as
+     * the equal-weight score, for each of a world's places by its country:
+     * `{ data: Float32Array, shape: [n, channels.length], channels }`, NaN
+     * where the country has no figure (src/demographics.mjs's pattern).
+     */
+    worldFeatures(world) {
+      const table = built('country');
+      const units = expandTableUnits(table);
+      const byIso2 = new Map(
+        units.filter((u) => u.iso2).map((u) => [u.iso2, u]),
+      );
+      const channels = [
+        ...indicators.map((i) => `abundance_${i.id}`),
+        'abundance',
+      ];
+      const ranks = indicators.map((i) => indicatorRanks(units, i));
+      const nodes = Array.isArray(world?.nodes) ? world.nodes : [];
+      const C = channels.length;
+      const data = new Float32Array(nodes.length * C).fill(NaN);
+      nodes.forEach((node, k) => {
+        const unit = byIso2.get(String(node?.country || ''));
+        if (!unit) return;
+        let sum = 0;
+        let counted = 0;
+        ranks.forEach((map, j) => {
+          const r = map.get(unit.id);
+          if (r === undefined) return;
+          data[k * C + j] = r / 100;
+          sum += r;
+          counted += 1;
+        });
+        if (counted) data[k * C + C - 1] = sum / counted / 100;
+      });
+      return { data, shape: [nodes.length, C], channels };
+    },
+    /** Write a world's abundance features beside its demographics: abundance-<worldId>.npy and .json. */
+    writeWorldFeatures(world, outDir) {
+      if (!world?.worldId) return null;
+      const { data, shape, channels } = this.worldFeatures(world);
+      fs.mkdirSync(outDir, { recursive: true });
+      const file = path.join(outDir, `abundance-${world.worldId}.npy`);
+      fs.writeFileSync(file, npyBytes(data, shape));
+      fs.writeFileSync(
+        path.join(outDir, `abundance-${world.worldId}.json`),
+        JSON.stringify({
+          worldId: world.worldId,
+          channels,
+          licence:
+            'World Bank WDI (CC BY 4.0), Our World in Data (CC BY 4.0), OECD regional database (OECD terms)',
+          builtAt: now(),
+        }),
+      );
+      return file;
+    },
     get sources() {
       return sources;
     },
@@ -675,4 +968,18 @@ export function createAbundanceStore({
       closed = true;
     },
   };
+}
+
+/** A built level's units with their values back as objects. */
+function expandTableUnits(table) {
+  const figures = table?.figures || {};
+  return (table?.units || []).map((u, k) => {
+    const values = {};
+    for (const [id, column] of Object.entries(figures)) {
+      const v = column?.v?.[k];
+      if (v !== null && v !== undefined && Number.isFinite(Number(v)))
+        values[id] = { v: Number(v) };
+    }
+    return { ...u, values };
+  });
 }

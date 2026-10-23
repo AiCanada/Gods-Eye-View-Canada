@@ -13,6 +13,8 @@ box"). Its data format is in [WORLD-MODEL-DATA.md](WORLD-MODEL-DATA.md).
 
 1. **TRAIN ON** — one tick box per data layer (from the DataManager), then
    the entries that are not layers: NEWS EVENTS, POPULATION DEMOGRAPHICS,
+   GLOBAL ABUNDANCE (the Global Abundance Map's figures per place,
+   [GLOBAL-ABUNDANCE-MAP.md](GLOBAL-ABUNDANCE-MAP.md)),
    OUTBREAK SIM EPISODES and YOUR DEVICES. ALL sits first and shows a
    partial state when only some are ticked. Each row carries its licence
    class (OPEN, NC, RESTRICTED, UNCLEAR, PERSONAL, STATIC) and its live

@@ -47,6 +47,7 @@ import { tensorflowProvider } from './tensorflow.js';
 import { mlflowProvider } from './mlflow.js';
 import { distillProvider } from './distill.js';
 import { abundanceProvider } from './abundance.js';
+import { createAbundanceStore } from '../shared/abundanceData.mjs';
 import { gnssIntegrityProxy } from './gnssIntegrity.js';
 
 /**
@@ -66,6 +67,13 @@ function localProviderPlugins({
   // that never binds still uses the keys it set.
   bindLocalIntegrityRoot(sourceRoot);
   const mlflow = mlflowProvider({ root: sourceRoot });
+  // The GLOBAL ABUNDANCE MAP's figures, shared with the AI World tab's
+  // GLOBAL ABUNDANCE row (owner request 2026-10-23). Nothing is fetched
+  // until the tab asks.
+  const abundance = createAbundanceStore({
+    root: sourceRoot,
+    log: (line) => console.log(`[abundance] ${line}`),
+  });
   return [
     openSkyProxy(),
     celestrakProxy(),
@@ -128,7 +136,7 @@ function localProviderPlugins({
     mlflow,
     // ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM (owner request 2026-10-13):
     // records every ticked feed, generates sim episodes, trains and predicts.
-    aiWorldProvider({ root: sourceRoot, tracker: mlflow.tracker }),
+    aiWorldProvider({ root: sourceRoot, tracker: mlflow.tracker, abundance }),
     // CUSTOM LLM TRAINING (owner request 2026-10-16): the POWER UP section's
     // dataset build and LoRA training on a base model already on this PC.
     llmTrainingProvider({ root: sourceRoot, tracker: mlflow.tracker }),
@@ -141,7 +149,7 @@ function localProviderPlugins({
     distillProvider({ root: sourceRoot }),
     // GLOBAL ABUNDANCE MAP (owner request 2026-10-22): the World Bank, Our
     // World in Data and OECD figures behind the abundance score, cached.
-    abundanceProvider({ root: sourceRoot }),
+    abundanceProvider({ root: sourceRoot, store: abundance }),
     keySetupEndpoint({ sourceRoot, onEnvSaved: noteOutboundEnvSaved }),
   ];
 }

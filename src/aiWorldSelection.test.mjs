@@ -40,7 +40,7 @@ import {
 
 const NOW = Date.UTC(2026, 9, 13, 12);
 
-test('TRAIN ON: one row per layer in DataManager order, then catalog-only items, then the four extras, once each', () => {
+test('TRAIN ON: one row per layer in DataManager order, then catalog-only items, then the five extras, once each', () => {
   const items = buildSelectionItems({
     layers: [
       { id: 'flights', name: 'Flights', showInTogglePanel: true },
@@ -76,6 +76,7 @@ test('TRAIN ON: one row per layer in DataManager order, then catalog-only items,
       'mystery',
       'news',
       'demographics',
+      'abundance',
       'outbreak-sim',
       'devices',
     ],
@@ -89,6 +90,7 @@ test('TRAIN ON: one row per layer in DataManager order, then catalog-only items,
       'MYSTERY',
       'NEWS EVENTS',
       'POPULATION DEMOGRAPHICS',
+      'GLOBAL ABUNDANCE',
       'OUTBREAK SIM EPISODES',
       'YOUR DEVICES',
     ],
@@ -103,6 +105,7 @@ test('TRAIN ON: one row per layer in DataManager order, then catalog-only items,
       'STATIC',
       'NC',
       'STATIC',
+      'OPEN',
       'STATIC',
       'PERSONAL',
     ],
@@ -118,13 +121,14 @@ test('TRAIN ON: one row per layer in DataManager order, then catalog-only items,
       'extra',
       'extra',
       'extra',
+      'extra',
     ],
   );
   assert.equal(items[1].licence, 'Per-feed open licences');
   assert.equal(items[1].kind, 'feed');
 });
 
-test('TRAIN ON: the four extras are there with no layers and no catalog; a layer that shares an id keeps its own place', () => {
+test('TRAIN ON: the five extras are there with no layers and no catalog; a layer that shares an id keeps its own place', () => {
   assert.deepEqual(
     buildSelectionItems().map((item) => [item.id, item.label]),
     AI_WORLD_EXTRAS.map((extra) => [extra.id, extra.label]),
@@ -133,7 +137,7 @@ test('TRAIN ON: the four extras are there with no layers and no catalog; a layer
     buildSelectionItems({ layers: 'nonsense', catalog: { items: [] } }).map(
       (item) => item.id,
     ),
-    ['news', 'demographics', 'outbreak-sim', 'devices'],
+    ['news', 'demographics', 'abundance', 'outbreak-sim', 'devices'],
   );
   const items = buildSelectionItems({
     layers: [
@@ -147,6 +151,7 @@ test('TRAIN ON: the four extras are there with no layers and no catalog; a layer
       ['news', 'HEADLINES'],
       ['cctv', 'CAMERAS'],
       ['demographics', 'POPULATION DEMOGRAPHICS'],
+      ['abundance', 'GLOBAL ABUNDANCE'],
       ['outbreak-sim', 'OUTBREAK SIM EPISODES'],
       ['devices', 'YOUR DEVICES'],
     ],

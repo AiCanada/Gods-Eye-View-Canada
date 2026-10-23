@@ -98,6 +98,7 @@ export function regionEntries(pack) {
         country: feature.country,
         iso2,
         postal: feature.postal || null,
+        group: feature.group || null,
         lat,
         lon,
       },
@@ -160,7 +161,60 @@ export function softAdminName(name) {
  * settles most; these are the ones it cannot.
  */
 export const UNIT_NAME_ALIASES = Object.freeze({
+  BE: {
+    'brussels capital region': 'brussels',
+    'flemish region': 'flemish',
+    'walloon region': 'walloon',
+  },
   CA: { 'yukon territory': 'yukon' },
+  ES: {
+    andalusia: 'andalucia',
+    catalonia: 'cataluna',
+    'castile la mancha': 'castilla la mancha',
+    'castile and leon': 'castilla y leon',
+    'basque country': 'pais vasco',
+    'canary islands': 'canary is',
+    'community of madrid': 'madrid',
+    'region of murcia': 'murcia',
+    'balearic islands': 'baleares',
+    'valencian community': 'valenciana',
+    valencia: 'valenciana',
+    navarre: 'foral de navarra',
+    aragon: 'aragon',
+  },
+  FR: { brittany: 'bretagne', normandy: 'normandie', corsica: 'corse' },
+  GB: {
+    'north east england': 'north east',
+    'north west england': 'north west',
+    'south east england': 'south east',
+    'south west england': 'south west',
+    'greater london': 'london',
+    'east of england': 'east of england',
+  },
+  IE: { midland: 'midlands' },
+  IT: {
+    piedmont: 'piemonte',
+    lombardy: 'lombardia',
+    tuscany: 'toscana',
+    apulia: 'puglia',
+    sicily: 'sicilia',
+    sardinia: 'sardegna',
+    'aosta valley': 'valle d aosta',
+    'trentino south tyrol': 'trentino alto adige',
+    'autonomous prov bolzano': 'bolzano',
+    'autonomous prov trento': 'trento',
+  },
+  JP: { 'kyushu okinawa': 'kyushu' },
+  PT: {
+    north: 'norte',
+    centre: 'centro',
+    center: 'centro',
+    'greater lisbon': 'lisbon',
+    'lisbon metropolitan area': 'lisbon',
+    'setubal peninsula': 'setubal',
+    'autonomous region of the azores': 'azores',
+    'autonomous region of madeira': 'madeira',
+  },
   CL: { magallanes: 'magallanes y antartica chilena' },
   CO: {
     'cauca valley': 'valle del cauca',
@@ -240,8 +294,24 @@ export function createUnitMatcher(units) {
     const iso2 = u.iso2 || 'XX';
     let index = byCountry.get(iso2);
     if (!index) {
-      index = { exact: new Map(), soft: new Map(), softKeys: [] };
+      index = {
+        exact: new Map(),
+        soft: new Map(),
+        softKeys: [],
+        groups: new Map(),
+      };
       byCountry.set(iso2, index);
+    }
+    if (u.group) {
+      for (const key of new Set([
+        normalizeAdminName(u.group),
+        softAdminName(u.group),
+      ])) {
+        if (!key) continue;
+        const list = index.groups.get(key) || [];
+        if (!list.includes(u)) list.push(u);
+        index.groups.set(key, list);
+      }
     }
     const names = [u.name, u.nameEn, ...(u.alt || [])].filter(Boolean);
     for (const name of names) {
@@ -267,8 +337,13 @@ export function createUnitMatcher(units) {
     return found;
   };
   return {
-    /** @returns {object|null} */
-    find(iso2, name) {
+    /**
+     * The unit a name names: the alias table, the exact name, the soft one,
+     * then (unless `prefix` is false) the one unit whose name starts the
+     * same way.
+     * @returns {object|null}
+     */
+    find(iso2, name, { prefix = true } = {}) {
       const index = byCountry.get(iso2 || 'XX');
       if (!index) return null;
       const exact = normalizeAdminName(name);
@@ -291,12 +366,79 @@ export function createUnitMatcher(units) {
         if (hit) return hit;
       }
       if (index.soft.has(soft)) return index.soft.get(soft);
-      return prefixOnce(index, soft);
+      return prefix ? prefixOnce(index, soft) : null;
+    },
+    /**
+     * The units inside a larger region a source names (a state's districts,
+     * a country's part): the alias table, then the exact and soft group
+     * names. Empty when the name is no group here.
+     * @returns {object[]}
+     */
+    findGroup(iso2, name) {
+      const index = byCountry.get(iso2 || 'XX');
+      if (!index || !index.groups.size) return [];
+      const keys = [];
+      const exact = normalizeAdminName(name);
+      const soft = softAdminName(name);
+      for (const raw of [exact, soft]) {
+        if (!raw) continue;
+        const alias = UNIT_NAME_ALIASES[iso2]?.[raw];
+        if (alias) keys.push(normalizeAdminName(alias), softAdminName(alias));
+        keys.push(raw);
+      }
+      for (const key of keys) {
+        const list = key ? index.groups.get(key) : null;
+        if (list?.length) return list;
+      }
+      return [];
     },
     countries() {
       return [...byCountry.keys()];
     },
   };
+}
+
+/**
+ * The parts of a name that lists places ("Hartlepool and Stockton-on-Tees",
+ * "Armagh City, Banbridge and Craigavon"), "&" read as "and"; none for a
+ * single name. A comma splits only a name that also has "and", so
+ * "Düsseldorf, Kreisfreie Stadt" stays one name.
+ */
+export function compoundParts(name) {
+  const text = String(name || '').replace(/\s*&\s*/g, ' and ');
+  if (!/\sand\s/i.test(text)) return [];
+  return text
+    .split(/\s*,\s*(?:and\s+)?|\s+and\s+/i)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 3);
+}
+
+/**
+ * The units a list name names, each by its name and never by the prefix
+ * rule (which would give "North East" to North East Lincolnshire): runs of
+ * parts first, so a unit whose own name holds "and" ("Perth and Kinross",
+ * "Kensington & Chelsea") is found whole.
+ * @param {{find: Function}} matcher from createUnitMatcher
+ * @returns {object[]}
+ */
+export function listUnits(matcher, iso2, name) {
+  const parts = compoundParts(name);
+  if (parts.length < 2) return [];
+  const found = [];
+  for (let start = 0; start < parts.length;) {
+    let next = start + 1;
+    for (let end = parts.length; end > start; end -= 1) {
+      const unit = matcher.find(iso2, parts.slice(start, end).join(' and '), {
+        prefix: false,
+      });
+      if (!unit) continue;
+      if (!found.includes(unit)) found.push(unit);
+      next = end;
+      break;
+    }
+    start = next;
+  }
+  return found;
 }
 
 /** ISO 3166-1 alpha-2 from a code a source writes: alpha-2 (with the OECD's own), alpha-3 through the countries. */

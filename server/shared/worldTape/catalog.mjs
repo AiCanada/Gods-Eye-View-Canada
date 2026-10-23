@@ -100,6 +100,19 @@ export const EXTRA_ITEMS = Object.freeze([
     cadenceMs: null,
     phase: 2,
   },
+  // The GLOBAL ABUNDANCE MAP's country figures as static features of every
+  // place (owner request 2026-10-23), written beside the demographics.
+  {
+    id: 'abundance',
+    label: 'Global abundance',
+    layers: [],
+    kind: 'static',
+    class: 'open',
+    licence:
+      'World Bank WDI and Our World in Data (CC BY 4.0) and the OECD regional database (OECD terms), joined to the Natural Earth countries',
+    cadenceMs: null,
+    phase: 2,
+  },
   {
     id: 'outbreak-sim',
     label: 'Outbreak sim episodes',

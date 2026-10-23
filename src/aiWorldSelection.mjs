@@ -48,6 +48,13 @@ export const AI_WORLD_EXTRAS = Object.freeze([
     label: msgl('POPULATION DEMOGRAPHICS'),
     cls: 'static',
   }),
+  // The GLOBAL ABUNDANCE MAP's figures as static features of every place
+  // (owner request 2026-10-23).
+  Object.freeze({
+    id: 'abundance',
+    label: msgl('GLOBAL ABUNDANCE'),
+    cls: 'open',
+  }),
   Object.freeze({
     id: 'outbreak-sim',
     label: msgl('OUTBREAK SIM EPISODES'),
@@ -68,6 +75,7 @@ export const AI_WORLD_EXTRAS = Object.freeze([
  * the rows are translated; a label not here shows as the server gives it.
  */
 export const AI_WORLD_FEED_LABELS = Object.freeze([
+  msgl('GLOBAL ABUNDANCE'),
   msgl('EARTHQUAKES'),
   msgl('TRANSIT (BUSES, TRAMS, METRO, TRAINS)'),
   msgl('FLIGHTS (WORLDWIDE)'),
@@ -115,6 +123,9 @@ export const AI_WORLD_FEED_LABELS = Object.freeze([
  * translated; a note not here shows as the server gives it.
  */
 export const AI_WORLD_LICENCES = Object.freeze([
+  msgl(
+    'World Bank WDI and Our World in Data (CC BY 4.0) and the OECD regional database (OECD terms), joined to the Natural Earth countries',
+  ),
   msgl('USGS earthquake catalog (U.S. public domain)'),
   msgl(
     'Per-feed open realtime data: MBTA/MassDOT, CapMetro, Metro Transit, OVapi, Entur (NLOD), TransLink, HSL (CC BY 4.0)',

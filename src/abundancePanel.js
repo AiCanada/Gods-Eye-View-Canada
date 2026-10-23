@@ -28,12 +28,18 @@ import {
   ABUNDANCE_LEVELS,
   ABUNDANCE_PICK_EVENT,
   ABUNDANCE_VIEW_EVENT,
+  WEIGHT_MAX,
+  WEIGHT_MIN,
+  WEIGHT_STEP,
   abundanceLinks,
   cleanIndicatorIds,
   cleanLevel,
+  cleanWeights,
   expandTable,
   formatFigure,
+  indicatorById,
   indicatorMeasure,
+  indicatorStats,
   rankUnits,
   scoreColor,
   scoreUnits,
@@ -61,6 +67,7 @@ const FROM_WORDS = Object.freeze({
   csv: msgl('YOUR CSV'),
   region: msgl('FROM ITS STATE OR PROVINCE'),
   country: msgl('FROM ITS COUNTRY'),
+  area: msgl('FROM ITS LARGER REGION'),
 });
 const SOURCE_WORDS = Object.freeze({
   worldbank: msgl('WORLD BANK'),
@@ -89,6 +96,7 @@ export function readChoice(raw) {
     indicators,
     show: parsed?.show !== false,
     grid: parsed?.grid === true,
+    weights: cleanWeights(parsed?.weights),
   };
 }
 
@@ -161,6 +169,12 @@ export function coverageText(cover, level) {
       count: formatCount(cover.own),
     }),
   ];
+  if (cover.area)
+    parts.push(
+      tl('{count} FROM THEIR LARGER REGION', {
+        count: formatCount(cover.area),
+      }),
+    );
   if (cover.inherited)
     parts.push(
       level === 'city'
@@ -187,27 +201,77 @@ export function scoreText(score) {
 }
 
 /** One figure's line: the indicator, its value, its year, its place, and where it came from. */
+/** A figure with its unit: a symbol ($, %, µg/m³) as it is, a word (YEARS) translated. */
+export function valueWithUnit(indicator, value) {
+  const text = localDigits(formatFigure(indicator, value));
+  if (!text || !indicator?.unit) return text;
+  return /[A-Z]/.test(indicator.unit)
+    ? `${text} ${tl(indicator.unit)}`
+    : `${text} ${indicator.unit}`;
+}
+
+/** The change of a figure since an earlier year: ▲ +2.1 SINCE 2019. */
+export function trendText(indicator, figure) {
+  const d = Number(figure?.d);
+  if (!Number.isFinite(d) || !Number.isFinite(figure?.y0)) return '';
+  // The arrow follows the change as shown: one that rounds to nothing is ■ 0.
+  const decimals = Number.isFinite(indicator?.decimals)
+    ? indicator.decimals
+    : 1;
+  const shown = Number(d.toFixed(decimals));
+  const arrow = shown > 0 ? '▲' : shown < 0 ? '▼' : '■';
+  const change = `${shown > 0 ? '+' : ''}${localDigits(formatFigure(indicator, shown))}`;
+  return `${arrow} ${tl('{change} SINCE {year}', {
+    change,
+    year: localDigits(String(figure.y0)),
+  })}`;
+}
+
+/**
+ * What the legend's ends and middle read when one indicator is ticked: the
+ * figure behind red (the scarce end), amber (the median) and green, in the
+ * indicator's units; null with no figures.
+ */
+export function legendValues(units, indicator) {
+  const stats = indicatorStats(units, indicator);
+  if (!stats || !indicator) return null;
+  const scarce = indicator.better === 'low' ? stats.max : stats.min;
+  const abundant = indicator.better === 'low' ? stats.min : stats.max;
+  return {
+    low: valueWithUnit(indicator, scarce),
+    mid: valueWithUnit(indicator, stats.median),
+    high: valueWithUnit(indicator, abundant),
+  };
+}
+
+/** The legend's ends and middle when more than one indicator is ticked: the score, 0, 50 and 100. */
+export function scoreLegend() {
+  return {
+    low: localDigits(String(0)),
+    mid: localDigits(String(50)),
+    high: localDigits(String(100)),
+  };
+}
+
 export function figureText(indicator, figure, rank, level) {
-  const parts = [tl(indicator.label)];
-  const value = localDigits(formatFigure(indicator, figure.v));
-  parts.push(
-    indicator.unit === '$'
-      ? `${value} $`
-      : indicator.unit === '%'
-        ? `${value} %`
-        : indicator.unit
-          ? `${value} ${tl(indicator.unit)}`
-          : value,
-  );
+  const parts = [tl(indicator.label), valueWithUnit(indicator, figure.v)];
   if (Number.isFinite(figure.year))
     parts.push(localDigits(String(figure.year)));
+  const trend = trendText(indicator, figure);
+  if (trend) parts.push(trend);
   if (Number.isFinite(rank))
     parts.push(tl('PLACE {n} OF 100', { n: digits(rank, 0) }));
   const from = FROM_WORDS[figure.from];
   if (from) parts.push(tl(from));
-  parts.push(
-    tl(indicatorMeasure(indicator, figure.from === 'own' ? level : 'country')),
-  );
+  // The measure of where the figure was taken: the place's own level, a
+  // state's or a larger region's (the OECD's regional one), or the country's.
+  const measuredAt =
+    figure.from === 'own'
+      ? level
+      : figure.from === 'region' || figure.from === 'area'
+        ? 'region'
+        : 'country';
+  parts.push(tl(indicatorMeasure(indicator, measuredAt)));
   return parts.join(' · ');
 }
 
@@ -504,13 +568,57 @@ export function initAbundancePanel({
       render();
       publish();
     });
+    // The weight: how much this indicator counts in the score, ×0.5 to ×3.
+    const weight = element(doc, 'input', 'abundance-weight');
+    weight.type = 'range';
+    weight.min = String(WEIGHT_MIN);
+    weight.max = String(WEIGHT_MAX);
+    weight.step = String(WEIGHT_STEP);
+    weight.value = '1';
+    weight.dataset.indicator = indicator.id;
+    weight.setAttribute(
+      'aria-label',
+      tl('Weight of {indicator} in the score', {
+        indicator: tl(indicator.label),
+      }),
+    );
+    weight.title = tl('How much this indicator counts in the score');
+    const times = element(doc, 'span', 'abundance-times');
+    const onWeight = () => {
+      choice.weights = cleanWeights({
+        ...choice.weights,
+        [indicator.id]: Number(weight.value),
+      });
+      keepChoice();
+      compute();
+      render();
+      publish();
+    };
+    weight.addEventListener('input', onWeight);
+    weight.addEventListener('change', onWeight);
+    const head = element(doc, 'div', 'abundance-row-head');
+    head.append(row.label, weight, times);
     const measure = element(doc, 'span', 'abundance-measure');
     const cover = element(doc, 'span', 'abundance-cover');
-    li.append(row.label, measure, cover);
+    li.append(head, measure, cover);
     rows.append(li);
-    ui.rows.set(indicator.id, { box: row.box, measure, cover });
+    ui.rows.set(indicator.id, { box: row.box, measure, cover, weight, times });
   }
   host.append(rows);
+  ui.resetWeights = button(
+    doc,
+    tl('RESET WEIGHTS'),
+    'reset-weights',
+    tl('Every indicator counts once again'),
+  );
+  ui.resetWeights.addEventListener('click', () => {
+    choice.weights = {};
+    keepChoice();
+    compute();
+    render();
+    publish();
+  });
+  host.append(ui.resetWeights);
 
   const legend = element(doc, 'div', 'abundance-legend');
   legend.append(
@@ -519,13 +627,21 @@ export function initAbundancePanel({
     element(doc, 'span', 'abundance-legend-word', tl('ABUNDANT')),
   );
   host.append(legend);
+  // Under the bar: with one indicator ticked, the figure behind each end
+  // and the middle, in its units; with more, the score.
+  ui.legendLow = element(doc, 'span', 'abundance-legend-value');
+  ui.legendMid = element(doc, 'span', 'abundance-legend-value');
+  ui.legendHigh = element(doc, 'span', 'abundance-legend-value');
+  const legendValuesRow = element(doc, 'div', 'abundance-legend-values');
+  legendValuesRow.append(ui.legendLow, ui.legendMid, ui.legendHigh);
+  host.append(legendValuesRow);
   host.append(
     element(
       doc,
       'p',
       'abundance-note',
       tl(
-        'The score is the mean place of a unit among the others, 0 to 100, over the ticked indicators it has a figure for.',
+        'The score is the mean place of a unit among the others, 0 to 100, over the ticked indicators it has a figure for, each counted by its weight.',
       ),
     ),
   );
@@ -668,7 +784,12 @@ export function initAbundancePanel({
       ranking = [];
       return;
     }
-    scores = scoreUnits(t.units, choice.indicators);
+    scores = scoreUnits(
+      t.units,
+      choice.indicators,
+      ABUNDANCE_INDICATORS,
+      choice.weights,
+    );
     ranking = rankUnits(t.units, scores);
     t.scored = ranking.length;
     links = choice.grid
@@ -835,12 +956,26 @@ export function initAbundancePanel({
       const row = ui.rows.get(indicator.id);
       const on = chosen.has(indicator.id);
       if (row.box.checked !== on) row.box.checked = on;
+      const w = choice.weights[indicator.id] ?? 1;
+      if (Number(row.weight.value) !== w) row.weight.value = String(w);
+      row.weight.disabled = !on;
+      row.times.textContent = tl('×{n}', { n: localDigits(String(w)) });
       row.measure.textContent = tl(indicatorMeasure(indicator, choice.level));
       row.cover.textContent = coverageText(
         t?.coverage?.[indicator.id],
         choice.level,
       );
     }
+    ui.resetWeights.hidden = !Object.keys(choice.weights).length;
+    const single =
+      choice.indicators.length === 1
+        ? indicatorById(choice.indicators[0])
+        : null;
+    const legendText = single ? legendValues(t?.units, single) : null;
+    const ends = legendText || scoreLegend();
+    ui.legendLow.textContent = ends.low;
+    ui.legendMid.textContent = ends.mid;
+    ui.legendHigh.textContent = ends.high;
     const unit = selectedUnit();
     ui.selectedNote.hidden = Boolean(unit);
     ui.selectedName.textContent = unit ? unit.name : '';
