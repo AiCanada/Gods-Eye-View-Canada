@@ -30,6 +30,11 @@ THEIR COUNTRY · 2025`).
    year, its place among the others (`PLACE 87 OF 100`), where it came from
    (`FROM ITS COUNTRY`, `FROM ITS STATE OR PROVINCE`, `YOUR CSV`) and the
    measure. The same lines are the card on the globe when a place is clicked.
+   The coloured fill takes no clicks itself, so every layer under it (street
+   level photo lines, roads, rail) stays clickable: a dot is picked as
+   itself, another layer's object under the pointer comes first, and
+   otherwise the place is the country or state the pointer's point on the
+   globe falls in (the photorealistic tiles count as the ground).
 7. **RANKING**: MOST ABUNDANT or LEAST ABUNDANT, ten rows; a row click keeps
    that place selected.
 8. **ABUNDANCE GRID** (when ticked): the links, `Québec → Nunavut · GAP 61 ·

@@ -1,5 +1,15 @@
 # Changelog
 
+- GLOBAL ABUNDANCE MAP: the map's country and state fill no longer takes
+  the clicks of the layers under it. With SHOW ON MAP on (the default) the
+  fill was a pickable ground primitive over every country, so a pick on the
+  ground returned the fill: street-level photo lines could not be clicked,
+  and CI's Street Level browser gate has failed since f6d94180 ("a sequence
+  line across the middle of the view"). The fill now takes no picks; the
+  place under the pointer is found from its point on the globe (inside a
+  ring, outside its holes), a city dot is still picked as itself, and
+  another layer's object under the pointer comes first.
+
 - GLOBAL ABUNDANCE MAP, the detail round (owner request 2026-10-23: "A real
   legend when one indicator is ticked … Weights per indicator (sliders) …
   all data upgrades, and integration"). A weight slider on every INDICATORS

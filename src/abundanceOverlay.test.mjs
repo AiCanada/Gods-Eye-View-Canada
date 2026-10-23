@@ -14,6 +14,8 @@ import {
   horizonDistance,
   initAbundanceOverlay,
   pickedUnitId,
+  shapeAt,
+  shapeIndex,
   pointSize,
 } from './abundanceOverlay.js';
 
@@ -113,6 +115,12 @@ function fakeCesium({ groundSupported = true } = {}) {
       toValue: (c) => c,
     },
     ClassificationType: { BOTH: 'both' },
+    Cesium3DTileset: class Tileset {},
+    Cartographic: {
+      fromCartesian: (c) =>
+        c ? { longitude: (c.lon * Math.PI) / 180, latitude: (c.lat * Math.PI) / 180 } : undefined,
+    },
+    Math: { toDegrees: (r) => (r * 180) / Math.PI },
     Color: { fromCssColorString: color },
     Cartesian3: {
       fromDegrees: (lon, lat) => ({ lon, lat }),
@@ -132,7 +140,12 @@ function fakeWorld() {
   let renders = 0;
   let picked = null;
   const frames = [];
-  const camera = { positionCartographic: { height: 500_000 } };
+  // The globe under a screen position, as the test sets it.
+  const ground = new Map();
+  const camera = {
+    positionCartographic: { height: 500_000 },
+    pickEllipsoid: (position) => ground.get(`${position?.x},${position?.y}`),
+  };
   const viewer = {
     camera,
     scene: {
@@ -179,6 +192,7 @@ function fakeWorld() {
     timers,
     renders: () => renders,
     setPicked: (p) => (picked = p),
+    setGround: (position, lonLat) => ground.set(`${position.x},${position.y}`, lonLat),
     view: (detail) => listeners.get(ABUNDANCE_VIEW_EVENT)?.({ detail }),
     card: (detail) => listeners.get(ABUNDANCE_CARD_EVENT)?.({ detail }),
   };
@@ -267,6 +281,7 @@ test('countries are coloured ground polygons once ready; cities are points; link
   const fill = w.added.find((p) => p instanceof cesium.GroundPrimitive);
   assert.ok(fill, 'a ground primitive');
   assert.equal(fill.options.classificationType, 'both');
+  assert.equal(fill.options.allowPicking, false, 'the fill takes no picks from the layers under it');
   assert.deepEqual(fill.options.geometryInstances.map((i) => i.id), ['TST|0', 'TST|1', 'FAR|0']);
   assert.equal(fill.options.geometryInstances[1].geometry.hierarchy.holes.length, 1);
   // Colours wait for the geometry; the selected unit is the brightest.
@@ -366,7 +381,9 @@ test('the pointer: a move reports the unit under it, a click keeps it, both only
   assert.equal(fill.options.classificationType, undefined);
   fill.ready = true;
   const picks = () => w.sent.filter((e) => e.type === ABUNDANCE_PICK_EVENT).map((e) => e.detail);
-  w.setPicked({ id: 'TST|0' });
+  // The pointer's place on the globe names the unit: the fill itself takes no picks.
+  w.setGround({ x: 1, y: 1 }, { lon: 5, lat: 5 });
+  w.setGround({ x: 2, y: 2 }, { lon: 20.35, lat: 0.25 });
   clock = 1000;
   handler.actions.get('move')({ endPosition: { x: 1, y: 1 } });
   assert.deepEqual(picks(), [{ id: 'TST', level: 'country', hover: true }]);
@@ -381,24 +398,42 @@ test('the pointer: a move reports the unit under it, a click keeps it, both only
   handler.actions.get('move')({ endPosition: { x: 9, y: 9 } });
   assert.deepEqual(picks().at(-1), { id: null, level: 'country', hover: true });
   assert.deepEqual(fill.getGeometryInstanceAttributes('TST|0').color, { css: '#ffd21a', a: 0.55 });
-  // A click, only when nothing else owns the pointer; an unknown pick says nothing.
-  w.setPicked({ id: 'TST|0' });
+  // A click, only when nothing else owns the pointer; another layer's object under it comes first.
   handler.actions.get('click')({ position: { x: 1, y: 1 } });
   assert.deepEqual(picks().at(-1), { id: 'TST', level: 'country', hover: false });
   free = false;
   handler.actions.get('click')({ position: { x: 1, y: 1 } });
   assert.equal(picks().length, 3);
   free = true;
-  w.setPicked({ id: 'nobody|0' });
+  w.setPicked({ id: 'mly:seq:1' });
   handler.actions.get('click')({ position: { x: 1, y: 1 } });
-  assert.equal(picks().length, 3);
+  assert.equal(picks().length, 3, "a street-level line's click is its own");
+  // The base map (a 3D tileset) is the ground: the place under it still answers.
+  w.setPicked({ primitive: new cesium.Cesium3DTileset() });
+  handler.actions.get('click')({ position: { x: 1, y: 1 } });
+  assert.deepEqual(picks().at(-1), { id: 'TST', level: 'country', hover: false });
+  w.setPicked(null);
+  // In a hole of a shape, the shape does not answer.
+  handler.actions.get('click')({ position: { x: 2, y: 2 } });
+  assert.equal(picks().length, 4);
   w.view({ level: 'country', show: false, units: [], links: [] });
-  w.setPicked({ id: 'TST|0' });
   clock = 3000;
   handler.actions.get('move')({ endPosition: { x: 1, y: 1 } });
-  assert.equal(picks().length, 3, 'nothing while the map is hidden');
+  assert.equal(picks().length, 4, 'nothing while the map is hidden');
   overlay.destroy();
   assert.equal(handler.destroyed, true);
+});
+
+test('the place a point on the globe falls in: inside a ring, outside its holes', () => {
+  const index = shapeIndex(SHAPES.country.shapes);
+  assert.equal(index.length, 3);
+  assert.equal(shapeAt(index, 5, 5), 'TST');
+  assert.equal(shapeAt(index, 105, 9.9), 'FAR');
+  assert.equal(shapeAt(index, 20.8, 0.1), 'TST', 'the second polygon');
+  assert.equal(shapeAt(index, 20.35, 0.25), null, 'its hole');
+  assert.equal(shapeAt(index, 50, 5), null, 'the sea between');
+  assert.equal(shapeAt(index, NaN, 5), null);
+  assert.deepEqual(shapeIndex([{ id: 'x', polygons: [[[[0, 0], [1, 1]]]] }]), [], 'a ring of two points is no ring');
 });
 
 test('without a viewer the overlay is null', () => {

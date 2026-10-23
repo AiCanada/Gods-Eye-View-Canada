@@ -168,6 +168,69 @@ export function horizonDistance(cameraHeight) {
   return Math.sqrt(h * (2 * EARTH_RADIUS_M + h));
 }
 
+/**
+ * The shapes' rings, each with its box, for finding the shape a point on
+ * the globe falls in: the fill takes no picks, so the overlay looks the
+ * pointer's place up itself.
+ * @param {Array<{id: string, polygons: number[][][][]}>} shapes
+ */
+export function shapeIndex(shapes) {
+  const index = [];
+  for (const shape of shapes || []) {
+    for (const [outer, ...holes] of shape?.polygons || []) {
+      if (!Array.isArray(outer) || outer.length < 3) continue;
+      let minLon = Infinity;
+      let maxLon = -Infinity;
+      let minLat = Infinity;
+      let maxLat = -Infinity;
+      for (const [lon, lat] of outer) {
+        if (lon < minLon) minLon = lon;
+        if (lon > maxLon) maxLon = lon;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+      }
+      index.push({
+        id: shape.id,
+        outer,
+        holes: holes.filter((h) => Array.isArray(h) && h.length >= 3),
+        minLon,
+        maxLon,
+        minLat,
+        maxLat,
+      });
+    }
+  }
+  return index;
+}
+
+/** Whether a point lies inside a ring of [lon, lat] (even-odd). */
+function inRing(lon, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (
+      yi > lat !== yj > lat &&
+      lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi
+    )
+      inside = !inside;
+  }
+  return inside;
+}
+
+/** The id of the shape a point falls in (inside a ring, outside its holes); null in none. */
+export function shapeAt(index, lon, lat) {
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+  for (const part of index || []) {
+    if (lon < part.minLon || lon > part.maxLon) continue;
+    if (lat < part.minLat || lat > part.maxLat) continue;
+    if (!inRing(lon, lat, part.outer)) continue;
+    if (part.holes.some((hole) => inRing(lon, lat, hole))) continue;
+    return part.id;
+  }
+  return null;
+}
+
 /** The unit id a pick names, from the part id the shapes were drawn under. */
 export function pickedUnitId(picked) {
   const raw = picked?.id ?? picked?.primitive?.id;
@@ -335,7 +398,9 @@ export function initAbundanceOverlay({
           translucent: true,
         }),
         asynchronous: true,
-        allowPicking: true,
+        // Never pickable: a fill over every country would take the picks
+        // of every ground layer under it (street-level lines among them).
+        allowPicking: false,
         ...(onGround
           ? { classificationType: cesium.ClassificationType.BOTH }
           : {}),
@@ -348,6 +413,7 @@ export function initAbundanceOverlay({
       fill,
       parts,
       byId: new Map(),
+      index: shapeIndex(data.shapes),
     };
   };
 
@@ -512,6 +578,35 @@ export function initAbundanceOverlay({
     );
   };
 
+  /** The point on the globe under a screen position, in degrees; null off the globe. */
+  const lonLatAt = (position) => {
+    try {
+      const at = viewer.camera?.pickEllipsoid?.(
+        position,
+        scene.globe?.ellipsoid,
+      );
+      const c = at ? cesium.Cartographic.fromCartesian(at) : null;
+      return c
+        ? {
+            lon: cesium.Math.toDegrees(c.longitude),
+            lat: cesium.Math.toDegrees(c.latitude),
+          }
+        : null;
+    } catch {
+      return null;
+    }
+  };
+
+  /** A pick of the base map (a 3D tileset: photorealistic tiles, buildings) is the ground. */
+  const isGround = (picked) =>
+    typeof cesium.Cesium3DTileset === 'function' &&
+    picked?.primitive instanceof cesium.Cesium3DTileset;
+
+  /**
+   * The unit under the pointer: a city dot as itself; then, unless another
+   * layer's object is there (it comes first), the shape the globe point
+   * falls in. The fill takes no picks, so it never hides a ground layer.
+   */
   const pickAt = (position) => {
     if (!built || !position) return null;
     let picked = null;
@@ -521,7 +616,11 @@ export function initAbundanceOverlay({
       picked = null;
     }
     const id = pickedUnitId(picked);
-    return id && (built.parts.has(id) || built.byId.has(id)) ? id : null;
+    if (id && built.byId.has(id)) return id;
+    if (built.kind !== 'polygons') return null;
+    if (picked && !isGround(picked)) return null;
+    const at = lonLatAt(position);
+    return at ? shapeAt(built.index, at.lon, at.lat) : null;
   };
 
   const onMove = (movement) => {
