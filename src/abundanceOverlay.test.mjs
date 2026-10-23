@@ -14,6 +14,7 @@ import {
   horizonDistance,
   initAbundanceOverlay,
   pickedUnitId,
+  sitOutPicks,
   shapeAt,
   shapeIndex,
   pointSize,
@@ -58,6 +59,9 @@ function fakeCesium({ groundSupported = true } = {}) {
     }
     getGeometryInstanceAttributes(id) {
       return this.attributes.get(id) || null;
+    }
+    update(frameState) {
+      (this.updates ||= []).push(frameState);
     }
   }
   class GroundPrimitive extends Fill {
@@ -137,6 +141,7 @@ function fakeWorld() {
   const listeners = new Map();
   const sent = [];
   const added = [];
+  const groundAdded = [];
   let renders = 0;
   let picked = null;
   const frames = [];
@@ -159,6 +164,10 @@ function fakeWorld() {
       primitives: {
         add: (p) => (added.push(p), p),
         remove: (p) => added.splice(added.indexOf(p), 1),
+      },
+      groundPrimitives: {
+        add: (p) => (added.push(p), groundAdded.push(p), p),
+        remove: (p) => (added.splice(added.indexOf(p), 1), groundAdded.splice(groundAdded.indexOf(p), 1)),
       },
       requestRender: () => (renders += 1),
       pick: () => picked,
@@ -189,6 +198,7 @@ function fakeWorld() {
     listeners,
     sent,
     added,
+    groundAdded,
     timers,
     renders: () => renders,
     setPicked: (p) => (picked = p),
@@ -282,6 +292,12 @@ test('countries are coloured ground polygons once ready; cities are points; link
   assert.ok(fill, 'a ground primitive');
   assert.equal(fill.options.classificationType, 'both');
   assert.equal(fill.options.allowPicking, false, 'the fill takes no picks from the layers under it');
+  assert.ok(w.groundAdded.includes(fill), 'in the ground collection, under the other ground layers');
+  // It sits out pick passes (Cesium would still draw it there, as nothing), and renders as before.
+  fill.update({ passes: { pick: true } });
+  assert.equal(fill.updates, undefined);
+  fill.update({ passes: { render: true } });
+  assert.equal(fill.updates.length, 1);
   assert.deepEqual(fill.options.geometryInstances.map((i) => i.id), ['TST|0', 'TST|1', 'FAR|0']);
   assert.equal(fill.options.geometryInstances[1].geometry.hierarchy.holes.length, 1);
   // Colours wait for the geometry; the selected unit is the brightest.
@@ -327,6 +343,7 @@ test('countries are coloured ground polygons once ready; cities are points; link
   await overlay.loading;
   assert.deepEqual(loads, ['country', 'city']);
   assert.equal(w.added.includes(fill), false, 'the country fill is gone');
+  assert.equal(w.groundAdded.includes(fill), false, 'from the ground collection too');
   const points = w.added.find((p) => p instanceof cesium.PointPrimitiveCollection);
   assert.equal(points.items.length, 2);
   assert.equal(points.items[0].id, '1');
@@ -378,6 +395,7 @@ test('the pointer: a move reports the unit under it, a click keeps it, both only
   await overlay.loading;
   const fill = w.added.find((p) => p instanceof cesium.Primitive);
   assert.ok(fill, 'a plain primitive where ground primitives are not supported');
+  assert.equal(w.groundAdded.includes(fill), false, 'a plain primitive stays with the other primitives');
   assert.equal(fill.options.classificationType, undefined);
   fill.ready = true;
   const picks = () => w.sent.filter((e) => e.type === ABUNDANCE_PICK_EVENT).map((e) => e.detail);
@@ -422,6 +440,24 @@ test('the pointer: a move reports the unit under it, a click keeps it, both only
   assert.equal(picks().length, 4, 'nothing while the map is hidden');
   overlay.destroy();
   assert.equal(handler.destroyed, true);
+});
+
+test('a primitive sits out pick passes: updated for rendering, never for a pick', () => {
+  const calls = [];
+  const primitive = {
+    name: 'fill',
+    update(frameState) {
+      calls.push([this.name, frameState.passes]);
+      return 'drawn';
+    },
+  };
+  assert.equal(sitOutPicks(primitive), primitive);
+  assert.equal(primitive.update({ passes: { pick: true } }), undefined);
+  assert.equal(primitive.update({ passes: { render: true } }), 'drawn');
+  assert.deepEqual(calls, [['fill', { render: true }]]);
+  assert.equal(sitOutPicks(null), null);
+  const plain = {};
+  assert.equal(sitOutPicks(plain), plain, 'nothing to wrap');
 });
 
 test('the place a point on the globe falls in: inside a ring, outside its holes', () => {

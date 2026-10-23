@@ -1,5 +1,17 @@
 # Changelog
 
+- GLOBAL ABUNDANCE MAP: the fill now sits out Cesium's pick passes, which
+  is what CI's Street Level browser gate needed; the change before this one
+  ("the fill takes no picks") was not enough. In Cesium 1.138 an
+  unpickable classification primitive still draws in the pick pass, as
+  nothing, so the fill went on wiping the picks of the ground layers drawn
+  before it: no street-level line or cone under it could be selected. The
+  fill's update is skipped in a pick pass, and the fill now sits in the
+  ground collection with the app's other ground layers. Checked against a
+  production build served as CI serves it, with fixtures and no keys: all
+  twelve gate steps pass with the map on; with the change before this one
+  the gate failed as in CI, and with the map off it passed.
+
 - GLOBAL ABUNDANCE MAP: the map's country and state fill no longer takes
   the clicks of the layers under it. With SHOW ON MAP on (the default) the
   fill was a pickable ground primitive over every country, so a pick on the

@@ -231,6 +231,24 @@ export function shapeAt(index, lon, lat) {
   return null;
 }
 
+/**
+ * Keep a primitive out of Cesium's pick passes. An unpickable classification
+ * primitive (allowPicking: false) still draws in them in Cesium 1.138, as
+ * nothing, and wipes the picks of the ground layers drawn before it: the
+ * street-level lines and cones under the fill could not be clicked, and
+ * CI's Street Level browser gate failed on it. Its update is skipped in a
+ * pick pass, so it draws nothing there; render passes are untouched.
+ */
+export function sitOutPicks(primitive) {
+  const update = primitive?.update;
+  if (typeof update !== 'function') return primitive;
+  primitive.update = function updateOutsidePicks(frameState) {
+    if (frameState?.passes?.pick) return undefined;
+    return update.call(this, frameState);
+  };
+  return primitive;
+}
+
 /** The unit id a pick names, from the part id the shapes were drawn under. */
 export function pickedUnitId(picked) {
   const raw = picked?.id ?? picked?.primitive?.id;
@@ -344,7 +362,7 @@ export function initAbundanceOverlay({
   const removeBuilt = () => {
     stopReadyPoll();
     if (!built) return;
-    if (built.fill) scene.primitives.remove?.(built.fill);
+    if (built.fill) built.fillCollection?.remove?.(built.fill);
     if (built.points) scene.primitives.remove?.(built.points);
     built = null;
   };
@@ -390,7 +408,14 @@ export function initAbundanceOverlay({
       typeof cesium.GroundPrimitive?.isSupported === 'function' &&
       cesium.GroundPrimitive.isSupported(scene);
     const Fill = onGround ? cesium.GroundPrimitive : cesium.Primitive;
-    const fill = scene.primitives.add(
+    // A ground fill goes in the ground collection, with the app's other
+    // ground layers: drawn first, so street-level lines and cones stay on
+    // top of it.
+    const collection =
+      onGround && scene.groundPrimitives
+        ? scene.groundPrimitives
+        : scene.primitives;
+    const fill = collection.add(
       new Fill({
         geometryInstances: instances,
         appearance: new cesium.PerInstanceColorAppearance({
@@ -406,11 +431,13 @@ export function initAbundanceOverlay({
           : {}),
       }),
     );
+    sitOutPicks(fill);
     fill.show = view.show;
     built = {
       level: data.level,
       kind: 'polygons',
       fill,
+      fillCollection: collection,
       parts,
       byId: new Map(),
       index: shapeIndex(data.shapes),

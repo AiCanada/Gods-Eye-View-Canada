@@ -34,7 +34,11 @@ THEIR COUNTRY · 2025`).
    level photo lines, roads, rail) stays clickable: a dot is picked as
    itself, another layer's object under the pointer comes first, and
    otherwise the place is the country or state the pointer's point on the
-   globe falls in (the photorealistic tiles count as the ground).
+   globe falls in (the photorealistic tiles count as the ground). The fill
+   draws nothing in Cesium's pick pass either: an unpickable classification
+   primitive still draws there in Cesium 1.138, as nothing, and would wipe
+   the picks of the ground layers drawn before it. It sits in the ground
+   collection, under the other ground layers.
 7. **RANKING**: MOST ABUNDANT or LEAST ABUNDANT, ten rows; a row click keeps
    that place selected.
 8. **ABUNDANCE GRID** (when ticked): the links, `Québec → Nunavut · GAP 61 ·
