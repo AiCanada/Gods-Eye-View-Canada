@@ -5531,5 +5531,9 @@
   "×{n}": "×{n}",
   "GLOBAL ABUNDANCE": "ᓯᓚᕐᔪᐊᕐᒥ ᐱᑕᖃᑦᑎᐊᕐᓂᖅ",
   "World Bank WDI and Our World in Data (CC BY 4.0) and the OECD regional database (OECD terms), joined to the Natural Earth countries": "ᓯᓚᕐᔪᐊᕐᒥ ᑮᓇᐅᔭᒃᑯᕕᒃ WDI ᐊᒻᒪ Our World in Data (CC BY 4.0) ᐊᒻᒪ OECD ᐊᕕᒃᑐᖅᓯᒪᔪᓄᑦ ᑐᓴᐅᒪᔾᔪᑎᖏᑦ (OECD ᒪᓕᒐᖏᑦ), Natural Earth ᓄᓇᕐᔪᐊᖏᓐᓄᑦ ᑲᑎᑎᑕᐅᓯᒪᔪᑦ",
-  "Slide a weight to make an indicator count more in the score. With one indicator ticked the legend shows its real values. The arrows give the change of each figure over five years.": "ᐅᖁᒪᐃᓐᓂᖓ ᓅᑎᓪᓗᒍ ᓇᓗᓇᐃᒃᑯᑕᖅ ᑭᓯᑦᓯᐅᑎᒥ ᑭᓯᑕᐅᓂᖅᓴᐅᓕᕐᓗᓂ. ᐊᑕᐅᓯᖅ ᓇᓗᓇᐃᒃᑯᑕᖅ ᓇᓗᓇᐃᖅᑕᐅᓯᒪᑎᓪᓗᒍ ᓇᓗᓇᐃᔭᐅᑎ ᓱᓕᔪᓂᒃ ᑭᓯᑦᓯᐅᑎᓂᒃ ᓴᖅᑭᔮᖅᑎᑦᑎᔪᖅ. ᓇᓗᓇᐃᒃᑯᑕᐃᑦ ᑭᓯᑦᓯᐅᑎᑦ ᐊᑐᓂ ᐊᓯᔾᔨᕐᓂᖓᓂᒃ ᑕᓪᓕᒪᓂ ᐊᕐᕌᒍᓂ ᓇᓗᓇᐃᖅᓯᔪᑦ."
+  "Slide a weight to make an indicator count more in the score. With one indicator ticked the legend shows its real values. The arrows give the change of each figure over five years.": "ᐅᖁᒪᐃᓐᓂᖓ ᓅᑎᓪᓗᒍ ᓇᓗᓇᐃᒃᑯᑕᖅ ᑭᓯᑦᓯᐅᑎᒥ ᑭᓯᑕᐅᓂᖅᓴᐅᓕᕐᓗᓂ. ᐊᑕᐅᓯᖅ ᓇᓗᓇᐃᒃᑯᑕᖅ ᓇᓗᓇᐃᖅᑕᐅᓯᒪᑎᓪᓗᒍ ᓇᓗᓇᐃᔭᐅᑎ ᓱᓕᔪᓂᒃ ᑭᓯᑦᓯᐅᑎᓂᒃ ᓴᖅᑭᔮᖅᑎᑦᑎᔪᖅ. ᓇᓗᓇᐃᒃᑯᑕᐃᑦ ᑭᓯᑦᓯᐅᑎᑦ ᐊᑐᓂ ᐊᓯᔾᔨᕐᓂᖓᓂᒃ ᑕᓪᓕᒪᓂ ᐊᕐᕌᒍᓂ ᓇᓗᓇᐃᖅᓯᔪᑦ.",
+  "Layers": "ᐃᑭᐊᑦ",
+  "Search": "ᕿᓂᕐᓗᒍ",
+  "More": "ᐊᓯᖏᑦ",
+  "Panels": "ᒪᑉᐱᑕᑦ"
 }

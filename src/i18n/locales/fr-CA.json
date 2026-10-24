@@ -5531,5 +5531,9 @@
   "×{n}": "×{n}",
   "GLOBAL ABUNDANCE": "ABONDANCE MONDIALE",
   "World Bank WDI and Our World in Data (CC BY 4.0) and the OECD regional database (OECD terms), joined to the Natural Earth countries": "Banque mondiale WDI et Our World in Data (CC BY 4.0) et la base régionale de l'OCDE (conditions de l'OCDE), joints aux pays de Natural Earth",
-  "Slide a weight to make an indicator count more in the score. With one indicator ticked the legend shows its real values. The arrows give the change of each figure over five years.": "Glissez un poids pour qu'un indicateur compte davantage dans le score. Avec un seul indicateur coché, la légende montre ses vraies valeurs. Les flèches donnent le changement de chaque chiffre sur cinq ans."
+  "Slide a weight to make an indicator count more in the score. With one indicator ticked the legend shows its real values. The arrows give the change of each figure over five years.": "Glissez un poids pour qu'un indicateur compte davantage dans le score. Avec un seul indicateur coché, la légende montre ses vraies valeurs. Les flèches donnent le changement de chaque chiffre sur cinq ans.",
+  "Layers": "Couches",
+  "Search": "Rechercher",
+  "More": "Plus",
+  "Panels": "Panneaux"
 }

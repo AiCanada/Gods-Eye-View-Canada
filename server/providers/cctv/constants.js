@@ -172,7 +172,7 @@ export const DELAWARE_BOX = {
 export const CCTV_AUSTIN_DEDUPE_M = 30;
 /** Caltrans CCTV: one JSON feed per district, identical schema statewide. */
 /** TxDOT ITS: one keyless JSON catalog per district (25 districts statewide). */
-export const TXDOT_ORIGIN = 'https://its.txdot.gov';
+const TXDOT_ORIGIN = 'https://its.txdot.gov';
 export const TXDOT_CCTV_STATUS_URL = (district) =>
   `${TXDOT_ORIGIN}/its/DistrictIts/GetCctvStatusListByDistrict?districtCode=${encodeURIComponent(district)}`;
 /** Per-camera frame. Returns JSON `{snippet:<base64 jpeg>}`, not an image body;

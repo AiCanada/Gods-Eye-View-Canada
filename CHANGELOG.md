@@ -1,5 +1,37 @@
 # Changelog
 
+- Upstream merge of 81 commits (radio station tags #1268, Traffic render hold
+  #1281, dead-code cleanup #1321, phone layout #1325, globe rotation #1225,
+  street-level provider exports #1324, phone contact selection and context
+  drawers #1338, space cooldowns #1270, military history #1273, KML root
+  scanner #1274, launch hover throttle #1279, Overpass cache reservation
+  #1278, FIRMS acquisition dates #1342). Upstream's phone tab
+  shell stays off in this fork (`PHONE_TAB_SHELL`): it would hide every fork
+  tab of the left stack on a phone and restyle the owner's deliberate phone
+  layout. Fork fits: the left-out Catalonia, Hong Kong and Taiwan live CCTV
+  loaders stay out; the CCTV policy re-exports only what is still exported and
+  imported; Traffic keeps the fork's sprite-order restore after upstream's
+  render-demand sync, and its road-retry constants; Cyber's side tabs keep the
+  owner's no-accordion ruling (2026-10-06); `src/data/localLayers.js` goes, as
+  upstream removed it (nothing imports it; its layers register in
+  `src/app/constructCatalog.js`); the phone tab labels (Layers, Search, More,
+  Panels) in fr-CA, iu and egy. The voice tool-schema pins are re-derived
+  for both sides' additions (upstream's 30,878 characters + the fork's 623).
+  On touch screens a tap just beside a moving contact now selects it (#1338),
+  whatever the phone shell. Put back what upstream's dead-code cleanup
+  removed but fork code uses: `PROJECTION_VERT_ASPECT` (CCTV geometry), the
+  `ACTIVE_FRAME_REFRESH_MS` import in CCTV frames, bikeshare's default export.
+  The outbreak S2-8 cost pin now compares each profile's fastest run in CPU
+  time instead of the median wall-clock time, which a busy CI runner inflated
+  (Node 26.x failed it on 27a5109f); its limits are unchanged. The fork's
+  Launch Library cache test follows upstream's space cooldown (#1270): after
+  a failed refresh the stale answer is served with no upstream call until
+  the minute is up. The point-and-ask prompt ceiling rises to 54,000
+  characters (the merged prompt measures 53,774). The Road511 queue test no
+  longer races real 5 ms timers: the queued calls now wait on the first
+  answer, which a second call beat on a loaded machine (2026-10-23). Voice
+  keeps the fork's analyst location reset beside upstream's cockpit check.
+
 - GLOBAL ABUNDANCE MAP: the fill now sits out Cesium's pick passes, which
   is what CI's Street Level browser gate needed; the change before this one
   ("the fill takes no picks") was not enough. In Cesium 1.138 an

@@ -30,4 +30,5 @@ export {
   BIKESHARE_SELECTED_OVERLAY_SOURCE_ID,
   BIKESHARE_SELECTED_OVERLAY_SOURCE_OPTIONS,
 } from '../layers/bikeshare/index.js';
+// The fork's location-state tests drive the layer object itself.
 export default layer;

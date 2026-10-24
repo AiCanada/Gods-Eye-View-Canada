@@ -127,11 +127,25 @@ test('calls queued for a request slot make no request once a 429 or a refused ke
         ? new Response('slow down', { status, headers: { 'retry-after': '120' } })
         : new Response('no', { status }),
     );
-    // Real (short) spacing sleeps: the first answer lands while the other five wait their turn.
-    const lookup = createRoad511Lookup({ env: { ROAD511_API_KEY: KEY }, fetchImpl, spacingMs: 5, spacingWaitMs: 25 });
-    const answers = await Promise.all(
-      [0, 1, 2, 3, 4, 5].map((i) => lookup.lookup(camera(`us511-TX-cam-q${status}-${i}`))),
-    );
+    // The other five wait their turn until the first answer is in. Real 5 ms
+    // timers raced that answer when the full suite loaded the machine (a
+    // second call reached Road511, 2026-10-23); the waits now end on it.
+    let answered;
+    const firstIn = new Promise((resolve) => (answered = resolve));
+    const waits = [];
+    const lookup = createRoad511Lookup({
+      env: { ROAD511_API_KEY: KEY },
+      fetchImpl,
+      now: () => 1_000_000,
+      spacingMs: 5,
+      spacingWaitMs: 25,
+      sleep: (ms) => (waits.push(ms), firstIn),
+    });
+    const pending = [0, 1, 2, 3, 4, 5].map((i) => lookup.lookup(camera(`us511-TX-cam-q${status}-${i}`)));
+    const first = await pending[0];
+    answered();
+    const answers = [first, ...(await Promise.all(pending.slice(1)))];
+    assert.deepEqual(waits, [5, 10, 15, 20, 25], `${status}: five calls waited their turn`);
     assert.deepEqual(answers.map((a) => a.lookupState), Array(6).fill(expected), String(status));
     assert.equal(calls.length, 1, `${status}: only the first call reached Road511`);
     assert.equal(lookup.counters.road511Calls, 1, `${status}: only real requests are counted`);

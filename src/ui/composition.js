@@ -10,7 +10,10 @@ import {
   flyToPOI,
   searchAndFlyTo,
 } from '../locations.js';
-import { interruptCameraMotion } from '../cameraVerbs.js';
+import {
+  interruptCameraMotion,
+  interruptGlobeRotation,
+} from '../cameraVerbs.js';
 import { IntelHUD } from '../hud.js';
 import { AskPanel } from '../askPanel.js';
 import { SocialMediaPanel } from '../socialMediaPanel.js';
@@ -88,6 +91,7 @@ export class StyleManager extends ApplicationShell {
         flyToPOI,
         searchAndFlyTo,
         interruptCameraMotion,
+        interruptGlobeRotation,
         IntelHUD,
         AskPanel,
         SocialMediaPanel,

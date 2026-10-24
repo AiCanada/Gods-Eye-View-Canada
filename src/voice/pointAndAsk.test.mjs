@@ -349,9 +349,11 @@ test('deixis prompt lint: one short rule, and every sentinel it names exists in 
   // it to 51,646. A new tool or rule has to fit under this ceiling. The
   // 2026-10-17 upstream merge (GNSS, air quality and emergency broadcasts on
   // top of the fork's whole-app voice control and Canadian presets) measured
-  // 52,848, so the fork's ceiling is 53,000.
+  // 52,848, so the fork's ceiling was 53,000. The 2026-10-23 upstream merge
+  // (globe rotation on move_camera, with its Globe View guidance; upstream's
+  // own prompt stays under its 52,000) measured 53,774: the ceiling is 54,000.
   const size = instructions.length + JSON.stringify(GEV_REALTIME_TOOLS).length;
-  assert.ok(size <= 53000, `prompt size ${size}`);
+  assert.ok(size <= 54000, `prompt size ${size}`);
 });
 
 

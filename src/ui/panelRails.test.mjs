@@ -46,6 +46,22 @@ test('Cyber keeps every open box open and reopens boxes the old accordion collap
   }
 });
 
+test('Cyber keeps no accordion on phones, where the rail is presented as tab sheets', () => {
+  // A sheet (for example Cameras: CCTV with Street Level) shows several of the
+  // rail's panels at once; the accordion would collapse all but one.
+  const f = fixture('right', {
+    mobile: true,
+    hud: { visible: true, variant: 'cyber' },
+  });
+  f.expand(f.first, 250);
+  f.expand(f.second, 250);
+  f.options.preferredPanelId = f.second.id;
+  f.run();
+  assert.equal(f.first.classList.contains('collapsed'), false);
+  assert.equal(f.first.classList.contains('cyber-accordion-collapsed'), false);
+  assert.equal(f.second.classList.contains('collapsed'), false);
+});
+
 function element(
   id,
   { height = 42, top = 234, left = 20, width = 272, collapsed = false } = {},

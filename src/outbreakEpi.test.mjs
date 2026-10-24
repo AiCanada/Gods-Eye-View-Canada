@@ -3429,10 +3429,16 @@ test('S2-8 cost pin: an unseeded second strain costs nothing; seeded at day 0 at
   const unseeded = { variants: 'two-strain', strain2Day: 40 };
   const drift = { variants: 'drift', mutation: 'low' };
   const seeded = { variants: 'two-strain', strain2Day: 0, strain2Cases: 50 };
+  // The cost is this process's CPU time, not the wall clock: the suite runs
+  // other test files at once, and on a shared CI runner the wall clock also
+  // counts the time this process waited for a core (Node 26.x on CI read
+  // unseeded 1121 ms against drift 843 ms that way, 2026-10-23). Contention
+  // only ever adds time, so each profile's cost is its fastest run.
   const time = (profile) => {
-    const from = performance.now();
+    const from = process.cpuUsage();
     run(profile);
-    return performance.now() - from;
+    const used = process.cpuUsage(from);
+    return (used.user + used.system) / 1000;
   };
   for (let k = 0; k < 2; k += 1) {
     run(unseeded);
@@ -3447,14 +3453,14 @@ test('S2-8 cost pin: an unseeded second strain costs nothing; seeded at day 0 at
     never.push(time(unseeded));
     on.push(time(seeded));
   }
-  const median = (xs) => xs.sort((a, b) => a - b)[2];
+  const fastest = (xs) => Math.min(...xs);
   assert.ok(
-    median(never) <= 1.15 * median(off),
-    `unseeded ${median(never).toFixed(1)} ms vs drift ${median(off).toFixed(1)} ms`,
+    fastest(never) <= 1.15 * fastest(off),
+    `unseeded ${fastest(never).toFixed(1)} ms vs drift ${fastest(off).toFixed(1)} ms of CPU`,
   );
   assert.ok(
-    median(on) <= 2.2 * median(never),
-    `seeded ${median(on).toFixed(1)} ms vs unseeded ${median(never).toFixed(1)} ms`,
+    fastest(on) <= 2.2 * fastest(never),
+    `seeded ${fastest(on).toFixed(1)} ms vs unseeded ${fastest(never).toFixed(1)} ms of CPU`,
   );
 });
 

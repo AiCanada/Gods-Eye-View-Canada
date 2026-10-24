@@ -20,6 +20,23 @@ export function createAnimation({
   parts,
   source,
 }) {
+  function syncRenderDemand() {
+    const needed = Boolean(
+      layerState._enabled &&
+      (layerState._dots.length || layerState._heatJamPrim),
+    );
+    // Height easing only runs in a held frame. Settle it before releasing, so
+    // a population emptied mid-correction cannot report loading forever.
+    if (!needed && layerState._heightPending) parts.retention.finishHeights();
+    if (needed === Boolean(layerState._renderHeld)) return;
+    layerState._renderHeld = needed;
+    if (needed) {
+      layerState._lastAnimTime = 0;
+      services.render.holdContinuousRender('traffic');
+      layerState._viewer?.scene?.requestRender?.();
+    } else services.render.releaseContinuousRender('traffic');
+  }
+
   /**
    * Spawn animated dot primitives along a single road.
    *
@@ -188,6 +205,7 @@ export function createAnimation({
             : null,
       });
     }
+    syncRenderDemand();
   }
 
   /**
@@ -206,6 +224,8 @@ export function createAnimation({
    */
 
   function animate() {
+    syncRenderDemand();
+    if (!layerState._renderHeld) return;
     // Entity monitor planes update in the scene pass just before this
     // preRender. Re-raise the sprite stack so traffic stays above that picture.
     if (layerState._viewer)
@@ -344,6 +364,13 @@ export function createAnimation({
     layerState._count = 0;
     layerState._bucketCounts = { free: 0, slow: 0, jam: 0, sim: 0 };
     layerState._closedRoads = 0;
+    syncRenderDemand();
   }
-  return { spawnDotsForRoad, animate, maybeStopLight, clearDots };
+  return {
+    spawnDotsForRoad,
+    animate,
+    maybeStopLight,
+    clearDots,
+    syncRenderDemand,
+  };
 }

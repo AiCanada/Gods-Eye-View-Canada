@@ -186,16 +186,6 @@ export const STYLED_MIN_BASE_PX = 5;
 
 export const TILE_CACHE_MAX_ENTRIES = 64;
 
-/**
- * Milliseconds the first dot paint will wait for flow data. Cached flow
- * settles within this window (decode cache, 120 s TTL) and renders fully
- * colored; a cold tile fetch loses the race, dots paint immediately in
- * white, and recolorDotsInPlace applies the colors when flow arrives —
- * field-test round 1's "takes forever to load" was the sequential wait.
- */
-
-export const FLOW_RENDER_RACE_MS = 250;
-
 /** Upstream's quick road retries: three attempts, 1.5 s doubling, 30 s cap. */
 export const ROADS_RETRY_FAST_ATTEMPTS = 3;
 export const ROADS_RETRY_FAST_MAX_MS = 30000;

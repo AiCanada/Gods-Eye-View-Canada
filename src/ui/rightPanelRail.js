@@ -108,10 +108,14 @@ export function layoutRightPanelRail({
       panel.id !== 'radio-panel' &&
       (!isMobile || panel.id !== 'pp-toggles'),
   );
-  const exclusive = shouldHideCollapsedRightPanels({
-    hudVariant: hud.variant,
-    hasExpandedPanel,
-  });
+  // Phones present the rail as tab sheets (mobileShell.js), which choose what
+  // shows; hiding collapsed siblings would empty a sheet and its a11y tree.
+  const exclusive =
+    !isMobile &&
+    shouldHideCollapsedRightPanels({
+      hudVariant: hud.variant,
+      hasExpandedPanel,
+    });
   stack.classList.toggle('layout-exclusive', exclusive);
   for (const panel of panels) {
     if (exclusive && panel.classList.contains('collapsed'))

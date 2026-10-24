@@ -1,9 +1,5 @@
 export const FRAME_ENDPOINT = '/api/cctv/frame';
 
-export const SOURCE_ENDPOINT = '/api/cctv/sources';
-
-export const HEALTH_ENDPOINT = '/api/cctv/health';
-
 export const MEDIA_ENDPOINT = '/api/cctv/media';
 
 /** Road511 image lookup for one camera; POST, sent only on explicit activation. */

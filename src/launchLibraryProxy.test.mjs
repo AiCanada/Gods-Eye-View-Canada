@@ -125,8 +125,14 @@ test('Launch Library: a fresh copy is served from cache, and a stale one when a 
   assert.equal(logged.length, 1);
   assert.match(logged[0], /HTTP 502\) — serving stale cache/);
   assert.doesNotMatch(logged.join('\n'), /fixture-secret-token|internal\/example|<html>/);
-  // Once upstream is back, the next press refreshes the copy.
+  // Upstream's cooldown (#1270): for a minute after the failure the stale copy
+  // is served without asking Launch Library again.
   failing = false;
+  const cooling = await request();
+  assert.deepEqual([cooling.status, cooling.headers['X-GEV-Cache']], [200, 'STALE-ERROR']);
+  assert.equal(calls, 2, 'no upstream call during the cooldown');
+  // Once the cooldown is over and upstream is back, the next press refreshes the copy.
+  now += 60_001;
   const back = await request();
   assert.deepEqual([back.status, back.headers['X-GEV-Cache']], [200, 'MISS']);
   assert.equal(calls, 3);
