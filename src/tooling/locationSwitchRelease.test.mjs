@@ -445,7 +445,7 @@ function mockTerrainDisk(t, points) {
 }
 
 /** A terrain proxy with its periodic flush captured; upstream answers lon + 1000. */
-function terrainFixture(t) {
+function terrainFixture(t, options = {}) {
   // The terrain cache is a process-wide singleton (shared across in-process
   // Vite restarts); each fixture needs a fresh one with its own flush timer.
   delete globalThis.__GEV_TERRAIN_CACHE;
@@ -466,7 +466,9 @@ function terrainFixture(t) {
       results: points.map(([lon]) => ({ ellipsoid: lon + 1000 })),
     });
   });
-  const handler = install(terrainHeightsProxy()).get('/api/terrain/heights');
+  const handler = install(terrainHeightsProxy(options)).get(
+    '/api/terrain/heights',
+  );
   fixture.heights = async (points) => {
     const res = {
       headersSent: false,
@@ -529,6 +531,31 @@ test('terrain release keeps the disk file whole and restores released cells from
   await terrain.flush();
   assert.equal(disk.writes.length, 1);
   assert.deepEqual([...disk.files], [[TERRAIN_CACHE_FILE, truncated]]);
+});
+
+test('a terrain point read back from disk is evicted before points fetched since', async (t) => {
+  const day = 24 * 3600_000;
+  mockTerrainDisk(t, {
+    '-79.38000,43.65000': { at: Date.now() - 3 * day, result: { ellipsoid: 100 } },
+    '2.35000,48.85000': { at: Date.now() - 2 * day, result: { ellipsoid: 200 } },
+  });
+  const terrain = terrainFixture(t, { cacheMaxEntries: 3 });
+  const { heights } = terrain;
+
+  await heights('-79.38,43.65');
+  assert.equal(pruneTerrainMemoryOutside(TORONTO, 300), 1, 'Paris released');
+  await heights('-79.30,43.70');
+  await heights('-79.31,43.71');
+  assert.equal(terrain.calls, 2);
+  // Paris comes back from disk with its own fetch time, older than both.
+  assert.deepEqual((await heights('2.35,48.85')).results, [{ ellipsoid: 200 }]);
+  assert.equal(terrain.calls, 2);
+  // One more point puts the cache two over its ceiling: the two oldest go
+  // (the first Toronto point and Paris), never a point fetched after them.
+  await heights('-79.32,43.72');
+  assert.equal(terrain.calls, 3);
+  await heights('-79.30,43.70;-79.31,43.71');
+  assert.equal(terrain.calls, 3, 'the newer points are still in memory');
 });
 
 test('terrain flush writes beside the cache file and renames it over, so a restore during the write reads the whole previous file', async (t) => {

@@ -2,6 +2,7 @@
 // is given it as its root, so no .env key, integrity store, cache or private
 // config of this machine reaches the test.
 import { isolatedCwd } from './isolatedCwd.mjs';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -9,7 +10,11 @@ import { rm, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
 import path from 'node:path';
 import { build, createServer, preview } from 'vite';
-import { BROWSER_CSP, createBrowserViteConfig } from '../../build/vite.js';
+import {
+  BROWSER_CSP,
+  createBrowserViteConfig,
+  escapeFsDenyPath,
+} from '../../build/vite.js';
 import standaloneConfig, * as compatibility from '../../vite.config.js';
 import * as providers from '../../server/providers/local.js';
 import { apiNotFoundPlugin } from '../../server/standalone/api-not-found.js';
@@ -94,6 +99,18 @@ test('explicit build inputs preserve browser-only defines, plugin order and loop
   ]) {
     assert.ok(config.server.fs.deny.includes(store), store);
   }
+  const root = fileURLToPath(new URL('../../', import.meta.url))
+    .replace(/\\/g, '/')
+    .replace(/\/$/, '');
+  assert.deepEqual(
+    config.server.fs.deny.filter((pattern) => pattern.endsWith('/dist/**')),
+    [`${escapeFsDenyPath(root)}/dist/**`],
+    'only project build output is denied, not dependency dist directories',
+  );
+  assert.equal(
+    escapeFsDenyPath('C:/Users/a/project (1) [test]{copy}'),
+    'C:/Users/a/project \\(1\\) \\[test\\]\\{copy\\}',
+  );
   assert.deepEqual(config.optimizeDeps.entries, ['index.html', 'tools/*.html']);
   assert.equal(config.server.headers['X-Frame-Options'], 'DENY');
   assert.equal(config.server.headers['X-Content-Type-Options'], 'nosniff');
@@ -163,7 +180,7 @@ test('root config retains existing named exports and standalone provider order',
     assert.equal(compatibility[name], value, name);
   const config = standaloneConfig({ mode: 'test', sourceRoot: isolatedCwd });
   const standaloneProviders = config.plugins
-    .slice(7, -6)
+    .slice(7, -7)
     .map((plugin) => plugin.name);
   assert.equal(
     standaloneProviders.filter((name) => name === 'gemini-live-proxy').length,
@@ -190,9 +207,10 @@ test('root config retains existing named exports and standalone provider order',
   assert.equal(config.plugins[5].name, 'route-guard');
   assert.equal(config.plugins[6].name, 'gev-health');
   assert.equal(config.plugins[6].apply, 'serve');
-  assert.equal(config.plugins.at(-7).name, 'gev-key-setup');
-  // The local MCP route follows every provider and precedes the API fallback.
-  assert.equal(config.plugins.at(-6).name, 'local-mcp');
+  assert.equal(config.plugins.at(-8).name, 'gev-key-setup');
+  // Token fallback follows real providers and local MCP before the API 404.
+  assert.equal(config.plugins.at(-7).name, 'local-mcp');
+  assert.equal(config.plugins.at(-6).name, 'google-token-unavailable');
   assert.equal(config.plugins.at(-5).name, 'api-not-found');
   // The tailnet copy of the dashboard serves the same middleware (off unless set).
   assert.equal(config.plugins.at(-4).name, 'gev-tailnet-dashboard');

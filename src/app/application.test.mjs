@@ -246,6 +246,27 @@ test('the viewer zooms on the ctrl-modified wheel a trackpad pinch produces', as
   );
 });
 
+test('a touch-first screen keeps its tripled pinch zoom; only fine pointers get the wheel factor', async () => {
+  // Upstream triples Cesium's zoom on coarse pointers (#1378). The fork's
+  // wheel and trackpad factor is set later in the same block, so it has to
+  // skip touch-first screens or it undoes that.
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('./viewer.js', import.meta.url), 'utf8');
+  const boost = source.search(
+    /if \(globalThis\.matchMedia\?\.\('\(pointer: coarse\)'\)\.matches\)\s+viewer\.scene\.screenSpaceCameraController\.zoomFactor \*= 3;/,
+  );
+  const wheel = source.search(
+    /if \(!globalThis\.matchMedia\?\.\('\(pointer: coarse\)'\)\.matches\)\s+viewer\.scene\.screenSpaceCameraController\.zoomFactor = GLOBE_ZOOM_FACTOR;/,
+  );
+  assert.ok(boost > 0, 'the touch-first boost is installed');
+  assert.ok(wheel > boost, 'the wheel factor follows it and skips touch');
+  assert.equal(
+    source.split('zoomFactor = ').length,
+    2,
+    'assigned in one place',
+  );
+});
+
 test('trackpad scroll and pinch are boosted; a mouse wheel is left alone', async () => {
   const { trackpadWheelGain, TRACKPAD_PINCH_GAIN, TRACKPAD_SCROLL_GAIN } =
     await import('gods-eye-view/application/viewer');

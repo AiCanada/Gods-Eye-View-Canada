@@ -1,5 +1,39 @@
 # Changelog
 
+- Upstream merge of 171 commits (keyless Google tiles-token probe #1066,
+  weather frame wake #1345, Vite fs.deny for logs and caches #948, Pinokio
+  browser launch #1222, HUD DMS carry #1339, Docker SELinux label #1391 and
+  HEALTHCHECK #1394, four unused modules removed #1403, geocoder bias across
+  the antimeridian #1272, ground snap after a clock step #1399, sharpen off at
+  0 #1398, GBFS invalid coordinates #1232, route ramp and lane wording #1343,
+  north-bound bearings and tracks #1390 #1396 #1389, kilometre and minute
+  rounding #1384-#1388, FIRMS tool acquisition time #1395, new-layer PR
+  requirements #957, turned-off layer memory #1367, stale TomTom flow #1239,
+  English entity labels in voice data #1207, first-run touch dismiss #1226,
+  aircraft models without the environment map #1366, aircraft label
+  candidates #1379, separated hemisphere letters #1340, street-level zoomFor
+  shape #1288, terrain cache eviction #1326, cyclone classification codes
+  #1349 and movement knots #1350, touch zoom and aircraft updates #1378,
+  transit 90-second age #1353, cockpit destination heading #1352, FIRMS FRP
+  #1354, GBFS rate-limit entry #1184, AIS static motion #1351, stale wind
+  #1303, terrain test isolation #1244, hidden-tab polling #1282, OpenSky OAuth
+  credential files and retired Basic auth #1229, antimeridian distances
+  #1304, KartaView timestamps #1341). Fork fits: the dev server's deny list
+  keeps the fork's private stores beside upstream's root-anchored `dist`
+  rule, and the Google token fallback sits after the local MCP route, ahead
+  of the API 404 and the tailnet dashboard. OpenSky no longer sends a Basic
+  sign-in, so nothing is left there for the integrity gate to guard;
+  `OPENSKY_CREDENTIALS_FILE` and the file it names join the OpenSky check
+  only while it is set, so a check saved before this merge still matches.
+  The fork's wheel and trackpad zoom factor was set after upstream's
+  touch-first pinch setting and undid it; it now applies to fine pointers
+  only. Terrain eviction now takes the oldest points from the front of the
+  map, and points the location switch reads back from disk are sorted in by
+  their fetch time so that stays true. AIS static data keeps the sweep's
+  `_at` stamp beside upstream's partial-report fallbacks, and the terrain
+  tests use upstream's own cache-file helper. Five new strings are in fr-CA,
+  iu and egy.
+
 - Upstream merge of 81 commits (radio station tags #1268, Traffic render hold
   #1281, dead-code cleanup #1321, phone layout #1325, globe rotation #1225,
   street-level provider exports #1324, phone contact selection and context
@@ -1102,6 +1136,15 @@
   area, run by nextbike). Both are keyless GBFS 2.3 feeds listed in
   MobilityData's systems catalogue; AMBici's is CC0. `gbfs.nextbike.net` joins
   the proxy allowlist. These are the layer's first stations in Spain.
+
+- Bound how often the GBFS proxy will relay. `/api/gbfs` already restricted
+  where it could go — https, an allowlisted host, a station feed path, no
+  redirects, a 12-second deadline and a 5 MB body cap — but nothing restricted
+  how often, so the dev server would make unlimited requests at a third-party
+  bikeshare operator on any caller's behalf. The route now admits 120
+  requests/minute per client address, refusing the rest with 429 and
+  `Retry-After` before any outbound fetch. The bikeshare layer needs about 15 a
+  minute with every catalogued system in range, so ordinary use is unchanged.
 
 - Add nine Ontario transit feeds: TTC, MiWay, Hamilton HSR, Durham Region,
   YRT/Viva, Guelph, Burlington, Barrie and Kingston, each carrying its own

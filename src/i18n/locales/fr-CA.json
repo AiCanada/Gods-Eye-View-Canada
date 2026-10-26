@@ -5535,5 +5535,10 @@
   "Layers": "Couches",
   "Search": "Rechercher",
   "More": "Plus",
-  "Panels": "Panneaux"
+  "Panels": "Panneaux",
+  "Post-tropical cyclone": "Cyclone post-tropical",
+  "Take the ramp {direction} onto {road}": "Prenez la bretelle {direction} vers {road}",
+  "Take the ramp {direction}": "Prenez la bretelle {direction}",
+  "Take the exit {direction} onto {road}": "Prenez la sortie {direction} vers {road}",
+  "Take the exit {direction}": "Prenez la sortie {direction}"
 }

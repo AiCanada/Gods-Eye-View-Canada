@@ -18,6 +18,7 @@
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { replaceCredentialStore } from './keySetupHardening.mjs';
 
@@ -78,6 +79,19 @@ const PROVIDER_FIELDS = Object.freeze({
   openaiDots: Object.freeze(['OPENAI_DOTS_API_KEY', 'OPENAI_SWARM_MODEL']),
 });
 
+/**
+ * Names that joined a section after its checks were first written. Each is
+ * covered only while it is set, so a check saved before it existed still
+ * matches while it stays unset; set or changed by hand after a save, it fails
+ * the check like the names above. A `_FILE` name covers the file it names as
+ * well, so an edited or replaced file is a hand edit too.
+ */
+const PROVIDER_LATER_FIELDS = Object.freeze({
+  // The credentials.json OpenSky's account page downloads (the OAuth client
+  // id and secret), read by the server when the env pair is empty.
+  opensky: Object.freeze(['OPENSKY_CREDENTIALS_FILE']),
+});
+
 const RECORD_SECTIONS = new Set([
   'cameras',
   'devices',
@@ -101,7 +115,7 @@ const SECTIONS = new Set(SECTION_ORDER);
 
 const ENV_SECTION = new Map();
 for (const [section, fields] of Object.entries(PROVIDER_FIELDS)) {
-  for (const name of fields) {
+  for (const name of [...fields, ...(PROVIDER_LATER_FIELDS[section] ?? [])]) {
     if (ENV_SECTION.has(name)) {
       throw new Error(`local integrity: ${name} is listed twice`);
     }
@@ -392,7 +406,17 @@ function vendorFeedLines(parts) {
 function providerLines(section, parts) {
   const fields = PROVIDER_FIELDS[section];
   if (!fields) return null;
-  return fields.map((name) => policyText(String(parts?.[name] ?? '').trim()));
+  const lines = fields.map((name) =>
+    policyText(String(parts?.[name] ?? '').trim()),
+  );
+  for (const name of PROVIDER_LATER_FIELDS[section] ?? []) {
+    const value = String(parts?.[name] ?? '').trim();
+    if (!value) continue;
+    lines.push(`${name}=${policyText(value)}`);
+    if (name.endsWith('_FILE'))
+      lines.push(`${name}#sha256=${policyText(parts?.[`${name}#sha256`])}`);
+  }
+  return lines;
 }
 
 function sectionLines(section, parts) {
@@ -436,11 +460,30 @@ function warnSection(section) {
   );
 }
 
+/** SHA-256 of the file a `_FILE` name points at ("~" is the home directory); '' when unreadable. */
+function fileDigest(file) {
+  try {
+    const resolved = file.replace(/^~(?=$|[\\/])/, os.homedir());
+    return crypto
+      .createHash('sha256')
+      .update(fs.readFileSync(resolved))
+      .digest('hex');
+  } catch {
+    return '';
+  }
+}
+
 function providerParts(section, env) {
   const fields = PROVIDER_FIELDS[section];
   if (!fields) return null;
   const parts = {};
   for (const name of fields) parts[name] = String(env?.[name] ?? '').trim();
+  for (const name of PROVIDER_LATER_FIELDS[section] ?? []) {
+    const value = String(env?.[name] ?? '').trim();
+    parts[name] = value;
+    if (value && name.endsWith('_FILE'))
+      parts[`${name}#sha256`] = fileDigest(value);
+  }
   return parts;
 }
 

@@ -277,14 +277,22 @@ export function createApplicationViewer({ container, creditContainer }) {
   );
   try {
     viewer.targetFrameRate = 60;
+    // A phone pinch spans fewer screen pixels than desktop zoom gestures.
+    // Keep Cesium's distance-aware zoom and collision limits, with less travel
+    // required on touch-first screens. Mouse/trackpad sensitivity stays native.
+    if (globalThis.matchMedia?.('(pointer: coarse)').matches)
+      viewer.scene.screenSpaceCameraController.zoomFactor *= 3;
     // Before any tile builds a draw command: Cesium's per-vertex model
     // atmosphere fails to LINK on Apple's Metal backend and kills the
     // render loop. See app/atmosphereCompat.js.
     applyModelAtmosphereWorkaround(viewer.scene);
     viewer.scene.screenSpaceCameraController.zoomEventTypes =
       globeZoomEventTypes();
-    // Twice Cesium's default of 5: wheel and trackpad zoom felt sluggish.
-    viewer.scene.screenSpaceCameraController.zoomFactor = GLOBE_ZOOM_FACTOR;
+    // Twice Cesium's default of 5: wheel and trackpad zoom felt sluggish. A
+    // touch-first screen keeps the pinch setting above (three times the
+    // default); set unconditionally here, this line used to undo it.
+    if (!globalThis.matchMedia?.('(pointer: coarse)').matches)
+      viewer.scene.screenSpaceCameraController.zoomFactor = GLOBE_ZOOM_FACTOR;
     bindTrackpadZoom({
       container: viewer.container,
       canvas: viewer.scene.canvas,

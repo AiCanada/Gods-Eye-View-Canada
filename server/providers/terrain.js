@@ -149,16 +149,26 @@ export function terrainHeightsProxy(options = {}) {
 
   /**
    * Drop the oldest entries until the map is back inside its ceiling.
-   * Oldest-first by fetch time, the same shape `trackBackfillProxies` uses.
-   * Terrain does not move, so evicting an old point costs one refetch, never
-   * a wrong answer.
+   * The map is kept in fetch-time order (sorted on load and after released
+   * points are read back from disk, and the resolver re-inserts every point it
+   * refetches), so the oldest are at the front and no write sorts the map.
+   * Terrain does not move, so evicting an old point costs one refetch, never a
+   * wrong answer.
    */
   function evictOverflow() {
     const mem = SHARED.mem;
-    if (mem.size <= CACHE_MAX_ENTRIES) return;
+    for (const key of mem.keys()) {
+      if (mem.size <= CACHE_MAX_ENTRIES) return;
+      mem.delete(key);
+    }
+  }
+
+  /** Put the map in fetch-time order; a file is not guaranteed to be. */
+  function orderByAge() {
+    const mem = SHARED.mem;
     const byAge = [...mem.entries()].sort((a, b) => a[1].at - b[1].at);
-    for (let i = 0; i < byAge.length && mem.size > CACHE_MAX_ENTRIES; i += 1)
-      mem.delete(byAge[i][0]);
+    mem.clear();
+    for (const [key, entry] of byAge) mem.set(key, entry);
   }
   /** @type {Map<string, Promise<Array<object>>>} single-flight per missing-point subset. */
   SHARED.inflight ??= new Map();
@@ -261,6 +271,7 @@ export function terrainHeightsProxy(options = {}) {
         }
         SHARED.diskDirty = SHARED.mem.size > 0;
       }
+      orderByAge();
       evictOverflow();
     } catch {
       /* no disk cache yet */
@@ -329,6 +340,7 @@ export function terrainHeightsProxy(options = {}) {
     } catch {
       return;
     }
+    let restored = 0;
     for (const [key, entry] of Object.entries(stored)) {
       if (
         SHARED.mem.has(key) ||
@@ -340,8 +352,12 @@ export function terrainHeightsProxy(options = {}) {
         continue;
       SHARED.mem.set(key, entry);
       SHARED.persisted.add(entry);
+      restored += 1;
     }
     for (const cell of wanted) SHARED.releasedCells.delete(cell);
+    // A point read back keeps its own fetch time, older than what was fetched
+    // since; sorted again, eviction still starts with the oldest.
+    if (restored > 0) orderByAge();
   }
 
   /** This proxy's handle for pruneTerrainMemoryOutside. */

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -427,6 +428,83 @@ test('a changed OpenSky sign-in is not used', async () => {
       assert.equal(localProviderTrusted('opensky'), true);
       bindLocalIntegrityRoot('');
     });
+    assert.equal(await pending, null);
+  } finally {
+    finish(root);
+  }
+});
+
+test('an OpenSky credentials file is part of the sign-in check only while it is set', async () => {
+  const root = tempRoot();
+  const file = path.join(root, 'credentials.json');
+  const same = path.join(root, 'same.json');
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ clientId: 'file-id', clientSecret: 'file-secret' }),
+  );
+  fs.copyFileSync(file, same);
+  let pending = null;
+  try {
+    withEnv(
+      {
+        OPENSKY_CLIENT_ID: '',
+        OPENSKY_CLIENT_SECRET: '',
+        OPENSKY_USERNAME: '',
+        OPENSKY_PASSWORD: '',
+        OPENSKY_AUTH_MODE: 'oauth',
+        OPENSKY_CREDENTIALS_FILE: undefined,
+      },
+      () => {
+        noteLocalProvidersSaved(['OPENSKY_CLIENT_ID'], root);
+        bindLocalIntegrityRoot(root);
+        // Unset, the file adds nothing: the check is exactly the one saved
+        // before the file setting existed, the five sign-in names alone.
+        const key = Buffer.from(
+          fs.readFileSync(keyPath(root), 'utf8').trim(),
+          'hex',
+        );
+        const earlier = crypto
+          .createHmac('sha256', key)
+          .update(
+            ['local-provider:opensky:v1', '0:', '0:', '0:', '0:', '5:oauth'].join(
+              '\n',
+            ),
+            'utf8',
+          )
+          .digest('hex');
+        assert.equal(
+          JSON.parse(fs.readFileSync(storePath(root), 'utf8')).openskyMac,
+          earlier,
+        );
+        assert.equal(localProviderTrusted('opensky'), true);
+        // Named by hand after that save: not used until OpenSky is saved again.
+        process.env.OPENSKY_CREDENTIALS_FILE = file;
+        assert.equal(localProviderTrusted('opensky'), false);
+        pending = getOpenSkyToken();
+        noteLocalProvidersSaved(['OPENSKY_CLIENT_ID'], root);
+        assert.equal(localProviderTrusted('opensky'), true);
+        const text = fs.readFileSync(storePath(root), 'utf8');
+        assert.equal(text.includes('file-secret'), false);
+        assert.equal(text.includes('credentials.json'), false);
+        // An edited file is a hand edit too, and so is another file that
+        // holds the same sign-in.
+        fs.writeFileSync(
+          file,
+          JSON.stringify({ clientId: 'file-id', clientSecret: 'changed' }),
+        );
+        assert.equal(localProviderTrusted('opensky'), false);
+        fs.copyFileSync(same, file);
+        assert.equal(localProviderTrusted('opensky'), true);
+        process.env.OPENSKY_CREDENTIALS_FILE = same;
+        assert.equal(localProviderTrusted('opensky'), false);
+        process.env.OPENSKY_CREDENTIALS_FILE = file;
+        assert.equal(localProviderTrusted('opensky'), true);
+        // A file that is gone matches no more than a changed one.
+        fs.rmSync(file);
+        assert.equal(localProviderTrusted('opensky'), false);
+        bindLocalIntegrityRoot('');
+      },
+    );
     assert.equal(await pending, null);
   } finally {
     finish(root);

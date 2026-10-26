@@ -5535,5 +5535,10 @@
   "Layers": "ᐃᑭᐊᑦ",
   "Search": "ᕿᓂᕐᓗᒍ",
   "More": "ᐊᓯᖏᑦ",
-  "Panels": "ᒪᑉᐱᑕᑦ"
+  "Panels": "ᒪᑉᐱᑕᑦ",
+  "Post-tropical cyclone": "ᐊᓄᕆᕐᔪᐊᖅ ᐆᓇᖅᑐᒥᐅᑕᐅᓚᐅᖅᑐᖅ",
+  "Take the ramp {direction} onto {road}": "{direction} ᐃᓯᕐᕕᒃ ᐊᖅᑯᑎ ᐊᑐᕐᓗᒍ: {road}",
+  "Take the ramp {direction}": "{direction} ᐃᓯᕐᕕᒃ ᐊᖅᑯᑎ ᐊᑐᕐᓗᒍ",
+  "Take the exit {direction} onto {road}": "{direction} ᐊᓂᕝᕕᒃ ᐊᑐᕐᓗᒍ: {road}",
+  "Take the exit {direction}": "{direction} ᐊᓂᕝᕕᒃ ᐊᑐᕐᓗᒍ"
 }
