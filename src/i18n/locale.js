@@ -15,6 +15,7 @@ export const LOCALES = Object.freeze([
   'iu',
   'ru',
   'zh-CN',
+  'zh-Hant',
   'egy',
 ]);
 
@@ -30,7 +31,8 @@ export const LOCALE_NAMES = Object.freeze({
   'fr-CA': 'Français Québécois',
   iu: 'Inuktitut',
   ru: 'Русский',
-  'zh-CN': '简体中文',
+  'zh-CN': '中文（简体）',
+  'zh-Hant': '中文（繁體）',
   egy: 'Ancient Egyptian',
 });
 
@@ -50,20 +52,22 @@ const RTL_LOCALES = Object.freeze([]);
 
 /**
  * Map any language tag to a shipped locale: 'ru-RU' and 'RU' → 'ru',
- * 'zh', 'zh-CN' and 'zh-Hans-SG' → 'zh-CN'. A locale with a region matches
- * its exact tag first ('fr_ca' → 'fr-CA'), and its language alone stands for
- * it: Quebec French is the only French shipped, so 'fr' and 'fr-FR' → 'fr-CA'.
+ * 'zh', 'zh-CN' and 'zh-Hans-SG' → 'zh-CN'; 'zh-Hant', 'zh-TW', 'zh-HK' and
+ * 'zh-MO' → 'zh-Hant'. A locale with a region matches its exact tag first
+ * ('fr_ca' → 'fr-CA'), and its language alone stands for it: Quebec French is
+ * the only French shipped, so 'fr' and 'fr-FR' → 'fr-CA'.
  * @returns {string|null}
  */
 export function normalizeLocale(candidate) {
   if (typeof candidate !== 'string') return null;
   const tag = candidate.trim().toLowerCase().replace(/_/g, '-');
   const [primary, ...rest] = tag.split('-');
-  // Traditional Chinese readers are not given Simplified: no zh-TW yet.
-  if (primary === 'zh')
+  if (primary === 'zh') {
+    if (rest.includes('hans')) return 'zh-CN';
     return rest.some((part) => ['hant', 'tw', 'hk', 'mo'].includes(part))
-      ? null
+      ? 'zh-Hant'
       : 'zh-CN';
+  }
   const exact = LOCALES.find((code) => code.toLowerCase() === tag);
   if (exact) return exact;
   return LOCALES.find((code) => code.split('-')[0] === primary) ?? null;

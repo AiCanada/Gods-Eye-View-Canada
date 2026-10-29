@@ -40,7 +40,7 @@ test('the current language comes first, the rest by their own names', () => {
         nativeNames: LOCALE_NAMES,
       }),
     ),
-    ['ru', 'egy', 'en', 'es', 'fr-CA', 'iu', 'zh-CN'],
+    ['ru', 'egy', 'en', 'es', 'fr-CA', 'iu', 'zh-CN', 'zh-Hant'],
   );
   assert.deepEqual(
     codes(
@@ -50,7 +50,7 @@ test('the current language comes first, the rest by their own names', () => {
         nativeNames: LOCALE_NAMES,
       }),
     ),
-    ['es', 'egy', 'en', 'fr-CA', 'iu', 'ru', 'zh-CN'],
+    ['es', 'egy', 'en', 'fr-CA', 'iu', 'ru', 'zh-CN', 'zh-Hant'],
   );
   assert.deepEqual(
     codes(
@@ -60,7 +60,7 @@ test('the current language comes first, the rest by their own names', () => {
         nativeNames: LOCALE_NAMES,
       }),
     ),
-    ['en', 'egy', 'es', 'fr-CA', 'iu', 'ru', 'zh-CN'],
+    ['en', 'egy', 'es', 'fr-CA', 'iu', 'ru', 'zh-CN', 'zh-Hant'],
   );
   const rows = buildLocaleOptions({
     locales: MANY,
@@ -263,7 +263,7 @@ test('keyboard model: open on the current language, move, choose, close', () => 
   assert.deepEqual(model.keydown({ key: 'ArrowDown' }), { handled: true });
   assert.equal(model.activeOption.code, 'egy', 'Ancient Egyptian sorts first');
   model.keydown({ key: 'End' });
-  assert.equal(model.activeOption.code, 'zh-CN');
+  assert.equal(model.activeOption.code, 'zh-Hant');
   model.keydown({ key: 'Home' });
   assert.equal(model.activeOption.code, 'ru');
   model.keydown({ key: 'ArrowUp' });

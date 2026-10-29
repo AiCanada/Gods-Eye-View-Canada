@@ -49,6 +49,7 @@ import { distillProvider } from './distill.js';
 import { abundanceProvider } from './abundance.js';
 import { createAbundanceStore } from '../shared/abundanceData.mjs';
 import { gnssIntegrityProxy } from './gnssIntegrity.js';
+import { ghostMapsProxy } from './ghostMaps.js';
 
 /**
  * Construct the local provider plugins in their established order.
@@ -131,6 +132,8 @@ function localProviderPlugins({
     mapillaryProxy(),
     // GNSS integrity (upstream #1108): GET /api/gnss-integrity.
     gnssIntegrityProxy(),
+    // S2 GhostMaps (upstream #1297): the public GhostMaps KMZ catalog and files.
+    ghostMapsProxy(),
     // The AI World tab's MLFLOW sections (owner request 2026-10-17): first,
     // so the jobs of the three providers after it are tracked from the start.
     mlflow,

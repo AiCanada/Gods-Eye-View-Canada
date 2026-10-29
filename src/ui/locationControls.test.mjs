@@ -92,6 +92,7 @@ function fixture() {
     onCity: (id) => calls.push(['city', id]),
     onPoi: (id, index) => calls.push(['poi', id, index]),
     onSearch: (query) => calls.push(['search', query]),
+    onSearchEdit: () => calls.push(['edit']),
     onReset: () => calls.push(['reset']),
     onExtra: (id) => calls.push(['extra', id]),
     doc,
@@ -179,4 +180,15 @@ test('saved security sites lead the city pills, replace cleanly and stop on dest
   f.controls.destroy();
   pill.fire('click');
   assert.deepEqual(f.calls, [['extra', 'private-site-shop']]);
+});
+
+test('typing clears a failed search error and closing the emptied field drops it too', () => {
+  const f = fixture();
+  f.elements.search.value = 'Pariss';
+  f.elements.search.fire('blur');
+  assert.deepEqual(f.calls, [], 'leaving a kept query keeps its error');
+  f.elements.search.fire('input');
+  f.elements.search.value = '';
+  f.elements.search.fire('blur');
+  assert.deepEqual(f.calls, [['edit'], ['edit']]);
 });

@@ -231,6 +231,7 @@ export function createModel({ state: layerState, services, parts, source }) {
    * @param {boolean} [input.liveMode] - `/api/tomtom/status` reported a key.
    * @param {boolean} [input.fetching] - A viewport load is in flight.
    * @param {string|null} [input.flowError] - `deriveTrafficFlowError` result, if any.
+   * @param {boolean} [input.stale] - The flow came from cached proxy tiles.
    * @param {number} [input.coveragePct] - Share of shown dots on matched roads, 0–100.
    * @param {boolean} [input.statusUnavailable] - The status probe itself failed.
    * @param {string} [input.roadSource] - Name of the geometry being drawn.
@@ -245,6 +246,7 @@ export function createModel({ state: layerState, services, parts, source }) {
     liveMode = false,
     fetching = false,
     flowError = null,
+    stale = false,
     coveragePct = 0,
     statusUnavailable = false,
     roadSource = 'OpenStreetMap',
@@ -275,6 +277,16 @@ export function createModel({ state: layerState, services, parts, source }) {
       // Dots are on screen but some roads are missing; the view is retrying.
       const partial = 'ROADS PARTIAL — some road tiles failed, retrying';
       return { mode, error: partial, loadingLabel: partial };
+    }
+    // Cached proxy tiles (TomTom budget spent or upstream failing) are not live.
+    if (liveMode && stale && !fetching) {
+      return {
+        mode,
+        error: null,
+        loadingLabel: t('STALE · Roads: {source} · Flow: cached TomTom tiles', {
+          source: roadSource,
+        }),
+      };
     }
     // TomTom and Hybrid name their geometry; OpenStreetMap keeps its match copy.
     if (liveMode && roadSource === 'TomTom') {

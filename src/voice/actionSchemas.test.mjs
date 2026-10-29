@@ -32,7 +32,8 @@ test('the complete Realtime tool payload pins the manifest-generated layer relea
     .digest('hex');
   assert.equal(
     digest,
-    // Re-derived for the voice layer manifest (generated layer enums and
+    // Re-derived for Provider Settings and explicit Visual Presets/Scenes routing,
+    // plus the deliberate direct Panel tool/target additions and voice layer manifest (generated layer enums and
     // aliases), point-and-ask (pointer sentinels, referent args) and the
     // consolidated tool wording (each policy stated once); model-facing tools
     // omit top-level anyOf (OpenAI rejects it). Contacts list routing preserves
@@ -46,9 +47,12 @@ test('the complete Realtime tool payload pins the manifest-generated layer relea
     // Air quality (ECCC AQHI) extends the manifest.
     // Globe rotation adds one motion; visual keyhole fit and explicit
     // reset guidance/defaults update only move_camera and mode descriptions.
-    // Restore base descriptions; append only globe-rotation defaults and fit guidance.
-    // Re-derived 2026-10-23 for the upstream merge: upstream's globe rotation + the fork's additions.
-    '482a82460ca2d41295651ffe048e51aba6935fcec989f7683ab6cee44abb2e49',
+    // S2 GhostMaps extends the generated layer enums.
+    // Panel adds named voice targets and timeout; shared Panel/Cockpit guidance
+    // is consolidated without changing either feature's arguments.
+    // Re-derived 2026-10-29 for the upstream merge: upstream's panel and
+    // GhostMaps changes + the fork's additions.
+    'e4641b69ebf4c9c66c8b1af69ee9672626e0d12be493491edc8c620d52d44dc4',
   );
 });
 
@@ -112,12 +116,14 @@ test('all legacy action arguments are byte-identical after removing the delibera
         'set_cyber_sonar',
         'list_ui_controls',
         'use_ui_control',
+        'set_voice_inactivity_timeout',
       ].includes(tool.name),
   );
   // Layer enums are generated from the voice layer manifest and pinned by
   // layerManifest.test.mjs; the two shipped right-rail panels are additive.
   const property = (name) =>
     legacy.find((tool) => tool.name === name).parameters.properties;
+  delete property('control_cockpit').voicePanel;
   delete property('set_layer_visibility').layerId.enum;
   delete property('show_data_layers_menu').layerId.enum;
   delete property('get_entity_context').layerId.enum;
@@ -146,6 +152,9 @@ test('all legacy action arguments are byte-identical after removing the delibera
         'social-panel',
         'outbreak-panel',
         'sst-panel',
+        'voice-settings',
+        'voice-preview',
+        'provider-settings',
       ].includes(id),
   );
   // The fork's additive values: the Canadian city presets and the weather
@@ -275,4 +284,14 @@ test('globe reset guidance requires a separate explicit command after refusal', 
   assert.match(paragraph, /never from your own plan/);
   assert.match(paragraph, /bare yes\/ok/);
   assert.match(paragraph, /Do not ask a question/);
+});
+
+test('direct voice timeout schema accepts None and exact integers, rejects malformed duration', () => {
+  const tool = GEV_REALTIME_TOOLS.find(
+    (tool) => tool.name === 'set_voice_inactivity_timeout',
+  );
+  for (const minutes of [0, 1, 5, 60])
+    assert.equal(validateArgs(tool.parameters, { minutes }).length, 0);
+  for (const minutes of [-1, 61, 1.5, '5'])
+    assert.ok(validateArgs(tool.parameters, { minutes }).length > 0);
 });

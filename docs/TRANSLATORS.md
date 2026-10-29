@@ -1,6 +1,6 @@
 # Translating God's Eye View
 
-Shipped languages: **English** (source and fallback), **Spanish** (`es`), **Quebec French** (`fr-CA`, shown as Français Québécois), **Inuktitut** (`iu`, written in syllabics), **Russian** (`ru`), **Simplified Chinese** (`zh-CN`) and **Ancient Egyptian** (`egy`, written in hieroglyphs).
+Shipped languages: **English** (source and fallback), **Spanish** (`es`), **Quebec French** (`fr-CA`, shown as Français Québécois), **Inuktitut** (`iu`, written in syllabics), **Russian** (`ru`), **Simplified Chinese** (`zh-CN`), **Traditional Chinese** (`zh-Hant`) and **Ancient Egyptian** (`egy`, written in hieroglyphs).
 
 ## How it works
 
@@ -67,4 +67,4 @@ These are contracts, not copy: layer ids and registry keys, status enums and oth
 
 ## Language notes
 
-Each language keeps its glossary, plural forms, units and style in its own file, `docs/translations/<code>.md`: [Spanish](./translations/es.md), [Quebec French](./translations/fr-CA.md), [Inuktitut](./translations/iu.md), [Russian](./translations/ru.md), [Simplified Chinese](./translations/zh-CN.md), [Ancient Egyptian](./translations/egy.md). Read it before translating, and add a term there when you settle on one.
+Each language keeps its glossary, plural forms, units and style in its own file, `docs/translations/<code>.md`: [Spanish](./translations/es.md), [Quebec French](./translations/fr-CA.md), [Inuktitut](./translations/iu.md), [Russian](./translations/ru.md), [Simplified Chinese](./translations/zh-CN.md), [Traditional Chinese](./translations/zh-Hant.md), [Ancient Egyptian](./translations/egy.md). Read it before translating, and add a term there when you settle on one.

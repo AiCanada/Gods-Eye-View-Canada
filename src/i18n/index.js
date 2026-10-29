@@ -24,6 +24,7 @@ import frCA from './locales/fr-CA.json' with { type: 'json' };
 import iu from './locales/iu.json' with { type: 'json' };
 import ru from './locales/ru.json' with { type: 'json' };
 import zhCN from './locales/zh-CN.json' with { type: 'json' };
+import zhHant from './locales/zh-Hant.json' with { type: 'json' };
 import { useLocalText } from './marker.js';
 
 const CATALOGS = Object.freeze({
@@ -32,6 +33,7 @@ const CATALOGS = Object.freeze({
   iu,
   ru,
   'zh-CN': zhCN,
+  'zh-Hant': zhHant,
   egy,
 });
 /**
