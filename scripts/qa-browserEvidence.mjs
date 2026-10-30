@@ -106,6 +106,34 @@ const withTimeout = (promise, ms, label) =>
     ),
   ]);
 
+/**
+ * Chrome's processes and the CPU each used over two seconds, read from the
+ * browser rather than a page. After a page call that never returned, a busy
+ * renderer means a script that does not end, a busy GPU process means
+ * software rendering that does not finish, and neither means a wait that
+ * never ends.
+ */
+async function processActivity(browser) {
+  const session = await browser.target().createCDPSession();
+  try {
+    const sample = async () =>
+      (await session.send('SystemInfo.getProcessInfo')).processInfo;
+    const before = await sample();
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const seconds = (value) => Math.round(value * 100) / 100;
+    return (await sample()).map(({ type, id, cpuTime }) => ({
+      type,
+      id,
+      cpuSeconds: seconds(cpuTime),
+      cpuSecondsLast2s: seconds(
+        cpuTime - (before.find((entry) => entry.id === id)?.cpuTime ?? cpuTime),
+      ),
+    }));
+  } finally {
+    await session.detach().catch(() => {});
+  }
+}
+
 function streetLevelState(page) {
   return page.evaluate(() => {
     const module =
@@ -124,6 +152,21 @@ export async function saveFailureArtifacts({ dir, browser, monitors, error }) {
   await fs.writeFile(
     path.join(dir, 'error.txt'),
     redact(error?.stack || error?.message || String(error)),
+  );
+  // First, while it still describes the moment of failure.
+  await fs.writeFile(
+    path.join(dir, 'processes.json'),
+    JSON.stringify(
+      await withTimeout(
+        processActivity(browser),
+        10_000,
+        'process activity',
+      ).catch((activityError) => ({
+        error: String(activityError?.message || activityError),
+      })),
+      null,
+      2,
+    ),
   );
   const known = new Map(monitors.map((monitor) => [monitor.page, monitor]));
   let pages = [];

@@ -174,6 +174,7 @@ import {
   ultraTokenTamperFlags,
   ultraTokenSkillFields,
 } from '../shared/ultraTokens.mjs';
+import { onServerClose } from './serverClose.js';
 
 const KEY = /^[A-Za-z0-9_-]{43}$/;
 /**
@@ -6690,7 +6691,7 @@ export function ultraHelpProxy({
       // pollUltraNetworkOnce instead, so no test ever starts a timer.
       if (server.httpServer) {
         const owner = startNetworkPoller();
-        server.httpServer.once('close', () => stopNetworkPoller(owner));
+        onServerClose(server, () => stopNetworkPoller(owner));
       }
     },
     configurePreviewServer(server) {

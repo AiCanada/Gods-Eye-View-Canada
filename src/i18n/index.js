@@ -18,20 +18,32 @@ import {
   writeStoredLocale,
 } from './locale.js';
 import forkLocales from './fork-locales.json' with { type: 'json' };
+import de from './locales/de.json' with { type: 'json' };
 import es from './locales/es.json' with { type: 'json' };
 import egy from './locales/egy.json' with { type: 'json' };
+import fr from './locales/fr.json' with { type: 'json' };
 import frCA from './locales/fr-CA.json' with { type: 'json' };
+import it from './locales/it.json' with { type: 'json' };
 import iu from './locales/iu.json' with { type: 'json' };
+import ja from './locales/ja.json' with { type: 'json' };
+import pt from './locales/pt.json' with { type: 'json' };
 import ru from './locales/ru.json' with { type: 'json' };
+import uk from './locales/uk.json' with { type: 'json' };
 import zhCN from './locales/zh-CN.json' with { type: 'json' };
 import zhHant from './locales/zh-Hant.json' with { type: 'json' };
 import { useLocalText } from './marker.js';
 
 const CATALOGS = Object.freeze({
+  de,
   es,
+  fr,
   'fr-CA': frCA,
+  it,
   iu,
+  ja,
+  pt,
   ru,
+  uk,
   'zh-CN': zhCN,
   'zh-Hant': zhHant,
   egy,
@@ -368,13 +380,19 @@ export function formatUtcDayMonth(value) {
 
 /**
  * Locale-aware relative time (Intl.RelativeTimeFormat), e.g.
- * formatRelativeTime(-5, 'minute') → '5 minutes ago' / '5 минут назад'.
+ * formatRelativeTime(-5, 'minute') → '5 minutes ago' / '5 минут назад' /
+ * '5分前'.
  */
 export function formatRelativeTime(value, unit = 'second', options) {
-  return cachedFormatter('relative', Intl.RelativeTimeFormat, {
+  const text = cachedFormatter('relative', Intl.RelativeTimeFormat, {
     numeric: 'auto',
     ...options,
   }).format(value, unit);
+  // CLDR spaces Japanese (5 分前); the ja catalog writes the number and its
+  // unit together (5分前), so the two must not differ on one screen.
+  return currentLocale === 'ja'
+    ? text.replace(/(?<=\d) (?=\p{Script=Han})/gu, '')
+    : text;
 }
 
 /** Collapse markup whitespace so a message reads the same in HTML and JS. */
@@ -388,7 +406,9 @@ function normalizeMarkupText(text) {
  * Markup opt-in: the element's own English text or attribute is the source.
  *   <span data-i18n>Normal</span>
  *   <button title="Pin" data-i18n-title>…</button>
- * Also data-i18n-aria-label and data-i18n-placeholder.
+ * Also data-i18n-aria-label and data-i18n-placeholder. data-i18n-context
+ * gives the element's text a context, as t(text, { context }) does:
+ *   <option data-i18n data-i18n-context="radio tag">All</option>
  */
 const DOCUMENT_TRANSLATION_TARGETS = Object.freeze([
   ['data-i18n', null],
@@ -422,7 +442,13 @@ export function applyDocumentTranslations(doc) {
         ? element.getAttribute(attribute)
         : normalizeMarkupText(element.textContent);
       if (!source) continue;
-      const text = local ? tl(source) : t(source);
+      const context =
+        attribute || local ? null : element.getAttribute?.('data-i18n-context');
+      const text = local
+        ? tl(source)
+        : context
+          ? t(source, { context })
+          : t(source);
       if (text === source) continue;
       if (attribute) element.setAttribute(attribute, text);
       else element.textContent = text;

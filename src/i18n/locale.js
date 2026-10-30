@@ -10,10 +10,16 @@ export const DEFAULT_LOCALE = 'en';
 /** Shipped locales; order does not matter. Adding one: docs/TRANSLATORS.md. */
 export const LOCALES = Object.freeze([
   'en',
+  'de',
   'es',
+  'fr',
   'fr-CA',
+  'it',
   'iu',
+  'ja',
+  'pt',
   'ru',
+  'uk',
   'zh-CN',
   'zh-Hant',
   'egy',
@@ -27,10 +33,16 @@ export const LOCALES = Object.freeze([
  */
 export const LOCALE_NAMES = Object.freeze({
   en: 'English',
+  de: 'Deutsch',
   es: 'Español',
+  fr: 'Français',
   'fr-CA': 'Français Québécois',
+  it: 'Italiano',
   iu: 'Inuktitut',
+  ja: '日本語',
+  pt: 'Português (Brasil)',
   ru: 'Русский',
+  uk: 'Українська',
   'zh-CN': '中文（简体）',
   'zh-Hant': '中文（繁體）',
   egy: 'Ancient Egyptian',
@@ -52,10 +64,13 @@ const RTL_LOCALES = Object.freeze([]);
 
 /**
  * Map any language tag to a shipped locale: 'ru-RU' and 'RU' → 'ru',
- * 'zh', 'zh-CN' and 'zh-Hans-SG' → 'zh-CN'; 'zh-Hant', 'zh-TW', 'zh-HK' and
- * 'zh-MO' → 'zh-Hant'. A locale with a region matches its exact tag first
- * ('fr_ca' → 'fr-CA'), and its language alone stands for it: Quebec French is
- * the only French shipped, so 'fr' and 'fr-FR' → 'fr-CA'.
+ * 'de-AT' and 'de_CH' → 'de', 'ja-JP' → 'ja',
+ * 'pt-BR' and 'pt-PT' → 'pt' (Brazilian Portuguese),
+ * 'zh', 'zh-CN' and 'zh-Hans-SG' → 'zh-CN';
+ * 'zh-Hant', 'zh-TW', 'zh-HK' and 'zh-MO' → 'zh-Hant'.
+ * A locale with a region matches its exact tag first ('fr_ca' → 'fr-CA',
+ * Quebec French); otherwise its language stands for it, the plain language
+ * before a regional one ('fr' and 'fr-FR' → 'fr').
  * @returns {string|null}
  */
 export function normalizeLocale(candidate) {
@@ -70,6 +85,7 @@ export function normalizeLocale(candidate) {
   }
   const exact = LOCALES.find((code) => code.toLowerCase() === tag);
   if (exact) return exact;
+  if (LOCALES.includes(primary)) return primary;
   return LOCALES.find((code) => code.split('-')[0] === primary) ?? null;
 }
 

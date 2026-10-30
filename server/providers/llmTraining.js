@@ -27,6 +27,7 @@ import {
   sendOwnerRemovalRefusal,
 } from '../../src/keySetupCore.mjs';
 import { createLlmTrainingManager } from '../shared/llmTraining.mjs';
+import { onServerClose } from './serverClose.js';
 
 const HEADERS = {
   'Cache-Control': 'no-store',
@@ -116,7 +117,7 @@ export function llmTrainingProvider({
 
   const install = (server) => {
     manager = createManager({ root, env, log, tracker });
-    server.httpServer?.once?.('close', () => manager.close());
+    onServerClose(server, () => manager.close());
     server.middlewares.use('/api/llm-training', async (req, res) => {
       try {
         await handle(req, res);

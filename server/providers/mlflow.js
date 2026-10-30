@@ -34,6 +34,7 @@ import {
 } from '../../src/keySetupCore.mjs';
 import { MLFLOW_API, createMlflowManager } from '../shared/mlflowJobs.mjs';
 import { NO_RUN } from '../shared/mlflowTrack.mjs';
+import { onServerClose } from './serverClose.js';
 
 const HEADERS = {
   'Cache-Control': 'no-store',
@@ -205,7 +206,7 @@ export function mlflowProvider({
 
   const install = (server) => {
     manager = createManager({ root, env, log });
-    server.httpServer?.once?.('close', () => manager.close());
+    onServerClose(server, () => manager.close());
     server.middlewares.use(MLFLOW_API, async (req, res) => {
       try {
         await handle(req, res);

@@ -17,6 +17,7 @@ import {
 } from '../../src/keySetupCore.mjs';
 import { createApiFetch, createLocalToolServices } from '../mcp/services.js';
 import { createAiWorldManager } from '../shared/aiWorldJobs.mjs';
+import { onServerClose } from './serverClose.js';
 
 const HEADERS = {
   'Cache-Control': 'no-store',
@@ -246,7 +247,7 @@ export function aiWorldProvider({
     if (httpServer?.listening) restore();
     else if (httpServer?.once) httpServer.once('listening', restore);
     else restore();
-    httpServer?.once?.('close', () => manager.close());
+    onServerClose(server, () => manager.close());
     server.middlewares.use('/api/ai-world', async (req, res) => {
       try {
         await handle(req, res);

@@ -10,16 +10,6 @@ import {
 export function bindRadioControls() {
   if (!this._radioPanel) return;
   const tunerListenerOptions = {};
-  const setRadioDisclosure = (expanded, { returnFocus = false } = {}) => {
-    if (this.destroyed) return;
-    const open = Boolean(expanded);
-    this._contextRadioDock?.classList.toggle('disclosure-open', open);
-    if (this._contextRadioMini) this._contextRadioMini.hidden = !open;
-    this._syncContextRadioLauncherState();
-    if (!open && returnFocus)
-      this._contextRadioToggleBtn?.focus({ preventScroll: true });
-  };
-  this._setRadioDisclosure = setRadioDisclosure;
   const setCockpitDisclosure = (
     kind,
     expanded,
@@ -400,11 +390,6 @@ export function bindRadioControls() {
     () => void toggleRadio(this._radioEnableBtn),
   );
   this.listen(
-    this._contextRadioMiniEnableBtn,
-    'click',
-    () => void toggleRadio(this._contextRadioMiniEnableBtn),
-  );
-  this.listen(
     this._cockpitRadioEnableBtn,
     'click',
     () => void toggleRadio(this._cockpitRadioEnableBtn),
@@ -413,37 +398,17 @@ export function bindRadioControls() {
   // live: below the last tab of the rail (Scenes), never as a popover under
   // Context (owner ruling, 2026-09-27). Pressed again, it puts them away.
   this.listen(this._contextRadioToggleBtn, 'click', () => {
-    setRadioDisclosure(false);
     const open =
       Boolean(this._radioPanel) &&
       !this._radioPanel.classList.contains('collapsed');
     this.actions.setPanelCollapsed('radio-panel', open, { explicit: true });
     if (!open) this._radioEnableBtn?.focus({ preventScroll: true });
   });
-  this.listen(this._contextRadioMiniCloseBtn, 'click', () => {
-    setRadioDisclosure(false, { returnFocus: true });
-  });
-  this.listen(this._contextRadioDetailsBtn, 'click', () => {
-    this.actions.setPanelCollapsed('radio-panel', false, { explicit: true });
-    setRadioDisclosure(false);
-    this._radioEnableBtn?.focus({ preventScroll: true });
-  });
   this.listen(this._cockpitRadioToggleBtn, 'click', () => {
     const open =
       this._cockpitRadioToggleBtn.getAttribute('aria-expanded') === 'true';
     setCockpitDisclosure('radio', !open);
   });
-  this.listen(
-    document,
-    'pointerdown',
-    (event) => {
-      if (!this._contextRadioDock?.classList.contains('disclosure-open'))
-        return;
-      if (event.target?.closest?.('#context-radio-dock')) return;
-      setRadioDisclosure(false);
-    },
-    tunerListenerOptions,
-  );
   this.listen(
     document,
     'pointerdown',
@@ -460,29 +425,6 @@ export function bindRadioControls() {
       setCockpitDisclosure('radio', false);
     },
     tunerListenerOptions,
-  );
-  this.listen(
-    document,
-    'keydown',
-    (event) => {
-      if (
-        event.key !== 'Escape' ||
-        !this._contextRadioDock?.classList.contains('disclosure-open')
-      )
-        return;
-      event.preventDefault();
-      // Immediate: a plain stopPropagation() still lets every LATER listener on
-      // this same document run, so closing the disclosure ALSO dismissed the
-      // first-run launcher — one key, two actions. Matches the cockpit
-      // disclosure handler directly below.
-      event.stopImmediatePropagation();
-      const escapedFromDisclosure =
-        event.target === this._contextRadioToggleBtn ||
-        this._contextRadioToggleBtn?.contains?.(event.target);
-      setRadioDisclosure(false, { returnFocus: !escapedFromDisclosure });
-      if (escapedFromDisclosure) this._contextRadioToggleBtn?.blur?.();
-    },
-    { capture: true },
   );
   this.listen(
     document,
@@ -577,13 +519,6 @@ export function bindRadioControls() {
       this._radioVolumeValue.textContent = `${value}%`;
     this.actions.setParams({ volume: value / 100 }, { origin: 'user' });
   });
-  this.listen(this._contextRadioMiniPrevBtn, 'click', () => cycleRadio(-1));
-  this.listen(this._contextRadioMiniNextBtn, 'click', () => cycleRadio(1));
-  this.listen(
-    this._contextRadioMiniPlayBtn,
-    'click',
-    () => void this.radio.togglePlayback({ origin: 'user' }),
-  );
   // Cockpit owns the Cesium camera even though it intentionally clears
   // viewer.trackedEntity. Station changes must never start the map-view
   // rotation/fallback flights that would compete with its preUpdate pose.
@@ -598,12 +533,6 @@ export function bindRadioControls() {
     'click',
     () => void this.radio.togglePlayback({ origin: 'user' }),
   );
-  this.listen(this._contextRadioMiniVolume, 'input', () => {
-    const value = Number(this._contextRadioMiniVolume.value);
-    if (this._contextRadioMiniVolumeValue)
-      this._contextRadioMiniVolumeValue.textContent = `${value}%`;
-    this.actions.setParams({ volume: value / 100 }, { origin: 'user' });
-  });
   this.listen(this._cockpitRadioVolume, 'input', () => {
     const value = Number(this._cockpitRadioVolume.value);
     if (this._cockpitRadioVolumeValue)

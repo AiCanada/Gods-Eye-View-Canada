@@ -331,7 +331,7 @@ test('weather rail orders between CCTV and Context, resets positions, observes a
     const weather = f.nodes.get('weather-panel');
     stack.children = [weather, f.nodes.get('global-context-panel')];
     const synced = [];
-    const chrome = { _syncContextRadioLauncherState() {} };
+    const chrome = {};
     const owner = new PanelLayoutController({
       readHud: () => ({}),
       scheduleCockpitLayout() {},

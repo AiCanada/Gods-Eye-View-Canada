@@ -96,6 +96,7 @@ import {
   privateFetchSiteAllowed,
 } from './private-cameras.js';
 import { createMotionJpegScanner } from './cctv/media.js';
+import { onServerClose } from './serverClose.js';
 
 /** Saved values whose loss counts as a removal (see deviceFeedUpdateRemoves). */
 const DEVICE_FEED_REMOVABLE_FIELDS = [
@@ -1675,7 +1676,7 @@ export function deviceFeedsProxy({
       listenerWanted = true;
       cache = { stamp: '', config: emptyDeviceFeedConfig(), unreadable: false };
       readConfig();
-      server.httpServer?.once?.('close', () => {
+      onServerClose(server, () => {
         listenerWanted = false;
         stopListener();
       });

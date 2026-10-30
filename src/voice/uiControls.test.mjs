@@ -1092,7 +1092,7 @@ test('every keyboard shortcut has a spoken way in, so a phone without keys loses
   const letters = [...shortcuts.matchAll(/key === '([a-z])'/g)].map(
     (m) => m[1],
   );
-  assert.equal(styles.length, 7, 'keys 1 to 7');
+  assert.equal(styles.length, 6, 'keys 1 to 6');
   assert.deepEqual(
     letters.sort(),
     ['c', 'd', 'f', 'h', 'o', 'v'],

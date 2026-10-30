@@ -467,8 +467,7 @@ body:not(.ui-clean-view):not(.recording-mode):has(
 /* The left readout lifts clear of the LLM panel that occupies the bottom-left
    corner (the minimal variant does the same; cockpit mode hides the panel
    instead). The right one keeps its original offset: nothing sits under it. */
-#intel-hud[data-variant='tactical'] .hud-bottom-left,
-#intel-hud[data-variant='operator'] .hud-bottom-left {
+#intel-hud[data-variant='tactical'] .hud-bottom-left {
   bottom: calc(2vh + 6.5rem + var(--llm-panel-reserve));
 }
 
@@ -476,14 +475,8 @@ body:not(.ui-clean-view):not(.recording-mode):has(
    (0.9rem up, about 2rem tall), so the right rail's corridor above it is as
    tall as it can be: the radio controls under the Scenes tab expand into it
    (owner ruling, 2026-09-27). */
-#intel-hud[data-variant='tactical'] .hud-bottom-right,
-#intel-hud[data-variant='operator'] .hud-bottom-right {
+#intel-hud[data-variant='tactical'] .hud-bottom-right {
   bottom: calc(0.9rem + 2.6rem);
-}
-
-#intel-hud[data-variant='operator'] .hud-bottom-bar {
-  bottom: calc(2vh + 9.8rem);
-  width: min(48vw, 680px);
 }
 
 #intel-hud[data-variant='minimal'] .hud-bottom-left {

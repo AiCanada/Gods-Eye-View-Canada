@@ -85,7 +85,7 @@ test('Radio on the rail does not reveal Context in Cyber', () => {
 });
 
 test('non-Cyber explicit panels and restored preferences retain their existing policy', () => {
-  for (const theme of ['tactical', 'operator', 'minimal', 'cyber']) {
+  for (const theme of ['tactical', 'minimal', 'cyber']) {
     const f = fixture(theme), prior = globalThis.document;
     globalThis.document = f.doc;
     try {

@@ -6186,13 +6186,14 @@ test('removing the row, or clearing the inbox, ends the call for help here', asy
 test('the poller runs under the dev server alone and stops with it', async () => {
   const { plugin, request } = setup();
   const closers = [];
-  const httpServer = {
+  // Vite builds a new HTTP server for each start and in-process restart.
+  const newHttpServer = () => ({
     once: (event, handler) => closers.push([event, handler]),
-  };
+  });
   const uses = [];
   plugin.configureServer({
     middlewares: { use: (...args) => uses.push(args) },
-    httpServer,
+    httpServer: newHttpServer(),
   });
   assert.equal((await request('/status')).json().network.polling, true);
   assert.deepEqual(
@@ -6205,7 +6206,7 @@ test('the poller runs under the dev server alone and stops with it', async () =>
   // again until the process itself was restarted.
   plugin.configureServer({
     middlewares: { use: (...args) => uses.push(args) },
-    httpServer,
+    httpServer: newHttpServer(),
   });
   closers[0][1]();
   assert.equal(

@@ -26,6 +26,7 @@ import {
   TENSORFLOW_API,
   createTensorflowManager,
 } from '../shared/tensorflowJobs.mjs';
+import { onServerClose } from './serverClose.js';
 
 const HEADERS = {
   'Cache-Control': 'no-store',
@@ -161,7 +162,7 @@ export function tensorflowProvider({
 
   const install = (server) => {
     manager = createManager({ root, env, log, tracker });
-    server.httpServer?.once?.('close', () => manager.close());
+    onServerClose(server, () => manager.close());
     server.middlewares.use(TENSORFLOW_API, async (req, res) => {
       try {
         await handle(req, res);

@@ -216,10 +216,11 @@ test('no unchanged Realtime tool definition drifts silently', () => {
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((tool) => structuredClone(tool))
     .filter((tool) => tool.name !== 'set_cyber_sonar');
-  // Cyber adds one HUD choice and the sonar tool; retain the existing pin for every legacy field.
+  // Cyber adds one HUD choice and the sonar tool, and Operator was retired;
+  // retain the existing pin for every legacy field.
   const hudLayout = unchanged.find((tool) => tool.name === 'set_hud').parameters.properties.layout;
-  assert.deepEqual(hudLayout.enum, ['tactical', 'operator', 'minimal', 'cyber']);
-  hudLayout.enum = hudLayout.enum.filter((layout) => layout !== 'cyber');
+  assert.deepEqual(hudLayout.enum, ['tactical', 'minimal', 'cyber']);
+  hudLayout.enum = ['tactical', 'operator', 'minimal'];
   // Globe rotation adds one motion and clarifies the two affected descriptions.
   // Check those edits explicitly, then keep the legacy pin for every other field.
   const camera = unchanged.find((tool) => tool.name === 'move_camera');
@@ -249,6 +250,19 @@ test('no unchanged Realtime tool definition drifts silently', () => {
     'Direct the camera like a drone operator: orbit the current view target, pan, tilt, or rotate — one bounded nudge (mode=once) or continuous motion until stopped (mode=continuous). Continuous motion also stops on any manual camera input or when a navigation tool runs. Say the RESULTING state when confirming ("Orbiting slowly").';
   camera.parameters.properties.direction.description =
     'Required except for orbit (defaults right/clockwise) and stop.';
+  // Snow is retired from set_visual_style; restore it to keep the legacy pin.
+  const visualStyle = unchanged.find(
+    (tool) => tool.name === 'set_visual_style',
+  ).parameters.properties.style;
+  assert.deepEqual(visualStyle.enum, [
+    'normal',
+    'retro',
+    'surveillance',
+    'thermal',
+    'anime',
+    'noir',
+  ]);
+  visualStyle.enum = [...visualStyle.enum, 'snow'];
   assert.equal(unchanged.length, 13);
   const digest = createHash('sha256')
     .update(JSON.stringify(unchanged))
@@ -261,7 +275,7 @@ test('no unchanged Realtime tool definition drifts silently', () => {
 });
 
 test('Radio volume and mission speed share the Sharpen slider visual language', () => {
-  for (const id of ['cockpit-radio-volume', 'context-radio-mini-volume', 'radio-volume', 'sdr-volume']) {
+  for (const id of ['cockpit-radio-volume', 'radio-volume', 'sdr-volume']) {
     assert.match(
       html,
       new RegExp(`id="${id}"[^>]*class="gev-quantitative-slider"[^>]*type="range"`),
@@ -291,15 +305,13 @@ test('Radio is the right rail\'s last member, opened from Context, with separate
   assert.ok(railStart >= 0 && radioStart > sceneStart && radioStart < railEnd);
   assert.match(html, /id="radio-panel"[^>]*data-panel-id="radio-panel"/);
   assert.match(html, /aria-label="Radio playback"/);
-  assert.match(html, /id="context-radio-toggle-btn"[^>]*aria-expanded="false"[^>]*aria-controls="context-radio-mini"/);
+  // The Context header's radio icon is Radio's launcher: it shows and hides
+  // the rail's Radio and is not a power control. Upstream's compact player
+  // under it is gone (#1471).
+  assert.match(html, /id="context-radio-toggle-btn"[^>]*aria-expanded="false"[^>]*aria-controls="radio-panel"/);
   assert.doesNotMatch(html, /id="context-radio-toggle-btn"[^>]*aria-pressed=/);
-  assert.match(html, /id="context-radio-mini"[^>]*aria-label="Compact Radio controls"[^>]*hidden/);
-  assert.match(html, /id="context-radio-mini-enable-btn"[^>]*aria-pressed="false"/);
-  assert.match(html, /id="context-radio-details-btn"[^>]*aria-expanded="false"[^>]*aria-controls="radio-panel"/);
-  assert.match(html, /id="context-radio-details-btn"[\s\S]*?<span class="material-symbols-outlined" aria-hidden="true">open_in_full<\/span>/);
-  assert.match(html, /id="context-radio-mini-close-btn"[^>]*aria-label="Close compact Radio controls"/);
-  assert.match(html, /id="context-radio-mini-(?:prev|play|next)-btn"/);
-  assert.match(html, /id="context-radio-mini-volume"/);
+  assert.doesNotMatch(html, /context-radio-(?:mini|details)/);
+  assert.match(html, /id="radio-enable-btn"[^>]*aria-pressed="false"/);
   assert.match(html, /id="cockpit-radio-panel"[^>]*aria-label="Cockpit compact Radio controls"[^>]*hidden/);
   assert.match(html, /id="cockpit-radio-enable-btn"[^>]*aria-pressed="false"/);
   assert.match(html, /id="cockpit-radio-(?:prev|play|next)-btn"/);
@@ -348,8 +360,10 @@ test('Radio is the right rail\'s last member, opened from Context, with separate
   // in Context; Radio stays on the rail here (data-radio-placement="rail"), so
   // that rule never matches. The base stylesheet must not nest it.
   assert.doesNotMatch(baseCss, /#global-context-panel #radio-panel\.collapsed/);
-  assert.doesNotMatch(css, /\.context-radio-dock\.active:hover \.context-radio-mini/);
-  assert.doesNotMatch(css, /\.context-radio-dock\.active:focus-within \.context-radio-mini/);
+  // The Context header keeps only its radio icon: upstream's compact player
+  // under it is gone (#1471).
+  assert.match(css, /\.context-radio-toggle\s*\{/);
+  assert.doesNotMatch(css, /\.context-radio-mini/);
   assert.match(css, /#right-context-rail #global-context-panel:not\(\.collapsed\) \.context-mode-view,[\s\S]*?#right-context-rail #global-context-panel:not\(\.collapsed\) #radio-panel\s*\{[\s\S]*?flex: 0 0 auto;/);
 });
 
@@ -367,63 +381,36 @@ test('panel collapse is presentation-only and Radio exposes explicit voice playb
   assert.deepEqual(realtimeTools().find(tool => tool.name === 'control_radio').parameters.properties.action.enum, ['enable', 'disable', 'play', 'resume', 'pause', 'stop', 'next', 'previous', 'volume', 'select', 'status']);
   const enableMethod = radioBindings;
   assert.doesNotMatch(enableMethod, /playSelectedRadio|togglePlayback\(\).*radio-enable/i);
-  assert.match(enableMethod, /contextRadioToggleBtn/);
-  assert.match(enableMethod, /contextRadioMiniEnableBtn/);
-  assert.match(enableMethod, /contextRadioDetailsBtn/);
-  assert.match(enableMethod, /contextRadioMiniCloseBtn/);
-  assert.match(enableMethod, /contextRadioMiniPlayBtn/);
-  const disclosureStart = enableMethod.indexOf('this.listen(this._contextRadioToggleBtn,');
-  const disclosureEnd = enableMethod.indexOf("this.listen(this._radioFilter,", disclosureStart);
-  const disclosureBindings = enableMethod.slice(disclosureStart, disclosureEnd);
-  assert.ok(disclosureStart >= 0 && disclosureEnd > disclosureStart, 'compact Radio disclosure bindings are missing');
-  assert.doesNotMatch(disclosureBindings, /toggleRadio\(this\._contextRadioToggleBtn\)/);
-  assert.match(enableMethod, /toggleRadio\(this\._contextRadioMiniEnableBtn\)/);
-  assert.match(disclosureBindings, /contextRadioMiniCloseBtn[\s\S]*?setRadioDisclosure\(false, \{ returnFocus: true \}\)/);
-  assert.match(disclosureBindings, /contextRadioDetailsBtn[\s\S]*?setPanelCollapsed\('radio-panel', false, \{ explicit: true \}\)/);
+  assert.match(enableMethod, /toggleRadio\(this\._radioEnableBtn\)/);
+  // Only the Context header's radio icon is left of the compact player
+  // (#1471 removed the rest).
+  assert.doesNotMatch(enableMethod, /contextRadioMini|contextRadioDetails|setRadioDisclosure/);
+  const launcherStart = enableMethod.indexOf('this.listen(this._contextRadioToggleBtn,');
+  const launcherEnd = enableMethod.indexOf('this.listen(this._cockpitRadioToggleBtn,', launcherStart);
+  const launcher = enableMethod.slice(launcherStart, launcherEnd);
+  assert.ok(launcherStart >= 0 && launcherEnd > launcherStart, 'the Context radio icon binding is missing');
+  assert.doesNotMatch(launcher, /toggleRadio\(/, 'the icon shows Radio; it does not switch it on');
   // The header's radio icon opens the radio controls where they live (below
-  // the Scenes tab) and closes them again; it never opens the compact popover
-  // under Context (owner ruling, 2026-09-27).
-  assert.match(
-    disclosureBindings,
-    /contextRadioToggleBtn[\s\S]*?setRadioDisclosure\(false\);[\s\S]*?setPanelCollapsed\('radio-panel', open, \{ explicit: true \}\)/,
-  );
-  assert.doesNotMatch(disclosureBindings, /contextRadioToggleBtn[\s\S]*?_revealRadioPanelInsideContext/);
-  assert.doesNotMatch(disclosureBindings, /setPanelCollapsed\('radio-panel', !/);
+  // the Scenes tab) and closes them again (owner ruling, 2026-09-27).
+  assert.match(launcher, /setPanelCollapsed\('radio-panel', open, \{ explicit: true \}\)/);
+  assert.doesNotMatch(launcher, /setPanelCollapsed\('radio-panel', !/);
   assert.match(ui, /setAttribute\('aria-expanded', String\(/);
   assert.match(readFileSync(new URL('./ui/shellFeedback.js', import.meta.url), 'utf8'), /\.hidden = !/);
   assert.doesNotMatch(method, /panelId === 'global-context-panel'[\s\S]*?this\._radioState\?\.enabled[\s\S]*?setPanelCollapsed\('radio-panel', false\)/);
-});
-
-test('expanded Context routes its Radio icon to the embedded section and keeps collapsed Context compact', () => {
-  const revealStart = radioControlsSource.indexOf('\n  async _revealRadioPanelInsideContext');
-  const revealEnd = radioControlsSource.indexOf('\n  /**', revealStart + 10);
-  const revealMethod = radioControlsSource.slice(revealStart, revealEnd);
-  assert.ok(revealStart >= 0 && revealEnd > revealStart, 'embedded Radio reveal helper is missing');
-  assert.match(revealMethod, /requestAnimationFrame\(\(\) => requestAnimationFrame/);
-  assert.match(revealMethod, /scroller\.scrollTo\(\{\s*top: next,\s*behavior: reducedMotion \? 'auto' : 'smooth',?\s*\}\)/);
-  assert.match(revealMethod, /focus\?\.\(\{ preventScroll: true \}\)/);
-  assert.doesNotMatch(revealMethod, /setEnabled|togglePlayback|selectStation|setContextMode/);
-
-  const syncStart = radioControlsSource.indexOf('\n  _syncContextRadioLauncherState()');
-  const syncEnd = radioControlsSource.indexOf('\n  destroy()', syncStart + 10);
-  const syncMethod = radioControlsSource.slice(syncStart, syncEnd);
-  assert.ok(syncStart >= 0 && syncEnd > syncStart, 'Context Radio launcher state sync is missing');
-  assert.match(syncMethod, /contextExpanded[\s\S]*?aria-controls', 'radio-panel'[\s\S]*?aria-expanded',\s*String\(radioExpanded\)/);
-  assert.match(syncMethod, /aria-controls',\s*'context-radio-mini'[\s\S]*?aria-expanded',\s*String\(compactOpen\)/);
-  const renderMethod = radioPresentation;
-  assert.match(renderMethod, /this\._syncContextRadioLauncherState\(\)/);
-  assert.doesNotMatch(renderMethod, /compact Radio controls/);
-  assert.doesNotMatch(renderMethod, /_contextRadioToggleBtn\.setAttribute\('aria-(?:controls|expanded|label)'/);
 });
 
 test('Radio disclosure is explicit, starts closed while off, and preserves playback state', () => {
   const renderMethod = radioPresentation;
   assert.doesNotMatch(renderMethod, /setPanelCollapsed\('radio-panel', true\).*stopPlayback/s);
   assert.doesNotMatch(renderMethod, /_radioMiniExpanded\s*=\s*false.*audioState === 'playing'/s);
-  assert.match(ui, /contextRadioDetailsBtn/);
-  const syncStart = ui.indexOf('\n  _syncPanelCollapseButton(panelEl)');
-  const syncMethod = ui.slice(syncStart, ui.indexOf('\n  }', syncStart + 10));
-  assert.doesNotMatch(syncMethod, /contextRadioDetailsBtn[\s\S]*?(?:aria-label|textContent|\.title)/);
+  // The Context radio icon reports whether the rail's Radio is open.
+  assert.match(renderMethod, /this\._syncContextRadioLauncherState\?\.\(\)/);
+  const syncStart = radioControlsSource.indexOf('\n  _syncContextRadioLauncherState()');
+  const syncEnd = radioControlsSource.indexOf('\n  destroy()', syncStart + 10);
+  const syncMethod = radioControlsSource.slice(syncStart, syncEnd);
+  assert.ok(syncStart >= 0 && syncEnd > syncStart, 'Context Radio launcher state sync is missing');
+  assert.match(syncMethod, /aria-expanded',\s*String\(radioExpanded\)/);
+  assert.match(syncMethod, /Collapse Radio section[\s\S]*?Expand Radio section/);
 });
 
 test('successful explicit user playback hands the speaker from voice to Radio', () => {

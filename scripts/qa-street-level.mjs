@@ -42,6 +42,10 @@ import {
   resetPanoramaxFixture,
 } from './fixtures/street-level/panoramax.mjs';
 
+// Keep the gate's own frames in a stack: a page call that times out fails
+// deep inside Puppeteer, and Node's default of 10 frames ends there.
+Error.stackTraceLimit = 40;
+
 const VIEWPORT = { width: 1440, height: 900 };
 /** Over downtown Sacramento, above the fixture photo line, looking down. */
 const PARK = { lon: PHOTO_LINE.lon, lat: 38.5816, height: 900, pitch: -1.3 };

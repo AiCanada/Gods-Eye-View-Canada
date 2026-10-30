@@ -167,8 +167,14 @@ export function extractMessages({ local = false } = {}) {
     const html = readFileSync(path.join(ROOT, file), 'utf8');
     for (const [, tag, attrs, text] of html.matchAll(TAG)) {
       const where = `${file} <${tag}>`;
-      if (new RegExp(String.raw`\s${marker}(\s|=|$)`).test(attrs))
-        add(normalize(decodeHtml(text)), where);
+      if (new RegExp(String.raw`\s${marker}(\s|=|$)`).test(attrs)) {
+        // The fork tabs' data-i18n-local text takes no context.
+        const context = local
+          ? null
+          : attrs.match(/\sdata-i18n-context="([^"]*)"/);
+        const message = normalize(decodeHtml(text));
+        add(context ? `${decodeHtml(context[1])}|${message}` : message, where);
+      }
       for (const [, name] of attrs.matchAll(
         new RegExp(String.raw`\s${marker}-(${attributes})\b`, 'g'),
       )) {

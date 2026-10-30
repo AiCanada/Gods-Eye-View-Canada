@@ -22,6 +22,7 @@ import {
   sendOwnerRemovalRefusal,
 } from '../../src/keySetupCore.mjs';
 import { createAbundanceStore } from '../shared/abundanceData.mjs';
+import { onServerClose } from './serverClose.js';
 
 export const ABUNDANCE_API = '/api/abundance';
 const HEADERS = {
@@ -124,7 +125,7 @@ export function abundanceProvider({
 
   const install = (server) => {
     store = given || createStore({ root, log });
-    server.httpServer?.once?.('close', () => store.close());
+    onServerClose(server, () => store.close());
     server.middlewares.use(ABUNDANCE_API, async (req, res) => {
       try {
         await handle(req, res);

@@ -1,5 +1,30 @@
 # Changelog
 
+- Upstream merge of 129 commits (German #1477, French #1476, Italian #1473,
+  Japanese #1478, Brazilian Portuguese #1475 and Ukrainian #1470 in the
+  language picker, the Context panel's Radio icon and compact player removed
+  #1471, the Operator HUD layout #1467 and the Snow preset #1468 retired,
+  vessels idle without the render loop #871, Vite 6.4.4 and Puppeteer 25.16.0
+  #1463). Fork fits: the six new languages show the fork's tabs in English,
+  like Russian and Chinese, and have the seven fork main-UI strings; upstream's
+  two new cyclone errors are in fr-CA, iu and egy. A browser asking for plain
+  French (fr, fr-FR) gets upstream's French and one asking for fr-CA gets
+  Quebec French. The fork keeps the Context header's radio icon, which shows
+  and hides the Radio controls below the Scenes tab (Radio has no tab of its
+  own); upstream's compact player under it goes, and the icon reads Expand or
+  Collapse Radio section. The fork's HUD corner offsets stay, without the
+  Operator selectors. The Street Level CI gate failed once after the last
+  merge with a page call stuck past Puppeteer's 300 s limit in its third
+  step (the re-run passed, and it did not happen locally), and its evidence
+  could not say which call or why. A failing gate now keeps its own stack
+  frames and records how much CPU each Chrome process used in the two seconds
+  after the failure, which tells a script that does not end from software
+  rendering that does not finish.
+  The fork's eight server features (Abundance, AI World, Device Feeds,
+  Distill, LLM Training, MLflow, TensorFlow, Ultra Help) share one shutdown
+  hook per dev server instead of one each, so starting the dev server no
+  longer warns of a possible EventEmitter memory leak.
+
 - Upstream merge of 131 commits (release v0.3.0 #1439, Scope controls and HUD
   text backplates #1410, S2 GhostMaps layer #1297, voice preview and settings
   panel #1299, short `/share/<code>` links #1418 with their codec exports

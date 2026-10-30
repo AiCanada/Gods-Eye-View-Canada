@@ -33,6 +33,7 @@ import {
   sendOwnerRemovalRefusal,
 } from '../../src/keySetupCore.mjs';
 import { createDistillManager } from '../shared/distillJobs.mjs';
+import { onServerClose } from './serverClose.js';
 
 export const DISTILL_API = '/api/distill';
 const HEADERS = {
@@ -163,7 +164,7 @@ export function distillProvider({
 
   const install = (server) => {
     manager = createManager({ root, env });
-    server.httpServer?.once?.('close', () => manager.close());
+    onServerClose(server, () => manager.close());
     server.middlewares.use(DISTILL_API, async (req, res) => {
       try {
         await handle(req, res);
