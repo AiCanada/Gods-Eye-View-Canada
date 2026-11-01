@@ -178,6 +178,8 @@ own tabs"). Their glossary:
 | SCAN TRAVEL / HOW CONTAGIOUS               | 𓎛𓎛𓏭𓂻 𓈝𓏏 / 𓉻 𓈖 𓊪𓄲𓂋           | _ḥꞽḥꞽ šm.t / ꜥꜣ n pẖr_         | seek the travel / greatness of the spreading              |
 | quarantine / lockdown / vaccination        | 𓈞𓋴 𓌡𓂝𓏤𓆑 / 𓐍𓏏𓋩 / 𓂋𓏙𓏏 𓎂       | _ḥmsi̯ wꜥ=f / ḫtm / rḏi̯.t zꜣ_   | sit alone / sealing / giving protection                   |
 | intensive care                             | 𓌘𓁹𓁶𓏤 𓈖 𓌕𓏌                   | _rs-tp n zwn.w_                | the physician's vigilance                                 |
+| baseline / index                           | 𓋴𓈖𓍿𓏏𓊅 / 𓏏𓈖𓅱𓏛 𓈖 𓋴𓈖𓍿𓏏𓊅          | _snṯ.t / ṯnw n snṯ.t_          | foundation / the number against the foundation            |
+| finding / figure checked                   | 𓅠𓅓𓏏 / 𓇋𓊪𓏏𓏛 𓋴𓇋𓊪𓏝𓈖𓏏𓅱            | _gm.t / ꞽp.t sꞽp.n.tw_         | what was found / a figure reckoned                        |
 
 The licence notes on the AI World rows are translated; licence names
 (CC BY 4.0, ODbL 1.0), provider and dataset names, and a citation the provider

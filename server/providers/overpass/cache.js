@@ -1,3 +1,4 @@
+import { processShared } from '../common/process-shared.js';
 import { coalesceProxyRequest } from '../common/http.js';
 import { isOverpassBoundaryQuery } from './query.js';
 import {
@@ -15,7 +16,8 @@ import { overpassPayloadIsData } from './transport.js';
 import { haversineKm } from '../common/geo.js';
 
 /** @type {Map<string,{status:number,body:string,contentType:string,endpoint:string,cachedAt:number}>} */
-const _overpassCache = new Map();
+// One per process (common/process-shared.js): a restart keeps it, pins no copy.
+const _overpassCache = processShared('overpass:cache', () => new Map());
 
 /** One signed decimal coordinate, captured. */
 const OVERPASS_COORDINATE = '(-?\\d+(?:\\.\\d+)?)';

@@ -1,3 +1,4 @@
+import { processShared } from '../common/process-shared.js';
 import { isRecognizedAisEnvelope } from '../../../src/data/aisStreamAdapter.js';
 export const AISSTREAM_CACHE_MAX = 50000;
 export const AISSTREAM_STALE_MS = 30 * 60 * 1000;
@@ -23,14 +24,19 @@ export const AISSTREAM_PRUNE_SIZE_TRIGGER =
 const AIS_TRACK_SAMPLES = 64;
 const AIS_TRACK_MIN_GAP_SEC = 30;
 const AIS_TRACK_MIN_MOVE_M = 25;
+// One store per process (common/process-shared.js): a dev-server restart
+// goes on with the vessels it had instead of pinning a full copy of them.
 /** @type {Map<string,object>} */
-const _aisStreamVessels = new Map();
+const _aisStreamVessels = processShared('ais-stream:vessels', () => new Map());
 /** @type {Map<string,object>} */
-const _aisStreamStatic = new Map();
+const _aisStreamStatic = processShared('ais-stream:static', () => new Map());
 /** @type {Map<string,{lats:Float32Array,lons:Float32Array,times:Uint32Array,head:number,len:number}>} mmsi -> track ring buffer */
-const _aisStreamTracks = new Map();
+const _aisStreamTracks = processShared('ais-stream:tracks', () => new Map());
 /** @type {Map<string,{lat:number,lon:number,epochSec:number}>} mmsi -> first fix awaiting second (lazy buffer allocation) */
-const _aisStreamTrackPending = new Map();
+const _aisStreamTrackPending = processShared(
+  'ais-stream:track-pending',
+  () => new Map(),
+);
 /** Wall-clock ms of the last cache sweep; 0 until the first one runs. */
 let _lastPruneAt = 0;
 

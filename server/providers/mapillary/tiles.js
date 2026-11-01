@@ -1,3 +1,4 @@
+import { processShared } from '../common/process-shared.js';
 import { readResponseBytesCapped } from '../common/http.js';
 import { stripTileLayers } from './trim.js';
 
@@ -180,8 +181,12 @@ function unlessAborted(promise, signal) {
   });
 }
 
-/** @type {Map<string, {bytes: Buffer, at: number}>} least recently used first */
-const memory = new Map();
+/**
+ * @type {Map<string, {bytes: Buffer, at: number}>} least recently used first;
+ * one per process, so a dev-server restart neither pins a full copy nor
+ * starts cold (common/process-shared.js).
+ */
+const memory = processShared('mapillary-tiles:memory', () => new Map());
 /**
  * Upstream fetches shared per tile, with the requests still waiting on each.
  * @type {Map<string, {promise: Promise<Buffer>, controller: AbortController, waiters: number}>}

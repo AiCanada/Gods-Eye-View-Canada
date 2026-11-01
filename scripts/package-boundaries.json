@@ -68,7 +68,8 @@
       "server/standalone/key-setup-hardening.mjs",
       "src/keySetupCore.mjs",
       "src/localRequestGate.mjs",
-      "server/shared/keySetupHardening.mjs"
+      "server/shared/keySetupHardening.mjs",
+      "server/providers/common/process-shared.js"
     ],
     "external": ["ws"]
   },
@@ -169,7 +170,8 @@
       "server/standalone/key-setup-hardening.mjs",
       "src/keySetupCore.mjs",
       "src/localRequestGate.mjs",
-      "server/shared/keySetupHardening.mjs"
+      "server/shared/keySetupHardening.mjs",
+      "server/providers/serverClose.js"
     ],
     "external": []
   },
@@ -322,7 +324,8 @@
       "server/shared/roadCctvKeys.mjs",
       "src/sources/rateLimit.js",
       "src/localRequestGate.mjs",
-      "server/shared/keySetupHardening.mjs"
+      "server/shared/keySetupHardening.mjs",
+      "server/providers/common/process-shared.js"
     ],
     "external": []
   },
@@ -340,7 +343,8 @@
       "src/sources/rateLimit.js",
       "server/providers/common/http.js",
       "src/sources/httpBody.js",
-      "src/i18n/marker.js"
+      "src/i18n/marker.js",
+      "server/providers/common/process-shared.js"
     ],
     "external": ["pbf"]
   },
@@ -383,7 +387,8 @@
       "src/sources/httpBody.js",
       "src/i18n/marker.js",
       "src/sources/overpass.js",
-      "src/sources/rateLimit.js"
+      "src/sources/rateLimit.js",
+      "server/providers/common/process-shared.js"
     ],
     "external": []
   },
@@ -404,7 +409,8 @@
       "src/sources/httpBody.js",
       "src/i18n/marker.js",
       "src/sources/rateLimit.js",
-      "server/providers/common/geo.js"
+      "server/providers/common/geo.js",
+      "server/providers/common/process-shared.js"
     ],
     "external": []
   },
@@ -3168,6 +3174,8 @@
       "src/abundanceOverlay.js",
       "src/askOutputFind.js",
       "src/askOverview.js",
+      "src/askGroundTruthBaseline.js",
+      "src/askGroundTruthPies.js",
       "src/locationClick.js",
       "src/askPanel.js",
       "src/socialMedia.js",

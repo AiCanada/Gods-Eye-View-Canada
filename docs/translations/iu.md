@@ -150,6 +150,7 @@ glossary:
 | FINANCIAL ASSETS / PRICE MOVES              | ᑮᓇᐅᔭᓕᕆᓂᕐᒧᑦ ᐱᖁᑏᑦ / ᐊᑭᐅᑉ ᐊᓯᔾᔨᕐᓂᖏᑦ                                        |
 | licence classes OPEN, NC, RESTRICTED        | ᒪᑐᐃᖅᓯᒪᔪᖅ, NC, ᑭᓪᓕᖃᖅᑐᖅ                                                  |
 | UNCLEAR, PERSONAL, STATIC                   | ᓇᓗᓇᖅᑐᖅ, ᓇᖕᒥᓂᖅ, ᐊᓯᔾᔨᖅᐸᙱᑦᑐᖅ                                              |
+| baseline / index / findings / figures checked | ᑐᙵᕕᒋᔭᐅᔪᖅ / ᓇᓪᓕᒧᒃᓴᐅᑎ / ᓇᓂᔭᐅᔪᑦ / ᓈᓴᐅᑏᑦ ᖃᐅᔨᓴᖅᑕᐅᓯᒪᔪᑦ |
 
 The licence notes on the AI World rows are translated; licence names
 (CC BY 4.0, ODbL 1.0), provider and dataset names, and a citation the provider

@@ -143,6 +143,7 @@ English ([I18N.md](../I18N.md), "The fork's own tabs"). Their glossary:
 | SIM SCENARIOS                                 | SCÉNARIOS DE SIMULATION                      |
 | licence classes OPEN, NC, RESTRICTED, UNCLEAR | LIBRE, NC, RESTREINT, INCERTAIN              |
 | PERSONAL, STATIC                              | PERSONNEL, STATIQUE                          |
+| baseline / index / findings / figures checked | référence / indice / constats / chiffres vérifiés |
 
 The licence notes on the AI World rows are translated; licence names
 (CC BY 4.0, ODbL 1.0), provider and dataset names, and a citation the

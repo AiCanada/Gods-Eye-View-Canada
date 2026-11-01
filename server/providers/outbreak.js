@@ -44,6 +44,7 @@
  * (a Host this server serves, a same-origin fetch), and nothing here holds
  * a key: OpenSky's token comes from the aircraft provider.
  */
+import { processShared } from './common/process-shared.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -1597,13 +1598,17 @@ export function outbreakProxy({
   const fetcher = (...args) => (fetchImpl || globalThis.fetch)(...args);
   // EVERY RAIL LINE ON THE GLOBE (owner ruling 2026-10-12): `true` makes
   // the world rail job on this proxy's tile store (the app does; tests pass
-  // their own job or none). Started by the first outbreak request.
+  // their own job or none). Started by the first outbreak request. One job
+  // per process (common/process-shared.js): a dev-server restart used to
+  // leave the old sweep running beside a new one, each with its tiles.
   const railWorld =
     railWorldOption === true
-      ? railWorldJob({
-          tileStore: networkStore,
-          log: (line) => console.log(`[outbreak] ${line}`),
-        })
+      ? processShared('outbreak:rail-world', () =>
+          railWorldJob({
+            tileStore: networkStore,
+            log: (line) => console.log(`[outbreak] ${line}`),
+          }),
+        )
       : railWorldOption || null;
   if (railWorld && typeof networkStore?.onFetched === 'function')
     networkStore.onFetched((tile, lines) => railWorld.noteTile(tile, lines));

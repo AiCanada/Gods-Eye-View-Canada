@@ -1,5 +1,60 @@
 # Changelog
 
+- Faster and lighter (owner request 2026-10-31: "optimize program without
+  reducing functions or using additional caps or max"): no feature removed,
+  no new cap. **The dev server no longer swells with every restart.** Vite
+  restarts the server in-process whenever a server file is saved, loading a
+  fresh copy of every server module, and Node never unloads the old one, so
+  each copy's module-level caches stayed pinned: `.gev-logs/dev-server.log`
+  shows the server at 8 to 15 GB after thirty restarts, and the probe
+  time-outs beside those lines are what a heap that size costs. The heavy
+  caches are now one per process (`server/providers/common/process-shared.js`,
+  the terrain proxy's own pattern): the Mapillary tiles and image answers,
+  the AIS vessels, static data and tracks, the Overpass and
+  military-installation answers, the CCTV frame URLs, and the world rail
+  sweep (one job; a restart used to leave the old sweep running beside a new
+  one); the road and traffic tile memories are let go when their server
+  closes. A restart now keeps its warm caches and costs no memory. **The
+  page loads one language, not thirteen.** The locale catalogs (thirteen
+  files, 2 MB of JSON) were in the main script of every page; the active
+  locale's is now fetched on its own (`loadCatalog()`, awaited before the
+  first component is built; English fetches none; under Node a test still
+  switches synchronously) and the build's main chunk fell from 5.82 to
+  4.08 MB. TESTING.md section 12.
+
+- COUNTRY GROUND TRUTH ASSESSMENT against the United States (owner request
+  2026-10-30: "Use USA as a base line of 100 and update Country ground truth
+  tab to also compare against USA, use pie chart for display of baseline and
+  additional pie chart for selected country"). Every press of the button in
+  AI RISK & TRUTH ASSESSMENT now reads the United States' table too (the FBI
+  explorer, once a day, alongside the country's own) and sets the selected
+  country against it. What is compared is the rate of findings among the
+  figures each check examined (a total against its parts, a year's police
+  coverage, a kind of crime's reporting share, a category's unfounded share,
+  an "other" row, a series' start, a recomputed rate or change): findings per
+  100 figures checked, scaled so the United States reads 100. On 2026-10-30
+  the United States read 12.2 per 100 (9 findings in 74 figures) = 100,
+  Canada 13.3 (93 in 697) = 109, France 19.8 = 162, Sweden 20.3 = 166,
+  Germany 20.7 = 170, Australia 24.2 = 198, Mexico 28.6 (10 in 35) = 234,
+  South Africa 12.1 = 99, and the United Kingdom, Japan, Brazil and India,
+  whose one-offence UN series showed nothing in 26 to 31 figures, 0. A raw
+  count of findings would have read the other way (Canada's 314 categories
+  against a one-offence table), and the notes a table carries have no count
+  of figures behind them, so they are counted beside the index, never inside
+  it. The GROUND TRUTH CHECKS entry and the model's answer gain a fifth
+  numbered line with List Details (the index, the rate and the counts of both
+  countries per method, and the notes; the model copies them as it copies the
+  other four and is told the index is not a grade), and two pie charts above
+  the log show where each country's findings fall by method: the baseline
+  first, the selected country beside it, the index under each; one pie when
+  the view is in the United States, the country's alone with a note when the
+  explorer cannot be read, an empty ring with 0 when nothing was found. Slice
+  colours are the data-viz palette's first four, validated as a ring for
+  colour-blind readers, with the share labelled on every slice a tenth or
+  wider, a hover title and a legend (`src/askGroundTruthBaseline.js`,
+  `src/askGroundTruthPies.js`). Strings in Spanish, Quebec French, Inuktitut
+  and Ancient Egyptian; TESTING.md section 11.
+
 - GLOBAL ABUNDANCE MAP (owner report 2026-10-30, `STATES AND PROVINCES ·
   FAILED TO FETCH`). A request that got no answer (the dev server between two
   in-process restarts, the tailnet link down) left the browser's own words on

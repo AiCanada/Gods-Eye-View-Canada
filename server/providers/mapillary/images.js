@@ -1,3 +1,4 @@
+import { processShared } from '../common/process-shared.js';
 import {
   coalesceProxyRequest,
   readResponseTextCapped,
@@ -225,37 +226,46 @@ function heldRefusal(token) {
   });
 }
 
-/** @type {Map<string, {body: string, at: number}>} insertion-ordered LRU of answer JSON */
-const _memory = new Map();
-let _memoryBytes = 0;
+/**
+ * The answers kept in memory, one store per process (common/process-shared.js):
+ * an insertion-ordered LRU of answer JSON and the bytes charged for it.
+ * @type {{entries: Map<string, {body: string, at: number}>, bytes: number}}
+ */
+const _memoryState = processShared('mapillary-images:memory', () => ({
+  entries: new Map(),
+  bytes: 0,
+}));
 const memoryCost = (body) => body.length + IMAGES_MEMORY_ENTRY_OVERHEAD_BYTES;
 /** @type {Map<string, Promise<string>>} one upstream search per box at a time */
 const _inFlight = new Map();
 
 function memoryGet(key) {
-  const hit = _memory.get(key);
+  const hit = _memoryState.entries.get(key);
   if (!hit) return null;
-  _memory.delete(key);
+  _memoryState.entries.delete(key);
   if (Date.now() - hit.at > IMAGES_CACHE_TTL_MS) {
-    _memoryBytes -= memoryCost(hit.body);
+    _memoryState.bytes -= memoryCost(hit.body);
     return null;
   }
-  _memory.set(key, hit);
+  _memoryState.entries.set(key, hit);
   return hit.body;
 }
 
 function memoryPut(key, body) {
-  const existing = _memory.get(key);
+  const existing = _memoryState.entries.get(key);
   if (existing) {
-    _memory.delete(key);
-    _memoryBytes -= memoryCost(existing.body);
+    _memoryState.entries.delete(key);
+    _memoryState.bytes -= memoryCost(existing.body);
   }
-  _memory.set(key, { body, at: Date.now() });
-  _memoryBytes += memoryCost(body);
-  while (_memoryBytes > IMAGES_MEMORY_BUDGET_BYTES && _memory.size) {
-    const [oldest, entry] = _memory.entries().next().value;
-    _memory.delete(oldest);
-    _memoryBytes -= memoryCost(entry.body);
+  _memoryState.entries.set(key, { body, at: Date.now() });
+  _memoryState.bytes += memoryCost(body);
+  while (
+    _memoryState.bytes > IMAGES_MEMORY_BUDGET_BYTES &&
+    _memoryState.entries.size
+  ) {
+    const [oldest, entry] = _memoryState.entries.entries().next().value;
+    _memoryState.entries.delete(oldest);
+    _memoryState.bytes -= memoryCost(entry.body);
   }
 }
 
@@ -404,8 +414,8 @@ export async function fetchImages(bbox, { signal } = {}) {
 
 /** Test seam: forget cached answers, shared searches, holds and slots. */
 export function _resetImagesForTest() {
-  _memory.clear();
-  _memoryBytes = 0;
+  _memoryState.entries.clear();
+  _memoryState.bytes = 0;
   _inFlight.clear();
   _upstreamHold = null;
   _slots = { active: 0, queue: [] };
@@ -413,5 +423,5 @@ export function _resetImagesForTest() {
 
 /** Test seam: how many answers memory holds and the bytes charged for them. */
 export function _imagesMemoryForTest() {
-  return { entries: _memory.size, bytes: _memoryBytes };
+  return { entries: _memoryState.entries.size, bytes: _memoryState.bytes };
 }

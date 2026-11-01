@@ -91,6 +91,7 @@ test('a question that lists its findings may raise its own answer budget, up to 
   assert.equal(call.payload.max_tokens, 6000);
   assert.match(call.payload.messages[0].content, /follow that layout exactly/);
   assert.match(call.payload.messages[0].content, /SCENE\.groundTruth/);
+  assert.match(call.payload.messages[0].content, /SCENE\.groundTruth\.againstBaseline.*the United States = 100.*not a grade/);
 });
 
 test('limits are read from the live environment, not at import', () => {

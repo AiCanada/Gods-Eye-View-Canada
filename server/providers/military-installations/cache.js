@@ -1,3 +1,4 @@
+import { processShared } from '../common/process-shared.js';
 import {
   MILITARY_INSTALLATION_CACHE_MS,
   MILITARY_INSTALLATION_ELEMENT_CAP,
@@ -11,7 +12,11 @@ import { createHash } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { haversineKm } from '../common/geo.js';
 
-const _militaryInstallationCache = new Map();
+// One per process (common/process-shared.js): a restart keeps it, pins no copy.
+const _militaryInstallationCache = processShared(
+  'military-installations:cache',
+  () => new Map(),
+);
 
 /**
  * Resolve the READ tiers for one installation request, in order: fresh memory,

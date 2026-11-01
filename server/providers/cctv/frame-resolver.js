@@ -1,3 +1,4 @@
+import { processShared } from '../common/process-shared.js';
 import net from 'node:net';
 import { readResponseTextCapped } from '../common/http.js';
 import { CCTV_PROXY_USER_AGENT } from './upstream-headers.js';
@@ -12,8 +13,8 @@ import {
  * normalisation so a typo never costs an HTML fetch per frame request. */
 export const FRAME_RESOLVERS = new Set(['og-image']);
 
-/** Resolved frame URLs, keyed by camera id: { url, at, failedAt }. */
-const frameUrlCache = new Map();
+/** Resolved frame URLs, keyed by camera id: { url, at, failedAt }; one per process (common/process-shared.js). */
+const frameUrlCache = processShared('cctv:frame-urls', () => new Map());
 
 /** Lower-case the extra hosts a catalogue entry lets its resolver accept. */
 export function normalizeFrameHosts(value) {

@@ -5,6 +5,12 @@ import { fetchLocationRegion } from './data/regionalBrief.js';
 import { createOutputFind } from './askOutputFind.js';
 import { localSay, msgl, tl, tln } from './i18n/index.js';
 import {
+  GROUND_TRUTH_BASELINE_CODE,
+  GROUND_TRUTH_BASELINE_NAME,
+  compareGroundTruthAgainstBaseline,
+} from './askGroundTruthBaseline.js';
+import { renderGroundTruthPies } from './askGroundTruthPies.js';
+import {
   buildGroundTruthQuestion,
   buildLayerActivity,
   buildOverviewQuestion,
@@ -30,7 +36,8 @@ import {
  * other time. Country Ground Truth Assessment checks the selected country's own
  * published statistics table (totals against their parts, the "other"
  * categories, new categories and partial data, recomputed arithmetic), shows
- * what the checks found, and has the model explain it. Overview rates on-screen
+ * what the checks found beside the United States' (the baseline at 100, two
+ * pies), and has the model explain it. Overview rates on-screen
  * activity (low/mid/high) and how it changes operational risk. Risk Assessment
  * can run first. Each Risk press searches government and local sources, shows
  * those hits, and prepends them on a running output log. Each press costs one
@@ -67,7 +74,7 @@ export class AskPanel {
     this._askTimeoutMs = DEFAULT_ASK_TIMEOUT_MS;
     /** @type {Map<string, AbortController>} One in-flight request per model. */
     this._inFlight = new Map();
-    /** @type {Map<string, {input: HTMLInputElement, ask: HTMLButtonElement, overview: HTMLButtonElement, risk: HTMLButtonElement, groundTruth: HTMLButtonElement, output: HTMLElement, logCount: HTMLElement, status: HTMLElement, entries: number}>} */
+    /** @type {Map<string, {input: HTMLInputElement, ask: HTMLButtonElement, overview: HTMLButtonElement, risk: HTMLButtonElement, groundTruth: HTMLButtonElement, pies: HTMLElement, output: HTMLElement, logCount: HTMLElement, status: HTMLElement, entries: number}>} */
     this._rows = new Map();
 
     this._panel = document.getElementById('ask-panel');
@@ -222,6 +229,13 @@ export class AskPanel {
     logCount.className = 'ask-log-count';
     logCount.hidden = true;
 
+    // The two pies of the last Country Ground Truth Assessment: the United
+    // States, the baseline at 100, and the selected country
+    // (askGroundTruthPies.js). Hidden until a press has something to compare.
+    const pies = document.createElement('div');
+    pies.className = 'ask-ground-truth-pies';
+    pies.hidden = true;
+
     const output = document.createElement('div');
     output.className = 'ask-output';
     output.setAttribute('role', 'status');
@@ -231,7 +245,7 @@ export class AskPanel {
     const find = createOutputFind({ output });
 
     controls.append(input, ask);
-    row.append(controls, actions, status, logCount, find.element, output);
+    row.append(controls, actions, status, logCount, pies, find.element, output);
     row.addEventListener('mouseenter', () => {
       this._hoverProvider = provider.id;
     });
@@ -260,6 +274,7 @@ export class AskPanel {
       overview,
       risk,
       groundTruth,
+      pies,
       find,
       output,
       logCount,
@@ -391,6 +406,11 @@ export class AskPanel {
    * they are shown first, then one model is asked to explain them. A country
    * with no table connected says so and asks no model.
    *
+   * Every press also reads the United States' table and sets the country
+   * against it, the United States at 100 (askGroundTruthBaseline.js): the
+   * comparison is printed with the checks, drawn as two pies above the log,
+   * and handed to the model to copy.
+   *
    * @param {string} providerId
    */
   async groundTruthAssessment(providerId) {
@@ -410,7 +430,15 @@ export class AskPanel {
     try {
       const context = await this.sceneContext();
       const brief = await this._riskBrief(context);
-      const evidence = await this._groundTruthEvidence(brief);
+      // The country's table and the baseline's are read together: the United
+      // States' explorer is twelve requests the first time each day.
+      const [evidence, baseline] = await Promise.all([
+        this._groundTruthEvidence(brief),
+        this._groundTruthBaseline(brief),
+      ]);
+      const compared = compareGroundTruthAgainstBaseline(evidence, baseline);
+      if (compared) evidence.againstBaseline = compared;
+      renderGroundTruthPies(row.pies, compared);
       const countryName =
         evidence.country || brief.country || brief.locationName;
       this._prependAnswer(
@@ -502,6 +530,39 @@ export class AskPanel {
       );
     }
     return data;
+  }
+
+  /**
+   * The United States' checks, the baseline every country is set against.
+   * Null when the view is in the United States (its evidence is its own
+   * baseline); an `unavailable` record, never a throw, when the explorer
+   * cannot be read, so the country's own report still comes.
+   */
+  async _groundTruthBaseline(brief) {
+    const code = String(brief?.countryCode || '')
+      .trim()
+      .toUpperCase();
+    if (!/^[A-Z]{2}$/.test(code) || code === GROUND_TRUTH_BASELINE_CODE)
+      return null;
+    try {
+      const params = new URLSearchParams({
+        country: GROUND_TRUTH_BASELINE_CODE,
+        name: GROUND_TRUTH_BASELINE_NAME,
+      });
+      const response = await fetch(`/api/country-ground-truth?${params}`, {
+        signal: AbortSignal.timeout(90000),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.status) {
+        return {
+          status: 'unavailable',
+          error: data?.error || `HTTP ${response.status}`,
+        };
+      }
+      return data;
+    } catch (error) {
+      return { status: 'unavailable', error: error?.message || '' };
+    }
   }
 
   /**

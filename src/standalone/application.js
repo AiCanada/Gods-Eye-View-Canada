@@ -7,7 +7,11 @@ import { createStandaloneControls } from './controls.js';
 import { createStandaloneData } from './data.js';
 import { createStandaloneTools } from './tools.js';
 import { resolveLocale, applyDocumentLanguage } from '../i18n/locale.js';
-import { applyDocumentTranslations, setLocale } from '../i18n/index.js';
+import {
+  applyDocumentTranslations,
+  loadCatalog,
+  setLocale,
+} from '../i18n/index.js';
 import { installEnglishHint } from '../ui/englishHint.js';
 import { createGoogleTokenSource } from '../maps/googleTokens.js';
 
@@ -34,15 +38,30 @@ export function createStandaloneApplication({
   const activeLocale = resolveLocale();
   setLocale(activeLocale);
   applyDocumentLanguage(document, activeLocale);
-  applyDocumentTranslations(document);
-  // Ancient Egyptian and Inuktitut: a two-second mouse rest shows the English.
-  installEnglishHint({ locale: activeLocale });
+  // The catalog is one file, the active locale's, fetched now and awaited
+  // before the first component is built, so every data-i18n* element and
+  // every lookup agree from the first painted frame; a page read in English
+  // waits for nothing. Ancient Egyptian and Inuktitut: a two-second mouse
+  // rest shows the English, which needs the catalog too.
+  const localeReady = loadCatalog(activeLocale)
+    .catch((error) => {
+      console.warn(
+        `[i18n] the ${activeLocale} catalog did not load:`,
+        error?.message || error,
+      );
+      return null;
+    })
+    .then(() => {
+      applyDocumentTranslations(document);
+      installEnglishHint({ locale: activeLocale });
+    });
   const loadingScreen = document.getElementById('loading-screen');
   const loaderStatus = loadingScreen.querySelector('.loader-status');
   let placeSearch;
   let catalog;
   return createApplication({
     createScene: async (context) => {
+      await localeReady;
       placeSearch = createStandalonePlaceSearch({
         // The bundled city and landmark data the offline name provider reads.
         // The search package takes it as plain data rather than importing it,

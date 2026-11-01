@@ -18,36 +18,106 @@ import {
   writeStoredLocale,
 } from './locale.js';
 import forkLocales from './fork-locales.json' with { type: 'json' };
-import de from './locales/de.json' with { type: 'json' };
-import es from './locales/es.json' with { type: 'json' };
-import egy from './locales/egy.json' with { type: 'json' };
-import fr from './locales/fr.json' with { type: 'json' };
-import frCA from './locales/fr-CA.json' with { type: 'json' };
-import it from './locales/it.json' with { type: 'json' };
-import iu from './locales/iu.json' with { type: 'json' };
-import ja from './locales/ja.json' with { type: 'json' };
-import pt from './locales/pt.json' with { type: 'json' };
-import ru from './locales/ru.json' with { type: 'json' };
-import uk from './locales/uk.json' with { type: 'json' };
-import zhCN from './locales/zh-CN.json' with { type: 'json' };
-import zhHant from './locales/zh-Hant.json' with { type: 'json' };
 import { useLocalText } from './marker.js';
 
-const CATALOGS = Object.freeze({
-  de,
-  es,
-  fr,
-  'fr-CA': frCA,
-  it,
-  iu,
-  ja,
-  pt,
-  ru,
-  uk,
-  'zh-CN': zhCN,
-  'zh-Hant': zhHant,
-  egy,
+/**
+ * The catalogs, one file per locale, loaded on demand: the page fetches the
+ * active locale's alone (loadCatalog(), awaited at boot), where it used to
+ * carry all thirteen in its main script, two megabytes of JSON that a page
+ * read in English never opened. Each is addressed by a URL built from this
+ * module's, so the build emits the files as assets and the dev server serves
+ * them as they are. Under Node (node:test, the scripts) a catalog is read
+ * from disk the moment its locale is first asked for, so setLocale() stays
+ * synchronous there.
+ */
+const CATALOG_URLS = Object.freeze({
+  de: new URL('./locales/de.json', import.meta.url),
+  es: new URL('./locales/es.json', import.meta.url),
+  fr: new URL('./locales/fr.json', import.meta.url),
+  'fr-CA': new URL('./locales/fr-CA.json', import.meta.url),
+  it: new URL('./locales/it.json', import.meta.url),
+  iu: new URL('./locales/iu.json', import.meta.url),
+  ja: new URL('./locales/ja.json', import.meta.url),
+  pt: new URL('./locales/pt.json', import.meta.url),
+  ru: new URL('./locales/ru.json', import.meta.url),
+  uk: new URL('./locales/uk.json', import.meta.url),
+  'zh-CN': new URL('./locales/zh-CN.json', import.meta.url),
+  'zh-Hant': new URL('./locales/zh-Hant.json', import.meta.url),
+  egy: new URL('./locales/egy.json', import.meta.url),
 });
+/** The locales that have a catalog file. */
+export const CATALOG_LOCALES = Object.freeze(Object.keys(CATALOG_URLS));
+/** The catalogs loaded so far, by locale. */
+const CATALOGS = {};
+/** Loads in flight, by locale, so two callers share one fetch. */
+const catalogLoads = new Map();
+
+/**
+ * A catalog read from disk under Node, where this module's URL is a file;
+ * null in a browser, where the catalog comes by loadCatalog().
+ */
+function readCatalogFromDisk(locale) {
+  const url = CATALOG_URLS[locale];
+  if (!url || url.protocol !== 'file:') return null;
+  const getBuiltinModule = globalThis.process?.getBuiltinModule;
+  if (typeof getBuiltinModule !== 'function') return null;
+  try {
+    const { readFileSync } = getBuiltinModule('node:fs');
+    return JSON.parse(readFileSync(url, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The catalog of a normalized locale: the one loaded, else under Node the
+ * file; null for English, an unknown code, or one the page has not loaded.
+ */
+function catalogOf(locale) {
+  if (!locale || locale === DEFAULT_LOCALE) return null;
+  if (Object.hasOwn(CATALOGS, locale)) return CATALOGS[locale];
+  if (!Object.hasOwn(CATALOG_URLS, locale)) return null;
+  const read = readCatalogFromDisk(locale);
+  if (read) CATALOGS[locale] = read;
+  return read;
+}
+
+/** Keep a catalog for a locale (a test's, or one fetched another way); null forgets it. */
+export function registerCatalog(locale, catalog) {
+  const normalized = normalizeLocale(locale);
+  if (!normalized || normalized === DEFAULT_LOCALE) return;
+  if (catalog && typeof catalog === 'object') CATALOGS[normalized] = catalog;
+  else delete CATALOGS[normalized];
+}
+
+/**
+ * Fetch a locale's catalog once and keep it; resolves with it, or null for
+ * English and unknown codes. Boot awaits this for the active locale before
+ * the page is translated; until it lands every lookup answers in English.
+ */
+export async function loadCatalog(locale) {
+  const normalized = normalizeLocale(locale) || DEFAULT_LOCALE;
+  const held = catalogOf(normalized);
+  if (held || !Object.hasOwn(CATALOG_URLS, normalized)) return held;
+  let pending = catalogLoads.get(normalized);
+  if (!pending) {
+    pending = fetch(CATALOG_URLS[normalized])
+      .then((response) => {
+        if (!response.ok)
+          throw new Error(
+            `HTTP ${response.status} for the ${normalized} catalog`,
+          );
+        return response.json();
+      })
+      .then((catalog) => {
+        CATALOGS[normalized] = catalog;
+        return catalog;
+      })
+      .finally(() => catalogLoads.delete(normalized));
+    catalogLoads.set(normalized, pending);
+  }
+  return pending;
+}
 /**
  * The locale Intl formats numbers, dates and relative times in. Intl has
  * plural rules for Inuktitut (one, two, other) but no number or date data,
@@ -120,9 +190,9 @@ export function englishSingular(other) {
   return englishSingulars.get(other);
 }
 
-/** The catalog for a locale; null for English and unknown codes. */
+/** The catalog for a locale; null for English, unknown codes, and one not loaded yet. */
 export function getCatalog(locale) {
-  return CATALOGS[normalizeLocale(locale)] ?? null;
+  return catalogOf(normalizeLocale(locale));
 }
 
 /** Active locale. */
@@ -141,6 +211,9 @@ export function setLocale(locale) {
     currentLocale = normalized;
     formatterCache.clear();
     keepingEnglish = ENGLISH_HINT_LOCALES.includes(currentLocale);
+    // Under Node the catalog comes off the disk here; a page has fetched it
+    // (loadCatalog) before it switches.
+    catalogOf(currentLocale);
   }
   return currentLocale;
 }
@@ -169,7 +242,7 @@ const filled = (value) => typeof value === 'string' && value.trim() !== '';
 
 /** The active catalog's entry for `text`, or undefined; never warns. */
 function lookupQuiet(text) {
-  const catalog = CATALOGS[currentLocale];
+  const catalog = catalogOf(currentLocale);
   if (!catalog) return undefined;
   const entry = Object.hasOwn(catalog, text) ? catalog[text] : undefined;
   if (filled(entry) || (entry && typeof entry === 'object')) return entry;
@@ -177,7 +250,7 @@ function lookupQuiet(text) {
 }
 
 function lookup(text) {
-  if (!CATALOGS[currentLocale]) return undefined;
+  if (!catalogOf(currentLocale)) return undefined;
   const entry = lookupQuiet(text);
   if (entry === undefined) warnMissing(text);
   return entry;
@@ -303,7 +376,7 @@ useLocalText(localSay);
  * missing-translation warning.
  */
 export function translateKnown(text) {
-  const catalog = CATALOGS[currentLocale];
+  const catalog = catalogOf(currentLocale);
   if (!catalog || typeof text !== 'string') return text;
   const entry = Object.hasOwn(catalog, text) ? catalog[text] : undefined;
   return filled(entry) ? shownLine(entry, text) : text;
@@ -434,7 +507,7 @@ const DOCUMENT_TRANSLATION_TARGETS = Object.freeze([
  */
 export function applyDocumentTranslations(doc) {
   if (typeof doc?.querySelectorAll !== 'function') return 0;
-  if (!CATALOGS[currentLocale]) return 0;
+  if (!catalogOf(currentLocale)) return 0;
   let applied = 0;
   for (const [marker, attribute, local] of DOCUMENT_TRANSLATION_TARGETS) {
     for (const element of doc.querySelectorAll(`[${marker}]`)) {

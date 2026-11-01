@@ -1,3 +1,4 @@
+import { onServerClose } from './serverClose.js';
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 
@@ -226,6 +227,12 @@ export function tomtomProxy() {
 
   const installMiddleware = (server) => {
     _tomtomMemoryTiers.add(mem);
+    // The same for a restart: the closing server lets its tiles go.
+    onServerClose(server, () => {
+      mem.clear();
+      inflight.clear();
+      _tomtomMemoryTiers.delete(mem);
+    });
     server.middlewares.use('/api/tomtom', async (req, res) => {
       // Gate first: a cross-site <img>/fetch must not reach the budget counter.
       if (admitSameSite(req, res)) return;

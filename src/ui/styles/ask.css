@@ -281,3 +281,143 @@ body.cockpit-mode #ask-panel {
   color: rgba(127, 231, 255, 0.7);
   white-space: nowrap;
 }
+
+/* The two pies of the last Country Ground Truth Assessment (owner request
+   2026-10-30): the United States, the baseline at 100, and the selected
+   country, each split by method (askGroundTruthPies.js). Drawn above the log
+   in the log's own box style; hidden until a press has something to compare.
+   The pies sit side by side and fall under each other when the panel is
+   narrow; the phone keeps its sizes. */
+.ask-ground-truth-pies {
+  margin-top: 6px;
+  padding: 8px;
+  flex: 0 0 auto;
+  background: rgba(0, 18, 26, 0.5);
+  border-left: 2px solid rgba(127, 231, 255, 0.4);
+  color: rgba(220, 245, 255, 0.92);
+  user-select: text;
+}
+
+.ask-ground-truth-pies[hidden] {
+  display: none;
+}
+
+.ask-gt-pies-title,
+.ask-gt-pies-subtitle {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(127, 231, 255, 0.7);
+}
+
+.ask-gt-pies-subtitle {
+  margin-top: 2px;
+  color: rgba(127, 231, 255, 0.5);
+}
+
+.ask-gt-pies-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-around;
+  align-items: flex-start;
+  gap: 8px 12px;
+  margin-top: 8px;
+}
+
+.ask-gt-pie {
+  flex: 1 1 128px;
+  max-width: 170px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.ask-gt-pie svg {
+  display: block;
+  width: 112px;
+  height: 112px;
+  overflow: visible;
+}
+
+/* The hovered or focused slice answers (interaction.md): lighter, ringed. */
+.ask-gt-slice {
+  outline: none;
+  transition: filter 120ms ease;
+}
+
+.ask-gt-slice:hover,
+.ask-gt-slice:focus-visible {
+  filter: brightness(1.18);
+  stroke: rgba(255, 255, 255, 0.85);
+}
+
+.ask-gt-pie figcaption {
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.ask-gt-pie-country {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(127, 231, 255, 0.85);
+  word-break: break-word;
+}
+
+/* The index is the one number the block leads with. */
+.ask-gt-pie-index {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+
+.ask-gt-pie-figures {
+  display: block;
+  font-size: 9px;
+  color: rgba(220, 245, 255, 0.75);
+}
+
+.ask-gt-legend {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 10px;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: rgba(220, 245, 255, 0.85);
+}
+
+.ask-gt-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ask-gt-swatch {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.ask-gt-legend-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ask-gt-pies-note {
+  margin-top: 6px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: rgba(127, 231, 255, 0.7);
+}

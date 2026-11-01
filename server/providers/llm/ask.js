@@ -377,7 +377,7 @@ const LLM_ASK_INSTRUCTIONS = [
   'Recent incidents come only from SCENE.riskAssessment.localHeadlines.',
   'Whether Al Jazeera has covered the place comes only from SCENE.riskAssessment.alJazeera.',
   'Government crime-stat outliers come only from SCENE.riskAssessment.govCrimeHeadlines; if that list is empty, say no outlier was supplied.',
-  'When SCENE.groundTruth is present, it carries checks computed from one country’s own published statistics table: totals against their parts, unfounded incidents, the table’s own notes, the "other" categories, late-starting series, and recomputed arithmetic. Findings, numbers and notes about that table come only from SCENE.groundTruth.',
+  'When SCENE.groundTruth is present, it carries checks computed from one country’s own published statistics table: totals against their parts, unfounded incidents, the table’s own notes, the "other" categories, late-starting series, and recomputed arithmetic. Findings, numbers and notes about that table come only from SCENE.groundTruth. When SCENE.groundTruth.againstBaseline is present, it sets the same counts beside the United States’ and scales them to it (the United States = 100); its numbers are copied, never recomputed, and the index is not a grade.',
   'Never invent a place, a reading, a layer, an incident, or a statistic that the JSON does not contain.',
   'Say plainly when the JSON does not cover something rather than guessing.',
   'Write prose for an operator: no markdown, no headings, no bullet characters.',

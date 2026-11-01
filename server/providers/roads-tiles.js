@@ -1,3 +1,4 @@
+import { onServerClose } from './serverClose.js';
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
@@ -656,6 +657,14 @@ function roadsTilesProxy({
 
   const installMiddleware = (server) => {
     _roadTileMemoryTiers.add(mem);
+    // A dev-server restart loads a fresh copy of this module and Node keeps
+    // the old one: its tiles are let go here, or they stay pinned for the
+    // life of the process.
+    onServerClose(server, () => {
+      mem.clear();
+      inflight.clear();
+      _roadTileMemoryTiers.delete(mem);
+    });
     server.middlewares.use('/api/roads', async (req, res) => {
       const sendJson = (status, obj, extraHeaders = {}) => {
         if (res.headersSent) return;

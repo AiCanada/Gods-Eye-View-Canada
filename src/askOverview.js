@@ -5,6 +5,10 @@
  */
 
 import { english } from './i18n/marker.js';
+import {
+  groundTruthBaselineDetailLines,
+  groundTruthBaselineHeading,
+} from './askGroundTruthBaseline.js';
 
 export const RISK_NEWS_RADIUS_KM = 100;
 export const RISK_NEWS_LOOKBACK_DAYS = 30;
@@ -803,7 +807,9 @@ export function groundTruthForModel(
  * Country Ground Truth Assessment: what a country's own statistics table shows
  * about how its totals are built. The evidence (SCENE.groundTruth) is computed
  * by the server from the table; the model lays it out and explains it, and
- * adds nothing.
+ * adds nothing. With `againstBaseline` on the evidence (the panel's comparison
+ * with the United States at 100, askGroundTruthBaseline.js) the layout has a
+ * fifth section, given in full for the model to copy.
  * @param {{country?: string|null, source?: string|null, year?: number|null}} evidence
  * @returns {string}
  */
@@ -811,10 +817,14 @@ export function buildGroundTruthQuestion(evidence) {
   const country = String(evidence?.country || 'this country');
   const [one, two, three, four] = groundTruthSectionHeadings(evidence);
   const disagreeing = found(evidence?.checks?.arithmetic);
+  const compared = evidence?.againstBaseline || null;
+  const five = compared ? groundTruthBaselineHeading(compared) : null;
+  const fiveDetails = compared ? groundTruthBaselineDetailLines(compared) : [];
+  const last = five ? 5 : 4;
   return [
     `Give a Country Ground Truth Assessment for ${country}, using only SCENE.groundTruth, which holds checks computed from ${evidence?.source || 'the country’s own published statistics table'}${evidence?.year ? ` (latest year ${evidence.year})` : ''}.`,
     '',
-    'Write the answer in exactly this layout, with nothing before it. Copy the four numbered lines word for word; their counts are already correct.',
+    `Write the answer in exactly this layout, with nothing before it. Copy the ${five ? 'five' : 'four'} numbered lines word for word; their counts are already correct.`,
     '',
     one,
     'List Details:',
@@ -829,9 +839,16 @@ export function buildGroundTruthQuestion(evidence) {
     disagreeing
       ? 'List Details:\n(one line per item of checks.arithmetic: the published figure and the figure its own counts imply, or, for a comparison with an independent source, both figures and the interval)'
       : '(nothing disagreed, so write no List Details under 4)',
+    ...(five
+      ? [
+          five,
+          ...(fiveDetails.length ? ['List Details:', ...fiveDetails] : []),
+          '(section 5 is given in full: copy its line and its List Details word for word and add nothing to them; the index compares what the checks found, scaled to the United States, and is not a grade: do not call either country better, worse, more or less truthful)',
+        ]
+      : []),
     '',
     'The lines in brackets are instructions: replace them, do not copy them. A check gives its strongest findings in "findings", says in "listed" how many that is and in "found" how many there were; list every finding given, and in sections 2 and 3 where found is larger than listed end that group with a line "- and N more, listed in GROUND TRUTH CHECKS below".',
-    'Quote numbers exactly as given. Say what each practice does to the totals; do not say why the agency does it, because the table cannot show intent. Do not grade or rate the country: no CLEAR, WATCH or FLAGGED levels, no indicator, no overall verdict. The answer ends with section 4: no closing summary, caveat or limits line after it.',
+    `Quote numbers exactly as given. Say what each practice does to the totals; do not say why the agency does it, because the table cannot show intent. Do not grade or rate the country: no CLEAR, WATCH or FLAGGED levels, no indicator, no overall verdict. The answer ends with section ${last}: no closing summary, caveat or limits line after it.`,
     'Plain text only: no markdown, no bold, no tables. Do not invent categories, numbers, notes or incidents.',
   ].join('\n');
 }
@@ -880,6 +897,15 @@ export function formatGroundTruthBody(evidence = {}, say = english) {
     if (details[index].length)
       lines.push(say.tl('List Details:'), ...details[index]);
   });
+  // 5. Against the United States: the panel's comparison, when it has one.
+  if (evidence.againstBaseline) {
+    lines.push(groundTruthBaselineHeading(evidence.againstBaseline, say));
+    const against = groundTruthBaselineDetailLines(
+      evidence.againstBaseline,
+      say,
+    );
+    if (against.length) lines.push(say.tl('List Details:'), ...against);
+  }
   return lines.join('\n');
 }
 
