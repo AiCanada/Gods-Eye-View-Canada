@@ -12,7 +12,15 @@
  *   POST   /refresh         { force? }   fetch the sources again (stale ones, or all)
  *   POST   /import          { level, csv }   the owner's own figures for a level
  *   DELETE /import          { level }        take that CSV away
+ *
+ * A level's figures are big (the states and provinces about 2 MB of JSON,
+ * the cities 3 MB; the countries a tenth of that) and repeat themselves, so
+ * every answer goes gzipped to a client that accepts it (under a tenth of
+ * the bytes): the phone over the tailnet gets its table in one short
+ * round, and a slow link has less time in which to drop it.
  */
+import { promisify } from 'node:util';
+import zlib from 'node:zlib';
 import { defaultSourceRoot } from './common/source-root.js';
 import { readRequestBody } from './common/request.js';
 import { clientKey, makeRateLimiter } from './common/rate-limit.js';
@@ -28,14 +36,32 @@ export const ABUNDANCE_API = '/api/abundance';
 const HEADERS = {
   'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff',
+  Vary: 'Accept-Encoding',
 };
+const gzip = promisify(zlib.gzip);
+/** Answers shorter than this go as they are: the gzip header would be the bigger part. */
+const GZIP_MIN_BYTES = 1024;
 const BODY_BYTES = 16 * 1024;
 /** A CSV of figures: 4 MB of text in its JSON wrapping. */
 const CSV_BODY_BYTES = 5 * 1024 * 1024;
 
-function send(res, status, payload) {
-  res.writeHead(status, { 'Content-Type': 'application/json', ...HEADERS });
-  res.end(JSON.stringify(payload));
+/** Write JSON, gzipped when the client accepts it and the answer is worth it. */
+async function send(req, res, status, payload) {
+  const json = JSON.stringify(payload);
+  const headers = { 'Content-Type': 'application/json', ...HEADERS };
+  const accepts = String(req?.headers?.['accept-encoding'] || '');
+  if (/\bgzip\b/i.test(accepts) && json.length >= GZIP_MIN_BYTES) {
+    const packed = await gzip(json);
+    res.writeHead(status, {
+      ...headers,
+      'Content-Encoding': 'gzip',
+      'Content-Length': packed.length,
+    });
+    res.end(packed);
+    return;
+  }
+  res.writeHead(status, headers);
+  res.end(json);
 }
 
 export function abundanceProvider({
@@ -68,7 +94,7 @@ export function abundanceProvider({
         sendOwnerRemovalRefusal(res, HEADERS);
         return;
       }
-      send(res, admitted.status || 403, {
+      send(req, res, admitted.status || 403, {
         error: String(admitted.error || 'Refused').replace(
           'Provider Settings',
           'The Global Abundance Map',
@@ -77,15 +103,15 @@ export function abundanceProvider({
       return;
     }
     if (!privateFetchSiteAllowed(req.headers || {})) {
-      send(res, 403, { error: 'Cross-site request refused' });
+      send(req, res, 403, { error: 'Cross-site request refused' });
       return;
     }
     if (method === 'GET' && route === '/status')
-      return send(res, 200, store.status());
+      return send(req, res, 200, store.status());
     if (method === 'GET' && route === '/data')
-      return send(res, 200, store.data(url.searchParams.get('level')));
+      return send(req, res, 200, store.data(url.searchParams.get('level')));
     if (!allow(clientKey(req)))
-      return send(res, 429, { error: 'Too many requests' });
+      return send(req, res, 429, { error: 'Too many requests' });
     let body = {};
     if (method === 'POST' || method === 'DELETE')
       try {
@@ -99,28 +125,28 @@ export function abundanceProvider({
         const tooLarge =
           error?.code === 'BODY_TOO_LARGE' ||
           /large/i.test(String(error?.message));
-        return send(res, tooLarge ? 413 : 400, {
+        return send(req, res, tooLarge ? 413 : 400, {
           error: tooLarge
             ? 'Too large: a CSV file is at most 4 MB.'
             : 'The body must be JSON.',
         });
       }
     if (method === 'DELETE' && route === '/import')
-      return send(res, 200, store.clearImport(body));
+      return send(req, res, 200, store.clearImport(body));
     if (method === 'POST') {
       if (route === '/refresh') {
         // Started, not awaited: the tab polls /status while it runs.
         store
           .refresh({ force: body?.force === true })
           .catch((error) => log(`refresh: ${error?.message || error}`));
-        return send(res, 200, store.status());
+        return send(req, res, 200, store.status());
       }
       if (route === '/import') {
         const result = store.importCsv(body);
-        return send(res, result?.error ? 400 : 200, result);
+        return send(req, res, result?.error ? 400 : 200, result);
       }
     }
-    send(res, 404, { error: 'Not found' });
+    send(req, res, 404, { error: 'Not found' });
   };
 
   const install = (server) => {
@@ -131,7 +157,7 @@ export function abundanceProvider({
         await handle(req, res);
       } catch (error) {
         if (res.headersSent) return res.destroy();
-        send(res, error?.status || 500, {
+        send(req, res, error?.status || 500, {
           error: error?.status
             ? error.message
             : 'The Global Abundance Map failed.',

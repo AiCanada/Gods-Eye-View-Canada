@@ -1,5 +1,19 @@
 # Changelog
 
+- GLOBAL ABUNDANCE MAP (owner report 2026-10-30, `STATES AND PROVINCES ·
+  FAILED TO FETCH`). A request that got no answer (the dev server between two
+  in-process restarts, the tailnet link down) left the browser's own words on
+  the status line until the level was changed or the page reloaded, and the
+  tab never tried again. It now reads `NO ANSWER FROM THE SERVER · TRYING
+  AGAIN IN 5 S` and tries again after 5, 10, 20, 40 and 60 seconds; a failed
+  status poll leaves a loaded level alone and comes back sooner than the idle
+  poll; a page served in place of the figures counts as no answer; every
+  request has a time limit. The level answers go gzipped to a client that
+  accepts it (the states' 2.5 MB of JSON travels as 0.19 MB, the cities'
+  4.1 MB as 0.35 MB) and carry only the fields the tab reads. Strings in
+  Spanish, Quebec French, Inuktitut and Ancient Egyptian; TESTING.md section
+  10, item 15.
+
 - Upstream merge of 129 commits (German #1477, French #1476, Italian #1473,
   Japanese #1478, Brazilian Portuguese #1475 and Ukrainian #1470 in the
   language picker, the Context panel's Radio icon and compact player removed

@@ -6,6 +6,7 @@
 // (server/providers/abundance.js). Hermetic: fixture packs in a temp root,
 // a fake fetch, no network.
 import test from 'node:test';
+import zlib from 'node:zlib';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
@@ -831,6 +832,11 @@ test('the store fetches, caches, joins countries, hands figures down to states a
   // States: their own OECD figures (TL2 first, TL3 where TL2 has none, soft names), the rest from the country.
   const region = store.data('region');
   assert.equal(region.count, 6);
+  // The tab gets what it names, places and counts; the names and codes the
+  // server matched sources by stay here.
+  assert.ok(region.units.every((u) => u.id && u.name && 'lat' in u && 'lon' in u));
+  assert.ok(region.units.some((u) => u.iso2 === 'TS' && u.country));
+  assert.ok(region.units.every((u) => !('alt' in u) && !('nameEn' in u) && !('group' in u) && !('postal' in u)));
   const north = unit(region, 'TS-N');
   assert.deepEqual(north.values.gdp, { v: 60000, year: 2023, from: 'own', d: 10000, y0: 2018 });
   assert.deepEqual(north.values.life, { v: 84, year: 2022, from: 'own' });
@@ -1017,6 +1023,7 @@ function install(plugin) {
       },
       setHeader() {},
       end(chunk) {
+        this.chunk = chunk;
         this.body = String(chunk ?? '');
       },
       destroy() {},
@@ -1049,7 +1056,18 @@ test('the routes: status and data read, refresh and a CSV from the PC and the ow
   const seen = [];
   const store = {
     status: () => ({ sources: [], levels: {}, refreshing: null }),
-    data: (level) => (seen.push(['data', level]), { level, units: [], figures: {} }),
+    data: (level) => (
+      seen.push(['data', level]),
+      {
+        level,
+        // The states are big enough to gzip; the rest are not.
+        units:
+          level === 'region'
+            ? Array.from({ length: 64 }, (_, i) => ({ id: `R${i}`, name: `Region ${i}` }))
+            : [],
+        figures: {},
+      }
+    ),
     refresh: (o) => (seen.push(['refresh', o]), Promise.resolve({})),
     importCsv: (b) => (seen.push(['import', b.level]), b.csv === 'bad' ? { error: 'No indicator column was found.' } : { ok: true }),
     clearImport: (b) => (seen.push(['clear', b.level]), { ok: true }),
@@ -1061,6 +1079,17 @@ test('the routes: status and data read, refresh and a CSV from the PC and the ow
   assert.deepEqual(JSON.parse(res.body).sources, []);
   res = await request('/data?level=city', { headers: pc });
   assert.equal(JSON.parse(res.body).level, 'city');
+  assert.equal(res.headers['Content-Encoding'], undefined, 'nothing asked for gzip');
+  // A client that accepts gzip gets a big answer gzipped, a small one as it is.
+  res = await request('/data?level=region', { headers: { ...pc, 'accept-encoding': 'gzip, deflate, br' } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers['Content-Encoding'], 'gzip');
+  assert.equal(res.headers.Vary, 'Accept-Encoding');
+  assert.ok(Buffer.isBuffer(res.chunk) && res.chunk.length === res.headers['Content-Length']);
+  assert.equal(JSON.parse(zlib.gunzipSync(res.chunk).toString('utf8')).units.length, 64);
+  res = await request('/status', { headers: { ...pc, 'accept-encoding': 'gzip' } });
+  assert.equal(res.headers['Content-Encoding'], undefined, 'too small to be worth it');
+  assert.deepEqual(JSON.parse(res.body).sources, []);
   res = await request('/refresh', { method: 'POST', headers: pc, body: { force: true } });
   assert.equal(res.status, 200);
   res = await request('/import', { method: 'POST', headers: pc, body: { level: 'region', csv: 'bad' } });
@@ -1078,6 +1107,7 @@ test('the routes: status and data read, refresh and a CSV from the PC and the ow
   assert.equal(res.status, 403);
   assert.deepEqual(seen, [
     ['data', 'city'],
+    ['data', 'region'],
     ['refresh', { force: true }],
     ['import', 'region'],
     ['import', 'region'],

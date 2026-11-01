@@ -806,7 +806,7 @@ export function createAbundanceStore({
     const table = packTable(units);
     return {
       level,
-      units: table.units,
+      units: table.units.map(sentUnit),
       figures: table.figures,
       coverage: coverageOf(units),
       count: units.length,
@@ -968,6 +968,20 @@ export function createAbundanceStore({
       closed = true;
     },
   };
+}
+
+/**
+ * A unit as the tab receives it: what it names, places and counts, not the
+ * alternative names, the postal code and the larger region the server
+ * matched sources by. The states and provinces carry a third of their bytes
+ * in those, and the tab never reads them.
+ */
+export function sentUnit(unit) {
+  const out = { id: unit.id, name: unit.name };
+  for (const key of ['country', 'iso2', 'adm1', 'lat', 'lon', 'pop'])
+    if (unit[key] !== undefined && unit[key] !== null) out[key] = unit[key];
+  if (unit.capital) out.capital = true;
+  return out;
 }
 
 /** A built level's units with their values back as objects. */

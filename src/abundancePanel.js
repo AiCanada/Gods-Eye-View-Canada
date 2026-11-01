@@ -61,6 +61,19 @@ const NOTE_MS = 15_000;
 const RANKING_ROWS = 10;
 const GRID_ROWS = 12;
 const LINKS_MAX = 60;
+/** How long a level's figures, and the status poll, may take before they count as no answer. */
+const LOAD_TIMEOUT_MS = 60_000;
+const STATUS_TIMEOUT_MS = 20_000;
+/**
+ * After a load that got no answer (the dev server restarting for an edit,
+ * the tailnet link down), the waits before the next tries, the last repeated:
+ * a request that failed once used to leave its error on the line until the
+ * level was changed or the page reloaded (owner report 2026-10-30, "STATES
+ * AND PROVINCES · FAILED TO FETCH").
+ */
+export const RETRY_DELAYS_MS = Object.freeze([
+  5_000, 10_000, 20_000, 40_000, 60_000,
+]);
 
 const FROM_WORDS = Object.freeze({
   own: '',
@@ -120,7 +133,34 @@ export function agoText(at, now = Date.now()) {
   });
 }
 
-/** The tab's status line. */
+/**
+ * What went wrong with a request, in the tab's words. The browser's own
+ * wording for a connection that was never made ("Failed to fetch", "Load
+ * failed", "NetworkError…") tells a reader nothing; a request that ran out
+ * of time and an answer that is not the server's JSON (the page itself,
+ * while the dev server restarts) are named too. Anything else is the server's
+ * own message.
+ */
+export function failureText(err) {
+  if (err?.name === 'AbortError' || err?.name === 'TimeoutError')
+    return tl('THE SERVER TOOK TOO LONG TO ANSWER');
+  if (err?.kind === 'not-json')
+    return tl('THE SERVER ANSWERED WITH SOMETHING OTHER THAN ITS FIGURES');
+  const message = String(err?.message || err || '');
+  if (
+    err instanceof TypeError ||
+    /failed to fetch|networkerror|load failed|network request failed/i.test(
+      message,
+    )
+  )
+    return tl('NO ANSWER FROM THE SERVER');
+  return upper(message);
+}
+
+/**
+ * The tab's status line. `error` is the server's message as text, or
+ * `{ problem, retryInMs }` from a load that will be tried again.
+ */
 export function statusText({
   level,
   table,
@@ -130,7 +170,15 @@ export function statusText({
   now = () => Date.now(),
 }) {
   const levelName = tl(ABUNDANCE_LEVEL_LABELS[level] || upper(level));
-  if (error) return `${levelName} · ${upper(error)}`;
+  if (error) {
+    const problem = typeof error === 'string' ? upper(error) : error.problem;
+    const again = error?.retryInMs
+      ? tl('TRYING AGAIN IN {seconds} S', {
+          seconds: localDigits(String(Math.round(error.retryInMs / 1000))),
+        })
+      : '';
+    return [levelName, problem, again].filter(Boolean).join(' · ');
+  }
   const busy = status?.refreshing || table?.refreshing;
   if (busy)
     return tl('FETCHING THE SOURCES · {done}/{total} · {current}', {
@@ -452,6 +500,11 @@ export function initAbundancePanel({
   let error = null;
   let note = null;
   let pollTimer = null;
+  /** The next try of a load that got no answer, and how many have failed in a row. */
+  let retryTimer = null;
+  let retries = 0;
+  /** Status polls that failed in a row: the next one comes sooner than the idle poll. */
+  let pollFailures = 0;
   let rankingSide = 'top';
   let pinnedId = null;
   let hoverId = null;
@@ -471,26 +524,52 @@ export function initAbundancePanel({
     }
   };
 
-  const call = async (route, { method = 'GET', body } = {}) => {
+  /** The tab's lifetime and a request's own time limit, as one signal. */
+  const requestSignal = (timeoutMs) => {
+    if (
+      !timeoutMs ||
+      typeof AbortSignal?.timeout !== 'function' ||
+      typeof AbortSignal?.any !== 'function'
+    )
+      return lifetime.signal;
+    return AbortSignal.any([lifetime.signal, AbortSignal.timeout(timeoutMs)]);
+  };
+
+  const call = async (route, { method = 'GET', body, timeoutMs } = {}) => {
     const request = doFetch(`${ABUNDANCE_API}/${route}`, {
       method,
       credentials: 'same-origin',
       cache: 'no-store',
       headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: lifetime.signal,
+      signal: requestSignal(timeoutMs),
     });
     const response = await (method === 'DELETE'
       ? watchOwnerRemoval(request)
       : request);
-    const payload = await response.json().catch(() => ({}));
+    let payload = null;
+    let json = true;
+    try {
+      payload = await response.json();
+    } catch {
+      json = false;
+      payload = {};
+    }
     if (isOwnerRemovalRefusal(response, payload)) {
       // Only the PC removes: nothing changes, and nothing is said.
       noteOwnerRemovalRefusal();
       return null;
     }
     if (!response.ok)
-      throw new Error(payload.error || `HTTP ${response.status}`);
+      throw new Error(payload?.error || `HTTP ${response.status}`);
+    if (!json || !payload || typeof payload !== 'object') {
+      // The page itself, or nothing: the dev server was between restarts.
+      const answered = new Error(
+        'The server answered with something other than its figures.',
+      );
+      answered.kind = 'not-json';
+      throw answered;
+    }
     return payload;
   };
 
@@ -737,13 +816,27 @@ export function initAbundancePanel({
   // --- Data ----------------------------------------------------------------------
   const table = () => tables.get(choice.level) || null;
 
+  const cancelRetry = () => {
+    if (retryTimer !== null) timers.clearTimeout(retryTimer);
+    retryTimer = null;
+  };
+
+  /**
+   * One level's figures. A load that gets no answer says so on the line and
+   * is tried again after a growing wait (RETRY_DELAYS_MS); a level change or
+   * an answer ends the tries.
+   */
   const loadLevel = async (level) => {
+    cancelRetry();
     loading = true;
     error = null;
     render();
     try {
-      const payload = await call(`data?level=${encodeURIComponent(level)}`);
+      const payload = await call(`data?level=${encodeURIComponent(level)}`, {
+        timeoutMs: LOAD_TIMEOUT_MS,
+      });
       if (lifetime.signal.aborted || !payload) return;
+      retries = 0;
       const units = expandTable(payload);
       let newestYear = null;
       for (const c of Object.values(payload.coverage || {}))
@@ -765,7 +858,15 @@ export function initAbundancePanel({
       if (payload.refreshing) schedulePoll(POLL_BUSY_MS);
     } catch (err) {
       if (lifetime.signal.aborted) return;
-      error = err?.message || String(err);
+      const wait =
+        RETRY_DELAYS_MS[Math.min(retries, RETRY_DELAYS_MS.length - 1)];
+      retries += 1;
+      error = { problem: failureText(err), retryInMs: wait };
+      retryTimer = timers.setTimeout(() => {
+        retryTimer = null;
+        if (!lifetime.signal.aborted && level === choice.level)
+          void loadLevel(level);
+      }, wait);
     } finally {
       loading = false;
     }
@@ -879,7 +980,7 @@ export function initAbundancePanel({
       return next;
     } catch (err) {
       if (lifetime.signal.aborted) return null;
-      say(err?.message || err);
+      say(failureText(err));
       render();
       return null;
     }
@@ -900,10 +1001,17 @@ export function initAbundancePanel({
     await act('import', { level: choice.level, csv });
   };
 
+  /**
+   * The sources' state. A poll that fails leaves a loaded level alone (its
+   * line keeps the level's own words) and comes back sooner than the idle
+   * poll; one that answers while the level has no table loads it, so a
+   * server that is back is used at once.
+   */
   const pollStatus = async () => {
     try {
-      const next = await call('status');
+      const next = await call('status', { timeoutMs: STATUS_TIMEOUT_MS });
       if (lifetime.signal.aborted || !next) return;
+      pollFailures = 0;
       const wasBusy = Boolean(status?.refreshing);
       const refreshedBefore = status?.refreshedAt || null;
       status = next;
@@ -914,13 +1022,23 @@ export function initAbundancePanel({
       ) {
         tables.clear();
         await loadLevel(choice.level);
-      } else render();
+      } else if (!table() && !loading) await loadLevel(choice.level);
+      else render();
       schedulePoll(busy ? POLL_BUSY_MS : POLL_IDLE_MS);
     } catch (err) {
       if (lifetime.signal.aborted) return;
-      error = err?.message || String(err);
+      pollFailures += 1;
+      if (!table() && !loading && retryTimer === null)
+        error = { problem: failureText(err), retryInMs: null };
       render();
-      schedulePoll(POLL_IDLE_MS);
+      schedulePoll(
+        Math.min(
+          POLL_IDLE_MS,
+          RETRY_DELAYS_MS[
+            Math.min(pollFailures - 1, RETRY_DELAYS_MS.length - 1)
+          ],
+        ),
+      );
     }
   };
 
@@ -1049,6 +1167,7 @@ export function initAbundancePanel({
   const destroy = () => {
     lifetime.abort();
     timers.clearTimeout(pollTimer);
+    cancelRetry();
     doc.removeEventListener?.(ABUNDANCE_PICK_EVENT, onPick);
     doc.dispatchEvent?.(
       new CustomEvent(ABUNDANCE_VIEW_EVENT, {

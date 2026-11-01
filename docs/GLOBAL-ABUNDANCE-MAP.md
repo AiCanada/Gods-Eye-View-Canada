@@ -226,6 +226,17 @@ server/shared/abundanceData.mjs):
 | `POST /import`     | `{ level, csv }`: the owner's figures for a level (4 MB at most)           |
 | `DELETE /import`   | `{ level }`: take that CSV away (refused on the phone)                     |
 
+Every answer goes gzipped to a client that accepts it (`Content-Encoding:
+gzip`, `Vary: Accept-Encoding`; the states' 2.5 MB of JSON travels as 0.19 MB,
+the cities' 4.1 MB as 0.35 MB), and the units carry only what the tab reads (id, name, country,
+code, place and population), not the alternative names and larger regions
+the server matched sources by. A level request that gets no answer (the
+dev server between two restarts, the tailnet link down) is said on the
+status line in the tab's words, `NO ANSWER FROM THE SERVER · TRYING AGAIN
+IN 5 S`, and tried again after 5, 10, 20, 40, then 60 seconds; a status
+poll that fails leaves a loaded level alone and comes back sooner than the
+idle poll; a page served in place of the figures counts as no answer.
+
 The raw answers are kept thirty days in `.gev-cache/abundance/`; a source
 that fails is not asked again for an hour, and OECD requests are spaced ten
 seconds apart (it allows 60 downloads an hour per address and refuses

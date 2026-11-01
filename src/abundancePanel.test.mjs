@@ -7,6 +7,7 @@ import {
   ABUNDANCE_CHOICE_KEY,
   agoText,
   coverageText,
+  failureText,
   figureText,
   importText,
   initAbundancePanel,
@@ -446,6 +447,75 @@ test('REFRESH DATA starts a refresh and polls; a finished refresh reloads the le
   assert.ok(file);
   m.panel.destroy();
   m2.panel.destroy();
+});
+
+test('a request that gets no answer is said in the tab\'s words, not the browser\'s', () => {
+  assert.equal(failureText(new TypeError('Failed to fetch')), 'NO ANSWER FROM THE SERVER');
+  assert.equal(failureText(new TypeError('NetworkError when attempting to fetch resource.')), 'NO ANSWER FROM THE SERVER');
+  assert.equal(failureText({ name: 'TimeoutError', message: 'signal timed out' }), 'THE SERVER TOOK TOO LONG TO ANSWER');
+  assert.equal(failureText({ name: 'AbortError' }), 'THE SERVER TOOK TOO LONG TO ANSWER');
+  assert.equal(failureText(Object.assign(new Error('x'), { kind: 'not-json' })), 'THE SERVER ANSWERED WITH SOMETHING OTHER THAN ITS FIGURES');
+  assert.equal(failureText(new Error('The Global Abundance Map failed.')), 'THE GLOBAL ABUNDANCE MAP FAILED.');
+  assert.equal(
+    statusText({ level: 'region', error: { problem: 'NO ANSWER FROM THE SERVER', retryInMs: 10_000 } }),
+    'STATES AND PROVINCES · NO ANSWER FROM THE SERVER · TRYING AGAIN IN 10 S',
+  );
+  assert.equal(statusText({ level: 'region', error: 'HTTP 503' }), 'STATES AND PROVINCES · HTTP 503');
+});
+
+test('a load that gets no answer tries again after a growing wait and clears the line once the server answers; a failed status poll leaves a loaded level alone', async () => {
+  let dataDown = true;
+  let statusDown = true;
+  const m = mount({
+    data: (level) => {
+      if (dataDown) throw new TypeError('Failed to fetch');
+      return table(level);
+    },
+    status: () => {
+      if (statusDown) throw new TypeError('Failed to fetch');
+      return status();
+    },
+  });
+  await settle();
+  assert.equal(m.world.status.textContent, 'COUNTRIES · NO ANSWER FROM THE SERVER · TRYING AGAIN IN 5 S');
+  assert.equal(m.world.status.dataset.state, 'error');
+  const loads = () => m.calls.filter((c) => c.url.includes('data?level=')).length;
+  assert.equal(loads(), 1);
+  // The retry fires while the server is still down: the wait grows.
+  let timers = m.timers.pending.splice(0);
+  for (const fn of timers) fn();
+  await settle();
+  assert.equal(loads(), 2);
+  assert.equal(m.world.status.textContent, 'COUNTRIES · NO ANSWER FROM THE SERVER · TRYING AGAIN IN 10 S');
+  timers = m.timers.pending.splice(0);
+  for (const fn of timers) fn();
+  await settle();
+  assert.equal(m.world.status.textContent, 'COUNTRIES · NO ANSWER FROM THE SERVER · TRYING AGAIN IN 20 S');
+  // The server is back: the next try lands, the line reads the level again.
+  dataDown = false;
+  statusDown = false;
+  timers = m.timers.pending.splice(0);
+  for (const fn of timers) fn();
+  await settle();
+  assert.match(m.world.status.textContent, /^COUNTRIES · 3 PLACES WITH FIGURES/);
+  assert.equal(m.world.status.dataset.state, 'ok');
+  // A status poll that fails now leaves the loaded level's line alone and polls again sooner.
+  statusDown = true;
+  const before = m.timers.pending.length;
+  timers = m.timers.pending.splice(0);
+  for (const fn of timers) fn();
+  await settle();
+  assert.match(m.world.status.textContent, /^COUNTRIES · 3 PLACES WITH FIGURES/);
+  assert.ok(m.timers.pending.length >= 1 && before >= 1, 'the next poll is scheduled');
+  // A level change ends the tries of the old level: no stray retry stays armed.
+  dataDown = true;
+  const select = m.find((n) => n.tagName === 'SELECT');
+  select.value = 'city';
+  select.fire('change');
+  await settle();
+  assert.equal(m.world.status.textContent, 'CITIES · NO ANSWER FROM THE SERVER · TRYING AGAIN IN 5 S', 'a fresh count for the new level');
+  m.panel.destroy();
+  assert.equal(m.timers.pending.length, 0, 'destroy clears every timer');
 });
 
 test('without its mount the tab is a no-op', () => {
