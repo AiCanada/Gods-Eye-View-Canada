@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindLayer, formatWindValidTime, windStats } from './index.js';
+import { useWindInspectionStore } from '../../ui/stores/windInspection.js';
+import { applicationPinia } from '../../ui/vueRuntime.js';
 
 const snapshot = (model) => ({
   model,
@@ -312,22 +314,12 @@ test('weather summary describes the selected forecast and count remains numeric'
 });
 
 test('sample stays fixed across model, field and unit changes; dismissal and disable clear marker', async () => {
-  const nodes = [];
+  // The marker the scene chrome renders, as the wind layer presents it.
+  const marker = () => useWindInspectionStore(applicationPinia()).marker;
   let listener;
   let samples = 0;
   const container = {
-    ownerDocument: {
-      createElement: () => ({
-        style: {},
-        setAttribute() {},
-        remove() {
-          nodes.splice(nodes.indexOf(this), 1);
-        },
-      }),
-    },
-    appendChild(node) {
-      nodes.push(node);
-    },
+    ownerDocument: {},
     getBoundingClientRect: () => ({ left: 0, top: 0 }),
   };
   const viewer = {
@@ -386,9 +378,9 @@ test('sample stays fixed across model, field and unit changes; dismissal and dis
   layer.setParams({ inspect: true });
   const captured = layer.getRowControls().summary.reading;
   assert.equal(samples, 1);
-  const retained = nodes[0];
+  const retained = marker().owner;
   layer.setParams({ units: 'mph' });
-  assert.equal(nodes[0], retained);
+  assert.ok(marker().owner === retained);
   const changed = layer.getRowControls().summary.reading;
   assert.equal(changed.speed, captured.speed);
   assert.equal(changed.coordinates, captured.coordinates);
@@ -399,7 +391,7 @@ test('sample stays fixed across model, field and unit changes; dismissal and dis
     layer.getRowControls().summary.settings.map(({ label }) => label),
     ['MODEL', 'FIELD', 'UNITS', 'MOTION'],
   );
-  assert.equal(nodes.length, 1);
+  assert.ok(marker());
   assert.equal(typeof listener, 'function');
   viewer.camera.pickEllipsoid = () => {
     samples++;
@@ -442,9 +434,9 @@ test('sample stays fixed across model, field and unit changes; dismissal and dis
     () => layer.disable(),
   ]) {
     layer.setParams({ inspect: true });
-    assert.equal(nodes.length, 1);
+    assert.ok(marker());
     change();
-    assert.equal(nodes.length, 0);
+    assert.equal(marker(), null);
     assert.equal(layer.getRowControls().summary.reading, null);
     assert.equal(layer.getRowControls().summary.result, null);
     assert.equal(listener, null);

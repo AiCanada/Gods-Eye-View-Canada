@@ -2,8 +2,7 @@ import { readRealtimeSource } from './testSupport/readRealtimeSource.mjs';
 import { GEV_REALTIME_TOOLS } from '../server/providers/openai/tools.js';
 import { realtimeInstructions } from '../server/providers/openai/instructions.js';
 import { readShellSource } from './testSupport/readShellSource.mjs';
-import { expandApplicationHtml } from '../build/application-html.js';
-import { readLayerSource } from './testSupport/readLayerSource.mjs';
+import { renderApplicationHtml } from './testSupport/applicationHtml.mjs';
 import { readStylesheet } from './testSupport/readStylesheet.mjs';
 import { readFileSync as readRadioSource } from 'node:fs';
 const radioBindings = readRadioSource(new URL('./ui/radioBindings.js', import.meta.url), 'utf8');
@@ -14,25 +13,28 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const html = expandApplicationHtml(readFileSync(new URL('../index.html', import.meta.url), 'utf8'));
+const html = await renderApplicationHtml(readFileSync(new URL('../index.html', import.meta.url), 'utf8'));
 const ui = readShellSource();
 const radio = ['playback', 'interaction'].map(name =>
   readFileSync(new URL(`./layers/radio/${name}.js`, import.meta.url), 'utf8')
 ).join('\n').replace(/layerState\.|parts\.\w+\./g, '');
-const rocketLaunches = readLayerSource(new URL('./data/rocketLaunches.js', import.meta.url), 'utf8');
+const missionDetail = readFileSync(new URL('./ui/views/panels/MissionDetail.vue', import.meta.url), 'utf8');
 const realtime = readRealtimeSource();
 const voice = ['./voice/actionSchemas.js', '../server/providers/openai/toolDescriptions.js', '../server/providers/openai/instructions.js'].map(file => readFileSync(new URL(file, import.meta.url), 'utf8')).join('\n');
 const css = readStylesheet(new URL('../style.css', import.meta.url));
 
 function realtimeTools() { return GEV_REALTIME_TOOLS; }
 
-test('Realtime schema exposes the authoritative 33-tool inventory', () => {
+test('Realtime schema exposes the authoritative 36-tool inventory', () => {
   const tools = realtimeTools();
-  assert.equal(tools.length, 33);
+  assert.equal(tools.length, 36);
   const names = tools.map((tool) => tool.name);
-  assert.equal(new Set(names).size, 33, 'tool names are unique');
+  assert.equal(new Set(names).size, 36, 'tool names are unique');
   assert.ok(names.includes('list_ui_controls'));
   assert.ok(names.includes('use_ui_control'));
+  assert.ok(names.includes('resolve_area'));
+  assert.ok(names.includes('find_imagery'));
+  assert.ok(names.includes('osm_query'));
   assert.ok(names.includes('set_context_mode'));
   assert.ok(names.includes('control_cockpit'));
   assert.ok(names.includes('set_voice_inactivity_timeout'));
@@ -155,7 +157,7 @@ test('the edited existing tools changed exactly as intended', () => {
   const panel = byName.get('set_panel_open');
   assert.deepEqual(
     panel.parameters.properties.panelId.enum,
-    ['data-panel', 'location-bar', 'control-panel', 'cctv-panel', 'radio-panel', 'scene-panel', 'pp-toggles', 'global-context-panel', 'weather-panel', 'recent-imagery-panel', 'ask-panel', 'street-level-panel', 'ultra-panel', 'social-panel', 'outbreak-panel', 'sst-panel', 'voice-settings', 'voice-preview', 'provider-settings'],
+    ['data-panel', 'location-bar', 'control-panel', 'cctv-panel', 'radio-panel', 'scene-panel', 'utilities-panel', 'pp-toggles', 'global-context-panel', 'weather-panel', 'recent-imagery-panel', 'ask-panel', 'street-level-panel', 'ultra-panel', 'social-panel', 'outbreak-panel', 'sst-panel', 'voice-settings', 'voice-preview', 'provider-settings'],
   );
   assert.deepEqual(panel.parameters.required, ['panelId', 'open']);
 
@@ -210,6 +212,10 @@ test('no unchanged Realtime tool definition drifts silently', () => {
     // 2026-10-10: whole-app voice control.
     'list_ui_controls',
     'use_ui_control',
+    // Voice geometry: new tools.
+    'resolve_area',
+    'find_imagery',
+    'osm_query',
   ]);
   const unchanged = realtimeTools()
     .filter((tool) => !TOUCHED.has(tool.name))
@@ -282,10 +288,10 @@ test('Radio volume and mission speed share the Sharpen slider visual language', 
     );
   }
   assert.match(
-    rocketLaunches,
-    /id="space-mission-replay-speed" class="gev-quantitative-slider" type="range" min="0\.25" max="4" step="0\.25" value="1"/,
+    missionDetail,
+    /<UiSlider id="space-mission-replay-speed" hold min="0\.25" max="4" step="0\.25"[^>]*:model-value="m \? m\.replay\.speed : 1"/,
   );
-  assert.match(rocketLaunches, /class="gev-slider-value"[^>]*data-mission-replay-speed-output/);
+  assert.match(missionDetail, /class="gev-slider-value"[^>]*data-mission-replay-speed-output/);
   assert.match(css, /\.gev-quantitative-slider\s*\{[\s\S]*?min-width: 0;[\s\S]*?height: 18px;/);
   assert.match(css, /\.gev-quantitative-slider::-webkit-slider-runnable-track\s*\{[\s\S]*?height: 3px;[\s\S]*?background: rgba\(255, 255, 255, 0\.08\);/);
   assert.match(css, /\.gev-quantitative-slider::-webkit-slider-thumb\s*\{[\s\S]*?width: 10px;[\s\S]*?height: 10px;[\s\S]*?border-radius: 50%;[\s\S]*?background: var\(--accent\);/);
@@ -298,22 +304,28 @@ test('Radio volume and mission speed share the Sharpen slider visual language', 
 test('Radio is the right rail\'s last member, opened from Context, with separate disclosure and power controls', () => {
   // Owner ruling, 2026-09-27: Radio is not a box of the dashboard (no tab). It
   // is the rail's last member, shown below the Scenes tab only when selected.
-  const railStart = html.indexOf('<aside id="right-context-rail">');
-  const sceneStart = html.indexOf('<div id="scene-panel"');
-  const radioStart = html.indexOf('<section id="radio-panel"');
-  const railEnd = html.indexOf('\n  </aside>', railStart);
-  assert.ok(railStart >= 0 && radioStart > sceneStart && radioStart < railEnd);
+  const railStart = html.indexOf('id="right-context-rail"');
+  const contextStart = html.indexOf('id="global-context-panel"');
+  const sceneStart = html.indexOf('id="scene-panel"');
+  const radioStart = html.indexOf('id="radio-panel"');
+  // The Context view ends with the right rail, before the scene runtime.
+  const railEnd = html.indexOf('id="scene-runtime"');
+  assert.ok(railStart >= 0 && contextStart > railStart && sceneStart > contextStart);
+  assert.ok(radioStart > sceneStart && radioStart < railEnd);
   assert.match(html, /id="radio-panel"[^>]*data-panel-id="radio-panel"/);
   assert.match(html, /aria-label="Radio playback"/);
   // The Context header's radio icon is Radio's launcher: it shows and hides
   // the rail's Radio and is not a power control. Upstream's compact player
   // under it is gone (#1471).
-  assert.match(html, /id="context-radio-toggle-btn"[^>]*aria-expanded="false"[^>]*aria-controls="radio-panel"/);
-  assert.doesNotMatch(html, /id="context-radio-toggle-btn"[^>]*aria-pressed=/);
+  assert.match(
+    html,
+    /<button(?=[^>]*\sid="context-radio-toggle-btn")(?=[^>]*\saria-expanded="false")(?=[^>]*\saria-controls="radio-panel")/,
+  );
+  assert.doesNotMatch(html, /<button(?=[^>]*\sid="context-radio-toggle-btn")(?=[^>]*\saria-pressed=)/);
   assert.doesNotMatch(html, /context-radio-(?:mini|details)/);
-  assert.match(html, /id="radio-enable-btn"[^>]*aria-pressed="false"/);
+  assert.match(html, /<button(?=[^>]*\sid="radio-enable-btn")(?=[^>]*\saria-pressed="false")/);
   assert.match(html, /id="cockpit-radio-panel"[^>]*aria-label="Cockpit compact Radio controls"[^>]*hidden/);
-  assert.match(html, /id="cockpit-radio-enable-btn"[^>]*aria-pressed="false"/);
+  assert.match(html, /<button(?=[^>]*\sid="cockpit-radio-enable-btn")(?=[^>]*\saria-pressed="false")/);
   assert.match(html, /id="cockpit-radio-(?:prev|play|next)-btn"/);
   assert.match(html, /id="cockpit-radio-volume"/);
   assert.match(html, /id="radio-tuner"[^>]*hidden/);
@@ -321,7 +333,7 @@ test('Radio is the right rail\'s last member, opened from Context, with separate
   assert.match(html, /id="radio-tuner-slider"[^>]*type="range"/);
   assert.match(html, /id="radio-tuner-needle"[^>]*aria-hidden="true"/);
   assert.match(html, /SNAPS TO AVAILABLE STATIONS/);
-  assert.match(html, /class="radio-tuner-scale" aria-hidden="true"><\/div>/);
+  assert.match(html, /class="radio-tuner-scale" aria-hidden="true"[^>]*><\/div>/);
   assert.match(html, /DIRECTORY: RADIO BROWSER/);
   assert.match(html, /Audio connects directly to the broadcaster/);
   assert.doesNotMatch(html, /radio-(?:favicon|visualizer|spectrum)/i);
@@ -381,21 +393,27 @@ test('panel collapse is presentation-only and Radio exposes explicit voice playb
   assert.deepEqual(realtimeTools().find(tool => tool.name === 'control_radio').parameters.properties.action.enum, ['enable', 'disable', 'play', 'resume', 'pause', 'stop', 'next', 'previous', 'volume', 'select', 'status']);
   const enableMethod = radioBindings;
   assert.doesNotMatch(enableMethod, /playSelectedRadio|togglePlayback\(\).*radio-enable/i);
-  assert.match(enableMethod, /toggleRadio\(this\._radioEnableBtn\)/);
+  assert.match(enableMethod, /toggleRadio: \(where\) =>[\s\S]*?: this\._radioEnableBtn,/);
   // Only the Context header's radio icon is left of the compact player
   // (#1471 removed the rest).
   assert.doesNotMatch(enableMethod, /contextRadioMini|contextRadioDetails|setRadioDisclosure/);
-  const launcherStart = enableMethod.indexOf('this.listen(this._contextRadioToggleBtn,');
-  const launcherEnd = enableMethod.indexOf('this.listen(this._cockpitRadioToggleBtn,', launcherStart);
-  const launcher = enableMethod.slice(launcherStart, launcherEnd);
-  assert.ok(launcherStart >= 0 && launcherEnd > launcherStart, 'the Context radio icon binding is missing');
+  const launcherAt = enableMethod.search(/this\.listen\(\s*this\._contextRadioToggleBtn,/);
+  assert.ok(launcherAt >= 0, 'the Context radio icon binding is missing');
+  const launcherEnd = enableMethod.indexOf('this.listen(', launcherAt + 1);
+  const launcher = enableMethod.slice(launcherAt, launcherEnd > launcherAt ? launcherEnd : undefined);
   assert.doesNotMatch(launcher, /toggleRadio\(/, 'the icon shows Radio; it does not switch it on');
   // The header's radio icon opens the radio controls where they live (below
   // the Scenes tab) and closes them again (owner ruling, 2026-09-27).
   assert.match(launcher, /setPanelCollapsed\('radio-panel', open, \{ explicit: true \}\)/);
   assert.doesNotMatch(launcher, /setPanelCollapsed\('radio-panel', !/);
-  assert.match(ui, /setAttribute\('aria-expanded', String\(/);
-  assert.match(readFileSync(new URL('./ui/shellFeedback.js', import.meta.url), 'utf8'), /\.hidden = !/);
+  // The collapse buttons render aria-expanded from the state the chrome
+  // presents; the radio icon is kept in step with Radio's.
+  assert.match(ui, /this\._presentPanel\(panelEl, \{ collapsed: nextCollapsed, auto: null \}\)/);
+  assert.match(ui, /if \(panelEl\.id === 'radio-panel'\) this\._syncContextRadioLauncherState\?\.\(\);/);
+  assert.match(
+    readFileSync(new URL('./ui/radioControls.js', import.meta.url), 'utf8'),
+    /_syncContextRadioLauncherState\(\) \{[\s\S]*?setAttribute\(\s*'aria-expanded',\s*String\(radioExpanded\),?\s*\)/,
+  );
   assert.doesNotMatch(method, /panelId === 'global-context-panel'[\s\S]*?this\._radioState\?\.enabled[\s\S]*?setPanelCollapsed\('radio-panel', false\)/);
 });
 

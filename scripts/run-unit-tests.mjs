@@ -71,8 +71,42 @@ export function allocationTestArgs(file) {
   return ['--expose-gc', '--test', '--test-concurrency=1', file];
 }
 
+/** Node flags every unit-test process receives. */
+export const UNIT_TEST_NODE_FLAGS = Object.freeze([
+  // Single-file components compile on import.
+  '--import=./build/registerVue.js',
+]);
+
+/**
+ * Windows caps a whole command line at 32,767 characters, and the suite's
+ * file list grew past it (1,047 files, 36,475 characters, at the eleventh
+ * upstream merge into God's Eye View Canada). The parallel files run in
+ * consecutive batches whose arguments stay well under that cap.
+ */
+export const COMMAND_LINE_BUDGET = 24_000;
+
+/** Split test files, in order, into batches whose arguments fit the budget. */
+export function parallelBatches(files, budget = COMMAND_LINE_BUDGET) {
+  const batches = [];
+  let batch = [];
+  let length = 0;
+  for (const file of files) {
+    // The file, its separating space and the quotes a path may need.
+    const cost = file.length + 3;
+    if (batch.length && length + cost > budget) {
+      batches.push(batch);
+      batch = [];
+      length = 0;
+    }
+    batch.push(file);
+    length += cost;
+  }
+  if (batch.length) batches.push(batch);
+  return batches;
+}
+
 function runTests(args) {
-  const result = spawnSync(process.execPath, args, {
+  const result = spawnSync(process.execPath, [...UNIT_TEST_NODE_FLAGS, ...args], {
     cwd: process.cwd(),
     stdio: 'inherit',
     env: process.env,
@@ -83,7 +117,12 @@ function runTests(args) {
 
 export function runUnitTests() {
   const plan = buildUnitTestPlan(discoverUnitTestFiles());
-  const parallelStatus = runTests(['--test', ...plan.parallel]);
+  // Every batch runs, so one failure does not hide the others' results.
+  let parallelStatus = 0;
+  for (const batch of parallelBatches(plan.parallel)) {
+    const status = runTests(['--test', ...batch]);
+    if (status !== 0 && parallelStatus === 0) parallelStatus = status;
+  }
   if (parallelStatus !== 0) return parallelStatus;
 
   // The GC-bracketed budgets are calibrated on Node 24 and are meaningless on

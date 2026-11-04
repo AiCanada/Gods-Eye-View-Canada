@@ -87,6 +87,7 @@ export function createTesting({ state: layerState, services, parts, source }) {
    * @param {boolean} [options.showProjection=false] Projection visibility.
    * @param {Object|null} [options.billboards] Billboard-collection seam (`add`/`remove`).
    * @param {Object|null} [options.area] Loaded area report, as the server sends it.
+   * @param {Map<string, Object>} [options.healthById] Health rows by camera id.
    * @returns {void}
    */
 
@@ -99,6 +100,7 @@ export function createTesting({ state: layerState, services, parts, source }) {
     showProjection = false,
     billboards = null,
     area = null,
+    healthById = new Map(),
   } = {}) {
     parts.geometryQueue.stopGeometryLoadQueue();
     parts.area.abortAreaRequest();
@@ -137,6 +139,11 @@ export function createTesting({ state: layerState, services, parts, source }) {
     layerState._areaDefaultPending = false;
     layerState._areaCameraOwed = null;
     layerState._lookupRequests.clear();
+    layerState._healthById = healthById;
+    layerState._viewRecords = [];
+    layerState._cameraIndexCache = null;
+    layerState._coverageVisibleIds = new Set();
+    layerState._neighborCountCache = null;
   }
 
   /** Test seam: the live record for a camera id, or null. */

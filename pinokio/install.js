@@ -37,6 +37,8 @@ module.exports = {
           CUSTOM_LLM_MODEL: '{{env.CUSTOM_LLM_MODEL || ""}}',
           GEV_RATELIMIT_OPENAI_PER_MIN: '{{env.GEV_RATELIMIT_OPENAI_PER_MIN || ""}}',
           GEV_RATELIMIT_GOOGLE_PER_MIN: '{{env.GEV_RATELIMIT_GOOGLE_PER_MIN || ""}}',
+          GEV_RATELIMIT_OPENAI_CHAT_PER_MIN: '{{env.GEV_RATELIMIT_OPENAI_CHAT_PER_MIN || ""}}',
+          GEV_RATELIMIT_GEMINI_CHAT_PER_MIN: '{{env.GEV_RATELIMIT_GEMINI_CHAT_PER_MIN || ""}}',
         },
         message: 'node scripts/pinokio-install.mjs',
       },

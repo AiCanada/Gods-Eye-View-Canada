@@ -1,30 +1,34 @@
 // Where the collapsible panels live: AI Risk & Truth Assessment, Ultra and CCTV on the
-// left stack; Data Layers (first), Context, Sea Temperature and Scenes on the
-// right rail. The LLM box is a stack member with the shared collapse button,
-// not a free-standing box with its own show/hide.
+// left stack; Data Layers (first), Utilities, Context, Sea Temperature and
+// Scenes on the right rail. The LLM box is a stack member with the shared
+// collapse button, not a free-standing box with its own show/hide.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { expandApplicationHtml } from '../../build/application-html.js';
+import { readApplicationHtml } from '../testSupport/applicationHtml.mjs';
 
-const html = expandApplicationHtml(readFileSync(new URL('../../index.html', import.meta.url), 'utf8'));
+// The page as the browser shows it once the views are mounted (Vue views
+// since the eleventh upstream merge).
+const html = await readApplicationHtml();
 const between = (start, end) => {
   const from = html.indexOf(start);
   const to = html.indexOf(end, from);
   assert.ok(from >= 0 && to > from, start + ' .. ' + end);
   return html.slice(from, to);
 };
-const panelOrder = (section) => [...section.matchAll(/<(?:div|section) id="([a-z-]+-panel|pp-toggles)" class="panel-collapsible/g)].map((match) => match[1]);
+// Upstream's rail panels carry the kit's ui-panel class first.
+const panelOrder = (section) => [...section.matchAll(/<(?:div|section) id="([a-z-]+-panel|pp-toggles)" class="(?:ui-panel )?panel-collapsible/g)].map((match) => match[1]);
 
-test('left stack: AI Risk & Truth Assessment, CCTV, Ultra, Social Media Analysis, Outbreak, AI World Training Sim, AI Distillation, Global Abundance Map; right rail: Data Layers first, then Context, Sea Temperature, Scenes; Radio below the last tab when selected', () => {
-  const left = between('<div id="left-panel-stack">', '<aside id="right-context-rail">');
+test('left stack: AI Risk & Truth Assessment, CCTV, Ultra, Social Media Analysis, Outbreak, AI World Training Sim, AI Distillation, Global Abundance Map; right rail: Data Layers first, then Utilities, Context, Sea Temperature, Scenes; Radio below the last tab when selected', () => {
+  const left = between('<div id="left-panel-stack"', '<aside id="right-context-rail"');
   assert.deepEqual(panelOrder(left), ['ask-panel', 'cctv-panel', 'street-level-panel', 'ultra-panel', 'social-panel', 'outbreak-panel', 'ai-world-panel', 'distill-panel', 'abundance-panel']);
-  // The rail's own closing tag is the two-space-indented one; the Contacts
-  // aside inside Context closes deeper.
-  const right = between('<aside id="right-context-rail">', '\n  </aside>');
+  // The scene runtime chip follows the rail's own closing tag; the Contacts
+  // aside inside Context closes before it.
+  const right = between('<aside id="right-context-rail"', '<div id="scene-runtime"');
   // Radio is the rail's last member, below Scenes, but never a tab. Weather and
   // Recent Imagery are hidden until a product or imagery day is chosen.
-  assert.deepEqual(panelOrder(right), ['data-panel', 'weather-panel', 'recent-imagery-panel', 'global-context-panel', 'sst-panel', 'scene-panel', 'radio-panel']);
+  // Utilities (upstream #1469) sits under Data Layers.
+  assert.deepEqual(panelOrder(right), ['data-panel', 'utilities-panel', 'weather-panel', 'recent-imagery-panel', 'global-context-panel', 'sst-panel', 'scene-panel', 'radio-panel']);
 });
 
 test('the LLM box collapses like the others and is titled AI Risk & Truth Assessment', () => {
@@ -33,7 +37,7 @@ test('the LLM box collapses like the others and is titled AI Risk & Truth Assess
   // The full name on the tab too (two lines), not a short form. Marked for
   // the fork locales (data-i18n-local*): Quebec French, English elsewhere.
   assert.match(ask, /<span class="panel-title" data-collapsed-title="AI RISK &amp; TRUTH ASSESSMENT"[^>]*>AI RISK &amp; TRUTH ASSESSMENT<\/span>/);
-  assert.match(ask, /<button class="panel-collapse-btn" data-collapse-target="ask-panel"/);
+  assert.match(ask, /<button type="button" class="[^"]*\bpanel-collapse-btn"[^>]*data-collapse-target="ask-panel"/);
   assert.ok(!html.includes('id="ask-toggle"'), 'no private show/hide button');
 });
 

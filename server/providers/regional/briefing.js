@@ -596,7 +596,7 @@ function regionalBriefProxy({ placeProvider = fetchRegionalPlace } = {}) {
           'X-Location-Region': shared ? 'INFLIGHT' : 'MISS',
         });
         res.end(JSON.stringify(payload));
-      } catch {
+      } catch (error) {
         waiting = false;
         res.writeHead(503, {
           'Content-Type': 'application/json',
@@ -604,7 +604,12 @@ function regionalBriefProxy({ placeProvider = fetchRegionalPlace } = {}) {
         });
         res.end(
           JSON.stringify({
-            error: 'Location region is temporarily unavailable',
+            // Upstream's gate keeps Nominatim off until NOMINATIM_URL names
+            // an endpoint; say so rather than "temporarily".
+            error:
+              error?.code === 'NOMINATIM_DISABLED'
+                ? 'Place lookups are off until NOMINATIM_URL is set'
+                : 'Location region is temporarily unavailable',
           }),
         );
       }

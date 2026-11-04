@@ -21,6 +21,7 @@ import cctvLayer, {
   cctvRecordsWithinKm,
   deactivateActiveCamera,
   maybeAutoHop,
+  refreshHorizonCulling,
   setActiveCamera,
 } from './cctv.js';
 import {
@@ -191,6 +192,17 @@ test('arrival selects the destination camera without flying and reloads its card
     makeRecord('toronto-0', TORONTO),
     makeRecord('toronto-1', TORONTO, 0.02),
     makeRecord('toronto-2', TORONTO, -0.02),
+    // Twelve more Toronto cameras 12 to 17 km out, off the screen. The active
+    // camera's coverage neighbours (its 14 nearest) take part in the geometry
+    // working set since upstream's view pass (#1485); with these they are all
+    // Toronto's, as in a real area, and not the city left behind.
+    ...Array.from({ length: 12 }, (_, i) =>
+      makeRecord(
+        `toronto-far-${i}`,
+        TORONTO,
+        (i % 2 ? -1 : 1) * (0.15 + Math.floor(i / 2) * 0.01),
+      ),
+    ),
   ];
   const host = primeLayer(t, { viewer, records });
   setActiveCamera('austin-0');
@@ -200,6 +212,10 @@ test('arrival selects the destination camera without flying and reloads its card
   cctvLayer.onLocationLeave({ from: TEXAS, to: ONTARIO, enabled: true });
   const imagesAtLeave = images.length;
   moveViewer(viewer, TORONTO);
+  // The flight's motion passes run the view pass (upstream #1485), which
+  // shows Toronto's icons in place of Austin's; the fake viewer raises no
+  // camera events, so the pass is run here.
+  refreshHorizonCulling();
   const statesBeforeArrival = states.length;
   cctvLayer.onLocationArrive({ from: TEXAS, to: ONTARIO, signal: new AbortController().signal });
 

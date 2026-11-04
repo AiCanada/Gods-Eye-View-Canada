@@ -313,6 +313,7 @@ export function moveViewer(viewer, { lat, lon }, heightM = 4_000) {
 export function makeRecord(id, base, dLon = 0, extra = {}) {
   const lat = base.lat;
   const lon = base.lon + dLon;
+  const position = Cesium.Cartesian3.fromDegrees(lon, lat, 100);
   return {
     camera: {
       id,
@@ -329,7 +330,13 @@ export function makeRecord(id, base, dLon = 0, extra = {}) {
       feedType: 'image',
       ...extra,
     },
-    position: Cesium.Cartesian3.fromDegrees(lon, lat, 100),
+    position,
+    // The map icon. Upstream's view pass (#1485, merged 2026-11-04) shows
+    // the icons on screen, one per ground cell zoomed out, and only those
+    // cameras get geometry and cards (src/layers/cctv/rendering.js
+    // refreshHorizonCulling), so a record needs an icon to take part, as in
+    // upstream's src/data/cctvViewThinning.test.mjs.
+    billboard: { position, show: true },
     coverageEntities: [],
     projection: null,
     groundResolved: {},

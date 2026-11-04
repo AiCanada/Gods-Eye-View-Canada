@@ -164,15 +164,19 @@ test('every adapter: a licence class, a known layer, and no faster than its laye
     assert.ok(adapter.cadenceMs >= floor, `${id} polls no faster than that`);
   }
   // Every layer with a source of its own is recorded.
-  // gnss-integrity (upstream, merged 2026-10-17) and s2-ghostmaps (upstream
-  // #1297, merged 2026-10-29) have no feed yet: the tab lists them as STATIC
-  // until one records them.
+  // gnss-integrity (upstream, merged 2026-10-17), s2-ghostmaps (upstream
+  // #1297, merged 2026-10-29) and drone-airspace, sea-marks and ski-pistes
+  // (upstream, merged 2026-11-04) have no feed yet: the tab lists them as
+  // STATIC until one records them.
   const skipped = [
     'directions',
     'military-awareness',
     'outbreak',
     'gnss-integrity',
     's2-ghostmaps',
+    'drone-airspace',
+    'sea-marks',
+    'ski-pistes',
   ];
   for (const layer of REGISTERED_LAYER_IDS)
     if (!skipped.includes(layer)) assert.ok(ids.includes(layer), layer);

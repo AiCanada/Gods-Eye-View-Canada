@@ -110,6 +110,9 @@ export function createCctvLayer({ services, source }) {
       processGeometryBatch: parts.geometryQueue.processGeometryBatch,
       hideCctvRecordVisuals: parts.rendering.hideCctvRecordVisuals,
       refreshCoverageStyles: parts.rendering.refreshCoverageStyles,
+      refreshHorizonCulling: parts.rendering.refreshHorizonCulling,
+      _viewRecordIdsForTest: () =>
+        state._viewRecords.map((record) => record.camera.id),
       clearProbeClampOnDeactivation:
         parts.geometry.clearProbeClampOnDeactivation,
       cctvRecordNeedsActivation: parts.model.cctvRecordNeedsActivation,

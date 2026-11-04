@@ -11,10 +11,10 @@ import {
   readPanelStackingRank,
   resolveHudRailLayout,
   restorePanelScroll,
-  shouldHideCollapsedRightPanels,
 } from './panelRailGeometry.js';
 
 import { displayPanelScroller } from './displayPanelScroll.js';
+import { settleSideAccordion } from './panelAccordion.js';
 
 /**
  * Where the left rail's top will settle, not where it is mid-transition:
@@ -48,7 +48,8 @@ function settledLeftRailTop(leftStack, viewportHeight, getComputedStyle) {
  * @param {Window} options.windowRef Viewport and style reader.
  * @param {{visible: boolean, variant: string}} options.hud Current HUD presentation.
  * @param {string} options.preferredPanelId Most recently opened panel.
- * @param {Function} options.onCollapse Update a panel's disclosure chrome.
+ * @param {Function} options.onCollapse Present a panel's collapse:
+ *   `(panel, {collapsed, auto})`.
  * @param {Function} options.onRetry Request another pass after automatic collapse.
  * @param {Function} [options.getComputedStyle] Optional DOM style reader override.
  * @param {HTMLElement} options.leftStack Rail supplying the shared top baseline.
@@ -88,34 +89,31 @@ export function layoutRightPanelRail({
     for (const panel of panels.filter((item) =>
       item.classList.contains('layout-auto-collapsed'),
     )) {
-      panel.classList.remove('collapsed', 'layout-auto-collapsed');
-      onCollapse(panel);
+      onCollapse(panel, { collapsed: false, auto: null });
     }
   }
   // Cyber's side tabs behave as Tactical's (owner ruling, 2026-10-06): no
   // one-box accordion. A box an older version collapsed for it opens again.
   for (const panel of panels) {
     if (!panel.classList.contains('cyber-accordion-collapsed')) continue;
-    panel.classList.remove('collapsed', 'cyber-accordion-collapsed');
-    onCollapse(panel);
+    panel.classList.remove('cyber-accordion-collapsed');
+    onCollapse(panel, { collapsed: false, auto: null });
   }
   const isMobile = windowRef.matchMedia('(max-width: 720px)').matches;
-  // Radio is not a box of the rail: selecting it must not put the rail into
-  // its one-box mode, which would hide the tabs it sits above.
-  const hasExpandedPanel = panels.some(
-    (panel) =>
-      !panel.classList.contains('collapsed') &&
-      panel.id !== 'radio-panel' &&
-      (!isMobile || panel.id !== 'pp-toggles'),
-  );
-  // Phones present the rail as tab sheets (mobileShell.js), which choose what
-  // shows; hiding collapsed siblings would empty a sheet and its a11y tree.
-  const exclusive =
-    !isMobile &&
-    shouldHideCollapsedRightPanels({
-      hudVariant: hud.variant,
-      hasExpandedPanel,
-    });
+  // Upstream's one-panel-per-side accordion (#1499) is not applied either: it
+  // only gives back what an earlier version folded.
+  settleSideAccordion({
+    panels,
+    enabled: false,
+    preferredPanelId,
+    documentRef,
+    onCollapse,
+  });
+  // The collapsed tabs stay in reach while a box is open, on every HUD layout
+  // (owner ruling 2026-09-27), so a second and third box can open beside it;
+  // phones present the rail as tab sheets (mobileShell.js) that choose what
+  // shows. Collapsed siblings are never hidden.
+  const exclusive = false;
   stack.classList.toggle('layout-exclusive', exclusive);
   for (const panel of panels) {
     if (exclusive && panel.classList.contains('collapsed'))
@@ -144,8 +142,11 @@ export function layoutRightPanelRail({
     viewportHeight,
     getComputedStyle,
   );
+  // Align with the left rail's buttons, which hold still while its stack moves.
+  const leftRailOffset =
+    parseFloat(leftStack?.style.getPropertyValue('--panel-rail-offset')) || 0;
   const alignedTop = Number.isFinite(leftStackTop)
-    ? leftStackTop
+    ? leftStackTop + leftRailOffset
     : viewportHeight * 0.26;
   const obstacleRects = [];
   const attributionRects = [];

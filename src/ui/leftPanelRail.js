@@ -14,6 +14,7 @@ import {
   readPanelStackingRank,
   restorePanelScroll,
 } from './panelRailGeometry.js';
+import { settleSideAccordion } from './panelAccordion.js';
 
 /**
  * Measure and place the left panel rail for one synchronous layout pass.
@@ -25,11 +26,13 @@ import {
  * @param {Window} options.windowRef Viewport and style reader.
  * @param {{visible: boolean, variant: string}} options.hud Current HUD presentation.
  * @param {string} options.preferredPanelId Most recently opened panel.
- * @param {Function} options.onCollapse Update a panel's disclosure chrome.
+ * @param {Function} options.onCollapse Present a panel's collapse:
+ *   `(panel, {collapsed, auto})`.
  * @param {Function} options.onRetry Request another pass after automatic collapse.
  * @param {Function} [options.getComputedStyle] Optional DOM style reader override.
  * @param {Map<string, number>} options.collapsedHeights Caller-owned measurement cache.
  * @param {Function} options.onAligned Notify the caller after the left rail moves.
+ * @param {Document} [options.documentRef] Document supplying current keyboard focus.
  */
 export function layoutLeftPanelRail({
   stack,
@@ -41,6 +44,7 @@ export function layoutLeftPanelRail({
   onRetry,
   collapsedHeights,
   onAligned,
+  documentRef = stack?.ownerDocument,
   getComputedStyle = (element) => windowRef.getComputedStyle(element),
 }) {
   if (!stack) return;
@@ -51,21 +55,24 @@ export function layoutLeftPanelRail({
     for (const panel of panels.filter((item) =>
       item.classList.contains('layout-auto-collapsed'),
     )) {
-      panel.classList.remove('collapsed', 'layout-auto-collapsed');
-      onCollapse(panel);
+      onCollapse(panel, { collapsed: false, auto: null });
     }
   }
 
   // The existing narrow-screen composition has its own full-width stack.
   // Keep this desktop lane engine from fighting those dedicated rules.
-  if (windowRef.matchMedia('(max-width: 720px)').matches) {
+  const isMobile = windowRef.matchMedia('(max-width: 720px)').matches;
+  if (isMobile) {
     stack.classList.remove('layout-focus');
     stack.classList.remove('layout-tail');
     stack.classList.remove('layout-overlap');
     stack.style.removeProperty('--left-stack-safe-top');
     stack.style.removeProperty('--left-stack-safe-bottom');
     stack.style.removeProperty('--left-stack-centered-height');
+    stack.style.removeProperty('--panel-rail-offset');
+    stack.classList.remove('layout-exclusive');
     stack.dataset.layoutMode = 'mobile';
+    settleSideAccordion({ panels, enabled: false, onCollapse });
     for (const panel of panels) {
       panel.removeAttribute('aria-hidden');
       panel.style.removeProperty('--left-panel-allocated-height');
@@ -73,6 +80,23 @@ export function layoutLeftPanelRail({
     }
     return;
   }
+
+  // Every open box stays open and every collapsed box stays on the stack as
+  // its tab (owner rulings 2026-09-27 and 2026-10-06): upstream's
+  // one-panel-per-side accordion and panel rail (#1499) are not applied, so
+  // the accordion only gives back what an earlier version folded.
+  settleSideAccordion({
+    panels,
+    enabled: false,
+    preferredPanelId,
+    documentRef,
+    onCollapse,
+  });
+  const exclusive = false;
+  stack.classList.remove('layout-exclusive');
+  const laidOutPanels = panels.filter(
+    (panel) => !exclusive || !panel.classList.contains('collapsed'),
+  );
 
   const viewportHeight = Math.max(1, windowRef.innerHeight);
   const stackRect = stack.getBoundingClientRect();
@@ -180,7 +204,7 @@ export function layoutLeftPanelRail({
     (sum, height) => sum + height,
     0,
   );
-  const siblingHeight = panels.reduce((total, panel) => {
+  const siblingHeight = laidOutPanels.reduce((total, panel) => {
     if (!panel.classList.contains('collapsed')) return total;
     const measured = collapsedHeights.get(panel.id);
     return total + (measured || panel.getBoundingClientRect().height || 0);
@@ -188,12 +212,8 @@ export function layoutLeftPanelRail({
   let requiredHeight = siblingHeight;
 
   const rowGap = parseFloat(getComputedStyle(stack).rowGap) || 0;
-  if (expandedPanels.length) {
-    requiredHeight += naturalExpandedHeight;
-    requiredHeight += rowGap * Math.max(0, panels.length - 1);
-  } else {
-    requiredHeight += rowGap * Math.max(0, panels.length - 1);
-  }
+  if (expandedPanels.length) requiredHeight += naturalExpandedHeight;
+  requiredHeight += rowGap * Math.max(0, laidOutPanels.length - 1);
 
   const wasFocused = stack.classList.contains('layout-focus');
   const wasTail = stack.classList.contains('layout-tail');
@@ -207,7 +227,7 @@ export function layoutLeftPanelRail({
   const tailRequiredHeight =
     naturalExpandedHeight +
     siblingHeight +
-    rowGap * Math.max(0, panels.length - 1);
+    rowGap * Math.max(0, laidOutPanels.length - 1);
   // A compact expansion should not make the whole control stack jump down
   // merely to center a few short rows. Preserve the normal top anchor when
   // the centered stack would begin below it; tall stacks can still grow
@@ -316,6 +336,16 @@ export function layoutLeftPanelRail({
     stack.style.getPropertyValue('--left-stack-safe-bottom') !== bottomValue
   ) {
     stack.style.setProperty('--left-stack-safe-bottom', bottomValue);
+  }
+  // The rail stays where the resting stack puts it; only the panels move.
+  // A theme that pins the stack's top (Cyber) leaves nothing to offset.
+  const topPinned =
+    getComputedStyle(stack)
+      .getPropertyValue?.('--panel-stack-top-pinned')
+      ?.trim() === '1';
+  const railOffset = `${(topPinned ? 0 : safeTop - layoutTop).toFixed(1)}px`;
+  if (stack.style.getPropertyValue('--panel-rail-offset') !== railOffset) {
+    stack.style.setProperty('--panel-rail-offset', railOffset);
   }
   stack.style.removeProperty('--left-stack-centered-height');
   for (const panel of panels) {

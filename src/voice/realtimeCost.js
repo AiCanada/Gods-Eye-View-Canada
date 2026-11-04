@@ -52,33 +52,34 @@ export class RealtimeCost {
   syncCostUi() {
     const provider = readStoredVoiceProvider();
     const openaiVoice = provider === 'openai';
-    if (this.ui?.providerButton) {
-      this.ui.providerButton.textContent = voiceProviderLabel(provider);
-      this.ui.providerButton.title = voiceProviderTitle(provider);
-    }
+    // The fork's voice engine cycle button (OAI ...), beside the tier.
+    this.ui?.update('providerCycle', {
+      text: voiceProviderLabel(provider),
+      title: voiceProviderTitle(provider),
+    });
     const state = this.costTracker.state();
-    const syncWarning = () => {
-      const warning = this.ui?.costWarning;
-      const value = this.ui?.costValue;
-      if (!warning || !value) return;
-      warning.hidden = !['warn', 'cap', 'unknown'].includes(
-        value.dataset.level,
-      );
-      warning.textContent = warning.hidden ? '' : value.textContent;
-      warning.title = value.title;
-      warning.dataset.level = value.dataset.level;
+    // The panel's warning outside the closed panel mirrors the readout.
+    const showCost = (cost) => {
+      this.ui.update('cost', { hidden: false, ...cost });
+      const hidden = !['warn', 'cap', 'unknown'].includes(cost.level);
+      this.ui.update('costWarning', {
+        hidden,
+        text: hidden ? '' : cost.text,
+        title: cost.title,
+        level: cost.level,
+      });
     };
     const pendingTier = resolveVoiceModel(this.voiceTier).tier;
     const isMini = pendingTier === 'mini';
-    if (this.ui?.tierButton) {
-      this.ui.tierButton.hidden = !openaiVoice;
-      this.ui.tierButton.textContent = isMini ? t('MINI') : t('STD');
-      this.ui.tierButton.setAttribute(
-        'aria-pressed',
-        isMini ? 'true' : 'false',
-      );
-      const pendingId = resolveVoiceModel(pendingTier).id;
-      this.ui.tierButton.title =
+    if (!this.ui) return;
+    const pendingId = resolveVoiceModel(pendingTier).id;
+    this.ui.update('tier', {
+      // The tier and the cost count only for OpenAI voice (the fork's engine
+      // cycle).
+      hidden: !openaiVoice,
+      text: isMini ? t('MINI') : t('STD'),
+      pressed: isMini,
+      title:
         this.isActive() && state.modelId !== pendingId
           ? t('Next session: {pendingId} — this session stays on {modelId}', {
               pendingId,
@@ -90,16 +91,15 @@ export class RealtimeCost {
                 pendingId,
                 target: isMini ? t('standard') : t('mini'),
               },
-            );
-    }
-    if (this.ui?.costValue) {
-      const liveAuth = this.sessionCloudVoiceAuth || this.cloudVoiceAuth;
-      if (liveAuth === 'oauth') {
-        const { responses, input, output, captions } = this.oauthUsage;
-        this.ui.costValue.hidden = false;
-        this.ui.costValue.textContent = t('COST UNKNOWN');
-        this.ui.costValue.dataset.level = 'unknown';
-        this.ui.costValue.title =
+            ),
+    });
+    const liveAuth = this.sessionCloudVoiceAuth || this.cloudVoiceAuth;
+    if (liveAuth === 'oauth') {
+      const { responses, input, output, captions } = this.oauthUsage;
+      showCost({
+        text: t('COST UNKNOWN'),
+        level: 'unknown',
+        title:
           t(
             'ChatGPT OAuth session: {responses} response(s), {input} input and {output} output tokens, {captions} caption transcription(s) reported.',
             { responses, input, output, captions },
@@ -113,14 +113,15 @@ export class RealtimeCost {
               t(
                 'Usage is incomplete because a response was still in flight when the session ended.',
               )
-            : '');
-        syncWarning();
-        return;
-      }
-      this.ui.costValue.hidden = !openaiVoice;
-      this.ui.costValue.textContent = state.display;
-      this.ui.costValue.dataset.level = state.level;
-      this.ui.costValue.title =
+            : ''),
+      });
+      return;
+    }
+    showCost({
+      hidden: !openaiVoice,
+      text: state.display,
+      level: state.level,
+      title:
         t(
           'Estimated session cost on {modelId} — {responses} response(s). Warns at {warn}, ends the session at {cap}.',
           {
@@ -137,9 +138,8 @@ export class RealtimeCost {
             t(
               'Estimate is incomplete — a response was still in flight when the session ended, so its usage was never reported.',
             )
-          : '');
-      syncWarning();
-    }
+          : ''),
+    });
   }
 
   /**
@@ -178,7 +178,7 @@ export class RealtimeCost {
       });
     }
     this.syncCostUi();
-    if (this.isActive() && this.ui?.detail) {
+    if (this.isActive() && this.ui) {
       // The tier as the interface names it; the stored value stays English.
       const tier =
         resolveVoiceModel(this.voiceTier).tier === 'mini'

@@ -406,8 +406,20 @@ test('POWER UP mounts the device cards', () => {
     new URL('./keySetup.js', import.meta.url),
     'utf8',
   );
-  assert.match(source, /initDeviceFeedSetup\(/);
-  assert.match(source, /device-feeds/);
+  assert.match(
+    source,
+    /initDeviceFeedSetup\(\{\s*host: sectionHost\('devices'\)/,
+  );
+  // The POWER UP view (Vue since the eleventh upstream merge) holds the host
+  // the setup owner builds the cards in.
+  const view = readFileSync(
+    new URL('./ui/views/ProviderSettingsView.vue', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    view,
+    /<div class="private-cams device-feeds" data-key-setup-host="devices"><\/div>/,
+  );
 });
 
 test('an Ultra cell card has no FOLLOW, RECORD WITHIN, FIXED or CAMERA PICTURE boxes, and saving it keeps their values', async () => {

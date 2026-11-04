@@ -18,10 +18,20 @@ import {
   regionalBriefProxy,
   weatherEffectsProxy,
 } from 'gods-eye-view/server/providers/regional';
+import {
+  createGateStateStore,
+  createNominatimGate,
+  setSharedNominatimGate,
+  PUBLIC_NOMINATIM_SEARCH,
+} from '../../server/providers/regional/nominatimGate.js';
 import { openAiRealtimeProxy } from 'gods-eye-view/server/providers/openai';
 import { keySetupEndpoint } from 'gods-eye-view/server/standalone/key-setup';
 import { realtimeInstructions } from '../../server/providers/openai/instructions.js';
-import { GEV_REALTIME_TOOLS } from '../../server/providers/openai/tools.js';
+import {
+  GEV_REALTIME_TOOLS,
+  offeredTools,
+  realtimeTools,
+} from '../../server/providers/openai/tools.js';
 import { createDebugLogHandler } from '../../server/providers/openai/debug-log.js';
 import { attachVoiceResult } from '../voice/speech.js';
 import { sanitizeDebugValue } from '../voice/realtimeDiagnostics.js';
@@ -121,6 +131,31 @@ function root(t) {
   return dir;
 }
 
+/**
+ * Nominatim switched on for one test, as NOMINATIM_URL does: the public
+ * endpoint, counted in memory (never this machine's daily count) and unpaced,
+ * on a clock the test moves. The reverse lookups go through upstream's shared
+ * gate since the eleventh upstream merge; it is off until NOMINATIM_URL is set.
+ */
+function nominatimOn(t) {
+  let clock = Date.now();
+  setSharedNominatimGate(
+    createNominatimGate({
+      settings: {
+        endpoint: PUBLIC_NOMINATIM_SEARCH,
+        isPublic: false,
+        dailyCap: 50,
+      },
+      usage: createGateStateStore(),
+      sleep: async () => {},
+      minSpacingMs: 0,
+      now: () => clock,
+    }),
+  );
+  t.after(() => setSharedNominatimGate(null));
+  return { advance: (ms) => (clock += ms) };
+}
+
 test('standalone service guards run in development and preview without upstream acquisition', async (t) => {
   t.mock.method(globalThis, 'fetch', () => {
     throw Error('invalid requests must not fetch');
@@ -154,6 +189,7 @@ test('standalone service guards run in development and preview without upstream 
 });
 
 test('location-region answers the province, state or country of a point and remembers it', async (t) => {
+  nominatimOn(t);
   let calls = 0;
   t.mock.method(globalThis, 'fetch', async (url) => {
     calls++;
@@ -188,6 +224,7 @@ test('location-region answers the province, state or country of a point and reme
 });
 
 test('location-region cache hits and joined lookups never spend the request quota', async (t) => {
+  nominatimOn(t);
   let calls = 0;
   t.mock.method(globalThis, 'fetch', async () => {
     calls++;
@@ -215,6 +252,7 @@ test('location-region cache hits and joined lookups never spend the request quot
 });
 
 test('location-region remembers a point Nominatim cannot place, but not an upstream failure', async (t) => {
+  const nominatim = nominatimOn(t);
   let calls = 0;
   let answer = () => Response.json({ error: 'Unable to geocode' });
   t.mock.method(globalThis, 'fetch', async () => {
@@ -239,11 +277,15 @@ test('location-region remembers a point Nominatim cannot place, but not an upstr
   answer = () => new Response('busy', { status: 503 });
   const failing = { url: '/?latitude=-61.1234&longitude=-30.5678' };
   assert.equal((await request(handler, failing)).status, 503);
+  // The gate holds every lookup for a minute after a 503 (without a
+  // Retry-After); then the point is asked again, as nothing was remembered.
+  nominatim.advance(60_000);
   assert.equal((await request(handler, failing)).status, 503);
   assert.equal(calls, 3, 'a real upstream error is asked again');
 });
 
 test('location-region lookups every requester abandoned never reach Nominatim, and joined ones still answer', async (t) => {
+  nominatimOn(t);
   const asked = [];
   t.mock.method(globalThis, 'fetch', async (url) => {
     const params = new URL(url).searchParams;
@@ -271,10 +313,12 @@ test('location-region lookups every requester abandoned never reach Nominatim, a
   const leaving = abandon(44.21, -79.4);
   const joined = lookup(44.21, -79.4);
   for (const client of [...clicks, leaving]) client.abort();
-  // Asking again for an abandoned cell starts a lookup of its own.
+  // The gate queues at most four lookups, and an abandoned one keeps its
+  // place until the queue reaches it and drops it unsent. Asking again for an
+  // abandoned cell, once they have settled, starts a lookup of its own.
+  await Promise.all(abandoned);
   const again = lookup(44.05, -79.4);
   const pill = await lookup(46.8139, -71.208);
-  await Promise.all(abandoned);
 
   const kept = await joined;
   assert.equal(kept.status, 200);
@@ -329,6 +373,7 @@ test('weather-only requests share upstream work and retain fresh and stale respo
 test('Realtime handler preserves tools and default instructions, isolates supplied annotation guidance, and keeps the upstream key server-side', async (t) => {
   env(t, 'OPENAI_API_KEY', 'fixture-upstream-secret');
   env(t, 'GEV_RATELIMIT_OPENAI_PER_MIN', undefined);
+  env(t, 'OVERPASS_UPSTREAMS', undefined);
   const sent = [];
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     assert.equal(url, 'https://api.openai.com/v1/realtime/client_secrets');
@@ -359,7 +404,7 @@ test('Realtime handler preserves tools and default instructions, isolates suppli
       sent.at(-1).session.instructions,
       realtimeInstructions(guidance),
     );
-    assert.deepEqual(sent.at(-1).session.tools, GEV_REALTIME_TOOLS);
+    assert.deepEqual(sent.at(-1).session.tools, realtimeTools());
   }
   assert.notEqual(sent[0].session.instructions, sent[1].session.instructions);
   assert.equal(sent[0].session.instructions, sent[2].session.instructions);
@@ -895,6 +940,36 @@ test('OAuth login endpoint selects an existing local sign-in without launching C
   assert.equal(response.body.includes('fixture-existing-secret'), false);
 });
 
+test('osm_query is offered only when an operator configured Overpass', async (t) => {
+  env(t, 'OPENAI_API_KEY', 'fixture-upstream-secret');
+  env(t, 'GEV_RATELIMIT_OPENAI_PER_MIN', undefined);
+  const sent = [];
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    sent.push(JSON.parse(options.body).session);
+    return Response.json({ value: 'fixture-ephemeral' });
+  });
+  const mint = () =>
+    request(install(openAiRealtimeProxy({})).get('/api/realtime/token'), {
+      url: '/',
+    });
+  env(t, 'OVERPASS_UPSTREAMS', undefined);
+  await mint();
+  env(t, 'OVERPASS_UPSTREAMS', 'https://overpass.example/api/interpreter');
+  await mint();
+  const [plain, configured] = sent;
+  const names = (session) => session.tools.map((tool) => tool.name);
+  assert.equal(names(plain).includes('osm_query'), false);
+  assert.doesNotMatch(plain.instructions, /osm_query/);
+  assert.ok(names(plain).includes('resolve_area'));
+  assert.ok(names(plain).includes('find_imagery'));
+  assert.deepEqual(configured.tools, GEV_REALTIME_TOOLS);
+  assert.match(configured.instructions, /osm_query/);
+  assert.equal(
+    configured.instructions,
+    realtimeInstructions(undefined, { overpass: true }),
+  );
+});
+
 test('caption transcription is on by default, reported to the client meter, and can be turned off', async (t) => {
   env(t, 'OPENAI_API_KEY', 'fixture-upstream-secret');
   env(t, 'GEV_RATELIMIT_OPENAI_PER_MIN', undefined);
@@ -922,6 +997,7 @@ test('caption transcription is on by default, reported to the client meter, and 
 test('Realtime sessions carry supplied tools, and the standalone voice adds the catalog queries', async (t) => {
   env(t, 'OPENAI_API_KEY', 'fixture-upstream-secret');
   env(t, 'GEV_RATELIMIT_OPENAI_PER_MIN', undefined);
+  env(t, 'OVERPASS_UPSTREAMS', undefined);
   const sent = [];
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     sent.push(JSON.parse(options.body));
@@ -934,7 +1010,11 @@ test('Realtime sessions carry supplied tools, and the standalone voice adds the 
     ),
   );
   assert.equal(response.status, 200);
-  assert.deepEqual(sent.at(-1).session.tools, tools);
+  // Without an operator Overpass, osm_query is left out of the session.
+  assert.deepEqual(sent.at(-1).session.tools, offeredTools(tools));
+  assert.ok(
+    !sent.at(-1).session.tools.some(({ name }) => name === 'osm_query'),
+  );
   const names = tools.map((tool) => tool.name);
   assert.equal(new Set(names).size, names.length);
   assert.deepEqual(
@@ -1116,13 +1196,18 @@ test('Realtime service configuration selects compatible endpoint/model without f
         endpoint: 'https://voice.example/client-secrets',
         models: { standard: 'configured-model' },
         resolveApiKey: () => 'server-fixture',
+        // Pinned, so the expected tool list never depends on this machine's env.
+        overpassConfigured: () => false,
         fetchImpl: async (url, options) => {
           assert.equal(url, 'https://voice.example/client-secrets');
           assert.equal(options.redirect, 'error');
           assert.equal(options.headers.Authorization, 'Bearer server-fixture');
           const payload = JSON.parse(options.body);
           assert.equal(payload.session.model, 'configured-model');
-          assert.deepEqual(payload.session.tools, GEV_REALTIME_TOOLS);
+          assert.deepEqual(
+            payload.session.tools,
+            realtimeTools({ overpass: false }),
+          );
           return Response.json({ value: 'short-lived-fixture' });
         },
       },

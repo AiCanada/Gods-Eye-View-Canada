@@ -21,3 +21,10 @@ node_modules
 .vite-*
 *.min.js
 .gev-data
+
+# Application views, and panels lifted from them, hold the page markup
+# verbatim; reflowing it changes the DOM
+src/ui/views/*View.vue
+src/ui/views/panels/
+# The fork's boxes, lifted from its templates the same way
+src/ui/views/fork/

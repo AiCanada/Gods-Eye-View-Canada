@@ -14,6 +14,10 @@ export const AUSTIN = { lat: 30.2672, lon: -97.7431 };
 export const TORONTO = { lat: 43.6532, lon: -79.3832 };
 export const DEBOUNCE_MS = FETCH_DEBOUNCE;
 const TILE_ORIGIN = 'https://tiles.openfreemap.org';
+// Decoded road tiles are kept process-wide, by tile template and XYZ
+// (src/sources/openFreeMap.js, upstream, merged 2026-11-04), so each harness
+// serves a template of its own: one test's tiles never answer the next's.
+let harnessSerial = 0;
 
 let gridTile = null;
 /**
@@ -98,12 +102,13 @@ export function createTrafficHarness(t, { height = 3200 } = {}) {
   const calls = { tiles: [], overpass: [] };
   const failing = { tiles: false, overpass: false, tile: () => false };
   const options = { overpassConfigured: true };
+  const tileSet = `test-${(harnessSerial += 1)}`;
   const tileFetchImpl = async (url, { signal } = {}) => {
     signal?.throwIfAborted();
     const href = String(url);
     if (href === `${TILE_ORIGIN}/planet`)
       return Response.json({
-        tiles: [`${TILE_ORIGIN}/planet/test/{z}/{x}/{y}.pbf`],
+        tiles: [`${TILE_ORIGIN}/planet/${tileSet}/{z}/{x}/{y}.pbf`],
       });
     const match = href.match(/\/(\d+)\/(\d+)\/(\d+)\.pbf$/);
     if (!match) throw new Error(`unexpected tile fetch: ${href}`);

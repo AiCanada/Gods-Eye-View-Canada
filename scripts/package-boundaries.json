@@ -17,8 +17,156 @@
   },
   "application": {
     "exports": ["./application"],
-    "modules": ["src/app/application.js"],
-    "external": []
+    "modules": [
+      "src/app/application.js",
+      "src/ui/vueRuntime.js",
+      "src/ui/views/index.js",
+      "src/ui/views/CockpitView.vue",
+      "src/ui/views/CommandDockView.vue",
+      "src/ui/views/ContextView.vue",
+      "src/ui/views/panels/RadioPanel.vue",
+      "src/ui/views/panels/SdrCard.vue",
+      "src/ui/views/panels/RadioTuner.vue",
+      "src/ui/views/panels/LocalePicker.vue",
+      "src/ui/views/panels/SceneDialog.vue",
+      "src/ui/views/panels/VoiceControl.vue",
+      "src/ui/views/panels/ChatPanel.vue",
+      "src/ui/views/panels/PanelLayoutButtons.vue",
+      "src/ui/views/panels/VoiceCard.vue",
+      "src/ui/views/panels/VoiceVisualizer.vue",
+      "src/ui/localePicker.js",
+      "src/ui/views/panels/PhoneTabBar.vue",
+      "src/ui/views/panels/CockpitBriefing.vue",
+      "src/ui/views/panels/CockpitContext.vue",
+      "src/ui/views/panels/CockpitRoute.vue",
+      "src/ui/views/panels/CockpitRollingValue.vue",
+      "src/ui/views/panels/CockpitSignalList.vue",
+      "src/ui/views/panels/CockpitUtilityControls.vue",
+      "src/ui/cockpitBriefPages.js",
+      "src/ui/cockpitContextState.js",
+      "src/ui/cockpitInstrumentState.js",
+      "src/ui/cockpitRollingValue.js",
+      "src/ui/radioTunerModel.js",
+      "src/ui/views/panels/MissionDetail.vue",
+      "src/ui/views/panels/MissionRoster.vue",
+      "src/ui/views/panels/AwarenessPanel.vue",
+      "src/ui/views/panels/AwarenessNames.vue",
+      "src/ui/views/DisplayControlsView.vue",
+      "src/ui/views/LayerPanelsView.vue",
+      "src/ui/views/ProviderSettingsView.vue",
+      "src/ui/views/SceneChromeView.vue",
+      "src/ui/views/WelcomeView.vue",
+      "src/ui/views/SceneOptions.vue",
+      "src/ui/views/SceneShotList.vue",
+      "src/ui/stores/scenes.js",
+      "src/ui/scenePresentation.js",
+      "src/i18n/index.js",
+      "src/i18n/locale.js",
+      "src/i18n/locales/ar.json",
+      "src/i18n/locales/de.json",
+      "src/i18n/locales/es.json",
+      "src/i18n/locales/fr.json",
+      "src/i18n/locales/it.json",
+      "src/i18n/locales/ja.json",
+      "src/i18n/locales/pt.json",
+      "src/i18n/locales/ru.json",
+      "src/i18n/locales/uk.json",
+      "src/i18n/locales/zh-CN.json",
+      "src/i18n/locales/zh-Hant.json",
+      "src/ui/views/panels/StreetLevelPanel.vue",
+      "src/ui/views/panels/CctvPanel.vue",
+      "src/ui/cctv/CctvCalValue.vue",
+      "src/ui/cctv/CctvPicker.vue",
+      "src/ui/stores/cctv.js",
+      "src/ui/stores/radio.js",
+      "src/ui/stores/context.js",
+      "src/ui/stores/cockpit.js",
+      "src/ui/stores/locale.js",
+      "src/ui/stores/providerSettings.js",
+      "src/ui/stores/sceneSharing.js",
+      "src/ui/stores/voice.js",
+      "src/ui/stores/location.js",
+      "src/ui/stores/streetLevel.js",
+      "src/ui/rail/RailChips.vue",
+      "src/ui/views/panels/DisplayPanel.vue",
+      "src/ui/views/panels/GeoImport.vue",
+      "src/ui/views/panels/DrawControls.vue",
+      "src/ui/views/panels/DrawMarkList.vue",
+      "src/ui/views/panels/DrawSwatches.vue",
+      "src/annotations/drawMarks.js",
+      "src/ui/stores/display.js",
+      "src/ui/localSdrPresentation.js",
+      "src/ui/unitLabels.js",
+      "src/layers/localAdsb/feedNames.js",
+      "src/ui/stores/owners.js",
+      "src/ui/rail/rangeValue.js",
+      "src/ui/rail/classToggle.js",
+      "src/ui/rail/focusSafeChildren.js",
+      "src/ui/rail/fieldValue.js",
+      "src/ui/rail/statusText.js",
+      "src/voice/control.js",
+      "src/ui/views/panels/ImagerySplitView.vue",
+      "src/ui/stores/imagerySplit.js",
+      "src/ui/stores/status.js",
+      "src/ui/views/panels/SplitFlapText.vue",
+      "src/splitFlap.js",
+      "src/ui/stores/sceneInteractions.js",
+      "src/ui/views/panels/SceneInteractions.vue",
+      "src/ui/stores/dataPacks.js",
+      "src/ui/views/panels/DataPacks.vue",
+      "src/ui/stores/pointerReticle.js",
+      "src/ui/stores/windInspection.js",
+      "src/ui/views/panels/WindInspectionMarker.vue",
+      "src/ui/stores/missionReplay.js",
+      "src/ui/views/panels/MissionReplayOverlay.vue",
+      "src/ui/stores/bhoteKoshiPanel.js",
+      "src/ui/views/panels/BhoteKoshiPanel.vue",
+      "src/ui/stores/celestialRing.js",
+      "src/ui/views/panels/CelestialRing.vue",
+      "src/ui/stores/screenAnnotations.js",
+      "src/ui/views/panels/ScreenAnnotations.vue",
+      "src/ui/stores/worldOverlayActions.js",
+      "src/ui/stores/awarenessDirection.js",
+      "src/ui/views/panels/AwarenessDirection.vue",
+      "src/ui/stores/hud.js",
+      "src/ui/views/IntelHudView.vue",
+      "src/ui/stores/firstRun.js",
+      "src/firstRunCopy.js",
+      "src/ui/kit/UiButton.vue",
+      "src/ui/kit/UiSegmented.vue",
+      "src/ui/rail/RailPanel.vue",
+      "src/ui/kit/UiPanel.vue",
+      "src/ui/kit/UiPanelToggle.vue",
+      "src/ui/stores/panelChrome.js",
+      "src/ui/rail/PanelCollapseButton.vue",
+      "src/ui/rail/panelState.js",
+      "src/sdr/gain.js",
+      "src/ui/kit/UiSlider.js",
+      "src/ui/kit/UiChip.vue",
+      "src/ui/kit/UiSelect.js",
+      "src/ui/kit/UiEmpty.vue",
+      "src/ui/kit/UiBadge.vue",
+      "src/ui/stores/globeActions.js",
+      "src/ui/views/panels/GlobeActions.vue",
+      "src/ui/views/panels/GlobeCompass.vue",
+      "src/ui/stores/recording.js",
+      "src/ui/styleParameters.js",
+      "src/ui/i18n.js",
+      "src/ui/keySetupPlacement.js",
+      "src/ui/views/fork/ContextRadioDock.vue",
+      "src/ui/views/fork/CctvAreaChip.vue",
+      "src/ui/views/fork/SstPanel.vue",
+      "src/ui/views/fork/AskPanel.vue",
+      "src/ui/views/fork/SocialPanel.vue",
+      "src/ui/views/fork/DistillPanel.vue",
+      "src/ui/views/fork/AiWorldPanel.vue",
+      "src/ui/views/fork/AbundancePanel.vue",
+      "src/ui/views/fork/OutbreakPanel.vue",
+      "src/ui/views/fork/UltraPanel.vue",
+      "src/i18n/marker.js",
+      "src/i18n/fork-locales.json"
+    ],
+    "external": ["vue", "pinia", "vue-i18n"]
   },
   "viewer": {
     "exports": ["./application/viewer"],
@@ -35,15 +183,17 @@
   },
   "vite-build": {
     "runtime": "node",
-    "exports": ["./build/vite", "./build/html"],
+    "exports": ["./build/vite", "./build/register-vue"],
     "modules": [
       "build/vite.js",
-      "build/application-html.js",
       "build/allowedHosts.js",
       "build/embed-framing.js",
-      "build/panel.js"
+      "build/panel.js",
+      "build/vueOptions.js",
+      "build/registerVue.js",
+      "build/vueLoader.js"
     ],
-    "external": ["vite-plugin-cesium"]
+    "external": ["vite-plugin-cesium", "@vitejs/plugin-vue", "vue"]
   },
   "live-providers": {
     "runtime": "node",
@@ -69,13 +219,14 @@
       "src/keySetupCore.mjs",
       "src/localRequestGate.mjs",
       "server/shared/keySetupHardening.mjs",
-      "server/providers/common/process-shared.js"
+      "server/providers/common/process-shared.js",
+      "src/sources/adsbFields.js"
     ],
     "external": ["ws"]
   },
   "adsb-lol-source": {
     "exports": ["./sources/adsb-lol"],
-    "modules": ["src/data/adsbLolFallback.js"],
+    "modules": ["src/data/adsbLolFallback.js", "src/sources/adsbFields.js"],
     "external": []
   },
   "place-providers": {
@@ -100,7 +251,8 @@
       "server/shared/localIntegrity.mjs",
       "server/standalone/key-setup-hardening.mjs",
       "src/keySetupCore.mjs",
-      "server/shared/keySetupHardening.mjs"
+      "server/shared/keySetupHardening.mjs",
+      "src/data/distanceFormat.js"
     ],
     "external": []
   },
@@ -388,7 +540,12 @@
       "src/i18n/marker.js",
       "src/sources/overpass.js",
       "src/sources/rateLimit.js",
-      "server/providers/common/process-shared.js"
+      "server/providers/common/process-shared.js",
+      "src/data/distanceFormat.js",
+      "server/providers/common/boundedCache.js",
+      "src/data/osmPresets.js",
+      "server/providers/overpass/osmFeatures.js",
+      "server/providers/overpass/osmFeaturesRoute.js"
     ],
     "external": []
   },
@@ -410,7 +567,9 @@
       "src/i18n/marker.js",
       "src/sources/rateLimit.js",
       "server/providers/common/geo.js",
-      "server/providers/common/process-shared.js"
+      "server/providers/common/process-shared.js",
+      "server/providers/common/same-site.js",
+      "src/localRequestGate.mjs"
     ],
     "external": []
   },
@@ -451,7 +610,16 @@
       "server/providers/regional/country-codes.js",
       "src/data/regionalBrief.js",
       "src/socialMedia.js",
-      "src/ultraHelp.mjs"
+      "src/ultraHelp.mjs",
+      "server/providers/common/same-site.js",
+      "server/providers/common/source-root.js",
+      "server/providers/regional/nominatimGate.js",
+      "server/providers/regional/nominatimCache.js",
+      "server/providers/regional/outlineSelect.js",
+      "src/localRequestGate.mjs",
+      "src/data/adminBoundaries.js",
+      "src/data/placeNames.js",
+      "src/sources/featureGeometry.js"
     ],
     "external": []
   },
@@ -488,7 +656,19 @@
       "server/standalone/key-setup-hardening.mjs",
       "src/keySetupCore.mjs",
       "server/shared/keySetupHardening.mjs",
-      "src/i18n/marker.js"
+      "src/i18n/marker.js",
+      "src/i18n/locale.js",
+      "server/providers/common/textChat.js",
+      "server/providers/common/textInstructions.js",
+      "server/providers/common/textTools.js",
+      "server/providers/openai/chat.js",
+      "server/providers/gemini/request.js",
+      "build/allowedHosts.js",
+      "src/tools/schema.js",
+      "src/sources/requestDeadline.js",
+      "src/sources/httpBody.js",
+      "src/voice/areaCandidateContract.js",
+      "server/providers/overpass/constants.js"
     ],
     "external": []
   },
@@ -515,7 +695,8 @@
       "src/voice/layerManifest.js",
       "src/localRequestGate.mjs",
       "server/shared/keySetupHardening.mjs",
-      "src/i18n/marker.js"
+      "src/i18n/marker.js",
+      "src/voice/areaCandidateContract.js"
     ],
     "external": []
   },
@@ -583,7 +764,8 @@
       "src/data/local_data/natural_earth/marine.json",
       "src/sources/httpBody.js",
       "src/i18n/marker.js",
-      "src/sources/nominatim.js"
+      "src/sources/nominatim.js",
+      "src/sources/nominatimStatus.js"
     ],
     "external": []
   },
@@ -606,7 +788,8 @@
       "src/ui/rightPanelRail.js",
       "src/ui/panelMeasurement.js",
       "src/ui/panelRailGeometry.js",
-      "src/panelStackLayout.js"
+      "src/panelStackLayout.js",
+      "src/ui/panelAccordion.js"
     ],
     "external": []
   },
@@ -617,7 +800,6 @@
       "src/ui/applicationShortcuts.js",
       "src/ui/styleParameters.js",
       "src/i18n/fork-locales.json",
-      "src/ui/slider.js",
       "src/i18n/index.js",
       "src/i18n/marker.js",
       "src/i18n/locale.js",
@@ -633,13 +815,17 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/ui/rail/rangeValue.js",
+      "src/i18n/locales/ar.json",
+      "src/ui/rail/fieldValue.js",
+      "src/ui/kit/UiSlider.js"
     ],
-    "external": []
+    "external": ["vue"]
   },
   "display-controls": {
     "exports": ["./ui/display"],
-    "modules": ["src/ui/displayControls.js", "src/ui/segmentedControl.js"],
+    "modules": ["src/ui/displayControls.js"],
     "external": []
   },
   "visual-effects": {
@@ -682,7 +868,8 @@
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
-      "src/i18n/marker.js"
+      "src/i18n/marker.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": []
   },
@@ -695,9 +882,6 @@
       "src/ui/weatherPanel.js",
       "src/ui/railCards.js",
       "src/ui/railCardBlocks.js",
-      "src/ui/slider.js",
-      "src/ui/chipGroup.js",
-      "src/ui/rowList.js",
       "src/ui/railTimeline.js",
       "src/ui/clearLayersControl.js",
       "src/loadingFeedback.js",
@@ -726,9 +910,28 @@
       "src/ui/keyGuidance.js",
       "src/ui/statusText.js",
       "src/i18n/marker.js",
-      "src/ui/statusBadge.js"
+      "src/ui/layerRowText.js",
+      "src/ui/layerPanel/LayerRows.vue",
+      "src/ui/rail/classToggle.js",
+      "src/ui/rail/focusSafeChildren.js",
+      "src/ui/layerPanel/RowText.vue",
+      "src/i18n/locales/ar.json",
+      "src/ui/rail/RailChips.vue",
+      "src/ui/rail/RailRowList.vue",
+      "src/ui/rail/RailCardSetting.vue",
+      "src/ui/rail/RailCardBlocks.vue",
+      "src/ui/rail/RailCard.vue",
+      "src/ui/rail/RailCards.vue",
+      "src/ui/rail/utcClock.js",
+      "src/ui/rail/RailTimeline.vue",
+      "src/ui/rail/rangeValue.js",
+      "src/ui/weather/WeatherReadout.vue",
+      "src/ui/kit/UiButton.vue",
+      "src/ui/kit/UiBadge.vue",
+      "src/ui/rail/fieldValue.js",
+      "src/ui/kit/UiSlider.js"
     ],
-    "external": []
+    "external": ["vue"]
   },
   "location-controls": {
     "exports": ["./ui/location"],
@@ -755,7 +958,8 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/i18n/locales/ar.json"
     ],
     "external": []
   },
@@ -783,9 +987,14 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/ui/vueRuntime.js",
+      "src/ui/stores/radio.js",
+      "src/ui/stores/owners.js",
+      "src/i18n/locales/ar.json",
+      "src/ui/i18n.js"
     ],
-    "external": []
+    "external": ["vue", "pinia", "vue-i18n"]
   },
   "cctv-controls": {
     "exports": ["./ui/cctv"],
@@ -793,7 +1002,6 @@
       "src/ui/cctv.js",
       "src/ui/cctvBindings.js",
       "src/ui/cctvCalibration.js",
-      "src/ui/formField.js",
       "src/ui/cctvControls.js",
       "src/ui/cctvFrames.js",
       "src/ui/cctvVideo.js",
@@ -817,9 +1025,14 @@
       "src/i18n/locales/zh-Hant.json",
       "src/ui/unitLabels.js",
       "src/ui/cctvPanelResize.js",
-      "src/ui/statusBadge.js"
+      "src/data/headingDegrees.js",
+      "src/i18n/locales/ar.json",
+      "src/ui/vueRuntime.js",
+      "src/ui/stores/cctv.js",
+      "src/ui/stores/status.js",
+      "src/ui/i18n.js"
     ],
-    "external": []
+    "external": ["vue", "pinia", "vue-i18n"]
   },
   "context-controls": {
     "exports": ["./ui/context", "./ui/context/policy"],
@@ -853,7 +1066,8 @@
       "src/ui/layerNames.js",
       "src/i18n/marker.js",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/i18n/locales/ar.json"
     ],
     "external": []
   },
@@ -899,7 +1113,14 @@
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
-      "src/ui/unitLabels.js"
+      "src/ui/unitLabels.js",
+      "src/data/headingDegrees.js",
+      "src/data/distanceFormat.js",
+      "src/ui/cockpitBriefPages.js",
+      "src/ui/cockpitContextState.js",
+      "src/ui/cockpitInstrumentState.js",
+      "src/ui/cockpitRollingValue.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -910,7 +1131,6 @@
       "src/ui/sceneControls.js",
       "src/ui/scenePresentation.js",
       "src/i18n/fork-locales.json",
-      "src/ui/actionButton.js",
       "src/i18n/index.js",
       "src/i18n/marker.js",
       "src/i18n/locale.js",
@@ -927,9 +1147,15 @@
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
-      "src/ui/unitLabels.js"
+      "src/ui/unitLabels.js",
+      "src/ui/stores/scenes.js",
+      "src/ui/views/SceneOptions.vue",
+      "src/ui/views/SceneShotList.vue",
+      "src/i18n/locales/ar.json",
+      "src/ui/vueRuntime.js",
+      "src/ui/i18n.js"
     ],
-    "external": []
+    "external": ["vue", "pinia", "vue-i18n"]
   },
   "ui-shell": {
     "exports": ["./ui/shell"],
@@ -969,7 +1195,6 @@
       "src/navigationPolicy.js",
       "src/panelStackLayout.js",
       "src/rightRailPolicy.js",
-      "src/splitFlap.js",
       "src/styles/anime.js",
       "src/styles/noir.js",
       "src/styles/retro.js",
@@ -985,7 +1210,6 @@
       "src/ui/cctv.js",
       "src/ui/cctvBindings.js",
       "src/ui/cctvCalibration.js",
-      "src/ui/formField.js",
       "src/ui/cctvControls.js",
       "src/ui/cctvFrames.js",
       "src/ui/cctvVideo.js",
@@ -1014,15 +1238,12 @@
       "src/ui/contextSubscriptions.js",
       "src/ui/contextTransactions.js",
       "src/ui/displayControls.js",
-      "src/ui/segmentedControl.js",
       "src/ui/effects.js",
       "src/ui/frameRateMonitor.js",
       "src/ui/layerPanel.js",
       "src/ui/weatherPanel.js",
       "src/ui/railCards.js",
       "src/ui/railCardBlocks.js",
-      "src/ui/chipGroup.js",
-      "src/ui/rowList.js",
       "src/ui/railTimeline.js",
       "src/ui/layers.js",
       "src/ui/leftPanelRail.js",
@@ -1049,7 +1270,6 @@
       "src/ui/rightPanelRail.js",
       "src/ui/sceneControls.js",
       "src/ui/scenePresentation.js",
-      "src/ui/actionButton.js",
       "src/ui/scenes.js",
       "src/ui/shareFollow.js",
       "src/share/follow.js",
@@ -1058,7 +1278,6 @@
       "src/ui/shellElements.js",
       "src/ui/shellFeedback.js",
       "src/ui/styleParameters.js",
-      "src/ui/slider.js",
       "src/ui/surfaceKeyboard.js",
       "src/ui/uiLifetime.js",
       "src/ui/visualEffects.js",
@@ -1105,11 +1324,73 @@
       "src/ui/cctvPanelResize.js",
       "src/i18n/marker.js",
       "src/ui/placeNames.js",
-      "src/ui/statusBadge.js",
       "src/scopeMaskPolicy.js",
-      "src/visualStylePolicy.js"
+      "src/visualStylePolicy.js",
+      "src/data/headingDegrees.js",
+      "src/data/distanceFormat.js",
+      "src/ui/cockpitBriefPages.js",
+      "src/ui/cockpitContextState.js",
+      "src/ui/cockpitInstrumentState.js",
+      "src/ui/cockpitRollingValue.js",
+      "src/ui/layerRowText.js",
+      "src/ui/layerPanel/LayerRows.vue",
+      "src/ui/rail/classToggle.js",
+      "src/ui/rail/focusSafeChildren.js",
+      "src/ui/layerPanel/RowText.vue",
+      "src/ui/stores/scenes.js",
+      "src/ui/views/SceneOptions.vue",
+      "src/ui/views/SceneShotList.vue",
+      "src/i18n/locales/ar.json",
+      "src/ui/stores/panels.js",
+      "src/ui/panelRailCatalog.js",
+      "src/ui/vueRuntime.js",
+      "src/ui/kit/UiIcon.vue",
+      "src/ui/kit/rail.js",
+      "src/ui/kit/UiTooltip.vue",
+      "src/ui/kit/UiRail.vue",
+      "src/ui/PanelRailView.vue",
+      "src/ui/panelNavigation.js",
+      "src/ui/panelAccordion.js",
+      "src/ui/rail/RailRowList.vue",
+      "src/ui/rail/RailChips.vue",
+      "src/ui/rail/RailCardSetting.vue",
+      "src/ui/rail/RailCardBlocks.vue",
+      "src/ui/rail/RailCard.vue",
+      "src/ui/rail/RailCards.vue",
+      "src/ui/rail/utcClock.js",
+      "src/ui/rail/RailTimeline.vue",
+      "src/ui/rail/rangeValue.js",
+      "src/ui/weather/WeatherReadout.vue",
+      "src/ui/stores/streetLevel.js",
+      "src/ui/stores/cctv.js",
+      "src/ui/stores/radio.js",
+      "src/ui/stores/context.js",
+      "src/ui/stores/cockpit.js",
+      "src/ui/stores/locale.js",
+      "src/ui/stores/providerSettings.js",
+      "src/ui/stores/sceneSharing.js",
+      "src/ui/stores/voice.js",
+      "src/ui/stores/location.js",
+      "src/ui/stores/display.js",
+      "src/ui/stores/owners.js",
+      "src/ui/stores/status.js",
+      "src/ui/toast.js",
+      "src/ui/stores/missionReplay.js",
+      "src/ui/stores/celestialRing.js",
+      "src/ui/stores/worldOverlayActions.js",
+      "src/ui/stores/awarenessDirection.js",
+      "src/ui/stores/hud.js",
+      "src/ui/stores/panelChrome.js",
+      "src/ui/rail/panelState.js",
+      "src/ui/rail/fieldValue.js",
+      "src/ui/kit/UiSlider.js",
+      "src/ui/kit/UiButton.vue",
+      "src/ui/kit/UiBadge.vue",
+      "src/ui/stores/globeActions.js",
+      "src/ui/stores/recording.js",
+      "src/ui/i18n.js"
     ],
-    "external": ["cesium"]
+    "external": ["cesium", "vue", "pinia", "vue-i18n"]
   },
   "ui-styles": {
     "exports": ["./ui/styles"],
@@ -1185,7 +1466,6 @@
       "src/ui/scenes.js",
       "src/ui/sceneControls.js",
       "src/ui/scenePresentation.js",
-      "src/ui/actionButton.js",
       "src/contextModePolicy.js",
       "src/director/clock.js",
       "src/director/timeline.js",
@@ -1235,9 +1515,20 @@
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
       "src/ui/unitLabels.js",
-      "src/visualStylePolicy.js"
+      "src/visualStylePolicy.js",
+      "src/ui/stores/scenes.js",
+      "src/ui/views/SceneOptions.vue",
+      "src/ui/views/SceneShotList.vue",
+      "src/ui/stores/sceneSharing.js",
+      "src/i18n/locales/ar.json",
+      "src/ui/vueRuntime.js",
+      "src/ui/stores/status.js",
+      "src/ui/toast.js",
+      "src/ui/stores/sceneInteractions.js",
+      "src/ui/stores/dataPacks.js",
+      "src/ui/i18n.js"
     ],
-    "external": ["cesium"]
+    "external": ["cesium", "vue", "pinia", "vue-i18n"]
   },
   "live-observations": {
     "exports": ["./sources/live"],
@@ -1248,7 +1539,8 @@
       "src/sources/live/standalone.js",
       "src/sources/live/vessels.js",
       "src/i18n/marker.js",
-      "src/data/aircraftEmergency.js"
+      "src/data/aircraftEmergency.js",
+      "src/sources/adsbFields.js"
     ],
     "external": []
   },
@@ -1314,7 +1606,9 @@
       "src/layers/flights/locationSwitch.js",
       "src/i18n/marker.js",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/data/headingDegrees.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -1375,7 +1669,9 @@
       "src/data/routePlausible.js",
       "src/geoDistance.js",
       "src/layers/military/locationSwitch.js",
-      "src/i18n/marker.js"
+      "src/i18n/marker.js",
+      "src/data/headingDegrees.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -1449,7 +1745,9 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/data/headingDegrees.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -1491,7 +1789,8 @@
       "src/i18n/locales/zh-Hant.json",
       "src/ui/unitLabels.js",
       "src/layers/recentImagery/display.js",
-      "src/i18n/marker.js"
+      "src/i18n/marker.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -1531,7 +1830,8 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -1574,7 +1874,8 @@
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
-      "src/ui/unitLabels.js"
+      "src/ui/unitLabels.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium", "satellite.js"]
   },
@@ -1618,7 +1919,8 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -1672,7 +1974,8 @@
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
-      "src/layers/installations/classLabel.js"
+      "src/layers/installations/classLabel.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium", "@mapbox/vector-tile", "pbf"]
   },
@@ -1719,7 +2022,11 @@
       "src/ui/unitLabels.js",
       "src/i18n/marker.js",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/data/headingDegrees.js",
+      "src/data/distanceFormat.js",
+      "src/awarenessEcho.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -1782,7 +2089,8 @@
       "src/i18n/locales/zh-Hant.json",
       "src/layers/traffic/queries.js",
       "src/layers/traffic/instances.js",
-      "src/layers/traffic/locationSwitch.js"
+      "src/layers/traffic/locationSwitch.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium", "pbf", "@mapbox/vector-tile"]
   },
@@ -1824,7 +2132,8 @@
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
-      "src/layers/bikeshare/location.js"
+      "src/layers/bikeshare/location.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -1893,7 +2202,9 @@
       "src/data/cctvCardResize.js",
       "src/data/cctvCardAlign.js",
       "src/data/cctvPrivateMove.js",
-      "src/data/privateCctv.js"
+      "src/data/privateCctv.js",
+      "src/data/headingDegrees.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["hls.js", "cesium"]
   },
@@ -1969,7 +2280,8 @@
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
-      "src/layers/streetLevel/providers/mapillary/policy.js"
+      "src/layers/streetLevel/providers/mapillary/policy.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium", "pbf", "@mapbox/vector-tile", "mapillary-js"]
   },
@@ -2008,7 +2320,9 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/data/headingDegrees.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium", "@mapbox/vector-tile", "pbf"]
   },
@@ -2060,7 +2374,8 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -2094,7 +2409,8 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -2161,7 +2477,8 @@
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
-      "src/i18n/marker.js"
+      "src/i18n/marker.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -2245,9 +2562,22 @@
       "src/voice/geminiCaptureWorklet.js",
       "src/sources/httpBody.js",
       "src/sources/requestDeadline.js",
-      "src/i18n/marker.js"
+      "src/i18n/marker.js",
+      "src/voice/chatControl.js",
+      "src/voice/geminiTextChat.js",
+      "src/voice/textChat.js",
+      "src/voice/textProtocol.js",
+      "src/voice/chatAttachments.js",
+      "src/voice/chatPreferences.js",
+      "src/voice/panelLayout.js",
+      "src/voice/voiceMiniPreview.js",
+      "src/i18n/locales/ar.json",
+      "src/ui/stores/voice.js",
+      "src/ui/vueRuntime.js",
+      "src/ui/stores/pointerReticle.js",
+      "src/ui/i18n.js"
     ],
-    "external": []
+    "external": ["vue", "pinia", "vue-i18n"]
   },
   "application-components": {
     "exports": [
@@ -2466,6 +2796,7 @@
       "src/hudPlaceLookup.js",
       "src/hudSummaryResponse.js",
       "src/keySetup.js",
+      "src/ui/keySetupPlacement.js",
       "src/keySetupCore.mjs",
       "src/localRequestGate.mjs",
       "src/keylessGeocoder.js",
@@ -2764,7 +3095,6 @@
       "src/ui/cctv.js",
       "src/ui/cctvBindings.js",
       "src/ui/cctvCalibration.js",
-      "src/ui/formField.js",
       "src/ui/cctvControls.js",
       "src/ui/cctvFrames.js",
       "src/ui/cctvVideo.js",
@@ -2794,15 +3124,12 @@
       "src/ui/contextSubscriptions.js",
       "src/ui/contextTransactions.js",
       "src/ui/displayControls.js",
-      "src/ui/segmentedControl.js",
       "src/ui/effects.js",
       "src/ui/frameRateMonitor.js",
       "src/ui/layerPanel.js",
       "src/ui/weatherPanel.js",
       "src/ui/railCards.js",
       "src/ui/railCardBlocks.js",
-      "src/ui/chipGroup.js",
-      "src/ui/rowList.js",
       "src/ui/railTimeline.js",
       "src/ui/layers.js",
       "src/ui/leftPanelRail.js",
@@ -2829,14 +3156,12 @@
       "src/ui/rightPanelRail.js",
       "src/ui/sceneControls.js",
       "src/ui/scenePresentation.js",
-      "src/ui/actionButton.js",
       "src/ui/scenes.js",
       "src/ui/shareFollow.js",
       "src/ui/shareRestoration.js",
       "src/ui/shellElements.js",
       "src/ui/shellFeedback.js",
       "src/ui/styleParameters.js",
-      "src/ui/slider.js",
       "src/ui/surfaceKeyboard.js",
       "src/ui/uiLifetime.js",
       "src/ui/visualEffects.js",
@@ -3230,10 +3555,127 @@
       "src/voice/geminiSession.js",
       "src/voice/geminiAudio.js",
       "src/voice/geminiCaptureWorklet.js",
-      "src/ui/statusBadge.js",
       "src/sceneCommandRelease.js",
       "src/scopeMaskPolicy.js",
-      "src/visualStylePolicy.js"
+      "src/visualStylePolicy.js",
+      "src/sources/adsbFields.js",
+      "src/data/headingDegrees.js",
+      "src/data/distanceFormat.js",
+      "src/awarenessEcho.js",
+      "src/app/zoomOutGuard.js",
+      "src/data/osmOverlays.js",
+      "src/ui/cockpitBriefPages.js",
+      "src/ui/cockpitContextState.js",
+      "src/ui/cockpitInstrumentState.js",
+      "src/ui/cockpitRollingValue.js",
+      "src/ui/layerRowText.js",
+      "src/ui/layerPanel/LayerRows.vue",
+      "src/ui/rail/classToggle.js",
+      "src/ui/rail/focusSafeChildren.js",
+      "src/ui/layerPanel/RowText.vue",
+      "src/ui/stores/scenes.js",
+      "src/ui/views/SceneOptions.vue",
+      "src/ui/views/SceneShotList.vue",
+      "src/voice/chatControl.js",
+      "src/voice/geminiTextChat.js",
+      "src/voice/textChat.js",
+      "src/voice/textProtocol.js",
+      "src/voice/chatAttachments.js",
+      "src/voice/chatPreferences.js",
+      "src/voice/panelLayout.js",
+      "src/voice/voiceMiniPreview.js",
+      "src/annotations/drawMarks.js",
+      "src/app/layers/droneAirspace.js",
+      "src/layers/droneAirspace/index.js",
+      "src/layers/droneAirspace/source.js",
+      "src/layers/droneAirspace/records.js",
+      "src/layers/droneAirspace/cards.js",
+      "src/layers/weather/display.js",
+      "src/ui/stores/sceneSharing.js",
+      "src/i18n/locales/ar.json",
+      "src/ui/stores/panels.js",
+      "src/ui/panelRailCatalog.js",
+      "src/ui/vueRuntime.js",
+      "src/ui/kit/UiIcon.vue",
+      "src/ui/kit/UiTooltip.vue",
+      "src/ui/kit/rail.js",
+      "src/ui/kit/UiRail.vue",
+      "src/ui/kit/UiSegmented.vue",
+      "src/ui/PanelRailView.vue",
+      "src/ui/panelNavigation.js",
+      "src/ui/panelAccordion.js",
+      "src/ui/rail/RailChips.vue",
+      "src/ui/rail/RailCardSetting.vue",
+      "src/ui/rail/RailRowList.vue",
+      "src/ui/rail/RailCard.vue",
+      "src/ui/rail/RailCards.vue",
+      "src/ui/rail/RailCardBlocks.vue",
+      "src/ui/rail/utcClock.js",
+      "src/ui/rail/RailTimeline.vue",
+      "src/ui/rail/rangeValue.js",
+      "src/ui/weather/WeatherReadout.vue",
+      "src/ui/recentImagery/RecentImageryCard.vue",
+      "src/ui/recentImagery/RecentImageryReadout.vue",
+      "src/ui/stores/streetLevel.js",
+      "src/ui/stores/cctv.js",
+      "src/ui/stores/radio.js",
+      "src/ui/stores/context.js",
+      "src/ui/stores/cockpit.js",
+      "src/ui/stores/locale.js",
+      "src/ui/stores/providerSettings.js",
+      "src/ui/stores/voice.js",
+      "src/ui/stores/location.js",
+      "src/ui/stores/display.js",
+      "src/ui/stores/owners.js",
+      "src/ui/stores/imagerySplit.js",
+      "src/ui/stores/status.js",
+      "src/ui/toast.js",
+      "src/ui/stores/sceneInteractions.js",
+      "src/ui/stores/dataPacks.js",
+      "src/ui/stores/pointerReticle.js",
+      "src/ui/stores/windInspection.js",
+      "src/layers/wind/inspectionMarker.js",
+      "src/ui/stores/missionReplay.js",
+      "src/ui/stores/bhoteKoshiPanel.js",
+      "src/ui/stores/celestialRing.js",
+      "src/ui/stores/screenAnnotations.js",
+      "src/ui/stores/worldOverlayActions.js",
+      "src/ui/stores/awarenessDirection.js",
+      "src/hudReadouts.js",
+      "src/ui/stores/hud.js",
+      "src/ui/stores/firstRun.js",
+      "src/firstRunCopy.js",
+      "src/ui/stores/panelChrome.js",
+      "src/ui/rail/panelState.js",
+      "src/ui/rail/fieldValue.js",
+      "src/ui/kit/UiSlider.js",
+      "src/ui/kit/UiButton.vue",
+      "src/ui/kit/UiEmpty.vue",
+      "src/ui/kit/UiBadge.vue",
+      "src/ui/stores/globeActions.js",
+      "src/ui/stores/recording.js",
+      "src/ui/i18n.js",
+      "src/annotations/outlineRungs.js",
+      "src/sources/openFreeMapOutlines.js",
+      "src/sources/nominatimOutlines.js",
+      "src/sources/nominatimStatus.js",
+      "src/data/placeBoundaries.js",
+      "src/data/placeNames.js",
+      "src/data/local_data/us_census_places/files.js",
+      "src/data/local_data/wof_neighborhoods/files.js",
+      "src/sources/osmFeatures.js",
+      "src/voice/imageryActions.js",
+      "src/voice/layerActionOwnership.js",
+      "src/data/areaGeometry.js",
+      "src/layers/osmPlaces/model.js",
+      "src/data/areaStore.js",
+      "src/data/areaResolver.js",
+      "src/voice/areaCandidateContract.js",
+      "src/data/osmPresets.js",
+      "src/voice/osmActions.js",
+      "src/layers/osmPlaces/index.js",
+      "src/app/layers/osmPlaces.js",
+      "src/voice/areaActions.js"
     ],
     "external": [
       "hls.js",
@@ -3244,7 +3686,10 @@
       "pbf",
       "satellite.js",
       "mapillary-js",
-      "@jtarrio/webrtlsdr"
+      "@jtarrio/webrtlsdr",
+      "vue",
+      "pinia",
+      "vue-i18n"
     ]
   },
   "application-catalog": {
@@ -3854,7 +4299,37 @@
       "src/layers/streetLevel/providers/mapillary/policy.js",
       "src/data/geoImportImages.js",
       "src/data/geoImportPins.js",
-      "src/data/geoFileImport.js"
+      "src/data/geoFileImport.js",
+      "src/sources/adsbFields.js",
+      "src/data/headingDegrees.js",
+      "src/data/distanceFormat.js",
+      "src/awarenessEcho.js",
+      "src/data/osmOverlays.js",
+      "src/app/layers/droneAirspace.js",
+      "src/layers/droneAirspace/index.js",
+      "src/layers/droneAirspace/source.js",
+      "src/layers/droneAirspace/records.js",
+      "src/layers/droneAirspace/cards.js",
+      "src/layers/weather/display.js",
+      "src/i18n/locales/ar.json",
+      "src/ui/stores/imagerySplit.js",
+      "src/ui/vueRuntime.js",
+      "src/ui/stores/windInspection.js",
+      "src/layers/wind/inspectionMarker.js",
+      "src/ui/stores/bhoteKoshiPanel.js",
+      "src/hudReadouts.js",
+      "src/ui/i18n.js",
+      "src/annotations/outlineRungs.js",
+      "src/sources/openFreeMapOutlines.js",
+      "src/sources/nominatimOutlines.js",
+      "src/sources/nominatimStatus.js",
+      "src/data/placeBoundaries.js",
+      "src/data/placeNames.js",
+      "src/data/local_data/us_census_places/files.js",
+      "src/data/local_data/wof_neighborhoods/files.js",
+      "src/layers/osmPlaces/model.js",
+      "src/layers/osmPlaces/index.js",
+      "src/app/layers/osmPlaces.js"
     ],
     "external": [
       "hls.js",
@@ -3865,7 +4340,10 @@
       "pbf",
       "mgrs",
       "mapillary-js",
-      "@jtarrio/webrtlsdr"
+      "@jtarrio/webrtlsdr",
+      "vue",
+      "pinia",
+      "vue-i18n"
     ]
   },
   "application-operations": {
@@ -3924,7 +4402,21 @@
       "src/sources/featureSource.js",
       "src/sources/capability.js",
       "src/data/cameraArrival.js",
-      "src/data/cameraFraming.js"
+      "src/data/cameraFraming.js",
+      "src/sources/openFreeMap.js",
+      "src/sources/vectorTiles.js",
+      "src/sources/phaseTiming.js",
+      "src/sources/militaryTileGeometry.js",
+      "src/data/tomtomTiles.js",
+      "src/data/installationNames.js",
+      "src/annotations/outlineRungs.js",
+      "src/sources/openFreeMapOutlines.js",
+      "src/sources/nominatimOutlines.js",
+      "src/sources/nominatimStatus.js",
+      "src/data/placeBoundaries.js",
+      "src/data/placeNames.js",
+      "src/data/local_data/us_census_places/files.js",
+      "src/data/local_data/wof_neighborhoods/files.js"
     ],
     "external": [
       "cesium",
@@ -3963,7 +4455,8 @@
       "src/i18n/index.js",
       "src/i18n/marker.js",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -3996,7 +4489,8 @@
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
-      "src/i18n/marker.js"
+      "src/i18n/marker.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": []
   },
@@ -4019,14 +4513,12 @@
       "src/ui/applicationShortcuts.js",
       "src/ui/effects.js",
       "src/ui/styleParameters.js",
-      "src/ui/slider.js",
       "src/ui/uiLifetime.js",
       "src/ui/visualEffects.js",
       "src/ui/visualInput.js",
       "src/ui/visualPresets.js",
       "src/ui/visualSettings.js",
       "src/i18n/fork-locales.json",
-      "src/ui/segmentedControl.js",
       "src/i18n/index.js",
       "src/i18n/marker.js",
       "src/i18n/locale.js",
@@ -4045,9 +4537,17 @@
       "src/i18n/locales/zh-Hant.json",
       "src/scopeMaskPolicy.js",
       "src/ui/displayControls.js",
-      "src/visualStylePolicy.js"
+      "src/visualStylePolicy.js",
+      "src/ui/rail/rangeValue.js",
+      "src/ui/stores/display.js",
+      "src/ui/stores/owners.js",
+      "src/ui/vueRuntime.js",
+      "src/i18n/locales/ar.json",
+      "src/ui/rail/fieldValue.js",
+      "src/ui/kit/UiSlider.js",
+      "src/ui/i18n.js"
     ],
-    "external": ["cesium"]
+    "external": ["cesium", "vue", "pinia", "vue-i18n"]
   },
   "ui-panel-chrome": {
     "exports": ["./ui/panel-chrome"],
@@ -4082,9 +4582,16 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/i18n/locales/ar.json",
+      "src/ui/panelRailCatalog.js",
+      "src/ui/panelAccordion.js",
+      "src/ui/vueRuntime.js",
+      "src/ui/stores/panelChrome.js",
+      "src/ui/rail/panelState.js",
+      "src/ui/i18n.js"
     ],
-    "external": []
+    "external": ["vue", "pinia", "vue-i18n"]
   },
   "civil-flight-records": {
     "exports": ["./layers/flights/records"],
@@ -4185,7 +4692,9 @@
       "src/ui/unitLabels.js",
       "src/i18n/marker.js",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/data/distanceFormat.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -4209,7 +4718,8 @@
     "modules": [
       "src/voice/actionSchemas.js",
       "src/voice/layerManifest.js",
-      "src/hudLayoutPolicy.js"
+      "src/hudLayoutPolicy.js",
+      "src/voice/areaCandidateContract.js"
     ],
     "external": []
   },
@@ -4253,9 +4763,23 @@
       "src/i18n/locales/zh-Hant.json",
       "src/ui/statusText.js",
       "src/ui/placeNames.js",
-      "src/voice/providerCapabilities.js"
+      "src/voice/providerCapabilities.js",
+      "src/voice/chatControl.js",
+      "src/voice/cloudVoiceAuth.js",
+      "src/voice/geminiTextChat.js",
+      "src/voice/textChat.js",
+      "src/voice/textProtocol.js",
+      "src/voice/chatAttachments.js",
+      "src/voice/chatPreferences.js",
+      "src/voice/panelLayout.js",
+      "src/voice/voiceMiniPreview.js",
+      "src/i18n/locales/ar.json",
+      "src/ui/vueRuntime.js",
+      "src/ui/stores/voice.js",
+      "src/ui/stores/pointerReticle.js",
+      "src/ui/i18n.js"
     ],
-    "external": []
+    "external": ["vue", "pinia", "vue-i18n"]
   },
   "alpr-source": {
     "exports": ["./layers/alpr/source"],
@@ -4366,7 +4890,9 @@
       "src/layers/submarineCables/bundledSource.js",
       "src/layers/gnss/source.js",
       "src/layers/airQuality/model.js",
-      "src/layers/airQuality/source.js"
+      "src/layers/airQuality/source.js",
+      "src/layers/droneAirspace/source.js",
+      "src/layers/droneAirspace/records.js"
     ],
     "external": []
   },
@@ -4517,7 +5043,9 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/data/headingDegrees.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium", "egm96-universal", "pbf"]
   },
@@ -4572,7 +5100,9 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/data/headingDegrees.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium", "pbf"]
   },
@@ -4636,7 +5166,8 @@
       "src/i18n/locales/ru.json",
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
-      "src/i18n/locales/zh-Hant.json"
+      "src/i18n/locales/zh-Hant.json",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -4665,7 +5196,8 @@
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
       "src/ui/statusText.js",
-      "src/ui/layerNames.js"
+      "src/ui/layerNames.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -4685,6 +5217,42 @@
       "src/sources/httpBody.js",
       "src/i18n/marker.js",
       "src/layers/perimeters/source.js"
+    ],
+    "external": []
+  },
+  "drone-airspace": {
+    "exports": ["./layers/drone-airspace"],
+    "modules": [
+      "src/layers/droneAirspace/index.js",
+      "src/sources/httpBody.js",
+      "src/layers/droneAirspace/source.js",
+      "src/layers/droneAirspace/records.js",
+      "src/i18n/marker.js",
+      "src/layers/droneAirspace/cards.js",
+      "src/i18n/index.js",
+      "src/i18n/locale.js",
+      "src/i18n/locales/ar.json",
+      "src/i18n/locales/de.json",
+      "src/i18n/locales/es.json",
+      "src/i18n/locales/fr.json",
+      "src/i18n/locales/it.json",
+      "src/i18n/locales/ja.json",
+      "src/i18n/locales/pt.json",
+      "src/i18n/locales/ru.json",
+      "src/i18n/locales/uk.json",
+      "src/i18n/locales/zh-CN.json",
+      "src/i18n/locales/zh-Hant.json",
+      "src/i18n/fork-locales.json"
+    ],
+    "external": ["cesium"]
+  },
+  "drone-airspace-source": {
+    "exports": ["./layers/drone-airspace/source"],
+    "modules": [
+      "src/layers/droneAirspace/records.js",
+      "src/sources/httpBody.js",
+      "src/layers/droneAirspace/source.js",
+      "src/i18n/marker.js"
     ],
     "external": []
   },
@@ -4740,7 +5308,8 @@
       "src/tools/globePanel.js",
       "src/tools/queries/panelRequest.js",
       "src/geoDistance.js",
-      "src/visualStylePolicy.js"
+      "src/visualStylePolicy.js",
+      "src/data/headingDegrees.js"
     ],
     "external": ["satellite.js"]
   },
@@ -4831,7 +5400,8 @@
       "src/layers/alpr/records.js",
       "src/layers/alpr/tileRecords.js",
       "src/sources/infrastructureData.js",
-      "src/sources/eventPacks.js"
+      "src/sources/eventPacks.js",
+      "src/sources/adsbFields.js"
     ],
     "external": ["@mapbox/vector-tile", "pbf"]
   },
@@ -4871,7 +5441,8 @@
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
       "src/ui/statusText.js",
-      "src/ui/layerNames.js"
+      "src/ui/layerNames.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },
@@ -4957,7 +5528,8 @@
       "src/data/geoImportImages.js",
       "src/data/geoImportPins.js",
       "src/layers/streetLevel/tileMath.js",
-      "src/layers/streetLevel/view.js"
+      "src/layers/streetLevel/view.js",
+      "src/i18n/locales/ar.json"
     ],
     "external": ["cesium"]
   },

@@ -90,8 +90,9 @@ corner (`src/ui/panelCornerResize.js`); open, it is 520 px wide by default.
 
 Built in `src/aiWorldPanel.js` (controller), `src/aiWorldSelection.mjs`
 (the list, ALL and the texts; pure) and `src/ui/styles/aiWorld.css`, with
-the markup after the Outbreak panel in `src/ui/templates/layer-panels.html`
-(CSS `order: 6`, the last left tab; hidden in Cockpit like Ask and Ultra).
+the markup in `src/ui/views/fork/AiWorldPanel.vue`, after the Outbreak panel
+in the left stack's view (CSS `order: 6`; hidden in Cockpit like Ask and
+Ultra).
 Mounted with the overlay from `src/app/startupChrome.js`. The list scrolls
 inside its own band so the four buttons stay in reach; ticks made while the
 server is down are sent once it answers; a refused selection puts the

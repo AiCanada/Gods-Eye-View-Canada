@@ -1,4 +1,38 @@
 {
+  "ar": [
+    "1090 MHz",
+    "978 MHz UAT",
+    "AIS: --",
+    "AIS: {name}",
+    "BRG {value}°",
+    "BRG —",
+    "CAL {value}",
+    "CAL · {badge}",
+    "CCTV",
+    "CRS {value}°",
+    "CRT",
+    "FLIR",
+    "FOV",
+    "FOV {value}°",
+    "GEO",
+    "GOOGLE STREET VIEW",
+    "Google Street View",
+    "HDG",
+    "HDG {value}°",
+    "Ironbow",
+    "Landsat 8/9",
+    "NVG",
+    "REC",
+    "S2 GhostMaps",
+    "SQUAWK {code} · {status}",
+    "SRC {value}",
+    "Sentinel-2",
+    "WHOT/BHOT",
+    "dB",
+    "hPa",
+    "{source} HTTP {status}",
+    "▲ {frp} MW"
+  ],
   "es": [
     "- {category} ({year}): {note}",
     "1090 MHz",
@@ -279,7 +313,12 @@
     "×{n}",
     "ΔE",
     "ΔN",
-    "▲ {frp} MW"
+    "▲ {frp} MW",
+    "Audio",
+    "CHAT",
+    "Chat",
+    "Color: {units}",
+    "RADAR · {units}"
   ],
   "fr-CA": [
     "1090 MHz",
@@ -574,6 +613,10 @@
     "ΔN",
     "Ⅱ PAUSE",
     "▲ {frp} MW",
+    "Audio",
+    "Conversation",
+    "RADAR · {units}",
+    "Suggestions",
     "Minutes"
   ],
   "ru": [
@@ -1346,7 +1389,11 @@
     "{value} KM/S",
     "ΔN",
     "Ⅱ PAUSE",
-    "▲ {frp} MW"
+    "▲ {frp} MW",
+    "Audio",
+    "CHAT",
+    "Chat",
+    "RADAR · {units}"
   ],
   "fr": [
     "1090 MHz",
@@ -1525,7 +1572,11 @@
     "ΔE",
     "ΔN",
     "Ⅱ PAUSE",
-    "▲ {frp} MW"
+    "▲ {frp} MW",
+    "Audio",
+    "Conversation",
+    "RADAR · {units}",
+    "Suggestions"
   ],
   "it": [
     "1090 MHz",
@@ -1694,7 +1745,12 @@
     "{value} conf",
     "ΔE",
     "ΔN",
-    "▲ {frp} MW"
+    "▲ {frp} MW",
+    "Audio",
+    "CHAT",
+    "Chat",
+    "RADAR · {units}",
+    "voice area|Area"
   ],
   "ja": [
     "1090 MHz",
@@ -1871,7 +1927,10 @@
     "{value} KM/H",
     "{value} KM/S",
     "ΔN",
-    "▲ {frp} MW"
+    "▲ {frp} MW",
+    "CHAT",
+    "Chat",
+    "RADAR · {units}"
   ],
   "uk": [
     "AIS: --",

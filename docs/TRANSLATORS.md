@@ -1,6 +1,6 @@
 # Translating God's Eye View
 
-Shipped languages: **English** (source and fallback), **German** (`de`), **Spanish** (`es`), **French** (`fr`), **Quebec French** (`fr-CA`, shown as Français Québécois), **Italian** (`it`), **Inuktitut** (`iu`, written in syllabics), **Japanese** (`ja`), **Brazilian Portuguese** (`pt`), **Russian** (`ru`), **Ukrainian** (`uk`), **Simplified Chinese** (`zh-CN`), **Traditional Chinese** (`zh-Hant`) and **Ancient Egyptian** (`egy`, written in hieroglyphs).
+Shipped languages: **English** (source and fallback), **Arabic** (`ar`), **German** (`de`), **Spanish** (`es`), **French** (`fr`), **Quebec French** (`fr-CA`, shown as Français Québécois), **Italian** (`it`), **Inuktitut** (`iu`, written in syllabics), **Japanese** (`ja`), **Brazilian Portuguese** (`pt`), **Russian** (`ru`), **Ukrainian** (`uk`), **Simplified Chinese** (`zh-CN`), **Traditional Chinese** (`zh-Hant`) and **Ancient Egyptian** (`egy`, written in hieroglyphs).
 
 ## How it works
 
@@ -22,7 +22,7 @@ Every other language is one flat JSON file, `src/i18n/locales/<code>.json`, keye
 
 A `tn()` entry is keyed by the English plural form and holds one string per `Intl.PluralRules` category of that language. A missing entry falls back to English.
 
-The page picks its language from `?lang=`, then the choice stored by the language picker (the globe button in the bottom-right corner), then the browser languages, then English. `?lang=` is not stored, and copied share links leave it out. Switching reloads the page.
+The page picks its language from `?lang=`, then the choice stored by the language picker (the globe button in the bottom-right corner), then the browser languages, then English. `?lang=` is not stored, and copied share links leave it out. Switching applies at once, without a reload.
 
 ## The check
 
@@ -48,7 +48,7 @@ Edit `src/i18n/locales/<code>.json` and run `npm run i18n`. To see your change, 
 
 1. Create `src/i18n/locales/<code>.json`, fill it from `npm run i18n -- --missing <code>` (start from `{}`), and translate every entry.
 2. Import it in `src/i18n/index.js` and add it to `CATALOGS`.
-3. Add the code to `LOCALES` and its own-language name to `LOCALE_NAMES` in `src/i18n/locale.js`. Right-to-left languages also go in `RTL_LOCALES`. A code with a region, such as `fr-CA`, is matched by its exact tag first, and its language alone (`fr`, `fr-FR`) selects it too.
+3. Add the code to `LOCALES` and its own-language name to `LOCALE_NAMES` in `src/i18n/locale.js`. Right-to-left languages also go in `RTL_LOCALES`; the chrome mirrors through logical CSS properties (`inset-inline-*`, `margin-inline-*`), and `src/ui/styles/rtl.css` holds what those cannot express (see the Arabic notes). If the language should keep Western digits, or Intl has no data for it, map it in `INTL_TAGS` in `locale.js`. A code with a region, such as `fr-CA`, is matched by its exact tag first, and its language alone (`fr`, `fr-FR`) selects it too.
 4. Add `src/i18n/locales/<code>.json` next to `ru.json` in `scripts/package-boundaries.json`.
 5. Write `docs/translations/<code>.md`: glossary, plural forms, units and style (copy the structure of `ru.md`).
 6. Run `npm run i18n` and `npm test`, then check the panels in the app at narrow widths.
@@ -67,4 +67,4 @@ These are contracts, not copy: layer ids and registry keys, status enums and oth
 
 ## Language notes
 
-Each language keeps its glossary, plural forms, units and style in its own file, `docs/translations/<code>.md`: [German](./translations/de.md), [Spanish](./translations/es.md), [French](./translations/fr.md), [Quebec French](./translations/fr-CA.md), [Italian](./translations/it.md), [Inuktitut](./translations/iu.md), [Japanese](./translations/ja.md), [Brazilian Portuguese](./translations/pt.md), [Russian](./translations/ru.md), [Ukrainian](./translations/uk.md), [Simplified Chinese](./translations/zh-CN.md), [Traditional Chinese](./translations/zh-Hant.md), [Ancient Egyptian](./translations/egy.md). Read it before translating, and add a term there when you settle on one.
+Each language keeps its glossary, plural forms, units and style in its own file, `docs/translations/<code>.md`: [Arabic](./translations/ar.md), [German](./translations/de.md), [Spanish](./translations/es.md), [French](./translations/fr.md), [Quebec French](./translations/fr-CA.md), [Italian](./translations/it.md), [Inuktitut](./translations/iu.md), [Japanese](./translations/ja.md), [Brazilian Portuguese](./translations/pt.md), [Russian](./translations/ru.md), [Ukrainian](./translations/uk.md), [Simplified Chinese](./translations/zh-CN.md), [Traditional Chinese](./translations/zh-Hant.md), [Ancient Egyptian](./translations/egy.md). Read it before translating, and add a term there when you settle on one.

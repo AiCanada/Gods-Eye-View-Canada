@@ -1,5 +1,5 @@
 import { CCTV_AMBIENT_CARD_MAX } from '../../data/cctvLod.js';
-import { msg, t } from '../../i18n/index.js';
+import { isolate, msg, t } from '../../i18n/index.js';
 import {
   CCTV_FRAME_CANVAS_W,
   CCTV_FRAME_CANVAS_H,
@@ -110,6 +110,8 @@ export function createPresentation({
     const health = layerState._healthById.get(active.camera.id) || null;
     const calBadge = parts.calibration.deriveCalBadge(active.camera);
 
+    // Each part is isolated: in right-to-left text a code keeps its own value
+    // (FOV 44°) instead of trading it with its neighbour.
     return [
       t('{city} CCTV', {
         city: active.camera.city.toUpperCase(),
@@ -153,6 +155,7 @@ export function createPresentation({
         : null,
     ]
       .filter(Boolean)
+      .map(isolate)
       .join(' · ');
   }
 
@@ -433,9 +436,41 @@ export function createPresentation({
       activeCameraId: activeId,
       activeCamera: active ? getPublicCameraState(active, activeId) : null,
       cameras: lightCameraEntries(),
+      cameraIndex: cameraIndex(),
       summary: buildSummaryText(),
     };
+    // `cameras` is the fork's light list (lightCameraEntries), built once per
+    // catalog version and the same array between notifications, so listeners
+    // that skip it cost nothing and nobody rebuilds every camera's full state
+    // on a progress tick; the full state of one camera is
+    // getPublicCameraState(). `cameraIndex` is what the picker lists.
     return payload;
+  }
+
+  /**
+   * `{ id, city, name }` for the active camera, then every camera the view
+   * pass shows: what the camera picker lists. A whole catalog would put tens
+   * of thousands of options in the DOM and slow every layout. The same array
+   * is returned until the view or the active camera changes, so a consumer
+   * can compare it by identity.
+   * @returns {{id: string, city: string, name: string}[]}
+   */
+
+  function cameraIndex() {
+    const view = layerState._viewRecords;
+    const active = parts.selection.getActiveRecord();
+    const cached = layerState._cameraIndexCache;
+    if (cached?.view === view && cached.active === active) return cached.list;
+    const records = active
+      ? [active, ...view.filter((record) => record !== active)]
+      : view;
+    const list = records.map(({ camera }) => ({
+      id: camera.id,
+      city: camera.city,
+      name: camera.name,
+    }));
+    layerState._cameraIndexCache = { view, active, list };
+    return list;
   }
 
   /** Dispatches the current UI state to all registered subscriber callbacks. */

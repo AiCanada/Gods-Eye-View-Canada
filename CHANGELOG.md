@@ -1,5 +1,35 @@
 # Changelog
 
+- Upstream merge of 602 commits (the interface rebuilt as Vue 3 and Pinia
+  views #1499, typed AI chat beside the mic #1507, the Utilities panel with
+  Directions, Draw and Import #1469, Prohibited & Restricted Airspace, OSM
+  Places voice search, Sea Marks and Ski Pistes, voice areas, imagery and
+  OpenStreetMap queries, Arabic with a right-to-left layout, the CCTV view
+  pass that shows one camera per ground cell zoomed out #1485, and the
+  Nominatim gate that stays off until `NOMINATIM_URL` is set). Fork fits:
+  every box still opens on its own and the collapsed tabs stay; upstream's
+  desktop panel rails and its one panel per side are off
+  (`PANEL_ICON_RAIL = false`), as the phone tab shell is, and every box keeps
+  + / −, sideways ones too. The fork's boxes are Vue views of their own
+  (`src/ui/views/fork/`). Utilities sits under Data Layers on the right rail,
+  and Radio stays the rail's last member with its icon in the Context header.
+  Upstream's Houston TranStar and A22 Brennero live camera loaders stay out:
+  the fork's packs already hold those cameras (513 TranStar, 13 A22), and the
+  Houston loader would add a 250-camera cap; the A22 image host is pinned for
+  the pack's redirects. The area load (the nearest 1,000 within 50 km) runs
+  under upstream's view pass. The fork's reverse lookups (the location
+  switch, the bot swarm's nearest city and the Ground Truth country outside
+  Canada) go through upstream's Nominatim gate, so they need `NOMINATIM_URL`
+  as well. The AI World tab lists Prohibited & Restricted Airspace, Sea Marks
+  and Ski Pistes as STATIC: no world tape feed records them yet. Arabic shows
+  the fork's tabs in English, as upstream's other languages do, and has the
+  seven fork main-UI strings; the merge's 170 new strings are in fr-CA, iu and
+  egy. UTILITIES now names upstream's tools panel, so the Abundance category
+  keeps "electricity and water" under its own entry (`abundance|UTILITIES`),
+  and es.json no longer carries the three keys both sides had added
+  (CONFIRMED, DELETE, UTILITIES) twice. `npm test` runs its 1,047 files in two
+  batches: one command line no longer fits Windows' 32,767 characters.
+
 - Faster and lighter (owner request 2026-10-31: "optimize program without
   reducing functions or using additional caps or max"): no feature removed,
   no new cap. **The dev server no longer swells with every restart.** Vite

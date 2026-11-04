@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { renderApplicationHtml } from './testSupport/applicationHtml.mjs';
 import {
   applyDeviceFeedUpdate,
   deviceFeedStatus,
@@ -188,10 +189,11 @@ function withWindow(t, windowRef) {
   });
 }
 
-test('the Ultra tab ends with the package cards, hidden until the server answers', () => {
-  const html = readFileSync(
-    new URL('./ui/templates/layer-panels.html', import.meta.url),
-    'utf8',
+test('the Ultra tab ends with the package cards, hidden until the server answers', async () => {
+  // The left stack as the browser shows it (the box is
+  // src/ui/views/fork/UltraPanel.vue since the eleventh upstream merge).
+  const html = await renderApplicationHtml(
+    '<div class="gev-view" data-gev-view="layer-panels"></div>',
   );
   const start = html.indexOf('<div id="ultra-panel"');
   const end = html.indexOf('<div id="social-panel"');

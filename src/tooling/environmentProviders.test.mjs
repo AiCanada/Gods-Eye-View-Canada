@@ -9,6 +9,12 @@ import { tomtomProxy } from 'gods-eye-view/server/providers/traffic';
 import { firmsProxy } from 'gods-eye-view/server/providers/firms';
 import { gbfsProxy } from 'gods-eye-view/server/providers/gbfs';
 import { localProviderPlugins } from '../../server/providers/local.js';
+import { makeFixtureRoot } from './fixtureRoot.mjs';
+
+const nominatimStorageDir = await makeFixtureRoot(
+  'gev-environment-composition-',
+);
+test.after(() => fsp.rm(nominatimStorageDir, { recursive: true, force: true }));
 
 function install(plugin, hook = 'configureServer') {
   const routes = new Map();
@@ -95,7 +101,10 @@ test('standalone composition mounts every extracted provider exactly once withou
   t.mock.method(globalThis, 'fetch', () => {
     throw Error('construction must not fetch');
   });
-  const plugins = localProviderPlugins({ sourceRoot: isolatedCwd });
+  const plugins = localProviderPlugins({
+    sourceRoot: isolatedCwd,
+    nominatimStorageDir,
+  });
   for (const factory of [
     terrainHeightsProxy,
     tomtomProxy,

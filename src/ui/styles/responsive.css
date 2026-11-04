@@ -36,7 +36,7 @@
 
   #title-bar {
     top: 20px;
-    left: 20px;
+    inset-inline-start: 20px;
   }
 
   #top-center-actions {
@@ -66,7 +66,7 @@
   #title-bar .frame-rate-readout {
     position: fixed;
     top: 52px;
-    left: 20px;
+    inset-inline-start: 20px;
     margin: 0;
     font-size: 10px;
     line-height: 12px;
@@ -222,7 +222,9 @@
   #right-context-rail #data-panel.collapsed,
   #right-context-rail #sst-panel,
   #right-context-rail #sst-panel.collapsed,
+  #right-context-rail #utilities-panel,
   #right-context-rail #scene-panel,
+  #right-context-rail #utilities-panel.collapsed,
   #right-context-rail #scene-panel.collapsed,
   #right-context-rail #recent-imagery-panel,
   #right-context-rail #recent-imagery-panel.collapsed,
@@ -243,6 +245,7 @@
   #left-panel-stack > #abundance-panel,
   #left-panel-stack > #street-level-panel,
   #left-panel-stack > #global-context-panel,
+  #left-panel-stack > #utilities-panel,
   #left-panel-stack > #scene-panel,
   #left-panel-stack > #ask-panel.collapsed,
   #left-panel-stack > #data-panel.collapsed,
@@ -255,6 +258,7 @@
   #left-panel-stack > #abundance-panel.collapsed,
   #left-panel-stack > #street-level-panel.collapsed,
   #left-panel-stack > #global-context-panel.collapsed,
+  #left-panel-stack > #utilities-panel.collapsed,
   #left-panel-stack > #scene-panel.collapsed {
     position: relative;
     top: auto;
@@ -275,7 +279,7 @@
   /* 16px keeps the Radio broadcast waves (15px above the logo) on-screen. */
   #title-bar {
     top: 16px;
-    left: 16px;
+    inset-inline-start: 16px;
   }
 
   #title-bar h1 > span:last-child,

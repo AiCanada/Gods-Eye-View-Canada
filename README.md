@@ -89,7 +89,7 @@ Start with the included data sources, then add your own. Each layer is a separat
 
 ## ⚡ Quick Start
 
-**Start without an account or API keys.** Both paths open the same app with
+**Local setup needs no account or API keys.** The app opens with
 Esri satellite imagery and keyless terrain. OSM is the fallback if Esri is
 unreachable. Flights, military traffic, satellites, earthquakes, public
 cameras, radio, and launches are available without keys.
@@ -129,8 +129,9 @@ hardware; it does not establish a minimum GPU requirement.
 
 ### Path 2 — Terminal / coding agent
 
-Use **Node.js 24.x (24.14.0 or later) or 26.x**. The setup doctor warns about
-Node 25, which is end-of-life.
+Use **Node.js 24.x (24.14.0 or later) or 26.x**; 24.22.1 or later (26.12.1 or
+later on 26) includes the October 21, 2026 security fixes, among them
+CVE-2026-111497. The setup doctor warns about Node 25, which is end-of-life.
 
 ```bash
 git clone https://github.com/bilawalsidhu/gods-eye-view.git
@@ -219,7 +220,7 @@ Keep the `env`: bash treats `UID` as read-only, so a plain `UID=1026` in front o
 
 On SELinux hosts (Fedora, RHEL), compose mounts the checkout with `:z` so the container may read it; Docker may relabel the checkout for container access, which can take a moment on a large checkout. Without that, the start fails with `Cannot find module '/app/scripts/docker-start.mjs'`.
 
-Behind a reverse proxy, put your keys in `.env` or pass them as environment variables - Provider Settings refuses proxied requests on purpose - and add the hostname you serve it on, for example `GEV_ALLOWED_HOSTS=globe.example.lan` (see [Sharing an instance](#-sharing-an-instance)).
+Behind a reverse proxy, put your keys in `.env` or pass them as environment variables - Provider Settings refuses proxied requests on purpose - and add the hostname you serve it on, for example `GEV_ALLOWED_HOSTS=globe.example.lan` (see [Sharing an instance](#-sharing-an-instance)). The map routes compare the browser's `Origin` with the `Host` the server sees, so the proxy must pass the original `Host` and, when it terminates TLS, `X-Forwarded-Proto`. Caddy does both by default; for nginx add `proxy_set_header Host $http_host;`, `proxy_set_header X-Forwarded-Proto $scheme;` and `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`. On an install outside Docker, that forwarding header also rate-limits the proxy's users apart from your own browser. Under the default Docker bridge network every client on the host, your browser included, reaches the container from its gateway address and shares one Overpass bucket.
 
 </details>
 
@@ -241,10 +242,48 @@ the container.
 
 </details>
 
+### Path 4 — GitHub Codespaces (cloud, no local install)
+
+Codespaces requires a GitHub account. Overpass queries and OpenAI voice token
+requests return HTTP 403 through its forwarded HTTPS URL, even with API keys
+in `.env` and `GEV_ALLOWED_HOSTS` configured. Use a local setup for these features.
+
+The codespace runs the dev server in a cloud workspace, so Node and the dependencies
+never touch your machine. The globe still renders in your own browser, so it
+needs the same graphics there as any other path. GitHub Free includes 120
+core-hours a month with no card on file — about 60 hours on the default 2-core
+machine. Org and Enterprise plans include no free quota; current terms and
+quotas apply.
+
+1. Fork this repository, then open **your fork** on GitHub.
+2. Click the green **Code** button, the **Codespaces** tab, then **Create codespace on main**.
+3. In the codespace terminal:
+   ```bash
+   nvm install 24 && nvm use 24
+   npm ci
+   npm run doctor
+   GEV_ALLOWED_HOSTS="$CODESPACE_NAME-4173.$GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN" npm run dev
+   ```
+4. Open the **Ports** tab, find `4173`, and click the globe icon to open it in
+   the browser. The port is private by default, so the URL asks for your GitHub
+   login. Keep it private: a public port lets anyone use the app and the keys
+   in your `.env`.
+
+`GEV_ALLOWED_HOSTS` there is required, not optional. The dev server answers only
+the hostnames it trusts, and a forwarded port arrives on
+`$CODESPACE_NAME-4173.$GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN`. Without it the
+page is `Blocked request. This host is not allowed.` Leading-dot wildcards are
+ignored on purpose, so pass that exact name.
+
+⚠️ **A codespace is reachable from the internet.** Treat it as the
+wider-publish case in [Sharing an instance](#-sharing-an-instance). Provider
+Settings is unavailable on the forwarded URL. Never commit your workspace
+`.env`. [SECURITY.md](SECURITY.md) has the threat model.
+
 ### Then power it up — in the app, not in a file
 
-Keys are upgrades, not prerequisites. When you want one, click the **POWER UP**
-chip in the bottom-right corner: Provider Settings lists every supported key,
+For a local setup, keys are upgrades, not prerequisites. When you want one,
+click the **POWER UP** chip in the bottom-right corner: Provider Settings lists every supported key,
 what it switches on, and where to get it. Paste, hit **SAVE KEYS**, and the app
 restarts itself with the new capability on. Once everything is configured the
 chip reads **POWERED UP** — and if a compact layout hides it, `?setup=1`
@@ -330,9 +369,11 @@ _Why cockpit mode exists: you're riding a real aircraft over real terrain — an
 
 ## 🎙️ Talk to It
 
-The standalone app offers **OpenAI** and **Gemini** in the GEV MIC provider chooser. OpenAI is the initial default; your choice is saved in this browser. To use Gemini, add `GEMINI_API_KEY` in Provider Settings or your local `.env` file, then select Gemini. `GEMINI_LIVE_MODEL` defaults to `gemini-3.8-live`. The permanent key stays on the local server, which issues a constrained, single-use session credential.
+The standalone app offers **OpenAI** and **Gemini** under **AI Provider** in Settings, one choice shared by voice and chat. OpenAI is the initial default; your choice is saved in this browser. To use Gemini, add `GEMINI_API_KEY` in Provider Settings or your local `.env` file, then select Gemini. `GEMINI_LIVE_MODEL` defaults to `gemini-3.8-live`. The permanent key stays on the local server, which issues a constrained, single-use session credential.
 
-Changing provider ends the current conversation. If voice is on, the new provider starts with the same open-mic or push-to-talk mode; a held Space key is not carried over. Gemini uses the same map actions and captions, but has no OpenAI cost meter or MINI tier. When Gemini reports that its session has expired, start voice again for a new conversation. The provider chooser does not change the OpenAI-backed AI HUD summary.
+Changing provider ends the current conversation. If voice is on, the new provider starts with the same open-mic or push-to-talk mode; a held Space key is not carried over. Gemini uses the same map actions and captions, but has no OpenAI cost meter or MINI tier. When Gemini reports that its session has expired, start voice again for a new conversation. The AI Provider setting does not change the OpenAI-backed AI HUD summary.
+
+Next to the mic, **CHAT** opens a typed chat with silent replies. It uses the selected provider and the same map actions, and never asks for the microphone. OpenAI chat needs an API key (`OPENAI_CHAT_MODEL`), so it is off while `GEV_PREFER_CODEX_OAUTH` pins OpenAI to ChatGPT OAuth; Gemini chat uses a separate text model (`GEMINI_CHAT_MODEL`). Chat and voice panels share the left panels' glass surface and sit above the dock or dock to the right.
 
 > Voice starts on an **OpenAI key**. On the same machine it can instead use an opt-in signed-in **ChatGPT/Codex OAuth** session; the API-key path remains the default. Selecting ChatGPT OAuth in Provider Settings reuses an existing local sign-in or starts the Codex browser sign-in flow and selects OAuth when it completes. The mic's provider control also runs the same commands through Claude, a custom endpoint, OpenRouter, Grok, or NVIDIA, using the keys already saved for Ask. Without a key for the provider you picked, the app still runs — the mic button just reports voice is unavailable. The OpenAI key still drives the **AI HUD summary**: a terse, five-word intelligence-style readout of the current view that regenerates as you move.
 
@@ -371,7 +412,7 @@ camera input stops rotation.
 
 **🚆 Every rail line on the globe** — Outbreak finds every rail line on the globe once in the background, lights it by reach from every outbreak and every landing, and carries rail travellers in the epidemic model.
 
-**✍️ Or draw it yourself** — DISPLAY ▸ **Draw**: pick Area, Line or Pin, click the vertices on the real world, double-click to finish, label it. Same whiteboard, same persistence, no microphone needed.
+**✍️ Or draw it yourself** — UTILITIES ▸ **Draw**: pick Area, Line or Pin and a colour, click the vertices on the real world, double-click to finish, then name, recolour, hide or fly to each shape from its row. Same whiteboard, same persistence, no microphone needed.
 
 ![Zilker Park and Lady Bird Lake drawing onto the 3D city as persistent vector annotations, by voice](docs/media/01-voice-annotate-zilker.gif)
 
@@ -399,7 +440,7 @@ _Ask for radio near anywhere and the globe starts broadcasting — every station
 
 ## 🛰️ What's on the Globe
 
-Twenty layers and map sources. **Eighteen have a keyless path.** Some offer additional capabilities with a provider key. (🟢 no key · 🟡 free key · 🔴 metered.)
+Twenty-one layers and map sources. **Nineteen have a keyless path.** Some offer additional capabilities with a provider key. (🟢 no key · 🟡 free key · 🔴 metered.)
 
 | Layer                       | What you get                                                                                                                                                                                                                                                                                                                                                                        | Source                                  | Auth                                                                                                |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------- |
@@ -420,16 +461,18 @@ Twenty layers and map sources. **Eighteen have a keyless path.** Some offer addi
 | 🚌 **Transit**              | Live buses, trams, metros, trains and ferries with delayed playback between reports, selected-vehicle trails, and mode-coloured DETECT labels — Boston, Austin, Minneapolis, Helsinki, the Netherlands, Norway, South East Queensland, and nine in Ontario: Toronto (surface vehicles; the subway publishes no positions), Mississauga, Hamilton, Durham Region, York Region, Guelph, Burlington, Barrie and Kingston                                                                                                                                               | Operator GTFS-Realtime feeds            | 🟢                                                                                                  |
 | 🚲 **Bikeshare**            | Live station availability                                                                                                                                                                                                                                                                                                                                                           | GBFS                                    | 🟢                                                                                                  |
 | 🧭 **Directions**           | Click A and B on the globe for a street-following drive, walk or cycle route draped on the terrain with turn-by-turn steps — then FLY the camera along it. No key, no geocoder, no mic                                                                                                                                                                                              | OSRM on FOSSGIS servers (OpenStreetMap) | 🟢                                                                                                  |
+| ⌖ **OSM Places**           | Voice place search ("hospitals in Kathmandu") from OpenStreetMap, drawn as numbered points that follow-up questions can filter. Needs your own Overpass server (`OVERPASS_UPSTREAMS`); off otherwise                                                                                                                                                                                                                                                                                                                               |
 | 🔥 **Active Fires**         | Live NASA FIRMS detections, trailing 24h                                                                                                                                                                                                                                                                                                                                            | NASA FIRMS                              | 🟡                                                                                                  |
 | 🚀 **Space Missions**       | Rolling 30-day launches with payload, stage, and recovery detail                                                                                                                                                                                                                                                                                                                    | Launch Library 2                        | 🟢 (🔴 optional paid token raises the allowance)                                                         |
 | 🎖️ **Mapped Installations** | Viewport-bounded military-site context from community mapping — incomplete by nature, and labeled that way                                                                                                                                                                                                                                                                          | OpenStreetMap                           | 🟢                                                                                                  |
+| 🚫 **Prohibited & Restricted Airspace** | FAA prohibited (P) and restricted (R) special-use airspace as ground polygons, with name, altitude range and times of use on select. Not the UAS Facility Map or UAS flight restrictions; informational only, not for flight planning | FAA SUA                                 | 🟢                                                                                                  |
 | 🌬️ **Wind**                 | Animated 10 m forecast wind with an optional speed, temperature or pressure color field and a reading at map center                                                                                                                                                                                                                                                                 | NOAA GFS / ECMWF IFS                    | 🟢                                                                                                  |
 | 🌦️ **Observed Weather**     | Rain radar (contiguous US), Satellite clouds (GOES regional or global infrared, Clouds only or Full image) and Lightning density (Americas and Pacific) on one history timeline                                                                                                                                                                                                     | NOAA nowCOAST                           | 🟢                                                                                                  |
 | 🌀 **Cyclones**             | Advisory positions, forecast tracks and uncertainty cones for the Atlantic and eastern/central North Pacific                                                                                                                                                                                                                                                                        | NOAA NHC / CPHC                         | 🟢                                                                                                  |
 
 **Weather, keyless.** **Wind** animates 10 m forecast flow from NOAA GFS or ECMWF IFS, with an optional color field and a reading at map center. **Rain radar**, **Satellite clouds** and **Lightning density** are observations on one history timeline in the **WEATHER** panel (step back, **Play**, **Latest**); **Cyclone advisories** draw NHC and CPHC positions, forecast tracks and cones. On Google 3D Tiles the observed layers float above the city as translucent shells, sharpened around your view.
 
-In the app, **Data Layers** groups them as Movement, Cameras, Infrastructure, Events, Weather and Utilities.
+In the app, **Data Layers** groups them as Movement, Cameras, Infrastructure, Events, Weather and Audio; Directions and OSM Places sit in the separate **Utilities** panel with Draw and Import.
 
 **The basemap ladder — what each tier buys you:**
 
@@ -770,12 +813,12 @@ How the globe handles live data:
 - **Sits on the real ground.** Entity heights are aligned to work with Google 3D tiles, so aircraft park on aprons and cameras stand on street corners instead of floating.
 - **Caching and request budgets.** An OpenSky credit governor, a TomTom daily tile budget, and disk-cached TLEs reduce repeated requests. These controls do not replace provider quotas or billing controls.
 - **Server-side credentials.** Every API that touches a private key (OpenAI, AISStream, OpenSky OAuth, Road511 camera lookups, camera frames) is brokered through a hardened server-side proxy with SSRF protection, response caps, and sanitized errors. The only keys the browser sees are Google Maps and Cesium ion (restrict both at the provider).
-- **No framework.** Vanilla JavaScript, **CesiumJS**, and **Vite** — plus **Google Photorealistic 3D Tiles** for the planet and the **OpenAI Realtime API** for voice. Fast to read, fast to hack on.
+- **A small stack.** **Vue 3** and **Pinia** for the interface, **CesiumJS** for the globe and **Vite** to build it — plus **Google Photorealistic 3D Tiles** for the planet and the **OpenAI Realtime API** for voice. Fast to read, fast to hack on.
 
 ```
 src/
 ├── main.js                 # Bootstrap: Google 3D tiles, layer registration
-├── ui/                     # Runtime UI — panels, HUD, styles, controls
+├── ui/                     # Runtime UI — Vue views, Pinia stores, kit, controllers, styles
 ├── hud.js                  # Intelligence HUD + AI scene summary
 ├── keySetup.js             # POWER UP panel — in-app provider keys (dev server only)
 ├── mapStackController.js   # Basemap switching — Google 3D / Esri / OSM / ion stacks

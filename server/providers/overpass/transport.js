@@ -224,7 +224,8 @@ function queryRefusal(status) {
  * rate-limits it is skipped for its cooldown. Answers about the query itself
  * (a 400/413/414, a runtime-error remark or an oversized body) move on to the
  * next endpoint but leave this one in rotation. Every failure returns a
- * sanitized refusal (never an endpoint URL); this never throws.
+ * sanitized refusal (never an endpoint URL); only a cancellation by
+ * `signal` (the last requester gone) throws, with the signal's reason.
  * @param {string} body URL-encoded Overpass QL query body.
  * @param {number} [maxResponseBytes] Endpoint-specific response cap.
  * @param {object} [options]
@@ -242,6 +243,8 @@ async function fetchOverpassPayload(
     mirrorHealth = cooldowns,
     backoffBaseMs = OVERPASS_MIRROR_BACKOFF_BASE_MS,
     backoffMaxMs = OVERPASS_MIRROR_BACKOFF_MAX_MS,
+    timeoutMs = OVERPASS_TIMEOUT_MS,
+    signal = null,
   } = {},
 ) {
   if (!endpoints.length) return overpassNotConfigured();
@@ -258,7 +261,10 @@ async function fetchOverpassPayload(
       continue;
     }
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), OVERPASS_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const requestSignal = signal
+      ? AbortSignal.any([signal, controller.signal])
+      : controller.signal;
     try {
       const requestUrl = new URL(endpoint);
       const authorization =
@@ -279,7 +285,7 @@ async function fetchOverpassPayload(
           ...(authorization ? { Authorization: authorization } : {}),
         },
         body,
-        signal: controller.signal,
+        signal: requestSignal,
       });
       const responseBody = await readBody(upstream, maxResponseBytes);
       // The endpoint answered about this query, not about itself: try the
@@ -336,6 +342,11 @@ async function fetchOverpassPayload(
         rateLimited: false,
       };
     } catch (error) {
+      // A route whose last requester disconnected owns this cancellation. It
+      // is not evidence that the configured upstream is unhealthy, so do not
+      // put the endpoint on cooldown or translate the abort into a response
+      // that a now-gone client could cache.
+      if (signal?.aborted) throw signal.reason ?? error;
       // An oversized body is about this query; the endpoint itself answered.
       if (error?.code === 'RESPONSE_TOO_LARGE') {
         mirrorHealth.delete(endpoint);

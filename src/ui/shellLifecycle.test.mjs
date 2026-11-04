@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { UiLifetime } from './uiLifetime.js';
+import { createPinia } from 'pinia';
 import { PanelChrome } from './panelChrome.js';
+import { followPanelState } from './rail/panelState.js';
+import { usePanelChromeStore } from './stores/panelChrome.js';
 import { PanelLayoutController } from './panelLayoutController.js';
 import { PanelPositionControls } from './panelPositionControls.js';
 import { ShellFeedback } from './shellFeedback.js';
@@ -54,11 +57,6 @@ function fixture() {
       'left-panel-stack',
       'right-context-rail',
       'pp-toggles',
-      'toast',
-      'global-loading-status',
-      'global-loading-detail',
-      'safe-frame-overlay',
-      'safe-frame-box',
       'hud-toggle',
       'hud-layout-select',
     ].map((id) => [id, element()]),
@@ -152,7 +150,7 @@ test('panel layout coalesces each rail and cannot rearm after destruction', () =
     const owner = new PanelLayoutController({
       readHud: () => ({}),
       scheduleCockpitLayout() {},
-      syncPanelCollapseButton() {},
+      presentPanel() {},
       readDisplayScrollTop: () => 0,
     });
     owner._syncLeftPanelAdaptiveLayout = () => layouts++;
@@ -217,20 +215,41 @@ test('panel disposal cancels a live drag without saving or accepting later point
 test('feedback disposal clears toast and polling work and rejects retained notices', () => {
   const f = fixture();
   try {
-    const owner = new ShellFeedback({ readLayers: () => [] });
+    const loading = [];
+    const toasts = [];
+    const owner = new ShellFeedback({
+      readLayers: () => [],
+      store: {
+        toast: null,
+        publishToast(view) {
+          this.toast = view;
+          toasts.push(view);
+        },
+        publishLoading: (view) => loading.push(view),
+        publishTraffic() {},
+      },
+    });
     owner.observeVisibility();
     owner._startTrafficChipTicker();
     owner._showToast('Saved');
     assert.equal(f.timers.size, 2);
+    owner._showGlobalStatusNotice('Saving');
+    assert.equal(loading.at(-1).hidden, false);
     owner.destroy();
     owner._showToast('Late');
     owner._showGlobalStatusNotice('Late');
     owner._startTrafficChipTicker();
     document.dispatchEvent(new Event('visibilitychange'));
     assert.equal(f.timers.size, 0);
-    assert.equal(f.nodes.get('toast').textContent, 'Saved');
-    assert.equal(f.nodes.get('toast').classList.contains('visible'), false);
-    assert.equal(f.nodes.get('global-loading-status').hidden, true);
+    assert.deepEqual(
+      toasts.map(({ text, visible }) => ({ text, visible })),
+      [
+        { text: 'Saved', visible: true },
+        { text: 'Saved', visible: false },
+      ],
+    );
+    assert.equal(loading.at(-1).hidden, true);
+    assert.equal(loading.at(-1).label, 'Saving', 'the hidden label stays');
   } finally {
     f.restore();
   }
@@ -241,7 +260,13 @@ test('recording restores the original HUD after repeated entry and revokes retai
   try {
     let mode = 'auto',
       variant = 'tactical';
-    const owner = new RecordingControls({ syncShareState() {} });
+    const hudSyncs = [];
+    const frames = [];
+    const owner = new RecordingControls({
+      syncShareState() {},
+      syncHudControls: () => hudSyncs.push(variant),
+      publishSafeFrame: (frame) => frames.push(frame),
+    });
     owner.hud = {
       getMode: () => mode,
       getVariant: () => variant,
@@ -259,17 +284,23 @@ test('recording restores the original HUD after repeated entry and revokes retai
     owner.setRecordingMode(true);
     assert.equal(mode, 'auto');
     assert.equal(variant, 'tactical');
+    assert.deepEqual(
+      hudSyncs,
+      ['minimal', 'minimal', 'tactical'],
+      'each change shows the HUD layout it leaves',
+    );
     assert.equal(document.body.classList.contains('recording-mode'), false);
-    assert.equal(
-      f.nodes.get('safe-frame-overlay').classList.contains('active'),
-      false,
+    assert.deepEqual(
+      frames,
+      ['9:16', '16:9', null],
+      'the safe frame follows each change and leaves with the recording',
     );
   } finally {
     f.restore();
   }
 });
 
-test('weather rail orders between CCTV and Context, resets positions, observes and syncs chrome', (t) => {
+test('weather rail orders between CCTV and Context, resets positions, observes and presents chrome', (t) => {
   const f = fixture();
   const observed = new Set();
   const previousResizeObserver = globalThis.ResizeObserver;
@@ -315,30 +346,24 @@ test('weather rail orders between CCTV and Context, resets positions, observes a
         positions,
       };
       panel.classList.add('panel-draggable', 'panel-dragging', 'collapsed');
-      const button = f.element();
-      button.closest = () => panel;
-      const attributes = new Map();
-      button.setAttribute = (name, value) => attributes.set(name, value);
-      button.getAttribute = (name) => attributes.get(name);
-      panel.button = button;
-      panel.querySelectorAll = () => [button];
-      panel.querySelector = (selector) =>
-        selector.startsWith('.panel-title')
-          ? { textContent: id === 'weather-panel' ? 'WEATHER' : id }
-          : null;
       f.nodes.set(id, panel);
     }
     const weather = f.nodes.get('weather-panel');
     stack.children = [weather, f.nodes.get('global-context-panel')];
-    const synced = [];
-    const chrome = {};
+    const store = usePanelChromeStore(createPinia());
+    const chrome = {
+      _chromeStore: store,
+      _chromeToken: store.connect({}),
+      _shownPanel: PanelChrome.prototype._shownPanel,
+    };
+    const presented = [];
     const owner = new PanelLayoutController({
       readHud: () => ({}),
       scheduleCockpitLayout() {},
       readDisplayScrollTop: () => 0,
-      syncPanelCollapseButton(panel) {
-        synced.push(panel.id);
-        PanelChrome.prototype._syncPanelCollapseButton.call(chrome, panel);
+      presentPanel(panel, patch) {
+        presented.push(panel.id);
+        PanelChrome.prototype._presentPanel.call(chrome, panel, patch);
       },
     });
     owner._initRightPanelAdaptiveLayout();
@@ -346,20 +371,19 @@ test('weather rail orders between CCTV and Context, resets positions, observes a
       stack.children.map((panel) => panel.id),
       ['pp-toggles', 'cctv-panel', 'weather-panel', 'global-context-panel'],
     );
-    assert.ok(synced.includes('weather-panel'));
     assert.ok(observed.has(weather));
+    // A window dragged out earlier comes back to the rail without its place.
     assert.equal(weather.style.positions.size, 0);
     assert.equal(weather.classList.contains('panel-draggable'), false);
     assert.equal(weather.classList.contains('panel-dragging'), false);
-    // One glyph pair on every rail (owner ruling, 2026-09-27): + expands, − collapses.
-    assert.equal(weather.button.textContent, '+');
-    assert.equal(weather.button.getAttribute('aria-expanded'), 'false');
-    assert.equal(weather.button.title, 'Expand WEATHER');
-    weather.classList.remove('collapsed');
-    PanelChrome.prototype._syncPanelCollapseButton.call(chrome, weather);
-    assert.equal(weather.button.textContent, '−');
-    assert.equal(weather.button.getAttribute('aria-expanded'), 'true');
-    assert.equal(weather.button.getAttribute('aria-label'), 'Collapse WEATHER');
+    // Moving a panel into the rail leaves its state as it was.
+    assert.deepEqual(presented, []);
+    followPanelState(store, 'weather-panel', weather);
+    PanelChrome.prototype._presentPanel.call(chrome, weather, {
+      collapsed: false,
+    });
+    assert.equal(store.panels['weather-panel'].collapsed, false);
+    assert.equal(weather.classList.contains('collapsed'), false);
     owner.destroy();
     assert.equal(observed.size, 0);
     assert.equal(f.frames.size, 0);

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { RealtimeInput } from './realtimeInput.js';
 import { PUSH_TO_TALK_HOLD_DELAY_MS } from './realtimeInputPolicy.js';
+import { createTestVoiceUi } from '../testSupport/voiceUi.mjs';
 
 /** Swap globals for one test and put them back after it. */
 function installGlobals(t, values) {
@@ -31,9 +33,12 @@ function fire(target, type, fields = {}) {
 const timersOn = new WeakSet();
 
 /**
- * The mic as the page has it: the click that toggles a session is the
- * session's own listener (sessionCommands.js); the document sees the click
- * first, as a capturing listener on the document does in a browser.
+ * The mic as the page has it: a view (VoiceControl.vue, upstream #1499)
+ * whose pointer events reach the owner through the voice control presenter
+ * (`ui.emit('button-pointerdown', event)`, ...); the click that toggles a
+ * session is the session's own listener (sessionCommands.js); the document
+ * sees the click first, as a capturing listener on the document does in a
+ * browser.
  */
 function fixture(
   t,
@@ -51,15 +56,17 @@ function fixture(
   });
   installGlobals(t, { document: doc, window: new EventTarget() });
   const button = Object.assign(new EventTarget(), {
-    style: {},
     contains: (node) => node === button,
+    closest: (selector) => (selector === '#gev-voice-button' ? button : null),
   });
-  const helpDetail = { textContent: '' };
-  const ui = {
-    button,
-    buttonLabel: { textContent: '' },
-    helpDetail,
-    root: { dataset: {} },
+  const ui = createTestVoiceUi();
+  /** A pointer event on the mic, as the view reports it. */
+  const pointer = (type, fields = {}) => {
+    const event = new Event(type, { cancelable: true });
+    for (const [key, value] of Object.entries(fields))
+      Object.defineProperty(event, key, { value });
+    ui.emit(`button-${type}`, event);
+    return event;
   };
   const calls = {
     starts: [],
@@ -108,17 +115,20 @@ function fixture(
     if (!event.cancelBubble) button.dispatchEvent(new Event('click'));
     return event;
   };
-  return { input, button, ui, calls, state, click, doc };
+  return { input, button, ui, calls, state, click, doc, pointer };
 }
 
 test('holding the mic with a finger starts a push-to-talk session, and letting go sends', (t) => {
   const f = fixture(t);
-  assert.equal(
-    f.button.style.touchAction,
-    'none',
+  assert.match(
+    readFileSync(
+      new URL('../ui/views/panels/VoiceControl.vue', import.meta.url),
+      'utf8',
+    ),
+    /<UiButton id="gev-voice-button"[^>]*style="touch-action: none"/,
     'a held finger cannot scroll',
   );
-  fire(f.button, 'pointerdown', { pointerType: 'touch', pointerId: 7 });
+  f.pointer('pointerdown', { pointerType: 'touch', pointerId: 7 });
   assert.equal(
     f.calls.holds,
     1,
@@ -129,12 +139,12 @@ test('holding the mic with a finger starts a push-to-talk session, and letting g
   t.mock.timers.tick(1);
   assert.deepEqual(f.calls.starts, [{ pushToTalk: true }]);
   assert.equal(f.input.pushToTalkKeyHeld, true);
-  assert.equal(f.ui.root.dataset.pushToTalk, 'held');
+  assert.equal(f.ui.state.root.pushToTalk, 'held');
 
-  fire(f.button, 'pointerup', { pointerType: 'touch', pointerId: 7 });
+  f.pointer('pointerup', { pointerType: 'touch', pointerId: 7 });
   assert.equal(f.input.pushToTalkKeyHeld, false);
   assert.deepEqual(f.calls.mic, [false], 'the mic is muted on release');
-  assert.equal(f.ui.root.dataset.pushToTalk, undefined);
+  assert.equal(f.ui.state.root.pushToTalk, null);
   f.click();
   assert.equal(
     f.calls.clicks,
@@ -147,7 +157,7 @@ test('holding the mic with a finger starts a push-to-talk session, and letting g
 
 test('a held finger on a push-to-talk session opens the mic, cuts the reply off and mutes on release', (t) => {
   const f = fixture(t, { active: true, pushToTalkMode: true });
-  fire(f.button, 'pointerdown', { pointerType: 'touch', pointerId: 3 });
+  f.pointer('pointerdown', { pointerType: 'touch', pointerId: 3 });
   t.mock.timers.tick(PUSH_TO_TALK_HOLD_DELAY_MS);
   assert.deepEqual(f.calls.starts, []);
   assert.deepEqual(f.calls.mic, [true]);
@@ -156,16 +166,16 @@ test('a held finger on a push-to-talk session opens the mic, cuts the reply off 
     'listening',
     'Release the mic to send',
   ]);
-  fire(f.button, 'pointercancel', { pointerType: 'touch', pointerId: 3 });
+  f.pointer('pointercancel', { pointerType: 'touch', pointerId: 3 });
   assert.deepEqual(f.calls.mic, [true, false]);
   assert.equal(f.input.pushToTalkKeyHeld, false);
 });
 
 test('a short tap is still a click on the mic, and an open-mic session is left to its click', (t) => {
   const f = fixture(t);
-  fire(f.button, 'pointerdown', { pointerType: 'touch', pointerId: 1 });
+  f.pointer('pointerdown', { pointerType: 'touch', pointerId: 1 });
   t.mock.timers.tick(PUSH_TO_TALK_HOLD_DELAY_MS - 100);
-  fire(f.button, 'pointerup', { pointerType: 'touch', pointerId: 1 });
+  f.pointer('pointerup', { pointerType: 'touch', pointerId: 1 });
   t.mock.timers.tick(PUSH_TO_TALK_HOLD_DELAY_MS);
   assert.deepEqual(f.calls.starts, [], 'a tap never claims a hold');
   assert.equal(f.calls.releases, 1, 'the pointer snapshot is let go');
@@ -173,7 +183,7 @@ test('a short tap is still a click on the mic, and an open-mic session is left t
   assert.equal(f.calls.clicks, 1);
 
   const open = fixture(t, { active: true, pushToTalkMode: false });
-  fire(open.button, 'pointerdown', { pointerType: 'touch', pointerId: 2 });
+  open.pointer('pointerdown', { pointerType: 'touch', pointerId: 2 });
   t.mock.timers.tick(PUSH_TO_TALK_HOLD_DELAY_MS * 2);
   assert.deepEqual(
     open.calls.mic,
@@ -186,8 +196,8 @@ test('a short tap is still a click on the mic, and an open-mic session is left t
 
 test('the mouse and a second finger leave the mic as it was', (t) => {
   const f = fixture(t, { touch: false });
-  fire(f.button, 'pointerdown', { pointerType: 'mouse', pointerId: 1 });
-  fire(f.button, 'pointerdown', {
+  f.pointer('pointerdown', { pointerType: 'mouse', pointerId: 1 });
+  f.pointer('pointerdown', {
     pointerType: 'touch',
     pointerId: 4,
     isPrimary: false,
@@ -202,21 +212,21 @@ test('the mouse and a second finger leave the mic as it was', (t) => {
 test('a phone is told to hold the mic; a computer is still told to hold Space', (t) => {
   const phone = fixture(t);
   phone.input.updateVoiceButtonLabel();
-  assert.equal(phone.ui.helpDetail.textContent, 'Hold the mic to talk');
+  assert.equal(phone.ui.state.help.text, 'Hold the mic to talk');
   phone.input.pushToTalkMode = true;
   phone.input.pushToTalkKeyHeld = true;
   phone.input.updateVoiceButtonLabel();
-  assert.equal(phone.ui.helpDetail.textContent, 'Release the mic to send');
+  assert.equal(phone.ui.state.help.text, 'Release the mic to send');
 
   const pc = fixture(t, { touch: false });
   pc.input.updateVoiceButtonLabel();
-  assert.match(pc.ui.helpDetail.textContent, /Hold Space to speak/);
+  assert.match(pc.ui.state.help.text, /Hold Space to speak/);
 });
 
 test('detaching removes the touch hold with the keyboard one', (t) => {
   const f = fixture(t);
   f.input.detachBindings();
-  fire(f.button, 'pointerdown', { pointerType: 'touch', pointerId: 9 });
+  f.pointer('pointerdown', { pointerType: 'touch', pointerId: 9 });
   t.mock.timers.tick(PUSH_TO_TALK_HOLD_DELAY_MS * 2);
   assert.deepEqual(f.calls.starts, []);
   assert.equal(f.input.touchButton, null);

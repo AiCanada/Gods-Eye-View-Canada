@@ -56,8 +56,8 @@ test('a late image completion cannot replace a newer camera preview', (t) => {
   assert.equal(requests[0].onload, null);
   requests[1].onload();
   stale();
-  assert.equal(controls._cctvFrame.src, 'second.jpg');
-  assert.equal(controls._cctvFrame.dataset.cameraId, 'b');
+  assert.equal(controls._frame.src, 'second.jpg');
+  assert.equal(controls._frame.cameraId, 'b');
 });
 
 test('the panel preview requests nothing while the tab is hidden', (t) => {
@@ -69,7 +69,7 @@ test('the panel preview requests nothing while the tab is hidden', (t) => {
   });
   controls._queueCctvFrame('first.jpg', 'a', true);
   assert.equal(requests.length, 0);
-  assert.equal(controls._cctvFrame.dataset.cameraId, '');
+  assert.equal(controls._frame.cameraId, '');
   globalThis.document.hidden = false;
   controls._queueCctvFrame('first.jpg', 'a', true);
   assert.equal(requests.length, 1);
@@ -126,43 +126,37 @@ test('the area chip names the loaded area, its cap and the cameras held back', (
 test('NEAREST stays usable with the layer on and no cameras loaded; PREV, NEXT, FOCUS and the list need cameras', (t) => {
   const { controls } = fixture(t);
   controls.actions.setPanelCollapsed = () => {};
-  const nearest = { disabled: true };
-  const prev = { disabled: false };
-  const next = { disabled: false };
-  const focus = { disabled: false };
-  const select = { options: [], disabled: false, selectedIndex: 0 };
-  Object.assign(controls, {
-    _cctvNearestBtn: nearest,
-    _cctvPrevBtn: prev,
-    _cctvNextBtn: next,
-    _cctvFocusBtn: focus,
-    _cctvSelect: select,
+  // The picker asks what has focus; nothing does here.
+  const prior = globalThis.document;
+  globalThis.document = { activeElement: null, hidden: false };
+  t.after(() => {
+    globalThis.document = prior;
   });
+  controls._cctvSelect = {};
+  // The panel view draws NEAREST, PREV, NEXT and FOCUS from what this
+  // publishes (src/ui/views/panels/CctvPanel.vue), and the list from the
+  // picker.
+  const buttons = () => {
+    const { nearestDisabled, navDisabled, focusDisabled } = controls.store.view;
+    return [nearestDisabled, navDisabled, navDisabled, focusDisabled];
+  };
 
   // An empty area: NEAREST is how the panel re-centres it on the view.
   controls._renderCctvState({ enabled: true, cameras: [] });
-  assert.equal(nearest.disabled, false);
-  assert.deepEqual(
-    [prev.disabled, next.disabled, focus.disabled, select.disabled],
-    [true, true, true, true],
-  );
+  assert.deepEqual(buttons(), [false, true, true, true]);
+  assert.equal(controls.store.picker.disabled, true);
 
-  controls._cctvSelect = null;
   controls._renderCctvState({
     enabled: true,
     cameras: [{ id: 'a', city: 'Test', name: 'A' }],
     activeCameraId: 'a',
   });
-  assert.deepEqual(
-    [nearest.disabled, prev.disabled, next.disabled, focus.disabled],
-    [false, false, false, false],
-  );
+  assert.deepEqual(buttons(), [false, false, false, false]);
+  assert.equal(controls.store.picker.disabled, false);
 
   controls._renderCctvState({ enabled: false, cameras: [] });
-  assert.deepEqual(
-    [nearest.disabled, prev.disabled, next.disabled, focus.disabled],
-    [true, true, true, true],
-  );
+  assert.deepEqual(buttons(), [true, true, true, true]);
+  assert.equal(controls.store.picker.disabled, true);
 });
 
 test('failed refresh preserves settled pixels, but changing cameras clears them', (t) => {
@@ -171,11 +165,11 @@ test('failed refresh preserves settled pixels, but changing cameras clears them'
   requests[0].onload();
   controls._queueCctvFrame('refresh.jpg', 'a', false);
   requests[1].onerror();
-  assert.equal(controls._cctvFrame.src, 'first.jpg');
-  assert.equal(controls._cctvFrameWrap.classList.contains('has-frame'), true);
+  assert.equal(controls._frame.src, 'first.jpg');
+  assert.equal(controls._frame.hasFrame, true);
   controls._queueCctvFrame('other.jpg', 'b', true);
-  assert.equal(controls._cctvFrame.src, '');
-  assert.equal(controls._cctvFrameWrap.classList.contains('has-frame'), false);
+  assert.equal(controls._frame.src, '');
+  assert.equal(controls._frame.hasFrame, false);
 });
 
 test('destroy invalidates image callbacks and releases each subscription once', (t) => {
@@ -196,105 +190,9 @@ test('destroy invalidates image callbacks and releases each subscription once', 
   assert.equal(unsubscribed, 2);
   assert.equal(requests[0].onload, null);
   assert.equal(requests[0].onerror, null);
-  assert.equal(controls._cctvFrame.src, '');
+  assert.equal(controls._frame.src, '');
   controls._queueCctvFrame('late.jpg', 'b', true);
   assert.equal(requests.length, 1);
-});
-
-function calibrationFixture(t) {
-  const { controls } = fixture(t);
-  const prior = globalThis.document;
-  const inputs = [];
-  globalThis.document = {
-    createElement() {
-      const input = new EventTarget();
-      Object.assign(input, {
-        focus() {},
-        select() {},
-        setAttribute(name, value) {
-          this[name] = value;
-        },
-        remove() {
-          this.parent.input = null;
-        },
-      });
-      inputs.push(input);
-      return input;
-    },
-  };
-  t.after(() => {
-    globalThis.document = prior;
-  });
-  const chip = {
-    dataset: { calField: 'heading' },
-    textContent: '',
-    input: null,
-    appendChild(input) {
-      this.input = input;
-      input.parent = this;
-    },
-    querySelector() {
-      return this.input;
-    },
-  };
-  const patches = [];
-  controls.actions.setParams = (params) => patches.push(params);
-  controls.actions.setPanelCollapsed = () => {};
-  controls._cctvCalReadout = { querySelectorAll: () => [chip] };
-  controls._cctvState = {
-    enabled: true,
-    activeCameraId: 'a',
-    activeCamera: { id: 'a', headingDeg: 30, basePose: { headingDeg: 20 } },
-  };
-  const key = (name) =>
-    Object.assign(new Event('keydown', { cancelable: true }), { key: name });
-  return { controls, chip, inputs, patches, key };
-}
-
-test('calibration commits against the captured camera base and releases its editor', (t) => {
-  const { controls, chip, inputs, patches, key } = calibrationFixture(t);
-  controls._beginCctvCalValueEdit(chip);
-  inputs[0].value = '100';
-  controls._cctvState.activeCamera.basePose.headingDeg = 60;
-  inputs[0].dispatchEvent(key('Enter'));
-  inputs[0].dispatchEvent(new Event('blur'));
-  assert.deepEqual(patches, [
-    {
-      selectedCameraId: 'a',
-      calibration: { cameraId: 'a', patch: { headingDeg: 80 } },
-    },
-  ]);
-  assert.equal(controls._calibrationEdit, null);
-});
-
-test('a camera switch cancels calibration before old blur can change the new camera', (t) => {
-  const { controls, chip, inputs, patches } = calibrationFixture(t);
-  controls._beginCctvCalValueEdit(chip);
-  inputs[0].value = '100';
-  controls._renderCctvState({
-    enabled: true,
-    activeCameraId: 'b',
-    activeCamera: { id: 'b', headingDeg: 200, basePose: { headingDeg: 190 } },
-  });
-  inputs[0].dispatchEvent(new Event('blur'));
-  assert.deepEqual(patches, []);
-  assert.equal(chip.input, null);
-  assert.equal(chip.textContent, 'HDG 200.0°');
-});
-
-test('Escape claims calibration cancellation and disposal prevents late commits', (t) => {
-  const { controls, chip, inputs, patches, key } = calibrationFixture(t);
-  controls._beginCctvCalValueEdit(chip);
-  inputs[0].value = '100';
-  const escape = key('Escape');
-  inputs[0].dispatchEvent(escape);
-  inputs[0].dispatchEvent(new Event('blur'));
-  assert.equal(escape.defaultPrevented, true);
-  controls._beginCctvCalValueEdit(chip);
-  inputs[1].value = '120';
-  controls.destroy();
-  inputs[1].dispatchEvent(new Event('blur'));
-  assert.deepEqual(patches, []);
 });
 
 test('disposing during camera enable prevents the delayed focus and future clicks', async () => {

@@ -5,12 +5,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ALLOCATION_TEST_FILES,
+  UNIT_TEST_NODE_FLAGS,
   UNIT_TEST_ROOTS,
   allocationTestArgs,
   assertNode24AllocationRuntime,
   buildUnitTestPlan,
   discoverUnitTestFiles,
   isCalibratedAllocationRuntime,
+  parallelBatches,
 } from '../scripts/run-unit-tests.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -85,6 +87,21 @@ test('the runner discovers every test file in the repository', () => {
       `${file} should sit under one of ${UNIT_TEST_ROOTS.join(', ')}`,
     );
   }
+});
+
+test('the parallel files run in batches that fit a Windows command line', () => {
+  const plan = buildUnitTestPlan(discoverUnitTestFiles(repositoryRoot));
+  const batches = parallelBatches(plan.parallel);
+  assert.deepEqual(batches.flat(), plan.parallel, 'every file runs once, in order');
+  for (const batch of batches) {
+    const line = [process.execPath, ...UNIT_TEST_NODE_FLAGS, '--test', ...batch]
+      .map((arg) => `"${arg}"`)
+      .join(' ');
+    assert.ok(line.length < 32_767, `${batch.length} files make ${line.length} characters`);
+  }
+  assert.deepEqual(parallelBatches(['a', 'bb', 'ccc'], 9), [['a', 'bb'], ['ccc']]);
+  assert.deepEqual(parallelBatches(['a', 'bb', 'ccc'], 7), [['a'], ['bb'], ['ccc']]);
+  assert.deepEqual(parallelBatches([]), []);
 });
 
 test('allocation runtime calibration is explicit and pinned to Node 24', () => {

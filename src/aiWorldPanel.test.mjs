@@ -9,16 +9,21 @@ import {
   initAiWorldPanel,
 } from './aiWorldPanel.js';
 import { ownerRemovalRefusalCount } from './ui/ownerRemoval.js';
+import { renderApplicationHtml } from './testSupport/applicationHtml.mjs';
 
-const TEMPLATE = new URL('./ui/templates/layer-panels.html', import.meta.url);
+// The left stack as the browser shows it. Since the eleventh upstream merge
+// the box is a Vue view (src/ui/views/fork/AiWorldPanel.vue) in the stack's
+// view, rendered as the other markup tests render theirs.
+const LEFT_STACK = await renderApplicationHtml(
+  '<div class="gev-view" data-gev-view="layer-panels"></div>',
+);
 const NOW = Date.UTC(2026, 9, 13, 12);
 
 /** The box's markup, from its opening tag to the end of the left stack. */
 function boxMarkup() {
-  const html = readFileSync(TEMPLATE, 'utf8');
-  const start = html.indexOf('<div id="ai-world-panel"');
+  const start = LEFT_STACK.indexOf('<div id="ai-world-panel"');
   assert.ok(start >= 0, 'the AI World box is in the markup');
-  return html.slice(start);
+  return LEFT_STACK.slice(start);
 }
 
 const decode = (text) => String(text ?? '').replace(/&amp;/g, '&');
@@ -385,8 +390,12 @@ function idleServer(overrides = {}) {
 }
 
 test('the box sits last in the left stack, collapsed, with the shared chrome and live regions', () => {
-  const html = readFileSync(TEMPLATE, 'utf8');
+  const html = LEFT_STACK;
   const box = boxMarkup();
+  assert.ok(
+    html.indexOf('<div id="left-panel-stack"') <
+      html.indexOf('<div id="outbreak-panel"'),
+  );
   assert.ok(
     html.indexOf('<div id="outbreak-panel"') <
       html.indexOf('<div id="ai-world-panel"'),
@@ -401,9 +410,10 @@ test('the box sits last in the left stack, collapsed, with the shared chrome and
     box,
     /<span class="panel-title" data-collapsed-title="ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM" data-i18n-local-collapsed-title data-i18n-local>ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM<\/span>/,
   );
+  // The kit's collapse button (+ / −, the owner's glyphs), named for the box.
   assert.match(
     box,
-    /<button class="panel-collapse-btn" data-collapse-target="ai-world-panel" title="Collapse panel" data-i18n-local-title>\+<\/button>/,
+    /<button type="button" class="[^"]*\bpanel-collapse-btn" aria-label="Expand ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM" title="Expand ARTIFICIAL INTELLIGENCE WORLD TRAINING SIM" data-collapse-target="ai-world-panel" aria-expanded="false">\+<\/button>/,
   );
   assert.match(
     box,
@@ -449,8 +459,12 @@ test('the box sits last in the left stack, collapsed, with the shared chrome and
   assert.match(box, /id="ai-world-cap" type="number"[^>]*value="600"/);
   assert.match(box, /id="ai-world-scenarios" type="number"[^>]*value="2000"/);
   assert.equal(box.includes('type="password"'), false);
-  // The stack's own closing tag follows the box.
-  assert.match(box, /<\/div>\n    <\/div>\n  <\/div>\n?$/);
+  // The rest of the stack follows the box: AI Distillation, then the Global
+  // Abundance Map, and then the stack's own closing tag.
+  const distillAt = box.indexOf('<div id="distill-panel"');
+  assert.ok(distillAt > 0);
+  assert.ok(box.indexOf('<div id="abundance-panel"') > distillAt);
+  assert.match(box, /<\/div><\/div>$/);
 });
 
 test('TRAIN ON: one row per layer, the catalog-only items and the five extras, each with its class and live status', async () => {

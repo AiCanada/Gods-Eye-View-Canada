@@ -52,7 +52,7 @@ const PRIVATE_NOTE = msgl(
 
 /**
  * Class names per host. POWER UP keeps its card look. The Ultra tab's are
- * the tab's own (src/ui/templates/layer-panels.html, src/ui/styles/ultra.css),
+ * the tab's own (src/ui/views/fork/UltraPanel.vue, src/ui/styles/ultra.css),
  * so none of POWER UP's card classes, which are styled page-wide, reach it.
  */
 export const DEVICE_FEED_LOOKS = Object.freeze({

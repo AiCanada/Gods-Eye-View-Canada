@@ -9,6 +9,7 @@ import {
 } from './uiControls.js';
 import { watchOwnerRemoval } from '../ui/ownerRemoval.js';
 import { responseInstructionForToolResult } from './realtimeProtocol.js';
+import { renderApplicationHtml } from '../testSupport/applicationHtml.mjs';
 
 // A small DOM: enough elements, attributes and selectors for the module.
 class FakeEvent {
@@ -901,7 +902,11 @@ test('a one-panel listing shows up to 150, and an asked-for limit still holds', 
 
 /* ── The real Outbreak box, read from the markup ───────────────────────── */
 
-const TEMPLATE = new URL('../ui/templates/layer-panels.html', import.meta.url);
+// The left stack as the browser shows it (Vue views since the eleventh
+// upstream merge; the Outbreak box is src/ui/views/fork/OutbreakPanel.vue).
+const LEFT_STACK = await renderApplicationHtml(
+  '<div class="gev-view" data-gev-view="layer-panels"></div>',
+);
 const decode = (text) => String(text ?? '').replace(/&amp;/g, '&');
 
 function attributesOf(text) {
@@ -912,13 +917,13 @@ function attributesOf(text) {
 }
 
 /**
- * The Outbreak box as layer-panels.html lays it out: every button, input and
+ * The Outbreak box as the left stack lays it out: every button, input and
  * select in document order, with its attributes, options and <label for>.
  * The box ends where the next left-stack box, the AI World Training Sim,
  * begins.
  */
 function outbreakBoxFromMarkup(make) {
-  const html = readFileSync(TEMPLATE, 'utf8');
+  const html = LEFT_STACK;
   const start = html.indexOf('<div id="outbreak-panel"');
   assert.ok(start >= 0, 'the Outbreak box is in the markup');
   const end = html.indexOf('<div id="ai-world-panel"', start);
@@ -1116,9 +1121,8 @@ test('every keyboard shortcut has a spoken way in, so a phone without keys loses
   assert.ok(tool('set_panel_open').panelId.enum.includes('data-panel'));
 
   // V: clean view has no tool of its own; its buttons answer to their labels.
-  const markup = readFileSync(
-    new URL('../ui/templates/display-controls.html', import.meta.url),
-    'utf8',
+  const markup = await renderApplicationHtml(
+    '<div class="gev-view" data-gev-view="display-controls"></div>',
   );
   const toggle = markup.match(
     /<button[^>]*id="clean-view-toggle"[^>]*title="([^"]+)"[^>]*>[\s\S]*?<span class="pp-label"[^>]*>([^<]+)<\/span>/,

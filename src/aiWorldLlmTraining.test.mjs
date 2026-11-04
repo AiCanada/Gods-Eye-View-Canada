@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { AiWorldPanel } from './aiWorldPanel.js';
+import { renderApplicationHtml } from './testSupport/applicationHtml.mjs';
 
 /** Just enough of an element for the panel and the section. */
 class Node {
@@ -100,10 +101,11 @@ const STATUS = {
   limits: { urls: 100, paths: 50 },
 };
 
-test('the template puts CUSTOM LLM TRAINING last in the AI World tab', () => {
-  const html = readFileSync(
-    new URL('./ui/templates/layer-panels.html', import.meta.url),
-    'utf8',
+test('the template puts CUSTOM LLM TRAINING last in the AI World tab', async () => {
+  // The left stack's view, as the browser shows it (the box is
+  // src/ui/views/fork/AiWorldPanel.vue since the eleventh upstream merge).
+  const html = await renderApplicationHtml(
+    '<div class="gev-view" data-gev-view="layer-panels"></div>',
   );
   const start = html.indexOf('<div id="ai-world-panel"');
   const output = html.indexOf('id="ai-world-output"', start);

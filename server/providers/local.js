@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { openSkyProxy } from './aircraft/opensky.js';
 import { celestrakProxy, rocketLaunchesProxy } from './space.js';
 import { tomtomProxy } from './traffic.js';
@@ -9,7 +10,7 @@ import { overpassProxy } from './overpass.js';
 import { roadsTilesProxy } from './roads-tiles.js';
 import { militaryInstallationsProxy } from './military-installations.js';
 import { regionalBriefProxy } from './regional/briefing.js';
-import { geocodeProxy } from './regional/place.js';
+import { geocodeProxy, NOMINATIM_CACHE_DIR } from './regional/place.js';
 import { weatherEffectsProxy } from './regional/weather-effects.js';
 import { weatherProxy } from './weather.js';
 import { windProxy } from './wind.js';
@@ -50,6 +51,7 @@ import { abundanceProvider } from './abundance.js';
 import { createAbundanceStore } from '../shared/abundanceData.mjs';
 import { gnssIntegrityProxy } from './gnssIntegrity.js';
 import { ghostMapsProxy } from './ghostMaps.js';
+import { droneAirspaceProxy } from './droneAirspace.js';
 
 /**
  * Construct the local provider plugins in their established order.
@@ -58,12 +60,24 @@ import { ghostMapsProxy } from './ghostMaps.js';
  * checkout whose config and data folders the rooted providers use: this one
  * by default, a temp folder for a test, so no test reads or writes this
  * machine's recordings, caches or private config.
+ * `nominatimStorageDir` binds an owned absolute directory before construction;
+ * omitted, the geocoder keeps its durable cache and policy state under
+ * `sourceRoot` (`NOMINATIM_CACHE_DIR` for this checkout).
  */
 function localProviderPlugins({
   realtime,
   gemini,
   sourceRoot = defaultSourceRoot,
+  nominatimStorageDir = sourceRoot === defaultSourceRoot
+    ? NOMINATIM_CACHE_DIR
+    : path.join(sourceRoot, '.gev-cache', 'nominatim'),
 } = {}) {
+  if (
+    typeof nominatimStorageDir !== 'string' ||
+    !nominatimStorageDir.trim() ||
+    !path.isAbsolute(nominatimStorageDir)
+  )
+    throw new TypeError('nominatimStorageDir must be an absolute directory');
   // Provider checks apply only after this checkout is bound. A unit test
   // that never binds still uses the keys it set.
   bindLocalIntegrityRoot(sourceRoot);
@@ -89,7 +103,7 @@ function localProviderPlugins({
     roadsTilesProxy(),
     militaryInstallationsProxy(),
     regionalBriefProxy(),
-    geocodeProxy(),
+    geocodeProxy({ storageDir: nominatimStorageDir }),
     weatherEffectsProxy(),
     weatherProxy(),
     windProxy(),
@@ -134,6 +148,8 @@ function localProviderPlugins({
     gnssIntegrityProxy(),
     // S2 GhostMaps (upstream #1297): the public GhostMaps KMZ catalog and files.
     ghostMapsProxy(),
+    // Prohibited and restricted airspace for drones (upstream #1086).
+    droneAirspaceProxy(),
     // The AI World tab's MLFLOW sections (owner request 2026-10-17): first,
     // so the jobs of the three providers after it are tracked from the start.
     mlflow,

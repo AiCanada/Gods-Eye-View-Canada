@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { expandApplicationHtml } from '../build/application-html.js';
+import { readApplicationHtml } from './testSupport/applicationHtml.mjs';
 import {
   SOCIAL_ACCOUNT_PLATFORMS,
   SOCIAL_ACCOUNTS_KEY,
@@ -48,11 +48,9 @@ const withoutLocalMarkers = (source) =>
   source
     .replace(/<span data-i18n-local>([^<]*)<\/span>/g, '$1')
     .replace(/ data-i18n-local(?:-[a-z-]+)?(?=[\s/>])/g, '');
-const html = withoutLocalMarkers(
-  expandApplicationHtml(
-    readFileSync(new URL('../index.html', import.meta.url), 'utf8'),
-  ),
-);
+// The page as the browser shows it once the views are mounted (Vue views
+// since the eleventh upstream merge).
+const html = withoutLocalMarkers(await readApplicationHtml());
 const panelHtml = html.slice(
   html.indexOf('id="social-panel"'),
   html.indexOf('id="right-context-rail"'),
@@ -2134,7 +2132,7 @@ test('the box carries both swarms: instructions, the button and OPEN, with no no
   );
   assert.match(
     panelHtml,
-    /<div id="social-output"[^>]*><\/div>\n      <\/div>\n    <\/div>\n/,
+    /<div id="social-output"[^>]*><\/div>\s*<\/div>\s*<\/div>/,
   );
 });
 

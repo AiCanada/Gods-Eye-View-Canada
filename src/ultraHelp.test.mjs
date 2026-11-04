@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { expandApplicationHtml } from '../build/application-html.js';
+import { readApplicationHtml } from './testSupport/applicationHtml.mjs';
 import {
   ULTRA_PHONE_MODELS,
   classifyUltraIncident,
@@ -63,10 +63,10 @@ test('the SMS sentence names the place and the class', () => {
   assert.equal(normalizeUltraNumber('5065550100'), null);
 });
 
-test('the Ultra box is a collapsed left-stack panel and the help module does not import CCTV', () => {
-  const html = expandApplicationHtml(
-    fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8'),
-  );
+test('the Ultra box is a collapsed left-stack panel and the help module does not import CCTV', async () => {
+  // The page as the browser shows it once the views are mounted (Vue views
+  // since the eleventh upstream merge).
+  const html = await readApplicationHtml();
   const panel = html.slice(
     html.indexOf('id="ultra-panel"'),
     html.indexOf('id="ultra-panel"') + 400,

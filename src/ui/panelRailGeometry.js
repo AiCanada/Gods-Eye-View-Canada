@@ -89,8 +89,10 @@ export function readPanelStackingRank(panel) {
 }
 
 /**
- * Tactical HUD gives an expanded right-rail panel the whole control lane.
- * Other HUD layouts keep collapsed launchers visible for quick switching.
+ * Whether collapsed right panels hide beside an expanded one: never, on any
+ * HUD layout (owner ruling 2026-09-27), and the rail no longer asks. Kept
+ * exported from `./ui/layout` for hosts that imported it (upstream #1499).
+ * @deprecated
  *
  * @param {object} input Current rail state.
  * @param {string} input.hudVariant Active HUD layout variant.

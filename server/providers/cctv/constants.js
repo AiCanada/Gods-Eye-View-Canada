@@ -410,6 +410,12 @@ export const NYC_BOX = {
   west: -74.26,
   east: -73.7,
 };
+
+/** The directory the Autostrada del Brennero (A22) webcam stills live in
+ * (`km<N>.jpg`). The fork's international pack already holds the motorway's
+ * 13 cameras, so upstream's live A22 loader (#956) is left out; the frame
+ * proxy still pins a redirect on this host inside the directory. */
+export const A22_IMAGE_ORIGIN = 'https://www.autobrennero.it/WebCamImg/';
 /** DelDOT CCTV: one keyless statewide JSON catalog; live video via RTMP-over-HTTP (rtmpt:80). */
 export const DELDOT_CCTV_URL = 'https://tmc.deldot.gov/json/videocamera.json';
 /** Per-provider catalog-fetch timeout. Bounds a live pack download so one

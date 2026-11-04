@@ -12,6 +12,7 @@ import { CCTV_PROXY_USER_AGENT } from './upstream-headers.js';
 import { isPublicAddress } from './frame-resolver.js';
 import { hashSeed, escapeXml, pinnedCameraUrl } from './normalize.js';
 import {
+  A22_IMAGE_ORIGIN,
   CALGARY_IMAGE_ORIGIN,
   CCTV_FRAME_FETCH_TIMEOUT_MS,
   CCTV_FRAME_MAX_BODY_BYTES,
@@ -706,6 +707,7 @@ for (const prefix of [
   ...WARENDORF_IMAGE_ORIGINS,
   NSW_IMAGE_ORIGIN,
   CALGARY_IMAGE_ORIGIN,
+  A22_IMAGE_ORIGIN,
 ]) {
   const host = new URL(prefix).hostname;
   CCTV_PINNED_PREFIXES_BY_HOST.set(host, [

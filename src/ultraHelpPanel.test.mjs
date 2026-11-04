@@ -19,6 +19,7 @@ import {
   DEVICE_HISTORY_PERIODS,
 } from './deviceFeedsCore.mjs';
 import { SOCIAL_SWARM_DEFAULT_PURPOSE } from './socialSwarm.mjs';
+import { renderApplicationHtml } from './testSupport/applicationHtml.mjs';
 
 /* The byId/createElement fake of src/overlays/worldOverlay.test.mjs, cut
  * down to what the Ultra box touches. innerHTML throws on purpose: every
@@ -3832,10 +3833,11 @@ test('DISPLAY ULTRA ON MAP is the device layer switch, and the period picks how 
   assert.equal(listeners.size, 0, 'destroy stops watching the layer');
 });
 
-test('the Ultra box period list matches the map layer periods', () => {
-  const html = fs.readFileSync(
-    new URL('./ui/templates/layer-panels.html', import.meta.url),
-    'utf8',
+test('the Ultra box period list matches the map layer periods', async () => {
+  // The left stack as the browser shows it (the box is
+  // src/ui/views/fork/UltraPanel.vue since the eleventh upstream merge).
+  const html = await renderApplicationHtml(
+    '<div class="gev-view" data-gev-view="layer-panels"></div>',
   );
   const select = html.slice(
     html.indexOf('id="ultra-map-period"'),

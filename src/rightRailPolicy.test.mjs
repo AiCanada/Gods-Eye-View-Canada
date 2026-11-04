@@ -2,57 +2,30 @@ import { readStylesheet } from './testSupport/readStylesheet.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import {
-  shouldExpandGlobalContextPanel,
-  shouldHideCollapsedRightPanels,
-} from './rightRailPolicy.js';
+import { shouldExpandGlobalContextPanel } from './rightRailPolicy.js';
 
-test('collapsed right-rail tabs stay in reach while a panel is expanded, Tactical included', () => {
-  // Owner ruling, 2026-09-27: boxes open together and scroll; the tabs never vanish.
-  assert.equal(shouldHideCollapsedRightPanels({
-    hudVariant: 'tactical',
-    hasExpandedPanel: true,
-  }), false);
-});
-
-test('collapsed launchers remain when Tactical has no expanded panel', () => {
-  assert.equal(shouldHideCollapsedRightPanels({
-    hudVariant: 'tactical',
-    hasExpandedPanel: false,
-  }), false);
-});
-
-test('other HUD layouts keep collapsed right-rail launchers visible', () => {
-  assert.equal(shouldHideCollapsedRightPanels({
-    hudVariant: 'minimal',
-    hasExpandedPanel: true,
-  }), false);
-  assert.equal(shouldHideCollapsedRightPanels({
-    hudVariant: 'full',
-    hasExpandedPanel: true,
-  }), false);
-});
-
-test('desktop Display participates in Tactical exclusivity without changing mobile Display behavior', () => {
-  const ui = readFileSync(new URL('./ui/rightPanelRail.js', import.meta.url), 'utf8');
+test('desktop side rails never hide a collapsed panel, in any HUD layout (fork)', () => {
+  // Owner rulings, 2026-09-27 and 2026-10-06: boxes open together and scroll,
+  // and the collapsed tabs stay in reach while one is open. Upstream's
+  // exclusive presentation (#1499) is off in both rails; its CSS stays unused.
+  const right = readFileSync(new URL('./ui/rightPanelRail.js', import.meta.url), 'utf8');
+  const left = readFileSync(new URL('./ui/leftPanelRail.js', import.meta.url), 'utf8');
   const css = readStylesheet(new URL('../style.css', import.meta.url));
-  assert.match(ui, /const isMobile = windowRef\.matchMedia\('\(max-width: 720px\)'\)\.matches/);
-  // Radio is not a box of the rail: it opens above the tabs without putting
-  // the rail into its one-box mode, so it is left out of this rule.
-  assert.match(
-    ui,
-    /!panel\.classList\.contains\('collapsed'\)\s*&&\s*panel\.id !== 'radio-panel'\s*&&\s*\(!isMobile \|\| panel\.id !== 'pp-toggles'\)/,
-  );
-  assert.doesNotMatch(
-    ui,
-    /panel\.id !== 'pp-toggles' && !panel\.classList\.contains\('collapsed'\)/,
-  );
-  assert.match(ui, /if \(exclusive && panel\.classList\.contains\('collapsed'\)\)\s*panel\.setAttribute\('aria-hidden', 'true'\)/);
-  // A panel floating out of the rail (portable mode) is exempt from exclusivity.
+  for (const ui of [right, left]) {
+    assert.match(ui, /const isMobile = windowRef\.matchMedia\('\(max-width: 720px\)'\)\.matches/);
+    assert.match(ui, /const exclusive = false;/);
+    assert.doesNotMatch(ui, /const exclusive =\s*!isMobile/);
+    assert.doesNotMatch(ui, /hud\.variant === 'cyber'/);
+    assert.doesNotMatch(ui, /classList\.add\('layout-exclusive'\)/);
+  }
+  assert.match(right, /stack\.classList\.toggle\('layout-exclusive', exclusive\)/);
+  assert.match(left, /stack\.classList\.remove\('layout-exclusive'\)/);
+  // A panel floating out of the rail (portable mode) would be exempt anyway.
   assert.match(
     css,
     /#right-context-rail\.layout-exclusive\s*> \[data-panel-id\]\.collapsed:not\(\.panel-floating\) \{/,
   );
+  assert.match(css, /#left-panel-stack\.layout-exclusive > \[data-panel-id\]\.collapsed \{/);
 });
 
 test('explicit Contacts, Space Missions, and Cockpit actions expand Global Context after success', () => {

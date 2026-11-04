@@ -24,8 +24,12 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
  * Vite passes no `sourceRoot`; a test passes an empty temp folder, so it loads
  * none of this machine's .env keys, integrity store, data, caches or private
  * config, and its single-instance lock is not the running dev server's.
+ * `nominatimStorageDir` binds the geocoder's cache to an owned directory.
  */
-export default defineConfig(({ command, mode, sourceRoot }) => {
+export function standaloneConfig(
+  { command, mode, sourceRoot },
+  { nominatimStorageDir } = {},
+) {
   // Without one, everything below is exactly as it was: this checkout.
   const checkout = sourceRoot || root;
   const loaded = loadEnv(mode, checkout, '');
@@ -47,6 +51,7 @@ export default defineConfig(({ command, mode, sourceRoot }) => {
         realtime: { tools },
         gemini: { tools },
         ...(sourceRoot ? { sourceRoot } : {}),
+        nominatimStorageDir,
       }),
       localMcpPlugin(),
       googleTokenUnavailablePlugin(),
@@ -57,10 +62,13 @@ export default defineConfig(({ command, mode, sourceRoot }) => {
     ],
     googleApiKey: localClientCredential('google', 'GOOGLE_MAPS_API_KEY'),
     cesiumToken: localClientCredential('cesium', 'CESIUM_ION_TOKEN'),
+    photonUrl: process.env.PHOTON_URL,
     mapillaryToken: process.env.MAPILLARY_CLIENT_TOKEN,
     host: process.env.HOST,
     port: process.env.PORT,
     allowedHosts: resolveAllowedHosts(process.env.GEV_ALLOWED_HOSTS),
     command,
   });
-});
+}
+
+export default defineConfig(standaloneConfig);

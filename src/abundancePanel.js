@@ -88,6 +88,15 @@ const SOURCE_WORDS = Object.freeze({
   oecd: msgl('OECD REGIONS AND CITIES'),
 });
 const upper = (v) => String(v ?? '').toUpperCase();
+/**
+ * An indicator's name in the active language. UTILITIES (electricity and
+ * water) shares its English with upstream's tools panel (#1469), so it reads
+ * its own "abundance|UTILITIES" entry rather than the panel's.
+ */
+const indicatorLabel = (indicator) =>
+  indicator.label === 'UTILITIES'
+    ? tl('UTILITIES', { context: 'abundance' })
+    : tl(indicator.label);
 const digits = (n, decimals = 0) =>
   localDigits(
     Number.isFinite(Number(n)) ? Number(n).toFixed(decimals) : String(n ?? ''),
@@ -302,7 +311,7 @@ export function scoreLegend() {
 }
 
 export function figureText(indicator, figure, rank, level) {
-  const parts = [tl(indicator.label), valueWithUnit(indicator, figure.v)];
+  const parts = [indicatorLabel(indicator), valueWithUnit(indicator, figure.v)];
   if (Number.isFinite(figure.year))
     parts.push(localDigits(String(figure.year)));
   const trend = trendText(indicator, figure);
@@ -635,7 +644,7 @@ export function initAbundancePanel({
   for (const indicator of ABUNDANCE_INDICATORS) {
     const li = element(doc, 'li', 'abundance-row');
     li.dataset.indicator = indicator.id;
-    const row = tick(doc, tl(indicator.label), '');
+    const row = tick(doc, indicatorLabel(indicator), '');
     row.box.dataset.indicator = indicator.id;
     row.box.addEventListener('change', () => {
       const set = new Set(choice.indicators);
@@ -658,7 +667,7 @@ export function initAbundancePanel({
     weight.setAttribute(
       'aria-label',
       tl('Weight of {indicator} in the score', {
-        indicator: tl(indicator.label),
+        indicator: indicatorLabel(indicator),
       }),
     );
     weight.title = tl('How much this indicator counts in the score');

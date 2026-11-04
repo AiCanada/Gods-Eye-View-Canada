@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { GevRealtimeController } from './gevRealtime.js';
+import { createTestVoiceUi } from '../testSupport/voiceUi.mjs';
 import {
   VOICE_PROVIDER_ORDER,
   GrokVoiceSession,
@@ -622,24 +623,9 @@ test('Claude on the mic uses the spoken turn and not the OpenAI realtime call', 
   };
   globalThis.SpeechRecognition = FakeRecognition;
   globalThis.window = previousWindow || {};
-  const ui = {
-    root: {
-      dataset: {},
-      classList: { add() {}, remove() {} },
-      querySelectorAll: () => [],
-    },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    buttonLabel: { textContent: '' },
-    tierButton: {
-      textContent: '',
-      title: '',
-      hidden: false,
-      setAttribute() {},
-    },
-    providerButton: { textContent: '', title: '' },
-    costValue: { textContent: '', title: '', dataset: {}, hidden: false },
-  };
+  // The voice control presenter (upstream's, since the eleventh merge); what
+  // it shows is read from ui.state.
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async () => ({ ok: true }),
@@ -650,11 +636,11 @@ test('Claude on the mic uses the spoken turn and not the OpenAI realtime call', 
       getUserMedia: async () => fakeMic(),
     };
     await controller.start({ pushToTalk: false });
-    assert.equal(controller.status, 'listening', ui.detail.textContent);
+    assert.equal(controller.status, 'listening', ui.state.detail.text);
     controller.syncCostUi();
-    assert.equal(ui.providerButton.textContent, 'CLAUDE');
-    assert.equal(ui.tierButton.hidden, true);
-    assert.equal(ui.costValue.hidden, true);
+    assert.equal(ui.state.providerCycle.text, 'CLAUDE');
+    assert.equal(ui.state.tier.hidden, true);
+    assert.equal(ui.state.cost.hidden, true);
     recognition.onresult({
       resultIndex: 0,
       results: [{ isFinal: true, 0: { transcript: 'zoom out' } }],

@@ -1,4 +1,4 @@
-import { expandApplicationHtml } from '../build/application-html.js';
+import { renderApplicationHtml } from './testSupport/applicationHtml.mjs';
 import { readStylesheet } from './testSupport/readStylesheet.mjs';
 import { GEV_REALTIME_TOOLS } from '../server/providers/openai/tools.js';
 import test from 'node:test';
@@ -413,11 +413,6 @@ test('one ESC does one thing — a Cockpit utility disclosure stops later docume
 });
 
 test('a refused write takes the tick back instead of promising "never again"', () => {
-  const module = fs.readFileSync(
-    new URL('./firstRunExperience.js', import.meta.url),
-    'utf8',
-  );
-
   // The write stays best-effort; the OUTCOME is now reported, because a box left
   // ticked after a refused write tells the visitor the launcher is gone for good
   // while it is already guaranteed to return next session.
@@ -442,20 +437,7 @@ test('a refused write takes the tick back instead of promising "never again"', (
   assert.equal(working.read(), 'suppressed');
   assert.equal(setFirstRunSuppressed(false, working), true);
   assert.equal(working.read(), null);
-
-  const handler = module.slice(
-    module.indexOf('const onSuppressChange = (event) => {'),
-    module.indexOf('  const keyboard = createSurfaceKeyboard({'),
-  );
-  assert.match(
-    handler,
-    /if \(setFirstRunSuppressed\(wanted, storage\)\) return;/,
-  );
-  assert.match(
-    handler,
-    /box\.checked = !wanted;/,
-    'a refused write must revert the tick',
-  );
+  // The rendered checkbox reverting is firstRunLauncherView.test.mjs.
 });
 
 test('a surface class that never clears is an ACCEPTED no-show, not a timer', () => {
@@ -506,16 +488,8 @@ test('the scroll fade only appears when the list really overflows', () => {
   );
   const css = readStylesheet(new URL('../style.css', import.meta.url));
   // A fade on a card where all five tiles fit promises a sixth mission that does
-  // not exist, which is worse than no affordance at all.
-  assert.match(
-    module,
-    /const overflows = choiceList\.scrollHeight > choiceList\.clientHeight \+ 1;/,
-  );
-  assert.match(
-    module,
-    /choiceList\.dataset\.scrollable = String\(overflows\);/,
-  );
-  // ...and the CSS must be gated on that flag, never on the media query alone.
+  // not exist, which is worse than no affordance at all. The measured flag is
+  // firstRunLauncherView.test.mjs; the CSS must be gated on that flag, never on the media query alone.
   assert.match(
     css,
     /\.first-run-choices\[data-scrollable='true'\] \{[\s\S]*?mask-image/,
@@ -797,8 +771,8 @@ test('the decision table is written down where the next editor will read it', ()
 
 // ── Markup, startup ordering, accessibility ─────────────────────────────────
 
-test('markup, startup ordering and accessibility remain pinned', () => {
-  const html = expandApplicationHtml(
+test('markup, startup ordering and accessibility remain pinned', async () => {
+  const html = await renderApplicationHtml(
     fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8'),
   );
   const startup = fs.readFileSync(
@@ -816,7 +790,7 @@ test('markup, startup ordering and accessibility remain pinned', () => {
     html,
     /data-first-run-status[^>]*role="status"[^>]*aria-live="polite"/,
   );
-  assert.match(html, /<input type="checkbox" data-first-run-suppress \/>/);
+  assert.match(html, /<input type="checkbox" data-first-run-suppress\s*\/?>/);
   assert.match(html, /<strong data-first-run-environmental-title>/);
   // Subcopy must name BOTH feeds the tile turns on — a tile that promised only
   // half of what it does is the defect this replaced. Only the VISIBLE <small>
@@ -840,7 +814,7 @@ test('markup, startup ordering and accessibility remain pinned', () => {
   // passing edit — changing it needs the owner, not a nicer-sounding rewrite.
   assert.ok(
     html.includes(
-      '<p id="first-run-description" data-i18n-runtime>It feels like a forbidden cockpit' +
+      '<p id="first-run-description">It feels like a forbidden cockpit' +
         '—then you realize the sources are public and the data is real.</p>',
     ),
     'the owner-authored first-run line must ship exactly as written',
@@ -915,13 +889,9 @@ test('markup, startup ordering and accessibility remain pinned', () => {
   assert.match(choicesBlock, /overflow-y: auto;/);
 });
 
-test('the card closes without a keyboard: the ESC hint is a button, kept on phones', () => {
-  const html = expandApplicationHtml(
+test('the card closes without a keyboard: the ESC hint is a button, kept on phones', async () => {
+  const html = await renderApplicationHtml(
     fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8'),
-  );
-  const module = fs.readFileSync(
-    new URL('./firstRunExperience.js', import.meta.url),
-    'utf8',
   );
   // The whole stylesheet, so a hide rule added in any other file is caught too.
   const css = readStylesheet(new URL('../style.css', import.meta.url));
@@ -933,14 +903,10 @@ test('the card closes without a keyboard: the ESC hint is a button, kept on phon
     footer,
     /<button type="button" class="first-run-dismiss" data-first-run-dismiss>/,
   );
-  assert.match(footer, /data-i18n>ESC to dismiss</);
-  assert.match(footer, /data-i18n>DISMISS</);
+  assert.match(footer, />ESC to dismiss</);
+  assert.match(footer, />DISMISS</);
   // It closes the way ESC does, through the one dismiss path, so the session
-  // flag and focus handling are the same.
-  assert.match(
-    module,
-    /querySelector\('\[data-first-run-dismiss\]'\)\s*\?\.addEventListener\('click', \(\) => dismiss\(\)\)/,
-  );
+  // flag and focus handling are the same: firstRunLauncherView.test.mjs.
   // Phones used to hide the hint, leaving no way out but picking a mission.
   assert.doesNotMatch(css, /first-run-footer > span:last-child/);
   assert.doesNotMatch(css, /\.first-run-dismiss\s*\{[^}]*display:\s*none/);
@@ -963,12 +929,9 @@ test('the launcher keeps focus, restores it, and never disables the focused butt
     'utf8',
   );
   // aria-disabled, never the `disabled` property: disabling a focused button
-  // drops the keyboard to <body> and strands the visitor outside the launcher.
-  assert.match(
-    module,
-    /button\.setAttribute\('aria-disabled', String\(next\)\)/,
-  );
-  assert.doesNotMatch(module, /button\.disabled = /);
+  // drops the keyboard to <body> and strands the visitor outside the launcher
+  // (firstRunLauncherView.test.mjs renders it).
+  assert.doesNotMatch(module, /\.disabled = /);
   // Tab is confined to the launcher, and ESC always releases it.
   const keyboard = fs.readFileSync(
     new URL('./ui/surfaceKeyboard.js', import.meta.url),
@@ -1027,7 +990,15 @@ test('the voice TOOL SCHEMA matches the pinned contract — the mission mapping 
   // Whole-app voice control (2026-10-10) adds two tools and six panel ids;
   // everything else keeps this pin.
   const legacyTools = structuredClone(GEV_REALTIME_TOOLS).filter(
-    (tool) => !['set_cyber_sonar', 'list_ui_controls', 'use_ui_control'].includes(tool.name),
+    (tool) =>
+      ![
+        'set_cyber_sonar',
+        'list_ui_controls',
+        'use_ui_control',
+        'resolve_area',
+        'find_imagery',
+        'osm_query',
+      ].includes(tool.name),
   );
   const panelIds = legacyTools.find((tool) => tool.name === 'set_panel_open').parameters.properties.panelId;
   panelIds.enum = panelIds.enum.filter((id) => !['ask-panel', 'street-level-panel', 'ultra-panel', 'social-panel', 'outbreak-panel', 'sst-panel'].includes(id));
@@ -1077,12 +1048,16 @@ test('the voice TOOL SCHEMA matches the pinned contract — the mission mapping 
   // Panel adds timeout and named voice/provider targets; consolidated guidance
   // preserves the mission mapping and globe-rotation arguments.
   // S2 GhostMaps extends the generated layer enums; both feature contracts remain.
-  // Re-derived 2026-10-29 for the upstream merge: upstream's 31,206 + the fork's
-  // 620 (its spoken layer names, now joined by ';' without a space).
-  assert.equal(block.length, 31826, 'serialized tool schema length drifted');
+  // The layer alias hint leaves out aliases the layer id already spells.
+  // The Utilities panel adds one set_panel_open target; Sea Marks and Ski
+  // Pistes extend the generated layer enums and alias hint; voice geometry
+  // adds the analyst area scopes and the osm-places layer (upstream 31,318).
+  // Re-derived 2026-11-04 for the eleventh upstream merge: with the fork's
+  // spoken layer names and panels, 31,885.
+  assert.equal(block.length, 31885, 'serialized tool schema length drifted');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    '8af8079abcc2a8ed3ed01a125495cc1ee6f4b6986ae0388ec571b626be864d46',
+    '6fc4140fa8b9797fc30fc2ebeed6fc391992b87bf498f4a7b7e72e7cc8958137',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
   const instructions = fs.readFileSync(

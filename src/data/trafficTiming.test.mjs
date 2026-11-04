@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { readLayerSource } from '../testSupport/readLayerSource.mjs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { readLayerSource } from '../testSupport/readLayerSource.mjs';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -138,8 +138,8 @@ test('traffic timing pairs real ordering to the scheduling change and guards re-
   const originalWarn = console.warn;
   const timeouts = new Map();
   let timerId = 0;
-  let cacheDir;
   let server;
+  const cacheDir = mkdtempSync(path.join(tmpdir(), 'gev-traffic-timing-vite-'));
   let trafficLayer;
   let viewer;
 
@@ -161,11 +161,11 @@ test('traffic timing pairs real ordering to the scheduling change and guards re-
       location: { search: '?trafficDebug=1' },
       addEventListener() {},
     };
-    // An isolated optimizer cache: the default (node_modules/.vite) is shared
-    // with a running dev server, whose pre-bundled deps this must not replace.
-    cacheDir = await mkdtemp(path.join(tmpdir(), 'gev-traffic-vite-'));
     server = await createServer({
       root: fileURLToPath(new URL('../..', import.meta.url)),
+      // Its own optimizer cache, not node_modules/.vite in the package tree:
+      // a host running Core's suite refuses files inside Core, and a running
+      // dev server's pre-bundled deps must not be replaced.
       cacheDir,
       configFile: false,
       // The checkout is the root, but its .env is this machine's: not loaded.
@@ -175,8 +175,9 @@ test('traffic timing pairs real ordering to the scheduling change and guards re-
       // No dependency scan and no watcher: without a config file Vite would
       // glob the whole checkout for entries (the provider caches and the AI
       // World data hold tens of thousands of files), and an SSR load waits
-      // for that scan.
-      optimizeDeps: { noDiscovery: true, entries: [] },
+      // for that scan. The test loads modules over SSR; the browser dependency
+      // optimizer would keep writing its cache after the server closes.
+      optimizeDeps: { noDiscovery: true, include: [], entries: [] },
       server: { middlewareMode: true, watch: null },
       plugins: [{
         name: 'traffic-timing-test-hooks',
@@ -347,7 +348,7 @@ test('traffic timing pairs real ordering to the scheduling change and guards re-
     console.warn = originalWarn;
     performance.clearMarks();
     performance.clearMeasures();
-    if (cacheDir) await rm(cacheDir, { recursive: true, force: true });
+    rmSync(cacheDir, { recursive: true, force: true, maxRetries: 3 });
   }
 });
 

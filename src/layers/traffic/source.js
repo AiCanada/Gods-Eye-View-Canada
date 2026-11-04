@@ -109,7 +109,10 @@ export function createTrafficSource({
   fetchImpl = (...args) => globalThis.fetch(...args),
   tileFetchImpl = (...args) => globalThis.fetch(...args),
   overpassFetchImpl = (...args) => globalThis.fetch(...args),
-  mapTiles = createOpenFreeMapSource({ fetchImpl: tileFetchImpl }),
+  mapTiles = createOpenFreeMapSource({
+    fetchImpl: tileFetchImpl,
+    selectDecoded: ({ roads }) => ({ roads }),
+  }),
 } = {}) {
   const flow = createFlowTileSource({ fetchImpl });
   let overpassUnconfigured = false;

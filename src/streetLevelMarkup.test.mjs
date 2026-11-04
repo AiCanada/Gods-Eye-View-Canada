@@ -3,13 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { expandApplicationHtml } from '../build/application-html.js';
+import { renderApplicationHtml } from './testSupport/applicationHtml.mjs';
 import { readStylesheet } from './testSupport/readStylesheet.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => fs.readFileSync(path.join(ROOT, file), 'utf8');
 
-const html = expandApplicationHtml(read('index.html'));
+const html = await renderApplicationHtml(read('index.html'));
 const css = readStylesheet(path.join(ROOT, 'style.css'));
 const panelCss = read('src/ui/styles/street-level.css');
 const panelChrome = read('src/ui/panelChrome.js');
@@ -18,21 +18,21 @@ const layoutController = read('src/ui/panelLayoutController.js');
 test('Street Level is a collapsible right-rail panel that starts collapsed', () => {
   assert.match(
     html,
-    /<div id="street-level-panel" class="panel-collapsible collapsed" data-panel-id="street-level-panel">/,
+    /<div id="street-level-panel" class="ui-panel panel-collapsible collapsed" data-panel-id="street-level-panel">/,
   );
   assert.match(
     html,
-    /<button class="panel-collapse-btn" data-collapse-target="street-level-panel"/,
+    /<button type="button" class="[^"]*\bpanel-collapse-btn\b[^"]*"[^>]*data-collapse-target="street-level-panel"/,
   );
   assert.match(
     html,
-    /<span class="panel-title" data-i18n>STREET LEVEL<\/span>/,
+    /<span class="ui-panel__title panel-title">STREET LEVEL<\/span>/,
   );
   // Provider-neutral header: no vendor mark; the inner restores its scroll.
   assert.doesNotMatch(html, /sl-mark|mly-mark/);
   assert.match(
     html,
-    /<div class="street-level-panel-inner" data-rail-scroller>/,
+    /<div class="street-level-panel-inner ui-scroll" data-rail-scroller>/,
   );
   assert.doesNotMatch(
     html,
@@ -137,9 +137,10 @@ test('the panel stays a portable, resizable window (fork)', () => {
     position,
     /id: 'street-level-panel',[\s\S]*?dockOnCollapse: true/,
   );
+  // The panel store presents the collapse (#1499), then the window hears it.
   assert.match(
     read('src/ui/panelChrome.js'),
-    /classList\.toggle\('collapsed', nextCollapsed\);[\s\S]{0,400}?this\._panelPosition\?\.onPanelCollapsed\?\.\(panelId, nextCollapsed, \{\s*explicit: explicit && !restore,\s*\}\)/,
+    /this\._presentPanel\(panelEl, \{ collapsed: nextCollapsed, auto: null \}\);[\s\S]{0,400}?this\._panelPosition\?\.onPanelCollapsed\?\.\(panelId, nextCollapsed, \{\s*explicit: explicit && !restore,\s*\}\)/,
   );
   assert.match(
     position,
