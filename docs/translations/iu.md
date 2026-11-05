@@ -112,6 +112,7 @@ phone page is unchanged.
 | preset                                   | ᐋᖅᑭᒃᓯᒪᔪᖅ                                    |
 | radio / station / receiver               | ᓈᓚᐅᑦ / ᑐᓴᖅᑎᑦᓯᕕᒃ / ᑐᓴᐅᑎ                      |
 | filter                                   | ᓴᓗᒻᒪᖅᓴᐃᔾᔪᑎ                                  |
+| fire / detection / confidence            | ᐃᑯᐊᓪᓚᒃᑐᖅ / ᓇᓂᔭᐅᔪᖅ / ᓇᓗᓇᙱᓐᓂᖓ                 |
 | colour: cyan, yellow, orange, red, green | ᐊᒥᐊᖓ: ᑐᖑᔪᖅ, ᖁᖅᓱᖅᑐᖅ, ᐊᐅᐸᔮᖅᑐᖅ, ᐊᐅᐸᖅᑐᖅ, ᐱᕈᖅᑐᑐᑦ |
 | dev server                               | dev ᖃᕋᓴᐅᔭᕐᔪᐊᖅ                               |
 

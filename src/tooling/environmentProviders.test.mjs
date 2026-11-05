@@ -432,11 +432,7 @@ test('terrain proxies built by re-evaluated module copies share one cache, one f
   // Vite re-bundles the config on an in-process restart, which evaluates
   // this module again and builds the proxy again: the `?copy=` import is such
   // a fresh evaluation, beside the copy imported at the top of this file.
-  delete globalThis.__GEV_TERRAIN_CACHE;
-  t.mock.method(fsp, 'readFile', async () => {
-    throw Error('no disk cache');
-  });
-  t.mock.method(fsp, 'writeFile', async () => {});
+  isolate(t);
   let calls = 0;
   t.mock.method(globalThis, 'fetch', async (raw) => {
     calls++;
@@ -486,12 +482,9 @@ test('terrain proxies built by re-evaluated module copies share one cache, one f
 test('a terrain proxy rebuilt by a restart keeps the 429 pause', async (t) => {
   // The pause lives with the shared cache, like the points: the copy a Vite
   // restart builds must not ask a rate-limited upstream before it is over.
-  delete globalThis.__GEV_TERRAIN_CACHE;
-  t.mock.method(fsp, 'readFile', async () => {
-    throw Error('no disk cache');
-  });
-  t.mock.method(fsp, 'writeFile', async () => {});
-  t.mock.method(console, 'warn', () => {});
+  // isolate() keeps the disk out (a real stat of this machine's cache file
+  // could outlast the mocked-time steps below).
+  isolate(t);
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1_000_000 });
   let calls = 0;
   t.mock.method(globalThis, 'fetch', async () => {

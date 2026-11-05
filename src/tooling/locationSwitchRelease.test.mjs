@@ -422,6 +422,14 @@ function mockTerrainDisk(t, points) {
       throw Object.assign(Error('absent'), { code: 'ENOENT' });
     return text;
   });
+  // The proxy measures the file before reading it: the same files answer,
+  // not this machine's own cache (past 24 MB it would not be read at all).
+  t.mock.method(fsp, 'stat', async (file) => {
+    const text = files.get(String(file));
+    if (text === undefined)
+      throw Object.assign(Error('absent'), { code: 'ENOENT' });
+    return { size: Buffer.byteLength(text) };
+  });
   t.mock.method(fsp, 'mkdir', async () => {});
   t.mock.method(fsp, 'writeFile', async (file, text) => {
     disk.writes.push(String(file));

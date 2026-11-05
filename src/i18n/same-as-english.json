@@ -81,6 +81,7 @@
     "Dance",
     "DAX",
     "dB",
+    "fire confidence filter|Nominal+",
     "Delivery Hero",
     "Dengue (mosquito)",
     "DEST ---°",
@@ -309,6 +310,7 @@
     "{value} KM",
     "{value} KM/H",
     "{value} KM/S",
+    "≥ {value} MW",
     "{verb}...",
     "×{n}",
     "ΔE",
@@ -612,6 +614,7 @@
     "ΔE",
     "ΔN",
     "Ⅱ PAUSE",
+    "≥ {value} MW",
     "▲ {frp} MW",
     "Audio",
     "Conversation",
@@ -876,6 +879,7 @@
     "×{n}",
     "ΔE",
     "ΔN",
+    "≥ {value} MW",
     "▲ {frp} MW"
   ],
   "egy": [
@@ -1109,6 +1113,7 @@
     "×{n}",
     "ΔE",
     "ΔN",
+    "≥ {value} MW",
     "▲ {frp} MW"
   ],
   "zh-CN": [
@@ -1164,6 +1169,7 @@
     "{type}  SPD: {speed}  HDG: {heading}",
     "{value} KM",
     "{value} KM/S",
+    "≥ {value} MW",
     "ΔE",
     "ΔN",
     "▲ {frp} MW"
@@ -1221,6 +1227,7 @@
     "{type}  SPD: {speed}  HDG: {heading}",
     "{value} KM",
     "{value} KM/S",
+    "≥ {value} MW",
     "ΔE",
     "ΔN",
     "▲ {frp} MW"
@@ -1389,6 +1396,7 @@
     "{value} KM/S",
     "ΔN",
     "Ⅱ PAUSE",
+    "≥ {value} MW",
     "▲ {frp} MW",
     "Audio",
     "CHAT",
@@ -1422,6 +1430,7 @@
     "CCTV",
     "CCTV OFF",
     "CCTV ON",
+    "CHAT",
     "COCKPIT",
     "COMMERCIAL",
     "CONTACT",
@@ -1572,6 +1581,7 @@
     "ΔE",
     "ΔN",
     "Ⅱ PAUSE",
+    "≥ {value} MW",
     "▲ {frp} MW",
     "Audio",
     "Conversation",
@@ -1743,6 +1753,7 @@
     "{value} KM/H",
     "{value} KM/S",
     "{value} conf",
+    "≥ {value} MW",
     "ΔE",
     "ΔN",
     "▲ {frp} MW",
@@ -1799,6 +1810,7 @@
     "{type}  SPD: {speed}  HDG: {heading}",
     "ΔE",
     "ΔN",
+    "≥ {value} MW",
     "▲ {frp} MW"
   ],
   "pt": [
@@ -1909,6 +1921,7 @@
     "WHOT/BHOT",
     "WX",
     "dB",
+    "fire confidence filter|Nominal+",
     "fire confidence|nominal",
     "ft",
     "hPa",
@@ -1928,6 +1941,7 @@
     "{value} KM/S",
     "ΔN",
     "▲ {frp} MW",
+    "≥ {value} MW",
     "CHAT",
     "Chat",
     "RADAR · {units}"

@@ -16,8 +16,12 @@ const AUSTIN = { lon: -97.7, lat: 30.2 };
 const TOKYO = { lon: 139.7, lat: 35.7 };
 /** Camera height inside the 'local' band: individual detections as sprites. */
 const DETECTIONS_HEIGHT_M = 1_500_000;
-/** Camera height inside the 'global' band: aggregated heat-cell rectangles. */
-const CELLS_HEIGHT_M = 12_000_000;
+/**
+ * Camera height inside the 'global' band: the worldwide heatmap draped over
+ * the globe, the "N FIRES" cards, and the nearest band's markers kept built
+ * (faded out) underneath for the hand-off.
+ */
+const HEAT_HEIGHT_M = 12_000_000;
 const FROM = { key: 'US-TX', region: 'US-TX', country: 'US', lat: AUSTIN.lat, lon: AUSTIN.lon };
 const TO = { key: 'JP-13', region: 'JP-13', country: 'JP', lat: TOKYO.lat, lon: TOKYO.lon };
 
@@ -27,7 +31,7 @@ class MockEvent {
   emit() { for (const listener of [...this.listeners]) listener(); }
 }
 
-/** Canvas stub good enough for the pre-baked glow sprites. */
+/** Canvas stub good enough for the pre-baked glow sprites and the heatmap. */
 function canvasStub() {
   return {
     width: 0,
@@ -36,6 +40,10 @@ function canvasStub() {
       createRadialGradient: () => ({ addColorStop() {} }),
       fillStyle: null,
       fillRect() {},
+      createImageData: (width, height) => ({
+        data: new Uint8ClampedArray(width * height * 4),
+      }),
+      putImageData() {},
     }),
     toDataURL: () => 'data:image/png;base64,iVBORw0KGgo=',
   };
@@ -57,7 +65,7 @@ function rawFire(lat, lon, frp) {
   };
 }
 
-function createHarness(rawFires, { height = DETECTIONS_HEIGHT_M, overlayHost = {} } = {}) {
+function createHarness(rawFires, { height = DETECTIONS_HEIGHT_M, overlayHost = {}, imagery = false } = {}) {
   const originalFetch = globalThis.fetch;
   const hadWindow = Object.hasOwn(globalThis, 'window');
   const originalWindow = globalThis.window;
@@ -94,7 +102,24 @@ function createHarness(rawFires, { height = DETECTIONS_HEIGHT_M, overlayHost = {
   const dataSources = [];
   const published = [];
   const cleared = [];
+  // The globe's imagery stack, where the heatmap drapes (only when asked for:
+  // without one the heatmap has no host and draws nothing).
+  const heatLayers = [];
+  const imageryLayers = {
+    addImageryProvider: (provider) => {
+      const layer = { provider, show: true, alpha: 1 };
+      heatLayers.push(layer);
+      return layer;
+    },
+    remove: (layer) => {
+      const at = heatLayers.indexOf(layer);
+      if (at >= 0) heatLayers.splice(at, 1);
+      return at >= 0;
+    },
+    raiseToTop: () => {},
+  };
   const viewer = {
+    ...(imagery ? { imageryLayers } : {}),
     dataSources: { add: (value) => { dataSources.push(value); return value; }, remove: () => {} },
     camera: {
       moveEnd,
@@ -142,8 +167,8 @@ function createHarness(rawFires, { height = DETECTIONS_HEIGHT_M, overlayHost = {
     },
     /** Sprites currently in the real BillboardCollection. */
     sprites: () => primitives[0]?.length ?? 0,
-    /** Heat-cell rectangle entities currently in the layer's data source. */
-    cellEntities: () => dataSources[0].entities.values.length,
+    /** Heatmap imagery layers draped on the globe right now. */
+    heatLayers: () => [...heatLayers],
     publishCount: () => published.length,
     latestEntries: () => published[published.length - 1] || [],
     /** `show` flags keyed by billboard pick id. */
@@ -268,6 +293,27 @@ test('a poll that lands mid-switch keeps its data and leaves drawing to the arri
   }
 });
 
+test('an intensity filter change mid-switch filters the kept data and leaves drawing to the arrival', async () => {
+  const h = createHarness([
+    rawFire(AUSTIN.lat, AUSTIN.lon, 120),
+    rawFire(TOKYO.lat, TOKYO.lon, 800),
+  ]);
+  try {
+    await h.boot();
+    h.layer.onLocationLeave({ from: FROM, to: TO, enabled: true });
+
+    h.layer.setParams({ minFrp: 500 });
+    assert.equal(h.layer.getStats().count, 1, 'the filter applies to the kept data at once');
+    assert.equal(h.sprites(), 0, 'nothing is drawn for the mid-flight view');
+
+    h.moveCameraTo(TOKYO.lon, TOKYO.lat);
+    h.layer.onLocationArrive({ from: FROM, to: TO });
+    assert.equal(h.sprites(), 1, 'arrival draws the filtered set');
+  } finally {
+    h.cleanup();
+  }
+});
+
 test('an arrival superseded by a newer switch keeps the rebuild hold', async () => {
   const h = createHarness([rawFire(AUSTIN.lat, AUSTIN.lon, 120)]);
   try {
@@ -288,20 +334,32 @@ test('an arrival superseded by a newer switch keeps the rebuild hold', async () 
   }
 });
 
-test('in the heat-cell bands leave removes the old view\'s cell rectangles', async () => {
+test('in the far heat bands leave releases the old view\'s markers and cards but keeps the worldwide heatmap', async () => {
+  // Since #1426 the far bands drape one heatmap built from every fire shown,
+  // not cell rectangles for the view; it is not old-location data.
   const h = createHarness([
     rawFire(AUSTIN.lat, AUSTIN.lon, 120),
     rawFire(TOKYO.lat, TOKYO.lon, 800),
-  ], { height: CELLS_HEIGHT_M });
+  ], { height: HEAT_HEIGHT_M, imagery: true });
   try {
     await h.boot();
-    assert.ok(h.cellEntities() > 0, 'precondition: heat cells are rendered');
+    assert.ok(h.sprites() > 0, 'precondition: the hand-off markers are built under the heatmap');
+    assert.ok(h.latestEntries().length > 0, 'precondition: the far band publishes its cards');
+    assert.equal(h.heatLayers().length, 1, 'precondition: the heatmap is draped');
+    const [heat] = h.heatLayers();
+    const clears = h.cleared.length;
 
     h.layer.onLocationLeave({ from: FROM, to: TO, enabled: true });
-    assert.equal(h.cellEntities(), 0);
+    assert.equal(h.sprites(), 0, 'the old view\'s markers are released');
+    assert.deepEqual(h.cleared.slice(clears), [FIRMS_OVERLAY_SOURCE_ID], 'the old view\'s cards are cleared');
+    assert.deepEqual(h.heatLayers(), [heat], 'the worldwide heatmap stays draped');
+    const publishes = h.publishCount();
 
     h.layer.onLocationArrive({ from: FROM, to: TO });
-    assert.ok(h.cellEntities() > 0, 'arrival rebuilds the cells from the kept aggregation');
+    assert.ok(h.sprites() > 0, 'arrival rebuilds the markers from the kept data');
+    assert.ok(h.publishCount() > publishes, 'arrival republishes the cards');
+    assert.ok(h.latestEntries().length > 0);
+    assert.deepEqual(h.heatLayers(), [heat], 'arrival keeps the same heatmap');
   } finally {
     h.cleanup();
   }

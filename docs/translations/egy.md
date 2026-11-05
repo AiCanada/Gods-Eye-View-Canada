@@ -120,6 +120,7 @@ only: touch has no hover, so the phone page is unchanged.
 | weather                              | 𓋴𓐍𓂋𓏲𓏛𓏥 𓊪𓏏𓇯                     | _sḫr.w p.t_                             | conditions of the sky                  |
 | forecast, predict                    | 𓋴𓂋𓃱                            | _sr_                                    | to foretell                            |
 | earthquake                           | 𓏌𓅨𓂋 𓇾𓈇𓏤                        | _nwr tꜣ_                                | trembling of the earth                 |
+| fire / detection / confidence        | 𓋴𓆓𓏏𓊮 / 𓋴𓇋𓋷𓄿𓅆 / 𓌳𓂝𓏏             | _sḏ.t / sꞽꜣ / mꜣꜥ.t_                    | flame / perception / truth             |
 | outbreak, epidemic                   | 𓇋𓄿𓂧𓏏𓅪                          | _ꞽꜣd.t_                                 | pestilence                             |
 | key (API key)                        | 𓐍𓏏𓅓𓋩                           | _ḫtm_                                   | seal                                   |
 | token                                | 𓎗𓅱                             | _wḏ_                                    | decree                                 |
@@ -140,6 +141,7 @@ only: touch has no hover, so the phone page is unchanged.
 | train (a model)                      | 𓇼𓄿𓀜                            | _sbꜣ_                                   | to teach                               |
 | on / off                             | 𓂋𓌘𓋴 / 𓋴𓇦𓂋                      | _rs / sḏr_                              | awake / asleep                         |
 | save / remove / delete               | 𓋴𓏠𓈖 / 𓋴𓎛𓁷𓂋 / 𓋴𓎡𓎝               | _smn / sḥri̯ / sk_                       | make firm / make far / wipe out        |
+| show                                 | 𓋴𓈍𓂝𓏛                           | _sḫꜥ_                                   | to make appear                         |
 | open / close / search                | 𓃹𓈖 / 𓐍𓏏𓋩 / 𓎛𓎛𓏭𓂻                | _wn / ḫtm / ḥꞽḥꞽ_                       |                                        |
 | clear                                | 𓅱𓂝𓃂                            | _wꜥb_                                   | to purify                              |
 | click, press                         | 𓂧𓏇                             | _dmꞽ_                                   | to touch                               |

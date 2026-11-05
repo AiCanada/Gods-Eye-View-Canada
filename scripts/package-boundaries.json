@@ -929,7 +929,10 @@
       "src/ui/kit/UiButton.vue",
       "src/ui/kit/UiBadge.vue",
       "src/ui/rail/fieldValue.js",
-      "src/ui/kit/UiSlider.js"
+      "src/ui/kit/UiSlider.js",
+      "src/ui/layerPanel/RowSwitch.vue",
+      "src/ui/layerPanel/RowSlider.vue",
+      "src/ui/kit/UiSegmented.vue"
     ],
     "external": ["vue"]
   },
@@ -1388,7 +1391,11 @@
       "src/ui/kit/UiBadge.vue",
       "src/ui/stores/globeActions.js",
       "src/ui/stores/recording.js",
-      "src/ui/i18n.js"
+      "src/ui/i18n.js",
+      "src/data/firmsIntensity.js",
+      "src/ui/layerPanel/RowSwitch.vue",
+      "src/ui/layerPanel/RowSlider.vue",
+      "src/ui/kit/UiSegmented.vue"
     ],
     "external": ["cesium", "vue", "pinia", "vue-i18n"]
   },
@@ -1608,7 +1615,8 @@
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
       "src/data/headingDegrees.js",
-      "src/i18n/locales/ar.json"
+      "src/i18n/locales/ar.json",
+      "src/data/firmsIntensity.js"
     ],
     "external": ["cesium"]
   },
@@ -1671,7 +1679,8 @@
       "src/layers/military/locationSwitch.js",
       "src/i18n/marker.js",
       "src/data/headingDegrees.js",
-      "src/i18n/locales/ar.json"
+      "src/i18n/locales/ar.json",
+      "src/data/firmsIntensity.js"
     ],
     "external": ["cesium"]
   },
@@ -1701,7 +1710,8 @@
       "src/layers/aircraft/classification.js",
       "src/layers/aircraft/index.js",
       "src/data/inputOwnership.js",
-      "src/i18n/marker.js"
+      "src/i18n/marker.js",
+      "src/data/firmsIntensity.js"
     ],
     "external": ["cesium"]
   },
@@ -1831,7 +1841,10 @@
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
-      "src/i18n/locales/ar.json"
+      "src/i18n/locales/ar.json",
+      "src/data/firmsIntensity.js",
+      "src/data/firmsHeatRaster.js",
+      "src/layers/firms/heatImagery.js"
     ],
     "external": ["cesium"]
   },
@@ -2375,7 +2388,8 @@
       "src/i18n/locales/uk.json",
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
-      "src/i18n/locales/ar.json"
+      "src/i18n/locales/ar.json",
+      "src/data/firmsIntensity.js"
     ],
     "external": ["cesium"]
   },
@@ -3675,7 +3689,12 @@
       "src/voice/osmActions.js",
       "src/layers/osmPlaces/index.js",
       "src/app/layers/osmPlaces.js",
-      "src/voice/areaActions.js"
+      "src/voice/areaActions.js",
+      "src/data/firmsIntensity.js",
+      "src/data/firmsHeatRaster.js",
+      "src/layers/firms/heatImagery.js",
+      "src/ui/layerPanel/RowSwitch.vue",
+      "src/ui/layerPanel/RowSlider.vue"
     ],
     "external": [
       "hls.js",
@@ -4329,7 +4348,10 @@
       "src/data/local_data/wof_neighborhoods/files.js",
       "src/layers/osmPlaces/model.js",
       "src/layers/osmPlaces/index.js",
-      "src/app/layers/osmPlaces.js"
+      "src/app/layers/osmPlaces.js",
+      "src/data/firmsIntensity.js",
+      "src/data/firmsHeatRaster.js",
+      "src/layers/firms/heatImagery.js"
     ],
     "external": [
       "hls.js",
@@ -4490,7 +4512,8 @@
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
       "src/i18n/marker.js",
-      "src/i18n/locales/ar.json"
+      "src/i18n/locales/ar.json",
+      "src/data/firmsIntensity.js"
     ],
     "external": []
   },
@@ -5309,7 +5332,9 @@
       "src/tools/queries/panelRequest.js",
       "src/geoDistance.js",
       "src/visualStylePolicy.js",
-      "src/data/headingDegrees.js"
+      "src/data/headingDegrees.js",
+      "src/data/firmsIntensity.js",
+      "src/data/firmsAdapt.js"
     ],
     "external": ["satellite.js"]
   },
@@ -5412,7 +5437,8 @@
       "src/data/idSwitches.js",
       "src/data/layerState.js",
       "src/data/layerStateTokenReservations.json",
-      "src/visualStylePolicy.js"
+      "src/visualStylePolicy.js",
+      "src/data/firmsIntensity.js"
     ],
     "external": []
   },
@@ -5489,7 +5515,8 @@
       "src/data/detectionPolicy.js",
       "src/scopeMaskPolicy.js",
       "src/i18n/marker.js",
-      "src/visualStylePolicy.js"
+      "src/visualStylePolicy.js",
+      "src/data/firmsIntensity.js"
     ],
     "external": []
   },

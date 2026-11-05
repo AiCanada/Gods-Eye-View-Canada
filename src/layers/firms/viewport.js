@@ -153,6 +153,9 @@ export function createViewport({
         // A location switch is different: its leave released every sprite, so a
         // mid-flight tick has nothing to cull and must not rebuild the view.
         if (!layerState._enabled || layerState._locationSwitching) return;
+        // Every frame, ahead of the throttle: a fast zoom crosses the whole
+        // hand-off between two band checks.
+        components.rendering.applyHandoffFade();
         const now = performance.now();
         if (now - layerState._lastLodCheck < LOD_CHECK_MS) return;
         layerState._lastLodCheck = now;

@@ -1,5 +1,40 @@
 # Changelog
 
+- Upstream merge of 59 commits (Active Fires colored by fire radiative power,
+  with a minimum-FRP slider, an All / Nominal+ / High confidence switch and an
+  "N of M shown" counter in the layer row, a far-zoom heatmap that cross-fades
+  with the markers, and share links and `get_active_fires` that keep the
+  filter #1426 #1535; the Bosch MIC PTZ datasheet records that the City of
+  Amsterdam camera register names #1319; Data Centers and Dams markers
+  ground-sampled only where the camera sees the ground under them #1464; and
+  the typed AI chat translations finished in upstream's eleven languages
+  #1545). Fork fits: the location switch's Active Fires hold (nothing redrawn
+  mid-flight, the arrival draws once) also holds the heatmap's per-frame fade
+  and a filter change made during the flight; the heatmap is built from the
+  worldwide fire set, so a switch keeps it, as it keeps the data. The fork's
+  far-band switch test checked the cell rectangles #1426 replaced; it now
+  checks that the markers and cards go and the heatmap stays, and a filter
+  change in flight has a test of its own. #1426's 13
+  strings and the two quick commands #1545 now translates ("Reset to globe
+  view", "Show earthquakes") are in fr-CA, iu and egy (confidence is
+  Inuktitut ᓇᓗᓇᙱᓐᓂᖓ, certainty, and Egyptian 𓌳𓂝𓏏 _mꜣꜥ.t_, truth, both now
+  in their glossaries), and #1545's review carries over where the fork's
+  languages had the same faults. Quebec
+  French takes the French corrections that fit it (calques such as "Travail
+  sur la carte…", Développer for Expand as its glossary has it, the article in
+  "l'OAuth ChatGPT") and keeps clavardage for chat. Inuktitut "What am I
+  looking at?" asked "are you looking at me?" (-pinga) and now asks what the
+  thing I am looking at is (-tara). The quick commands that say "Show" use the
+  word for show every other string uses (Inuktitut ᑕᑯᒃᓴᐅᑎᓪᓗᒋᑦ; Egyptian
+  𓋴𓈍𓂝𓏛 _sḫꜥ_, which had read "open" and is now in its glossary). No fork
+  camera pack names a Bosch MIC model yet. Fork terrain tests no longer
+  measure this machine's real cache file: the shared-cache tests use the
+  file's `isolate()` (a real stat on a busy disk could outlast the mocked-time
+  steps, so the 429 restart test failed once in a full run and took the next
+  test with it), and the location-switch disk fixture answers `stat` from its
+  own files (past 24 MB, the real cache would have been skipped, failing all
+  three).
+
 - Upstream merge of 602 commits (the interface rebuilt as Vue 3 and Pinia
   views #1499, typed AI chat beside the mic #1507, the Utilities panel with
   Directions, Draw and Import #1469, Prohibited & Restricted Airspace, OSM

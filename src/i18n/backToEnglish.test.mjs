@@ -112,11 +112,11 @@ for (const [locale, catalog] of [
       englishFor(files.one.replace('{count}', '1')),
       '1 file selected',
     );
+    // Not Live Flights: in egy, "Show {name}" around it is the catalog's own
+    // "Show live flights" line, and a whole line reads back as itself.
     assert.equal(
-      englishFor(
-        catalog['Show {name}'].replace('{name}', catalog['Live Flights']),
-      ),
-      'Show Live Flights',
+      englishFor(catalog['Show {name}'].replace('{name}', catalog.Satellites)),
+      'Show Satellites',
     );
     const joined = englishFor(`${catalog['Live Flights']} · ${catalog.Pause}`);
     assert.match(joined, /^Live Flights · /);
