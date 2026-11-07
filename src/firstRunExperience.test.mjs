@@ -1031,6 +1031,14 @@ test('the voice TOOL SCHEMA matches the pinned contract — the mission mapping 
     'noir',
   ]);
   visualStyle.enum = [...visualStyle.enum, 'snow'];
+  // Tilt to an angle adds pitchDeg and rewords direction; restore
+  // the legacy camera fields to keep the pin.
+  const camera = legacyTools.find((tool) => tool.name === 'move_camera')
+    .parameters.properties;
+  assert.equal(camera.pitchDeg.type, 'number');
+  delete camera.pitchDeg;
+  camera.direction.description =
+    'Required for pan/tilt/rotate; orbit/rotate_globe default right.';
   const block = JSON.stringify(legacyTools);
   // Re-derived for the voice layer manifest (generated layer enums, alias and
   // field hints), point-and-ask's pointer/referent arguments and the prompt
@@ -1051,13 +1059,14 @@ test('the voice TOOL SCHEMA matches the pinned contract — the mission mapping 
   // The layer alias hint leaves out aliases the layer id already spells.
   // The Utilities panel adds one set_panel_open target; Sea Marks and Ski
   // Pistes extend the generated layer enums and alias hint; voice geometry
-  // adds the analyst area scopes and the osm-places layer (upstream 31,318).
-  // Re-derived 2026-11-04 for the eleventh upstream merge: with the fork's
-  // spoken layer names and panels, 31,885.
-  assert.equal(block.length, 31885, 'serialized tool schema length drifted');
+  // adds the analyst area scopes and the osm-places layer; control_cockpit
+  // states the own-layer entry rule (Contacts not required) (upstream
+  // 31,372). Re-derived 2026-11-07 for the fourteenth upstream merge: with
+  // the fork's spoken layer names and panels, 31,939.
+  assert.equal(block.length, 31939, 'serialized tool schema length drifted');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    '6fc4140fa8b9797fc30fc2ebeed6fc391992b87bf498f4a7b7e72e7cc8958137',
+    'c951f0ae124fa970cfe2a13daea5cc9882ed1f79df5496773c886572ed970fa5',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
   const instructions = fs.readFileSync(

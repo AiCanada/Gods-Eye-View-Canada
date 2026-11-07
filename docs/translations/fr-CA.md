@@ -78,6 +78,9 @@ chargées », « {count} d'aéronefs captés ».
 | mapped / observed                           | cartographié / observé                                   |
 | camera / CCTV camera                        | caméra / caméra CCTV                                     |
 | earthquake / active fire / contained        | séisme / feu actif / maîtrisé                            |
+| wildlife (layer group) / Wildlife Sightings | faune et flore / Observations naturalistes               |
+| sighting / marker (GhostMaps)               | observation / repère                                     |
+| whales (WHALES chip) / cetacean             | CÉTACÉS / cétacé                                         |
 | radio station / tune                        | station de radio / syntoniser                            |
 | road / flow (traffic) / traffic             | route / circulation / circulation                        |
 | transit / bus / ferry / bike share          | transport en commun / autobus / traversier / vélopartage |

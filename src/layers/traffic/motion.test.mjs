@@ -246,10 +246,12 @@ test('flow closing a queued road cannot leave a population reconciliation loop',
 });
 
 test('street and city budgets carry no vehicle ceiling (owner rule: no max on traffic)', async () => {
-  const { roadDotBudget, MAX_DOTS, HEAT_LINE_CAP } =
+  const { roadDotBudget, MAX_DOTS, HEAT_LINE_CAP, FLOW_LINE_CAP } =
     await import('./policy.js');
   assert.equal(MAX_DOTS, Infinity);
   assert.equal(HEAT_LINE_CAP, Infinity);
+  // Upstream's flow lines (the Lines toggle, #1609) carry no ceiling either.
+  assert.equal(FLOW_LINE_CAP, Infinity);
   for (const altitude of [450, 1000, 3000, 8000])
     assert.equal(roadDotBudget(altitude), Infinity);
 });

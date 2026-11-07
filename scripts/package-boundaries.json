@@ -164,7 +164,11 @@
       "src/ui/views/fork/OutbreakPanel.vue",
       "src/ui/views/fork/UltraPanel.vue",
       "src/i18n/marker.js",
-      "src/i18n/fork-locales.json"
+      "src/i18n/fork-locales.json",
+      "src/ui/cockpitPresentation.js",
+      "src/data/headingDegrees.js",
+      "src/data/distanceFormat.js",
+      "src/ui/surfaceKeyboard.js"
     ],
     "external": ["vue", "pinia", "vue-i18n"]
   },
@@ -177,7 +181,8 @@
       "src/sky/starrySky.js",
       "src/sky/stars.js",
       "src/data/bundledJson.js",
-      "src/renderGovernor.js"
+      "src/renderGovernor.js",
+      "src/globeInView.js"
     ],
     "external": ["cesium"]
   },
@@ -220,7 +225,21 @@
       "src/localRequestGate.mjs",
       "server/shared/keySetupHardening.mjs",
       "server/providers/common/process-shared.js",
-      "src/sources/adsbFields.js"
+      "src/sources/adsbFields.js",
+      "server/providers/acartia.js",
+      "server/providers/common/rate-limit.js",
+      "server/providers/common/same-site.js",
+      "server/providers/common/userAgent.js",
+      "server/providers/inaturalist/client.js",
+      "server/providers/inaturalist/observations.js",
+      "src/layers/wildlifeSightings/records.js",
+      "src/layers/wildlifeSightings/policy.js",
+      "src/sources/rateLimit.js",
+      "src/layers/wildlifeSightings/bounds.js",
+      "src/layers/wildlifeSightings/acartiaTaxa.js",
+      "server/providers/inaturalist/grid.js",
+      "src/layers/wildlifeSightings/gridViewport.js",
+      "server/providers/inaturalist/queue.js"
     ],
     "external": ["ws"]
   },
@@ -765,7 +784,8 @@
       "src/sources/httpBody.js",
       "src/i18n/marker.js",
       "src/sources/nominatim.js",
-      "src/sources/nominatimStatus.js"
+      "src/sources/nominatimStatus.js",
+      "src/data/placeNames.js"
     ],
     "external": []
   },
@@ -1123,7 +1143,9 @@
       "src/ui/cockpitContextState.js",
       "src/ui/cockpitInstrumentState.js",
       "src/ui/cockpitRollingValue.js",
-      "src/i18n/locales/ar.json"
+      "src/i18n/locales/ar.json",
+      "src/data/inputOwnership.js",
+      "src/ui/layerNames.js"
     ],
     "external": ["cesium"]
   },
@@ -1395,7 +1417,15 @@
       "src/data/firmsIntensity.js",
       "src/ui/layerPanel/RowSwitch.vue",
       "src/ui/layerPanel/RowSlider.vue",
-      "src/ui/kit/UiSegmented.vue"
+      "src/ui/kit/UiSegmented.vue",
+      "src/data/inputOwnership.js",
+      "src/ui/wildlifeSightingCard.js",
+      "src/layers/wildlifeSightings/records.js",
+      "src/layers/wildlifeSightings/acartiaTaxa.js",
+      "src/ui/views/panels/WildlifeSightingCard.vue",
+      "src/ui/wildlifeSightingPlacement.js",
+      "src/overlays/worldOverlayChrome.js",
+      "src/layers/wildlifeSightings/photoText.js"
     ],
     "external": ["cesium", "vue", "pinia", "vue-i18n"]
   },
@@ -2039,7 +2069,11 @@
       "src/data/headingDegrees.js",
       "src/data/distanceFormat.js",
       "src/awarenessEcho.js",
-      "src/i18n/locales/ar.json"
+      "src/i18n/locales/ar.json",
+      "src/data/feedState.js",
+      "src/loadingFeedback.js",
+      "src/data/installationFeedback.js",
+      "src/ui/layerNames.js"
     ],
     "external": ["cesium"]
   },
@@ -3694,7 +3728,35 @@
       "src/data/firmsHeatRaster.js",
       "src/layers/firms/heatImagery.js",
       "src/ui/layerPanel/RowSwitch.vue",
-      "src/ui/layerPanel/RowSlider.vue"
+      "src/ui/layerPanel/RowSlider.vue",
+      "src/app/layers/cyclones.js",
+      "src/globeInView.js",
+      "src/data/rioRouteNames.js",
+      "src/app/layers/wildlifeSightings.js",
+      "src/layers/wildlifeSightings/cards.js",
+      "src/layers/wildlifeSightings/controls.js",
+      "src/layers/wildlifeSightings/index.js",
+      "src/layers/wildlifeSightings/lifecycle.js",
+      "src/layers/wildlifeSightings/model.js",
+      "src/layers/wildlifeSightings/photos.js",
+      "src/layers/wildlifeSightings/policy.js",
+      "src/layers/wildlifeSightings/records.js",
+      "src/layers/wildlifeSightings/rendering.js",
+      "src/layers/wildlifeSightings/density.js",
+      "src/layers/wildlifeSightings/selection.js",
+      "src/layers/wildlifeSightings/source.js",
+      "src/layers/wildlifeSightings/viewport.js",
+      "src/layers/wildlifeSightings/bounds.js",
+      "src/layers/wildlifeSightings/acartiaTaxa.js",
+      "src/ui/wildlifeSightingCard.js",
+      "src/ui/views/panels/WildlifeSightingCard.vue",
+      "src/layers/wildlifeSightings/gridViewport.js",
+      "src/layers/wildlifeSightings/billboardModel.js",
+      "src/layers/wildlifeSightings/sprites.js",
+      "src/ui/wildlifeSightingPlacement.js",
+      "src/overlays/worldOverlayChrome.js",
+      "src/layers/wildlifeSightings/photoText.js",
+      "src/layers/wildlifeSightings/performance.js"
     ],
     "external": [
       "hls.js",
@@ -4351,7 +4413,37 @@
       "src/app/layers/osmPlaces.js",
       "src/data/firmsIntensity.js",
       "src/data/firmsHeatRaster.js",
-      "src/layers/firms/heatImagery.js"
+      "src/layers/firms/heatImagery.js",
+      "src/data/feedState.js",
+      "src/loadingFeedback.js",
+      "src/app/layers/cyclones.js",
+      "src/globeInView.js",
+      "src/scopeMaskPolicy.js",
+      "src/scopeMask.js",
+      "src/data/rioRouteNames.js",
+      "src/app/layers/wildlifeSightings.js",
+      "src/layers/wildlifeSightings/cards.js",
+      "src/layers/wildlifeSightings/controls.js",
+      "src/layers/wildlifeSightings/index.js",
+      "src/layers/wildlifeSightings/lifecycle.js",
+      "src/layers/wildlifeSightings/model.js",
+      "src/layers/wildlifeSightings/photos.js",
+      "src/layers/wildlifeSightings/policy.js",
+      "src/layers/wildlifeSightings/records.js",
+      "src/layers/wildlifeSightings/rendering.js",
+      "src/layers/wildlifeSightings/density.js",
+      "src/layers/wildlifeSightings/selection.js",
+      "src/layers/wildlifeSightings/source.js",
+      "src/layers/wildlifeSightings/viewport.js",
+      "src/ui/rail/utcClock.js",
+      "src/layers/wildlifeSightings/bounds.js",
+      "src/layers/wildlifeSightings/acartiaTaxa.js",
+      "src/layers/wildlifeSightings/gridViewport.js",
+      "src/layers/wildlifeSightings/billboardModel.js",
+      "src/layers/wildlifeSightings/sprites.js",
+      "src/overlays/worldOverlayChrome.js",
+      "src/layers/wildlifeSightings/photoText.js",
+      "src/layers/wildlifeSightings/performance.js"
     ],
     "external": [
       "hls.js",
@@ -4915,7 +5007,15 @@
       "src/layers/airQuality/model.js",
       "src/layers/airQuality/source.js",
       "src/layers/droneAirspace/source.js",
-      "src/layers/droneAirspace/records.js"
+      "src/layers/droneAirspace/records.js",
+      "src/layers/wildlifeSightings/policy.js",
+      "src/layers/wildlifeSightings/records.js",
+      "src/layers/wildlifeSightings/source.js",
+      "src/layers/wildlifeSightings/viewport.js",
+      "src/layers/wildlifeSightings/bounds.js",
+      "src/layers/wildlifeSightings/acartiaTaxa.js",
+      "src/layers/wildlifeSightings/gridViewport.js",
+      "src/layers/wildlifeSightings/performance.js"
     ],
     "external": []
   },
@@ -4974,7 +5074,8 @@
       "src/sources/transitHistory.js",
       "src/sources/transitService.js",
       "src/sources/transitHistoryStore.js",
-      "src/sources/rateLimit.js"
+      "src/sources/rateLimit.js",
+      "src/data/rioRouteNames.js"
     ],
     "external": ["pbf"]
   },
@@ -4985,7 +5086,8 @@
       "src/data/transitFeeds.js",
       "src/geoDistance.js",
       "src/data/transitProxy.js",
-      "src/sources/transitHistory.js"
+      "src/sources/transitHistory.js",
+      "src/data/rioRouteNames.js"
     ],
     "external": ["pbf"]
   },
@@ -5068,7 +5170,9 @@
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
       "src/data/headingDegrees.js",
-      "src/i18n/locales/ar.json"
+      "src/i18n/locales/ar.json",
+      "src/data/rioRouteNames.js",
+      "src/overlays/worldOverlayChrome.js"
     ],
     "external": ["cesium", "egm96-universal", "pbf"]
   },
@@ -5125,7 +5229,8 @@
       "src/i18n/locales/zh-CN.json",
       "src/i18n/locales/zh-Hant.json",
       "src/data/headingDegrees.js",
-      "src/i18n/locales/ar.json"
+      "src/i18n/locales/ar.json",
+      "src/data/rioRouteNames.js"
     ],
     "external": ["cesium", "pbf"]
   },
@@ -5149,7 +5254,8 @@
       "src/sources/transitHistory.js",
       "src/sources/transitService.js",
       "src/sources/transitHistoryStore.js",
-      "src/sources/rateLimit.js"
+      "src/sources/rateLimit.js",
+      "src/data/rioRouteNames.js"
     ],
     "external": ["pbf"]
   },
@@ -5334,7 +5440,8 @@
       "src/visualStylePolicy.js",
       "src/data/headingDegrees.js",
       "src/data/firmsIntensity.js",
-      "src/data/firmsAdapt.js"
+      "src/data/firmsAdapt.js",
+      "src/data/rioRouteNames.js"
     ],
     "external": ["satellite.js"]
   },
@@ -5494,6 +5601,70 @@
       "src/i18n/marker.js"
     ],
     "external": ["cesium"]
+  },
+  "wildlife-sightings": {
+    "exports": ["./layers/wildlife-sightings"],
+    "modules": [
+      "src/data/dataCredits.js",
+      "src/data/iconOrientation.js",
+      "src/i18n/index.js",
+      "src/i18n/locale.js",
+      "src/i18n/locales/ar.json",
+      "src/i18n/locales/de.json",
+      "src/i18n/locales/es.json",
+      "src/i18n/locales/fr.json",
+      "src/i18n/locales/it.json",
+      "src/i18n/locales/ja.json",
+      "src/i18n/locales/pt.json",
+      "src/i18n/locales/ru.json",
+      "src/i18n/locales/uk.json",
+      "src/i18n/locales/zh-CN.json",
+      "src/i18n/locales/zh-Hant.json",
+      "src/i18n/marker.js",
+      "src/layers/wildlifeSightings/cards.js",
+      "src/layers/wildlifeSightings/controls.js",
+      "src/layers/wildlifeSightings/index.js",
+      "src/layers/wildlifeSightings/lifecycle.js",
+      "src/layers/wildlifeSightings/model.js",
+      "src/layers/wildlifeSightings/photos.js",
+      "src/layers/wildlifeSightings/policy.js",
+      "src/layers/wildlifeSightings/records.js",
+      "src/layers/wildlifeSightings/rendering.js",
+      "src/layers/wildlifeSightings/density.js",
+      "src/layers/wildlifeSightings/selection.js",
+      "src/layers/wildlifeSightings/source.js",
+      "src/layers/wildlifeSightings/viewport.js",
+      "src/overlays/worldOverlayDraw.js",
+      "src/overlays/worldOverlayTokens.js",
+      "src/sources/httpBody.js",
+      "src/layers/wildlifeSightings/bounds.js",
+      "src/layers/wildlifeSightings/acartiaTaxa.js",
+      "src/ui/statusText.js",
+      "src/ui/layerNames.js",
+      "src/layers/wildlifeSightings/gridViewport.js",
+      "src/layers/wildlifeSightings/billboardModel.js",
+      "src/layers/wildlifeSightings/sprites.js",
+      "src/layers/wildlifeSightings/photoText.js",
+      "src/layers/wildlifeSightings/performance.js",
+      "src/i18n/fork-locales.json"
+    ],
+    "external": ["cesium"]
+  },
+  "wildlife-sightings-source": {
+    "exports": ["./layers/wildlife-sightings/source"],
+    "modules": [
+      "src/i18n/marker.js",
+      "src/layers/wildlifeSightings/policy.js",
+      "src/layers/wildlifeSightings/records.js",
+      "src/layers/wildlifeSightings/source.js",
+      "src/layers/wildlifeSightings/viewport.js",
+      "src/sources/httpBody.js",
+      "src/layers/wildlifeSightings/bounds.js",
+      "src/layers/wildlifeSightings/acartiaTaxa.js",
+      "src/layers/wildlifeSightings/gridViewport.js",
+      "src/layers/wildlifeSightings/performance.js"
+    ],
+    "external": []
   },
   "share-view-codec": {
     "exports": ["./share/view-codec"],

@@ -4,10 +4,12 @@
     "978 MHz UAT",
     "AIS: --",
     "AIS: {name}",
+    "Acartia",
     "BRG {value}°",
     "BRG —",
     "CAL {value}",
     "CAL · {badge}",
+    "CC BY 4.0",
     "CCTV",
     "CRS {value}°",
     "CRT",
@@ -28,8 +30,11 @@
     "SRC {value}",
     "Sentinel-2",
     "WHOT/BHOT",
+    "acartia.io ↗",
     "dB",
     "hPa",
+    "iNaturalist",
+    "iNaturalist ↗",
     "{source} HTTP {status}",
     "▲ {frp} MW"
   ],
@@ -320,7 +325,14 @@
     "CHAT",
     "Chat",
     "Color: {units}",
-    "RADAR · {units}"
+    "RADAR · {units}",
+    "ANIMAL · {name}",
+    "Acartia",
+    "CC BY 4.0",
+    "Reptiles",
+    "acartia.io ↗",
+    "iNaturalist",
+    "iNaturalist ↗"
   ],
   "fr-CA": [
     "1090 MHz",
@@ -620,11 +632,17 @@
     "Conversation",
     "RADAR · {units}",
     "Suggestions",
-    "Minutes"
+    "Minutes",
+    "Reptiles",
+    "Acartia",
+    "CC BY 4.0",
+    "iNaturalist"
   ],
   "ru": [
     "AIS: --",
     "AIS: {name}",
+    "Acartia",
+    "CC BY 4.0",
     "CCTV",
     "CRT",
     "FLIR",
@@ -638,7 +656,10 @@
     "S2 GhostMaps",
     "S2 · {name}",
     "VS",
-    "WHOT/BHOT"
+    "WHOT/BHOT",
+    "acartia.io ↗",
+    "iNaturalist",
+    "iNaturalist ↗"
   ],
   "iu": [
     "1090 MHz",
@@ -880,7 +901,11 @@
     "ΔE",
     "ΔN",
     "≥ {value} MW",
-    "▲ {frp} MW"
+    "▲ {frp} MW",
+    "Acartia",
+    "CC BY 4.0",
+    "Salish Sea",
+    "iNaturalist"
   ],
   "egy": [
     "1090 MHz",
@@ -1114,7 +1139,10 @@
     "ΔE",
     "ΔN",
     "≥ {value} MW",
-    "▲ {frp} MW"
+    "▲ {frp} MW",
+    "Acartia",
+    "CC BY 4.0",
+    "iNaturalist"
   ],
   "zh-CN": [
     "1090 MHz",
@@ -1172,7 +1200,12 @@
     "≥ {value} MW",
     "ΔE",
     "ΔN",
-    "▲ {frp} MW"
+    "▲ {frp} MW",
+    "Acartia",
+    "CC BY 4.0",
+    "acartia.io ↗",
+    "iNaturalist",
+    "iNaturalist ↗"
   ],
   "zh-Hant": [
     "1090 MHz",
@@ -1230,7 +1263,12 @@
     "≥ {value} MW",
     "ΔE",
     "ΔN",
-    "▲ {frp} MW"
+    "▲ {frp} MW",
+    "Acartia",
+    "CC BY 4.0",
+    "acartia.io ↗",
+    "iNaturalist ↗",
+    "iNaturalist"
   ],
   "de": [
     "1090 MHz",
@@ -1401,7 +1439,12 @@
     "Audio",
     "CHAT",
     "Chat",
-    "RADAR · {units}"
+    "RADAR · {units}",
+    "Acartia",
+    "CC BY 4.0",
+    "acartia.io ↗",
+    "iNaturalist",
+    "iNaturalist ↗"
   ],
   "fr": [
     "1090 MHz",
@@ -1586,7 +1629,16 @@
     "Audio",
     "Conversation",
     "RADAR · {units}",
-    "Suggestions"
+    "Suggestions",
+    "ANIMAL · {name}",
+    "Acartia",
+    "CC BY 4.0",
+    "Obs. {licence}",
+    "REPTILE · {name}",
+    "Reptiles",
+    "acartia.io ↗",
+    "iNaturalist",
+    "iNaturalist ↗"
   ],
   "it": [
     "1090 MHz",
@@ -1761,17 +1813,24 @@
     "CHAT",
     "Chat",
     "RADAR · {units}",
-    "voice area|Area"
+    "voice area|Area",
+    "Acartia",
+    "CC BY 4.0",
+    "acartia.io ↗",
+    "iNaturalist",
+    "iNaturalist ↗"
   ],
   "ja": [
     "1090 MHz",
     "978 MHz UAT",
     "AIS: --",
     "AIS: {name}",
+    "Acartia",
     "BRG {value}°",
     "BRG —",
     "CAL {value}",
     "CAL · {badge}",
+    "CC BY 4.0",
     "CCTV",
     "CH {index} / {total}",
     "CRS {value}°",
@@ -1796,9 +1855,12 @@
     "Sentinel-2",
     "USB {rate} msg/s",
     "WHOT/BHOT",
+    "acartia.io ↗",
     "dB",
     "ft",
     "hPa",
+    "iNaturalist",
+    "iNaturalist ↗",
     "km",
     "km/h",
     "kt",
@@ -1944,11 +2006,19 @@
     "≥ {value} MW",
     "CHAT",
     "Chat",
-    "RADAR · {units}"
+    "RADAR · {units}",
+    "ANIMAL · {name}",
+    "Acartia",
+    "CC BY 4.0",
+    "acartia.io ↗",
+    "iNaturalist",
+    "iNaturalist ↗"
   ],
   "uk": [
     "AIS: --",
     "AIS: {name}",
+    "Acartia",
+    "CC BY 4.0",
     "CCTV",
     "CRT",
     "FLIR",
@@ -1957,6 +2027,9 @@
     "NVG",
     "REC",
     "S2 GhostMaps",
-    "WHOT/BHOT"
+    "WHOT/BHOT",
+    "acartia.io ↗",
+    "iNaturalist",
+    "iNaturalist ↗"
   ]
 }

@@ -309,7 +309,10 @@ test('markup: the chip sits under the user caption with a screen-reader separato
   assert.equal(pointer.hidden, true);
   const separator = pointer.querySelector('.gev-voice-card-sr');
   assert.equal(separator.textContent, ': ');
-  assert.equal(separator.previousElementSibling.id, 'gev-voice-card-pointer-kind');
+  assert.equal(
+    separator.previousElementSibling.id,
+    'gev-voice-card-pointer-kind',
+  );
 });
 
 test('deixis prompt lint: one short rule, and every sentinel it names exists in the schema', () => {
@@ -352,14 +355,18 @@ test('deixis prompt lint: one short rule, and every sentinel it names exists in 
   // Upstream's voice geometry (resolve_area, find_imagery, osm_query and
   // the analyst area scopes) and its Sea Marks and Ski Pistes layers took
   // its own prompt to 55,210 under a 55,500 ceiling; the 2026-11-04 merge
-  // of those onto the fork measured 56,956: the ceiling is 57,000.
+  // of those onto the fork measured 56,956, so it was 57,000. Upstream's
+  // tilt pitchDeg argument (with its -45 default) and cockpit entry rule
+  // took its own to 55,339; the 2026-11-07 merge measured 57,085, so the
+  // ceiling is 57,500.
   const size = instructions.length + JSON.stringify(GEV_REALTIME_TOOLS).length;
-  assert.ok(size <= 57_000, `prompt size ${size}`);
+  assert.ok(size <= 57_500, `prompt size ${size}`);
 });
 
-
 test('after-tool speech allows returned items to answer requested lists and rankings', () => {
-  const rule = realtimeInstructions().split('\n').find(line => line.startsWith('AFTER TOOLS:'));
+  const rule = realtimeInstructions()
+    .split('\n')
+    .find((line) => line.startsWith('AFTER TOOLS:'));
   assert.match(rule, /requested analyst list or ranking/);
   assert.match(rule, /returned items.*returned values/);
   assert.match(rule, /keep their order/);

@@ -124,6 +124,23 @@ export const FLOW_BUCKET_COLORS = {
   jam: Cesium.Color.fromCssColorString('#e05252').withAlpha(0.9),
 };
 
+// ─── Flow road lines (`lines` row toggle, live mode only) ────────────────
+/**
+ * @const {number} Flow-colored road lines per render. Unbounded by owner
+ * rule: every road with flow in view is drawn. (A finite cap would keep jam
+ * first, then slow, then free-flow, longest first within a bucket.)
+ */
+
+export const FLOW_LINE_CAP = Infinity;
+
+/** @const {number} Px — flow road-line width (every bucket). */
+
+export const FLOW_LINE_WIDTH = 4;
+
+/** @const {number} Flow road-line opacity: the bucket colors, steady. */
+
+export const FLOW_LINE_ALPHA = 0.8;
+
 // ─── Jam-viz prototype (live mode only — see 2026-07-21 design doc) ────────
 /**
  * @const {number} Congestion heat-line polylines per render. Unbounded by

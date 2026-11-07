@@ -15,8 +15,10 @@ import aisLiveVesselsLayer from './aisLiveVessels.js';
 import { createFirmsHeatmapLayer } from './firmsHeatmap.js';
 import trafficLayer from './traffic.js';
 
-// Upstream's transit layers draw between bike share and directions.
-const ORDER = ['cctv', 'cctv-projection', 'traffic', 'firms', 'bikeshare', 'transit', 'transit-motion', 'directions', 'ais', 'military', 'flights'];
+// Upstream's order (transit between bike share and directions; Wildlife
+// Sightings badges, #1591, just above FIRMS) with the fork's CCTV monitor
+// plane and traffic above CCTV.
+const ORDER = ['cctv', 'cctv-projection', 'traffic', 'firms', 'wildlife-sightings', 'bikeshare', 'transit', 'transit-motion', 'directions', 'ais', 'military', 'flights'];
 
 function makePrimitives(initial = []) {
   return {

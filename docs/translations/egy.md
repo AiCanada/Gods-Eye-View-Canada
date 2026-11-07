@@ -121,6 +121,11 @@ only: touch has no hover, so the phone page is unchanged.
 | forecast, predict                    | 𓋴𓂋𓃱                            | _sr_                                    | to foretell                            |
 | earthquake                           | 𓏌𓅨𓂋 𓇾𓈇𓏤                        | _nwr tꜣ_                                | trembling of the earth                 |
 | fire / detection / confidence        | 𓋴𓆓𓏏𓊮 / 𓋴𓇋𓋷𓄿𓅆 / 𓌳𓂝𓏏             | _sḏ.t / sꞽꜣ / mꜣꜥ.t_                    | flame / perception / truth             |
+| wildlife (animals) / plants          | 𓂝𓅱𓏏𓄜𓏥 / 𓋴𓅓𓆰𓏥                    | _ꜥw.t / sm.w_                           | flocks and herds / herbage             |
+| sighting / seen (Acartia)            | 𓌳𓁹𓄿𓄿𓏛 / 𓊪𓏏𓂋𓁹𓈖𓏏𓅱                | _mꜣꜣ / ptr.n.tw_                        | a sight / was beheld                   |
+| birds / fish / whale                 | 𓄿𓊪𓂧𓅬𓏥 / 𓂋𓅓𓅱𓆛𓏥 / 𓂋𓅓 𓅨𓂋 𓈖 𓇅𓅨𓈙     | _ꜣpd.w / rm.w / rm wr n wꜣḏ-wr_         | fowl / fish / great fish of the sea    |
+| reptiles / amphibians                | 𓎛𓆑𓄿𓅱𓆙𓏥 / 𓈎𓂋𓂋𓆏𓏥                 | _ḥfꜣ.w / qrr.w_                         | serpents / frogs                       |
+| insects / arachnids                  | 𓂝𓆑𓆑𓆦𓏥 / 𓅱𓎛𓂝𓏏𓆫𓏥                 | _ꜥff.w / wḥꜥ.wt_                        | flies / scorpions                      |
 | outbreak, epidemic                   | 𓇋𓄿𓂧𓏏𓅪                          | _ꞽꜣd.t_                                 | pestilence                             |
 | key (API key)                        | 𓐍𓏏𓅓𓋩                           | _ḫtm_                                   | seal                                   |
 | token                                | 𓎗𓅱                             | _wḏ_                                    | decree                                 |

@@ -52,6 +52,8 @@ import { createAbundanceStore } from '../shared/abundanceData.mjs';
 import { gnssIntegrityProxy } from './gnssIntegrity.js';
 import { ghostMapsProxy } from './ghostMaps.js';
 import { droneAirspaceProxy } from './droneAirspace.js';
+import { inaturalistProxy } from './inaturalist/observations.js';
+import { acartiaProxy } from './acartia.js';
 
 /**
  * Construct the local provider plugins in their established order.
@@ -150,6 +152,10 @@ function localProviderPlugins({
     ghostMapsProxy(),
     // Prohibited and restricted airspace for drones (upstream #1086).
     droneAirspaceProxy(),
+    // Wildlife Sightings (upstream #1591): iNaturalist observations and the
+    // Acartia Salish Sea marine mammal sightings.
+    inaturalistProxy(),
+    acartiaProxy(),
     // The AI World tab's MLFLOW sections (owner request 2026-10-17): first,
     // so the jobs of the three providers after it are tracked from the start.
     mlflow,

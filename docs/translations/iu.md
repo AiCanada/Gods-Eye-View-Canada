@@ -113,6 +113,12 @@ phone page is unchanged.
 | radio / station / receiver               | ᓈᓚᐅᑦ / ᑐᓴᖅᑎᑦᓯᕕᒃ / ᑐᓴᐅᑎ                      |
 | filter                                   | ᓴᓗᒻᒪᖅᓴᐃᔾᔪᑎ                                  |
 | fire / detection / confidence            | ᐃᑯᐊᓪᓚᒃᑐᖅ / ᓇᓂᔭᐅᔪᖅ / ᓇᓗᓇᙱᓐᓂᖓ                 |
+| wildlife / sighting (observed)           | ᐆᒪᔪᐃᑦ / ᑕᑯᔭᐅᓯᒪᔪᖅ                            |
+| birds / mammals / fish / insects         | ᑎᖕᒥᐊᑦ / ᐃᒻᒧᒃᑐᐃᑦ / ᐃᖃᓗᐃᑦ / ᖁᐱᕐᕈᐃᑦ             |
+| spiders (arachnids) / plants             | ᐋᓯᕙᐃᑦ / ᐱᕈᖅᑐᐃᑦ                              |
+| whales / small toothed whales (dolphins) | ᐊᕐᕕᐃᑦ / ᕿᓚᓗᒐᐃᑦ                              |
+| species at risk (sensitive species)      | ᐆᒪᔪᐃᑦ ᐊᑦᑕᓇᖅᑐᒦᑦᑐᑦ                            |
+| reptiles / amphibians / fungi (loans)    | ᕆᑉᑕᐃᓪ / ᐊᒻᐱᐱᐊᓐ / ᒪᔅᕈᒻ                       |
 | colour: cyan, yellow, orange, red, green | ᐊᒥᐊᖓ: ᑐᖑᔪᖅ, ᖁᖅᓱᖅᑐᖅ, ᐊᐅᐸᔮᖅᑐᖅ, ᐊᐅᐸᖅᑐᖅ, ᐱᕈᖅᑐᑐᑦ |
 | dev server                               | dev ᖃᕋᓴᐅᔭᕐᔪᐊᖅ                               |
 

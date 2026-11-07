@@ -54,11 +54,14 @@ test('the complete Realtime tool payload pins the manifest-generated layer relea
     // The Utilities panel (Directions, Draw, Import) adds one panel target.
     // Panel adds named voice targets and timeout; shared Panel/Cockpit guidance
     // is consolidated without changing either feature's arguments.
-    // Re-derived 2026-11-04 for the eleventh upstream merge: upstream's
+    // Re-derived 2026-11-07 for the fourteenth upstream merge: upstream's
     // layer alias hint and voice geometry (resolve_area, find_imagery,
-    // osm_query, the analyst area scopes and the osm-places layer) beside
-    // the fork's panels and tools; Snow and Operator stay out of the enums.
-    '81c6444f09566536f77476aee5a250de9a19d9e889a825f49408158c5a11d573',
+    // osm_query, the analyst area scopes and the osm-places layer), the
+    // control_cockpit own-layer entry rule (Contacts not required) and
+    // move_camera's optional absolute pitchDeg tilt (-45 default, steps sent
+    // as a direction), beside the fork's panels and tools; Snow and Operator
+    // stay out of the enums.
+    '17617cba756acc55b83518065a5609a8a52521011177c16e24c78638077a781e',
   );
 });
 
@@ -179,6 +182,8 @@ test('all legacy action arguments are byte-identical after removing the delibera
     'stop',
   ]);
   motion.enum = motion.enum.filter((value) => value !== 'rotate_globe');
+  // Tilt to an angle is additive.
+  delete property('move_camera').pitchDeg;
   const panels = property('set_panel_open').panelId;
   panels.enum = panels.enum.filter(
     (id) =>
@@ -355,4 +360,16 @@ test('direct voice timeout schema accepts None and exact integers, rejects malfo
     assert.equal(validateArgs(tool.parameters, { minutes }).length, 0);
   for (const minutes of [-1, 61, 1.5, '5'])
     assert.ok(validateArgs(tool.parameters, { minutes }).length > 0);
+});
+
+test('tilt accepts an angle with no direction', () => {
+  const schema = GEV_ACTION_SCHEMAS.find(
+    (tool) => tool.name === 'move_camera',
+  ).parameters;
+  assert.deepEqual(validateArgs(schema, { motion: 'tilt', pitchDeg: -45 }), []);
+  assert.deepEqual(validateArgs(schema, { motion: 'tilt' }), []);
+  // No range in the schema (prompt budget): the runner clamps to -89..-5.
+  assert.ok(
+    validateArgs(schema, { motion: 'tilt', pitchDeg: 'steep' }).length > 0,
+  );
 });

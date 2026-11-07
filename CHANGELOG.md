@@ -1,5 +1,43 @@
 # Changelog
 
+- Upstream merge of 179 commits (Wildlife Sightings, off by default in a
+  new Wildlife group: keyless iNaturalist observations from the last 48 h
+  (whales 7 d) and Acartia's Salish Sea marine mammals, with a density glow,
+  taxon badges, photo cards and BIRDS, MAMMALS, WHALES, INSECTS and PLANTS
+  filters #1591; Street Traffic's separate Lines and Dots toggles, with the
+  road modes a host offers #1609, and traffic errors that name the account's
+  monthly allowance or rate limit #1595; Cockpit entered with only the
+  ridden aircraft's layer on, `… FEED OFF · PARTIAL PICTURE` when another
+  feed is off #1556, and the answering provider named in Contact counts
+  #1521; voice tilt from a top-down view #1520 and the globe kept in view
+  from orbit #1532; an event-age filter across S2 GhostMaps #1528; Rio de
+  Janeiro buses and BRT in Transit #1481; Space Missions rolling back when
+  its mission index fails to load #1578; the selected cyclone shared with
+  the voice assistant #847; less dead reckoning for flights behind the
+  horizon #870; Norway's datacenters refreshed #953; typed chat keeping its
+  view across a provider switch #1546; keyless search keeping exact matches
+  in non-Latin scripts #1585; Street Level opening on KartaView without a
+  Mapillary token #1601; and translation fixes #1581). Fork fits: the new
+  Lines look draws every road with flow, as the heat-lines and the dots do
+  (`FLOW_LINE_CAP` is unbounded by the owner's no-max-on-traffic rule;
+  upstream drew at most 1,500), and the fork's Overpass road fallback stays
+  beside the road-mode offer. Wildlife Sightings takes share token `9`; the
+  fork's tokens stay at the top (zz, zy, zx), so upstream's next free token
+  is `00`. AI World lists Wildlife Sightings as STATIC and records none of
+  it: iNaturalist's content may not be used for AI training. The help
+  network's call-for-help framing sits beside the two sighting framings,
+  the CCTV size badge draws after upstream's new card detail lines, and the
+  server adds the iNaturalist and Acartia routes after the airspace route.
+  The 76 new strings are in fr-CA, iu and egy (Inuktitut ᐆᒪᔪᐃᑦ, Nunavut's
+  word for wildlife; Egyptian 𓂝𓅱𓏏𓄜𓏥 _ꜥw.t_ for animals and 𓋴𓅓𓆰𓏥 _sm.w_
+  for plants; reptiles, amphibians and fungi are Inuktitut loans), their new
+  words are in each glossary, and Russian stays upstream's. The voice tool
+  schema and the Realtime prompt grew only by upstream's additions (the
+  prompt is now 57,085 characters, so the fork's ceiling is 57,500). Tests:
+  upstream's new hidden-contact rotation fixture gains the fork's location
+  switch part (nothing to drain or hold), and the fork's sprite order, token
+  ledger and AI World feed tests know the new layer.
+
 - Upstream merge of 3 commits (chat autocomplete finds Arabic suggestions
   typed without short vowels or shadda #1561). Nothing to fit: the fork's own
   languages carry none of those marks.

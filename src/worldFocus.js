@@ -12,6 +12,12 @@ export const WORLD_FOCUS_FRAMING = Object.freeze({
   // A call for help from the owner's help network (the amber NEEDS HELP pin on
   // Your Devices), framed like a fire: the place is read by its surroundings.
   help: Object.freeze({ radiusM: 400, rangeM: 3000, pitchDeg: -35 }),
+  sighting: Object.freeze({ radiusM: 250, rangeM: 2500, pitchDeg: -40 }),
+  'sighting-area': Object.freeze({
+    radiusM: 11000,
+    rangeM: 60000,
+    pitchDeg: -55,
+  }),
 });
 
 /** Validate a layer-owned focus target before camera policy can release tracking. */
@@ -26,7 +32,7 @@ export function isValidWorldFocusTarget(detail) {
     !Number.isFinite(position.z)
   )
     return false;
-  // Vessel and fire targets are surface-anchored Earth positions. Merely
+  // These targets are surface-anchored Earth positions. Merely
   // finite coordinates near the ECEF origin cannot be flown to, and must be
   // rejected before the camera policy releases a current follow owner.
   const magnitude = Cesium.Cartesian3.magnitude(position);

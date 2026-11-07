@@ -213,6 +213,7 @@ export function createModel({ state: layerState, services, parts, source }) {
         id: cohort.id,
         label: cohort.label,
         source: cohort.source,
+        sourceStatus: cohort.sourceStatus || null,
         coverage: cohort.coverage || null,
         relationship: cohort.summary.relationship,
         count: cohort.summary.count,
