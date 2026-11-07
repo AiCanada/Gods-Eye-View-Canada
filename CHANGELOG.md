@@ -1,5 +1,9 @@
 # Changelog
 
+- Upstream merge of 3 commits (chat autocomplete finds Arabic suggestions
+  typed without short vowels or shadda #1561). Nothing to fit: the fork's own
+  languages carry none of those marks.
+
 - Upstream merge of 59 commits (Active Fires colored by fire radiative power,
   with a minimum-FRP slider, an All / Nominal+ / High confidence switch and an
   "N of M shown" counter in the layer row, a far-zoom heatmap that cross-fades
