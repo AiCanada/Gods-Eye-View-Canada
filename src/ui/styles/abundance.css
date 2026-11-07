@@ -221,6 +221,60 @@
   flex-wrap: wrap;
 }
 
+/* FORECAST: the years-ahead slider with its readout, the view and runs
+   pickers beside PLAY and NEW DRAW, the model lines, and the selected
+   place's fan chart. */
+#abundance-panel .abundance-forecast-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#abundance-panel .abundance-year {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--accent, #00d4ff);
+}
+
+#abundance-panel .abundance-year-text {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+#abundance-panel .abundance-view,
+#abundance-panel .abundance-scale,
+#abundance-panel .abundance-scenario,
+#abundance-panel .abundance-runs {
+  max-width: 100%;
+}
+
+#abundance-panel .abundance-forecast-note:empty {
+  display: none;
+}
+
+#abundance-panel .abundance-model li {
+  color: var(--text-dim);
+}
+
+#abundance-panel .abundance-fan {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  height: 72px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+#abundance-panel .abundance-fan[hidden] {
+  display: none;
+}
+
 #abundance-panel .abundance-run[data-state='error'] {
   color: var(--abundance-scarce);
 }

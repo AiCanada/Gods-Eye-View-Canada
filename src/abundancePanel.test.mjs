@@ -20,6 +20,17 @@ import {
   trendText,
   unitLines,
   valueWithUnit,
+  yearText,
+  changeText,
+  forecastNote,
+  forecastScoreLines,
+  forecastFigureText,
+  modelLine,
+  hindcastText,
+  worldText,
+  forecastLegend,
+  viewText,
+  drawFan,
 } from './abundancePanel.js';
 import {
   ABUNDANCE_CARD_EVENT,
@@ -113,9 +124,9 @@ function table(level = 'country') {
   const units =
     level === 'country'
       ? [
-          { id: 'TST', name: 'Testland', country: 'Testland', iso2: 'TS', lat: 5, lon: 5, values: { gdp: { v: 50000, year: 2024, from: 'own' }, inflation: { v: 2.5, year: 2025, from: 'own' } } },
-          { id: 'FAR', name: 'Farland', country: 'Farland', iso2: 'FA', lat: 5, lon: 105, values: { gdp: { v: 20000, year: 2024, from: 'own' }, inflation: { v: 10, year: 2025, from: 'own' } } },
-          { id: 'MID', name: 'Midland', country: 'Midland', iso2: 'MI', lat: 5, lon: 55, values: { gdp: { v: 30000, year: 2023, from: 'own' } } },
+          { id: 'TST', name: 'Testland', country: 'Testland', iso2: 'TS', lat: 5, lon: 5, people: 5e6, values: { gdp: { v: 50000, year: 2024, from: 'own' }, inflation: { v: 2.5, year: 2025, from: 'own' } } },
+          { id: 'FAR', name: 'Farland', country: 'Farland', iso2: 'FA', lat: 5, lon: 105, people: 20e6, values: { gdp: { v: 20000, year: 2024, from: 'own' }, inflation: { v: 10, year: 2025, from: 'own' } } },
+          { id: 'MID', name: 'Midland', country: 'Midland', iso2: 'MI', lat: 5, lon: 55, people: 3e6, values: { gdp: { v: 30000, year: 2023, from: 'own' } } },
           { id: 'NOL', name: 'Noland', country: 'Noland', iso2: null, lat: -45, lon: -45, values: {} },
         ]
       : [
@@ -185,8 +196,12 @@ function mount(answers, { stored = null } = {}) {
 }
 
 test('the words: the choice, the status line, coverage, a figure, a place, a link, the sources and the CSV', () => {
-  assert.deepEqual(readChoice(null), { level: 'country', indicators: [...ABUNDANCE_INDICATOR_IDS], show: true, grid: false, weights: {} });
-  assert.deepEqual(readChoice('{"level":"city","indicators":["work","gdp","x"],"show":false,"grid":true,"weights":{"gdp":2,"work":7,"x":3,"life":1}}'), { level: 'city', indicators: ['gdp', 'work'], show: false, grid: true, weights: { gdp: 2, work: 3 } });
+  assert.deepEqual(readChoice(null), { level: 'country', indicators: [...ABUNDANCE_INDICATOR_IDS], show: true, grid: false, weights: {}, year: 0, view: 'p50', runs: null, crises: true, scale: 'today', scenario: 'baseline' });
+  assert.deepEqual(readChoice('{"level":"city","indicators":["work","gdp","x"],"show":false,"grid":true,"weights":{"gdp":2,"work":7,"x":3,"life":1}}'), { level: 'city', indicators: ['gdp', 'work'], show: false, grid: true, weights: { gdp: 2, work: 3 }, year: 0, view: 'p50', runs: null, crises: true, scale: 'today', scenario: 'baseline' });
+  assert.deepEqual(readChoice('{"year":"40","view":"up","runs":250,"crises":false,"scale":"others","scenario":"volatile"}'), { level: 'country', indicators: [...ABUNDANCE_INDICATOR_IDS], show: true, grid: false, weights: {}, year: 40, view: 'up', runs: 250, crises: false, scale: 'others', scenario: 'volatile' });
+  assert.equal(readChoice('{"scale":"x","scenario":"y"}').scale, 'today');
+  assert.equal(readChoice('{"scale":"x","scenario":"y"}').scenario, 'baseline');
+  assert.deepEqual(readChoice('{"year":500,"view":"x","runs":7}').year, 100);
   assert.deepEqual(readChoice('not json').level, 'country');
   assert.equal(statusText({ level: 'country', table: null, status: null, loading: true }), 'LOADING COUNTRIES…');
   assert.equal(statusText({ level: 'region', table: null, status: { refreshing: { done: 3, total: 24, current: 'OECD DF_GDP' } } }), 'FETCHING THE SOURCES · 3/24 · OECD DF_GDP');
@@ -522,4 +537,259 @@ test('without its mount the tab is a no-op', () => {
   const panel = initAbundancePanel({ documentRef: { getElementById: () => null } });
   panel.render();
   panel.destroy();
+});
+
+test('the forecast words: the year, a change, the note, a place’s lines, a figure’s line, the model line, the legend, a view’s figure, the fan chart', () => {
+  assert.equal(yearText(0, 2026), 'TODAY');
+  assert.equal(yearText(1, 2026), '2027 · +1 YEAR');
+  assert.equal(yearText(25, 2026), '2051 · +25 YEARS');
+  assert.equal(yearText('x', 2026), 'TODAY');
+  assert.equal(changeText(12.4), '+12');
+  assert.equal(changeText(-3), '-3');
+  assert.equal(changeText(0), '0');
+  assert.equal(changeText(NaN), '');
+  assert.equal(forecastNote({ year: 10, running: { year: 43, years: 100 }, result: null, scored: 5 }), 'SIMULATING · 43 %');
+  assert.equal(forecastNote({ year: 10, running: null, result: null, scored: 0 }), 'NO FORECAST: NO FIGURES AT THIS LEVEL');
+  assert.equal(forecastNote({ year: 10, running: null, result: { runs: 500, years: 100, ms: 2345 }, scored: 5 }), '500 RUNS OVER 100 YEARS · SIMULATED IN 2.3 S');
+  assert.equal(forecastNote({ year: 0, running: null, result: null, scored: 5 }), 'SLIDE YEARS AHEAD TO SEE THE FUTURE ON THE MAP');
+  assert.equal(forecastNote({ year: 5, running: null, result: null, scored: 5 }), '');
+  // The world's line: by population where the places have people, each once otherwise; today's three figures at TODAY.
+  const world = { p10: 48.2, p50: 55.4, p90: 61, mean: 55, up: 18.4, down: 20.6, today: 47.6, upToday: 12.2, downToday: 30.4, weighted: true };
+  assert.equal(
+    worldText(world, { year: 25, baseYear: 2026 }),
+    'ALL PLACES BY POPULATION · ABUNDANCE 48 OF 100 TODAY → 55 IN 2051 · 48 TO 61 IN 8 OF 10 RUNS · IN ABUNDANT PLACES 12 % → 18 % · IN SCARCE ONES 30 % → 21 %',
+  );
+  assert.equal(
+    worldText({ ...world, p10: 47.6, p50: 47.6, p90: 47.6, up: 12.2, down: 30.4, weighted: false }, { year: 0, baseYear: 2026 }),
+    'ALL PLACES, EACH COUNTED ONCE · ABUNDANCE 48 OF 100 · 12 % IN ABUNDANT PLACES · 30 % IN SCARCE ONES',
+  );
+  assert.equal(worldText(null, { year: 5 }), '');
+  assert.equal(worldText({ ...world, p50: NaN }, { year: 5 }), '');
+  const row = { p10: 48.2, p50: 63.6, p90: 79.1, mean: 63, up: 31, down: 2, today: 51.4 };
+  assert.deepEqual(forecastScoreLines(row, null, { year: 25, baseYear: 2026, rank: 12, count: 198 }), [
+    '2051 · ABUNDANCE 64 OF 100 TYPICALLY · 48 TO 79 IN 8 OF 10 RUNS',
+    'CHANCE OF ABUNDANCE 31 % · CHANCE OF SCARCITY 2 %',
+    'RANKED 12 OF 198 · +12 FROM TODAY',
+  ]);
+  assert.equal(forecastScoreLines(row, null, { year: 25, baseYear: 2026, rank: null, count: 198 })[2], '+12 FROM TODAY');
+  assert.deepEqual(forecastScoreLines(null, null, { year: 25, baseYear: 2026 }), ['NO FORECAST FOR THIS PLACE']);
+  // With the ranks among the others: their line, and the chances and change of the scale shown.
+  const others = { p10: 50.2, p50: 61.4, p90: 72.3, mean: 61, up: 12, down: 5, today: 51.4 };
+  assert.deepEqual(forecastScoreLines(row, others, { year: 25, baseYear: 2026, rank: 12, count: 198 }), [
+    '2051 · ABUNDANCE 64 OF 100 TYPICALLY · 48 TO 79 IN 8 OF 10 RUNS',
+    'AMONG THE OTHERS IN 2051 · 61 OF 100 TYPICALLY · 50 TO 72',
+    'CHANCE OF ABUNDANCE 31 % · CHANCE OF SCARCITY 2 %',
+    'RANKED 12 OF 198 · +12 FROM TODAY',
+  ]);
+  assert.deepEqual(forecastScoreLines(row, others, { year: 25, baseYear: 2026, rank: 12, count: 198, scale: 'others' }).slice(2), [
+    'CHANCE OF ABUNDANCE 12 % · CHANCE OF SCARCITY 5 %',
+    'RANKED 12 OF 198 · +10 FROM TODAY',
+  ]);
+  const entry = { p10: [1, 31000], p50: [1, 38500.4], p90: [1, 48000], placeMid: [1, 70.6] };
+  assert.equal(forecastFigureText(indicatorById('gdp'), entry, 1, 'own'), 'GDP PER PERSON · 38,500 $ · 31,000 TO 48,000 · PLACE 71 OF 100');
+  assert.equal(forecastFigureText(indicatorById('gdp'), entry, 1, 'country'), 'GDP PER PERSON · 38,500 $ · 31,000 TO 48,000 · PLACE 71 OF 100 · FROM ITS COUNTRY');
+  assert.equal(modelLine(indicatorById('gdp'), { family: 'growth', trend: 1010.4, spread: 2501, n: 28, frontier: 66055.8 }), 'GDP PER PERSON · +1,010 $ A YEAR · ±2,501 $ · CATCHING UP WITH THE FRONTIER (66,056 $) · 28 STEPS OF HISTORY');
+  assert.equal(modelLine(indicatorById('gdp'), { family: 'growth', trend: 1010.4, spread: 2501, n: 28, frontier: 66055.8, scale: 1.3 }, { held: 82, tested: 180, scale: 1.3 }), 'GDP PER PERSON · +1,010 $ A YEAR · ±2,501 $ · CATCHING UP WITH THE FRONTIER (66,056 $) · 28 STEPS OF HISTORY · SWING ×1.3 · HINDCAST BAND HELD 82 %');
+  assert.equal(modelLine(indicatorById('health'), { family: 'floor', trend: -0.31, spread: 0.6, floor: 1, frontier: 2.2, n: 1 }), 'HEALTH · -0.3 A YEAR · ±0.6 · TOWARD THE FRONTIER (2.2), FLOOR 1.0 · 1 STEP OF HISTORY');
+  assert.equal(modelLine(indicatorById('water'), { family: 'ceiling', trend: 0.6, spread: 0.9, cap: 100, frontier: 99.5, n: 0 }), 'WATER · +1 % A YEAR · ±1 % · TOWARD THE FRONTIER (100 %), CEILING 100 % · NO HISTORY: THE LEVEL’S TYPICAL FIGURES');
+  assert.equal(hindcastText({ from: 2014, to: 2024, held: 81, tested: 2345 }), 'HINDCAST 2014→2024 · THE 8-OF-10 BAND HELD 81 % OF 2,345 FIGURES · THE TRENDS AND SWINGS ARE CALIBRATED BY IT');
+  // The hindcast's trend shift reads in the figure's units, signed; one that rounds to nothing is left out.
+  assert.equal(
+    modelLine(indicatorById('gdp'), { family: 'growth', trend: 800.4, spread: 2501, n: 28, frontier: 66055.8, scale: 1.3, shift: -0.004, trendShift: -210.4 }, { held: 82, tested: 180, scale: 1.3, shift: -0.004 }),
+    'GDP PER PERSON · +800 $ A YEAR · ±2,501 $ · CATCHING UP WITH THE FRONTIER (66,056 $) · 28 STEPS OF HISTORY · SWING ×1.3 · HINDCAST TREND -210 $ A YEAR · HINDCAST BAND HELD 82 %',
+  );
+  assert.equal(modelLine(indicatorById('water'), { family: 'ceiling', trend: 0.6, spread: 0.9, cap: 100, frontier: 99.5, n: 0, shift: 0.001, trendShift: 0.04 }), 'WATER · +1 % A YEAR · ±1 % · TOWARD THE FRONTIER (100 %), CEILING 100 % · NO HISTORY: THE LEVEL’S TYPICAL FIGURES');
+  assert.equal(modelLine(indicatorById('inflation'), { family: 'revert', trend: 0.3, spread: 2.5, level: 3.04, n: 12, shift: 0.3, trendShift: 0.3 }), 'INFLATION · +0.3 % A YEAR · ±2.5 % · RETURNS TO ITS USUAL 3.0 % · 12 STEPS OF HISTORY · HINDCAST TREND +0.3 % A YEAR');
+  assert.equal(hindcastText({ from: 2014, to: 2024, held: 0, tested: 0 }), '');
+  assert.equal(hindcastText(null), '');
+  assert.equal(modelLine(indicatorById('inflation'), { family: 'revert', trend: 0, spread: 2.5, level: 3.04, n: 12 }), 'INFLATION · 0.0 % A YEAR · ±2.5 % · RETURNS TO ITS USUAL 3.0 % · 12 STEPS OF HISTORY');
+  assert.equal(modelLine(indicatorById('utilities'), { family: 'ceiling', trend: 0, spread: 0, cap: 100, n: 3, saturated: true }), 'UTILITIES · 0 % A YEAR · ±0 % · AT ITS CEILING, STAYS THERE · 3 STEPS OF HISTORY');
+  assert.equal(modelLine(null, {}), '');
+  assert.deepEqual(forecastLegend('p50'), { low: '0', mid: '50', high: '100' });
+  assert.deepEqual(forecastLegend('p10'), { low: '0', mid: '50', high: '100' });
+  assert.deepEqual(forecastLegend('up'), { low: '0 %', mid: '50 %', high: '100 %' });
+  assert.deepEqual(forecastLegend('down'), { low: '100 %', mid: '50 %', high: '0 %' });
+  assert.deepEqual(forecastLegend('change'), { low: '-50', mid: '0', high: '+50' });
+  assert.equal(viewText(63.6, 'p50'), '64');
+  assert.equal(viewText(31, 'up'), '31 %');
+  assert.equal(viewText(-4.4, 'change'), '-4');
+  assert.equal(viewText(NaN, 'p50'), '');
+  // The fan chart: the band, the two marks, the typical line and the chosen year; nothing without a context.
+  const calls = [];
+  const ctx = new Proxy({}, { get: (_, name) => (...args) => void calls.push([name, args.length]), set: () => true });
+  const series = { p10: [40, 42, 44], p50: [50, 53, 56], p90: [60, 64, 68] };
+  assert.equal(drawFan({ width: 240, height: 72, getContext: () => ctx }, series, 1), true);
+  assert.equal(calls.filter(([name]) => name === 'stroke').length, 4);
+  assert.equal(calls.filter(([name]) => name === 'fill').length, 1);
+  assert.equal(calls.filter(([name]) => name === 'lineTo').length, 6 + 3 + 1 + 1 + 1);
+  assert.equal(drawFan({ width: 240, height: 72 }, series, 1), false);
+  assert.equal(drawFan({ width: 240, height: 72, getContext: () => ctx }, null, 1), false);
+});
+
+test('FORECAST: the slider runs the simulation, the map, ranking and SELECTED follow the chosen year and view, PLAY walks the years, and the choice is kept', async () => {
+  const m = mount();
+  await settle();
+  const slider = m.find((n) => n.className === 'abundance-year');
+  const readout = m.find((n) => n.className === 'abundance-year-text');
+  const note = m.find((n) => n.className === 'abundance-note abundance-forecast-note');
+  const model = m.find((n) => n.className === 'abundance-list abundance-model');
+  const legendText = () => m.world.body.all().filter((n) => n.className === 'abundance-legend-value').map((n) => n.textContent);
+  const forecastNotes = () => m.world.body.all().filter((n) => n.className === 'abundance-note abundance-forecast-note').map((n) => n.textContent);
+  assert.equal(readout.textContent, 'TODAY');
+  assert.equal(note.textContent, 'SLIDE YEARS AHEAD TO SEE THE FUTURE ON THE MAP');
+  assert.equal(forecastNotes()[1], '', 'no world line before a run');
+  assert.equal(m.panel.forecast, null);
+  assert.equal(model.hidden, true);
+  const todayView = m.views().at(-1);
+  // Twenty-five years ahead: the run waits for the next change, then goes.
+  slider.value = '25';
+  slider.fire('input');
+  assert.equal(m.panel.choice.year, 25);
+  assert.equal(readout.textContent, '2048 · +25 YEARS');
+  assert.equal(JSON.parse(m.storage.getItem(ABUNDANCE_CHOICE_KEY)).year, 25);
+  assert.equal(m.panel.forecast, null);
+  assert.equal(note.textContent, '');
+  m.timers.pending.pop()();
+  await settle();
+  const result = m.panel.forecast;
+  assert.ok(result, 'a result');
+  assert.equal(m.panel.simulating, false);
+  assert.equal(result.runs, 500, 'the country level’s default runs');
+  assert.equal(result.years, 100);
+  assert.equal(result.seed, 1);
+  assert.deepEqual(result.ids, ['TST', 'FAR', 'MID', 'NOL']);
+  assert.match(note.textContent, /^500 RUNS OVER 100 YEARS · SIMULATED IN \d+\.\d S$/);
+  // The world's line under it: the places weighed by their people, today and at the year.
+  assert.match(
+    forecastNotes()[1],
+    /^ALL PLACES BY POPULATION · ABUNDANCE \d+ OF 100 TODAY → \d+ IN 2048 · \d+ TO \d+ IN 8 OF 10 RUNS · IN ABUNDANT PLACES \d+ % → \d+ % · IN SCARCE ONES \d+ % → \d+ %$/,
+  );
+  assert.ok(result.weighted);
+  const view = m.views().at(-1);
+  const scoreOf = (id) => view.units.find((u) => u.id === id).score;
+  assert.ok(scoreOf('TST') >= scoreOf('FAR'), 'the richer place stays ahead');
+  assert.equal(scoreOf('NOL'), null);
+  assert.ok(view.units.every((u) => /^#[0-9a-f]{6}$/.test(u.color)));
+  assert.notDeepEqual(view.units.map((u) => u.score), todayView.units.map((u) => u.score));
+  assert.deepEqual(legendText(), ['0', '50', '100']);
+  // MODEL reads the level's typical lines until a place is selected.
+  assert.equal(model.hidden, false);
+  assert.equal(model.children.length, 2);
+  assert.match(model.children[0].textContent, /^GDP PER PERSON · [+-]?[\d,]+ \$ A YEAR · ±[\d,]+ \$ · CATCHING UP WITH THE FRONTIER \([\d,]+ \$\) · NO HISTORY: THE LEVEL’S TYPICAL FIGURES$/);
+  assert.equal(result.rp50, undefined, 'no ranks among the others until that scale is chosen');
+  assert.equal(result.scenario, 'baseline');
+  assert.match(model.children[1].textContent, /^INFLATION · [+-]?[\d.]+ % A YEAR · ±[\d.]+ % · RETURNS TO ITS USUAL [\d.]+ % · NO HISTORY: THE LEVEL’S TYPICAL FIGURES$/);
+  // The ranking is by the view's figure at the year.
+  const ranking = m.find((n) => n.className === 'abundance-list abundance-ranking');
+  assert.equal(ranking.children.length, 3);
+  assert.match(ranking.children[0].textContent, /^1\. \w+ · \d+$/);
+  // A clicked place reads its band, chances, rank and change, then each indicator's projection once its detail comes.
+  m.world.pick({ id: 'TST', hover: false });
+  await settle();
+  const selected = m.find((n) => n.className === 'abundance-list abundance-selected');
+  const lines = selected.children.map((li) => li.textContent);
+  assert.equal(lines.length, 5);
+  assert.match(lines[0], /^2048 · ABUNDANCE \d+ OF 100 TYPICALLY · \d+ TO \d+ IN 8 OF 10 RUNS$/);
+  assert.match(lines[1], /^CHANCE OF ABUNDANCE \d+ % · CHANCE OF SCARCITY \d+ %$/);
+  assert.match(lines[2], /^RANKED [123] OF 3 · [+-]?\d+ FROM TODAY$/);
+  assert.match(lines[3], /^GDP PER PERSON · [\d,]+ \$ · [\d,]+ TO [\d,]+ · PLACE \d+ OF 100$/);
+  assert.match(lines[4], /^INFLATION · -?[\d.]+ % · -?[\d.]+ TO -?[\d.]+ · PLACE \d+ OF 100$/, 'deflation is a figure too');
+  const card = m.cards().at(-1).card;
+  assert.equal(card.id, 'TST');
+  assert.deepEqual(card.details, lines);
+  assert.match(model.children[0].textContent, /GDP PER PERSON · /);
+  const fan = m.find((n) => n.tagName === 'CANVAS');
+  assert.equal(fan.hidden, true, 'no drawing context here');
+  // Another view: the chances, in percent, and their legend.
+  const viewSelect = m.find((n) => n.className === 'abundance-view');
+  viewSelect.value = 'up';
+  viewSelect.fire('change');
+  assert.deepEqual(legendText(), ['0 %', '50 %', '100 %']);
+  assert.match(ranking.children[0].textContent, /^1\. \w+ · \d+ %$/);
+  assert.ok(m.views().at(-1).units.every((u) => u.score === null || (u.score >= 0 && u.score <= 100)));
+  assert.equal(JSON.parse(m.storage.getItem(ABUNDANCE_CHOICE_KEY)).view, 'up');
+  viewSelect.value = 'change';
+  viewSelect.fire('change');
+  assert.deepEqual(legendText(), ['-50', '0', '+50']);
+  assert.match(ranking.children[0].textContent, /^1\. \w+ · [+-]?\d+$/);
+  viewSelect.value = 'p50';
+  viewSelect.fire('change');
+  // Back to today: the map is today's again; the result stays for the next move.
+  slider.value = '0';
+  slider.fire('input');
+  assert.equal(readout.textContent, 'TODAY');
+  assert.deepEqual(m.views().at(-1).units.map((u) => u.score), todayView.units.map((u) => u.score));
+  assert.ok(m.panel.forecast);
+  assert.match(forecastNotes()[1], /^ALL PLACES BY POPULATION · ABUNDANCE \d+ OF 100 · \d+ % IN ABUNDANT PLACES · \d+ % IN SCARCE ONES$/, 'today’s world line');
+  assert.deepEqual(selected.children.map((li) => li.textContent).slice(0, 1), ['ABUNDANCE 100 OF 100 · 2 OF 16 INDICATORS']);
+  // PLAY walks a year at a time; STOP holds.
+  const play = m.control('play');
+  assert.equal(play.textContent, 'PLAY');
+  play.click();
+  assert.equal(play.textContent, 'STOP');
+  m.timers.pending.pop()();
+  assert.equal(m.panel.choice.year, 1);
+  assert.equal(readout.textContent, '2024 · +1 YEAR');
+  m.timers.pending.pop()();
+  assert.equal(m.panel.choice.year, 2);
+  play.click();
+  assert.equal(play.textContent, 'PLAY');
+  assert.equal(m.timers.pending.length, 1, 'only the status poll waits');
+  // Fewer runs, no crises, a new draw: each makes the runs again.
+  const runs = m.find((n) => n.className === 'abundance-runs');
+  runs.value = '100';
+  runs.fire('change');
+  assert.equal(m.panel.forecast, null);
+  m.timers.pending.pop()();
+  await settle();
+  assert.equal(m.panel.forecast.runs, 100);
+  assert.equal(JSON.parse(m.storage.getItem(ABUNDANCE_CHOICE_KEY)).runs, 100);
+  const crises = m.find((n) => n.tagName === 'INPUT' && n.parent?.children[2]?.textContent === 'CRISES');
+  crises.checked = false;
+  crises.fire('change');
+  m.timers.pending.pop()();
+  await settle();
+  assert.equal(m.panel.forecast.crises, false);
+  m.control('redraw').click();
+  m.timers.pending.pop()();
+  await settle();
+  assert.equal(m.panel.forecast.seed, 2);
+  // The scale among the others ranks the places on each run: a new run, and SELECTED gains their line.
+  const scale = m.find((n) => n.className === 'abundance-scale');
+  scale.value = 'others';
+  scale.fire('change');
+  assert.equal(JSON.parse(m.storage.getItem(ABUNDANCE_CHOICE_KEY)).scale, 'others');
+  m.timers.pending.pop()();
+  await settle();
+  assert.ok(m.panel.forecast.rp50, 'ranked among the others');
+  slider.value = '30';
+  slider.fire('input');
+  await settle();
+  m.world.pick({ id: 'TST', hover: true });
+  await settle();
+  const amongLines = selected.children.map((li) => li.textContent);
+  assert.equal(amongLines.length, 6, "the two bands, the chances, the rank, and the two indicator lines");
+  assert.match(amongLines[0], /^2053 · ABUNDANCE \d+ OF 100 TYPICALLY/);
+  assert.match(amongLines[1], /^AMONG THE OTHERS IN 2053 · \d+ OF 100 TYPICALLY · \d+ TO \d+$/);
+  m.world.pick({ id: null, hover: true });
+  scale.value = 'today';
+  scale.fire('change');
+  // A scenario makes the runs again in that world.
+  const scenario = m.find((n) => n.className === 'abundance-scenario');
+  scenario.value = 'optimistic';
+  scenario.fire('change');
+  assert.equal(m.panel.forecast, null);
+  m.timers.pending.pop()();
+  await settle();
+  assert.equal(m.panel.forecast.scenario, 'optimistic');
+  assert.equal(JSON.parse(m.storage.getItem(ABUNDANCE_CHOICE_KEY)).scenario, 'optimistic');
+  // Unticking an indicator makes the runs again for the ticks on; the choice goes on.
+  m.box('inflation').checked = false;
+  m.box('inflation').fire('change');
+  m.timers.pending.pop()();
+  await settle();
+  assert.ok(m.panel.forecast);
+  assert.equal(m.panel.choice.indicators.includes('inflation'), false);
+  m.panel.destroy();
+  assert.equal(m.views().at(-1).show, false);
 });

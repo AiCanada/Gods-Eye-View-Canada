@@ -13,6 +13,16 @@
  * lists the most and least abundant; DATA shows the sources, REFRESH DATA
  * fetches them again, and LOAD CSV puts the owner's own figures on top.
  *
+ * FORECAST (owner request 2026-11-07: "create monte Carlo simulator for
+ * future abundance (0-100 years), use fine grain detail and display on
+ * map"): YEARS AHEAD slides the map 1 to 100 years out, PLAY runs the years;
+ * every figure walks forward from its own history on hundreds of runs
+ * (src/abundanceForecast.mjs, in a worker: src/abundanceForecastRun.js), and
+ * the map shows the TYPICAL OUTCOME, the bad or good case, the CHANCE OF
+ * ABUNDANCE or SCARCITY, or the CHANGE FROM TODAY; SELECTED reads a place's
+ * band, chances, rank and each indicator's projection, with its fan chart,
+ * and MODEL says what each figure's history gave the walk.
+ *
  * The figures come from the dev server's /api/abundance routes
  * (server/providers/abundance.js); the scores, colours, ranking and links
  * are worked out here (src/abundanceCore.mjs) and handed to the globe on
@@ -44,6 +54,30 @@ import {
   scoreColor,
   scoreUnits,
 } from './abundanceCore.mjs';
+import {
+  FORECAST_FAMILY_LABELS,
+  FORECAST_RUNS,
+  FORECAST_SCALES,
+  FORECAST_SCALE_LABELS,
+  FORECAST_SCENARIOS,
+  FORECAST_SCENARIO_LABELS,
+  FORECAST_VIEWS,
+  FORECAST_VIEW_LABELS,
+  FORECAST_YEARS,
+  cleanForecastView,
+  cleanRuns,
+  cleanScale,
+  cleanScenario,
+  cleanYear,
+  forecastAt,
+  hindcastScales,
+  hindcastShifts,
+  runsFor,
+  viewRampScore,
+  viewValue,
+  worldAt,
+} from './abundanceForecast.mjs';
+import { createForecastRunner } from './abundanceForecastRun.js';
 import { formatCount } from './aiWorldSelection.mjs';
 import { localDigits, msgl, tl, tln } from './i18n/index.js';
 import {
@@ -74,6 +108,15 @@ const STATUS_TIMEOUT_MS = 20_000;
 export const RETRY_DELAYS_MS = Object.freeze([
   5_000, 10_000, 20_000, 40_000, 60_000,
 ]);
+/** PLAY advances a year this often: the century in twenty seconds. */
+export const PLAY_STEP_MS = 200;
+/** A change to the ticks, weights, runs or crises waits this long for the next before the simulation runs. */
+const FORECAST_DEBOUNCE_MS = 300;
+/** Places whose detail is kept for the current run. */
+const DETAILS_KEPT = 400;
+/** The fan chart's size, in CSS pixels. */
+const FAN_WIDTH = 240;
+const FAN_HEIGHT = 72;
 
 const FROM_WORDS = Object.freeze({
   own: '',
@@ -119,6 +162,15 @@ export function readChoice(raw) {
     show: parsed?.show !== false,
     grid: parsed?.grid === true,
     weights: cleanWeights(parsed?.weights),
+    // The forecast: the years ahead (0 is today), what the map shows for a
+    // future year, the runs (null: the level's default) and whether crises
+    // are in the runs.
+    year: cleanYear(parsed?.year),
+    view: cleanForecastView(parsed?.view),
+    runs: cleanRuns(parsed?.runs),
+    crises: parsed?.crises !== false,
+    scale: cleanScale(parsed?.scale),
+    scenario: cleanScenario(parsed?.scenario),
   };
 }
 
@@ -412,6 +464,323 @@ export function importText(imported) {
   return parts.join(' · ');
 }
 
+// --- The forecast's words -------------------------------------------------------------
+
+/** The year readout: TODAY, or the calendar year and the years ahead. */
+export function yearText(year, baseYear) {
+  const ahead = cleanYear(year);
+  if (!ahead) return tl('TODAY');
+  return tln(ahead, '{year} · +{count} YEAR', '{year} · +{count} YEARS', {
+    year: localDigits(String(baseYear + ahead)),
+    count: formatCount(ahead),
+  });
+}
+
+/** A change in points with its sign: +12, -3, 0. */
+export function changeText(points) {
+  const n = Math.round(Number(points));
+  if (!Number.isFinite(n)) return '';
+  return `${n > 0 ? '+' : ''}${localDigits(String(n))}`;
+}
+
+/**
+ * The forecast's own line: the run under way, the level without figures,
+ * the last run, or what to do.
+ */
+export function forecastNote({ year, running, result, scored }) {
+  if (running)
+    return tl('SIMULATING · {percent} %', {
+      percent: localDigits(
+        String(Math.round((100 * (running.year || 0)) / (running.years || 1))),
+      ),
+    });
+  if (!scored) return tl('NO FORECAST: NO FIGURES AT THIS LEVEL');
+  if (result)
+    return tl('{runs} RUNS OVER {years} YEARS · SIMULATED IN {seconds} S', {
+      runs: formatCount(result.runs),
+      years: formatCount(result.years),
+      seconds: localDigits(((result.ms || 0) / 1000).toFixed(1)),
+    });
+  if (!cleanYear(year))
+    return tl('SLIDE YEARS AHEAD TO SEE THE FUTURE ON THE MAP');
+  return '';
+}
+
+/**
+ * The world's line: every place weighed by its people (each counted once
+ * where none are known): at TODAY the people's score and the shares of them
+ * in abundant and scarce places; at a future year today's figures, the
+ * typical outcome with its band, and the shares then.
+ * @param {object|null} world from worldAt
+ * @param {{year?: number, baseYear?: number}} [options]
+ */
+export function worldText(world, { year = 0, baseYear = 2026 } = {}) {
+  if (!world || !Number.isFinite(world.p50)) return '';
+  const who = world.weighted
+    ? tl('ALL PLACES BY POPULATION')
+    : tl('ALL PLACES, EACH COUNTED ONCE');
+  const percent = (value) => localDigits(String(Math.round(value)));
+  if (!cleanYear(year))
+    return tl(
+      '{who} · ABUNDANCE {score} OF 100 · {up} % IN ABUNDANT PLACES · {down} % IN SCARCE ONES',
+      {
+        who,
+        score: digits(world.p50, 0),
+        up: percent(world.up),
+        down: percent(world.down),
+      },
+    );
+  return tl(
+    '{who} · ABUNDANCE {today} OF 100 TODAY → {p50} IN {year} · {p10} TO {p90} IN 8 OF 10 RUNS · IN ABUNDANT PLACES {upToday} % → {up} % · IN SCARCE ONES {downToday} % → {down} %',
+    {
+      who,
+      today: digits(world.today, 0),
+      p50: digits(world.p50, 0),
+      year: localDigits(String(baseYear + cleanYear(year))),
+      p10: digits(world.p10, 0),
+      p90: digits(world.p90, 0),
+      upToday: percent(world.upToday),
+      up: percent(world.up),
+      downToday: percent(world.downToday),
+      down: percent(world.down),
+    },
+  );
+}
+
+/**
+ * A place's forecast lines at a year: its score's band against today,
+ * its band among the others in that year (when the run ranked them), the
+ * chances it is abundant or scarce on the scale shown, and its rank in
+ * the ranking with its change from today.
+ * @param {object|null} row the row against today
+ * @param {object|null} others the row among the others, or null
+ * @param {{year: number, baseYear: number, rank?: number|null, count?: number, scale?: string}} options
+ */
+export function forecastScoreLines(
+  row,
+  others,
+  { year = 0, baseYear = 2026, rank = null, count = 0, scale = 'today' } = {},
+) {
+  if (!row) return [tl('NO FORECAST FOR THIS PLACE')];
+  const calendar = localDigits(String(baseYear + cleanYear(year)));
+  const chosen = cleanScale(scale) === 'others' && others ? others : row;
+  const lines = [
+    tl(
+      '{year} · ABUNDANCE {p50} OF 100 TYPICALLY · {p10} TO {p90} IN 8 OF 10 RUNS',
+      {
+        year: calendar,
+        p50: digits(row.p50, 0),
+        p10: digits(row.p10, 0),
+        p90: digits(row.p90, 0),
+      },
+    ),
+  ];
+  if (others)
+    lines.push(
+      tl(
+        'AMONG THE OTHERS IN {year} · {p50} OF 100 TYPICALLY · {p10} TO {p90}',
+        {
+          year: calendar,
+          p50: digits(others.p50, 0),
+          p10: digits(others.p10, 0),
+          p90: digits(others.p90, 0),
+        },
+      ),
+    );
+  lines.push(
+    tl('CHANCE OF ABUNDANCE {up} % · CHANCE OF SCARCITY {down} %', {
+      up: localDigits(String(chosen.up)),
+      down: localDigits(String(chosen.down)),
+    }),
+  );
+  const change = changeText(chosen.p50 - chosen.today);
+  lines.push(
+    Number.isFinite(rank) && rank > 0
+      ? tl('RANKED {rank} OF {count} · {change} FROM TODAY', {
+          rank: formatCount(rank),
+          count: formatCount(count),
+          change,
+        })
+      : tl('{change} FROM TODAY', { change }),
+  );
+  return lines;
+}
+
+/** One indicator's forecast line: the typical figure, its band, its place, and where the figure came from. */
+export function forecastFigureText(indicator, entry, year, from) {
+  const t = cleanYear(year);
+  const parts = [
+    indicatorLabel(indicator),
+    valueWithUnit(indicator, entry.p50[t]),
+    tl('{low} TO {high}', {
+      low: localDigits(formatFigure(indicator, entry.p10[t])),
+      high: localDigits(formatFigure(indicator, entry.p90[t])),
+    }),
+    tl('PLACE {n} OF 100', { n: digits(entry.placeMid[t], 0) }),
+  ];
+  const word = FROM_WORDS[from];
+  if (word) parts.push(tl(word));
+  return parts.join(' · ');
+}
+
+/**
+ * What the model says of one indicator's walk, in the figure's own units,
+ * with the hindcast's word on it (the swing scale and the trend shift it
+ * gave, and how often its band held).
+ */
+export function modelLine(indicator, summary, hindcastEntry = null) {
+  if (!indicator || !summary) return '';
+  const decimals = Number.isFinite(indicator.decimals) ? indicator.decimals : 1;
+  const shown = Number(Number(summary.trend).toFixed(decimals));
+  const parts = [
+    indicatorLabel(indicator),
+    tl('{change} A YEAR', {
+      change: `${shown > 0 ? '+' : ''}${valueWithUnit(indicator, shown)}`,
+    }),
+    `±${valueWithUnit(indicator, summary.spread)}`,
+  ];
+  if (summary.saturated) parts.push(tl('AT ITS CEILING, STAYS THERE'));
+  else {
+    const label = FORECAST_FAMILY_LABELS[summary.family];
+    if (label)
+      parts.push(
+        tl(label, {
+          frontier: valueWithUnit(indicator, summary.frontier),
+          floor: valueWithUnit(indicator, summary.floor),
+          cap: valueWithUnit(indicator, summary.cap),
+          level: valueWithUnit(indicator, summary.level),
+        }),
+      );
+  }
+  parts.push(
+    summary.n >= 1
+      ? tln(summary.n, '{count} STEP OF HISTORY', '{count} STEPS OF HISTORY', {
+          count: formatCount(summary.n),
+        })
+      : tl('NO HISTORY: THE LEVEL’S TYPICAL FIGURES'),
+  );
+  if (Number.isFinite(summary.scale) && summary.scale !== 1)
+    parts.push(
+      tl('SWING ×{scale}', { scale: localDigits(String(summary.scale)) }),
+    );
+  if (summary.shift && Number.isFinite(summary.trendShift)) {
+    const shift = Number(Number(summary.trendShift).toFixed(decimals));
+    if (shift !== 0)
+      parts.push(
+        tl('HINDCAST TREND {change} A YEAR', {
+          change: `${shift > 0 ? '+' : ''}${valueWithUnit(indicator, shift)}`,
+        }),
+      );
+  }
+  if (Number.isFinite(hindcastEntry?.held))
+    parts.push(
+      tl('HINDCAST BAND HELD {held} %', {
+        held: localDigits(String(hindcastEntry.held)),
+      }),
+    );
+  return parts.join(' · ');
+}
+
+/** The hindcast's line: what the replay from ten years ago held. */
+export function hindcastText(report) {
+  if (!report || !(report.tested > 0)) return '';
+  return tl(
+    'HINDCAST {from}→{to} · THE 8-OF-10 BAND HELD {held} % OF {tested} FIGURES · THE TRENDS AND SWINGS ARE CALIBRATED BY IT',
+    {
+      from: localDigits(String(report.from)),
+      to: localDigits(String(report.to)),
+      held: localDigits(String(report.held)),
+      tested: formatCount(report.tested),
+    },
+  );
+}
+
+/** The legend's ends and middle for a forecast view: scores, chances, or a change. */
+export function forecastLegend(view) {
+  switch (cleanForecastView(view)) {
+    case 'up':
+      return {
+        low: `${localDigits('0')} %`,
+        mid: `${localDigits('50')} %`,
+        high: `${localDigits('100')} %`,
+      };
+    case 'down':
+      return {
+        low: `${localDigits('100')} %`,
+        mid: `${localDigits('50')} %`,
+        high: `${localDigits('0')} %`,
+      };
+    case 'change':
+      return {
+        low: localDigits('-50'),
+        mid: localDigits('0'),
+        high: `+${localDigits('50')}`,
+      };
+    default:
+      return scoreLegend();
+  }
+}
+
+/** A ranking row's figure for a view: a score, a signed change, or a chance in percent. */
+export function viewText(value, view) {
+  if (!Number.isFinite(value)) return '';
+  switch (cleanForecastView(view)) {
+    case 'up':
+    case 'down':
+      return `${localDigits(String(Math.round(value)))} %`;
+    case 'change':
+      return changeText(value);
+    default:
+      return digits(value, 0);
+  }
+}
+
+/**
+ * The fan chart of a place's score over the century: the band between the
+ * bad and the good case, the typical line, the abundant and scarce marks,
+ * and the chosen year. Nothing where the canvas cannot draw (a test).
+ */
+export function drawFan(canvas, series, year) {
+  const ctx = canvas?.getContext?.('2d');
+  if (!ctx || !series?.p50?.length) return false;
+  const w = canvas.width;
+  const h = canvas.height;
+  const last = series.p50.length - 1;
+  const x = (t) => (t / last) * (w - 1) + 0.5;
+  const y = (s) => h - 0.5 - (Math.max(0, Math.min(100, s)) / 100) * (h - 1);
+  ctx.clearRect(0, 0, w, h);
+  ctx.beginPath();
+  for (let t = 0; t <= last; t++) ctx.lineTo(x(t), y(series.p90[t]));
+  for (let t = last; t >= 0; t--) ctx.lineTo(x(t), y(series.p10[t]));
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(25, 230, 176, 0.5)';
+  ctx.beginPath();
+  ctx.moveTo(0, y(75));
+  ctx.lineTo(w, y(75));
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255, 42, 42, 0.5)';
+  ctx.beginPath();
+  ctx.moveTo(0, y(25));
+  ctx.lineTo(w, y(25));
+  ctx.stroke();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#00d4ff';
+  ctx.beginPath();
+  for (let t = 0; t <= last; t++) ctx.lineTo(x(t), y(series.p50[t]));
+  ctx.stroke();
+  const at = cleanYear(year);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+  ctx.beginPath();
+  ctx.moveTo(x(at), 0);
+  ctx.lineTo(x(at), h);
+  ctx.stroke();
+  return true;
+}
+
 function element(doc, tag, className, text) {
   const node = doc.createElement(tag);
   if (className) node.className = className;
@@ -463,7 +832,7 @@ function fillList(doc, ul, lines, onClick) {
 
 /**
  * Mount the tab on #abundance-panel.
- * @param {{documentRef?: Document, fetchImpl?: typeof fetch, signal?: AbortSignal, timers?: object, now?: () => number, storage?: Storage|null, readFile?: (file: File) => Promise<string>}} options
+ * @param {{documentRef?: Document, fetchImpl?: typeof fetch, signal?: AbortSignal, timers?: object, now?: () => number, storage?: Storage|null, readFile?: (file: File) => Promise<string>, forecast?: object}} options
  */
 export function initAbundancePanel({
   documentRef = globalThis.document,
@@ -482,6 +851,8 @@ export function initAbundancePanel({
     }
   })(),
   readFile = (file) => file.text(),
+  /** The forecast runner (src/abundanceForecastRun.js); a test passes one without a worker. */
+  forecast: givenForecast = null,
 } = {}) {
   const doc = documentRef;
   const host = doc?.getElementById?.('abundance-body');
@@ -489,6 +860,9 @@ export function initAbundancePanel({
   if (!host || !doc?.createElement)
     return { refresh() {}, render() {}, destroy() {} };
   const doFetch = fetchImpl || ((...args) => globalThis.fetch(...args));
+  const forecast = givenForecast || createForecastRunner();
+  /** The calendar year the slider counts from. */
+  const baseYear = new Date(now()).getUTCFullYear();
   const lifetime = new AbortController();
   if (signal) {
     if (signal.aborted) lifetime.abort();
@@ -520,6 +894,21 @@ export function initAbundancePanel({
   let scores = new Map();
   let links = [];
   let ranking = [];
+  /**
+   * The forecast: the last result (`{ key, level, stamp, data, byId,
+   * indicatorIds }`), the run under way, the details and the level's
+   * typical model for that result, the view's values when a future year is
+   * shown, the draw's seed, and the timers of the debounce and of PLAY.
+   */
+  let result = null;
+  let running = null;
+  let forecastTimer = null;
+  let playTimer = null;
+  let seed = 1;
+  const details = new Map();
+  const detailsAsked = new Set();
+  let typical = null;
+  let forecastScores = null;
 
   const say = (text) => {
     note = { text: String(text), until: now() + NOTE_MS };
@@ -603,6 +992,7 @@ export function initAbundancePanel({
     pinnedId = null;
     hoverId = null;
     keepChoice();
+    stopPlay();
     void loadLevel(choice.level);
   });
   top.append(ui.level);
@@ -633,9 +1023,7 @@ export function initAbundancePanel({
   ui.all.addEventListener('change', () => {
     choice.indicators = ui.all.checked ? [...ABUNDANCE_INDICATOR_IDS] : [];
     keepChoice();
-    compute();
-    render();
-    publish();
+    afterForecastChange(false);
   });
   host.append(all.label);
   ui.rows = new Map();
@@ -652,9 +1040,7 @@ export function initAbundancePanel({
       else set.delete(indicator.id);
       choice.indicators = cleanIndicatorIds([...set]);
       keepChoice();
-      compute();
-      render();
-      publish();
+      afterForecastChange(false);
     });
     // The weight: how much this indicator counts in the score, ×0.5 to ×3.
     const weight = element(doc, 'input', 'abundance-weight');
@@ -678,9 +1064,7 @@ export function initAbundancePanel({
         [indicator.id]: Number(weight.value),
       });
       keepChoice();
-      compute();
-      render();
-      publish();
+      afterForecastChange(false);
     };
     weight.addEventListener('input', onWeight);
     weight.addEventListener('change', onWeight);
@@ -702,9 +1086,7 @@ export function initAbundancePanel({
   ui.resetWeights.addEventListener('click', () => {
     choice.weights = {};
     keepChoice();
-    compute();
-    render();
-    publish();
+    afterForecastChange(false);
   });
   host.append(ui.resetWeights);
 
@@ -734,6 +1116,177 @@ export function initAbundancePanel({
     ),
   );
 
+  // --- FORECAST: the years ahead, what the map shows, the runs ------------------
+  host.append(element(doc, 'div', 'abundance-label', tl('FORECAST')));
+  const yearRow = element(doc, 'div', 'abundance-forecast-row');
+  ui.year = element(doc, 'input', 'abundance-year');
+  ui.year.type = 'range';
+  ui.year.min = '0';
+  ui.year.max = String(FORECAST_YEARS);
+  ui.year.step = '1';
+  ui.year.value = String(choice.year);
+  ui.year.setAttribute('aria-label', tl('Years ahead'));
+  ui.year.title = tl('Today at the left, a hundred years ahead at the right');
+  const onYear = () => {
+    const year = cleanYear(ui.year.value);
+    if (year === choice.year) return;
+    choice.year = year;
+    keepChoice();
+    afterForecastChange(false);
+  };
+  ui.year.addEventListener('input', onYear);
+  ui.year.addEventListener('change', onYear);
+  ui.yearText = element(doc, 'span', 'abundance-year-text');
+  yearRow.append(ui.year, ui.yearText);
+  host.append(yearRow);
+  const forecastActions = element(
+    doc,
+    'div',
+    'cctv-controls abundance-actions',
+  );
+  // PLAY in its own context: the page's PLAY is a sound's (ESCUCHAR, ÉCOUTER).
+  ui.play = button(
+    doc,
+    tl('PLAY', { context: 'forecast' }),
+    'play',
+    tl('Runs the years forward on the map'),
+  );
+  ui.play.addEventListener('click', () =>
+    playTimer === null ? play() : stopPlay(),
+  );
+  ui.redraw = button(
+    doc,
+    tl('NEW DRAW'),
+    'redraw',
+    tl('Runs the simulation again with other random draws'),
+  );
+  ui.redraw.addEventListener('click', () => {
+    seed += 1;
+    afterForecastChange(true);
+  });
+  ui.view = element(doc, 'select', 'abundance-view');
+  ui.view.setAttribute(
+    'aria-label',
+    tl('What the map shows for the chosen year'),
+  );
+  for (const view of FORECAST_VIEWS) {
+    const option = element(doc, 'option', '', tl(FORECAST_VIEW_LABELS[view]));
+    option.value = view;
+    ui.view.append(option);
+  }
+  ui.view.value = choice.view;
+  ui.view.addEventListener('change', () => {
+    choice.view = cleanForecastView(ui.view.value);
+    keepChoice();
+    afterForecastChange(false);
+  });
+  ui.runs = element(doc, 'select', 'abundance-runs');
+  ui.runs.setAttribute('aria-label', tl('How many runs the simulation makes'));
+  ui.runs.title = tl('More runs give steadier chances and take longer');
+  for (const runs of FORECAST_RUNS) {
+    const option = element(
+      doc,
+      'option',
+      '',
+      tln(runs, '{count} RUN', '{count} RUNS', { count: formatCount(runs) }),
+    );
+    option.value = String(runs);
+    ui.runs.append(option);
+  }
+  ui.runs.value = String(runsFor(choice.level, choice.runs));
+  ui.runs.addEventListener('change', () => {
+    choice.runs = cleanRuns(ui.runs.value);
+    keepChoice();
+    afterForecastChange(true);
+  });
+  const crises = tick(doc, tl('CRISES'), 'abundance-all');
+  ui.crises = crises.box;
+  ui.crises.checked = choice.crises;
+  ui.crises.title = tl(
+    'World and local crises in the runs: a year or two of cuts, then three years of partial recovery',
+  );
+  ui.crises.addEventListener('change', () => {
+    choice.crises = Boolean(ui.crises.checked);
+    keepChoice();
+    afterForecastChange(true);
+  });
+  ui.scale = element(doc, 'select', 'abundance-scale');
+  ui.scale.setAttribute(
+    'aria-label',
+    tl('What a future score is measured against'),
+  );
+  ui.scale.title = tl(
+    'Today’s figures, where 100 is the best any place has today, or the other places in that year, each counted by its population',
+  );
+  for (const scale of FORECAST_SCALES) {
+    const option = element(doc, 'option', '', tl(FORECAST_SCALE_LABELS[scale]));
+    option.value = scale;
+    ui.scale.append(option);
+  }
+  ui.scale.value = choice.scale;
+  ui.scale.addEventListener('change', () => {
+    choice.scale = cleanScale(ui.scale.value);
+    keepChoice();
+    afterForecastChange(false);
+  });
+  ui.scenario = element(doc, 'select', 'abundance-scenario');
+  ui.scenario.setAttribute('aria-label', tl('Which world the runs assume'));
+  ui.scenario.title = tl(
+    'The long-run growth of the frontier, how often crises come and how deep they cut',
+  );
+  for (const scenario of FORECAST_SCENARIOS) {
+    const option = element(
+      doc,
+      'option',
+      '',
+      tl(FORECAST_SCENARIO_LABELS[scenario]),
+    );
+    option.value = scenario;
+    ui.scenario.append(option);
+  }
+  ui.scenario.value = choice.scenario;
+  ui.scenario.addEventListener('change', () => {
+    choice.scenario = cleanScenario(ui.scenario.value);
+    keepChoice();
+    afterForecastChange(true);
+  });
+  forecastActions.append(
+    ui.play,
+    ui.redraw,
+    ui.view,
+    ui.scale,
+    ui.scenario,
+    ui.runs,
+    crises.label,
+  );
+  host.append(forecastActions);
+  ui.forecastNote = element(doc, 'p', 'abundance-note abundance-forecast-note');
+  ui.worldNote = element(doc, 'p', 'abundance-note abundance-forecast-note');
+  ui.hindcastNote = element(doc, 'p', 'abundance-note abundance-forecast-note');
+  host.append(ui.forecastNote, ui.worldNote, ui.hindcastNote);
+  host.append(
+    element(
+      doc,
+      'p',
+      'abundance-note',
+      tl(
+        'Each figure walks forward a year at a time from its own history, pulled toward a moving frontier (the best places’ figures, money in today’s dollars) with its own trend fading over decades, back to its usual level for inflation, unemployment and prices; the swings are the world’s, the country’s, the place’s and the figure’s own, so a place’s figures move together; crises last a year or two and are followed by a partial recovery; and each trend and swing is calibrated by the hindcast, a replay from ten years ago. A future score is measured against today’s figures (100 is the best any place has today) or among the other places in that year.',
+      ),
+    ),
+  );
+  ui.modelLabel = element(doc, 'div', 'abundance-label', tl('MODEL'));
+  ui.modelNote = element(
+    doc,
+    'p',
+    'abundance-note',
+    tl(
+      'What each figure’s history gave the walk: the change of a typical year and its usual swing, the floor, ceiling or usual level, and the steps of history behind it. The selected place’s, else the level’s typical ones.',
+    ),
+  );
+  ui.model = element(doc, 'ul', 'abundance-list abundance-model');
+  ui.model.setAttribute('aria-label', tl('The model behind the forecast'));
+  host.append(ui.modelLabel, ui.modelNote, ui.model);
+
   host.append(element(doc, 'div', 'abundance-label', tl('SELECTED')));
   ui.selectedNote = element(
     doc,
@@ -745,13 +1298,22 @@ export function initAbundancePanel({
   ui.selectedName = element(doc, 'div', 'abundance-selected-name');
   ui.selected = element(doc, 'ul', 'abundance-list abundance-selected');
   ui.selected.setAttribute('aria-label', tl('The selected place'));
+  // The fan chart: the selected place's score over the century.
+  ui.fan = element(doc, 'canvas', 'abundance-fan');
+  ui.fan.width = FAN_WIDTH;
+  ui.fan.height = FAN_HEIGHT;
+  ui.fan.hidden = true;
+  ui.fan.setAttribute(
+    'aria-label',
+    tl('The selected place’s score over the next hundred years'),
+  );
   ui.clear = button(doc, tl('CLEAR'), 'clear');
   ui.clear.addEventListener('click', () => {
     pinnedId = null;
     render();
     publishCard();
   });
-  host.append(ui.selectedName, ui.selected, ui.clear);
+  host.append(ui.selectedName, ui.selected, ui.fan, ui.clear);
 
   host.append(element(doc, 'div', 'abundance-label', tl('RANKING')));
   const sides = element(doc, 'div', 'cctv-controls abundance-actions');
@@ -861,8 +1423,11 @@ export function initAbundancePanel({
         refreshedAt: payload.refreshedAt || null,
         refreshing: payload.refreshing || null,
         imported: payload.imported || null,
+        hindcast: payload.hindcast || null,
         newestYear,
         scored: 0,
+        // The figures' own stamp: a forecast is for one load of them.
+        stamp: payload.builtAt || now(),
       });
       if (payload.refreshing) schedulePoll(POLL_BUSY_MS);
     } catch (err) {
@@ -883,13 +1448,198 @@ export function initAbundancePanel({
       compute();
       render();
       publish();
+      ensureForecast();
     }
+  };
+
+  // --- The forecast ---------------------------------------------------------------
+  /** Everything a run depends on: the level and its figures, the ticks, the weights, the runs, the crises, the draw. */
+  const forecastKey = () => {
+    const t = table();
+    return JSON.stringify([
+      choice.level,
+      t?.stamp ?? 0,
+      choice.indicators,
+      choice.weights,
+      runsFor(choice.level, choice.runs),
+      choice.crises,
+      choice.scenario,
+      choice.scale === 'others',
+      seed,
+    ]);
+  };
+
+  /** The result stands for the level's figures on screen (its settings may be a run behind). */
+  const resultUsable = () => {
+    const t = table();
+    return Boolean(
+      result && t && result.level === choice.level && result.stamp === t.stamp,
+    );
+  };
+
+  /** A future year is shown and a result is there to show it. */
+  const forecastShown = () => choice.year > 0 && resultUsable();
+
+  const cancelForecastTimer = () => {
+    if (forecastTimer !== null) timers.clearTimeout(forecastTimer);
+    forecastTimer = null;
+  };
+
+  /** A run for the current key, unless one is there or under way; waits for the next change first. */
+  const ensureForecast = () => {
+    if (!choice.year) return;
+    const t = table();
+    if (!t || !t.scored) return;
+    const key = forecastKey();
+    if ((result && result.key === key) || (running && running.key === key))
+      return;
+    cancelForecastTimer();
+    forecastTimer = timers.setTimeout(() => {
+      forecastTimer = null;
+      void runForecast();
+    }, FORECAST_DEBOUNCE_MS);
+  };
+
+  const runForecast = async () => {
+    const t = table();
+    if (!t || lifetime.signal.aborted) return;
+    const key = forecastKey();
+    if (result && result.key === key) return;
+    running = { key, year: 0, years: FORECAST_YEARS };
+    renderForecastNote();
+    const answer = await forecast.run(
+      {
+        planId: key,
+        level: choice.level,
+        units: t.units,
+        indicators: choice.indicators,
+        weights: choice.weights,
+        runs: runsFor(choice.level, choice.runs),
+        seed,
+        crises: choice.crises,
+        scenario: choice.scenario,
+        scales: hindcastScales(t.hindcast),
+        shifts: hindcastShifts(t.hindcast),
+        among: choice.scale === 'others',
+      },
+      (progress) => {
+        if (running?.key !== key) return;
+        running.year = progress.year;
+        running.years = progress.years;
+        renderForecastNote();
+      },
+    );
+    if (lifetime.signal.aborted) return;
+    if (running?.key === key) running = null;
+    if (answer?.type !== 'done' || !answer.result) {
+      renderForecastNote();
+      return;
+    }
+    result = {
+      key,
+      level: choice.level,
+      stamp: t.stamp,
+      data: answer.result,
+      byId: new Map(answer.result.ids.map((id, k) => [id, k])),
+      indicatorIds: cleanIndicatorIds(choice.indicators),
+    };
+    details.clear();
+    detailsAsked.clear();
+    typical = null;
+    void forecast.model(key).then((reply) => {
+      if (reply?.model && result?.key === key) {
+        typical = reply.model;
+        render();
+      }
+    });
+    compute();
+    render();
+    publish();
+    // The key may have moved on while the run went (another tick): run again.
+    ensureForecast();
+  };
+
+  /** A place's detail for the current result, asked once; the lists fill when it comes. */
+  const requestDetail = (id) => {
+    if (!result || !id || details.has(id) || detailsAsked.has(id)) return;
+    detailsAsked.add(id);
+    const key = result.key;
+    void forecast.detail(key, id).then((reply) => {
+      if (lifetime.signal.aborted || result?.key !== key || reply?.stale)
+        return;
+      if (!reply?.detail) return;
+      if (details.size >= DETAILS_KEPT) details.clear();
+      details.set(id, { detail: reply.detail, model: reply.model });
+      render();
+      if (pinnedId === id) publishCard();
+    });
+  };
+
+  /** A result's row for a unit at the chosen year, on a scale (the chosen one unless said). */
+  const forecastRow = (id, scale = choice.scale) =>
+    result
+      ? forecastAt(result.data, result.byId.get(id), choice.year, scale)
+      : null;
+
+  /** Every unit's figure for the view at the chosen year: the value, its place on the ramp, the typical score. */
+  const viewScoresMap = (t) => {
+    const out = new Map();
+    for (const u of t.units) {
+      const row = forecastRow(u.id);
+      if (!row) continue;
+      const value = viewValue(row, choice.view);
+      const ramp = viewRampScore(value, choice.view);
+      if (ramp === null) continue;
+      out.set(u.id, { value, ramp, p50: row.p50 });
+    }
+    return out;
+  };
+
+  /** After a change to the forecast's choice: `rerun` when the runs must be made again. */
+  const afterForecastChange = (rerun) => {
+    if (rerun) {
+      result = null;
+      typical = null;
+      details.clear();
+      detailsAsked.clear();
+    }
+    compute();
+    render();
+    publish();
+    ensureForecast();
+  };
+
+  const play = () => {
+    if (playTimer !== null) return;
+    if (choice.year >= FORECAST_YEARS) choice.year = 0;
+    const step = () => {
+      playTimer = null;
+      if (lifetime.signal.aborted) return;
+      choice.year = cleanYear(choice.year + 1);
+      keepChoice();
+      compute();
+      render();
+      publish();
+      ensureForecast();
+      if (choice.year < FORECAST_YEARS)
+        playTimer = timers.setTimeout(step, PLAY_STEP_MS);
+      else render();
+    };
+    playTimer = timers.setTimeout(step, PLAY_STEP_MS);
+    render();
+  };
+
+  const stopPlay = () => {
+    if (playTimer !== null) timers.clearTimeout(playTimer);
+    playTimer = null;
+    render();
   };
 
   const compute = () => {
     const t = table();
     if (!t) {
       scores = new Map();
+      forecastScores = null;
       links = [];
       ranking = [];
       return;
@@ -900,11 +1650,96 @@ export function initAbundancePanel({
       ABUNDANCE_INDICATORS,
       choice.weights,
     );
+    t.scored = rankUnits(t.units, scores).length;
+    forecastScores = forecastShown() ? viewScoresMap(t) : null;
+    if (forecastScores) {
+      const ramp = new Map();
+      const typicalScores = new Map();
+      for (const [id, entry] of forecastScores) {
+        ramp.set(id, { score: entry.ramp });
+        typicalScores.set(id, { score: entry.p50 });
+      }
+      ranking = rankUnits(t.units, ramp);
+      links = choice.grid
+        ? abundanceLinks(t.units, typicalScores, { max: LINKS_MAX })
+        : [];
+      return;
+    }
     ranking = rankUnits(t.units, scores);
-    t.scored = ranking.length;
     links = choice.grid
       ? abundanceLinks(t.units, scores, { max: LINKS_MAX })
       : [];
+  };
+
+  /** The colour a unit takes on the map now: the view's, or today's score's. */
+  const colorOf = (id) =>
+    forecastScores
+      ? scoreColor(forecastScores.get(id)?.ramp ?? null)
+      : scoreColor(scores.get(id)?.score);
+
+  /** A unit's lines for a future year, for SELECTED and its card. */
+  const forecastUnitLines = (unit) => {
+    const lines = [];
+    if (unit.country && unit.country !== unit.name)
+      lines.push([unit.adm1, unit.country].filter(Boolean).join(', '));
+    if (Number.isFinite(unit.pop) && unit.pop > 0)
+      lines.push(tl('POPULATION {n}', { n: formatCount(unit.pop) }));
+    const row = forecastRow(unit.id, 'today');
+    const others = result?.data?.rp50 ? forecastRow(unit.id, 'others') : null;
+    const at = ranking.findIndex((r) => r.id === unit.id);
+    lines.push(
+      ...forecastScoreLines(row, others, {
+        year: choice.year,
+        baseYear,
+        rank: at >= 0 ? at + 1 : null,
+        count: ranking.length,
+        scale: choice.scale,
+      }),
+    );
+    const detail = details.get(unit.id)?.detail;
+    if (row && detail)
+      for (const id of result.indicatorIds) {
+        const entry = detail.indicators?.[id];
+        const indicator = indicatorById(id);
+        if (!entry || !indicator) continue;
+        lines.push(
+          forecastFigureText(
+            indicator,
+            entry,
+            choice.year,
+            unit.values?.[id]?.from,
+          ),
+        );
+      }
+    return lines;
+  };
+
+  /** A unit's score series over the century from the result, for its fan chart. */
+  const forecastSeries = (id) => {
+    const k = result?.byId.get(id);
+    if (k === undefined) return null;
+    const T1 = result.data.years + 1;
+    if (Number.isNaN(result.data.p50[k * T1])) return null;
+    return {
+      p10: result.data.p10.subarray(k * T1, (k + 1) * T1),
+      p50: result.data.p50.subarray(k * T1, (k + 1) * T1),
+      p90: result.data.p90.subarray(k * T1, (k + 1) * T1),
+    };
+  };
+
+  const renderForecastNote = () => {
+    const t = table();
+    const usable = resultUsable();
+    ui.forecastNote.textContent = forecastNote({
+      year: choice.year,
+      running,
+      result: usable ? result.data : null,
+      scored: t?.scored ?? 0,
+    });
+    ui.worldNote.textContent = worldText(
+      usable ? worldAt(result.data, choice.year) : null,
+      { year: choice.year, baseYear },
+    );
   };
 
   const selectedUnit = () => {
@@ -921,13 +1756,16 @@ export function initAbundancePanel({
     if (!unit || !Number.isFinite(unit.lat) || !Number.isFinite(unit.lon))
       return null;
     const score = scores.get(unit.id);
+    if (forecastScores) requestDetail(unit.id);
     return {
       id: unit.id,
       lat: unit.lat,
       lon: unit.lon,
       title: unit.name,
-      details: unitLines(unit, score, choice.indicators, choice.level),
-      accent: scoreColor(score?.score),
+      details: forecastScores
+        ? forecastUnitLines(unit)
+        : unitLines(unit, score, choice.indicators, choice.level),
+      accent: colorOf(unit.id),
     };
   };
 
@@ -938,11 +1776,13 @@ export function initAbundancePanel({
       level: choice.level,
       show: choice.show,
       units: (t?.units || []).map((u) => {
-        const s = scores.get(u.id);
+        const value = forecastScores
+          ? (forecastScores.get(u.id)?.ramp ?? null)
+          : (scores.get(u.id)?.score ?? null);
         return {
           id: u.id,
-          score: s?.score ?? null,
-          color: scoreColor(s?.score),
+          score: value,
+          color: colorOf(u.id),
         };
       }),
       links: links.map((l) => {
@@ -1098,12 +1938,51 @@ export function initAbundancePanel({
       choice.indicators.length === 1
         ? indicatorById(choice.indicators[0])
         : null;
-    const legendText = single ? legendValues(t?.units, single) : null;
+    const legendText = forecastScores
+      ? forecastLegend(choice.view)
+      : single
+        ? legendValues(t?.units, single)
+        : null;
     const ends = legendText || scoreLegend();
     ui.legendLow.textContent = ends.low;
     ui.legendMid.textContent = ends.mid;
     ui.legendHigh.textContent = ends.high;
+    // FORECAST: the slider and its readout, PLAY, the view, the runs, the note, the model.
+    if (cleanYear(ui.year.value) !== choice.year)
+      ui.year.value = String(choice.year);
+    ui.yearText.textContent = yearText(choice.year, baseYear);
+    // The label is made first: a quoted word in a textContent assignment
+    // reads as a glyph name to the icon subset's check.
+    const playLabel =
+      playTimer === null ? tl('PLAY', { context: 'forecast' }) : tl('STOP');
+    ui.play.textContent = playLabel;
+    ui.play.disabled = !t?.scored;
+    ui.redraw.disabled = !t?.scored;
+    if (ui.view.value !== choice.view) ui.view.value = choice.view;
+    const runs = String(runsFor(choice.level, choice.runs));
+    if (ui.runs.value !== runs) ui.runs.value = runs;
+    if (ui.crises.checked !== choice.crises) ui.crises.checked = choice.crises;
+    if (ui.scale.value !== choice.scale) ui.scale.value = choice.scale;
+    if (ui.scenario.value !== choice.scenario)
+      ui.scenario.value = choice.scenario;
+    renderForecastNote();
+    ui.hindcastNote.textContent = hindcastText(t?.hindcast);
     const unit = selectedUnit();
+    const usable = resultUsable();
+    const unitDetail = unit && usable ? details.get(unit.id) : null;
+    if (unit && usable) requestDetail(unit.id);
+    const modelLines = usable
+      ? (unitDetail?.model || typical || []).map((summary) =>
+          modelLine(
+            indicatorById(summary.id),
+            summary,
+            t?.hindcast?.indicators?.[summary.id] ?? null,
+          ),
+        )
+      : [];
+    ui.modelLabel.hidden = !usable;
+    ui.modelNote.hidden = !usable;
+    fillList(doc, ui.model, modelLines);
     ui.selectedNote.hidden = Boolean(unit);
     ui.selectedName.textContent = unit ? unit.name : '';
     ui.selectedName.hidden = !unit;
@@ -1111,9 +1990,18 @@ export function initAbundancePanel({
       doc,
       ui.selected,
       unit
-        ? unitLines(unit, scores.get(unit.id), choice.indicators, choice.level)
+        ? forecastScores
+          ? forecastUnitLines(unit)
+          : unitLines(
+              unit,
+              scores.get(unit.id),
+              choice.indicators,
+              choice.level,
+            )
         : [],
     );
+    const fan = unit && usable ? forecastSeries(unit.id) : null;
+    ui.fan.hidden = !(fan && drawFan(ui.fan, fan, choice.year));
     ui.clear.hidden = !pinnedId;
     ui.top.disabled = rankingSide === 'top';
     ui.bottom.disabled = rankingSide === 'bottom';
@@ -1126,7 +2014,11 @@ export function initAbundancePanel({
       ui.ranking,
       side.map((r, k) => ({
         id: r.id,
-        text: `${localDigits(String(rankingSide === 'top' ? k + 1 : ranking.length - k))}. ${r.name} · ${digits(r.score, 0)}`,
+        text: `${localDigits(String(rankingSide === 'top' ? k + 1 : ranking.length - k))}. ${r.name} · ${
+          forecastScores
+            ? viewText(forecastScores.get(r.id)?.value, choice.view)
+            : digits(r.score, 0)
+        }`,
       })),
       (id) => {
         pinnedId = pinnedId === id ? null : id;
@@ -1177,6 +2069,10 @@ export function initAbundancePanel({
     lifetime.abort();
     timers.clearTimeout(pollTimer);
     cancelRetry();
+    cancelForecastTimer();
+    if (playTimer !== null) timers.clearTimeout(playTimer);
+    playTimer = null;
+    forecast.destroy?.();
     doc.removeEventListener?.(ABUNDANCE_PICK_EVENT, onPick);
     doc.dispatchEvent?.(
       new CustomEvent(ABUNDANCE_VIEW_EVENT, {
@@ -1194,6 +2090,13 @@ export function initAbundancePanel({
     },
     get selected() {
       return pinnedId;
+    },
+    /** Test seams: the forecast result on screen, if any, and whether a run is under way. */
+    get forecast() {
+      return resultUsable() ? result.data : null;
+    },
+    get simulating() {
+      return Boolean(running);
     },
   };
 }

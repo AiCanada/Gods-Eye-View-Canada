@@ -645,6 +645,18 @@ export function expandTable(table) {
         values[id].d = Number(d);
         values[id].y0 = column.y0?.[k] ?? null;
       }
+      // The history behind the figure, for the forecast: its trend, swing,
+      // steps and mean level (src/abundanceForecast.mjs).
+      const n = column.n?.[k];
+      if (n !== null && n !== undefined && Number.isFinite(Number(n))) {
+        values[id].n = Number(n);
+        const g = column.g?.[k];
+        const s = column.s?.[k];
+        const m = column.m?.[k];
+        if (g !== null && g !== undefined) values[id].g = Number(g);
+        if (s !== null && s !== undefined) values[id].s = Number(s);
+        if (m !== null && m !== undefined) values[id].m = Number(m);
+      }
     }
     return { ...u, values };
   });
@@ -663,8 +675,14 @@ export function packTable(units) {
     const from = [];
     const d = [];
     const y0 = [];
+    const g = [];
+    const s = [];
+    const n = [];
+    const m = [];
     let any = false;
     let trend = false;
+    let history = false;
+    const number = (value) => (Number.isFinite(value) ? value : null);
     for (const u of units || []) {
       const f = u?.values?.[id];
       if (f && Number.isFinite(Number(f.v))) {
@@ -680,15 +698,29 @@ export function packTable(units) {
           d.push(null);
           y0.push(null);
         }
+        if (Number.isFinite(f.n)) history = true;
+        n.push(number(f.n));
+        g.push(number(f.g));
+        s.push(number(f.s));
+        m.push(number(f.m));
       } else {
         v.push(null);
         year.push(null);
         from.push(0);
         d.push(null);
         y0.push(null);
+        n.push(null);
+        g.push(null);
+        s.push(null);
+        m.push(null);
       }
     }
-    if (any) figures[id] = trend ? { v, year, from, d, y0 } : { v, year, from };
+    if (any) {
+      const column = { v, year, from };
+      if (trend) Object.assign(column, { d, y0 });
+      if (history) Object.assign(column, { g, s, n, m });
+      figures[id] = column;
+    }
   }
   return { units: list, figures };
 }

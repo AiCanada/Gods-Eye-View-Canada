@@ -187,6 +187,17 @@ own tabs"). Their glossary:
 | intensive care                             | 𓌘𓁹𓁶𓏤 𓈖 𓌕𓏌                   | _rs-tp n zwn.w_                | the physician's vigilance                                 |
 | baseline / index                           | 𓋴𓈖𓍿𓏏𓊅 / 𓏏𓈖𓅱𓏛 𓈖 𓋴𓈖𓍿𓏏𓊅          | _snṯ.t / ṯnw n snṯ.t_          | foundation / the number against the foundation            |
 | finding / figure checked                   | 𓅠𓅓𓏏 / 𓇋𓊪𓏏𓏛 𓋴𓇋𓊪𓏝𓈖𓏏𓅱            | _gm.t / ꞽp.t sꞽp.n.tw_         | what was found / a figure reckoned                        |
+| FORECAST / YEARS AHEAD                     | 𓋴𓂋𓃱 / 𓆳𓏏𓏤𓏥 𓈖𓏏𓏭 𓂋 𓐍𓊪𓆣𓂋          | _sr / rnp.wt nt.t r ḫpr_       | foretelling / the years that are to come                  |
+| TYPICAL OUTCOME / IF IT GOES BADLY / WELL  | 𓊪𓂋𓏏𓂻 𓎛𓂋𓏭𓇋𓃀 / 𓇋𓂋 𓈙𓅓𓂻𓆑 𓃀𓇋𓈖𓅪 / 𓄤𓆑𓂋 | _pr.t ḥr.ꞽ-ꞽb / ꞽr šm=f bꞽn / nfr_ | the middle outcome / if it goes bad / good             |
+| chance (of abundance) / today              | 𓇋𓊪𓏏𓏛 𓈖 𓃀𓂝𓎛𓈗 / 𓉔𓂋𓅱𓇳 𓊪𓈖          | _ꞽp.t n bꜥḥ / hrw pn_          | the reckoning of abundance / this day                     |
+| crises / run (a simulation) / NEW DRAW     | 𓈙𓌳𓅱𓅪𓏥 / 𓊃𓊪𓊗 / 𓋴𓏏𓊪𓏴 𓅓𓄿𓅱𓏛        | _šmw / sp / stp mꜣw_           | troubles / an occasion / a new picking                    |
+| floor / ceiling / steps of history         | 𓊃𓄿𓏏𓈇 / 𓁶 / 𓈖𓌱𓅓𓏏𓏏𓂻𓏥 𓈖 𓎼𓈖𓏏𓌟𓏛𓏥     | _sꜣṯ / tp / nmt.wt n gn.wt_    | ground / top / strides of the annals                      |
+| growth / usual level                       | 𓂝𓄿𓇋𓇋𓀗 / 𓈎𓄿𓅱𓀠𓆑                  | _ꜥꜣi̯ / qꜣw=f_                   | becoming great / its height                               |
+| frontier / AGAINST TODAY / AMONG THE OTHERS | 𓏏𓍔𓄿𓈙𓏴𓈅 / 𓂋 𓉔𓂋𓅱𓇳 𓊪𓈖 / 𓅓𓏶 𓎡𓏭𓅱𓏥 | _tꜣš / r hrw pn / m-m ky.w_   | border / against this day / among the others              |
+| BASELINE / OPTIMISTIC / PESSIMISTIC / VOLATILE | 𓋴𓈖𓍿𓏏𓊅 / 𓄤𓆑𓂋 𓄣𓏤 / 𓃀𓇋𓈖𓅪 𓄣𓏤 / 𓈙𓃀𓏴𓏛 𓆈𓄿 | _snṯ.t / nfr ꞽb / bꞽn ꞽb / šbi̯ ꜥšꜣ_ | foundation / glad heart / bad heart / much changing  |
+| hindcast / the band held                   | 𓋴𓂋𓃱 𓈖 𓎼𓈖𓏏𓌟𓏛𓏥 / 𓍿𓊃 𓊢𓂝𓂻         | _sr n gn.wt / ṯs ꜥḥꜥ_          | foretelling of the annals / the band stood                |
+| hindcast trend (the trend shift) / calibrated | 𓋴𓐍𓂋𓏲𓏛 𓈖 𓋴𓂋𓃱 / 𓐍𓄿𓏭𓈖𓏏𓅱      | _sḫr n sr / ḫꜣy.n.tw_          | the course of the foretelling / it has been measured      |
+| by population / each counted once          | 𓐍𓂋 𓂋𓍿𓀀𓁐𓏥 / 𓎟 𓇋𓊪 𓊃𓊪 𓌡𓂝𓏤         | _ḫr rmṯ / nb ip sp wꜥ_         | by the people / each counted one time                     |
 
 The licence notes on the AI World rows are translated; licence names
 (CC BY 4.0, ODbL 1.0), provider and dataset names, and a citation the provider

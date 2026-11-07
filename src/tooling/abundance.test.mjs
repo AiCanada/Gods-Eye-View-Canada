@@ -50,6 +50,7 @@ import {
 } from '../abundanceUnits.mjs';
 import {
   ABUNDANCE_RETRY_MS,
+  WORLD_BANK_YEARS,
   abundanceSources,
   collapsedYears,
   createAbundanceStore,
@@ -59,6 +60,7 @@ import {
   readOwidCsv,
   readWorldBankSeries,
 } from '../../server/shared/abundanceData.mjs';
+import { seriesStats } from '../abundanceForecast.mjs';
 import { abundanceProvider } from '../../server/providers/abundance.js';
 import {
   OWNER_DEVICE_AUTHORITY_HEADER,
@@ -270,10 +272,15 @@ const WB = {
   'SH.H2O.BASW.ZS': { TS: [2024, 99], FA: [2024, 70] },
   'VC.IHR.PSRC.P5': { TS: [2023, 1.5], FA: [2023, 20] },
   'SL.UEM.TOTL.ZS': { TS: [2025, 5], FA: [2025, 12] },
+  // Population: no indicator, every place's weight in the forecast.
+  'SP.POP.TOTL': { TS: [2024, 5000000], FA: [2024, 20000000] },
 };
 const ISO3 = { TS: 'TST', FA: 'FAR' };
 
-const WB_PAST = { 'NY.GDP.PCAP.PP.CD': { TS: [2019, 40000] } };
+const WB_PAST = {
+  'NY.GDP.PCAP.PP.CD': { TS: [2019, 40000] },
+  'SP.POP.TOTL': { TS: [2019, 4800000] },
+};
 /**
  * Points only the by-years answer holds: the World Bank answered forest
  * area's latest values one value deep (2026-10-23), here with none at all.
@@ -412,6 +419,23 @@ function fakeFetch(log = []) {
 }
 
 const unit = (table, id) => expandTable(table).find((u) => u.id === id);
+
+/**
+ * The history a figure carries for the forecast, from the points behind it
+ * ([year, value] pairs) as measured at a level: n and m always, g and s
+ * where the points give them.
+ */
+function history(indicatorId, points, measuredAt = 'country') {
+  const stats = seriesStats(
+    indicatorById(indicatorId),
+    points.map(([year, value]) => ({ year, value })),
+    measuredAt,
+  );
+  const out = { n: stats.n, m: stats.m };
+  if (stats.g !== null) out.g = stats.g;
+  if (stats.s !== null) out.s = stats.s;
+  return out;
+}
 
 // --- the core -------------------------------------------------------------------------
 
@@ -703,7 +727,10 @@ test('names match exactly, softly (generic words and directions), by unique pref
 test('the sources: one per World Bank series, Our World in Data slug and OECD query; OWID and OECD CSVs read', () => {
   const sources = abundanceSources();
   const kinds = sources.reduce((m, s) => ((m[s.kind] = (m[s.kind] || 0) + 1), m), {});
-  assert.deepEqual(kinds, { worldbank: 15, owid: 2, oecd: 11 });
+  assert.deepEqual(kinds, { worldbank: 16, owid: 2, oecd: 11 }, 'the indicators’ fifteen World Bank series and the population');
+  const population = sources.find((s) => s.id === 'wb:SP.POP.TOTL');
+  assert.deepEqual([population.kind, population.code, population.indicators, population.levels], ['worldbank', 'SP.POP.TOTL', [], ['country']]);
+  assert.ok(population.url.includes('SP.POP.TOTL') && population.url.includes('mrnev=30'));
   const cost = sources.filter((s) => s.indicators.includes('cost'));
   assert.deepEqual(
     cost.map((s) => s.id),
@@ -724,27 +751,24 @@ test('the sources: one per World Bank series, Our World in Data slug and OECD qu
   assert.deepEqual(latestAndPast([{ year: 2024, value: 3 }, { year: 2021, value: 2 }]), { value: 3, year: 2024, past: { value: 2, year: 2021 } });
   assert.deepEqual(latestAndPast([{ year: 2024, value: 3 }, { year: 2023, value: 2 }]), { value: 3, year: 2024, past: null });
   assert.equal(latestAndPast([]), null);
-  // A one-deep answer joined with the by-years one: each year once, the first answer's figure kept, six at most.
-  assert.deepEqual(
-    mergeSeries(
-      { TS: [{ year: 2025, value: 2 }] },
-      {
-        TS: [2025, 2024, 2023, 2022, 2021, 2020, 2019].map((year) => ({ year, value: year - 2000 })),
-        FA: [{ year: 2020, value: 1 }],
-      },
-    ),
+  // A one-deep answer joined with the by-years one: each year once, the first answer's figure kept, thirty at most (the forecast's history).
+  const years = Array.from({ length: 35 }, (_, k) => 2025 - k);
+  const joined = mergeSeries(
+    { TS: [{ year: 2025, value: 2 }] },
     {
-      TS: [
-        { year: 2025, value: 2 },
-        { year: 2024, value: 24 },
-        { year: 2023, value: 23 },
-        { year: 2022, value: 22 },
-        { year: 2021, value: 21 },
-        { year: 2020, value: 20 },
-      ],
+      TS: years.map((year) => ({ year, value: year - 2000 })),
       FA: [{ year: 2020, value: 1 }],
     },
   );
+  assert.equal(joined.TS.length, WORLD_BANK_YEARS);
+  assert.equal(WORLD_BANK_YEARS, 30);
+  assert.deepEqual(joined.TS.slice(0, 3), [
+    { year: 2025, value: 2 },
+    { year: 2024, value: 24 },
+    { year: 2023, value: 23 },
+  ]);
+  assert.deepEqual(joined.TS.at(-1), { year: 1996, value: -4 });
+  assert.deepEqual(joined.FA, [{ year: 2020, value: 1 }]);
   assert.deepEqual(mergeSeries(null, undefined), {});
   // A year whose figures collapse marks a broken release (the OECD's urban PM2.5 release 1.5 wrote near-zero values for every city in 2023).
   const yearRows = (y, value, n = 25) => Array.from({ length: n }, (_, k) => ({ area: `A${k}`, year: y, value: value + k / 100 }));
@@ -789,20 +813,29 @@ test('the store fetches, caches, joins countries, hands figures down to states a
   const before = store.status();
   assert.equal(before.stale, true);
   assert.equal(before.refreshedAt, null);
-  assert.equal(before.sources.length, 28);
+  assert.equal(before.sources.length, 29, 'the indicators’ sources and the population');
 
   await store.refresh({ force: true });
   const status = store.status();
   // Every source once, the failed OECD one twice in each of two passes, and
-  // each World Bank answer one value deep (all but GDP here) asked again by years.
-  assert.equal(calls.length, 28 + 3 + 14);
+  // each World Bank answer one value deep (all but GDP and population here)
+  // asked again by years.
+  assert.equal(calls.length, 29 + 3 + 14);
   const byYears = calls.filter((url) => /[?&]date=/.test(url));
   assert.equal(byYears.length, 14);
   const year = new Date(clock).getUTCFullYear();
   assert.ok(
     byYears.includes(
-      `https://api.worldbank.org/v2/country/all/indicator/AG.LND.FRST.ZS?format=json&per_page=20000&date=${year - 15}:${year}`,
+      `https://api.worldbank.org/v2/country/all/indicator/AG.LND.FRST.ZS?format=json&per_page=20000&date=${year - 30}:${year}`,
     ),
+  );
+  assert.ok(
+    calls.some((url) => url.includes('mrnev=30')),
+    'thirty latest values asked of the World Bank',
+  );
+  assert.ok(
+    calls.some((url) => url.includes('lastNObservations=15')),
+    'fifteen latest years asked of the OECD',
   );
   assert.ok(!byYears.some((url) => url.includes('NY.GDP.PCAP.PP.CD')), 'an answer with history is not asked again');
   assert.equal(status.refreshing, null);
@@ -817,17 +850,52 @@ test('the store fetches, caches, joins countries, hands figures down to states a
   );
 
   // Countries: every World Bank and OWID figure, the price level as a ratio.
+  // Each figure carries the history the forecast walks from: its trend g,
+  // swing s, steps n and mean m in the indicator's own space
+  // (src/abundanceForecast.mjs), from the points the source gave.
   const country = store.data('country');
   assert.equal(country.count, 3);
   const testland = unit(country, 'TST');
-  assert.deepEqual(testland.values.gdp, { v: 50000, year: 2024, from: 'own', d: 10000, y0: 2019 });
-  assert.deepEqual(testland.values.cost, { v: 1.2, year: 2024, from: 'own' });
-  assert.deepEqual(testland.values.prison, { v: 110, year: 2024, from: 'own', d: 10, y0: 2020 });
-  assert.deepEqual(testland.values.green, { v: 40, year: 2024, from: 'own', d: 2, y0: 2019 }, 'from the by-years answer');
+  assert.deepEqual(testland.values.gdp, {
+    v: 50000,
+    year: 2024,
+    from: 'own',
+    d: 10000,
+    y0: 2019,
+    ...history('gdp', [[2024, 50000], [2019, 40000]]),
+  });
+  assert.equal(testland.values.gdp.n, 1);
+  assert.equal(testland.values.gdp.g, Math.round((Math.log(50000 / 40000) / 5) * 1e6) / 1e6);
+  assert.equal(testland.values.gdp.s, undefined, 'one step gives no swing');
+  assert.deepEqual(testland.values.cost, { v: 1.2, year: 2024, from: 'own', ...history('cost', [[2024, 1.2]]) });
+  assert.deepEqual(testland.values.prison, {
+    v: 110,
+    year: 2024,
+    from: 'own',
+    d: 10,
+    y0: 2020,
+    ...history('prison', [[2024, 110], [2020, 100]]),
+  });
+  assert.deepEqual(
+    testland.values.green,
+    { v: 40, year: 2024, from: 'own', d: 2, y0: 2019, ...history('green', [[2024, 40], [2019, 38]]) },
+    'from the by-years answer',
+  );
   assert.equal(testland.values.happiness.v, 7.1);
   assert.equal(Object.keys(unit(country, 'NOL').values).length, 0);
+  // Every place's people, the forecast's weights: a country's from the World Bank's population.
+  assert.equal(testland.people, 5000000);
+  assert.equal(unit(country, 'FAR').people, 20000000);
+  assert.equal(unit(country, 'NOL').people, undefined, 'no code the World Bank knows, no populated place with one');
+  const population = status.sources.find((s) => s.id === 'wb:SP.POP.TOTL');
+  assert.deepEqual([population.kind, population.indicators, population.levels, population.rows], ['worldbank', [], ['country'], 3], 'two countries and the aggregate row, as for every World Bank series');
   assert.deepEqual(country.coverage.gdp, { own: 2, area: 0, inherited: 0, year: 2024 });
   assert.equal(country.imported, null);
+  // The hindcast: the figures as of ten years before the newest (2025 here)
+  // walked forward against today's. The fixtures reach back no further
+  // than 2018, so nothing can be tested; the report says so.
+  assert.deepEqual(country.hindcast, { from: 2015, to: 2025, indicators: {}, tested: 0, held: 0 });
+  assert.equal(status.levels.country.hindcast.tested, 0);
 
   // States: their own OECD figures (TL2 first, TL3 where TL2 has none, soft names), the rest from the country.
   const region = store.data('region');
@@ -838,13 +906,22 @@ test('the store fetches, caches, joins countries, hands figures down to states a
   assert.ok(region.units.some((u) => u.iso2 === 'TS' && u.country));
   assert.ok(region.units.every((u) => !('alt' in u) && !('nameEn' in u) && !('group' in u) && !('postal' in u)));
   const north = unit(region, 'TS-N');
-  assert.deepEqual(north.values.gdp, { v: 60000, year: 2023, from: 'own', d: 10000, y0: 2018 });
-  assert.deepEqual(north.values.life, { v: 84, year: 2022, from: 'own' });
-  assert.deepEqual(north.values.health, { v: 0, year: 2023, from: 'own' }, 'a real zero stands');
-  assert.deepEqual(north.values.inflation, { v: 2.5, year: 2025, from: 'country' });
+  // A region's own history is measured at the region level (the OECD's measure).
+  assert.deepEqual(north.values.gdp, {
+    v: 60000,
+    year: 2023,
+    from: 'own',
+    d: 10000,
+    y0: 2018,
+    ...history('gdp', [[2023, 60000], [2018, 50000]], 'region'),
+  });
+  assert.deepEqual(north.values.life, { v: 84, year: 2022, from: 'own', ...history('life', [[2022, 84]], 'region') });
+  assert.deepEqual(north.values.health, { v: 0, year: 2023, from: 'own', ...history('health', [[2023, 0]], 'region') }, 'a real zero stands');
+  // A figure handed down brings its history with it, measured where it was taken.
+  assert.deepEqual(north.values.inflation, { v: 2.5, year: 2025, from: 'country', ...history('inflation', [[2025, 2.5]]) });
   // A larger region's figure goes to the units inside it that have none; a compound name names each part.
-  assert.deepEqual(unit(region, 'TS:isleton').values.life, { v: 79, year: 2023, from: 'own' }, 'the part of a compound TL3 name');
-  assert.deepEqual(unit(region, 'TS-S').values.life, { v: 82, year: 2024, from: 'country' });
+  assert.deepEqual(unit(region, 'TS:isleton').values.life, { v: 79, year: 2023, from: 'own', ...history('life', [[2023, 79]], 'region') }, 'the part of a compound TL3 name');
+  assert.deepEqual(unit(region, 'TS-S').values.life, { v: 82, year: 2024, from: 'country', ...history('life', [[2024, 82]]) });
   assert.deepEqual(region.coverage.life, { own: 2, area: 0, inherited: 3, year: 2024 });
   assert.equal(unit(region, 'TS-S').values.gdp.v, 30000);
   assert.equal(unit(region, 'TS:isleton').values.gdp.v, 45000);
@@ -852,11 +929,19 @@ test('the store fetches, caches, joins countries, hands figures down to states a
   assert.equal(unit(region, 'FA-X#2').values.gdp.from, 'country');
   assert.equal(Object.keys(unit(region, 'XX:nowhere region').values).length, 0);
   assert.deepEqual(region.coverage.gdp, { own: 4, area: 0, inherited: 1, year: 2024 });
+  // A state's or province's people: its country's shared out, nine tenths by its populated places'
+  // people (Testville 500,000 in the North, Southport 20,000 in the South), one tenth equally.
+  assert.equal(north.people, 4493590);
+  assert.equal(unit(region, 'TS-S').people, 339744);
+  assert.equal(unit(region, 'TS:isleton').people, 166667, 'no populated place: the equal tenth');
+  assert.equal(unit(region, 'FA-X').people, 19000000);
+  assert.equal(unit(region, 'FA-X#2').people, 1000000);
+  assert.equal(unit(region, 'XX:nowhere region').people, undefined);
 
   // Cities: their own urban-area figures, then the state's, then the country's.
   const city = store.data('city');
   const testville = unit(city, '1');
-  assert.deepEqual(testville.values.gdp, { v: 70000, year: 2022, from: 'own' });
+  assert.deepEqual(testville.values.gdp, { v: 70000, year: 2022, from: 'own', ...history('gdp', [[2022, 70000]], 'city') });
   // The world's places carry their country's places among the others, for the AI World tab.
   const features = store.worldFeatures({ worldId: 'w1', nodes: [{ country: 'TS' }, { country: 'FA' }, { country: 'ZZ' }] });
   assert.deepEqual(features.shape, [3, ABUNDANCE_INDICATOR_IDS.length + 1]);
@@ -869,14 +954,17 @@ test('the store fetches, caches, joins countries, hands figures down to states a
   const written = store.writeWorldFeatures({ worldId: 'w1', nodes: [{ country: 'TS' }] }, path.join(root, 'demo'));
   assert.ok(fs.existsSync(written));
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'demo', 'abundance-w1.json'), 'utf8')).channels.length, ABUNDANCE_INDICATOR_IDS.length + 1);
-  assert.deepEqual(testville.values.work, { v: 4, year: 2024, from: 'own' });
-  assert.deepEqual(testville.values.life, { v: 84, year: 2022, from: 'region' });
-  assert.deepEqual(testville.values.inflation, { v: 2.5, year: 2025, from: 'country' });
-  assert.deepEqual(unit(city, '2').values.gdp, { v: 30000, year: 2023, from: 'region' });
-  assert.deepEqual(unit(city, '2').values.work, { v: 6, year: 2024, from: 'own' }, 'Southport and Beyond is Southport');
-  assert.deepEqual(unit(city, '3').values.work, { v: 7, year: 2024, from: 'own' }, 'Farshire West and Farcity names Farcity');
+  assert.deepEqual(testville.values.work, { v: 4, year: 2024, from: 'own', ...history('work', [[2024, 4]], 'city') });
+  assert.deepEqual(testville.values.life, { v: 84, year: 2022, from: 'region', ...history('life', [[2022, 84]], 'region') });
+  assert.deepEqual(testville.values.inflation, { v: 2.5, year: 2025, from: 'country', ...history('inflation', [[2025, 2.5]]) });
+  assert.deepEqual(unit(city, '2').values.gdp, { v: 30000, year: 2023, from: 'region', ...history('gdp', [[2023, 30000]], 'region') });
+  assert.deepEqual(unit(city, '2').values.work, { v: 6, year: 2024, from: 'own', ...history('work', [[2024, 6]], 'city') }, 'Southport and Beyond is Southport');
+  assert.deepEqual(unit(city, '3').values.work, { v: 7, year: 2024, from: 'own', ...history('work', [[2024, 7]], 'city') }, 'Farshire West and Farcity names Farcity');
   assert.equal(unit(city, '3').values.gdp.v, 40000);
   assert.equal(Object.keys(unit(city, '4').values).length, 0);
+  // A city's people: its own Natural Earth population.
+  assert.equal(testville.people, 500000);
+  assert.equal(unit(city, '4').people, 100);
 
   // A failed source is not asked again before the retry wait; a stale one is after it.
   const beforeData = calls.length;
@@ -903,9 +991,9 @@ test('the store fetches, caches, joins countries, hands figures down to states a
     error: null,
     at: imported.imported.at,
   });
-  assert.deepEqual(unit(store.data('country'), 'TST').values.gdp, { v: 55555, year: 2026, from: 'csv' });
+  assert.deepEqual(unit(store.data('country'), 'TST').values.gdp, { v: 55555, year: 2026, from: 'csv' }, 'a CSV figure has no history');
   assert.equal(unit(store.data('region'), 'TS-S').values.inflation.from, 'country');
-  assert.deepEqual(unit(store.data('region'), 'FA-X#2').values.gdp, { v: 20000, year: 2024, from: 'country' });
+  assert.deepEqual(unit(store.data('region'), 'FA-X#2').values.gdp, { v: 20000, year: 2024, from: 'country', ...history('gdp', [[2024, 20000]]) });
   store.importCsv({ level: 'region', csv: 'name,country,work\nFar East,Farland,9\nIsle Town,TS,1\n' });
   assert.equal(unit(store.data('region'), 'FA-X#2').values.work.v, 9);
   assert.equal(unit(store.data('region'), 'TS:isleton').values.work.from, 'csv');
@@ -933,7 +1021,8 @@ test('the store fetches, caches, joins countries, hands figures down to states a
   // An answer cached for another URL (another release, key or query) is not this source's answer.
   const gdpCache = path.join(root, '.gev-cache', 'abundance', 'wb_NY.GDP.PCAP.PP.CD.v2.json');
   const cached = JSON.parse(fs.readFileSync(gdpCache, 'utf8'));
-  fs.writeFileSync(gdpCache, JSON.stringify({ ...cached, url: cached.url.replace('mrnev=6', 'mrnev=1') }));
+  assert.ok(cached.url.includes('mrnev=30'));
+  fs.writeFileSync(gdpCache, JSON.stringify({ ...cached, url: cached.url.replace('mrnev=30', 'mrnev=1') }));
   const third = createAbundanceStore({
     root,
     packsDir,
@@ -984,11 +1073,16 @@ test('a release whose figures collapse in a year is refused, and the last good a
   const greenOf = () => store.status().sources.find((s) => s.id.includes('DF_GREEN_AREA'));
   await store.refresh({ force: true });
   assert.equal(greenOf().error, null);
-  assert.deepEqual(unit(store.data('city'), '1').values.green, { v: 121, year: 2023, from: 'own' });
+  // An urban area's green space is square metres a person, measured at the
+  // city level: its history walks without a ceiling.
+  const green = { v: 121, year: 2023, from: 'own', ...history('green', [[2021, 101], [2022, 111], [2023, 121]], 'city') };
+  assert.equal(green.n, 2);
+  assert.ok(green.g > 0.08 && green.g < 0.1, 'about 9 % a year');
+  assert.deepEqual(unit(store.data('city'), '1').values.green, green);
   broken = true;
   await store.refresh({ force: true });
   assert.equal(greenOf().error, 'broken release: the 2022 figures are near zero');
-  assert.deepEqual(unit(store.data('city'), '1').values.green, { v: 121, year: 2023, from: 'own' }, 'the last good answer');
+  assert.deepEqual(unit(store.data('city'), '1').values.green, green, 'the last good answer');
   store.close();
 });
 

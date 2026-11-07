@@ -147,6 +147,17 @@ English ([I18N.md](../I18N.md), "The fork's own tabs"). Their glossary:
 | licence classes OPEN, NC, RESTRICTED, UNCLEAR | LIBRE, NC, RESTREINT, INCERTAIN              |
 | PERSONAL, STATIC                              | PERSONNEL, STATIQUE                          |
 | baseline / index / findings / figures checked | référence / indice / constats / chiffres vérifiés |
+| FORECAST / YEARS AHEAD / NEW DRAW             | PRÉVISION / ANNÉES À VENIR / NOUVEAU TIRAGE  |
+| TYPICAL OUTCOME / IF IT GOES BADLY / WELL     | RÉSULTAT TYPIQUE / SI ÇA VA MAL / BIEN       |
+| CHANCE OF ABUNDANCE / OF SCARCITY             | PROBABILITÉ D'ABONDANCE / DE MANQUE          |
+| CHANGE FROM TODAY / PLAY (the years)          | CHANGEMENT DEPUIS AUJOURD'HUI / LECTURE      |
+| run (a simulation) / crises / floor / ceiling | simulation / crises / plancher / plafond     |
+| steps of history / usual level                | pas d'historique / niveau habituel           |
+| frontier / AGAINST TODAY / AMONG THE OTHERS   | frontière / PAR RAPPORT À AUJOURD'HUI / PARMI LES AUTRES |
+| BASELINE / OPTIMISTIC / PESSIMISTIC / VOLATILE | RÉFÉRENCE / OPTIMISTE / PESSIMISTE / VOLATIL |
+| hindcast / the band held / swing (scaled)     | rétroprévision / la bande a tenu / variation (mise à l'échelle) |
+| hindcast trend (the trend shift) / calibrated | tendance de la rétroprévision (le décalage de tendance) / calibré |
+| by population / each counted once             | selon la population / chacun compté une fois                      |
 
 The licence notes on the AI World rows are translated; licence names
 (CC BY 4.0, ODbL 1.0), provider and dataset names, and a citation the

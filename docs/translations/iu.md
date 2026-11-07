@@ -158,6 +158,18 @@ glossary:
 | licence classes OPEN, NC, RESTRICTED        | ᒪᑐᐃᖅᓯᒪᔪᖅ, NC, ᑭᓪᓕᖃᖅᑐᖅ                                                  |
 | UNCLEAR, PERSONAL, STATIC                   | ᓇᓗᓇᖅᑐᖅ, ᓇᖕᒥᓂᖅ, ᐊᓯᔾᔨᖅᐸᙱᑦᑐᖅ                                              |
 | baseline / index / findings / figures checked | ᑐᙵᕕᒋᔭᐅᔪᖅ / ᓇᓪᓕᒧᒃᓴᐅᑎ / ᓇᓂᔭᐅᔪᑦ / ᓈᓴᐅᑏᑦ ᖃᐅᔨᓴᖅᑕᐅᓯᒪᔪᑦ |
+| FORECAST / YEARS AHEAD / TODAY              | ᓇᓚᐅᑦᓵᕐᓂᖅ / ᓯᕗᓂᒃᓴᒥ ᐊᕐᕌᒍᑦ / ᐅᓪᓗᒥ                                     |
+| TYPICAL OUTCOME / IF IT GOES BADLY / WELL   | ᐊᑯᓐᓂᖓᓂ ᖃᓄᐃᓕᓂᖓ (the middle outcome) / ᐱᐅᙱᓕᕈᓂ / ᐱᐅᓕᕈᓂ              |
+| CHANCE OF ABUNDANCE / OF SCARCITY           | ᐱᑕᖃᑦᑎᐊᕈᓐᓇᕐᓂᖓ / ᐱᑕᖃᑦᑎᐊᙱᒍᓐᓇᕐᓂᖓ                                     |
+| run (a simulation) / crises / NEW DRAW      | ᐱᙳᐊᕐᓂᐅᔪᖅ / ᐊᑦᑕᓇᖅᑐᑦ / ᓄᑖᖅ ᐆᒃᑐᕐᓂᖅ                                    |
+| floor / ceiling / usual level               | ᐊᑦᑎᓛᖓ / ᖁᑦᑎᓛᖓ / ᐊᑐᒐᔪᒃᑕᖓ                                           |
+| steps of history / growth                   | ᓯᕗᒧᐊᕐᓃᑦ ᐊᓂᒍᖅᓯᒪᔪᓂᑦ / ᐱᕈᖅᐸᓪᓕᐊᓂᖅ                                     |
+| frontier (the leaders) / AGAINST TODAY      | ᓯᕗᓪᓕᖅᐹᑦ / ᐅᓪᓗᒥᒧᑦ ᐆᒃᑐᕋᖅᑕᐅᔪᖅ                                       |
+| AMONG THE OTHERS / BASELINE / VOLATILE      | ᐊᓯᖏᑦ ᐊᑯᓐᓂᖏᓐᓂ / ᑐᙵᕕᒋᔭᐅᔪᖅ / ᐊᓯᔾᔨᑲᑕᒃᑐᖅ                              |
+| OPTIMISTIC / PESSIMISTIC (expecting better / worse) | ᐱᐅᓂᖅᓴᒥᒃ ᓂᕆᐅᒃᑐᖅ / ᐱᐅᙱᓐᓂᖅᓴᒥᒃ ᓂᕆᐅᒃᑐᖅ                       |
+| hindcast (a forecast from the past) / the band held | ᑭᖑᓂᑦ ᓇᓚᐅᑦᓵᕐᓂᖅ / ᐊᕕᒃᑐᖅᓯᒪᔪᖅ ᑎᑭᐅᑎᓯᒪᔪᖅ                       |
+| hindcast trend (its trend shift) / calibrated       | ᑭᖑᓂᑦ ᓇᓚᐅᑦᓵᕐᓂᐅᑉ ᓵᖓᓂᖓ / ᐋᖅᑭᒃᑕᐅᓯᒪᔪᖅ                          |
+| by population / each counted once                   | ᐃᓄᒋᐊᓐᓂᖓ ᒪᓕᒃᖢᒍ / ᐊᑐᓂ ᐊᑕᐅᓯᐊᖅᖢᓂ ᑭᓯᑕᐅᔪᖅ                      |
 
 The licence notes on the AI World rows are translated; licence names
 (CC BY 4.0, ODbL 1.0), provider and dataset names, and a citation the provider

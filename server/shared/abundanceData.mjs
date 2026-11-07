@@ -7,7 +7,12 @@
  * A state or province without a figure of its own takes its country's; a
  * city its state's, else its country's; every figure says where it came
  * from. The owner's own CSV figures (.gev-data/abundance/<level>.csv) go
- * on top.
+ * on top. Every unit carries its people for the forecast's weights (the
+ * World Bank's population for a country, shared out to its states and
+ * provinces by their populated places' people, a city's own), and each
+ * level's table also carries the forecast's hindcast: the figures as they
+ * stood ten years ago walked forward and held against today's, with the
+ * trend shift and swing scale per indicator that follow.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -33,6 +38,11 @@ import {
   ISO3_FIXES,
   regionUnits,
 } from '../../src/abundanceUnits.mjs';
+import {
+  HINDCAST_YEARS,
+  hindcast,
+  seriesStats,
+} from '../../src/abundanceForecast.mjs';
 import { npyBytes } from '../../src/outbreakEpiShard.mjs';
 
 const DEFAULT_PACKS_DIR = fileURLToPath(
@@ -63,8 +73,17 @@ const REQUEST_HEADERS = {
 /** A CSV the owner loads: at most this many rows are kept. */
 const IMPORT_ROWS_MAX = 20_000;
 
-/** The latest figures and the years behind them, for the change over five years. */
-const YEARS_KEPT = 6;
+/**
+ * The latest figures and the years behind them: the change over five years
+ * for the readout, and the history the forecast walks forward from
+ * (src/abundanceForecast.mjs: each figure's trend, swing, steps and mean).
+ * The World Bank and Our World in Data give thirty years in one answer;
+ * the OECD's regional tables are asked for fifteen, as most of its series
+ * start around 2000 and each query carries every region of a level.
+ */
+export const WORLD_BANK_YEARS = 30;
+export const OWID_YEARS = 30;
+export const OECD_YEARS = 15;
 /** A change is shown against a figure at least this many years older. */
 export const TREND_YEARS = 5;
 const TREND_YEARS_MIN = 3;
@@ -74,15 +93,17 @@ const CACHE_VERSION = 2;
 const COLLAPSE_MIN_AREAS = 20;
 
 const WORLD_BANK_URL = (code) =>
-  `https://api.worldbank.org/v2/country/all/indicator/${code}?format=json&per_page=20000&mrnev=${YEARS_KEPT}`;
+  `https://api.worldbank.org/v2/country/all/indicator/${code}?format=json&per_page=20000&mrnev=${WORLD_BANK_YEARS}`;
 /** The years asked for again when a latest-values answer came back one value deep. */
-const WORLD_BANK_RANGE_YEARS = 15;
+const WORLD_BANK_RANGE_YEARS = 30;
 const WORLD_BANK_RANGE_URL = (code, year) =>
   `https://api.worldbank.org/v2/country/all/indicator/${code}?format=json&per_page=20000&date=${year - WORLD_BANK_RANGE_YEARS}:${year}`;
 const OWID_URL = (slug) =>
   `https://ourworldindata.org/grapher/${slug}.csv?v=1&csvType=full&useColumnShortNames=true`;
+/** The World Bank's population series: every place's people, the forecast's weights, not an indicator. */
+export const POPULATION_CODE = 'SP.POP.TOTL';
 const OECD_URL = (flow, version, key) =>
-  `https://sdmx.oecd.org/public/rest/data/OECD.CFE.EDS,${flow},${version}/${key}?lastNObservations=${YEARS_KEPT}&dimensionAtObservation=AllDimensions&format=csvfilewithlabels`;
+  `https://sdmx.oecd.org/public/rest/data/OECD.CFE.EDS,${flow},${version}/${key}?lastNObservations=${OECD_YEARS}&dimensionAtObservation=AllDimensions&format=csvfilewithlabels`;
 
 /**
  * The latest point of a series and the one to measure its change against:
@@ -135,7 +156,7 @@ export function readWorldBankSeries(payload) {
 
 /**
  * Two answers for one series joined: newest first, each year once (the
- * first answer's figure kept), at most YEARS_KEPT points per country.
+ * first answer's figure kept), at most WORLD_BANK_YEARS points per country.
  */
 export function mergeSeries(first, second) {
   const out = {};
@@ -149,7 +170,7 @@ export function mergeSeries(first, second) {
       if (!byYear.has(point.year)) byYear.set(point.year, point);
     out[code] = [...byYear.values()]
       .sort((a, b) => b.year - a.year)
-      .slice(0, YEARS_KEPT);
+      .slice(0, WORLD_BANK_YEARS);
   }
   return out;
 }
@@ -163,7 +184,9 @@ const seriesDepth = (payload) =>
 
 /**
  * Every distinct source the indicators name, with the indicators and
- * levels it serves. A price level's two World Bank series are two sources.
+ * levels it serves (a price level's two World Bank series are two sources),
+ * and the World Bank's population, which names no indicator but weighs
+ * every place in the forecast.
  */
 export function abundanceSources(indicators = ABUNDANCE_INDICATORS) {
   const sources = new Map();
@@ -227,6 +250,17 @@ export function abundanceSources(indicators = ABUNDANCE_INDICATORS) {
         });
       }
     }
+  const population = `wb:${POPULATION_CODE}`;
+  if (!sources.has(population))
+    sources.set(population, {
+      id: population,
+      kind: 'worldbank',
+      code: POPULATION_CODE,
+      label: `World Bank WDI ${POPULATION_CODE}`,
+      url: WORLD_BANK_URL(POPULATION_CODE),
+      indicators: [],
+      levels: ['country'],
+    });
   return [...sources.values()];
 }
 
@@ -252,7 +286,7 @@ export function readOwidCsv(text, column) {
   }
   for (const list of Object.values(out)) {
     list.sort((a, b) => b.year - a.year);
-    list.splice(YEARS_KEPT);
+    list.splice(OWID_YEARS);
   }
   return out;
 }
@@ -564,8 +598,12 @@ export function createAbundanceStore({
     null;
 
   /** Own figures for one level from its sources; `countriesByIso2` for the country level's keys. */
-  /** A series' latest figure with its change, as a unit's value. */
-  const figure = (series, from, source) => {
+  /**
+   * A series' latest figure with its change, as a unit's value, and the
+   * history behind it for the forecast (its trend `g`, swing `s`, steps `n`
+   * and mean level `m` in the indicator's own walking space).
+   */
+  const figure = (series, from, source, indicator, level) => {
     const latest = latestAndPast(series);
     if (!latest) return null;
     const out = { v: latest.value, year: latest.year, from, source };
@@ -573,10 +611,18 @@ export function createAbundanceStore({
       out.d = Math.round((latest.value - latest.past.value) * 1000) / 1000;
       out.y0 = latest.past.year;
     }
+    const stats = seriesStats(indicator, series, level);
+    if (stats) {
+      out.n = stats.n;
+      out.m = stats.m;
+      if (stats.g !== null) out.g = stats.g;
+      if (stats.s !== null) out.s = stats.s;
+    }
     return out;
   };
 
-  const applyOwn = (level, units, matcher, codes) => {
+  /** Own figures for one level from its sources; as of `upTo` when given (the hindcast's past). */
+  const applyOwn = (level, units, matcher, codes, upTo = null) => {
     const byId = new Map(units.map((u) => [u.id, u]));
     const set = (unit, indicator, series, source, from = 'own') => {
       const target = unit && byId.get(unit.id);
@@ -585,8 +631,10 @@ export function createAbundanceStore({
       if (kept?.from === 'own' || (kept && from === 'area')) return;
       const usable = indicator.positive
         ? (series || []).filter((p) => p.value > 0)
-        : series;
-      const f = figure(usable, from, source);
+        : series || [];
+      const dated =
+        upTo === null ? usable : usable.filter((p) => p.year <= upTo);
+      const f = figure(dated, from, source, indicator, level);
       if (f) target.values[indicator.id] = f;
     };
     for (const indicator of indicators) {
@@ -733,11 +781,76 @@ export function createAbundanceStore({
         from: f.from === 'own' || f.from === 'csv' ? from : f.from,
         source: f.source,
         ...(Number.isFinite(f.d) ? { d: f.d, y0: f.y0 } : {}),
+        // The history travels with the figure: the place walks forward on
+        // the series it took.
+        ...(Number.isFinite(f.n) ? { n: f.n, m: f.m } : {}),
+        ...(Number.isFinite(f.g) ? { g: f.g } : {}),
+        ...(Number.isFinite(f.s) ? { s: f.s } : {}),
       };
     }
   };
 
-  const buildLevel = (level) => {
+  /**
+   * Every place's people, the forecast's weights (src/abundanceForecast.mjs,
+   * peopleOf). A country's: the World Bank's population, else its populated
+   * places' people together.
+   */
+  const peopleOfCountries = (countryList, placeList) => {
+    const placed = new Map();
+    for (const p of placeList)
+      if (p.iso2 && p.pop > 0)
+        placed.set(p.iso2, (placed.get(p.iso2) || 0) + p.pop);
+    const population = payloadOf(`wb:${POPULATION_CODE}`) || {};
+    for (const unit of countryList) {
+      const latest = unit.iso2 ? population[unit.iso2]?.[0]?.value : null;
+      const people = latest > 0 ? latest : placed.get(unit.iso2);
+      if (people > 0) unit.people = Math.round(people);
+    }
+  };
+
+  /**
+   * A state's or province's people: its country's shared out, nine tenths
+   * by the people of its populated places and one tenth equally (so a
+   * province with no populated place still counts); equally when the
+   * country has no placed people.
+   */
+  const peopleOfRegions = (regionList, matcher, countryByIso2, placeList) => {
+    const byCountry = new Map();
+    for (const unit of regionList) {
+      if (!unit.iso2) continue;
+      if (!byCountry.has(unit.iso2)) byCountry.set(unit.iso2, []);
+      byCountry.get(unit.iso2).push(unit);
+    }
+    const placed = new Map();
+    for (const p of placeList) {
+      if (!p.adm1 || !(p.pop > 0)) continue;
+      const region = matcher.find(p.iso2, p.adm1);
+      if (region) placed.set(region.id, (placed.get(region.id) || 0) + p.pop);
+    }
+    for (const [iso2, regions] of byCountry) {
+      const country = countryByIso2.get(iso2);
+      if (!(country?.people > 0)) continue;
+      const total = regions.reduce(
+        (sum, r) => sum + (placed.get(r.id) || 0),
+        0,
+      );
+      for (const r of regions) {
+        const share =
+          total > 0
+            ? (0.9 * (placed.get(r.id) || 0)) / total + 0.1 / regions.length
+            : 1 / regions.length;
+        r.people = Math.round(country.people * share);
+      }
+    }
+  };
+
+  /**
+   * A level's units with their figures: the sources' own (as of `upTo`
+   * when given: the hindcast's past), the owner's CSV on top (today only),
+   * the rest handed down, and every unit's people.
+   * @returns {{units: object[], imported: object|null}}
+   */
+  const buildUnits = (level, { upTo = null } = {}) => {
     const { countries, admin1, places } = loadPacks();
     const countryList = countryUnits(countries).map((u) => ({
       ...u,
@@ -755,54 +868,83 @@ export function createAbundanceStore({
         return hit ? byCountryId.get(hit.id) : null;
       },
     };
-    applyOwn('country', countryList, countryMatcher, codes);
-    const countryImport = applyImport(
-      'country',
-      countryList,
-      countryMatcher,
-      codes,
-      countryMatcher,
-    );
+    const imports = upTo === null;
+    applyOwn('country', countryList, countryMatcher, codes, upTo);
+    const countryImport = imports
+      ? applyImport(
+          'country',
+          countryList,
+          countryMatcher,
+          codes,
+          countryMatcher,
+        )
+      : null;
     const countryByIso2 = new Map(
       countryList.filter((u) => u.iso2).map((u) => [u.iso2, u]),
     );
-    if (level === 'country') return finish(level, countryList, countryImport);
+    const placeList = cityUnits(places);
+    peopleOfCountries(countryList, placeList);
+    if (level === 'country')
+      return { units: countryList, imported: countryImport };
 
     const regionList = regionUnits(admin1).map((u) => ({ ...u, values: {} }));
     const regionMatcher = createUnitMatcher(regionList);
-    applyOwn('region', regionList, regionMatcher, codes);
-    const regionImport = applyImport(
-      'region',
-      regionList,
-      regionMatcher,
-      codes,
-      countryMatcher,
-    );
+    applyOwn('region', regionList, regionMatcher, codes, upTo);
+    const regionImport = imports
+      ? applyImport('region', regionList, regionMatcher, codes, countryMatcher)
+      : null;
     for (const unit of regionList)
       inherit(unit, countryByIso2.get(unit.iso2), 'country');
-    if (level === 'region') return finish(level, regionList, regionImport);
+    peopleOfRegions(regionList, regionMatcher, countryByIso2, placeList);
+    if (level === 'region')
+      return { units: regionList, imported: regionImport };
 
-    const cityList = cityUnits(places).map((u) => ({ ...u, values: {} }));
+    const cityList = placeList.map((u) => ({ ...u, values: {} }));
     const cityMatcher = createUnitMatcher(cityList);
-    applyOwn('city', cityList, cityMatcher, codes);
-    const cityImport = applyImport(
-      'city',
-      cityList,
-      cityMatcher,
-      codes,
-      countryMatcher,
-    );
+    applyOwn('city', cityList, cityMatcher, codes, upTo);
+    const cityImport = imports
+      ? applyImport('city', cityList, cityMatcher, codes, countryMatcher)
+      : null;
     for (const unit of cityList) {
       const region = unit.adm1
         ? regionMatcher.find(unit.iso2, unit.adm1)
         : null;
       inherit(unit, region, 'region');
       inherit(unit, countryByIso2.get(unit.iso2), 'country');
+      if (unit.pop > 0) unit.people = unit.pop;
     }
-    return finish(level, cityList, cityImport);
+    return { units: cityList, imported: cityImport };
   };
 
-  const finish = (level, units, imported) => {
+  /**
+   * The hindcast: the level's figures as they stood HINDCAST_YEARS before
+   * their newest year, walked forward by the forecast and held against
+   * today's (src/abundanceForecast.mjs, hindcast); null with no figures,
+   * or when the replay fails.
+   */
+  const hindcastFor = (level, present) => {
+    let newest = null;
+    for (const unit of present)
+      for (const f of Object.values(unit.values || {}))
+        if (Number.isFinite(f?.year) && (newest === null || f.year > newest))
+          newest = f.year;
+    if (newest === null) return null;
+    const from = newest - HINDCAST_YEARS;
+    try {
+      const { units: past } = buildUnits(level, { upTo: from });
+      return hindcast(past, present, { level, from, to: newest });
+    } catch (error) {
+      log(`hindcast ${level}: ${error?.message || error}`);
+      return null;
+    }
+  };
+
+  const buildLevel = (level) => {
+    const { units, imported } = buildUnits(level);
+    return finish(level, units, imported, hindcastFor(level, units));
+  };
+
+  const finish = (level, units, imported, report) => {
     const table = packTable(units);
     return {
       level,
@@ -811,6 +953,7 @@ export function createAbundanceStore({
       coverage: coverageOf(units),
       count: units.length,
       imported,
+      hindcast: report,
       builtAt: now(),
     };
   };
@@ -840,6 +983,7 @@ export function createAbundanceStore({
         units: table.count,
         coverage: table.coverage,
         imported: table.imported,
+        hindcast: table.hindcast,
       };
     }
     return {
@@ -978,7 +1122,7 @@ export function createAbundanceStore({
  */
 export function sentUnit(unit) {
   const out = { id: unit.id, name: unit.name };
-  for (const key of ['country', 'iso2', 'adm1', 'lat', 'lon', 'pop'])
+  for (const key of ['country', 'iso2', 'adm1', 'lat', 'lon', 'pop', 'people'])
     if (unit[key] !== undefined && unit[key] !== null) out[key] = unit[key];
   if (unit.capital) out.capital = true;
   return out;

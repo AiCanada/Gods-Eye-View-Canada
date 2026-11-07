@@ -1,5 +1,54 @@
 # Changelog
 
+- Global Abundance Map: a Monte Carlo forecast of every place's abundance 0
+  to 100 years ahead (owner request 2026-11-07, "create monte Carlo
+  simulator for future abundance (0-100 years), use fine grain detail and
+  display on map", then "try for more advanced future abundance
+  predictions"). YEARS AHEAD slides the map a year at a time to 2126 and
+  PLAY walks it. Every figure walks forward from its own history: the server
+  now fetches thirty years from the World Bank and Our World in Data and
+  fifteen from the OECD, and sends each figure's trend (the latest steps
+  weighing most), swing, steps and mean (a figure handed down carries its
+  source's). Each walk is pulled toward a moving frontier, the best places'
+  figures: money in today's dollars toward a frontier growing 1.5 % a year,
+  deaths, crime, dirty air and prison rates toward the best figures above a
+  floor, shares, life span, happiness and forest toward the best below a
+  ceiling, inflation, unemployment and prices back to their usual level,
+  with what a place did beyond that fading over decades and a short history
+  shrunk toward the level's typical one. A year's swing is a world shock, a
+  country shock, a place shock and the figure's own, each indicator loading
+  on them its own way, so a place's GDP and income rise together, its
+  unemployment against them, and a province's cities with their province;
+  crises are regimes, world or local, a year or two of cuts and three years
+  of partial recovery, their expected cut given back as drift. Four
+  scenarios (BASELINE, OPTIMISTIC, PESSIMISTIC, VOLATILE) set the frontier's
+  growth and the crises; two scales measure a future score AGAINST TODAY
+  (100 is the best any place has today, so the map can turn greener) or
+  AMONG THE OTHERS in that year (who is ahead, every place weighed by its
+  population: the World Bank's for countries, shared out to states and
+  provinces by their populated places' people, Natural Earth's for cities),
+  and a line under the controls reads the world by population (`ALL PLACES
+  BY POPULATION · ABUNDANCE 48 OF 100 TODAY → 55 IN 2051 · 49 TO 61 IN 8 OF
+  10 RUNS · IN ABUNDANT PLACES 12 % → 18 % · IN SCARCE ONES 30 % → 21 %`).
+  The server replays the model
+  from ten years ago as a hindcast when it builds a level, shifts each
+  indicator's trend by what the decade's trend paths missed (within 0.4 of
+  its typical swing a year), scales its swing so the 8-of-10 band holds
+  about 8 of 10, and reports it (`HINDCAST 2014→2024 · THE 8-OF-10 BAND
+  HELD 81 % OF 2,345 FIGURES · THE TRENDS AND SWINGS ARE CALIBRATED BY IT`).
+  The map shows the TYPICAL OUTCOME, IF IT GOES BADLY or WELL (the 10th and
+  90th percentiles), the CHANCE OF ABUNDANCE or SCARCITY, or the CHANGE
+  FROM TODAY; RANKING and the grid follow the year. SELECTED reads a place's
+  band on both scales, chances, rank and each indicator's projection with
+  its fan chart; MODEL reads what each history gave the walk (`GDP PER
+  PERSON · +1,010 $ A YEAR · ±2,501 $ · CATCHING UP WITH THE FRONTIER
+  (66,056 $) · 28 STEPS OF HISTORY · SWING ×1.3 · HINDCAST TREND -210 $ A
+  YEAR · HINDCAST BAND HELD 82 %`).
+  The runs (100 to 2,000; 500 for countries) go in a Web Worker so the globe
+  keeps turning, every draw is a hash of the series or place, run and year
+  so a place's detail matches the map, and the strings are in Spanish,
+  Quebec French, Inuktitut and Ancient Egyptian (docs/GLOBAL-ABUNDANCE-MAP.md,
+  "The forecast"; TESTING.md §10.16–18).
 - Upstream merge of 179 commits (Wildlife Sightings, off by default in a
   new Wildlife group: keyless iNaturalist observations from the last 48 h
   (whales 7 d) and Acartia's Salish Sea marine mammals, with a density glow,
