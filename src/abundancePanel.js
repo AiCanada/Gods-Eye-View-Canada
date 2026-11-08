@@ -70,6 +70,7 @@ import {
   cleanScenario,
   cleanYear,
   forecastAt,
+  hindcastPulls,
   hindcastScales,
   hindcastShifts,
   runsFor,
@@ -78,6 +79,11 @@ import {
   worldAt,
 } from './abundanceForecast.mjs';
 import { createForecastRunner } from './abundanceForecastRun.js';
+import { normalizeAbundanceShare } from './share/abundanceShare.js';
+import {
+  connectAbundanceShare,
+  noteAbundanceShareChange,
+} from './share/abundanceShareLink.js';
 import { formatCount } from './aiWorldSelection.mjs';
 import { localDigits, msgl, tl, tln } from './i18n/index.js';
 import {
@@ -548,6 +554,110 @@ export function worldText(world, { year = 0, baseYear = 2026 } = {}) {
 }
 
 /**
+ * The world's typical score at a year under each scenario: the run's own
+ * from the run, the other three from the comparison runs after it
+ * (`2051 BY SCENARIO · BASELINE 61 · OPTIMISTIC 62 · PESSIMISTIC 58 ·
+ * VOLATILE 60`); empty at TODAY, where the scenarios have not parted, and
+ * until all four are in.
+ * @param {{scenario?: string, world?: object, compare?: object}} [lines] the run's scenario and world, the others' worlds by scenario
+ * @param {{year?: number, baseYear?: number}} [options]
+ */
+export function scenarioText(
+  { scenario, world, compare } = {},
+  { year = 0, baseYear = 2026 } = {},
+) {
+  const t = cleanYear(year);
+  if (!t) return '';
+  const parts = [];
+  for (const s of FORECAST_SCENARIOS) {
+    const line = s === scenario ? world : compare?.[s];
+    const value = line?.p50?.[t];
+    if (!Number.isFinite(value)) return '';
+    parts.push(`${tl(FORECAST_SCENARIO_LABELS[s])} ${digits(value, 0)}`);
+  }
+  return tl('{year} BY SCENARIO · {list}', {
+    year: localDigits(String(baseYear + t)),
+    list: parts.join(' · '),
+  });
+}
+
+/** The runs the comparison runs make by level: fewer than the run's, since only the world's line is read. */
+export const COMPARE_RUNS = Object.freeze({
+  country: 100,
+  region: 40,
+  city: 40,
+});
+
+/**
+ * Every place's forecast at a year, on a scale, as CSV: id, name, country,
+ * people, the calendar year and the years ahead, the scale, today's score,
+ * the typical outcome, the bad and good cases, the mean and the two
+ * chances; places without a row are left out.
+ * @param {object} result a simulate() result
+ * @param {object[]} units the level's units
+ * @param {{year?: number, scale?: string, baseYear?: number}} [options]
+ */
+export function forecastCsv(
+  result,
+  units,
+  { year = 0, scale = 'today', baseYear = 2026 } = {},
+) {
+  const ahead = cleanYear(year);
+  const shown = cleanScale(scale);
+  const cell = (value) => {
+    const text = value === null || value === undefined ? '' : String(value);
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  const figure = (value, decimals = 1) =>
+    Number.isFinite(value) ? Number(value.toFixed(decimals)) : '';
+  const rows = [
+    [
+      'id',
+      'name',
+      'country',
+      'people',
+      'year',
+      'years_ahead',
+      'scale',
+      'score_today',
+      'typical',
+      'if_badly',
+      'if_well',
+      'mean',
+      'chance_abundant_pct',
+      'chance_scarce_pct',
+    ].join(','),
+  ];
+  const byId = new Map((units || []).map((u) => [u.id, u]));
+  (result?.ids || []).forEach((id, k) => {
+    const row = forecastAt(result, k, ahead, shown);
+    if (!row) return;
+    const u = byId.get(id) || {};
+    rows.push(
+      [
+        id,
+        u.name,
+        u.country,
+        Number.isFinite(u.people) ? u.people : '',
+        baseYear + ahead,
+        ahead,
+        shown,
+        figure(row.today),
+        figure(row.p50),
+        figure(row.p10),
+        figure(row.p90),
+        figure(row.mean),
+        figure(row.up, 0),
+        figure(row.down, 0),
+      ]
+        .map(cell)
+        .join(','),
+    );
+  });
+  return `${rows.join('\n')}\n`;
+}
+
+/**
  * A place's forecast lines at a year: its score's band against today,
  * its band among the others in that year (when the run ranked them), the
  * chances it is abundant or scarce on the scale shown, and its rank in
@@ -663,6 +773,8 @@ export function modelLine(indicator, summary, hindcastEntry = null) {
     parts.push(
       tl('SWING ×{scale}', { scale: localDigits(String(summary.scale)) }),
     );
+  if (Number.isFinite(summary.pull) && summary.pull !== 1)
+    parts.push(tl('PULL ×{pull}', { pull: localDigits(String(summary.pull)) }));
   if (summary.shift && Number.isFinite(summary.trendShift)) {
     const shift = Number(Number(summary.trendShift).toFixed(decimals));
     if (shift !== 0)
@@ -851,8 +963,28 @@ export function initAbundancePanel({
     }
   })(),
   readFile = (file) => file.text(),
+  /** Hands the owner a file to save (the forecast's CSV); a test captures it. */
+  saveFile = (name, text) => {
+    const view = documentRef?.defaultView || globalThis;
+    const url = view.URL?.createObjectURL?.(
+      new view.Blob([text], { type: 'text/csv' }),
+    );
+    if (!url) return false;
+    const link = documentRef.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.click();
+    view.URL.revokeObjectURL(url);
+    return true;
+  },
   /** The forecast runner (src/abundanceForecastRun.js); a test passes one without a worker. */
   forecast: givenForecast = null,
+  /**
+   * The share link's meeting point (src/share/abundanceShareLink.js): the
+   * box connects with its `shareState()` and `applyShareState()`, and says
+   * when its state changed; a test passes its own.
+   */
+  share = { connect: connectAbundanceShare, changed: noteAbundanceShareChange },
 } = {}) {
   const doc = documentRef;
   const host = doc?.getElementById?.('abundance-body');
@@ -920,6 +1052,8 @@ export function initAbundancePanel({
     } catch {
       /* a per-viewer convenience only */
     }
+    // The share link follows the box.
+    share?.changed?.();
   };
 
   /** The tab's lifetime and a request's own time limit, as one signal. */
@@ -1164,6 +1298,26 @@ export function initAbundancePanel({
     seed += 1;
     afterForecastChange(true);
   });
+  ui.download = button(
+    doc,
+    tl('DOWNLOAD FORECAST'),
+    'download-forecast',
+    tl(
+      'Every place’s forecast at the chosen year, on the scale shown, as a CSV file',
+    ),
+  );
+  ui.download.addEventListener('click', () => {
+    const t = table();
+    if (!t || !resultUsable()) return;
+    saveFile(
+      `abundance-forecast-${choice.level}-${baseYear + cleanYear(choice.year)}.csv`,
+      forecastCsv(result.data, t.units, {
+        year: choice.year,
+        scale: choice.scale,
+        baseYear,
+      }),
+    );
+  });
   ui.view = element(doc, 'select', 'abundance-view');
   ui.view.setAttribute(
     'aria-label',
@@ -1253,6 +1407,7 @@ export function initAbundancePanel({
   forecastActions.append(
     ui.play,
     ui.redraw,
+    ui.download,
     ui.view,
     ui.scale,
     ui.scenario,
@@ -1263,7 +1418,29 @@ export function initAbundancePanel({
   ui.forecastNote = element(doc, 'p', 'abundance-note abundance-forecast-note');
   ui.worldNote = element(doc, 'p', 'abundance-note abundance-forecast-note');
   ui.hindcastNote = element(doc, 'p', 'abundance-note abundance-forecast-note');
-  host.append(ui.forecastNote, ui.worldNote, ui.hindcastNote);
+  // The world's people over the century, as a fan chart under their line.
+  ui.worldFan = element(doc, 'canvas', 'abundance-fan abundance-world-fan');
+  ui.worldFan.width = FAN_WIDTH;
+  ui.worldFan.height = FAN_HEIGHT;
+  ui.worldFan.hidden = true;
+  ui.worldFan.setAttribute(
+    'aria-label',
+    tl(
+      'The world’s people over the century: the band, the typical line and the chosen year',
+    ),
+  );
+  // The world by scenario: the run's own and the other three, simulated after it.
+  ui.scenarioNote = element(doc, 'p', 'abundance-note abundance-forecast-note');
+  ui.scenarioNote.title = tl(
+    'The world’s typical score at the chosen year under each scenario: the run’s own, and the other three simulated after it at fewer runs',
+  );
+  host.append(
+    ui.forecastNote,
+    ui.worldNote,
+    ui.worldFan,
+    ui.scenarioNote,
+    ui.hindcastNote,
+  );
   host.append(
     element(
       doc,
@@ -1505,6 +1682,7 @@ export function initAbundancePanel({
     if (!t || lifetime.signal.aborted) return;
     const key = forecastKey();
     if (result && result.key === key) return;
+    const scenario = choice.scenario;
     running = { key, year: 0, years: FORECAST_YEARS };
     renderForecastNote();
     const answer = await forecast.run(
@@ -1520,6 +1698,7 @@ export function initAbundancePanel({
         scenario: choice.scenario,
         scales: hindcastScales(t.hindcast),
         shifts: hindcastShifts(t.hindcast),
+        pulls: hindcastPulls(t.hindcast),
         among: choice.scale === 'others',
       },
       (progress) => {
@@ -1539,9 +1718,11 @@ export function initAbundancePanel({
       key,
       level: choice.level,
       stamp: t.stamp,
+      scenario,
       data: answer.result,
       byId: new Map(answer.result.ids.map((id, k) => [id, k])),
       indicatorIds: cleanIndicatorIds(choice.indicators),
+      compare: {},
     };
     details.clear();
     detailsAsked.clear();
@@ -1552,11 +1733,33 @@ export function initAbundancePanel({
         render();
       }
     });
+    void compareScenarios(key);
     compute();
     render();
     publish();
     // The key may have moved on while the run went (another tick): run again.
     ensureForecast();
+  };
+
+  /**
+   * The other scenarios' world lines for the result, one after another at
+   * fewer runs (a place's detail asked meanwhile answers between them), so
+   * the line by scenario can read; a newer result ends them.
+   */
+  const compareScenarios = async (key) => {
+    for (const scenario of FORECAST_SCENARIOS) {
+      if (lifetime.signal.aborted || result?.key !== key) return;
+      if (scenario === result.scenario) continue;
+      const reply = await forecast.compare(
+        key,
+        scenario,
+        Math.min(result.data.runs, COMPARE_RUNS[result.level] || 40),
+      );
+      if (lifetime.signal.aborted || result?.key !== key) return;
+      if (reply?.type !== 'compare' || reply.stale || !reply.world) return;
+      result.compare[scenario] = reply.world;
+      renderForecastNote();
+    }
   };
 
   /** A place's detail for the current result, asked once; the lists fill when it comes. */
@@ -1740,6 +1943,15 @@ export function initAbundancePanel({
       usable ? worldAt(result.data, choice.year) : null,
       { year: choice.year, baseYear },
     );
+    const world = usable ? result.data.world : null;
+    ui.worldFan.hidden = !(world && drawFan(ui.worldFan, world, choice.year));
+    ui.scenarioNote.textContent = usable
+      ? scenarioText(
+          { scenario: result.scenario, world, compare: result.compare },
+          { year: choice.year, baseYear },
+        )
+      : '';
+    ui.download.disabled = !usable;
   };
 
   const selectedUnit = () => {
@@ -2081,7 +2293,7 @@ export function initAbundancePanel({
     );
   };
   signal?.addEventListener?.('abort', destroy, { once: true });
-  return {
+  const api = {
     refresh: () => loadLevel(choice.level),
     render,
     destroy,
@@ -2098,5 +2310,45 @@ export function initAbundancePanel({
     get simulating() {
       return Boolean(running);
     },
+    /** The box's state for a share link (src/share/abundanceShare.js). */
+    shareState() {
+      return {
+        level: choice.level,
+        show: choice.show,
+        year: choice.year,
+        view: choice.view,
+        scale: choice.scale,
+        scenario: choice.scenario,
+      };
+    },
+    /**
+     * A share link's box state: the level (loaded if it changed), SHOW ON
+     * MAP, the years ahead, the view, the scale and the scenario, as if
+     * chosen here; a run follows when the year asks for one. False for no
+     * state.
+     */
+    applyShareState(state) {
+      const next = normalizeAbundanceShare(state);
+      if (!next || lifetime.signal.aborted) return false;
+      stopPlay();
+      const levelChanged = next.level !== choice.level;
+      Object.assign(choice, next);
+      ui.level.value = choice.level;
+      ui.show.checked = choice.show;
+      keepChoice();
+      if (levelChanged) void loadLevel(choice.level);
+      else {
+        compute();
+        render();
+        publish();
+        ensureForecast();
+      }
+      return true;
+    },
   };
+  const disconnectShare = share?.connect?.(api) ?? null;
+  lifetime.signal.addEventListener('abort', () => disconnectShare?.(), {
+    once: true,
+  });
+  return api;
 }

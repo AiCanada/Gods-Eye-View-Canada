@@ -296,6 +296,7 @@ The [Bhote Koshi event pack](public/events/bhote-koshi-2026/README.md), under `p
 | **Natural Earth physical regions** (1,046 land + 292 marine named polygons) | `natural_earth/`                  | **Public domain**                                                                                         | ✅ (no restrictions)                             | "Made with Natural Earth" (courtesy credit — not legally required)          |
 | **DataSF Analysis Neighborhoods** (41 SF neighborhood polygons)             | `neighborhoods/`                  | **PDDL 1.0** (public domain)                                                                              | ✅ (no restrictions)                             | "City & County of San Francisco — DataSF" (courtesy — not legally required) |
 | **Natural Earth countries, states and provinces** (260 admin-0/map units + 4,587 admin-1 polygons + 7,342 populated places)             | `natural_earth/`                  | **Public domain**                                                                                         | ✅ (no restrictions)                             | "Made with Natural Earth" (courtesy credit — not legally required)          |
+| **Wikidata populations of states and provinces** (`admin1_population.json`: 3,838 figures for the admin-1 units, 3,837 carried into the states pack as `pop`) | `natural_earth/`                  | **CC0 1.0** (public domain dedication)                                                                    | ✅ (no restrictions)                             | "Wikidata" (courtesy — not legally required)                                 |
 | **US Census Bureau counties** (3,235 county polygons)                       | `us_census_counties/`             | **Public domain**                                                                                         | ✅ (no restrictions)                             | "U.S. Census Bureau" (courtesy — not legally required)                      |
 | **US Census Bureau places** (32,629 city, town and CDP polygons)            | `us_census_places/`               | **Public domain**                                                                                         | ✅ (no restrictions)                             | "U.S. Census Bureau" (courtesy — not legally required)                      |
 | **Who's On First neighborhoods** (61,441 polygons)                          | `wof_neighborhoods/`              | Per source: CC BY, ODC-By, Open Government licences, CC0, PDDL, public domain (folder `ATTRIBUTION.md`)   | ✅ (attribution)                                 | "Neighborhood boundaries: Who's On First and contributors"; per-source credits in the folder |
@@ -384,6 +385,22 @@ Natural Earth is **public domain** (no permission needed, no attribution legally
 https://www.naturalearthdata.com/about/terms-of-use/). We credit anyway: "Made with Natural
 Earth". Registration in the in-app `dataCredits.js` attribution list ships with the resolver
 wiring (see below).
+
+### Wikidata populations of states and provinces (`natural_earth/admin1_population.json`)
+
+The population of each Natural Earth admin-1 unit, from **Wikidata** (property P1082, the
+best-ranked statement with the latest point in time, P585), asked of the SPARQL service
+(`query.wikidata.org`) by `node scripts/build-admin-packs.mjs --only population`: by the
+unit's own Wikidata item (Natural Earth's `wikidataid`) when no other unit carries it, else
+by its own ISO 3166-2 code (P300), in batches a second apart with an identifying
+`User-Agent`. An item whose own ISO codes are all another country's is set aside (Natural
+Earth's id for Belgium's Luxembourg province is the Grand Duchy's canton). The snapshot
+(3,784 items and 54 codes, fetched 2026-11-08 UTC, the date in its `meta`) is committed, and
+`--only admin1` carries it into `states_provinces.json` as `pop` (3,837 units; a figure
+dated before 1990 is left out). The GLOBAL ABUNDANCE MAP weighs a state or province by it
+(`docs/GLOBAL-ABUNDANCE-MAP.md`, "The world's people"). Wikidata's data is
+**CC0 1.0** (https://creativecommons.org/publicdomain/zero/1.0/): no attribution legally
+required; we credit "Wikidata" anyway. Live Wikidata is never asked at run time.
 
 ### Sky background (`sky/`)
 

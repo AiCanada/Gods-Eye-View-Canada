@@ -10,13 +10,19 @@
  *   src/data/local_data/natural_earth/places.json
  *     Natural Earth 10m populated places (public domain): the cities the
  *     GLOBAL ABUNDANCE MAP draws, read by src/abundanceUnits.mjs.
+ *   src/data/local_data/natural_earth/admin1_population.json
+ *     Wikidata's population of each state and province (CC0), the people
+ *     the GLOBAL ABUNDANCE MAP weighs a state or province by; carried into
+ *     the states pack as `pop`.
  *
  * Both sources are pinned by URL and SHA-256, so a rerun reproduces the packs
  * byte for byte. Downloads are cached outside the repository (default: the
- * system temp directory) and are never committed.
+ * system temp directory) and are never committed. Wikidata is live, so its
+ * snapshot is asked for on its own (`--only population`) and committed; the
+ * states pack is built from the snapshot, never from the live service.
  *
  * Usage:
- *   node scripts/build-admin-packs.mjs [--cache <dir>] [--only countries|admin1|counties|places]
+ *   node scripts/build-admin-packs.mjs [--cache <dir>] [--only countries|admin1|counties|places|population]
  *
  * The provenance READMEs beside each pack record these parameters.
  */
@@ -104,7 +110,29 @@ export const PARAMS = Object.freeze({
     elsewhereMinPopulation: 50_000,
     cityStateMaxKm2: 1_000,
   },
+  // A unit's population from the Wikidata snapshot is carried into the
+  // states pack when its point in time is `minYear` or later (an older
+  // census says little about today's share of the country) or has no date.
+  population: { minYear: 1990 },
 });
+
+/**
+ * The Wikidata snapshot: the population (P1082) of every state and province,
+ * asked of the SPARQL service by the unit's Wikidata item (Natural Earth's
+ * `wikidataid`) when that item is the unit's alone, else by its ISO 3166-2
+ * code (P300) when that code is the unit's alone; a unit sharing both with
+ * another (Natural Earth's split polygons and its slips) gets none and is
+ * left to the server's share-out. The best-ranked statement with the latest
+ * point in time (P585) wins; among those on the same date, the larger.
+ */
+export const POPULATION_PACK =
+  'src/data/local_data/natural_earth/admin1_population.json';
+export const WIKIDATA_SPARQL = 'https://query.wikidata.org/sparql';
+const WIKIDATA_USER_AGENT =
+  'GodsEyeViewCanada/0.2 (https://github.com/AiCanada/Gods-Eye-View-Canada; scripts/build-admin-packs.mjs)';
+const WIKIDATA_BATCH = 250;
+const WIKIDATA_PAUSE_MS = 1_000;
+const WIKIDATA_TRIES = 4;
 
 const args = process.argv.slice(2);
 const cacheDir = path.resolve(
@@ -594,12 +622,258 @@ export function admin1Group(p) {
   return region || null;
 }
 
+// ── the states' and provinces' people (Wikidata) ────────────────────────
+
+/**
+ * The key each unit's population is asked by, aligned with `properties`
+ * (Natural Earth's admin-1 feature properties): `item`, its Wikidata item,
+ * when no other named unit carries it; else `code`, its ISO 3166-2 code,
+ * when no other named unit carries that; else neither. Unnamed units are
+ * not in the pack and count for nothing.
+ */
+export function admin1PopulationKeys(properties) {
+  const items = new Map();
+  const codes = new Map();
+  const rows = properties.map((p) => {
+    const name = String(p.name || '').trim();
+    const item = /^Q\d+$/.test(p.wikidataid || '') ? p.wikidataid : null;
+    const code =
+      p.iso_3166_2 && !String(p.iso_3166_2).includes('~') ? p.iso_3166_2 : null;
+    if (name) {
+      if (item) items.set(item, (items.get(item) || 0) + 1);
+      if (code) codes.set(code, (codes.get(code) || 0) + 1);
+    }
+    return { name, item, code };
+  });
+  return rows.map(({ name, item, code }) => {
+    if (name && item && items.get(item) === 1) return { item, code: null };
+    if (name && code && codes.get(code) === 1) return { item: null, code };
+    return { item: null, code: null };
+  });
+}
+
+/** The year of a Wikidata point in time ("2011-01-01T00:00:00Z"); null without one. */
+function yearOf(when) {
+  const match = /^(-?\d+)-/.exec(String(when || ''));
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * The figure to keep among a unit's best-ranked population statements
+ * ({pop, when?, item?} rows): the latest point in time, a dated statement
+ * before an undated one, and among those on the same date the larger. Null
+ * with none usable.
+ */
+export function bestPopulation(rows) {
+  let best = null;
+  for (const row of rows || []) {
+    const pop = Math.round(Number(row.pop));
+    if (!Number.isFinite(pop) || pop < 0) continue;
+    const year = yearOf(row.when);
+    if (
+      !best ||
+      (year ?? -Infinity) > (best.year ?? -Infinity) ||
+      (year === best.year && pop > best.pop)
+    )
+      best = { pop, year, item: row.item || null };
+  }
+  return best;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const chunks = (list, size) => {
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+};
+const entityId = (uri) => String(uri || '').replace(/^.*\//, '');
+
+/** One SPARQL query's rows as plain values; asked again after a refusal or a failure, waiting longer each time. */
+async function sparql(query) {
+  let pause = WIKIDATA_PAUSE_MS;
+  for (let attempt = 1; ; attempt++) {
+    let response = null;
+    try {
+      response = await fetch(WIKIDATA_SPARQL, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          accept: 'application/sparql-results+json',
+          'user-agent': WIKIDATA_USER_AGENT,
+        },
+        body: new URLSearchParams({ query }),
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (response.ok) {
+        const { results } = await response.json();
+        return results.bindings.map((row) =>
+          Object.fromEntries(
+            Object.entries(row).map(([key, value]) => [key, value.value]),
+          ),
+        );
+      }
+    } catch (error) {
+      if (attempt >= WIKIDATA_TRIES) throw error;
+    }
+    if (attempt >= WIKIDATA_TRIES)
+      throw new Error(`Wikidata: HTTP ${response?.status} for the query`);
+    const retryAfter = Number(response?.headers?.get('retry-after'));
+    pause = Math.max(
+      pause * 2,
+      Number.isFinite(retryAfter) ? retryAfter * 1000 : 0,
+    );
+    console.log(
+      `Wikidata: ${response ? `HTTP ${response.status}` : 'no answer'}, asking again in ${pause / 1000} s`,
+    );
+    await sleep(pause);
+  }
+}
+
+const POPULATION_PATTERN =
+  '?item p:P1082 ?statement . ?statement a wikibase:BestRank ; ps:P1082 ?pop . OPTIONAL { ?statement pq:P585 ?when . }';
+
+/**
+ * Whether an item's ISO 3166-2 codes on Wikidata ("BE-WLX|BE-WLX" as the
+ * query concatenates them) put it in the unit's country (`iso2`, Natural
+ * Earth's): a code under the country, or a territory's code written under
+ * its parent (US-PR for Puerto Rico, whose Natural Earth code is PR); true
+ * with no code or no country to compare. Natural Earth's `wikidataid`
+ * sometimes names a namesake elsewhere (Belgium's Luxembourg province as
+ * the Grand Duchy's canton, a Kosovo district as Serbia's whole Kosovo and
+ * Metohija); its figure would be another place's.
+ */
+export function codesInCountry(codes, iso2) {
+  const list = String(codes || '')
+    .split('|')
+    .filter(Boolean);
+  if (!list.length || !/^[A-Z]{2}$/.test(iso2 || '')) return true;
+  return list.some(
+    (code) => code.startsWith(`${iso2}-`) || code.endsWith(`-${iso2}`),
+  );
+}
+
+/**
+ * The Wikidata snapshot (POPULATION_PACK): every unit's population by its
+ * item, else by its ISO 3166-2 code, asked in batches a second apart. An
+ * item whose own ISO 3166-2 codes are all another country's is set aside.
+ */
+async function buildAdmin1Population() {
+  const source = await fetchPinned('admin1');
+  const properties = JSON.parse(source.bytes.toString('utf8')).features.map(
+    (f) => f.properties,
+  );
+  const keys = admin1PopulationKeys(properties);
+  const countryOf = new Map();
+  keys.forEach((key, index) => {
+    if (key.item) countryOf.set(key.item, properties[index].iso_a2);
+  });
+  const itemIds = [...new Set(keys.map((k) => k.item).filter(Boolean))].sort();
+  const codeIds = [...new Set(keys.map((k) => k.code).filter(Boolean))].sort();
+  const byItem = new Map();
+  let asked = 0;
+  for (const batch of chunks(itemIds, WIKIDATA_BATCH)) {
+    console.log(
+      `Wikidata: items ${asked + 1}–${asked + batch.length} of ${itemIds.length}`,
+    );
+    const rows = await sparql(
+      `SELECT ?item ?pop ?when (GROUP_CONCAT(DISTINCT ?iso; separator="|") AS ?codes) WHERE { VALUES ?item { ${batch.map((q) => `wd:${q}`).join(' ')} } ${POPULATION_PATTERN} OPTIONAL { ?item wdt:P300 ?iso . } } GROUP BY ?item ?pop ?when`,
+    );
+    for (const row of rows) {
+      const item = entityId(row.item);
+      if (!byItem.has(item)) byItem.set(item, []);
+      byItem.get(item).push(row);
+    }
+    asked += batch.length;
+    await sleep(WIKIDATA_PAUSE_MS);
+  }
+  const items = {};
+  let setAside = 0;
+  for (const item of itemIds) {
+    const rows = byItem.get(item);
+    const best = bestPopulation(rows);
+    if (!best) continue;
+    if (!codesInCountry(rows[0].codes, countryOf.get(item))) {
+      setAside += 1;
+      console.log(
+        `Wikidata: ${item} (${rows[0].codes}) is not in ${countryOf.get(item)}; set aside`,
+      );
+      continue;
+    }
+    items[item] = [best.pop, best.year];
+  }
+  const byCode = new Map();
+  asked = 0;
+  for (const batch of chunks(codeIds, WIKIDATA_BATCH)) {
+    console.log(
+      `Wikidata: codes ${asked + 1}–${asked + batch.length} of ${codeIds.length}`,
+    );
+    const rows = await sparql(
+      `SELECT ?code ?item ?pop ?when WHERE { VALUES ?code { ${batch.map((c) => JSON.stringify(c)).join(' ')} } ?item wdt:P300 ?code . ${POPULATION_PATTERN} }`,
+    );
+    for (const row of rows) {
+      if (!byCode.has(row.code)) byCode.set(row.code, []);
+      byCode.get(row.code).push({ ...row, item: entityId(row.item) });
+    }
+    asked += batch.length;
+    await sleep(WIKIDATA_PAUSE_MS);
+  }
+  const codes = {};
+  for (const code of codeIds) {
+    const best = bestPopulation(byCode.get(code));
+    if (best) codes[code] = [best.pop, best.year, best.item];
+  }
+  return {
+    meta: {
+      title: 'Wikidata populations of the Natural Earth admin-1 units',
+      source:
+        'Wikidata, population (P1082): the best-ranked statement with the latest point in time (P585), the larger on the same date',
+      endpoint: WIKIDATA_SPARQL,
+      units: SOURCES.admin1.url,
+      unitsSha256: source.digest,
+      fetched: new Date().toISOString().slice(0, 10),
+      license: 'CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)',
+      schema:
+        'items: {Wikidata item: [population, year or null]} for the units whose Natural Earth wikidataid is theirs alone; codes: {ISO 3166-2 code: [population, year or null, Wikidata item]} for the others with a code of their own (P300); a unit sharing both with another has no entry',
+      setAside,
+      script: 'scripts/build-admin-packs.mjs --only population',
+    },
+    items,
+    codes,
+  };
+}
+
 async function buildAdmin1() {
   const params = PARAMS.admin1;
   const source = await fetchPinned('admin1');
   const places = await fetchPinned('places');
   const collection = JSON.parse(source.bytes.toString('utf8'));
   const { ambiguity } = PARAMS;
+  // The people: the committed Wikidata snapshot, by the unit's own key.
+  const population = JSON.parse(
+    await readFile(path.join(ROOT, POPULATION_PACK), 'utf8').catch(
+      () => 'null',
+    ),
+  );
+  if (!population)
+    console.warn(
+      `${POPULATION_PACK} is missing: the units carry no pop (run --only population first)`,
+    );
+  const populationKeys = admin1PopulationKeys(
+    collection.features.map((f) => f.properties),
+  );
+  const populationOf = (index) => {
+    const { item, code } = populationKeys[index];
+    const row = item
+      ? population?.items?.[item]
+      : code
+        ? population?.codes?.[code]
+        : null;
+    if (!row) return null;
+    const [pop, year] = row;
+    if (year !== null && year < PARAMS.population.minYear) return null;
+    return Number.isFinite(pop) && pop >= 0 ? pop : null;
+  };
+  let peopled = 0;
   const cities = JSON.parse(places.bytes.toString('utf8'))
     .features.map((f) => f.properties)
     .filter((p) => p.pop_max >= ambiguity.elsewhereMinPopulation)
@@ -616,11 +890,16 @@ async function buildAdmin1() {
       if (name) countryNames.add(normalizeAdminName(name));
 
   const features = [];
-  for (const { properties: p, geometry } of collection.features) {
+  for (const [
+    index,
+    { properties: p, geometry },
+  ] of collection.features.entries()) {
     const name = String(p.name || '').trim();
     if (!name) continue;
     const unit = simplifyUnit(geojsonPolygons(geometry), params);
     if (!unit.polygons.length) continue;
+    const pop = populationOf(index);
+    if (pop !== null) peopled += 1;
     const nameEn =
       p.name_en && normalizeAdminName(p.name_en) !== normalizeAdminName(name)
         ? String(p.name_en).trim()
@@ -675,6 +954,7 @@ async function buildAdmin1() {
       country: p.admin,
       iso2: p.iso_a2 && p.iso_a2 !== '-99' ? p.iso_a2 : null,
       iso: p.iso_3166_2 && !p.iso_3166_2.includes('~') ? p.iso_3166_2 : null,
+      ...(pop !== null ? { pop } : {}),
       ...(amb.length ? { amb: amb.sort() } : {}),
       ...(ambAbroad.length ? { ambAbroad: ambAbroad.sort() } : {}),
       ...(cityState ? { cityState } : {}),
@@ -707,10 +987,18 @@ async function buildAdmin1() {
       commit: NE_COMMIT,
       license:
         'Public domain (https://www.naturalearthdata.com/about/terms-of-use/)',
+      population: population
+        ? {
+            source: POPULATION_PACK,
+            fetched: population.meta?.fetched || null,
+            license: population.meta?.license || null,
+            units: peopled,
+          }
+        : null,
       schema:
-        'features[]: name, nameEn?, alt?[], postal?, type, rank? (min_label: the zoom at which Natural Earth labels the unit; lower is more prominent), group? (the larger region the unit sits in: Natural Earth region, or the UK constituent country and English region), country, iso2, iso (ISO 3166-2), amb?[] (normalized names that are also a country or a city — alone or with the country named), ambAbroad?[] (names shared only with a city in another country — ambiguous alone, settled by naming the country), cityState? (the unit is its own city), label? [lon, lat] label point, d? (decimals when not meta.decimals), polygons[][ring] (first ring outer, rest holes; each ring open and encoded as integers in 10^-d degrees, first vertex absolute then [dLon, dLat] deltas)',
+        'features[]: name, nameEn?, alt?[], postal?, type, rank? (min_label: the zoom at which Natural Earth labels the unit; lower is more prominent), group? (the larger region the unit sits in: Natural Earth region, or the UK constituent country and English region), country, iso2, iso (ISO 3166-2), pop? (the unit’s people: Wikidata’s population from meta.population.source, by the unit’s own Wikidata item or ISO 3166-2 code, dated meta.curation.population.minYear or later), amb?[] (normalized names that are also a country or a city — alone or with the country named), ambAbroad?[] (names shared only with a city in another country — ambiguous alone, settled by naming the country), cityState? (the unit is its own city), label? [lon, lat] label point, d? (decimals when not meta.decimals), polygons[][ring] (first ring outer, rest holes; each ring open and encoded as integers in 10^-d degrees, first vertex absolute then [dLon, dLat] deltas)',
       decimals: params.decimals,
-      curation: { ...params, ambiguity },
+      curation: { ...params, ambiguity, population: PARAMS.population },
       script: 'scripts/build-admin-packs.mjs',
     },
     features,
@@ -861,6 +1149,18 @@ const isMain =
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMain) {
+  // Wikidata is live: its snapshot is asked for by name only, never by the
+  // default run, so a rerun of the packs stays reproducible.
+  if (only === 'population') {
+    const snapshot = await buildAdmin1Population();
+    const file = path.join(ROOT, POPULATION_PACK);
+    await mkdir(path.dirname(file), { recursive: true });
+    const text = JSON.stringify(snapshot) + '\n';
+    await writeFile(file, text);
+    console.log(
+      `${POPULATION_PACK}: ${Object.keys(snapshot.items).length} items, ${Object.keys(snapshot.codes).length} codes, ${Buffer.byteLength(text)} bytes`,
+    );
+  }
   if (!only || only === 'countries')
     await writePack(
       'src/data/local_data/natural_earth/countries.json',

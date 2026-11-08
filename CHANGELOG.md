@@ -34,8 +34,34 @@
   from ten years ago as a hindcast when it builds a level, shifts each
   indicator's trend by what the decade's trend paths missed (within 0.4 of
   its typical swing a year), scales its swing so the 8-of-10 band holds
-  about 8 of 10, and reports it (`HINDCAST 2014→2024 · THE 8-OF-10 BAND
-  HELD 81 % OF 2,345 FIGURES · THE TRENDS AND SWINGS ARE CALIBRATED BY IT`).
+  about 8 of 10, and reports it (`HINDCAST 2006→2026 · THE 8-OF-10 BAND
+  HELD 87 % OF 5,836 FIGURES · THE TRENDS AND SWINGS ARE CALIBRATED BY IT`);
+  it replays two decades (ten years ago against today, twenty against ten)
+  and pools them, a share at its ceiling holding when it stays within the
+  ceiling's zone, and interpolated sources (water, forest) keep the
+  indicator's assumed swing as a floor. The world's people grow along their
+  own thirty-year trends, a fan chart of them and DOWNLOAD FORECAST (every
+  place's row at the chosen year, as CSV) sit under the FORECAST controls,
+  and a place without a population figure counts for nothing among the
+  others' people. States and provinces weigh by Wikidata's population of
+  each (CC0, a committed snapshot the pack build asks for with `--only
+  population`, carried into the states pack as `pop` for 3,837 of the 4,587
+  units): the units with a figure share their country's people in
+  proportion to it, the rest by their populated places as before, so
+  Maharashtra weighs 129 million instead of 249 and Uttar Pradesh 282
+  instead of 137. Under the world's fan chart a line reads the world by
+  scenario (`2051 BY SCENARIO · BASELINE 61 · OPTIMISTIC 62 · PESSIMISTIC
+  58 · VOLATILE 60`), the other three scenarios simulated after the run at
+  fewer runs. The hindcast also calibrates each indicator's pull toward the
+  frontier: the trend misses set against the pull on each series give a
+  factor between a half and two (kept when it makes the misses smaller), the
+  MODEL line reading `PULL ×0.8`. The box's state (the level, SHOW ON MAP,
+  the years ahead, the view, the scale, the scenario) rides in share links,
+  `ab=c.1.25.m.t.b` in the long address and three bytes in the short code,
+  and a link opened with it sets the box. AMONG THE OTHERS at the states and
+  cities ranks every other year and reads the years between from their
+  neighbours, so the ranked run of the cities takes about two thirds of the
+  time.
   The map shows the TYPICAL OUTCOME, IF IT GOES BADLY or WELL (the 10th and
   90th percentiles), the CHANCE OF ABUNDANCE or SCARCITY, or the CHANGE
   FROM TODAY; RANKING and the grid follow the year. SELECTED reads a place's

@@ -184,16 +184,49 @@ place's ranks is its score; the people average 50 every year, and the map
 shows who is ahead. The chances are of a
 run's score; RANKING sorts by the view's figure on the scale shown, and the
 grid links by the typical outcome against today. The ranks cost about as much
-as the walk, so they are computed when that scale is chosen.
+as the walk, so they are computed when that scale is chosen, and a level of a
+thousand places or more (states and provinces, cities) ranks every other year
+and reads the years between from their neighbours (each figure halfway
+between the ranked years' own; `RANK_STRIDE_UNITS`, `simulate`'s `rankEvery`,
+the result's `rankEvery` saying which was used), since a year's ranks move
+little; countries rank every year.
 
 **The world's people.** Every place carries its people (`people`): a
 country's population from the World Bank (`SP.POP.TOTL`, else its populated
-places' people together), a state's or province's its country's shared out
-(nine tenths by the people of its Natural Earth populated places, one tenth
-equally, so a province with no populated place still counts), a city's own
-Natural Earth population; a place with none weighs as the median of the known
-(`peopleOf`). The ranks among the others weigh by them, and so does the world
-line under the FORECAST controls: `ALL PLACES BY POPULATION · ABUNDANCE 48 OF
+places' people together), a state's or province's its share of its country's,
+a city's own Natural Earth population; a place with none weighs nothing where
+others have people (it is still forecast and ranked), and every place counts
+once only where no place has people (`peopleOf`). A state's or province's
+share comes from Wikidata's population of it (`pop` in the states pack,
+3,837 of the 4,587 units: the best-ranked figure with the latest date, 1990
+or later, asked by the unit's own Wikidata item, else its own ISO 3166-2
+code, when the pack build runs `--only population`; the snapshot is
+`src/data/local_data/natural_earth/admin1_population.json`, CC0). The units
+with a figure share, in proportion to them, what the country's people leave
+after the units without one, which take the share-out (nine tenths by the
+people of their Natural Earth populated places, one tenth equally, so a
+province with no populated place still counts); so a country's people are
+whole at every level, and figures from different years only set
+proportions. Without the figures Maharashtra weighed 249 million and Uttar
+Pradesh 137 million; with them 129 and 282 (India's shares are its 2011
+census's, Uttar Pradesh's a 2025 projection, so it reads high); the world's
+line at STATES AND PROVINCES moves by a point at most, since the people only
+move within their countries. The limits:
+a unit Natural Earth draws twice under one Wikidata id and one code (Lima and
+Lima Province, Cork city and county) stays on the share-out, as do the 8
+units whose Natural Earth id names a namesake elsewhere (Belgium's Luxembourg
+as the Grand Duchy's canton; set aside by their ISO codes), a figure no
+smaller than the country's own is left aside as a slip, and where Wikidata's
+units have moved on from Natural Earth's 2022 map (Vietnam's 2025 provinces,
+a county's figure that still counts a city of county rank drawn beside it in
+Hungary) the proportions carry that. Each country's people then grow or
+shrink at their own recent rate (the World Bank's thirty years of population,
+a year six years back weighing half as much as the latest, within ±3 % a
+year), the rate halving every twenty years as the demographic transition
+runs its course, so a year's weights are that year's people (`peopleAt`),
+states and cities taking their country's rate. The ranks among the others weigh by them, year
+by year, and so does the world line under the FORECAST controls: `ALL PLACES
+BY POPULATION · ABUNDANCE 48 OF
 100 TODAY → 55 IN 2051 · 49 TO 61 IN 8 OF 10 RUNS · IN ABUNDANT PLACES 12 % →
 18 % · IN SCARCE ONES 30 % → 21 %` (at TODAY, the three figures alone): on
 each run the people-weighted mean score against today and the shares of
@@ -201,47 +234,99 @@ people in abundant (75 or over) and scarce (25 or under) places, summed up
 over the runs as the score's 10th, 50th and 90th percentiles and the mean
 shares (`simulate`'s `world`, read by `worldAt`). Where no place has people
 (a CSV level), every place counts once and the line says so (`ALL PLACES,
-EACH COUNTED ONCE`). The frontier, the typical history and the hindcast stay
+EACH COUNTED ONCE`). Under the line a fan chart draws the century of the
+world's people (the band, the typical line, the chosen year), and DOWNLOAD
+FORECAST hands over a CSV of every place at the chosen year on the scale
+shown: id, name, country, people, today's score, the typical outcome, the bad
+and good cases, the mean and the two chances (`forecastCsv`). Under the fan
+chart a line reads the world by scenario once the comparison runs are in
+(`2051 BY SCENARIO · BASELINE 61 · OPTIMISTIC 62 · PESSIMISTIC 58 · VOLATILE
+60`, `scenarioText`): after the run the tab asks the worker for the other
+three scenarios' world lines one after another, at fewer runs (100 at
+COUNTRIES, 40 at the other levels, never more than the run's;
+`COMPARE_RUNS`), each from the run's units and settings without the ranks
+among the others (`compare` messages); a place's detail asked meanwhile
+answers between them, and a newer run ends them. At TODAY the line is empty,
+the scenarios not yet having parted. The frontier,
+the typical history and the hindcast stay
 per place: the leading edge and a model's error do not depend on how many
 live there.
 
-**The hindcast.** When a level is built, the server takes each figure's
-history as it stood ten years before the newest figure (`buildUnits(level, {
-upTo })`), builds the plan for each indicator alone and measures today's
-figure on that past's yardstick (money deflated to the past's dollars). First
-the trends: each distinct series' trend path (`trendPath`: the walk with no
-swings and no crises, the mean path) is run from the past to today, its miss
-in the walking space is divided by how far one unit of trend a year would have
-moved that path (the path probed with 1 % more), and the median of those over
-the level's series, shrunk as if ten more figures had missed nothing and kept
+**The hindcast.** When a level is built, the server replays two decades: each
+figure's history as it stood ten years before the newest figure against
+today's figure, and as it stood twenty years before against ten years before
+(`buildUnits(level, { upTo })` twice), each window building the plan for each
+indicator alone and measuring the later figure on the earlier yardstick (money
+deflated to the earlier dollars); a figure counts only where then and later it
+came from the same kind of source (a place's own figure both times, or its
+country's both times). First the trends: each window's distinct series' trend
+path (`trendPath`: the walk with no swings and no crises, the mean path) is
+run to the later figure, its miss in the walking space is divided by how far
+one unit of trend a year would have moved that path (the path probed with 1 %
+more), and the median of those over both windows' series, shrunk as if ten
+more figures had missed nothing and kept
 within 0.4 of the indicator's typical swing a year (2 % a year for money, a
 point a year for inflation), is the indicator's trend shift: what the decade
 said the model's trends missed, added to every series of the indicator and
 fading with the residual (a returning indicator's usual level moves by it).
-Then the swings: the replay with the shift (twelve years, 100 runs) gives each
-figure a band, and from the standardised errors comes the swing scale that
+With the trends, the pull: do the places far from the frontier catch up as
+fast as the pull (`beta` of the gap a year) assumes? The same misses are set
+against the pull on each series (beta × its gap, signed), the series split in
+two halves by it, and the slope of the misses over the pull between the
+halves' medians, shrunk the same way, gives the indicator's pull factor,
+1 + slope within a half and two (`pullFit`): the pull multiplies by it in
+every series of the indicator (`buildPlan`'s `pulls`, so the typical
+residual is measured against the scaled pull too), and the shift is then
+the typical series' miss at the typical pull. The factor is kept only when
+it makes the typical absolute miss at least 2 % smaller than the shift
+alone would, and an indicator with fewer than twenty series, or a returning
+one (no frontier), keeps 1. Then the swings: each window's replay with the
+shift and the pull (twelve years, 100 runs)
+gives each figure a band, and from the pooled standardised errors comes the
+swing scale that
 would make the 10th-to-90th band hold about 8 of 10 (the 80th percentile of
 the errors over the normal's 1.28), between a half and ten; the replay again
-with both gives the share held (a share at its ceiling holds when today's
+with all three gives the share held (a share at its ceiling holds when today's
 figure is still within the ceiling's zone, 99.5 % of it or more), and the
 server reports `{ from, to,
-indicators: { id: { tested, held, scale, shift } }, tested, held }` with
-each level's table. The tab passes the shifts and scales to every run
-(`buildPlan`'s `shifts` and `scales`), reads `HINDCAST 2014→2024 · THE
-8-OF-10 BAND HELD 81 % OF 2,345 FIGURES · THE TRENDS AND SWINGS ARE
-CALIBRATED BY IT` under the FORECAST controls, and each MODEL line ends `·
-SWING ×1.3 · HINDCAST TREND -210 $ A YEAR · HINDCAST BAND HELD 82 %` (the
-shift's part of the typical year's change, in the figure's units; left out
-when there is none). An indicator with fewer than ten figures to test is left
-out. Synthetic levels in `src/abundanceForecast.test.mjs` hold most figures
+windows: [{ from, to, tested, held }], indicators: { id: { tested, held,
+scale, shift, pull } }, tested, held }` with each level's table (`from` the
+earlier window's start, the counts pooled over both). The tab passes the
+shifts, scales and pulls to every run (`buildPlan`'s `shifts`, `scales` and
+`pulls`), reads
+`HINDCAST 2006→2026 · THE 8-OF-10 BAND HELD 87 % OF 5,836 FIGURES · THE
+TRENDS AND SWINGS ARE CALIBRATED BY IT` under the FORECAST controls, and each
+MODEL line ends `·
+SWING ×1.3 · PULL ×0.8 · HINDCAST TREND -210 $ A YEAR · HINDCAST BAND HELD
+82 %` (the shift's part of the typical year's change, in the figure's units;
+each part left out when there is none). An indicator with fewer than ten
+figures to test is left out. Synthetic levels in `src/abundanceForecast.test.mjs` hold most figures
 after the calibration, and a decade that bent every trend by 3 % a year gets
 a shift of that sign, within the bound, that halves the trend paths' miss. On
-the real figures (2026-11-07, 2016→2026) the band held 86 % of the countries'
-2,848 figures, 87 % of the states' and provinces' 61,931 and 88 % of the
-cities' 96,566, 80–94 % for every indicator but unemployment (72–80 %, the
-decade of the pandemic), with swing scales between 0.7 and 4.4; the water and
-forest shares, whose sources interpolate between surveys and revise whole
-series, hold 80–91 % only because the assumed swing floors their histories'.
+the real figures (2026-11-07, the two decades 2006→2016 and 2016→2026
+pooled) the band held 87 % of the countries' 5,836 figures (89 % in the
+later decade, 85 % in the earlier), 87 % of the states' and provinces'
+120,819 and 89 % of the cities' 187,999, 78–97 % for every indicator but
+unemployment (73–78 %), with swing scales between 0.8 and 3.2; pooling the
+decades took GDP's trend shift from +1.2 % a year (the strong-dollar decade
+alone) to about nothing. The water and forest shares, whose sources
+interpolate between surveys and revise whole series, hold 85–91 % only
+because the assumed swing floors their histories'. With the people growing
+at their own rates the world's score in 2076 reads about two points below
+the same line with today's people, the fastest-growing countries being the
+poorest.
+
+**Share links.** The box's state rides in the app's share links: the level,
+SHOW ON MAP, the years ahead, the view, the scale and the scenario, as
+`ab=c.1.25.m.t.b` in the long address and three bytes in the copied short
+code (`src/share/abundanceShare.js`, field 2046 of `src/share/viewCodec.js`;
+docs/SHARE-LINK-FORMAT.md). The box hands its state to the share-link
+manager and takes a link's state through `src/share/abundanceShareLink.js`
+(the two never see each other): a link opened with a state sets the box as
+if chosen by hand (the level loaded if it changed, a run following when the
+year asks for one), and a state that arrives before the box is built waits
+for it. The ticked indicators, the weights, the runs and the crises stay the
+viewer's own.
 
 **The runs.** 100, 250, 500, 1,000 or 2,000 (500 for countries, 100 for the
 other levels until the owner picks; a city level runs about twenty thousand
@@ -334,7 +419,7 @@ be real (no homicide, no infant death in a small region that year) stands.
 | WORK (lower)       | `SL.UEM.TOTL.ZS` unemployment, % of the labour force         | `DF_RATES` unemployment, % of the labour force aged 15–64   | `DF_LABOUR` unemployment in the urban area |
 | AIR (lower)        | `EN.ATM.PM25.MC.M3` fine particles (PM2.5) breathed, µg/m³   | from the country                                            | `DF_POLLUTION` release 1.2: PM2.5 breathed in the urban area, µg/m³ |
 | GREEN SPACE        | `AG.LND.FRST.ZS` forest, % of the land                       | from the country                                            | `DF_GREEN_AREA` green space in the urban centre, m² per person |
-| (the people: the forecast's weights, no indicator) | `SP.POP.TOTL` population, total (else the populated places' people together) | the country's, shared out: nine tenths by the populated places' people, one tenth equally | Natural Earth `pop_max` |
+| (the people: the forecast's weights, no indicator) | `SP.POP.TOTL` population, total (else the populated places' people together) | the country's, shared by Wikidata's population of each unit (P1082, in the states pack as `pop`); the units without one by the share-out, nine tenths by the populated places' people, one tenth equally | Natural Earth `pop_max` |
 
 The cities' PM2.5 comes from the OECD's release 1.2 of `DF_POLLUTION`
 (2021–2023), not its newest, 1.5 (released 2026-10-09, 2021–2025), which is

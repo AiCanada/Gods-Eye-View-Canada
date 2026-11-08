@@ -5950,5 +5950,11 @@
   "ALL PLACES BY POPULATION": "TOUS LES LIEUX SELON LEUR POPULATION",
   "ALL PLACES, EACH COUNTED ONCE": "TOUS LES LIEUX, CHACUN COMPTÉ UNE FOIS",
   "{who} · ABUNDANCE {score} OF 100 · {up} % IN ABUNDANT PLACES · {down} % IN SCARCE ONES": "{who} · ABONDANCE {score} SUR 100 · {up} % DANS DES LIEUX ABONDANTS · {down} % DANS DES LIEUX EN MANQUE",
-  "{who} · ABUNDANCE {today} OF 100 TODAY → {p50} IN {year} · {p10} TO {p90} IN 8 OF 10 RUNS · IN ABUNDANT PLACES {upToday} % → {up} % · IN SCARCE ONES {downToday} % → {down} %": "{who} · ABONDANCE {today} SUR 100 AUJOURD'HUI → {p50} EN {year} · {p10} À {p90} DANS 8 SIMULATIONS SUR 10 · DANS DES LIEUX ABONDANTS {upToday} % → {up} % · DANS DES LIEUX EN MANQUE {downToday} % → {down} %"
+  "{who} · ABUNDANCE {today} OF 100 TODAY → {p50} IN {year} · {p10} TO {p90} IN 8 OF 10 RUNS · IN ABUNDANT PLACES {upToday} % → {up} % · IN SCARCE ONES {downToday} % → {down} %": "{who} · ABONDANCE {today} SUR 100 AUJOURD'HUI → {p50} EN {year} · {p10} À {p90} DANS 8 SIMULATIONS SUR 10 · DANS DES LIEUX ABONDANTS {upToday} % → {up} % · DANS DES LIEUX EN MANQUE {downToday} % → {down} %",
+  "DOWNLOAD FORECAST": "TÉLÉCHARGER LA PRÉVISION",
+  "Every place’s forecast at the chosen year, on the scale shown, as a CSV file": "La prévision de chaque lieu à l'année choisie, à l'échelle affichée, en fichier CSV",
+  "The world’s people over the century: the band, the typical line and the chosen year": "Les gens du monde au fil du siècle : la bande, la ligne typique et l'année choisie",
+  "{year} BY SCENARIO · {list}": "{year} PAR SCÉNARIO · {list}",
+  "The world’s typical score at the chosen year under each scenario: the run’s own, and the other three simulated after it at fewer runs": "Le score typique du monde à l'année choisie selon chaque scénario : celui de la simulation, et les trois autres simulés ensuite avec moins de passes",
+  "PULL ×{pull}": "ATTRACTION ×{pull}"
 }

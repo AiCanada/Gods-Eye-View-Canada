@@ -48,6 +48,8 @@ export const LEGACY_SHARE_STATE_KEYS = Object.freeze([
   'layerState',
   'layerStateInvalid',
   'panelState',
+  // God's Eye View Canada: the GLOBAL ABUNDANCE MAP box's state (`ab`).
+  'abundance',
   'sharedAtMs',
 ]);
 

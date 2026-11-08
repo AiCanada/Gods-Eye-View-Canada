@@ -216,6 +216,20 @@ and always beside field 10 (empty when no other layer is on); a fork layer
 spelled in field 10 still opens. A decoder without field 2047 skips it as an
 unknown field and opens the view without the fork's layers.
 
+God's Eye View Canada: the GLOBAL ABUNDANCE MAP box's state travels in field
+2046 (`FORK_ABUNDANCE_FIELD`, `src/share/abundanceShare.js`), three bytes
+written only while the box has a state: the first holds the level (0
+countries, 1 states and provinces, 2 cities), SHOW ON MAP (+4), the scale
+(+8 for AMONG THE OTHERS) and the scenario (+16 × 0 baseline, 1 optimistic,
+2 pessimistic, 3 volatile); the second the view (0 TYPICAL OUTCOME, 1 IF IT
+GOES BADLY, 2 IF IT GOES WELL, 3 CHANCE OF ABUNDANCE, 4 CHANCE OF SCARCITY,
+5 CHANGE FROM TODAY); the third the years ahead (0–100). The long form writes
+the same state as `ab=c.1.25.m.t.b` (level `c`/`r`/`y`, SHOW ON MAP `1`/`0`,
+years ahead, view `m`/`b`/`w`/`u`/`d`/`c`, scale `t`/`o`, scenario
+`b`/`o`/`p`/`v`), v2 only, and a malformed value is no state. A decoder
+without the field skips it; a field of the wrong length is reported as
+`abundance: malformed` and the view opens without the box's state.
+
 Field 11 repeats `(layer number, option key, value)` for each option that
 differs from its frozen absent meaning (`SHARE_VIEW_LAYER_OPTION_ABSENT`). The
 option key is `option token index × 2 + kind`: kind 0 means the value is a

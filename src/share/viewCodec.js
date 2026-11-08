@@ -26,6 +26,11 @@ import {
   optionSpecs,
 } from '../data/layerState.js';
 import {
+  decodeAbundanceShareBytes,
+  encodeAbundanceShareBytes,
+  normalizeAbundanceShare,
+} from './abundanceShare.js';
+import {
   migrateDetectionState,
   normalizeAllocationStrategy,
 } from '../data/detectionPolicy.js';
@@ -390,6 +395,14 @@ const fieldNumber = (key) => FIELD_BY_KEY.get(key).number;
  * numbers; a decoder that does not know it skips it as an unknown field.
  */
 export const FORK_TOP_LAYERS_FIELD = 2047;
+/**
+ * God's Eye View Canada: the GLOBAL ABUNDANCE MAP box's state (the level,
+ * SHOW ON MAP, the years ahead, the view, the scale, the scenario), three
+ * bytes from src/share/abundanceShare.js, the next field down from the top;
+ * written only when the box has a state, skipped by a decoder that does not
+ * know it.
+ */
+export const FORK_ABUNDANCE_FIELD = 2046;
 const TOP_LAYER_NUMBER = 36 + 36 * 36 - 1; // 'zz'
 const FORK_TOP_LAYER_SPAN = 64;
 const isForkTopLayer = (number) =>
@@ -434,6 +447,7 @@ export function createDefaultShareViewState(requested = 'normal') {
       field.key === 'style' ? style : structuredClone(defaultOf(field, style));
   }
   for (const flag of SHARE_VIEW_FLAGS) state[flag.key] = defaultOf(flag, style);
+  state.abundance = null;
   return state;
 }
 
@@ -750,6 +764,7 @@ export function normalizeShareViewState(input = {}) {
     : null;
   state.panelState = normalizePanelState(source.panelState);
   state.sharedAtMs = epochMsOr(source.sharedAtMs);
+  state.abundance = normalizeAbundanceShare(source.abundance);
   let view = normalizeView(source.view);
   if (state.layerState) view = liftTrackedEntity(state.layerState, view);
   if (view.kind === 'thing') {
@@ -1012,6 +1027,11 @@ export function encodeShareView(input) {
         else writer.uintField(field.number, state[field.key]);
     }
   }
+  if (state.abundance)
+    writer.bytesField(
+      FORK_ABUNDANCE_FIELD,
+      encodeAbundanceShareBytes(state.abundance),
+    );
   if (forkTopLayers.length)
     writer.bytesField(FORK_TOP_LAYERS_FIELD, forkTopLayers);
   return sealPayload(writer.finish());
@@ -1079,6 +1099,7 @@ const TOP_LEVEL_WIRE_TYPES = new Map([
     WIRE_TYPES_BY_TYPE[f.type],
   ]),
   [FORK_TOP_LAYERS_FIELD, WIRE_TYPES_BY_TYPE.bytes],
+  [FORK_ABUNDANCE_FIELD, WIRE_TYPES_BY_TYPE.bytes],
 ]);
 const THING_WIRE_TYPES = new Map([
   ...SHARE_VIEW_ENTITY_KINDS.map((e) => [e.code, [WIRE_VARINT, WIRE_LEN]]),
@@ -1403,6 +1424,12 @@ export function decodeShareView(code, { nowMs = Date.now() } = {}) {
       unknown.code('layer-option', 'without-layers');
     if (forkTopLayers && !get('layerState'))
       unknown.code('layer', 'fork-top-without-layers');
+    const abundanceBytes = fields.get(FORK_ABUNDANCE_FIELD)?.len ?? null;
+    if (abundanceBytes) {
+      const abundance = decodeAbundanceShareBytes(abundanceBytes.rest());
+      if (abundance) raw.abundance = abundance;
+      else unknown.code('abundance', 'malformed');
+    }
     if (get('panelState'))
       raw.panelState = decodePanels(get('panelState').len, unknown);
     if (get('styleParams') && !retiredStyle)

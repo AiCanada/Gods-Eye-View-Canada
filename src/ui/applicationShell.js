@@ -84,6 +84,12 @@ import { useLocationStore } from './stores/location.js';
 import { useCockpitStore } from './stores/cockpit.js';
 import { useGlobeActionsStore } from './stores/globeActions.js';
 import { useRecordingStore } from './stores/recording.js';
+// Fork: the GLOBAL ABUNDANCE MAP box's state in share links.
+import {
+  abundanceShareState,
+  restoreAbundanceShare,
+  setAbundanceShareManager,
+} from '../share/abundanceShareLink.js';
 
 /**
  * Central UI orchestrator for the God's Eye View application.
@@ -488,6 +494,8 @@ export class StyleManager extends ShellFacade {
     // Share Link Manager
     this.shareLinkManager = new ShareLinkManager(viewer, {
       onRestore: async (state) => {
+        // Fork: the GLOBAL ABUNDANCE MAP box's state, when the link has one.
+        restoreAbundanceShare(state.abundance);
         return this._visualSettings.restoreShareState(state);
       },
       isNavigationCurrent: (generation) =>
@@ -502,6 +510,11 @@ export class StyleManager extends ShellFacade {
     this.shareLinkManager.setPanelStateProvider(() =>
       this._buildSharePanelState(),
     );
+    // Fork: the GLOBAL ABUNDANCE MAP box's state rides in the link too.
+    this.shareLinkManager.setAbundanceStateProvider(() =>
+      abundanceShareState(),
+    );
+    setAbundanceShareManager(this.shareLinkManager);
     this.shareLinkManager.setStyleParamStateProvider((styleName) => {
       const shader = STYLES[styleName];
       const stage = this.stages[styleName];

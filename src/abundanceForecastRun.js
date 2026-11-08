@@ -126,6 +126,14 @@ export function createForecastRunner({
     model(planId) {
       return send({ type: 'model', id: nextId++, planId });
     },
+    /**
+     * The world's line under another scenario, from the last run's units
+     * at `runs` runs (never more than the run's): `{ type: 'compare',
+     * scenario, world, runs }` or `stale`.
+     */
+    compare(planId, scenario, runs) {
+      return send({ type: 'compare', id: nextId++, planId, scenario, runs });
+    },
     /** Whether a run is in flight. */
     get running() {
       return runId !== null;

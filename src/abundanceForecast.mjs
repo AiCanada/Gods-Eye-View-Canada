@@ -92,6 +92,14 @@ export const FORECAST_SCENARIO_LABELS = Object.freeze({
   pessimistic: msgl('PESSIMISTIC'),
   volatile: msgl('VOLATILE'),
 });
+/** How far the hindcast may scale an indicator's pull toward the frontier (`beta`). */
+export const PULL_MIN = 0.5;
+export const PULL_MAX = 2;
+/** An indicator's pull factor from a hindcast's `pulls`, bounded; 1 without one. */
+export function pullOf(pulls, id) {
+  const pull = pulls?.[id];
+  return Number.isFinite(pull) ? clamp(pull, PULL_MIN, PULL_MAX) : 1;
+}
 /**
  * A scenario: the frontier's long-run growth of money a year (real), how
  * much faster or slower the other frontiers move (`pace`), how often crises
@@ -144,6 +152,12 @@ const SATURATED = 0.995;
 const PLACE_BINS = 4096;
 const RANK_BINS = 512;
 const SCORE_BINS = 200;
+/**
+ * A level with this many places or more ranks among the others every other
+ * year, the years between read from their neighbours: the ranks cost about
+ * as much as the walk, and a year's ranks move little.
+ */
+export const RANK_STRIDE_UNITS = 1000;
 /** A residual trend stays within this, a year. */
 const RESIDUAL_MAX = 0.06;
 /** A level's typical residual trend stays within this, a year, so one odd level cannot move every place. */
@@ -579,7 +593,7 @@ export function frontierDrift(process, scenario) {
  * @param {object} process
  * @param {{v: number, g?: number, s?: number, n?: number, m?: number}} figure
  * @param {{g: number, s: number, m?: number, residual?: number}} prior
- * @param {{frontier?: number, scenario?: string, scale?: number, shift?: number}} [context] the frontier at year 0 in the walking space, the scenario, the hindcast's swing scale and trend shift
+ * @param {{frontier?: number, scenario?: string, scale?: number, shift?: number, pull?: number}} [context] the frontier at year 0 in the walking space, the scenario, the hindcast's swing scale, trend shift and pull factor
  */
 export function seriesParams(process, figure, prior, context = {}) {
   const n = Number.isFinite(figure?.n) ? Math.max(0, figure.n) : 0;
@@ -627,7 +641,11 @@ export function seriesParams(process, figure, prior, context = {}) {
   }
   out.frontier = Number.isFinite(context.frontier) ? context.frontier : x0;
   out.muF = frontierDrift(process, context.scenario);
-  out.beta = process.beta || 0;
+  out.beta =
+    (process.beta || 0) *
+    (Number.isFinite(context.pull)
+      ? clamp(context.pull, PULL_MIN, PULL_MAX)
+      : 1);
   out.decay = process.halfLife ? Math.pow(0.5, 1 / process.halfLife) : 1;
   const own = process.family === 'growth' ? g - (process.deflate || 0) : g;
   const predicted = out.muF + out.beta * (out.frontier - x0);
@@ -888,21 +906,62 @@ function valueOf(kind, bound, x) {
 
 /**
  * Every unit's weight in the world's figures and the ranks among the
- * others: its people (`people`, the server's population for it), the
- * median of the known where it has none, 1 everywhere when none is known.
+ * others: its people (`people`, the server's population for it). A unit
+ * with none weighs nothing where others have people (it is still forecast
+ * and ranked), and every unit weighs 1 when none is known.
  * @param {Array<{people?: number}>} units
  * @returns {Float64Array}
  */
 export function peopleOf(units) {
   const list = Array.isArray(units) ? units : [];
-  const known = list
-    .map((u) => Number(u?.people))
-    .filter((p) => Number.isFinite(p) && p > 0);
-  const fallback = known.length ? median(known) : 1;
+  const known = list.some((u) => Number(u?.people) > 0);
   return Float64Array.from(list, (u) => {
     const p = Number(u?.people);
-    return Number.isFinite(p) && p > 0 ? p : fallback;
+    return Number.isFinite(p) && p > 0 ? p : known ? 0 : 1;
   });
+}
+
+/**
+ * A population's growth a year halves every this many years (the
+ * demographic transition: the world's 0.9 % a year of 2026 would be near
+ * nothing by the 2080s, as the UN expects).
+ */
+export const PEOPLE_GROWTH_HALF_LIFE = 20;
+/** A population grows or shrinks by at most this share a year. */
+export const PEOPLE_GROWTH_MAX = 0.03;
+
+/**
+ * Every unit's population growth a year (`peopleGrowth`: the server's, from
+ * its country's thirty years of population), bounded; 0 where unknown.
+ * @param {Array<{peopleGrowth?: number}>} units
+ * @returns {Float64Array}
+ */
+export function peopleGrowthOf(units) {
+  const list = Array.isArray(units) ? units : [];
+  return Float64Array.from(list, (u) => {
+    const g = Number(u?.peopleGrowth);
+    return Number.isFinite(g)
+      ? clamp(g, -PEOPLE_GROWTH_MAX, PEOPLE_GROWTH_MAX)
+      : 0;
+  });
+}
+
+/**
+ * The years of growth a population has had by year t when its rate halves
+ * every PEOPLE_GROWTH_HALF_LIFE years: t at first, then toward 29.
+ */
+export function peopleYears(t) {
+  const h = PEOPLE_GROWTH_HALF_LIFE;
+  return (h / Math.LN2) * (1 - Math.pow(0.5, t / h));
+}
+
+/** Every unit's people at year t of a plan: today's, grown or shrunk at its slowing rate. */
+export function peopleAt(plan, t) {
+  const years = peopleYears(cleanYear(t));
+  return Float64Array.from(
+    plan.people,
+    (p, k) => p * Math.exp(plan.growth[k] * years),
+  );
 }
 
 // --- the plan: series, units and their terms -------------------------------------------
@@ -917,7 +976,7 @@ export function peopleOf(units) {
  * @param {Array<{id: string, values: object}>} units
  * @param {string[]} indicatorIds the ticked indicators
  * @param {object} weights
- * @param {{level?: string, scenario?: string, scales?: object, shifts?: object, indicators?: object[]}} [options] `scales`, `shifts`: the hindcast's swing scale and trend shift per indicator
+ * @param {{level?: string, scenario?: string, scales?: object, shifts?: object, pulls?: object, indicators?: object[]}} [options] `scales`, `shifts`, `pulls`: the hindcast's swing scale, trend shift and pull factor per indicator
  */
 export function buildPlan(
   units,
@@ -928,6 +987,7 @@ export function buildPlan(
     scenario = 'baseline',
     scales = {},
     shifts = {},
+    pulls = {},
     indicators = ABUNDANCE_INDICATORS,
   } = {},
 ) {
@@ -937,6 +997,7 @@ export function buildPlan(
     .filter((i) => i && FORECAST_PROCESSES[i.id]);
   const list = Array.isArray(units) ? units : [];
   const people = peopleOf(list);
+  const growth = peopleGrowthOf(list);
   const weighted = list.some((u) => Number(u?.people) > 0);
   const seriesIndex = new Map();
   const seriesList = [];
@@ -993,6 +1054,7 @@ export function buildPlan(
       // The typical residual: what the level's histories did beyond the
       // frontier's pull, bounded so one odd level cannot move every place.
       const muF = frontierDrift(process, scenario);
+      const beta = (process.beta || 0) * pullOf(pulls, id);
       const residuals = members
         .filter((s) => s.figure.n >= 1 && Number.isFinite(s.figure.g))
         .map((s) => {
@@ -1001,7 +1063,7 @@ export function buildPlan(
               ? s.figure.g - (process.deflate || 0)
               : s.figure.g;
           const x0 = toX(process, s.figure.v);
-          return own - (muF + (process.beta || 0) * (frontier - x0));
+          return own - (muF + beta * (frontier - x0));
         });
       prior.residual =
         residuals.length >= 5
@@ -1062,6 +1124,7 @@ export function buildPlan(
       scenario,
       scale: scales?.[entry.id],
       shift: shifts?.[entry.id],
+      pull: pulls?.[entry.id],
     });
     series.params[s] = p;
     series.indicator[s] = indicatorAt.get(entry.id);
@@ -1205,6 +1268,7 @@ export function buildPlan(
     weights: { ...weights },
     scales: { ...scales },
     shifts: { ...shifts },
+    pulls: { ...pulls },
     priors,
     frontiers,
     series,
@@ -1216,12 +1280,11 @@ export function buildPlan(
     regimes: { world, local },
     tables,
     people,
+    growth,
     weighted,
     members: members.map((m) => ({
       units: Int32Array.from(m.units),
       series: Int32Array.from(m.series),
-      people: Float64Array.from(m.units, (k) => people[k]),
-      total: m.units.reduce((sum, k) => sum + people[k], 0),
       weight: m.weight,
       better: m.better,
       mixed: m.mixed,
@@ -1328,7 +1391,10 @@ function writeToday(out, at, today) {
  * and 90th percentiles, its mean and the chances it is abundant or scarce,
  * measured against today (`p10`…`down`) and, unless `among` is false, among
  * the other places in that year (`rp10`…`rdown`, every place weighed by its
- * people; the ranks cost about as much as the walk), with the world's
+ * people; the ranks cost about as much as the walk, so a level of
+ * RANK_STRIDE_UNITS places or more ranks every other year and reads the
+ * years between from their neighbours, `rankEvery` saying how often; the
+ * option `rankEvery` sets it), with the world's
  * figures by year (`world`: the people-weighted score's percentiles and
  * mean, the mean shares of people in abundant and scarce places). Year 0 is
  * today's exact score. `onProgress(year, years)` after each year.
@@ -1368,8 +1434,19 @@ export function simulate(plan, options = {}) {
   const today = new Float32Array(U).fill(NaN);
   const against = emptySummary(U, T1);
   const among = withAmong ? emptySummary(U, T1) : null;
-  // The world's figures: every unit weighed by its people, against today.
-  const { people } = plan;
+  // The ranks every `rankEvery` years (and the last), the years between
+  // read from their neighbours: every year by default under
+  // RANK_STRIDE_UNITS places, every other year from there.
+  const rankEvery = !among
+    ? 1
+    : Math.max(1, Math.round(options.rankEvery)) ||
+      (U >= RANK_STRIDE_UNITS ? 2 : 1);
+  const ranked = new Uint8Array(T1);
+  ranked[0] = 1;
+  // The world's figures: every unit weighed by its people, against today;
+  // the people of a year are today's grown at their slowing rates.
+  const { people, growth } = plan;
+  const peopleNow = Float64Array.from(people);
   const worldSum = new Float64Array(runs);
   const worldUp = new Float64Array(runs);
   const worldDown = new Float64Array(runs);
@@ -1517,6 +1594,12 @@ export function simulate(plan, options = {}) {
     worldSum.fill(0);
     worldUp.fill(0);
     worldDown.fill(0);
+    const grown = peopleYears(t);
+    W = 0;
+    for (let k = 0; k < U; k++) {
+      peopleNow[k] = people[k] * Math.exp(growth[k] * grown);
+      if (units[k].total > 0) W += peopleNow[k];
+    }
     for (let k = 0; k < U; k++) {
       const u = units[k];
       if (!(u.total > 0)) continue;
@@ -1528,7 +1611,7 @@ export function simulate(plan, options = {}) {
       const own = u.own;
       const weights = u.weights;
       const total = u.total;
-      const w = people[k];
+      const w = peopleNow[k];
       for (let r = 0; r < runs; r++) {
         let score = tail ? tail[r] : 0;
         for (let j = 0; j < own.length; j++)
@@ -1570,7 +1653,8 @@ export function simulate(plan, options = {}) {
       world.down[t] = (100 * down) / (runs * W);
     }
     lap('against');
-    if (among) {
+    if (among && (t % rankEvery === 0 || t === years)) {
+      ranked[t] = 1;
       // Among the others: on each run, each indicator's members ranked by
       // their figures that year (RANK_BINS bins over the year's range), each
       // weighed by its people, the weighted mean of a unit's ranks its
@@ -1614,12 +1698,13 @@ export function simulate(plan, options = {}) {
         const scale = span > 0 ? RANK_BINS / span : 0;
         const flip = g.better === 'low';
         const weight = g.weight;
-        const gPeople = g.people;
-        const total = g.total;
+        let total = 0;
+        for (let j = 0; j < n; j++) total += peopleNow[gUnits[j]];
         for (let k = 0; k < runs; k++) {
           counts.fill(0);
           for (let j = 0; j < n; j++)
-            counts[((points[j * runs + k] - lo) * scale) | 0] += gPeople[j];
+            counts[((points[j * runs + k] - lo) * scale) | 0] +=
+              peopleNow[gUnits[j]];
           // Each bin's people become the people below it.
           let below = 0;
           for (let b = 0; b <= RANK_BINS; b++) {
@@ -1632,7 +1717,8 @@ export function simulate(plan, options = {}) {
           for (let j = 0; j < n; j++) {
             const b = ((points[j * runs + k] - lo) * scale) | 0;
             const inBin = (b < RANK_BINS ? counts[b + 1] : below) - counts[b];
-            const rank = ((counts[b] + inBin / 2) / total) * 100;
+            const rank =
+              total > 0 ? ((counts[b] + inBin / 2) / total) * 100 : 50;
             relative[gUnits[j] * runs + k] +=
               weight * (flip ? 100 - rank : rank);
           }
@@ -1659,6 +1745,32 @@ export function simulate(plan, options = {}) {
     }
     options.onProgress?.(t, years);
   }
+  // The years between ranked years: each figure between its neighbours'.
+  if (among && rankEvery > 1) {
+    const keys = ['p10', 'p50', 'p90', 'mean', 'up', 'down'];
+    let before = 0;
+    for (let t = 1; t < T1; t++) {
+      if (ranked[t]) {
+        before = t;
+        continue;
+      }
+      let after = t + 1;
+      while (after < T1 && !ranked[after]) after++;
+      const share = (t - before) / (after - before);
+      for (let k = 0; k < U; k++) {
+        if (!(units[k].total > 0)) continue;
+        const row = k * T1;
+        for (const key of keys) {
+          const column = among[key];
+          const a = column[row + before];
+          const b = column[row + after];
+          const value = a + (b - a) * share;
+          column[row + t] =
+            key === 'up' || key === 'down' ? Math.round(value) : value;
+        }
+      }
+    }
+  }
   return {
     years,
     runs,
@@ -1669,6 +1781,7 @@ export function simulate(plan, options = {}) {
     today,
     world,
     weighted: Boolean(plan.weighted),
+    rankEvery: among ? rankEvery : null,
     ...against,
     ...(among
       ? {
@@ -1883,6 +1996,8 @@ export function seriesSummary(plan, s) {
     out.shift = p.shift;
     out.trendShift = fromX(process, p.x0 + shiftNow) - v0;
   }
+  const pull = plan.pulls?.[id];
+  if (Number.isFinite(pull) && pull !== 1 && p.beta) out.pull = pull;
   return out;
 }
 
@@ -1922,11 +2037,13 @@ export function typicalModel(plan) {
         scenario: plan.scenario,
         scale: plan.scales?.[indicatorId],
         shift: plan.shifts?.[indicatorId],
+        pull: plan.pulls?.[indicatorId],
       });
       return seriesSummary(
         {
           series: { ids: [indicatorId], process: [process], params: [p] },
           scales: plan.scales,
+          pulls: plan.pulls,
         },
         0,
       );
@@ -2047,59 +2164,83 @@ export function trendPath(plan, s, years, extra = 0) {
 }
 
 /**
- * The hindcast: the model replayed from `past` (the level's units as their
- * figures stood about HINDCAST_YEARS ago) for each indicator alone, and
- * the figures of today (`present`) measured against that past's yardstick
- * (money in the past's dollars, as the walk projected it). First the
- * trends: each distinct series' trend path is run to today and its miss,
- * in the walking space, divided by how far one unit of trend a year would
- * have moved that path (`trendPath` probed); the median of those, shrunk
- * as if HINDCAST_CASES more figures had missed nothing and kept within
- * SHIFT_SWINGS typical swings, is the indicator's trend shift. Then the swings: the
- * replay with the shift (HINDCAST_RUNS runs) gives each figure a band, and
- * from the standardised errors comes the swing scale that would have made
- * the 8-of-10 band hold about 8 of 10 (the 80th percentile of the errors
- * over the normal's), kept between a half and SCALE_MAX; then the replay
- * again with both, for the share of figures the band held (a share at its
- * ceiling holds when today's is still within the ceiling's zone). `{ from,
- * to, indicators: { id: { tested, held, scale, shift } }, tested, held }`,
- * with `held` in percent and `shift` in the walking space a year; an
- * indicator with fewer than HINDCAST_CASES figures to test is left out,
- * and one with no scale or shift to speak of keeps 1 and 0.
- * @param {object[]} past units with figures as of the past year
- * @param {object[]} present units with today's figures
- * @param {{level: string, from: number, to: number, scenario?: string, seed?: number}} options
+ * The hindcast: the model replayed over windows of the past (`windows`:
+ * each the level's units as their figures stood at `from` (`past`) and
+ * HINDCAST_YEARS later (`present`, today's for the newest window), for
+ * each indicator alone, and the later figures measured against the
+ * earlier yardstick (money in the earlier dollars, as the walk projected
+ * it). A figure counts only where then and later it came from the same
+ * kind of source (a place's own figure both times, or its country's both
+ * times), five to thirteen years apart. First the trends: each window's
+ * distinct series' trend path is run to the later figure and its miss, in
+ * the walking space, divided by how far one unit of trend a year would
+ * have moved that path (`trendPath` probed); the median of those over the
+ * windows, shrunk as if HINDCAST_CASES more figures had missed nothing and
+ * kept within SHIFT_SWINGS typical swings, is the indicator's trend shift.
+ * Then the swings: each window's replay with the shift (HINDCAST_RUNS
+ * runs) gives each figure a band, and from the pooled standardised errors
+ * comes the swing scale that would have made the 8-of-10 band hold about
+ * 8 of 10 (the 80th percentile of the errors over the normal's), kept
+ * between a half and SCALE_MAX; then the replay again with both, for the
+ * share of figures the band held (a share at its ceiling holds when the
+ * later figure is still within the ceiling's zone). `{ from, to, windows:
+ * [{ from, to, tested, held }], indicators: { id: { tested, held, scale,
+ * shift, pull } }, tested, held }`, `from` the earliest window's and `to`
+ * the latest's, `held` in percent, `shift` in the walking space a year and
+ * `pull` the factor on the pull toward the frontier (pullFit); an indicator
+ * with fewer than HINDCAST_CASES figures to test over the windows is left
+ * out, and one with no scale, shift or pull to speak of keeps 1, 0 and 1.
+ * @param {Array<{past: object[], present: object[], from: number, to: number}>} windows
+ * @param {{level: string, scenario?: string, seed?: number}} options
  */
-export function hindcast(
-  past,
-  present,
-  { level, from, to, scenario, seed = 11 },
-) {
-  const out = { from, to, indicators: {}, tested: 0, held: 0 };
-  const presentById = new Map((present || []).map((u) => [u.id, u]));
-  const pastById = new Map((past || []).map((u) => [u.id, u]));
+export function hindcast(windows, { level, scenario, seed = 11 } = {}) {
+  const list = (Array.isArray(windows) ? windows : [])
+    .filter(
+      (w) =>
+        Array.isArray(w?.past) &&
+        Array.isArray(w?.present) &&
+        Number.isFinite(w?.from) &&
+        Number.isFinite(w?.to),
+    )
+    .sort((a, b) => b.from - a.from);
+  const out = {
+    from: list.length ? Math.min(...list.map((w) => w.from)) : null,
+    to: list.length ? Math.max(...list.map((w) => w.to)) : null,
+    windows: list.map((w) => ({ from: w.from, to: w.to, tested: 0, held: 0 })),
+    indicators: {},
+    tested: 0,
+    held: 0,
+  };
+  const laterById = list.map((w) => new Map(w.present.map((u) => [u.id, u])));
   for (const indicator of ABUNDANCE_INDICATORS) {
     if (!FORECAST_PROCESSES[indicator.id]) continue;
     const id = indicator.id;
-    const cases = [];
-    for (const [unitId, p] of pastById) {
-      const was = p.values?.[id];
-      const now = presentById.get(unitId)?.values?.[id];
-      if (
-        !was ||
-        !now ||
-        !Number.isFinite(was.year) ||
-        !Number.isFinite(now.year)
-      )
-        continue;
-      const horizon = now.year - was.year;
-      if (horizon < 5 || horizon > HINDCAST_YEARS + 3) continue;
-      cases.push({ unitId, horizon, actual: Number(now.v) });
-    }
-    if (cases.length < HINDCAST_CASES) continue;
-    const planFor = (shift, scale) =>
+    // The cases per window: a place with a figure then and later, from the
+    // same kind of source, five to thirteen years apart.
+    const cases = list.map((w, i) => {
+      const found = [];
+      for (const p of w.past) {
+        const was = p.values?.[id];
+        const now = laterById[i].get(p.id)?.values?.[id];
+        if (
+          !was ||
+          !now ||
+          !Number.isFinite(was.year) ||
+          !Number.isFinite(now.year)
+        )
+          continue;
+        if ((was.from || 'own') !== (now.from || 'own')) continue;
+        const horizon = now.year - was.year;
+        if (horizon < 5 || horizon > HINDCAST_YEARS + 3) continue;
+        found.push({ unitId: p.id, horizon, actual: Number(now.v) });
+      }
+      return found;
+    });
+    if (cases.reduce((sum, found) => sum + found.length, 0) < HINDCAST_CASES)
+      continue;
+    const planFor = (w, shift, scale, pull) =>
       buildPlan(
-        past,
+        w.past,
         [id],
         {},
         {
@@ -2107,9 +2248,10 @@ export function hindcast(
           scenario,
           scales: scale === 1 ? {} : { [id]: scale },
           shifts: shift === 0 ? {} : { [id]: shift },
+          pulls: pull === 1 ? {} : { [id]: pull },
         },
       );
-    /** Today's figure in the walking space of the series the place rode on, in the past's dollars for money. */
+    /** The later figure in the walking space of the series the place rode on, in the earlier dollars for money. */
     const pointOf = (plan, s, c) => {
       const process = plan.series.process[s];
       const value =
@@ -2118,72 +2260,101 @@ export function hindcast(
           : c.actual;
       return toX(process, value);
     };
-    // The trends: each distinct series' miss per unit of trend a year.
-    const bare = planFor(0, 1);
-    if (!bare.tables.length) continue;
+    // The trends: each window's distinct series' miss per unit of trend a
+    // year, beside the pull on the series (beta × its gap to the frontier,
+    // in the walking space a year) for the pull's calibration.
+    const bare = list.map((w) => planFor(w, 0, 1, 1));
     const ratios = [];
-    const seen = new Set();
-    for (const c of cases) {
-      const s = seriesOf(bare, c.unitId, id);
-      if (s < 0 || seen.has(s) || bare.series.params[s].saturated) continue;
-      seen.add(s);
-      const path = trendPath(bare, s, c.horizon);
-      const probed = trendPath(bare, s, c.horizon, TREND_PROBE);
-      const response = (probed[c.horizon] - path[c.horizon]) / TREND_PROBE;
-      const point = pointOf(bare, s, c);
-      if (!(response > 0.5) || !Number.isFinite(point)) continue;
-      ratios.push((point - path[c.horizon]) / response);
-    }
+    const pulled = [];
+    const typical = [];
+    list.forEach((w, i) => {
+      const plan = bare[i];
+      if (!plan.tables.length) return;
+      for (const key of Object.keys(plan.priors))
+        if (key.startsWith(`${id}|`)) typical.push(plan.priors[key].s);
+      const seen = new Set();
+      for (const c of cases[i]) {
+        const s = seriesOf(plan, c.unitId, id);
+        if (s < 0 || seen.has(s) || plan.series.params[s].saturated) continue;
+        seen.add(s);
+        const path = trendPath(plan, s, c.horizon);
+        const probed = trendPath(plan, s, c.horizon, TREND_PROBE);
+        const response = (probed[c.horizon] - path[c.horizon]) / TREND_PROBE;
+        const point = pointOf(plan, s, c);
+        if (!(response > 0.5) || !Number.isFinite(point)) continue;
+        ratios.push((point - path[c.horizon]) / response);
+        pulled.push(
+          plan.series.beta[s] * (plan.series.frontier[s] - plan.series.x0[s]),
+        );
+      }
+    });
     let shift = 0;
-    if (ratios.length >= HINDCAST_CASES) {
+    let pull = 1;
+    if (ratios.length >= HINDCAST_CASES && typical.length) {
       const n = ratios.length;
-      const typicalSwing = median(
-        Object.keys(bare.priors)
-          .filter((key) => key.startsWith(`${id}|`))
-          .map((key) => bare.priors[key].s),
-      );
-      const bound = SHIFT_SWINGS * typicalSwing;
-      const raw = (median(ratios) * n) / (n + HINDCAST_CASES);
-      shift = clamp(Math.round(raw * 1e4) / 1e4, -bound, bound);
+      const bound = SHIFT_SWINGS * median(typical);
+      let raw = median(ratios);
+      // The pull: how the misses grow with the pull on the series; the
+      // shift is then the typical series' miss at the typical pull.
+      const fit = pullFit(ratios, pulled);
+      if (fit) {
+        pull = fit.pull;
+        raw -= (pull - 1) * fit.at;
+      }
+      raw = (raw * n) / (n + HINDCAST_CASES);
+      shift = Math.round(clamp(raw, -bound, bound) * 1e4) / 1e4;
     }
-    // The swings: the band the replay with the shift gives each figure.
+    // The swings: the band each window's replay with the shift and the
+    // pull gives each figure, the errors and the counts pooled over the
+    // windows.
     const measure = (scale) => {
-      const plan = scale === 1 && shift === 0 ? bare : planFor(shift, scale);
-      const result = simulate(plan, {
-        runs: HINDCAST_RUNS,
-        years: HINDCAST_YEARS + 3,
-        seed,
-        crises: true,
-        among: false,
-      });
+      const errors = [];
+      const parts = [];
       let tested = 0;
       let held = 0;
-      const errors = [];
-      for (const c of cases) {
-        const k = plan.byId.get(c.unitId);
-        const row = forecastAt(result, k, c.horizon);
-        if (!row) continue;
-        const s = seriesOf(plan, c.unitId, id);
-        if (s < 0) continue;
-        tested += 1;
-        // A share at its ceiling is held there (its band is a point, and
-        // every figure within the ceiling's zone is one point in the
-        // walking space): it holds when today's figure is still in the zone.
-        if (plan.series.params[s].saturated) {
-          const process = plan.series.process[s];
-          if (c.actual >= SATURATED * process.cap) held += 1;
-          continue;
+      list.forEach((w, i) => {
+        const part = { tested: 0, held: 0 };
+        parts.push(part);
+        const plan =
+          scale === 1 && shift === 0 && pull === 1
+            ? bare[i]
+            : planFor(w, shift, scale, pull);
+        if (!plan.tables.length) return;
+        const result = simulate(plan, {
+          runs: HINDCAST_RUNS,
+          years: HINDCAST_YEARS + 3,
+          seed,
+          crises: true,
+          among: false,
+        });
+        for (const c of cases[i]) {
+          const k = plan.byId.get(c.unitId);
+          const row = forecastAt(result, k, c.horizon);
+          if (!row) continue;
+          const s = seriesOf(plan, c.unitId, id);
+          if (s < 0) continue;
+          part.tested += 1;
+          // A share at its ceiling is held there (its band is a point, and
+          // every figure within the ceiling's zone is one point in the
+          // walking space): it holds when the later figure is still in it.
+          if (plan.series.params[s].saturated) {
+            const process = plan.series.process[s];
+            if (c.actual >= SATURATED * process.cap) part.held += 1;
+            continue;
+          }
+          const actual = placeAt(
+            plan.tables[plan.series.table[s]],
+            pointOf(plan, s, c),
+          );
+          if (actual >= row.p10 && actual <= row.p90) part.held += 1;
+          const halfWidth = (row.p90 - row.p10) / (2 * BAND_SIGMAS);
+          if (halfWidth > 0.25)
+            errors.push(Math.abs(actual - row.p50) / halfWidth);
         }
-        const actual = placeAt(
-          plan.tables[plan.series.table[s]],
-          pointOf(plan, s, c),
-        );
-        if (actual >= row.p10 && actual <= row.p90) held += 1;
-        const halfWidth = (row.p90 - row.p10) / (2 * BAND_SIGMAS);
-        if (halfWidth > 0.25)
-          errors.push(Math.abs(actual - row.p50) / halfWidth);
-      }
-      return { tested, held, errors };
+        tested += part.tested;
+        held += part.held;
+      });
+      return { tested, held, errors, parts };
     };
     const first = measure(1);
     if (first.tested < HINDCAST_CASES) continue;
@@ -2199,11 +2370,18 @@ export function hindcast(
       held: Math.round((100 * second.held) / second.tested),
       scale,
       shift,
+      pull,
     };
     out.tested += second.tested;
     out.held += second.held;
+    second.parts.forEach((part, i) => {
+      out.windows[i].tested += part.tested;
+      out.windows[i].held += part.held;
+    });
   }
   out.held = out.tested ? Math.round((100 * out.held) / out.tested) : 0;
+  for (const w of out.windows)
+    w.held = w.tested ? Math.round((100 * w.held) / w.tested) : 0;
   return out;
 }
 
@@ -2222,6 +2400,56 @@ export function hindcastShifts(report) {
   for (const [id, entry] of Object.entries(report?.indicators || {}))
     if (Number.isFinite(entry?.shift) && entry.shift !== 0)
       out[id] = entry.shift;
+  return out;
+}
+
+/**
+ * The pull's calibration from a hindcast's trend misses: do the places far
+ * from the frontier catch up as fast as the pull assumes? The series are
+ * split in two by the pull on them (beta × the gap, signed, in the walking
+ * space a year); the slope of the misses over the pull between the two
+ * halves' medians (the far half's typical miss less the near half's, over
+ * the pulls' difference), shrunk as if HINDCAST_CASES more series had
+ * missed nothing, gives the factor 1 + slope, kept within [PULL_MIN,
+ * PULL_MAX] and to two decimals, and `at`, the typical pull, for the shift
+ * to be read there. Null with fewer than 2 × HINDCAST_CASES series, with no
+ * spread of pulls to speak of, or when the factor does not make the typical
+ * absolute miss at least 2 % smaller than the shift alone would.
+ * @param {number[]} ratios each series' miss per unit of trend a year
+ * @param {number[]} pulls the pull on each, beta × (frontier − x0)
+ * @returns {{pull: number, at: number}|null}
+ */
+export function pullFit(ratios, pulls) {
+  const n = ratios?.length ?? 0;
+  if (n < 2 * HINDCAST_CASES || pulls?.length !== n) return null;
+  const order = ratios.map((_, k) => k).sort((a, b) => pulls[a] - pulls[b]);
+  const half = Math.floor(n / 2);
+  const low = order.slice(0, half);
+  const high = order.slice(n - half);
+  const pullLow = median(low.map((k) => pulls[k]));
+  const pullHigh = median(high.map((k) => pulls[k]));
+  if (!(Math.abs(pullHigh - pullLow) > 1e-6)) return null;
+  const slope =
+    ((median(high.map((k) => ratios[k])) - median(low.map((k) => ratios[k]))) /
+      (pullHigh - pullLow)) *
+    (n / (n + HINDCAST_CASES));
+  const pull = Math.round(clamp(1 + slope, PULL_MIN, PULL_MAX) * 100) / 100;
+  if (pull === 1) return null;
+  const at = median(pulls);
+  const center = median(ratios);
+  const before = median(ratios.map((r) => Math.abs(r - center)));
+  const after = median(
+    ratios.map((r, k) => Math.abs(r - center - (pull - 1) * (pulls[k] - at))),
+  );
+  if (!(after < 0.98 * before)) return null;
+  return { pull, at };
+}
+
+/** The pull factors a hindcast gives, per indicator, for buildPlan's `pulls`. */
+export function hindcastPulls(report) {
+  const out = {};
+  for (const [id, entry] of Object.entries(report?.indicators || {}))
+    if (Number.isFinite(entry?.pull) && entry.pull !== 1) out[id] = entry.pull;
   return out;
 }
 
@@ -2251,14 +2479,24 @@ export function createForecastHandler() {
   let plan = null;
   let planId = null;
   let settings = null;
+  let request = null;
   return (message, post) => {
     const { id, type } = message || {};
     if (type === 'run') {
-      plan = buildPlan(message.units, message.indicators, message.weights, {
-        level: message.level,
+      request = {
+        units: message.units,
+        indicators: message.indicators,
+        weights: message.weights,
+        options: {
+          level: message.level,
+          scales: message.scales,
+          shifts: message.shifts,
+          pulls: message.pulls,
+        },
+      };
+      plan = buildPlan(request.units, request.indicators, request.weights, {
+        ...request.options,
         scenario: message.scenario,
-        scales: message.scales,
-        shifts: message.shifts,
       });
       planId = message.planId ?? null;
       settings = {
@@ -2307,6 +2545,37 @@ export function createForecastHandler() {
         return;
       }
       post({ type: 'model', id, planId, model: typicalModel(plan) });
+      return;
+    }
+    // The world's line under another scenario, from the last run's units
+    // and settings at the runs asked (never more than the run's), without
+    // the ranks among the others: the line by scenario under the world's.
+    if (type === 'compare') {
+      if (!plan || message.planId !== planId) {
+        post({ type: 'compare', id, planId: message.planId, stale: true });
+        return;
+      }
+      const started = Date.now();
+      const other = buildPlan(
+        request.units,
+        request.indicators,
+        request.weights,
+        { ...request.options, scenario: message.scenario },
+      );
+      const asked = Math.round(Number(message.runs));
+      const runs = asked > 0 ? Math.min(settings.runs, asked) : settings.runs;
+      const result = simulate(other, { ...settings, runs, among: false });
+      const answer = {
+        type: 'compare',
+        id,
+        planId,
+        scenario: other.scenario,
+        runs,
+        world: result.world,
+        weighted: result.weighted,
+        ms: Date.now() - started,
+      };
+      post(answer, transferables(result.world));
     }
   };
 }

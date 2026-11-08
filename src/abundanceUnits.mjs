@@ -73,8 +73,10 @@ export function countryUnits(pack) {
 
 /**
  * The states and provinces: every admin-1 unit. Id: its ISO 3166-2 code,
- * else its country and name; a code two units share gets a number. The
- * entries carry the pack feature beside the unit, for the globe's shapes.
+ * else its country and name; a code two units share gets a number. `pop`
+ * is the unit's people where the pack has them (Wikidata's population),
+ * null where it does not. The entries carry the pack feature beside the
+ * unit, for the globe's shapes.
  */
 export function regionEntries(pack) {
   const decimals = pack?.meta?.decimals ?? 3;
@@ -99,6 +101,8 @@ export function regionEntries(pack) {
         iso2,
         postal: feature.postal || null,
         group: feature.group || null,
+        pop:
+          Number.isFinite(feature.pop) && feature.pop >= 0 ? feature.pop : null,
         lat,
         lon,
       },

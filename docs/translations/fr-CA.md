@@ -158,6 +158,9 @@ English ([I18N.md](../I18N.md), "The fork's own tabs"). Their glossary:
 | hindcast / the band held / swing (scaled)     | rétroprévision / la bande a tenu / variation (mise à l'échelle) |
 | hindcast trend (the trend shift) / calibrated | tendance de la rétroprévision (le décalage de tendance) / calibré |
 | by population / each counted once             | selon la population / chacun compté une fois                      |
+| download the forecast / the world's people    | télécharger la prévision / les gens du monde                      |
+| by scenario                                   | par scénario                                                      |
+| pull (toward the frontier)                    | attraction                                                        |
 
 The licence notes on the AI World rows are translated; licence names
 (CC BY 4.0, ODbL 1.0), provider and dataset names, and a citation the

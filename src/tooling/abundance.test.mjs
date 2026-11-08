@@ -57,6 +57,7 @@ import {
   latestAndPast,
   mergeSeries,
   readOecdCsv,
+  populationGrowth,
   readOwidCsv,
   readWorldBankSeries,
 } from '../../server/shared/abundanceData.mjs';
@@ -144,6 +145,7 @@ const ADMIN1 = {
       iso2: 'TS',
       iso: 'TS-N',
       type: 'Province',
+      pop: 3000000,
       label: [5, 8],
       polygons: [[square(0, 5, 10)]],
     },
@@ -153,6 +155,7 @@ const ADMIN1 = {
       iso2: 'TS',
       iso: 'TS-S',
       type: 'Province',
+      pop: 1500000,
       polygons: [[square(0, 0, 5)]],
     },
     {
@@ -887,6 +890,11 @@ test('the store fetches, caches, joins countries, hands figures down to states a
   assert.equal(testland.people, 5000000);
   assert.equal(unit(country, 'FAR').people, 20000000);
   assert.equal(unit(country, 'NOL').people, undefined, 'no code the World Bank knows, no populated place with one');
+  // And its growth a year from the series: 4.8 M in 2019 to 5 M in 2024; one point gives none.
+  assert.equal(testland.peopleGrowth, 0.00816);
+  assert.equal(unit(country, 'FAR').peopleGrowth, undefined);
+  assert.equal(populationGrowth([{ year: 2014, value: 100 }, { year: 2024, value: 300 }]), 0.03, 'bounded');
+  assert.equal(populationGrowth([{ year: 2024, value: 100 }]), null);
   const population = status.sources.find((s) => s.id === 'wb:SP.POP.TOTL');
   assert.deepEqual([population.kind, population.indicators, population.levels, population.rows], ['worldbank', [], ['country'], 3], 'two countries and the aggregate row, as for every World Bank series');
   assert.deepEqual(country.coverage.gdp, { own: 2, area: 0, inherited: 0, year: 2024 });
@@ -894,7 +902,17 @@ test('the store fetches, caches, joins countries, hands figures down to states a
   // The hindcast: the figures as of ten years before the newest (2025 here)
   // walked forward against today's. The fixtures reach back no further
   // than 2018, so nothing can be tested; the report says so.
-  assert.deepEqual(country.hindcast, { from: 2015, to: 2025, indicators: {}, tested: 0, held: 0 });
+  assert.deepEqual(country.hindcast, {
+    from: 2005,
+    to: 2025,
+    windows: [
+      { from: 2015, to: 2025, tested: 0, held: 0 },
+      { from: 2005, to: 2015, tested: 0, held: 0 },
+    ],
+    indicators: {},
+    tested: 0,
+    held: 0,
+  });
   assert.equal(status.levels.country.hindcast.tested, 0);
 
   // States: their own OECD figures (TL2 first, TL3 where TL2 has none, soft names), the rest from the country.
@@ -929,14 +947,22 @@ test('the store fetches, caches, joins countries, hands figures down to states a
   assert.equal(unit(region, 'FA-X#2').values.gdp.from, 'country');
   assert.equal(Object.keys(unit(region, 'XX:nowhere region').values).length, 0);
   assert.deepEqual(region.coverage.gdp, { own: 4, area: 0, inherited: 1, year: 2024 });
-  // A state's or province's people: its country's shared out, nine tenths by its populated places'
-  // people (Testville 500,000 in the North, Southport 20,000 in the South), one tenth equally.
-  assert.equal(north.people, 4493590);
-  assert.equal(unit(region, 'TS-S').people, 339744);
-  assert.equal(unit(region, 'TS:isleton').people, 166667, 'no populated place: the equal tenth');
+  // A state's or province's people: its share of its country's 5,000,000. Isleton has no figure in
+  // the pack, so it takes the share-out (no populated place: the equal tenth over three units,
+  // 1/30); the North (3,000,000 in the pack) and the South (1,500,000) share the 29/30 left, two
+  // to one. Farland's pack has no figures: its country's shared out, nine tenths by its populated
+  // places' people (Farcity 1,000,000 in the West), one tenth equally.
+  assert.equal(north.pop, 3000000, 'the pack’s figure travels with the unit');
+  assert.equal(north.people, 3222222);
+  assert.equal(unit(region, 'TS-S').people, 1611111);
+  assert.equal(unit(region, 'TS:isleton').pop, undefined, 'no figure in the pack, none sent');
+  assert.equal(unit(region, 'TS:isleton').people, 166667, 'no figure, no populated place: the equal tenth');
+  assert.equal(north.people + unit(region, 'TS-S').people + unit(region, 'TS:isleton').people, 5000000, 'the country’s people, whole');
   assert.equal(unit(region, 'FA-X').people, 19000000);
   assert.equal(unit(region, 'FA-X#2').people, 1000000);
   assert.equal(unit(region, 'XX:nowhere region').people, undefined);
+  assert.equal(north.peopleGrowth, 0.00816, 'a state grows as its country does');
+  assert.equal(unit(region, 'FA-X').peopleGrowth, undefined);
 
   // Cities: their own urban-area figures, then the state's, then the country's.
   const city = store.data('city');
@@ -965,6 +991,7 @@ test('the store fetches, caches, joins countries, hands figures down to states a
   // A city's people: its own Natural Earth population.
   assert.equal(testville.people, 500000);
   assert.equal(unit(city, '4').people, 100);
+  assert.equal(testville.peopleGrowth, 0.00816, 'a city grows as its country does');
 
   // A failed source is not asked again before the retry wait; a stale one is after it.
   const beforeData = calls.length;

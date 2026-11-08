@@ -28,6 +28,8 @@ import {
   modelLine,
   hindcastText,
   worldText,
+  forecastCsv,
+  scenarioText,
   forecastLegend,
   viewText,
   drawFan,
@@ -186,14 +188,73 @@ function mount(answers, { stored = null } = {}) {
   const { fetchImpl, calls } = fakeFetch(answers);
   const timers = { pending: [], setTimeout(fn) { this.pending.push(fn); return fn; }, clearTimeout(fn) { this.pending = this.pending.filter((f) => f !== fn); } };
   const storage = { items: new Map([[ABUNDANCE_CHOICE_KEY, stored]].filter(([, v]) => v !== null)), getItem(k) { return this.items.get(k) ?? null; }, setItem(k, v) { this.items.set(k, v); } };
-  const panel = initAbundancePanel({ documentRef: world.doc, fetchImpl, timers, now: () => 1_700_000_100_000, storage });
+  const saves = [];
+  // The share link's meeting point: who connected, how often the box said it changed.
+  const share = {
+    connected: [],
+    changes: 0,
+    connect(api) {
+      this.connected.push(api);
+      return () => {
+        this.connected = this.connected.filter((p) => p !== api);
+      };
+    },
+    changed() {
+      this.changes += 1;
+    },
+  };
+  const panel = initAbundancePanel({
+    documentRef: world.doc,
+    fetchImpl,
+    timers,
+    now: () => 1_700_000_100_000,
+    storage,
+    saveFile: (name, text) => {
+      saves.push({ name, text });
+      return true;
+    },
+    share,
+  });
   const find = (predicate) => world.body.all().find(predicate);
   const control = (action) => find((n) => n.dataset.action === action);
   const box = (indicator) => find((n) => n.tagName === 'INPUT' && n.dataset.indicator === indicator);
   const views = () => world.events.filter((e) => e.type === ABUNDANCE_VIEW_EVENT).map((e) => e.detail);
   const cards = () => world.events.filter((e) => e.type === ABUNDANCE_CARD_EVENT).map((e) => e.detail);
-  return { panel, world, calls, timers, storage, find, control, box, views, cards };
+  return { panel, world, calls, timers, storage, saves, share, find, control, box, views, cards };
 }
+
+test('SHARE LINKS: the box hands its state over, says when it changes, and takes a link’s state as if chosen here', async () => {
+  const m = mount();
+  await settle();
+  assert.equal(m.share.connected.length, 1, 'connected once built');
+  assert.equal(m.share.connected[0], m.panel);
+  assert.deepEqual(m.panel.shareState(), { level: 'country', show: true, year: 0, view: 'p50', scale: 'today', scenario: 'baseline' });
+  const told = m.share.changes;
+  const slider = m.find((n) => n.className === 'abundance-year');
+  slider.value = '10';
+  slider.fire('input');
+  assert.ok(m.share.changes > told, 'a change is told');
+  assert.equal(m.panel.shareState().year, 10);
+  // A link's state: another level, SHOW ON MAP off, 25 years ahead, the chance of scarcity among the others in a volatile world.
+  const linked = { level: 'region', show: false, year: 25, view: 'down', scale: 'others', scenario: 'volatile' };
+  assert.equal(m.panel.applyShareState(linked), true);
+  assert.deepEqual(m.panel.shareState(), linked);
+  assert.equal(m.panel.choice.level, 'region');
+  assert.equal(m.panel.choice.show, false);
+  assert.equal(JSON.parse(m.storage.getItem(ABUNDANCE_CHOICE_KEY)).scenario, 'volatile', 'kept as the viewer’s choice');
+  await settle();
+  assert.equal(m.views().at(-1).level, 'region', 'the level was loaded and published');
+  assert.equal(m.views().at(-1).show, false);
+  assert.equal(m.find((n) => n.className === 'abundance-year-text').textContent, '2048 · +25 YEARS');
+  // The same level again: no reload, the rest applied; a state with no known level is nothing.
+  assert.equal(m.panel.applyShareState({ level: 'region', year: 0 }), true);
+  assert.deepEqual(m.panel.shareState(), { level: 'region', show: true, year: 0, view: 'p50', scale: 'today', scenario: 'baseline' });
+  assert.equal(m.panel.applyShareState({ level: 'moon' }), false);
+  assert.equal(m.panel.applyShareState(null), false);
+  m.panel.destroy();
+  assert.equal(m.share.connected.length, 0, 'disconnected with the box');
+  assert.equal(m.panel.applyShareState(linked), false, 'nothing after the box is gone');
+});
 
 test('the words: the choice, the status line, coverage, a figure, a place, a link, the sources and the CSV', () => {
   assert.deepEqual(readChoice(null), { level: 'country', indicators: [...ABUNDANCE_INDICATOR_IDS], show: true, grid: false, weights: {}, year: 0, view: 'p50', runs: null, crises: true, scale: 'today', scenario: 'baseline' });
@@ -565,6 +626,33 @@ test('the forecast words: the year, a change, the note, a place’s lines, a fig
   );
   assert.equal(worldText(null, { year: 5 }), '');
   assert.equal(worldText({ ...world, p50: NaN }, { year: 5 }), '');
+  // The line by scenario: the run's own from its world, the other three from the comparison runs;
+  // nothing at TODAY, nothing until all four are in.
+  const line = (p50) => ({ p50: Float64Array.from({ length: 101 }, (_, t) => (t ? p50 : 50)) });
+  const lines = { scenario: 'pessimistic', world: line(58.4), compare: { baseline: line(61), optimistic: line(62.2), volatile: line(59.6) } };
+  assert.equal(scenarioText(lines, { year: 25, baseYear: 2026 }), '2051 BY SCENARIO · BASELINE 61 · OPTIMISTIC 62 · PESSIMISTIC 58 · VOLATILE 60');
+  assert.equal(scenarioText(lines, { year: 0, baseYear: 2026 }), '');
+  assert.equal(scenarioText({ ...lines, compare: { baseline: line(61), optimistic: line(62.2) } }, { year: 25 }), '', 'volatile not in yet');
+  assert.equal(scenarioText({ ...lines, world: null }, { year: 25 }), '');
+  assert.equal(scenarioText(undefined, { year: 25 }), '');
+  // The forecast as CSV: a header, then every place with a row at the year, a name quoted when it needs it, a place without a row left out.
+  const r = {
+    ids: ['TST', 'FAR', 'X'],
+    years: 1,
+    today: Float32Array.from([70, 30, NaN]),
+    p10: Float32Array.from([70, 61, 30, 25.4, NaN, NaN]),
+    p50: Float32Array.from([70, 66.6, 30, 31, NaN, NaN]),
+    p90: Float32Array.from([70, 72, 30, 36, NaN, NaN]),
+    mean: Float32Array.from([70, 66.4, 30, 31.2, NaN, NaN]),
+    up: Uint8Array.from([0, 12, 0, 0, 0, 0]),
+    down: Uint8Array.from([0, 0, 0, 20, 0, 0]),
+  };
+  const csvUnits = [{ id: 'TST', name: 'Testland', country: 'Testland', people: 5e6 }, { id: 'FAR', name: 'Far, Away', country: 'Farland' }, { id: 'X', name: 'Nowhere', country: 'Noland' }];
+  assert.equal(
+    forecastCsv(r, csvUnits, { year: 1, scale: 'today', baseYear: 2026 }),
+    'id,name,country,people,year,years_ahead,scale,score_today,typical,if_badly,if_well,mean,chance_abundant_pct,chance_scarce_pct\nTST,Testland,Testland,5000000,2027,1,today,70,66.6,61,72,66.4,12,0\nFAR,"Far, Away",Farland,,2027,1,today,30,31,25.4,36,31.2,0,20\n',
+  );
+  assert.equal(forecastCsv(null, csvUnits).split('\n').length, 2, 'no result: the header alone');
   const row = { p10: 48.2, p50: 63.6, p90: 79.1, mean: 63, up: 31, down: 2, today: 51.4 };
   assert.deepEqual(forecastScoreLines(row, null, { year: 25, baseYear: 2026, rank: 12, count: 198 }), [
     '2051 · ABUNDANCE 64 OF 100 TYPICALLY · 48 TO 79 IN 8 OF 10 RUNS',
@@ -590,6 +678,10 @@ test('the forecast words: the year, a change, the note, a place’s lines, a fig
   assert.equal(forecastFigureText(indicatorById('gdp'), entry, 1, 'country'), 'GDP PER PERSON · 38,500 $ · 31,000 TO 48,000 · PLACE 71 OF 100 · FROM ITS COUNTRY');
   assert.equal(modelLine(indicatorById('gdp'), { family: 'growth', trend: 1010.4, spread: 2501, n: 28, frontier: 66055.8 }), 'GDP PER PERSON · +1,010 $ A YEAR · ±2,501 $ · CATCHING UP WITH THE FRONTIER (66,056 $) · 28 STEPS OF HISTORY');
   assert.equal(modelLine(indicatorById('gdp'), { family: 'growth', trend: 1010.4, spread: 2501, n: 28, frontier: 66055.8, scale: 1.3 }, { held: 82, tested: 180, scale: 1.3 }), 'GDP PER PERSON · +1,010 $ A YEAR · ±2,501 $ · CATCHING UP WITH THE FRONTIER (66,056 $) · 28 STEPS OF HISTORY · SWING ×1.3 · HINDCAST BAND HELD 82 %');
+  assert.equal(
+    modelLine(indicatorById('gdp'), { family: 'growth', trend: 1010.4, spread: 2501, n: 28, frontier: 66055.8, scale: 1.3, pull: 0.8 }, { held: 82, tested: 180, scale: 1.3, pull: 0.8 }),
+    'GDP PER PERSON · +1,010 $ A YEAR · ±2,501 $ · CATCHING UP WITH THE FRONTIER (66,056 $) · 28 STEPS OF HISTORY · SWING ×1.3 · PULL ×0.8 · HINDCAST BAND HELD 82 %',
+  );
   assert.equal(modelLine(indicatorById('health'), { family: 'floor', trend: -0.31, spread: 0.6, floor: 1, frontier: 2.2, n: 1 }), 'HEALTH · -0.3 A YEAR · ±0.6 · TOWARD THE FRONTIER (2.2), FLOOR 1.0 · 1 STEP OF HISTORY');
   assert.equal(modelLine(indicatorById('water'), { family: 'ceiling', trend: 0.6, spread: 0.9, cap: 100, frontier: 99.5, n: 0 }), 'WATER · +1 % A YEAR · ±1 % · TOWARD THE FRONTIER (100 %), CEILING 100 % · NO HISTORY: THE LEVEL’S TYPICAL FIGURES');
   assert.equal(hindcastText({ from: 2014, to: 2024, held: 81, tested: 2345 }), 'HINDCAST 2014→2024 · THE 8-OF-10 BAND HELD 81 % OF 2,345 FIGURES · THE TRENDS AND SWINGS ARE CALIBRATED BY IT');
@@ -638,6 +730,7 @@ test('FORECAST: the slider runs the simulation, the map, ranking and SELECTED fo
   assert.equal(readout.textContent, 'TODAY');
   assert.equal(note.textContent, 'SLIDE YEARS AHEAD TO SEE THE FUTURE ON THE MAP');
   assert.equal(forecastNotes()[1], '', 'no world line before a run');
+  assert.equal(m.control('download-forecast').disabled, true, 'nothing to download before a run');
   assert.equal(m.panel.forecast, null);
   assert.equal(model.hidden, true);
   const todayView = m.views().at(-1);
@@ -665,6 +758,26 @@ test('FORECAST: the slider runs the simulation, the map, ranking and SELECTED fo
     /^ALL PLACES BY POPULATION · ABUNDANCE \d+ OF 100 TODAY → \d+ IN 2048 · \d+ TO \d+ IN 8 OF 10 RUNS · IN ABUNDANT PLACES \d+ % → \d+ % · IN SCARCE ONES \d+ % → \d+ %$/,
   );
   assert.ok(result.weighted);
+  // The line by scenario: the other three simulated after the run, at fewer runs, the run's own figure the world line's.
+  assert.match(
+    forecastNotes()[2],
+    /^2048 BY SCENARIO · BASELINE \d+ · OPTIMISTIC \d+ · PESSIMISTIC \d+ · VOLATILE \d+$/,
+  );
+  assert.equal(
+    /BASELINE (\d+)/.exec(forecastNotes()[2])[1],
+    /→ (\d+) IN 2048/.exec(forecastNotes()[1])[1],
+    'the run’s own scenario reads as the world line',
+  );
+  // The world's fan chart (a second canvas) and DOWNLOAD FORECAST, which hands over every place's row at the year.
+  assert.equal(m.world.body.all().filter((n) => n.tagName === 'CANVAS').length, 2, 'the world’s fan and the place’s');
+  const download = m.control('download-forecast');
+  assert.equal(download.disabled, false);
+  download.click();
+  assert.equal(m.saves.length, 1);
+  assert.equal(m.saves[0].name, 'abundance-forecast-country-2048.csv');
+  const csvLines = m.saves[0].text.trim().split('\n');
+  assert.equal(csvLines.length, 4, 'a header and the three places with figures');
+  assert.match(csvLines[1], /^TST,Testland,Testland,5000000,2048,25,today,\d+(\.\d)?,\d+(\.\d)?,\d+(\.\d)?,\d+(\.\d)?,\d+(\.\d)?,\d+,\d+$/);
   const view = m.views().at(-1);
   const scoreOf = (id) => view.units.find((u) => u.id === id).score;
   assert.ok(scoreOf('TST') >= scoreOf('FAR'), 'the richer place stays ahead');
@@ -721,6 +834,7 @@ test('FORECAST: the slider runs the simulation, the map, ranking and SELECTED fo
   assert.deepEqual(m.views().at(-1).units.map((u) => u.score), todayView.units.map((u) => u.score));
   assert.ok(m.panel.forecast);
   assert.match(forecastNotes()[1], /^ALL PLACES BY POPULATION · ABUNDANCE \d+ OF 100 · \d+ % IN ABUNDANT PLACES · \d+ % IN SCARCE ONES$/, 'today’s world line');
+  assert.equal(forecastNotes()[2], '', 'no line by scenario at TODAY');
   assert.deepEqual(selected.children.map((li) => li.textContent).slice(0, 1), ['ABUNDANCE 100 OF 100 · 2 OF 16 INDICATORS']);
   // PLAY walks a year at a time; STOP holds.
   const play = m.control('play');

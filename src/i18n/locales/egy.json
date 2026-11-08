@@ -5950,5 +5950,11 @@
   "ALL PLACES BY POPULATION": "𓊨𓏏𓏥 𓎟 𓐍𓂋 𓂋𓍿𓀀𓁐𓏥𓋴𓈖",
   "ALL PLACES, EACH COUNTED ONCE": "𓊨𓏏𓏥 𓎟, 𓎟 𓇋𓊪 𓊃𓊪 𓌡𓂝𓏤",
   "{who} · ABUNDANCE {score} OF 100 · {up} % IN ABUNDANT PLACES · {down} % IN SCARCE ONES": "{who} · 𓃀𓂝𓎛𓈗 {score} 𓅓 100 · {up} % 𓅓 𓊨𓏏𓏥 𓃀𓂝𓎛𓈗 · {down} % 𓅓 𓊨𓏏𓏥 𓎼𓄿𓅱𓅪",
-  "{who} · ABUNDANCE {today} OF 100 TODAY → {p50} IN {year} · {p10} TO {p90} IN 8 OF 10 RUNS · IN ABUNDANT PLACES {upToday} % → {up} % · IN SCARCE ONES {downToday} % → {down} %": "{who} · 𓃀𓂝𓎛𓈗 {today} 𓅓 100 𓉔𓂋𓅱𓇳 𓊪𓈖 → {p50} 𓅓 {year} · {p10} 𓂋 {p90} 𓅓 𓊃𓊪𓊗𓏥 8 𓅓 10 · 𓅓 𓊨𓏏𓏥 𓃀𓂝𓎛𓈗 {upToday} % → {up} % · 𓅓 𓊨𓏏𓏥 𓎼𓄿𓅱𓅪 {downToday} % → {down} %"
+  "{who} · ABUNDANCE {today} OF 100 TODAY → {p50} IN {year} · {p10} TO {p90} IN 8 OF 10 RUNS · IN ABUNDANT PLACES {upToday} % → {up} % · IN SCARCE ONES {downToday} % → {down} %": "{who} · 𓃀𓂝𓎛𓈗 {today} 𓅓 100 𓉔𓂋𓅱𓇳 𓊪𓈖 → {p50} 𓅓 {year} · {p10} 𓂋 {p90} 𓅓 𓊃𓊪𓊗𓏥 8 𓅓 10 · 𓅓 𓊨𓏏𓏥 𓃀𓂝𓎛𓈗 {upToday} % → {up} % · 𓅓 𓊨𓏏𓏥 𓎼𓄿𓅱𓅪 {downToday} % → {down} %",
+  "DOWNLOAD FORECAST": "𓏎𓈖 𓋴𓂋𓃱",
+  "Every place’s forecast at the chosen year, on the scale shown, as a CSV file": "𓋴𓂋𓃱 𓈖 𓊨𓏏 𓎟 𓅓 𓆳𓏏𓏤 𓋴𓏏𓊪𓏏, 𓅓 𓐍𓄿𓏭 𓈖𓏏𓏭 𓅓𓄿𓄿, 𓅓 𓏛 CSV",
+  "The world’s people over the century: the band, the typical line and the chosen year": "𓂋𓍿𓀀𓁐𓏥 𓈖 𓇾𓈇𓏤𓏥 𓅓 𓎛𓄿𓏏 𓆳𓏏𓏤𓏥 100: 𓍿𓊃, 𓊃𓈙 𓎛𓂋𓏭𓇋𓃀 𓎛𓈖𓂝 𓆳𓏏𓏤 𓋴𓏏𓊪𓏏",
+  "{year} BY SCENARIO · {list}": "{year} 𓐍𓂋 𓇾𓈇𓏤 𓇋𓈙𓋴𓏏 · {list}",
+  "The world’s typical score at the chosen year under each scenario: the run’s own, and the other three simulated after it at fewer runs": "𓐍𓄿𓏭 𓎛𓂋𓏭𓇋𓃀 𓈖 𓇾𓈇𓏤𓏥 𓅓 𓆳𓏏𓏤 𓋴𓏏𓊪𓏏 𓐍𓂋 𓇾𓈇𓏤 𓇋𓈙𓋴𓏏 𓎟: 𓈖𓏏𓏭 𓊃𓊪𓊗 𓆑, 𓎛𓈖𓂝 𓐍𓅓𓏏 𓎡𓏏𓏭 𓊃𓊪𓊗𓏥 𓅓 𓆱𓏏 𓅓 𓊃𓊪𓊗𓏥 𓈖𓇋𓇋",
+  "PULL ×{pull}": "𓊢𓂝𓂻 ×{pull}"
 }

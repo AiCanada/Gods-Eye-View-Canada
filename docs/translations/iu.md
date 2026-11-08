@@ -170,6 +170,9 @@ glossary:
 | hindcast (a forecast from the past) / the band held | ᑭᖑᓂᑦ ᓇᓚᐅᑦᓵᕐᓂᖅ / ᐊᕕᒃᑐᖅᓯᒪᔪᖅ ᑎᑭᐅᑎᓯᒪᔪᖅ                       |
 | hindcast trend (its trend shift) / calibrated       | ᑭᖑᓂᑦ ᓇᓚᐅᑦᓵᕐᓂᐅᑉ ᓵᖓᓂᖓ / ᐋᖅᑭᒃᑕᐅᓯᒪᔪᖅ                          |
 | by population / each counted once                   | ᐃᓄᒋᐊᓐᓂᖓ ᒪᓕᒃᖢᒍ / ᐊᑐᓂ ᐊᑕᐅᓯᐊᖅᖢᓂ ᑭᓯᑕᐅᔪᖅ                      |
+| download the forecast / the world's people          | ᓇᓚᐅᑦᓵᕐᓂᖅ ᐊᐃᑦᑐᒍ / ᓯᓚᕐᔪᐊᑉ ᐃᓄᖏᑦ                               |
+| by scenario (by the worlds assumed)                 | ᓯᓚᕐᔪᐊᓄᑦ ᐃᓱᒪᒋᔭᐅᔪᓄᑦ                                          |
+| pull (the catching up toward the frontier)          | ᐊᖑᒻᒪᑎᓂᖓ                                                     |
 
 The licence notes on the AI World rows are translated; licence names
 (CC BY 4.0, ODbL 1.0), provider and dataset names, and a citation the provider

@@ -278,3 +278,19 @@
 #abundance-panel .abundance-run[data-state='error'] {
   color: var(--abundance-scarce);
 }
+
+/* The figures under the legend's ramp: the two ends and the middle. */
+#abundance-panel .abundance-legend-values {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+}
+
+/* The world's fan chart sits between its line and the hindcast's. */
+#abundance-panel .abundance-world-fan {
+  margin: 4px 0 6px;
+}

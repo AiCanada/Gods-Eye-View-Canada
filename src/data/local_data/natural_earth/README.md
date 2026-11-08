@@ -11,6 +11,7 @@ range geometry with no network dependency.
 | `countries.json` | `ne_10m_admin_0_countries` (countries) | 256 |
 | `states_provinces.json` | `ne_10m_admin_1_states_provinces` (states, provinces and other first-level units) | 4,587 named |
 | `places.json` | `ne_10m_populated_places_simple` (cities and towns, points only) | 7,342 |
+| `admin1_population.json` | Wikidata, population (P1082) of the states and provinces above (CC0, not Natural Earth) | 3,784 items + 54 codes |
 
 **Source:** Natural Earth 10m physical vectors, via the canonical
 [nvkelso/natural-earth-vector](https://github.com/nvkelso/natural-earth-vector)
@@ -64,10 +65,12 @@ the pinned files (to the system temp directory, or `--cache <dir>`), checks
 their SHA-256 and rewrites the pack byte for byte. Parameters are in the
 script's `PARAMS` and in the pack's `meta.curation`.
 
-**Schema:** `meta` (source, URLs, hashes, license, curation) and `features[]`
+**Schema:** `meta` (source, URLs, hashes, license, curation, `population`:
+the snapshot the people came from) and `features[]`
 with `name`, `nameEn` (when it differs), `alt[]` (Latin-script `name_alt`
 variants and abbreviations), `postal`, `type` (`type_en`), `rank`
-(`min_label`), `country` (`admin`), `iso2`, `iso` (ISO 3166-2), `amb[]`,
+(`min_label`), `country` (`admin`), `iso2`, `iso` (ISO 3166-2), `pop` (the
+unit's people from `admin1_population.json`, below; 3,837 units), `amb[]`,
 `ambAbroad[]`, `cityState`, `label` ([lon, lat] label point) and
 `polygons`. `polygons` is a list of parts, largest first, each
 `[outer, ...holes]`; every ring is open and stored as integers in units of
@@ -93,8 +96,42 @@ and each later one as a `[dLon, dLat]` delta.
   populated place of 50,000+ in another country. `cityState` marks a unit of
   at most 1,000 km² that contains its namesake city (Berlin, Vienna, Paris).
   548 units carry `amb`, 108 `ambAbroad`, 138 `cityState`.
-- Result: 3,648,916 bytes (1,260,545 with gzip -9); 6,492 parts, 80 holes,
-  407,339 vertices.
+- Result: 3,748,185 bytes with the people (3,648,916 without); 6,492 parts,
+  80 holes, 407,339 vertices.
+
+## The states' and provinces' people (`admin1_population.json`)
+
+Wikidata's population of each unit above, the weight the GLOBAL ABUNDANCE
+MAP gives a state or province among the others and in the world's line
+(`server/shared/abundanceData.mjs`, `peopleOfRegions`). Not Natural Earth's
+data: **Wikidata**, whose data is **CC0 1.0**
+(https://creativecommons.org/publicdomain/zero/1.0/); no attribution legally
+required, "Wikidata" credited anyway.
+
+**Source:** property P1082 (population), the best-ranked statement with the
+latest point in time (P585; among those on one date, the larger), asked of
+the SPARQL service (https://query.wikidata.org/sparql) by the unit's own
+Wikidata item (Natural Earth's `wikidataid`, when no other named unit
+carries it: 4,254 items, 3,784 with a figure), else by its own ISO 3166-2
+code through P300 (88 codes, 54 with a figure); a unit sharing both with
+another (Natural Earth's split polygons and slips: Lima and Lima Province,
+Cork city and county) has no entry. An item whose own ISO 3166-2 codes are
+all another country's is set aside (8: Belgium's Luxembourg province given
+the Grand Duchy's canton, three Kosovo districts given Serbia's Kosovo and
+Metohija, Crimea and Sevastopol under Russia with Ukraine's codes, Jersey,
+Sint Eustatius). Fetched 2026-11-08 (UTC; `meta.fetched`).
+
+**Regenerate:** `node scripts/build-admin-packs.mjs --only population`
+asks Wikidata again (batches of 250 a second apart, an identifying
+`User-Agent`, a longer wait after a refusal) and rewrites the snapshot;
+`--only admin1` then carries it into the states pack as `pop`, leaving out
+a figure dated before 1990 (`meta.curation.population.minYear`). The
+default run never asks Wikidata, so the packs stay reproducible.
+
+**Schema:** `meta` (source, endpoint, the units file and its hash, fetched,
+license, the count set aside) and `items` ({Wikidata item: [population,
+year or null]}) and `codes` ({ISO 3166-2 code: [population, year or null,
+Wikidata item]}).
 
 ## Countries (`countries.json`)
 

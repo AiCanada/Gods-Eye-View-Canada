@@ -19,6 +19,8 @@ import {
   FORECAST_YEARS,
   HINDCAST_YEARS,
   LOCAL_REGIME,
+  PEOPLE_GROWTH_HALF_LIFE,
+  PEOPLE_GROWTH_MAX,
   PRIOR_STEPS,
   SCARCE_SCORE,
   SCALE_MAX,
@@ -38,12 +40,21 @@ import {
   frontierDrift,
   fromX,
   hindcast,
+  hindcastPulls,
   hindcastScales,
   hindcastShifts,
+  PULL_MAX,
+  PULL_MIN,
+  pullFit,
+  pullOf,
+  RANK_STRIDE_UNITS,
   inverseNormal,
   measuredAtOf,
   normalTable,
+  peopleAt,
+  peopleGrowthOf,
   peopleOf,
+  peopleYears,
   placeAt,
   placeKey,
   placeTable,
@@ -105,6 +116,7 @@ function countries(upTo = null) {
   const water = [100, 99, 95, 90, 70, 40];
   const growth = [0.03, 0.04, 0.05, 0.06, 0.07, 0.02];
   const people = [5e6, 60e6, 300e6, 1.4e9, 200e6, 20e6];
+  const growing = [0.002, 0.005, 0.01, 0.012, 0.025, -0.004];
   return gdp
     .map((v, k) => ({
       id: `C${k}`,
@@ -114,6 +126,7 @@ function countries(upTo = null) {
       lat: k * 10,
       lon: k * 10,
       people: people[k],
+      peopleGrowth: growing[k],
       values: {
         gdp: figure('gdp', grown('gdp', v / Math.exp(growth[k] * 24), growth[k], 2000, 'country', 0.03), 'own', 'country', upTo),
         work: figure('work', grown('work', work[k], 0, 2000, 'country', 0.1), 'own', 'country', upTo),
@@ -279,6 +292,15 @@ test('the level speaks through the priors, and a series is shrunk toward them, p
   // The hindcast's trend shift rides on every family, within SHIFT_SWINGS typical swings a year.
   assert.equal(p.shift, 0, 'no hindcast, no shift');
   assert.equal(seriesParams(gdp, { v: 10000 }, gdp.prior, { frontier, shift: 0.008 }).shift, 0.008);
+  // The hindcast's pull factor scales the pull toward the frontier, within its bounds.
+  close(seriesParams(gdp, { v: 10000 }, gdp.prior, { frontier, pull: 0.5 }).beta, gdp.beta * 0.5, 1e-12);
+  close(seriesParams(gdp, { v: 10000 }, gdp.prior, { frontier, pull: 0.1 }).beta, gdp.beta * PULL_MIN, 1e-12, 'half at least');
+  close(seriesParams(gdp, { v: 10000 }, gdp.prior, { frontier, pull: 9 }).beta, gdp.beta * PULL_MAX, 1e-12, 'double at most');
+  assert.equal(seriesParams(gdp, { v: 10000 }, gdp.prior, { frontier, pull: NaN }).beta, gdp.beta);
+  assert.equal(pullOf({ gdp: 1.5 }, 'gdp'), 1.5);
+  assert.equal(pullOf({ gdp: 3 }, 'gdp'), PULL_MAX);
+  assert.equal(pullOf({}, 'gdp'), 1);
+  assert.equal(pullOf(null, 'gdp'), 1);
   close(seriesParams(gdp, { v: 10000 }, gdp.prior, { frontier, shift: 0.05 }).shift, SHIFT_SWINGS * 0.05, 1e-12, 'two per cent a year at most for money');
   close(seriesParams(gdp, { v: 10000 }, gdp.prior, { frontier, shift: -0.05 }).shift, -SHIFT_SWINGS * 0.05, 1e-12);
   // A share at its ceiling stays there, shift or no shift; a returning indicator keeps its usual level, shrunk, and takes a shift within its own typical swing.
@@ -410,12 +432,21 @@ test('a plan: distinct series, each place’s own and shared terms, the frontier
   assert.equal(plan.units.length, 7);
   assert.ok(Number.isNaN(plan.units[6].today), 'no figures, no score');
   // Every unit's people, for the ranks among the others and the world: the server's figure, the median where none.
-  assert.deepEqual(Array.from(plan.people), [5e6, 60e6, 300e6, 1.4e9, 200e6, 20e6, 130e6]);
+  assert.deepEqual(Array.from(plan.people), [5e6, 60e6, 300e6, 1.4e9, 200e6, 20e6, 0], 'a place without people weighs nothing where others have');
   assert.equal(plan.weighted, true);
-  assert.equal(plan.members[0].total, 1985e6, 'the six scored countries’ people');
-  assert.deepEqual(Array.from(peopleOf([{ people: 10 }, { people: 30 }, {}, { people: 0 }, { people: 20 }])), [10, 30, 20, 20, 20]);
+  assert.deepEqual(Array.from(plan.growth), [0.002, 0.005, 0.01, 0.012, 0.025, -0.004, 0]);
+  assert.deepEqual(Array.from(peopleOf([{ people: 10 }, { people: 30 }, {}, { people: 0 }, { people: 20 }])), [10, 30, 0, 0, 20]);
   assert.deepEqual(Array.from(peopleOf([{}, { people: -1 }])), [1, 1], 'none known: each once');
   assert.equal(buildPlan([{ id: 'a', values: {} }], ['gdp']).weighted, false);
+  // The people of a year: today's grown at a rate that halves every forty years, the rate bounded.
+  assert.deepEqual(Array.from(peopleGrowthOf([{ peopleGrowth: 0.1 }, {}, { peopleGrowth: -0.2 }])), [PEOPLE_GROWTH_MAX, 0, -PEOPLE_GROWTH_MAX]);
+  assert.equal(peopleYears(0), 0);
+  close(peopleYears(PEOPLE_GROWTH_HALF_LIFE), PEOPLE_GROWTH_HALF_LIFE / Math.LN2 / 2, 1e-12, 'half the growth is in by the half-life');
+  assert.deepEqual(Array.from(peopleAt(plan, 0)), Array.from(plan.people));
+  const grown = peopleAt(plan, 50);
+  close(grown[4], 200e6 * Math.exp(0.025 * peopleYears(50)), 1, 'Country 4 grows');
+  assert.ok(grown[5] < 20e6, 'Country 5 shrinks');
+  assert.equal(grown[6], 0);
   const scores = scoreUnits(units, ['gdp', 'work', 'water'], undefined, { gdp: 2 });
   plan.units.slice(0, 6).forEach((u) => assert.equal(u.today, scores.get(u.id).score, `today is the ranking’s score for ${u.id}`));
   // The frontier: the 90th percentile of today's GDP in logs, the 10th of a floor family.
@@ -460,6 +491,19 @@ test('a plan: distinct series, each place’s own and shared terms, the frontier
   assert.equal(seriesSummary(shifted, seriesOf(shifted, 'C0', 'water')).shift, undefined);
   assert.equal(typicalModel(shifted)[0].shift, 0.005);
   assert.equal(seriesSummary(plan, gdp0).shift, undefined, 'no hindcast, no shift on the line');
+  // The hindcast's pull factor: every walking series of the indicator has its pull scaled (a saturated
+  // share and a returning indicator none), the typical residual is measured against the scaled pull, and
+  // the summary reads it.
+  const pulled = buildPlan(units, ['gdp', 'work', 'water'], {}, { level: 'country', pulls: { gdp: 1.5, work: 1.5, water: 0.5 } });
+  assert.deepEqual(pulled.pulls, { gdp: 1.5, work: 1.5, water: 0.5 });
+  close(pulled.series.beta[seriesOf(pulled, 'C0', 'gdp')], 1.5 * plan.series.beta[gdp0], 1e-12);
+  assert.equal(pulled.series.beta[seriesOf(pulled, 'C0', 'water')], 0, 'saturated: no pull');
+  assert.equal(pulled.series.beta[seriesOf(pulled, 'C0', 'work')], 0, 'a returning indicator has no frontier');
+  assert.ok(pulled.priors['gdp|country'].residual <= plan.priors['gdp|country'].residual, 'a stronger pull explains more of the histories’ trends');
+  assert.equal(seriesSummary(pulled, seriesOf(pulled, 'C0', 'gdp')).pull, 1.5);
+  assert.equal(seriesSummary(pulled, seriesOf(pulled, 'C0', 'work')).pull, undefined, 'no pull, nothing on the line');
+  assert.equal(typicalModel(pulled)[0].pull, 1.5);
+  assert.equal(seriesSummary(plan, gdp0).pull, undefined);
 
   const years = [];
   const result = simulate(plan, { runs: 100, seed: 3, crises: true, onProgress: (t) => years.push(t) });
@@ -470,6 +514,27 @@ test('a plan: distinct series, each place’s own and shared terms, the frontier
   assert.deepEqual(result.ids, units.map((u) => u.id));
   assert.equal(result.p50.length, 7 * T1);
   assert.equal(result.rp50.length, 7 * T1);
+  // The ranks every other year: the ranked years as every year's, the years between halfway between
+  // their neighbours, the scale against today untouched; the default strides from RANK_STRIDE_UNITS
+  // places only.
+  assert.equal(result.rankEvery, 1);
+  assert.equal(RANK_STRIDE_UNITS, 1000);
+  const strided = simulate(plan, { runs: 100, seed: 3, crises: true, rankEvery: 2 });
+  assert.equal(strided.rankEvery, 2);
+  for (let k = 0; k < 6; k++)
+    for (let t = 0; t <= FORECAST_YEARS; t++) {
+      const at = k * T1 + t;
+      if (t % 2 === 0 || t === FORECAST_YEARS) {
+        assert.equal(strided.rp50[at], result.rp50[at], `ranked year ${t} as every year's`);
+        assert.equal(strided.rup[at], result.rup[at]);
+      } else {
+        close(strided.rp50[at], (strided.rp50[at - 1] + strided.rp50[at + 1]) / 2, 1e-3, `year ${t} between its neighbours`);
+        assert.equal(strided.rup[at], Math.round((strided.rup[at - 1] + strided.rup[at + 1]) / 2));
+      }
+      assert.equal(strided.p50[at], result.p50[at], 'against today untouched');
+    }
+  assert.equal(simulate(plan, { runs: 20, seed: 3, among: false }).rankEvery, null);
+  assert.equal(simulate(plan, { runs: 20, seed: 3, rankEvery: 0 }).rankEvery, 1, 'nothing asked: every year under the stride');
   // Year 0 is today exactly on both scales; later years are summaries within 0–100, ordered.
   for (let k = 0; k < 6; k++) {
     const row0 = forecastAt(result, k, 0);
@@ -490,15 +555,17 @@ test('a plan: distinct series, each place’s own and shared terms, the frontier
   assert.equal(forecastAt(null, 0, 0), null);
   // Among the others the people average 50 every year (a place's rank is the share of people in places
   // behind it, its own bin counted half); against today the world grows.
-  const W = plan.members[0].total;
+  const W = plan.people.slice(0, 6).reduce((sum, p) => sum + p, 0);
   for (const t of [1, 25, 50, 100]) {
+    const w = peopleAt(plan, t);
+    const Wt = [0, 1, 2, 3, 4, 5].reduce((sum, k) => sum + w[k], 0);
     let among = 0;
     let against = 0;
     for (let k = 0; k < 6; k++) {
-      among += plan.people[k] * forecastAt(result, k, t, 'others').mean;
+      among += w[k] * forecastAt(result, k, t, 'others').mean;
       against += forecastAt(result, k, t).mean;
     }
-    close(among / W, 50, 0.01, `the people’s ranks average 50 at ${t}`);
+    close(among / Wt, 50, 0.01, `the people of year ${t} average a rank of 50`);
     if (t >= 25) assert.ok(against / 6 > 50, `the world grows against today’s yardstick at ${t}: ${against / 6}`);
   }
   // The world by its people: today's exact figures, then its band and the shares in abundant and scarce places.
@@ -521,6 +588,11 @@ test('a plan: distinct series, each place’s own and shared terms, the frontier
   }
   assert.ok(worldAt(result, 50).p50 > world0.p50, 'the world’s people gain against today’s yardstick');
   assert.equal(worldAt(null, 0), null);
+  // With no growth the people stay today's: the same world today, another by mid-century.
+  const still = buildPlan(units.map((u) => ({ ...u, peopleGrowth: 0 })), ['gdp', 'work', 'water'], { gdp: 2 }, { level: 'country' });
+  const stillResult = simulate(still, { runs: 100, seed: 3, crises: true, among: false });
+  close(worldAt(stillResult, 0).p50, world0.p50, 1e-6);
+  assert.ok(Math.abs(worldAt(stillResult, 50).p50 - worldAt(result, 50).p50) > 0.02, 'the growing people move the world line');
   // The band widens with the years (before the rich places pass today’s best and their band closes at 100); the poorest, far below the frontier, climbs toward it.
   const spread = (k, t) => forecastAt(result, k, t).p90 - forecastAt(result, k, t).p10;
   assert.ok(spread(2, 20) > spread(2, 2), `${spread(2, 20)} > ${spread(2, 2)}`);
@@ -676,12 +748,14 @@ test('the hindcast replays the model from ten years ago, shifts each trend by wh
   const past = countries(2014);
   assert.equal(past[0].values.gdp.year, 2014);
   assert.equal(past[0].values.gdp.n, 14);
-  const report = hindcast(past, present, { level: 'country', from: 2014, to: 2024 });
+  const report = hindcast([{ past, present, from: 2014, to: 2024 }], { level: 'country' });
   assert.equal(report.from, 2014);
   assert.equal(report.to, 2024);
+  assert.deepEqual(report.windows, [{ from: 2014, to: 2024, tested: 0, held: 0 }]);
   assert.equal(report.tested, 0, 'six countries are too few to test an indicator (ten needed)');
   assert.deepEqual(report.indicators, {});
   assert.deepEqual(hindcastScales(report), {});
+  assert.deepEqual(hindcast([], {}), { from: null, to: null, windows: [], indicators: {}, tested: 0, held: 0 });
   // Twenty places with histories: enough to test. The band holds most of them and the scales stay in range.
   const many = (upTo, bend = 0) =>
     Array.from({ length: 20 }, (_, k) => ({
@@ -701,23 +775,43 @@ test('the hindcast replays the model from ten years ago, shifts each trend by wh
             : figure('water', grown('water', 70 + k, 0.05, 2000, 'country', 0.02), 'own', 'country', upTo),
       },
     }));
-  const wide = hindcast(many(2014), many(), { level: 'country', from: 2014, to: 2024 });
-  assert.deepEqual(Object.keys(wide.indicators).sort(), ['gdp', 'water', 'work']);
-  assert.equal(wide.indicators.gdp.tested, 20);
-  assert.ok(wide.tested === 60);
+  const single = hindcast([{ past: many(2014), present: many(), from: 2014, to: 2024 }], { level: 'country' });
+  assert.deepEqual(Object.keys(single.indicators).sort(), ['gdp', 'water', 'work']);
+  assert.equal(single.indicators.gdp.tested, 20);
+  assert.equal(single.tested, 60);
   // A share at its ceiling is held when today's figure is still within the ceiling's zone, missed when it slipped out.
-  assert.ok(wide.indicators.water.held >= 80, `the ceiling's zone holds and the climbers stay in band: ${wide.indicators.water.held} %`);
+  assert.ok(single.indicators.water.held >= 80, `the ceiling's zone holds and the climbers stay in band: ${single.indicators.water.held} %`);
   const slipped = many();
   slipped.forEach((u, k) => {
     if (k % 2 === 0) u.values.water.v = 98.5;
   });
-  const slip = hindcast(many(2014), slipped, { level: 'country', from: 2014, to: 2024 });
-  assert.ok(slip.indicators.water.held <= wide.indicators.water.held - 45, `ten of twenty slipped out of the zone: ${slip.indicators.water.held} %`);
+  const slip = hindcast([{ past: many(2014), present: slipped, from: 2014, to: 2024 }], { level: 'country' });
+  assert.ok(slip.indicators.water.held <= single.indicators.water.held - 45, `ten of twenty slipped out of the zone: ${slip.indicators.water.held} %`);
+  // A figure counts only where then and later it came from the same kind of source.
+  const mixed = many(2014);
+  mixed[0].values.gdp = { ...mixed[0].values.gdp, from: 'country' };
+  assert.equal(hindcast([{ past: mixed, present: many(), from: 2014, to: 2024 }], { level: 'country' }).indicators.gdp.tested, 19);
+  // Two windows, 2014 against 2024 and 2004 against 2014: the figures, misses and errors pool, each window reported.
+  const wide = hindcast(
+    [
+      { past: many(2014), present: many(), from: 2014, to: 2024 },
+      { past: many(2004), present: many(2014), from: 2004, to: 2014 },
+    ],
+    { level: 'country' },
+  );
+  assert.equal(wide.from, 2004);
+  assert.equal(wide.to, 2024);
+  assert.equal(wide.indicators.gdp.tested, 40);
+  assert.equal(wide.tested, 120);
+  assert.deepEqual(wide.windows.map((w) => [w.from, w.to, w.tested]), [[2014, 2024, 60], [2004, 2014, 60]]);
+  for (const w of wide.windows) assert.ok(w.held >= 50 && w.held <= 100, `window ${w.from} held ${w.held} %`);
   for (const entry of Object.values(wide.indicators)) {
     assert.ok(entry.scale >= 0.5 && entry.scale <= SCALE_MAX, `scale ${entry.scale}`);
     assert.ok(entry.held >= 0 && entry.held <= 100);
     assert.ok(Number.isFinite(entry.shift), 'a trend shift per indicator');
+    assert.ok(entry.pull >= PULL_MIN && entry.pull <= PULL_MAX, `pull ${entry.pull}`);
   }
+  assert.equal(wide.indicators.work.pull, 1, 'a returning indicator has no pull to calibrate');
   assert.ok(wide.held >= 50, `the scaled band holds most figures: ${wide.held} %`);
   const scales = hindcastScales(wide);
   for (const [id, scale] of Object.entries(scales)) assert.equal(scale, wide.indicators[id].scale);
@@ -725,6 +819,25 @@ test('the hindcast replays the model from ten years ago, shifts each trend by wh
   const shifts = hindcastShifts(wide);
   for (const [id, shift] of Object.entries(shifts)) assert.equal(shift, wide.indicators[id].shift);
   assert.deepEqual(hindcastShifts(null), {});
+  const pulls = hindcastPulls(wide);
+  for (const [id, pull] of Object.entries(pulls)) assert.equal(pull, wide.indicators[id].pull);
+  assert.ok(!('work' in pulls), 'a pull of 1 is left out');
+  assert.deepEqual(hindcastPulls(null), {});
+  // The pull's fit: misses that grow with the pull on the series give a factor above 1, misses that
+  // shrink with it one below; a flat relation, too few series or no spread of pulls give none.
+  const spread = Array.from({ length: 40 }, (_, k) => 0.001 + k * 0.001);
+  const noise = (k) => ((k * 7919) % 11) * 0.0002 - 0.001;
+  const over = pullFit(spread.map((g, k) => 0.5 * g + noise(k)), spread);
+  assert.ok(over && over.pull > 1.3 && over.pull <= PULL_MAX, `misses grow with the pull: ×${over?.pull}`);
+  close(over.at, (spread[19] + spread[20]) / 2, 1e-12, 'the typical pull');
+  const under = pullFit(spread.map((g, k) => -0.6 * g + noise(k)), spread);
+  assert.ok(under && under.pull < 0.7 && under.pull >= PULL_MIN, `misses shrink with the pull: ×${under?.pull}`);
+  assert.equal(pullFit(spread.map((g, k) => -5 * g), spread).pull, PULL_MIN, 'bounded below');
+  assert.equal(pullFit(spread.map((g, k) => 5 * g), spread).pull, PULL_MAX, 'bounded above');
+  assert.equal(pullFit(spread.map((g, k) => 0.002 + noise(k)), spread), null, 'a flat relation');
+  assert.equal(pullFit(spread.slice(0, 19).map((g) => 0.5 * g), spread.slice(0, 19)), null, 'too few');
+  assert.equal(pullFit(spread.map((g) => 0.5 * g), spread.map(() => 0.01)), null, 'no spread of pulls');
+  assert.equal(pullFit(null, null), null);
   // A decade that bent every trend: the shift follows the bend, stays within the bound, and the trend paths
   // (run from the past to today's figures, money in the past's dollars) miss less with it.
   const missOf = (past, present, id, withShifts = {}) => {
@@ -745,7 +858,7 @@ test('the hindcast replays the model from ten years ago, shifts each trend by wh
   for (const bend of [0.03, -0.03]) {
     const past = many(2014, bend);
     const present = many(null, bend);
-    const report = hindcast(past, present, { level: 'country', from: 2014, to: 2024 });
+    const report = hindcast([{ past, present, from: 2014, to: 2024 }], { level: 'country' });
     for (const id of ['gdp', 'work']) {
       const { shift } = report.indicators[id];
       assert.equal(Math.sign(shift), Math.sign(bend), `${id}: the shift ${shift} follows the bend ${bend}`);
@@ -756,6 +869,44 @@ test('the hindcast replays the model from ten years ago, shifts each trend by wh
       assert.ok(Math.abs(after) < Math.abs(before), `${id}: the trend paths miss less with the shift (${before} → ${after})`);
     }
   }
+  // A decade in which the places far from the frontier fell short (the poorest bent by -3 % a year,
+  // the richest not at all): the pull factor falls below 1, and with the shift and the pull together
+  // the trend paths' misses spread less than with the shift alone.
+  const lagging = (upTo) =>
+    Array.from({ length: 20 }, (_, k) => ({
+      id: `L${k}`,
+      name: `Lagging ${k}`,
+      iso2: `L${k}`,
+      country: `Lagging ${k}`,
+      lat: k,
+      lon: k,
+      values: { gdp: figure('gdp', grown('gdp', 5000 * (k + 1), 0.02, 2000, 'country', 0.01, 2024, -0.03 * (1 - k / 19)), 'own', 'country', upTo) },
+    }));
+  const lagged = hindcast([{ past: lagging(2014), present: lagging(), from: 2014, to: 2024 }], { level: 'country' });
+  const { pull, shift: lagShift } = lagged.indicators.gdp;
+  assert.ok(pull < 1 && pull >= PULL_MIN, `the laggards caught up less than assumed: pull ×${pull}`);
+  assert.deepEqual(hindcastPulls(lagged), { gdp: pull });
+  const spreadOf = (past, present, id, options) => {
+    const plan = buildPlan(past, [id], {}, { level: 'country', ...options });
+    const byId = new Map(present.map((u) => [u.id, u]));
+    const errors = past.map((u) => {
+      const s = seriesOf(plan, u.id, id);
+      const now = byId.get(u.id).values[id];
+      const h = now.year - u.values[id].year;
+      const process = plan.series.process[s];
+      return toX(process, now.v / Math.exp(process.deflate * h)) - trendPath(plan, s, h)[h];
+    });
+    const centre = errors.slice().sort((a, b) => a - b)[errors.length >> 1];
+    return errors.map((e) => Math.abs(e - centre)).sort((a, b) => a - b)[errors.length >> 1];
+  };
+  const withShift = spreadOf(lagging(2014), lagging(), 'gdp', { shifts: { gdp: lagShift } });
+  const withBoth = spreadOf(lagging(2014), lagging(), 'gdp', { shifts: { gdp: lagShift }, pulls: { gdp: pull } });
+  assert.ok(withBoth < withShift, `the misses spread less with the pull calibrated (${withShift} → ${withBoth})`);
+  // The twenty places above never converge (the richer grow faster) while the model assumes some catching
+  // up, so their pull reads below 1 too; the laggards' reads no higher.
+  const uniform = hindcast([{ past: many(2014, -0.02), present: many(null, -0.02), from: 2014, to: 2024 }], { level: 'country' }).indicators.gdp.pull;
+  assert.ok(uniform < 1, `no convergence in the figures: pull ×${uniform}`);
+  assert.ok(pull <= uniform, `the laggards' pull (×${pull}) is no higher than the diverging level's (×${uniform})`);
 });
 
 test('the handler answers run, detail and model messages as the worker does, and posts the typed arrays for transfer', () => {
@@ -764,7 +915,7 @@ test('the handler answers run, detail and model messages as the worker does, and
   const post = (message, transfer) => posts.push({ message, transfer });
   const units = countries();
   handle(
-    { type: 'run', id: 1, planId: 'p1', level: 'country', scenario: 'optimistic', scales: { gdp: 1.2 }, shifts: { gdp: -0.004 }, units, indicators: ['gdp', 'work'], weights: {}, runs: 100, seed: 2, crises: true, among: true },
+    { type: 'run', id: 1, planId: 'p1', level: 'country', scenario: 'optimistic', scales: { gdp: 1.2 }, shifts: { gdp: -0.004 }, pulls: { gdp: 0.8 }, units, indicators: ['gdp', 'work'], weights: {}, runs: 100, seed: 2, crises: true, among: true },
     post,
   );
   assert.equal(posts.length, FORECAST_YEARS + 1);
@@ -786,6 +937,7 @@ test('the handler answers run, detail and model messages as the worker does, and
   assert.deepEqual(posts[0].message.model.map((m) => m.id), ['gdp', 'work']);
   assert.equal(posts[0].message.model[0].scale, 1.2, 'the hindcast’s scale rides with the line');
   assert.equal(posts[0].message.model[0].shift, -0.004, 'and its trend shift');
+  assert.equal(posts[0].message.model[0].pull, 0.8, 'and its pull factor');
   assert.deepEqual(Object.keys(posts[0].message.detail.indicators), ['gdp', 'work']);
   assert.ok(posts[0].transfer.includes(posts[0].message.detail.score.p50.buffer));
   handle({ type: 'detail', id: 3, planId: 'p1', unitId: 'NONE' }, post);

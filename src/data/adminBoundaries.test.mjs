@@ -371,6 +371,99 @@ test('packs: public-domain provenance, schema, and size budgets', () => {
   assert.ok(statSync(COUNTIES).size <= 2 * 1024 * 1024, 'county pack ≤ 2 MB');
 });
 
+test('states pack: the people from the Wikidata snapshot, keyed as the build keys them', async () => {
+  const admin1 = JSON.parse(readFileSync(ADMIN1, 'utf8'));
+  const snapshot = JSON.parse(
+    readFileSync(
+      new URL(
+        './local_data/natural_earth/admin1_population.json',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+  );
+  assert.match(snapshot.meta.license, /CC0/);
+  assert.match(snapshot.meta.fetched, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(
+    snapshot.meta.unitsSha256,
+    admin1.meta.sha256,
+    'the snapshot is of this pack’s units',
+  );
+  assert.equal(
+    admin1.meta.population.source,
+    'src/data/local_data/natural_earth/admin1_population.json',
+  );
+  assert.equal(admin1.meta.population.fetched, snapshot.meta.fetched);
+  assert.equal(admin1.meta.curation.population.minYear, 1990);
+  const peopled = admin1.features.filter((f) => 'pop' in f);
+  assert.equal(peopled.length, admin1.meta.population.units);
+  assert.ok(peopled.length > 3500, `${peopled.length} units with people`);
+  for (const f of peopled)
+    assert.ok(Number.isInteger(f.pop) && f.pop >= 0, `${f.name}: pop ${f.pop}`);
+  const maharashtra = admin1.features.find((f) => f.iso === 'IN-MH');
+  assert.ok(
+    maharashtra.pop > 100_000_000 && maharashtra.pop < 150_000_000,
+    `Maharashtra ${maharashtra.pop}`,
+  );
+  // Natural Earth gives Lima and Lima Province one Wikidata id and one code: neither carries people.
+  for (const name of ['Lima', 'Lima Province'])
+    assert.equal(
+      admin1.features.find((f) => f.country === 'Peru' && f.name === name).pop,
+      undefined,
+      name,
+    );
+
+  const { admin1PopulationKeys, bestPopulation, codesInCountry } =
+    await import('../../scripts/build-admin-packs.mjs');
+  // A unit is asked by its own Wikidata item, else by its own ISO 3166-2 code, else not at all;
+  // an unnamed unit (not in the pack) claims neither.
+  assert.deepEqual(
+    admin1PopulationKeys([
+      { name: 'A', wikidataid: 'Q1', iso_3166_2: 'XX-A' },
+      { name: 'B', wikidataid: 'Q2', iso_3166_2: 'XX-B' },
+      { name: 'B2', wikidataid: 'Q2', iso_3166_2: 'XX-B2' },
+      { name: 'C', wikidataid: 'Q3', iso_3166_2: 'XX-C' },
+      { name: 'C2', wikidataid: 'Q3', iso_3166_2: 'XX-C' },
+      { name: 'D', wikidataid: null, iso_3166_2: 'XX-D~' },
+      { name: '', wikidataid: 'Q1', iso_3166_2: 'XX-A' },
+    ]),
+    [
+      { item: 'Q1', code: null },
+      { item: null, code: 'XX-B' },
+      { item: null, code: 'XX-B2' },
+      { item: null, code: null },
+      { item: null, code: null },
+      { item: null, code: null },
+      { item: null, code: null },
+    ],
+  );
+  // The latest point in time wins, a dated figure before an undated one, the larger on the same date.
+  assert.deepEqual(
+    bestPopulation([
+      { pop: '100', when: '2011-01-01T00:00:00Z' },
+      { pop: '120', when: '2021-01-01T00:00:00Z', item: 'Q9' },
+      { pop: '130', when: '2021-01-01T00:00:00Z' },
+      { pop: '999' },
+    ]),
+    { pop: 130, year: 2021, item: null },
+  );
+  assert.deepEqual(bestPopulation([{ pop: '50' }]), {
+    pop: 50,
+    year: null,
+    item: null,
+  });
+  assert.equal(bestPopulation([{ pop: 'x' }, { pop: -1 }]), null);
+  assert.equal(bestPopulation(undefined), null);
+  // An item whose own codes are all another country's is a namesake elsewhere; a territory's code
+  // under its parent is its own.
+  assert.equal(codesInCountry('BE-WLX|BE-WLX', 'BE'), true);
+  assert.equal(codesInCountry('LU-L', 'BE'), false);
+  assert.equal(codesInCountry('US-PR', 'PR'), true);
+  assert.equal(codesInCountry('RS-KM', 'XK'), false);
+  assert.equal(codesInCountry('', 'BE'), true);
+  assert.equal(codesInCountry('RS-KM', '-99'), true);
+});
+
 test('county queries compare US and international names before choosing a geography', async () => {
   const england = { lat: 54.78, lon: -1.58 };
   const nc = { lat: 36.0, lon: -78.9 };

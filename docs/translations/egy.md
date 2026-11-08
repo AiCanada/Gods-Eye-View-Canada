@@ -198,6 +198,9 @@ own tabs"). Their glossary:
 | hindcast / the band held                   | 𓋴𓂋𓃱 𓈖 𓎼𓈖𓏏𓌟𓏛𓏥 / 𓍿𓊃 𓊢𓂝𓂻         | _sr n gn.wt / ṯs ꜥḥꜥ_          | foretelling of the annals / the band stood                |
 | hindcast trend (the trend shift) / calibrated | 𓋴𓐍𓂋𓏲𓏛 𓈖 𓋴𓂋𓃱 / 𓐍𓄿𓏭𓈖𓏏𓅱      | _sḫr n sr / ḫꜣy.n.tw_          | the course of the foretelling / it has been measured      |
 | by population / each counted once          | 𓐍𓂋 𓂋𓍿𓀀𓁐𓏥 / 𓎟 𓇋𓊪 𓊃𓊪 𓌡𓂝𓏤         | _ḫr rmṯ / nb ip sp wꜥ_         | by the people / each counted one time                     |
+| download the forecast / the world's people | 𓏎𓈖 𓋴𓂋𓃱 / 𓂋𓍿𓀀𓁐𓏥 𓈖 𓇾𓈇𓏤𓏥          | _jn sr / rmṯ n tꜣ.wy_          | fetch the foretelling / the people of the lands           |
+| by scenario                                | 𓐍𓂋 𓇾𓈇𓏤 𓇋𓈙𓋴𓏏                        | _ḫr tꜣ jšst_                   | according to which world                                  |
+| pull (toward the frontier)                 | 𓊢𓂝𓂻                                   | _ꜥḥꜥ_                          | the approach                                              |
 
 The licence notes on the AI World rows are translated; licence names
 (CC BY 4.0, ODbL 1.0), provider and dataset names, and a citation the provider

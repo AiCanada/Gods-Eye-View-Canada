@@ -53,6 +53,18 @@ test('without a worker the handler answers inline: progress, the result, the det
   assert.equal(stale.stale, true);
   const model = await runner.model('p');
   assert.deepEqual(model.model.map((m) => m.id), ['gdp', 'work']);
+  // The world's line under another scenario, at the runs asked (never more than the run's).
+  const compare = await runner.compare('p', 'optimistic', 20);
+  assert.equal(compare.type, 'compare');
+  assert.equal(compare.scenario, 'optimistic');
+  assert.equal(compare.runs, 20);
+  assert.equal(compare.world.p50.length, 101);
+  assert.equal(compare.world.p50[0], done.result.world.p50[0], 'today is today under every scenario');
+  assert.equal(compare.weighted, false, 'no people in these units');
+  const more = await runner.compare('p', 'pessimistic', 1000);
+  assert.equal(more.runs, 100, 'capped at the run’s');
+  const staleCompare = await runner.compare('old', 'volatile', 20);
+  assert.equal(staleCompare.stale, true);
   runner.destroy();
   const after = await runner.run(request());
   assert.equal(after.type, 'cancelled');

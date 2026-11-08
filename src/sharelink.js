@@ -23,6 +23,11 @@ import {
   toLegacyShareState,
 } from './share/legacyShareState.js';
 import {
+  ABUNDANCE_SHARE_PARAM,
+  decodeAbundanceShareParam,
+  encodeAbundanceShareParam,
+} from './share/abundanceShare.js';
+import {
   appRootUrl,
   parseSharePath,
   shareLinkUrl,
@@ -108,6 +113,8 @@ export class ShareLinkManager {
     this._layerStateProvider = null;
     this._panelStateProvider = null;
     this._styleParamStateProvider = null;
+    // God's Eye View Canada: the GLOBAL ABUNDANCE MAP box's state (`ab`).
+    this._abundanceStateProvider = null;
     this._initialRestorePending = false;
     // Each incoming share (start-up or a later hash navigation) gets a token;
     // only the newest one may release URL-write suppression.
@@ -268,6 +275,11 @@ export class ShareLinkManager {
         params.has('l') &&
         decodedLayerState === null,
       panelState: decodePanelStateParams(params),
+      // The GLOBAL ABUNDANCE MAP box (v2 only; a malformed value is no state).
+      abundance:
+        params.get('v') === '2' && params.has(ABUNDANCE_SHARE_PARAM)
+          ? decodeAbundanceShareParam(params.get(ABUNDANCE_SHARE_PARAM))
+          : null,
       sharedAtMs: decodeShareCreatedAtMs(params),
     };
     return state;
@@ -425,6 +437,7 @@ export class ShareLinkManager {
         mapStack: mapCurrent ? state.mapStack : undefined,
         panelState,
         styleParams: visualCurrent ? state.styleParams : undefined,
+        abundance: state.abundance ?? null,
       });
       restoreStatus = 'applied';
     }
@@ -490,6 +503,20 @@ export class ShareLinkManager {
   setStyleParamStateProvider(provider) {
     this._styleParamStateProvider =
       typeof provider === 'function' ? provider : null;
+  }
+
+  /**
+   * Install the GLOBAL ABUNDANCE MAP box's state source used by URL
+   * generation: `() => ({ level, show, year, view, scale, scenario }) | null`.
+   */
+  setAbundanceStateProvider(provider) {
+    this._abundanceStateProvider =
+      typeof provider === 'function' ? provider : null;
+  }
+
+  /** Called when the box's shared state changes. */
+  onAbundanceStateChange() {
+    this._scheduleUpdate();
   }
 
   /** Called only when the durable layer preference model changes. */
@@ -701,6 +728,10 @@ export class ShareLinkManager {
       this._currentStyle,
       this._styleParamStateProvider?.(this._currentStyle),
     );
+    const abundance = encodeAbundanceShareParam(
+      this._abundanceStateProvider?.(),
+    );
+    if (abundance) params.set(ABUNDANCE_SHARE_PARAM, abundance);
 
     // Creation-time metadata is intentionally absent here. `buildLink()`
     // stamps its own link without aging the live address.
@@ -730,6 +761,7 @@ export class ShareLinkManager {
     this._layerStateProvider = null;
     this._panelStateProvider = null;
     this._styleParamStateProvider = null;
+    this._abundanceStateProvider = null;
     this._followSubjectProvider = null;
     this._onRestore = null;
   }

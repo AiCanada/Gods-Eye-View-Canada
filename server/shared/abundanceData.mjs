@@ -40,6 +40,7 @@ import {
 } from '../../src/abundanceUnits.mjs';
 import {
   HINDCAST_YEARS,
+  PEOPLE_GROWTH_MAX,
   hindcast,
   seriesStats,
 } from '../../src/abundanceForecast.mjs';
@@ -102,6 +103,39 @@ const OWID_URL = (slug) =>
   `https://ourworldindata.org/grapher/${slug}.csv?v=1&csvType=full&useColumnShortNames=true`;
 /** The World Bank's population series: every place's people, the forecast's weights, not an indicator. */
 export const POPULATION_CODE = 'SP.POP.TOTL';
+
+/** A population's growth weighs a year this many years back half as much as the latest: the rate of now, not of the thirty years. */
+export const POPULATION_TREND_HALF_LIFE = 6;
+
+/**
+ * A population's growth a year from its series (any order): the log change
+ * per year, the latest steps weighing most (half as much
+ * POPULATION_TREND_HALF_LIFE years back), bounded to ±PEOPLE_GROWTH_MAX and
+ * rounded; null with fewer than two points.
+ */
+export function populationGrowth(series) {
+  const points = (series || [])
+    .filter((p) => Number.isFinite(p?.year) && p?.value > 0)
+    .sort((a, b) => a.year - b.year);
+  if (points.length < 2) return null;
+  const latest = points[points.length - 1].year;
+  let span = 0;
+  let rise = 0;
+  for (let i = 1; i < points.length; i++) {
+    const weight = Math.pow(
+      0.5,
+      (latest - points[i].year) / POPULATION_TREND_HALF_LIFE,
+    );
+    span += weight * (points[i].year - points[i - 1].year);
+    rise += weight * Math.log(points[i].value / points[i - 1].value);
+  }
+  if (!(span > 0)) return null;
+  const g = Math.max(
+    -PEOPLE_GROWTH_MAX,
+    Math.min(PEOPLE_GROWTH_MAX, rise / span),
+  );
+  return Math.round(g * 1e5) / 1e5;
+}
 const OECD_URL = (flow, version, key) =>
   `https://sdmx.oecd.org/public/rest/data/OECD.CFE.EDS,${flow},${version}/${key}?lastNObservations=${OECD_YEARS}&dimensionAtObservation=AllDimensions&format=csvfilewithlabels`;
 
@@ -413,12 +447,14 @@ export function createAbundanceStore({
     try {
       const kept = JSON.parse(fs.readFileSync(cacheFile(source.id), 'utf8'));
       // An answer to another URL (another release, key or query) is not
-      // this source's answer.
+      // this source's answer, nor is an OWID answer read to another depth
+      // (the URL says nothing of how many years were kept).
       if (
         kept &&
         typeof kept === 'object' &&
         kept.payload &&
-        kept.url === source.url
+        kept.url === source.url &&
+        (source.kind !== 'owid' || kept.years === OWID_YEARS)
       )
         raw.set(source.id, {
           fetchedAt: Number(kept.fetchedAt) || 0,
@@ -440,6 +476,7 @@ export function createAbundanceStore({
         JSON.stringify({
           id: source.id,
           url: source.url,
+          ...(source.kind === 'owid' ? { years: OWID_YEARS } : {}),
           fetchedAt: entry.fetchedAt,
           rows: entry.rows,
           payload: entry.payload,
@@ -793,7 +830,8 @@ export function createAbundanceStore({
   /**
    * Every place's people, the forecast's weights (src/abundanceForecast.mjs,
    * peopleOf). A country's: the World Bank's population, else its populated
-   * places' people together.
+   * places' people together; and its growth a year from the thirty-year
+   * series (populationGrowth), which its states and cities take.
    */
   const peopleOfCountries = (countryList, placeList) => {
     const placed = new Map();
@@ -802,17 +840,25 @@ export function createAbundanceStore({
         placed.set(p.iso2, (placed.get(p.iso2) || 0) + p.pop);
     const population = payloadOf(`wb:${POPULATION_CODE}`) || {};
     for (const unit of countryList) {
-      const latest = unit.iso2 ? population[unit.iso2]?.[0]?.value : null;
+      const series = unit.iso2 ? population[unit.iso2] : null;
+      const latest = series?.[0]?.value;
       const people = latest > 0 ? latest : placed.get(unit.iso2);
       if (people > 0) unit.people = Math.round(people);
+      const growth = populationGrowth(series);
+      if (growth !== null) unit.peopleGrowth = growth;
     }
   };
 
   /**
-   * A state's or province's people: its country's shared out, nine tenths
-   * by the people of its populated places and one tenth equally (so a
-   * province with no populated place still counts); equally when the
-   * country has no placed people.
+   * A state's or province's people: its share of its country's. A unit the
+   * states pack gives a population (Wikidata's, `pop`) takes its share of
+   * those figures, of what the country's people leave after the units
+   * without one; those take the share-out, nine tenths by the people of
+   * their populated places and one tenth equally (so a province with no
+   * populated place still counts), equally when the country has no placed
+   * people. A country with no figure at all is shared out whole. A figure
+   * no smaller than the country's own, in a country of several units, is a
+   * slip (a district given its whole country's people) and is left aside.
    */
   const peopleOfRegions = (regionList, matcher, countryByIso2, placeList) => {
     const byCountry = new Map();
@@ -834,12 +880,31 @@ export function createAbundanceStore({
         (sum, r) => sum + (placed.get(r.id) || 0),
         0,
       );
+      const shareOut = (r) =>
+        total > 0
+          ? (0.9 * (placed.get(r.id) || 0)) / total + 0.1 / regions.length
+          : 1 / regions.length;
+      const counted = new Set(
+        regions.filter(
+          (r) =>
+            Number.isFinite(r.pop) &&
+            r.pop >= 0 &&
+            (regions.length === 1 || r.pop < country.people),
+        ),
+      );
+      let figures = 0;
+      for (const r of counted) figures += r.pop;
+      let left = 1;
+      if (figures > 0)
+        for (const r of regions) if (!counted.has(r)) left -= shareOut(r);
       for (const r of regions) {
         const share =
-          total > 0
-            ? (0.9 * (placed.get(r.id) || 0)) / total + 0.1 / regions.length
-            : 1 / regions.length;
+          figures > 0 && counted.has(r)
+            ? (r.pop / figures) * left
+            : shareOut(r);
         r.people = Math.round(country.people * share);
+        if (Number.isFinite(country.peopleGrowth))
+          r.peopleGrowth = country.peopleGrowth;
       }
     }
   };
@@ -912,6 +977,9 @@ export function createAbundanceStore({
       inherit(unit, region, 'region');
       inherit(unit, countryByIso2.get(unit.iso2), 'country');
       if (unit.pop > 0) unit.people = unit.pop;
+      const home = countryByIso2.get(unit.iso2);
+      if (Number.isFinite(home?.peopleGrowth))
+        unit.peopleGrowth = home.peopleGrowth;
     }
     return { units: cityList, imported: cityImport };
   };
@@ -929,10 +997,27 @@ export function createAbundanceStore({
         if (Number.isFinite(f?.year) && (newest === null || f.year > newest))
           newest = f.year;
     if (newest === null) return null;
-    const from = newest - HINDCAST_YEARS;
     try {
-      const { units: past } = buildUnits(level, { upTo: from });
-      return hindcast(past, present, { level, from, to: newest });
+      // Two windows: ten years ago against today, and twenty years ago
+      // against ten years ago.
+      const middle = buildUnits(level, {
+        upTo: newest - HINDCAST_YEARS,
+      }).units;
+      const earlier = buildUnits(level, {
+        upTo: newest - 2 * HINDCAST_YEARS,
+      }).units;
+      return hindcast(
+        [
+          { past: middle, present, from: newest - HINDCAST_YEARS, to: newest },
+          {
+            past: earlier,
+            present: middle,
+            from: newest - 2 * HINDCAST_YEARS,
+            to: newest - HINDCAST_YEARS,
+          },
+        ],
+        { level },
+      );
     } catch (error) {
       log(`hindcast ${level}: ${error?.message || error}`);
       return null;
@@ -1122,7 +1207,16 @@ export function createAbundanceStore({
  */
 export function sentUnit(unit) {
   const out = { id: unit.id, name: unit.name };
-  for (const key of ['country', 'iso2', 'adm1', 'lat', 'lon', 'pop', 'people'])
+  for (const key of [
+    'country',
+    'iso2',
+    'adm1',
+    'lat',
+    'lon',
+    'pop',
+    'people',
+    'peopleGrowth',
+  ])
     if (unit[key] !== undefined && unit[key] !== null) out[key] = unit[key];
   if (unit.capital) out.capital = true;
   return out;
