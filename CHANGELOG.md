@@ -49,7 +49,25 @@
   units): the units with a figure share their country's people in
   proportion to it, the rest by their populated places as before, so
   Maharashtra weighs 129 million instead of 249 and Uttar Pradesh 282
-  instead of 137. Under the world's fan chart a line reads the world by
+  instead of 137. The units without a key of their own are matched by name
+  among their country's units on Wikidata (of their kind and at their
+  level by Wikidata's classes — no bare settlement, no unit inside a unit
+  of the level, no item that holds another unit drawn apart from it, the
+  labels read in the countries' languages and the neutral "mul"; the query
+  written from the country outward, as the planner left to itself times
+  out; an item the query service lacks asked of the Wikidata API; a unit's
+  ISO code asked when its item has no figure; an abolished province's
+  figure its one successor's), GeoNames' name for each polygon settling
+  Natural Earth's mislabelled duplicates (its second "Uruzgan" is Daykundi,
+  its second "Parwan" Panjshir), and a count that moves by half or more
+  within five years giving way to the figure before the jump (Wikidata's
+  Cebu and Bohol carry each other's 2024 counts, Vietnam's merged provinces
+  the merged counts on the old items), so 4,008 of the 4,587 units carry a
+  figure: Hong Kong's districts, Kosovo's municipalities, the Philippine
+  cities (Natural Earth's Manila carried Metro Manila's 14.0 million, now
+  its own 1.9), Lima Province, Ireland's cities, Naples's metropolitan
+  city, British Columbia and Prince Edward Island among them. Under the
+  world's fan chart a line reads the world by
   scenario (`2051 BY SCENARIO · BASELINE 61 · OPTIMISTIC 62 · PESSIMISTIC
   58 · VOLATILE 60`), the other three scenarios simulated after the run at
   fewer runs. The hindcast also calibrates each indicator's pull toward the

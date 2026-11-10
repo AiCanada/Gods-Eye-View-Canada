@@ -198,10 +198,13 @@ a city's own Natural Earth population; a place with none weighs nothing where
 others have people (it is still forecast and ranked), and every place counts
 once only where no place has people (`peopleOf`). A state's or province's
 share comes from Wikidata's population of it (`pop` in the states pack,
-3,837 of the 4,587 units: the best-ranked figure with the latest date, 1990
+4,008 of the 4,587 units: the best-ranked figure with the latest date, 1990
 or later, asked by the unit's own Wikidata item, else its own ISO 3166-2
-code, when the pack build runs `--only population`; the snapshot is
-`src/data/local_data/natural_earth/admin1_population.json`, CC0). The units
+code, else its name among its country's units of its kind and level, when
+the pack build runs `--only population`; a count that moves by half or more
+within five years gives way to the last figure before the jump; the
+snapshot is `src/data/local_data/natural_earth/admin1_population.json`,
+CC0). The units
 with a figure share, in proportion to them, what the country's people leave
 after the units without one, which take the share-out (nine tenths by the
 people of their Natural Earth populated places, one tenth equally, so a
@@ -212,14 +215,35 @@ Pradesh 137 million; with them 129 and 282 (India's shares are its 2011
 census's, Uttar Pradesh's a 2025 projection, so it reads high); the world's
 line at STATES AND PROVINCES moves by a point at most, since the people only
 move within their countries. The limits:
-a unit Natural Earth draws twice under one Wikidata id and one code (Lima and
-Lima Province, Cork city and county) stays on the share-out, as do the 8
-units whose Natural Earth id names a namesake elsewhere (Belgium's Luxembourg
-as the Grand Duchy's canton; set aside by their ISO codes), a figure no
-smaller than the country's own is left aside as a slip, and where Wikidata's
-units have moved on from Natural Earth's 2022 map (Vietnam's 2025 provinces,
-a county's figure that still counts a city of county rank drawn beside it in
-Hungary) the proportions carry that. Each country's people then grow or
+a unit Natural Earth draws twice under one Wikidata id and one code is asked
+by name, and GeoNames' name for each polygon tells which is which (Natural
+Earth's second "Uruzgan" is Daykundi, its second "Parwan" Panjshir, its
+second "Mbarara" Kiruhura, each now with its own figure; Lima Province takes
+its own 10.1 million while the Lima department, whose item holds the
+province drawn beside it, stays on the share-out); the 13 units whose
+Natural Earth id names another place (Belgium's Luxembourg as the Grand
+Duchy's canton, set aside by its ISO codes; Manila as Metro Manila, set aside
+by its classes) are asked by code or name, which finds them (Luxembourg's
+296,008; Manila's own 1.9 million in place of Metro Manila's 14.0); an
+abolished unit whose one successor replaced it alone takes the successor's
+figure (Turin's, Naples's and Florence's provinces, now metropolitan
+cities), and one replaced by several or dissolved takes none (the old
+Kasaï-Oriental, Moyen-Cavally); Wikidata's slips give way to the figure
+before the jump (Cebu's and Bohol's 2024 counts are swapped there, Kuala
+Lumpur's 2025 figure is its metro area's, Vietnam's provinces merged in
+2025 carry the merged counts on the old items), at the cost of Papua's and
+West Papua's 2024 figures, which fit Natural Earth's undivided polygons;
+about 450 units have their own Wikidata item but no population on it (most
+of Italy's provinces, Burkina Faso's, Sri Lanka's districts, Madagascar's
+regions but Sava) and stay on the share-out; a figure no smaller than the
+country's own is left aside as a slip; and where Natural Earth's 2022 map
+has moved on, a figure is the unit's as it is now: an Irish county's counts
+the city drawn beside it, Kosovo's municipalities of 2000 hold the ones
+carved out since (Junik, Hani i Elezit, Klokot, North Mitrovica), Cotabato
+province still holds the villages ceded to Bangsamoro, Makati's and
+Taguig's 2020 counts stand for polygons drawn before their 2023 boundary
+moved, and a county's figure still counts a city of county rank drawn
+beside it in Hungary. Each country's people then grow or
 shrink at their own recent rate (the World Bank's thirty years of population,
 a year six years back weighing half as much as the latest, within ±3 % a
 year), the rate halving every twenty years as the demographic transition

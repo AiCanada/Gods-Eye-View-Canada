@@ -120,19 +120,53 @@ export const PARAMS = Object.freeze({
  * The Wikidata snapshot: the population (P1082) of every state and province,
  * asked of the SPARQL service by the unit's Wikidata item (Natural Earth's
  * `wikidataid`) when that item is the unit's alone, else by its ISO 3166-2
- * code (P300) when that code is the unit's alone; a unit sharing both with
- * another (Natural Earth's split polygons and its slips) gets none and is
- * left to the server's share-out. The best-ranked statement with the latest
- * point in time (P585) wins; among those on the same date, the larger.
+ * code (P300) when that code is the unit's alone, else by its name among its
+ * country's units with a population (a unit sharing item and code with
+ * another is Natural Earth's split polygon or slip; the rest of the keyless
+ * are its units without an item, or with one Wikidata holds no figure for).
+ * An item the query service has no triples for at all (British Columbia and
+ * Prince Edward Island in November 2026) is asked of the Wikidata API; an
+ * item without a population that one item replaced one for one (Turin's
+ * province, now its metropolitan city) takes that successor's; a unit whose
+ * item was replaced by several, some not drawn by Natural Earth (the old
+ * Kasaï-Oriental, split in three), or is dissolved with no successor known
+ * (Moyen-Cavally) is not asked by name, what bears its name now not being
+ * the unit drawn (Oman's Ash Sharqiyah, drawn as North and South, is). By
+ * name, a
+ * candidate must be of the unit's kind and level and no bare settlement, not
+ * a unit inside a unit of the level, and not an item that holds another of
+ * the country's units drawn apart from it (Lima's department, with Lima
+ * Province beside it); labels are read in the countries' own languages and
+ * the language-neutral "mul"; when two units name one item, GeoNames' name
+ * for the polygon says which is the unit and which a mislabelled neighbour.
+ * The best-ranked statement with the latest point in time (P585) wins;
+ * among those on the same date, the larger; a count that moves by half or
+ * more within five years against the item's recent figures gives way to the
+ * last figure before the jump (POPULATION_JUMP: Vietnam's merged provinces,
+ * Cebu's count swapped with Bohol's). A unit without a figure is left to the
+ * server's share-out.
  */
 export const POPULATION_PACK =
   'src/data/local_data/natural_earth/admin1_population.json';
 export const WIKIDATA_SPARQL = 'https://query.wikidata.org/sparql';
+export const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
 const WIKIDATA_USER_AGENT =
   'GodsEyeViewCanada/0.2 (https://github.com/AiCanada/Gods-Eye-View-Canada; scripts/build-admin-packs.mjs)';
 const WIKIDATA_BATCH = 250;
+const WIKIDATA_API_BATCH = 50;
 const WIKIDATA_PAUSE_MS = 1_000;
 const WIKIDATA_TRIES = 4;
+/**
+ * A population that moves by `factor` or more (either way) against the
+ * median of the item's dated figures of the `memory` years before, when the
+ * figure before it is within `years`, is a count of other bounds or another
+ * place (bestPopulation).
+ */
+export const POPULATION_JUMP = Object.freeze({
+  factor: 1.5,
+  years: 5,
+  memory: 15,
+});
 
 const args = process.argv.slice(2);
 const cacheDir = path.resolve(
@@ -625,11 +659,13 @@ export function admin1Group(p) {
 // ── the states' and provinces' people (Wikidata) ────────────────────────
 
 /**
- * The key each unit's population is asked by, aligned with `properties`
+ * The keys each unit's population is asked by, aligned with `properties`
  * (Natural Earth's admin-1 feature properties): `item`, its Wikidata item,
- * when no other named unit carries it; else `code`, its ISO 3166-2 code,
- * when no other named unit carries that; else neither. Unnamed units are
- * not in the pack and count for nothing.
+ * when no other named unit carries it, and `code`, its ISO 3166-2 code,
+ * when no other named unit carries that; null for a key shared or missing.
+ * The item is asked first, the code when the item has no figure (Natural
+ * Earth's Mount Athos is the mountain, its code GR-69 the monastic
+ * community). Unnamed units are not in the pack and count for nothing.
  */
 export function admin1PopulationKeys(properties) {
   const items = new Map();
@@ -645,11 +681,10 @@ export function admin1PopulationKeys(properties) {
     }
     return { name, item, code };
   });
-  return rows.map(({ name, item, code }) => {
-    if (name && item && items.get(item) === 1) return { item, code: null };
-    if (name && code && codes.get(code) === 1) return { item: null, code };
-    return { item: null, code: null };
-  });
+  return rows.map(({ name, item, code }) => ({
+    item: name && item && items.get(item) === 1 ? item : null,
+    code: name && code && codes.get(code) === 1 ? code : null,
+  }));
 }
 
 /** The year of a Wikidata point in time ("2011-01-01T00:00:00Z"); null without one. */
@@ -658,26 +693,83 @@ function yearOf(when) {
   return match ? Number(match[1]) : null;
 }
 
+/** Whether a statement's rank (the API's word or the query service's URI) is preferred. */
+const isPreferred = (rank) => /preferred/i.test(String(rank || ''));
+
+/** The latest of some parsed statements: the latest year, dated before undated, the larger on the same date. */
+function latestOf(list) {
+  let best = null;
+  for (const s of list)
+    if (
+      !best ||
+      (s.year ?? -Infinity) > (best.year ?? -Infinity) ||
+      (s.year === best.year && s.pop > best.pop)
+    )
+      best = s;
+  return best;
+}
+
 /**
- * The figure to keep among a unit's best-ranked population statements
- * ({pop, when?, item?} rows): the latest point in time, a dated statement
- * before an undated one, and among those on the same date the larger. Null
- * with none usable.
+ * The figure to keep among a unit's population statements ({pop, when?,
+ * item?, rank?} rows, every statement but the deprecated): of the best-ranked
+ * (the preferred when there are any, else the normal), the latest point in
+ * time, a dated statement before an undated one, and among those on the
+ * same date the larger. Null with none usable.
+ *
+ * A count that moves by half or more against the item's recent figures
+ * within POPULATION_JUMP.years is not a count of the same place: the unit's
+ * bounds moved (Vietnam's provinces merged in 2025 and the merged counts sit
+ * on the old items), or the figure is another's (Cebu's and Bohol's 2024
+ * counts are swapped on Wikidata, Kuala Lumpur's 2025 figure is its metro
+ * area's). The latest figure from before the jump stands instead, for the
+ * polygon as Natural Earth drew it, and the row says what it stands in for
+ * (`instead: {pop, year, ratio}`). The reference is the median of the dated
+ * figures of the POPULATION_JUMP.memory years before; a ten-year census gap
+ * that doubles is left alone, as are a reference of zero and the tiny.
  */
 export function bestPopulation(rows) {
-  let best = null;
+  const parsed = [];
   for (const row of rows || []) {
     const pop = Math.round(Number(row.pop));
     if (!Number.isFinite(pop) || pop < 0) continue;
-    const year = yearOf(row.when);
-    if (
-      !best ||
-      (year ?? -Infinity) > (best.year ?? -Infinity) ||
-      (year === best.year && pop > best.pop)
-    )
-      best = { pop, year, item: row.item || null };
+    parsed.push({
+      pop,
+      year: yearOf(row.when),
+      item: row.item || null,
+      preferred: isPreferred(row.rank),
+    });
   }
-  return best;
+  if (!parsed.length) return null;
+  const ranked = parsed.some((s) => s.preferred)
+    ? parsed.filter((s) => s.preferred)
+    : parsed;
+  const best = latestOf(ranked);
+  const out = { pop: best.pop, year: best.year, item: best.item };
+  if (best.year === null) return out;
+  const earlier = parsed.filter((s) => s.year !== null && s.year < best.year);
+  const near = earlier.filter(
+    (s) => s.year >= best.year - POPULATION_JUMP.years,
+  );
+  if (!near.length) return out;
+  const memory = earlier
+    .filter((s) => s.year >= best.year - POPULATION_JUMP.memory)
+    .map((s) => s.pop)
+    .sort((a, b) => a - b);
+  const median =
+    memory.length % 2
+      ? memory[(memory.length - 1) / 2]
+      : (memory[memory.length / 2 - 1] + memory[memory.length / 2]) / 2;
+  if (!(median > 0)) return out;
+  const ratio = best.pop / median;
+  if (ratio < POPULATION_JUMP.factor && ratio > 1 / POPULATION_JUMP.factor)
+    return out;
+  const before = latestOf(earlier);
+  return {
+    pop: before.pop,
+    year: before.year,
+    item: before.item,
+    instead: { pop: best.pop, year: best.year, ratio },
+  };
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -688,49 +780,553 @@ const chunks = (list, size) => {
 };
 const entityId = (uri) => String(uri || '').replace(/^.*\//, '');
 
-/** One SPARQL query's rows as plain values; asked again after a refusal or a failure, waiting longer each time. */
-async function sparql(query) {
+/**
+ * One Wikidata request's JSON body; asked again after a refusal, a failure
+ * or an answer cut short, waiting longer each time (and as long as the
+ * service asks), the client named in every request.
+ */
+async function wikidataJson(url, init = {}) {
   let pause = WIKIDATA_PAUSE_MS;
   for (let attempt = 1; ; attempt++) {
     let response = null;
+    let failure = null;
     try {
-      response = await fetch(WIKIDATA_SPARQL, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/x-www-form-urlencoded',
-          accept: 'application/sparql-results+json',
-          'user-agent': WIKIDATA_USER_AGENT,
-        },
-        body: new URLSearchParams({ query }),
+      response = await fetch(url, {
+        ...init,
+        headers: { ...(init.headers || {}), 'user-agent': WIKIDATA_USER_AGENT },
         signal: AbortSignal.timeout(120_000),
       });
-      if (response.ok) {
-        const { results } = await response.json();
-        return results.bindings.map((row) =>
-          Object.fromEntries(
-            Object.entries(row).map(([key, value]) => [key, value.value]),
-          ),
-        );
-      }
+      if (response.ok) return await response.json();
     } catch (error) {
-      if (attempt >= WIKIDATA_TRIES) throw error;
+      failure = error;
     }
-    if (attempt >= WIKIDATA_TRIES)
-      throw new Error(`Wikidata: HTTP ${response?.status} for the query`);
+    if (attempt >= WIKIDATA_TRIES) {
+      if (failure) throw failure;
+      throw new Error(`Wikidata: HTTP ${response.status} for the query`);
+    }
     const retryAfter = Number(response?.headers?.get('retry-after'));
     pause = Math.max(
       pause * 2,
       Number.isFinite(retryAfter) ? retryAfter * 1000 : 0,
     );
-    console.log(
-      `Wikidata: ${response ? `HTTP ${response.status}` : 'no answer'}, asking again in ${pause / 1000} s`,
-    );
+    const why = !response
+      ? 'no answer'
+      : response.ok
+        ? 'an answer cut short'
+        : `HTTP ${response.status}`;
+    console.log(`Wikidata: ${why}, asking again in ${pause / 1000} s`);
     await sleep(pause);
   }
 }
 
+/** One SPARQL query's rows as plain values. */
+async function sparql(query) {
+  const { results } = await wikidataJson(WIKIDATA_SPARQL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      accept: 'application/sparql-results+json',
+    },
+    body: new URLSearchParams({ query }),
+  });
+  return results.bindings.map((row) =>
+    Object.fromEntries(
+      Object.entries(row).map(([key, value]) => [key, value.value]),
+    ),
+  );
+}
+
+/** The entities the Wikidata API holds for `ids` (their claims), as {id: entity}. */
+async function wikidataEntities(ids) {
+  const { entities } = await wikidataJson(
+    `${WIKIDATA_API}?${new URLSearchParams({
+      action: 'wbgetentities',
+      ids: ids.join('|'),
+      props: 'claims',
+      format: 'json',
+    })}`,
+    { headers: { accept: 'application/json' } },
+  );
+  return entities || {};
+}
+
+/**
+ * An entity's population rows ({item, pop, when, codes, rank}) from the
+ * Wikidata API's claims, every statement but the deprecated, as the query
+ * service would write them (bestPopulation ranks them): `when` the point in
+ * time (P585) qualifier, `codes` the item's ISO 3166-2 codes (P300) joined
+ * by "|", `rank` the statement's. For the items the service has no triples
+ * for.
+ */
+export function populationRows(entity, item = entity?.id) {
+  const claims = (entity?.claims?.P1082 || []).filter(
+    (c) => c.rank !== 'deprecated',
+  );
+  const codes = (entity?.claims?.P300 || [])
+    .filter((c) => c.rank !== 'deprecated')
+    .map((c) => c.mainsnak?.datavalue?.value)
+    .filter((code) => typeof code === 'string')
+    .join('|');
+  return claims.flatMap((c) => {
+    const amount = c.mainsnak?.datavalue?.value?.amount;
+    if (amount === undefined) return [];
+    const when = c.qualifiers?.P585?.[0]?.datavalue?.value?.time;
+    return [
+      {
+        item,
+        pop: String(amount).replace(/^\+/, ''),
+        when: when ? String(when).replace(/^\+/, '') : undefined,
+        codes,
+        rank: c.rank || 'normal',
+      },
+    ];
+  });
+}
+
+// ── the units asked by name ──────────────────────────────────────────────
+
+/**
+ * The words an administrative name may carry that a label may not, or the
+ * other way round ("Region", "Province of", "Metropolitan City of",
+ * "Provincia di"), folded away for a loose match.
+ */
+const ADMIN_WORDS =
+  /\b(region\w*|provinc\w*|district\w*|municipalit\w*|municipal|county|counties|metropolitan|city|prefecture|departe?ment\w*|governorate|state|territory|parish|division|zone|area|autonomous|special|administrative|federal|capital|commune|canton|oblast|raion|of|the|de|du|des|di|del|della|delle|degli|da|do|dos|das|la|le|el|los|las|and|y|et|e)\b/g;
+/**
+ * The same words as the countries write them, in GeoNames' names and
+ * Wikidata's local labels ("Rēzeknes novads", "Opština Zvečan", "Sha`biyat
+ * al Wahat", "Muhafazat Mubarak al Kabir", "Provincia de Lima"), and the
+ * Arabic article as it is transliterated ("Al Marj", "Marj District").
+ */
+const LOCAL_ADMIN_WORDS =
+  /\b(al|el|ash|ad|adh|an|ar|as|at|ath|az|rajons?|rajona|novads|novada|pagasts|opstin[aey]|opcin[aey]|obcin[aey]|okres|powiat|kraj|judet(ul)?|voivodeship|zupanija|uyezd|gmina|comuna|concelho|freguesia|distrito|departamentos?|gouvernorat|m[ou]hafazah?|m[ou]hafazat|wilaya[ht]?|velayat|vilayet(i)?|viloyat(i)?|welayat|sha biyat|shabiyat|baladiya[ht]?|baladiyat|mintaqa[ht]|qada|kaza|nahiya[h]?|amphoe|changwat|kabupaten|kota|lalawigan|probinsi?ya|lungsod|tinh|thanh pho|cercle|arrondissement|comarca|partido|parroquia|kommune?|kunta|komun[ae]|qarku|rrethi|rayonu?|raioni|oblys[y]?|aimag|aymag|dzongkhag|zilla?|jela|jilla|tehsil|taluka?|mandal|upazila|sous|prefeitura|provincie|provinz|regierungsbezirk|bezirk|landkreis|kreis|amt|regione|provincia|dipartimento|circondario|contea|comune|municipio|municipalidad|cantone|estado|gobernacion|intendencia|departement)\b/g;
+export function looseAdminName(text) {
+  return normalizeAdminName(text)
+    .replace(ADMIN_WORDS, ' ')
+    .replace(LOCAL_ADMIN_WORDS, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+/** A label that names an administrative unit rather than a bare place. */
+const GENERIC_LABEL =
+  /\b(region\w*|provinc\w*|district\w*|municipalit\w*|county|metropolitan|prefecture|departe?ment\w*|governorate|state|territory|parish|division|zone|area|atoll|commune|canton|oblast|raion|comarca|wilaya|kabupaten)\b/i;
+/**
+ * A unit whose own kind is a city (Natural Earth's type: "Highly Urbanized
+ * City", "Republican City", "Town"): a bare label fits it. A municipality is
+ * not one: it is the unit around a town of the same name, and the town's
+ * figure is not its own. Italy's metropolitan cities are provinces.
+ */
+const CITY_TYPE = /\b(city|town|borough)\b/i;
+export function admin1IsCity(type) {
+  const text = String(type || '');
+  return CITY_TYPE.test(text) && !/metropolitan/i.test(text);
+}
+/**
+ * Whether an item's classes (its P31 labels in English: "city", "big city",
+ * "highly urbanized city", "town") make it a city rather than an
+ * administrative unit; "municipalities and cities of Serbia" and
+ * "metropolitan city of Italy" do not.
+ */
+const CITY_CLASS = /\b(city|town|borough)\b/i;
+export function classIsCity(labels) {
+  return (labels || []).some(
+    (l) => CITY_CLASS.test(l) && !/metropolitan/i.test(l),
+  );
+}
+/**
+ * Whether an item's classes make it a bare settlement and nothing more (a
+ * hamlet, a village, a locality, a quarter: every class a place to live,
+ * none an administrative unit): Åland's Brändö is a municipality, and a
+ * village of that name in it is not the municipality. "Human settlement"
+ * beside "district of Hong Kong" leaves the district a district.
+ */
+const SETTLEMENT_CLASS =
+  /\b(city|town|borough|village|hamlet|settlement|locality|neighbou?rhood|quarter|suburb|urban area|populated place|census-designated place)\b/i;
+export function classIsSettlementOnly(labels) {
+  const list = labels || [];
+  return list.length > 0 && list.every((l) => SETTLEMENT_CLASS.test(l));
+}
+/**
+ * Whether an item keyed to a unit of a city kind is plainly a larger unit
+ * instead (a region, province, prefecture, state, department or
+ * governorate by its classes, and no city): Natural Earth's Manila carries
+ * Metro Manila's id, its Cebu city its province's. Classes that say
+ * nothing either way ("human settlement", "atoll of the Maldives",
+ * "first-level administrative division") leave the key as it is.
+ */
+const LARGER_UNIT_CLASS =
+  /\b(region|province|prefecture|state|department|governorate)\b/i;
+export function cityItemMisplaced(labels) {
+  const list = labels || [];
+  return (
+    list.length > 0 &&
+    !classIsCity(list) &&
+    list.some((l) => LARGER_UNIT_CLASS.test(l))
+  );
+}
+
+/**
+ * The spellings a unit may be labelled by: Natural Earth's name, English
+ * name, local name and GeoNames name, each alone and with the unit's kind
+ * ("Lima Region", "Province of Turin"). Its alternate names and Yahoo name
+ * are left out: for many units they name the region above (Rimini's say
+ * "Emilia Romagna", a Guinean prefecture's "Labé"), whose figure is not the
+ * unit's.
+ */
+export function admin1NameVariants(p) {
+  const type = String(p.type_en || p.type || '').trim();
+  const names = [p.name, p.name_en, p.name_local, p.gn_name]
+    .map((n) => String(n || '').trim())
+    .filter(Boolean);
+  const out = new Set();
+  for (const n of names) {
+    out.add(n);
+    if (type) {
+      out.add(`${n} ${type}`);
+      out.add(`${type} of ${n}`);
+    }
+  }
+  return [...out];
+}
+/**
+ * The spellings among `admin1NameVariants(p)` that GeoNames' name alone
+ * gives (normalized), for `matchUnitByName`'s `secondary`.
+ */
+export function admin1SecondaryVariants(p) {
+  const own = new Set(
+    admin1NameVariants({ ...p, gn_name: null }).map(normalizeAdminName),
+  );
+  return admin1NameVariants(p)
+    .map(normalizeAdminName)
+    .filter((v) => v && !own.has(v));
+}
+
+/**
+ * Whether a candidate may stand for a unit at all, whatever its labels: of
+ * the unit's own kind when Natural Earth names one (a city for a city, an
+ * administrative unit for the rest, read off the candidate's classes), and,
+ * for the administrative units (cities are not nested as regions are): no
+ * bare settlement (a village or hamlet of the unit's name is not the unit);
+ * not a unit inside a unit of the level (a candidate whose parent is of a
+ * class the country's keyed units of the unit's kind have is a step below
+ * them: Libya's Ajdabiya, a municipality in the Al Wahat district, for the
+ * district drawn as Ajdabiya); and at the units' level: of a class the
+ * country's keyed units of that kind have (else any keyed unit of the
+ * country has), or, with none keyed, of a class with members enough in the
+ * country for the units of that kind and not three times too many (four
+ * fifths of them at least; Kosovo's thirty units are its municipalities,
+ * not its seven districts nor its fourteen hundred villages). A candidate
+ * of no known class is never admitted. The context: `peerClasses` (a Set,
+ * or null with no keyed unit), `sameKindPeerClasses` (the classes of the
+ * keyed units of the unit's own kind alone, or null), `classCounts`
+ * (class → items of it in the country), `unitsOfKind` (the country's units
+ * of the unit's kind), `peerClassShares` (class → share of the keyed units
+ * of the kind carrying it), `levelless`, `contested` (a Set of items no
+ * unit could take). The candidate: `classes`, `classLabels`, `unitClasses` (the
+ * classes that are no city), `parentUnits` ({id, classes} of the units it
+ * is located in).
+ */
+export function admissibleUnit(unit, candidate, context) {
+  const classes = candidate.classes || [];
+  if (!classes.length) return false;
+  const labels = candidate.classLabels || [];
+  const cityLike = classIsCity(labels);
+  if (unit.city) return !unit.type || cityLike;
+  // A city that is also a unit of the level (The Valley, Anguilla's capital
+  // and one of its fourteen districts) stands for the unit by its unit
+  // class; a bare city does not.
+  const atLevel = (ids) => {
+    const peers = context?.peerClasses;
+    // Of a class most of the keyed units of the kind carry
+    // (`peerClassShares`), not of a stray one: Italy's provinces are
+    // "province of Italy", and one keyed to a comune does not make every
+    // capital comune a province. Without the shares, any peer class.
+    const shares = context?.peerClassShares;
+    if (peers?.size)
+      return ids.some((c) =>
+        shares ? (shares.get(c) || 0) >= 0.5 : peers.has(c),
+      );
+    // A country with no keyed unit and no unit located in it on Wikidata
+    // (the Cook Islands' islands carry a country alone) has no level to hold
+    // a candidate to: its units' names found what there is.
+    if (context?.levelless) return ids.length > 0;
+    const units = context?.unitsOfKind || 0;
+    return ids.some((c) => {
+      const n = context?.classCounts?.get(c) || 0;
+      return n >= 0.8 * units && n <= 3 * units;
+    });
+  };
+  if (unit.type && cityLike) {
+    const unitClasses = candidate.unitClasses || [];
+    return unitClasses.length > 0 && atLevel(unitClasses);
+  }
+  if (classIsSettlementOnly(labels)) return false;
+  // A unit inside a unit of the level is a step below it, unless that
+  // parent is an item the unit was just denied for naming it with another
+  // (`contested`): Natural Earth's North and South Tipperary both name
+  // County Tipperary, and each is then the riding inside it.
+  const sameKind = context?.sameKindPeerClasses;
+  const contested = context?.contested;
+  if (
+    sameKind?.size &&
+    (candidate.parentUnits || []).some(
+      (parent) =>
+        !contested?.has(parent.id) &&
+        (parent.classes || []).some((c) => sameKind.has(c)),
+    )
+  )
+    return false;
+  return atLevel(classes);
+}
+
+/**
+ * Whether Natural Earth's names for a unit agree with GeoNames' name for
+ * the polygon (`gn_name`, the words of the kind folded away; true with
+ * none). Natural Earth labels a few polygons with a neighbour's name, and
+ * GeoNames tells: its second "Parwan" is Panjshir, its second "Uruzgan"
+ * Daykundi, its second "Mbarara" Kiruhura. When two units name one item,
+ * the one GeoNames agrees with takes it.
+ */
+export function nameAgreesWithGeoNames(p) {
+  const gn = looseAdminName(p.gn_name || '');
+  if (!gn) return true;
+  return [p.name, p.name_en, p.name_local].some((n) => {
+    const own = looseAdminName(n || '');
+    return own && (own === gn || gn.includes(own) || own.includes(gn));
+  });
+}
+
+/**
+ * The candidate a unit's names pick among its country's units on Wikidata
+ * ({item, labels, direct, classes, classLabels}; with a `context`, only
+ * those `admissibleUnit` admits): an exact label beats a loose one (the
+ * administrative words folded away), an exact label that names the kind
+ * ("Lima Province") beats a bare one ("Lima", which a region, a province
+ * and a city all answer to), a label of the unit's own kind (an
+ * administrative word for a region, a bare name for a city) beats one of
+ * the other, and a unit directly in the country beats one a step down.
+ * Null with no match or a tie at the top.
+ */
+export function matchUnitByName(unit, candidates, context = null) {
+  const exact = new Set(
+    (unit.variants || []).map(normalizeAdminName).filter(Boolean),
+  );
+  const loose = new Set(
+    (unit.variants || []).map(looseAdminName).filter(Boolean),
+  );
+  // The spellings that come from GeoNames alone (normalized): an exact hit
+  // on one of them weighs a little less than one on Natural Earth's own
+  // names, as GeoNames' name is now and then a neighbour's (Malabon's says
+  // Caloocan City; Malabon is Malabon first).
+  const secondary = new Set(unit.secondary || []);
+  let best = null;
+  let bestScore = 0;
+  let tie = false;
+  for (const c of candidates || []) {
+    if (context && !admissibleUnit(unit, c, context)) continue;
+    const labels = c.labels || [];
+    const exactLabels = labels.filter((l) => exact.has(normalizeAdminName(l)));
+    const hitExact = exactLabels.length > 0;
+    const hitLoose =
+      hitExact || labels.some((l) => loose.has(looseAdminName(l)));
+    if (!hitLoose) continue;
+    const generic = labels.some((l) => GENERIC_LABEL.test(l));
+    const ownExact = exactLabels.some(
+      (l) => !secondary.has(normalizeAdminName(l)),
+    );
+    let score = hitExact ? (ownExact ? 3 : 2.5) : 1;
+    if (exactLabels.some((l) => GENERIC_LABEL.test(l))) score += 1;
+    if (generic !== Boolean(unit.city)) score += 2;
+    if (c.direct) score += 0.5;
+    if (score > bestScore) {
+      best = c;
+      bestScore = score;
+      tie = false;
+    } else if (score === bestScore) tie = true;
+  }
+  return best && !tie ? best : null;
+}
+
+/**
+ * The languages a candidate's labels and aliases are read in: English, the
+ * language-neutral "mul" label many items carry alone since 2024 (Cebu's
+ * only label is "Cebu"@mul), and the languages of the countries with units
+ * asked by name, whose own spelling Natural Earth often carries ("Rēzeknes
+ * novads").
+ */
+/** The languages the units' names are looked up in as labels (the second candidate pool). */
+export const LABEL_POOL_LANGUAGES = [
+  'en',
+  'mul',
+  'fr',
+  'es',
+  'pt',
+  'de',
+  'it',
+  'nl',
+  'ru',
+  'ar',
+  'zh',
+  'id',
+  'tl',
+];
+export const LABEL_LANGUAGES = [
+  'en',
+  'mul',
+  'fr',
+  'es',
+  'pt',
+  'it',
+  'de',
+  'nl',
+  'sq',
+  'id',
+  'ms',
+  'tl',
+  'ceb',
+  'sw',
+  'no',
+  'nb',
+  'sv',
+  'da',
+  'fi',
+  'is',
+  'fo',
+  'hr',
+  'sr',
+  'bs',
+  'sl',
+  'mk',
+  'bg',
+  'tr',
+  'az',
+  'ka',
+  'hy',
+  'kk',
+  'ky',
+  'uz',
+  'tg',
+  'tk',
+  'mn',
+  'pl',
+  'cs',
+  'sk',
+  'hu',
+  'ro',
+  'el',
+  'ru',
+  'uk',
+  'be',
+  'lv',
+  'lt',
+  'et',
+  'ga',
+  'cy',
+  'gd',
+  'mt',
+  'lb',
+  'eu',
+  'ca',
+  'gl',
+  'oc',
+  'ar',
+  'he',
+  'fa',
+  'ps',
+  'ur',
+  'ku',
+  'hi',
+  'bn',
+  'ne',
+  'si',
+  'ta',
+  'te',
+  'ml',
+  'kn',
+  'mr',
+  'gu',
+  'pa',
+  'or',
+  'as',
+  'dv',
+  'my',
+  'th',
+  'lo',
+  'km',
+  'vi',
+  'zh',
+  'yue',
+  'ja',
+  'ko',
+  'am',
+  'ti',
+  'so',
+  'om',
+  'ha',
+  'yo',
+  'ig',
+  'ff',
+  'wo',
+  'bm',
+  'rw',
+  'rn',
+  'ln',
+  'kg',
+  'sg',
+  'mg',
+  'ny',
+  'sn',
+  'st',
+  'tn',
+  'ts',
+  'ss',
+  'zu',
+  'xh',
+  'af',
+  'ht',
+  'sm',
+  'to',
+  'fj',
+  'bi',
+  'na',
+  'mh',
+  'ch',
+  'gil',
+  'tvl',
+  'pau',
+  'tpi',
+  'ho',
+  'ty',
+  'crs',
+  'kea',
+  'ay',
+  'qu',
+  'gn',
+]
+  .map((code) => JSON.stringify(code))
+  .join(',');
+
+/**
+ * Every population statement of ?item but the deprecated, with its rank
+ * (bestPopulation ranks them and reads the jumps): ?pop, ?when, ?rank.
+ */
 const POPULATION_PATTERN =
-  '?item p:P1082 ?statement . ?statement a wikibase:BestRank ; ps:P1082 ?pop . OPTIONAL { ?statement pq:P585 ?when . }';
+  '?item p:P1082 ?statement . ?statement ps:P1082 ?pop ; wikibase:rank ?rank . FILTER(?rank != wikibase:DeprecatedRank) OPTIONAL { ?statement pq:P585 ?when . }';
+
+/**
+ * The one item that replaced `item` (its "replaced by" items in
+ * `successors`, a Set) and replaced it alone (the "replaces" items of each
+ * successor in `replacedBy`, a Map of Sets); null with none, several, or a
+ * successor that also replaced others (a merger: the successor's figure
+ * would count other units' people).
+ */
+export function soleSuccessor(item, successors, replacedBy) {
+  if (!successors || successors.size !== 1) return null;
+  const [next] = successors;
+  const replaced = replacedBy?.get(next);
+  if (!replaced || replaced.size !== 1 || !replaced.has(item)) return null;
+  return next;
+}
 
 /**
  * Whether an item's ISO 3166-2 codes on Wikidata ("BE-WLX|BE-WLX" as the
@@ -754,8 +1350,10 @@ export function codesInCountry(codes, iso2) {
 
 /**
  * The Wikidata snapshot (POPULATION_PACK): every unit's population by its
- * item, else by its ISO 3166-2 code, asked in batches a second apart. An
- * item whose own ISO 3166-2 codes are all another country's is set aside.
+ * item, else by its ISO 3166-2 code, else by its name among its country's
+ * units, asked in batches a second apart. An item whose own ISO 3166-2
+ * codes are all another country's is set aside, as is an item that is no
+ * city keyed to a unit of a city kind; both are then asked by name.
  */
 async function buildAdmin1Population() {
   const source = await fetchPinned('admin1');
@@ -768,7 +1366,6 @@ async function buildAdmin1Population() {
     if (key.item) countryOf.set(key.item, properties[index].iso_a2);
   });
   const itemIds = [...new Set(keys.map((k) => k.item).filter(Boolean))].sort();
-  const codeIds = [...new Set(keys.map((k) => k.code).filter(Boolean))].sort();
   const byItem = new Map();
   let asked = 0;
   for (const batch of chunks(itemIds, WIKIDATA_BATCH)) {
@@ -776,7 +1373,7 @@ async function buildAdmin1Population() {
       `Wikidata: items ${asked + 1}–${asked + batch.length} of ${itemIds.length}`,
     );
     const rows = await sparql(
-      `SELECT ?item ?pop ?when (GROUP_CONCAT(DISTINCT ?iso; separator="|") AS ?codes) WHERE { VALUES ?item { ${batch.map((q) => `wd:${q}`).join(' ')} } ${POPULATION_PATTERN} OPTIONAL { ?item wdt:P300 ?iso . } } GROUP BY ?item ?pop ?when`,
+      `SELECT ?item ?pop ?when ?rank (GROUP_CONCAT(DISTINCT ?iso; separator="|") AS ?codes) WHERE { VALUES ?item { ${batch.map((q) => `wd:${q}`).join(' ')} } ${POPULATION_PATTERN} OPTIONAL { ?item wdt:P300 ?iso . } } GROUP BY ?item ?pop ?when ?rank`,
     );
     for (const row of rows) {
       const item = entityId(row.item);
@@ -786,6 +1383,107 @@ async function buildAdmin1Population() {
     asked += batch.length;
     await sleep(WIKIDATA_PAUSE_MS);
   }
+  // A figure that stands in for a later one that jumped (bestPopulation).
+  const logInstead = (what, best) => {
+    if (!best?.instead) return;
+    const { pop, year, ratio } = best.instead;
+    console.log(
+      `Wikidata: ${what}: ${pop.toLocaleString('en-US')} (${year}) is ×${ratio.toFixed(2)} the figures before it; ${best.pop.toLocaleString('en-US')} (${best.year}) stands`,
+    );
+  };
+  // The query service has no triples at all for a few items (British
+  // Columbia, Prince Edward Island and Newport in November 2026): the items
+  // it left unanswered are asked of the Wikidata API, whose claims are read
+  // as the service would rank them.
+  const unanswered = itemIds.filter((item) => !byItem.has(item));
+  let answered = 0;
+  asked = 0;
+  for (const batch of chunks(unanswered, WIKIDATA_API_BATCH)) {
+    console.log(
+      `Wikidata: API, items ${asked + 1}–${asked + batch.length} of the ${unanswered.length} the query service left unanswered`,
+    );
+    const entities = await wikidataEntities(batch);
+    for (const item of batch) {
+      const rows = populationRows(entities[item], item);
+      if (!rows.length) continue;
+      byItem.set(item, rows);
+      answered += 1;
+    }
+    asked += batch.length;
+    await sleep(WIKIDATA_PAUSE_MS);
+  }
+  console.log(
+    `Wikidata: the API holds a population for ${answered} of the ${unanswered.length} items the query service left unanswered`,
+  );
+  // An item without a population that one item replaced (P1366), and that
+  // replaced it alone (P1365), gives its successor's figure: Natural Earth
+  // keys Turin, Naples and Florence to the provinces their metropolitan
+  // cities succeeded one for one. A unit merged into a larger one (Nepal's
+  // zones into its provinces) is not followed.
+  const orphans = itemIds.filter((item) => !bestPopulation(byItem.get(item)));
+  const successorsOf = new Map();
+  const replacedBy = new Map();
+  // The orphans Wikidata marks dissolved (P576), successor known or not:
+  // Ivory Coast's Moyen-Cavally ended in 2011 with no "replaced by", and
+  // the Cavally region named for it covers three of its four departments.
+  const dissolved = new Set();
+  asked = 0;
+  for (const batch of chunks(orphans, WIKIDATA_BATCH)) {
+    console.log(
+      `Wikidata: successors of items ${asked + 1}–${asked + batch.length} of the ${orphans.length} without a population`,
+    );
+    const rows = await sparql(
+      `SELECT ?item ?next ?prev ?ended WHERE { VALUES ?item { ${batch.map((q) => `wd:${q}`).join(' ')} } OPTIONAL { ?item wdt:P1366 ?next . OPTIONAL { ?next wdt:P1365 ?prev . } } OPTIONAL { ?item wdt:P576 ?ended . } }`,
+    );
+    for (const row of rows) {
+      const item = entityId(row.item);
+      if (row.ended) dissolved.add(item);
+      if (!row.next) continue;
+      const next = entityId(row.next);
+      if (!successorsOf.has(item)) successorsOf.set(item, new Set());
+      successorsOf.get(item).add(next);
+      if (row.prev) {
+        if (!replacedBy.has(next)) replacedBy.set(next, new Set());
+        replacedBy.get(next).add(entityId(row.prev));
+      }
+    }
+    asked += batch.length;
+    await sleep(WIKIDATA_PAUSE_MS);
+  }
+  const succession = new Map();
+  for (const item of orphans) {
+    const next = soleSuccessor(item, successorsOf.get(item), replacedBy);
+    if (next) succession.set(item, next);
+  }
+  const bySuccessor = new Map();
+  const successorIds = [...new Set(succession.values())].sort();
+  for (const batch of chunks(successorIds, WIKIDATA_BATCH)) {
+    const rows = await sparql(
+      `SELECT ?item ?pop ?when ?rank (GROUP_CONCAT(DISTINCT ?iso; separator="|") AS ?codes) WHERE { VALUES ?item { ${batch.map((q) => `wd:${q}`).join(' ')} } ${POPULATION_PATTERN} OPTIONAL { ?item wdt:P300 ?iso . } } GROUP BY ?item ?pop ?when ?rank`,
+    );
+    for (const row of rows) {
+      const item = entityId(row.item);
+      if (!bySuccessor.has(item)) bySuccessor.set(item, []);
+      bySuccessor.get(item).push(row);
+    }
+    await sleep(WIKIDATA_PAUSE_MS);
+  }
+  let succeeded = 0;
+  for (const [item, next] of succession) {
+    const rows = bySuccessor.get(next);
+    if (!rows || !bestPopulation(rows)) {
+      succession.delete(item);
+      continue;
+    }
+    byItem.set(item, rows);
+    succeeded += 1;
+    console.log(
+      `Wikidata: ${item} takes the figure of ${next}, which replaced it`,
+    );
+  }
+  console.log(
+    `Wikidata: ${succeeded} items without a population take their one successor's`,
+  );
   const items = {};
   let setAside = 0;
   for (const item of itemIds) {
@@ -799,8 +1497,54 @@ async function buildAdmin1Population() {
       );
       continue;
     }
-    items[item] = [best.pop, best.year];
+    const via = succession.get(item);
+    logInstead(item, best);
+    items[item] = via ? [best.pop, best.year, via] : [best.pop, best.year];
   }
+  // The Wikidata ids of each country's units, for the successors test.
+  const unitIdsOf = new Map();
+  for (const p of properties)
+    if (String(p.name || '').trim() && /^Q\d+$/.test(p.wikidataid || '')) {
+      if (!unitIdsOf.has(p.adm0_a3)) unitIdsOf.set(p.adm0_a3, new Set());
+      unitIdsOf.get(p.adm0_a3).add(p.wikidataid);
+    }
+  // Whether a unit's own item is a unit no longer drawn as it was: replaced
+  // by several, more than one of them drawn nowhere by Natural Earth (its
+  // Kasaï-Oriental is the old province, split in three, Lomami and Sankuru
+  // drawn nowhere), or dissolved with no successor known (Moyen-Cavally).
+  // What bears its name or code now is not the unit drawn, so neither the
+  // code nor the name is asked. When every other successor is a unit of the
+  // country itself (Oman's Ash Sharqiyah, drawn as North and South, the
+  // South under the old region's id), the polygon is the one successor
+  // left, and the unit is asked.
+  const replacedUnit = (item, adm0) => {
+    if (!item || succession.has(item)) return false;
+    const successors = successorsOf.get(item);
+    if (successors?.size)
+      return (
+        [...successors].filter((next) => !unitIdsOf.get(adm0)?.has(next))
+          .length > 1
+      );
+    return dissolved.has(item);
+  };
+  // The codes of the units their item gives no figure (none, or one
+  // without a population): Natural Earth's codes are now and then another
+  // unit's (Uganda's renumbered districts, Latvia's merged municipalities),
+  // so a code is asked only where it is needed, and only then does its
+  // item count as taken.
+  const codeIds = [
+    ...new Set(
+      keys
+        .map((k, index) =>
+          k.code &&
+          !(k.item && items[k.item]) &&
+          !replacedUnit(k.item, properties[index].adm0_a3)
+            ? k.code
+            : null,
+        )
+        .filter(Boolean),
+    ),
+  ].sort();
   const byCode = new Map();
   asked = 0;
   for (const batch of chunks(codeIds, WIKIDATA_BATCH)) {
@@ -808,7 +1552,7 @@ async function buildAdmin1Population() {
       `Wikidata: codes ${asked + 1}–${asked + batch.length} of ${codeIds.length}`,
     );
     const rows = await sparql(
-      `SELECT ?code ?item ?pop ?when WHERE { VALUES ?code { ${batch.map((c) => JSON.stringify(c)).join(' ')} } ?item wdt:P300 ?code . ${POPULATION_PATTERN} }`,
+      `SELECT ?code ?item ?pop ?when ?rank WHERE { VALUES ?code { ${batch.map((c) => JSON.stringify(c)).join(' ')} } ?item wdt:P300 ?code . ${POPULATION_PATTERN} }`,
     );
     for (const row of rows) {
       if (!byCode.has(row.code)) byCode.set(row.code, []);
@@ -820,7 +1564,487 @@ async function buildAdmin1Population() {
   const codes = {};
   for (const code of codeIds) {
     const best = bestPopulation(byCode.get(code));
-    if (best) codes[code] = [best.pop, best.year, best.item];
+    if (!best) continue;
+    logInstead(`${code} (${best.item})`, best);
+    codes[code] = [best.pop, best.year, best.item];
+  }
+  // The classes (P31) of items, and the classes' English labels, asked in
+  // batches and kept.
+  const classesOf = new Map();
+  const classLabelOf = new Map();
+  const fetchClasses = async (ids, what) => {
+    const wanted = ids.filter((id) => !classesOf.has(id)).sort();
+    let done = 0;
+    for (const batch of chunks(wanted, WIKIDATA_BATCH)) {
+      console.log(
+        `Wikidata: classes of ${what} ${done + 1}–${done + batch.length} of ${wanted.length}`,
+      );
+      for (const id of batch) classesOf.set(id, new Set());
+      const rows = await sparql(
+        `SELECT ?item ?class WHERE { VALUES ?item { ${batch.map((q) => `wd:${q}`).join(' ')} } ?item wdt:P31 ?class . }`,
+      );
+      for (const row of rows)
+        classesOf.get(entityId(row.item))?.add(entityId(row.class));
+      done += batch.length;
+      await sleep(WIKIDATA_PAUSE_MS);
+    }
+  };
+  const fetchClassLabels = async (ids) => {
+    const wanted = ids.filter((id) => !classLabelOf.has(id)).sort();
+    for (const batch of chunks(wanted, WIKIDATA_BATCH)) {
+      for (const id of batch) classLabelOf.set(id, '');
+      // English, else the language-neutral label.
+      const rows = await sparql(
+        `SELECT ?class ?label (LANG(?label) AS ?lang) WHERE { VALUES ?class { ${batch.map((q) => `wd:${q}`).join(' ')} } ?class rdfs:label ?label . FILTER(LANG(?label) IN ("en", "mul")) }`,
+      );
+      for (const row of rows) {
+        const id = entityId(row.class);
+        if (row.lang === 'en' || !classLabelOf.get(id))
+          classLabelOf.set(id, row.label);
+      }
+      await sleep(WIKIDATA_PAUSE_MS);
+    }
+  };
+  const classLabelsOf = (item) =>
+    [...(classesOf.get(item) || [])]
+      .map((c) => classLabelOf.get(c) || '')
+      .filter(Boolean);
+  // A unit of a city kind (Natural Earth's "Highly Urbanized City",
+  // "Republican City", "City") keyed to an item that is plainly a larger
+  // unit carries another place's id (Natural Earth's Manila has Metro
+  // Manila's, its Zamboanga its region's, its Cebu city its province's):
+  // set aside for now and asked by name below like the rest; a unit that
+  // then finds no city of its name gets its key back (Natural Earth's
+  // Suðurnes is typed a town, and is the region its id names).
+  const kindOf = (p) => String(p.type_en || p.type || '').trim();
+  const cityKeyed = new Map();
+  properties.forEach((p, index) => {
+    if (!String(p.name || '').trim() || !admin1IsCity(kindOf(p))) return;
+    const { item, code } = keys[index];
+    const figured =
+      (item && items[item] && item) || (code && codes[code]?.[2]) || null;
+    if (!figured) return;
+    if (!cityKeyed.has(figured)) cityKeyed.set(figured, []);
+    cityKeyed.get(figured).push(p);
+  });
+  await fetchClasses([...cityKeyed.keys()], 'units of a city kind');
+  await fetchClassLabels([
+    ...new Set(
+      [...cityKeyed.keys()].flatMap((item) => [...(classesOf.get(item) || [])]),
+    ),
+  ]);
+  const provisional = new Map();
+  for (const [item, units] of cityKeyed) {
+    const labels = classLabelsOf(item);
+    if (!cityItemMisplaced(labels)) continue;
+    console.log(
+      `Wikidata: ${item} (${labels.join(', ')}) is no city; ${units.map((p) => `${p.admin}/${p.name}`).join(' and ')} set aside, asked by name`,
+    );
+    const kept = { units, item: items[item] || null, codes: {} };
+    delete items[item];
+    for (const [code, row] of Object.entries(codes))
+      if (row[2] === item) {
+        kept.codes[code] = row;
+        delete codes[code];
+      }
+    provisional.set(item, kept);
+  }
+  // The rest by name: the units still without a figure (the set-aside
+  // among them), each against its country's units on Wikidata (those
+  // located in the country, or in a unit located in it, with a
+  // population), kept by Natural Earth's own admin-1 code. A unit alone in
+  // its country is not asked: the server gives it the country's people
+  // whatever the snapshot says.
+  const countryItemOf = new Map();
+  const sovereignOf = new Map();
+  const countryFeatures = JSON.parse(
+    (await fetchPinned('countries')).bytes,
+  ).features;
+  for (const { properties: c } of countryFeatures)
+    if (/^Q\d+$/.test(c.WIKIDATAID || ''))
+      countryItemOf.set(c.ADM0_A3, c.WIKIDATAID);
+  // A territory's items name the sovereign as their country (P17): Saint
+  // Pierre and Miquelon's commune is in France, American Samoa's districts
+  // in the United States.
+  for (const { properties: c } of countryFeatures)
+    if (c.SOV_A3 && c.SOV_A3 !== c.ADM0_A3 && countryItemOf.get(c.SOV_A3))
+      sovereignOf.set(c.ADM0_A3, countryItemOf.get(c.SOV_A3));
+  const taken = new Set([
+    ...Object.keys(items),
+    ...Object.values(items)
+      .map((row) => row[2])
+      .filter(Boolean),
+    ...Object.values(codes).map((row) => row[2]),
+  ]);
+  const unitsOf = new Map();
+  for (const p of properties)
+    if (String(p.name || '').trim())
+      unitsOf.set(p.adm0_a3, (unitsOf.get(p.adm0_a3) || 0) + 1);
+  const pending = new Map();
+  let alone = 0;
+  let replaced = 0;
+  properties.forEach((p, index) => {
+    const { item, code } = keys[index];
+    if (!String(p.name || '').trim()) return;
+    if ((item && items[item]) || (code && codes[code])) return;
+    const country = countryItemOf.get(p.adm0_a3);
+    if (!country) return;
+    if (unitsOf.get(p.adm0_a3) === 1) {
+      alone += 1;
+      return;
+    }
+    if (replacedUnit(item, p.adm0_a3)) {
+      replaced += 1;
+      return;
+    }
+    if (!pending.has(country)) pending.set(country, []);
+    pending.get(country).push(p);
+  });
+  if (alone)
+    console.log(
+      `Wikidata: ${alone} units alone in their country are not asked by name; each takes its country's people`,
+    );
+  if (replaced)
+    console.log(
+      `Wikidata: ${replaced} units whose own item was replaced by others or dissolved are not asked by name; what bears the name now is not the unit drawn`,
+    );
+  // The level a name match must be at: the classes (P31) of the country's
+  // keyed units, by Natural Earth's kind of unit; and the count of the
+  // country's units of each kind, for a country with no keyed unit.
+  const peerItems = new Map();
+  const kindCounts = new Map();
+  properties.forEach((p, index) => {
+    if (!String(p.name || '').trim()) return;
+    if (!pending.has(countryItemOf.get(p.adm0_a3))) return;
+    const kind = kindOf(p);
+    if (!kindCounts.has(p.adm0_a3)) kindCounts.set(p.adm0_a3, new Map());
+    const counts = kindCounts.get(p.adm0_a3);
+    counts.set(kind, (counts.get(kind) || 0) + 1);
+    const { item, code } = keys[index];
+    const figured =
+      (item && items[item] && item) || (code && codes[code]?.[2]) || null;
+    if (!figured) return;
+    if (!peerItems.has(p.adm0_a3)) peerItems.set(p.adm0_a3, new Map());
+    const byKind = peerItems.get(p.adm0_a3);
+    if (!byKind.has(kind)) byKind.set(kind, new Set());
+    byKind.get(kind).add(figured);
+  });
+  await fetchClasses(
+    [...peerItems.values()].flatMap((byKind) =>
+      [...byKind.values()].flatMap((set) => [...set]),
+    ),
+    'keyed units',
+  );
+  // The classes of the country's keyed units of a kind (else of any kind,
+  // unless `sameKindOnly`); null with none.
+  const peerItemsOf = (adm0, kind, sameKindOnly = false) => {
+    const byKind = peerItems.get(adm0);
+    if (!byKind) return null;
+    const sets = byKind.get(kind)?.size
+      ? [byKind.get(kind)]
+      : sameKindOnly
+        ? []
+        : [...byKind.values()];
+    return sets.length ? sets.flatMap((set) => [...set]) : null;
+  };
+  const peerClassesOf = (adm0, kind, sameKindOnly = false) => {
+    const peers = peerItemsOf(adm0, kind, sameKindOnly);
+    if (!peers) return null;
+    const out = new Set();
+    for (const item of peers)
+      for (const c of classesOf.get(item) || []) out.add(c);
+    return out;
+  };
+  // The share of the keyed units of the unit's own kind carrying each class;
+  // null with none of that kind (a unit of a kind of its own, Peru's Lima
+  // Province among the departments, is held to any class the keyed units
+  // have, not to the class most of them share).
+  const peerClassSharesOf = (adm0, kind) => {
+    const peers = peerItemsOf(adm0, kind, true);
+    if (!peers) return null;
+    const counts = new Map();
+    for (const item of peers)
+      for (const c of classesOf.get(item) || [])
+        counts.set(c, (counts.get(c) || 0) + 1);
+    return new Map([...counts].map(([c, n]) => [c, n / peers.length]));
+  };
+  const names = {};
+  // Every unit asked, with its candidates and the context its match is
+  // judged in: {p, unit, list, context}; matched below, country by country
+  // first, then across them.
+  const queue = [];
+  let askedCountries = 0;
+  let failedCountries = 0;
+  for (const [country, units] of pending) {
+    askedCountries += 1;
+    console.log(
+      `Wikidata: by name, ${units.length} units of ${units[0].admin} (${country}), country ${askedCountries} of ${pending.size}`,
+    );
+    // Light queries, each written from the country item outward with the
+    // planner held to that order (left to itself it scans every population
+    // statement there is and times out): the units with a population, their
+    // classes, then the labels of those not yet keyed, in batches; the
+    // figures come afterwards, for the items named. A country that fails is
+    // logged and left for the next run.
+    const candidates = new Map();
+    const classCounts = new Map();
+    let levelless = false;
+    try {
+      const rows = await sparql(
+        `SELECT DISTINCT ?item ?direct ?mid WHERE { hint:Query hint:optimizer "None" . { ?item wdt:P131 wd:${country} . BIND(true AS ?direct) } UNION { ?mid wdt:P131 wd:${country} . ?item wdt:P131 ?mid . BIND(false AS ?direct) } ?item wdt:P1082 ?any . } LIMIT 20000`,
+      );
+      const all = new Set();
+      const parents = new Set();
+      // An item that one of the country's units (of no city kind) is located
+      // in counts that unit's people with its own, and Natural Earth draws
+      // the two apart: Peru's Lima department holds Lima Province, drawn
+      // beside it. Its figure is not the polygon's; it is no candidate.
+      const unitItems = new Set();
+      for (const p of properties)
+        if (
+          p.adm0_a3 === units[0].adm0_a3 &&
+          String(p.name || '').trim() &&
+          !admin1IsCity(kindOf(p)) &&
+          /^Q\d+$/.test(p.wikidataid || '')
+        )
+          unitItems.add(p.wikidataid);
+      const holdsUnit = new Set();
+      for (const row of rows) {
+        const item = entityId(row.item);
+        all.add(item);
+        const mid = row.mid ? entityId(row.mid) : null;
+        if (mid && mid !== item && unitItems.has(item)) holdsUnit.add(mid);
+        if (taken.has(item)) continue;
+        let c = candidates.get(item);
+        if (!c) {
+          c = { item, labels: new Set(), direct: false, parents: new Set() };
+          candidates.set(item, c);
+        }
+        if (row.direct === 'true') c.direct = true;
+        if (mid) {
+          c.parents.add(mid);
+          parents.add(mid);
+        }
+      }
+      for (const item of holdsUnit)
+        if (candidates.delete(item))
+          console.log(
+            `Wikidata: ${item} holds a unit of ${units[0].admin} drawn apart from it; not a candidate`,
+          );
+      await sleep(WIKIDATA_PAUSE_MS);
+      // The units' names looked up as labels among the country's items with
+      // a population (P17), for the units nested deeper than a step below
+      // the country (the Philippines' component cities sit in provinces in
+      // regions, Ireland's cities in counties in provinces) and for items
+      // located in nothing (an island with a country alone).
+      levelless = all.size === 0;
+      const texts = new Set(units.flatMap((p) => admin1NameVariants(p)));
+      const states = [
+        ...new Set(
+          [country, sovereignOf.get(units[0].adm0_a3)].filter(Boolean),
+        ),
+      ];
+      const labelled = await sparql(
+        `SELECT DISTINCT ?item ?parent WHERE { hint:Query hint:optimizer "None" . VALUES ?label { ${[...texts].flatMap((t) => LABEL_POOL_LANGUAGES.map((l) => `${JSON.stringify(t)}@${l}`)).join(' ')} } { ?item rdfs:label ?label } UNION { ?item skos:altLabel ?label } VALUES ?state { ${states.map((q) => `wd:${q}`).join(' ')} } ?item wdt:P17 ?state . ?item wdt:P1082 ?any . OPTIONAL { ?item wdt:P131 ?parent . } }`,
+      );
+      let byLabel = 0;
+      for (const row of labelled) {
+        const item = entityId(row.item);
+        if (holdsUnit.has(item) || taken.has(item)) continue;
+        all.add(item);
+        let c = candidates.get(item);
+        if (!c) {
+          c = { item, labels: new Set(), direct: false, parents: new Set() };
+          candidates.set(item, c);
+          byLabel += 1;
+        }
+        const parent = row.parent ? entityId(row.parent) : null;
+        if (parent === country) c.direct = true;
+        else if (parent) {
+          c.parents.add(parent);
+          parents.add(parent);
+        }
+      }
+      if (byLabel)
+        console.log(
+          `Wikidata: ${byLabel} more candidates of ${units[0].admin} by label`,
+        );
+      await sleep(WIKIDATA_PAUSE_MS);
+      await fetchClasses([...all, ...parents], `${units[0].admin}'s units`);
+      for (const item of all)
+        for (const c of classesOf.get(item) || [])
+          classCounts.set(c, (classCounts.get(c) || 0) + 1);
+      await fetchClassLabels([
+        ...new Set(
+          [...candidates.keys()].flatMap((item) => [
+            ...(classesOf.get(item) || []),
+          ]),
+        ),
+      ]);
+      for (const batch of chunks([...candidates.keys()], WIKIDATA_BATCH)) {
+        const labelled = await sparql(
+          `SELECT ?item ?label WHERE { VALUES ?item { ${batch.map((q) => `wd:${q}`).join(' ')} } { ?item rdfs:label ?label } UNION { ?item skos:altLabel ?label } FILTER(LANG(?label) IN (${LABEL_LANGUAGES})) }`,
+        );
+        for (const row of labelled)
+          candidates.get(entityId(row.item))?.labels.add(row.label);
+        await sleep(WIKIDATA_PAUSE_MS);
+      }
+    } catch (error) {
+      failedCountries += 1;
+      console.log(
+        `Wikidata: ${units[0].admin} by name failed (${error.message}); left for the next run`,
+      );
+      continue;
+    }
+    const list = [...candidates.values()].map((c) => {
+      const classes = [...(classesOf.get(c.item) || [])];
+      return {
+        ...c,
+        labels: [...c.labels],
+        classes,
+        classLabels: classes
+          .map((id) => classLabelOf.get(id) || '')
+          .filter(Boolean),
+        // The classes that are no city: a city's unit class, when it is one.
+        unitClasses: classes.filter(
+          (id) => !classIsCity([classLabelOf.get(id) || '']),
+        ),
+        parentUnits: [...c.parents].map((mid) => ({
+          id: mid,
+          classes: [...(classesOf.get(mid) || [])],
+        })),
+      };
+    });
+    for (const p of units) {
+      const kind = kindOf(p);
+      queue.push({
+        p,
+        unit: {
+          variants: admin1NameVariants(p),
+          secondary: admin1SecondaryVariants(p),
+          type: kind,
+          city: admin1IsCity(kind),
+        },
+        list,
+        context: {
+          peerClasses: peerClassesOf(p.adm0_a3, kind),
+          peerClassShares: peerClassSharesOf(p.adm0_a3, kind),
+          sameKindPeerClasses: peerClassesOf(p.adm0_a3, kind, true),
+          classCounts,
+          unitsOfKind: kindCounts.get(p.adm0_a3)?.get(kind) || 0,
+          levelless: levelless && !peerItems.has(p.adm0_a3),
+        },
+      });
+    }
+  }
+  // Each unit's best candidate. An item two units of one country name goes
+  // to the one GeoNames names as Natural Earth does (the other polygon is a
+  // neighbour's, mislabelled), else to neither; units of two countries may
+  // each name one item (Sevastopol under Russia and under Ukraine: a figure
+  // weighs within its country alone). A unit beaten to an item, or left
+  // without one for naming it with another, tries again among the items no
+  // unit named: Natural Earth's second "Uruzgan" is Daykundi by its GeoNames
+  // name, and Uruzgan's item gone to the real Uruzgan, it finds Daykundi's.
+  const holders = [];
+  const named = new Set();
+  let shared = 0;
+  let round = queue;
+  for (let pass = 1; pass <= 2 && round.length; pass++) {
+    const claims = new Map();
+    for (const a of round) {
+      const hit = matchUnitByName(
+        a.unit,
+        named.size ? a.list.filter((c) => !named.has(c.item)) : a.list,
+        pass === 1 ? a.context : { ...a.context, contested: named },
+      );
+      if (!hit) continue;
+      if (!claims.has(hit.item)) claims.set(hit.item, []);
+      claims.get(hit.item).push(a);
+    }
+    const losers = [];
+    for (const [item, list] of claims) {
+      named.add(item);
+      const byCountry = new Map();
+      for (const a of list) {
+        if (!byCountry.has(a.p.adm0_a3)) byCountry.set(a.p.adm0_a3, []);
+        byCountry.get(a.p.adm0_a3).push(a);
+      }
+      for (const same of byCountry.values()) {
+        let holder = same[0];
+        if (same.length > 1) {
+          const who = same.map((a) => `${a.p.admin}/${a.p.name}`).join(' and ');
+          const agreeing = same.filter((a) => nameAgreesWithGeoNames(a.p));
+          if (agreeing.length !== 1) {
+            shared += same.length;
+            console.log(`Wikidata: ${item} named by ${who}; none takes it`);
+            losers.push(...same);
+            continue;
+          }
+          holder = agreeing[0];
+          console.log(
+            `Wikidata: ${item} named by ${who}; ${holder.p.adm1_code} takes it, the other polygon being GeoNames' ${same
+              .filter((a) => a !== holder)
+              .map((a) => a.p.gn_name)
+              .join(' and ')}`,
+          );
+          losers.push(...same.filter((a) => a !== holder));
+        }
+        holders.push({ item, a: holder });
+      }
+    }
+    if (pass === 1 && losers.length)
+      console.log(
+        `Wikidata: ${losers.length} units beaten to an item try again among the items no unit named`,
+      );
+    round = losers;
+  }
+  // The figures of the items held, in batches; then each to its holder.
+  const namedIds = [...new Set(holders.map((h) => h.item))].sort();
+  const byNamed = new Map();
+  asked = 0;
+  for (const batch of chunks(namedIds, WIKIDATA_BATCH)) {
+    console.log(
+      `Wikidata: named items ${asked + 1}–${asked + batch.length} of ${namedIds.length}`,
+    );
+    const rows = await sparql(
+      `SELECT ?item ?pop ?when ?rank WHERE { VALUES ?item { ${batch.map((q) => `wd:${q}`).join(' ')} } ${POPULATION_PATTERN} }`,
+    );
+    for (const row of rows) {
+      const item = entityId(row.item);
+      if (!byNamed.has(item)) byNamed.set(item, []);
+      byNamed.get(item).push(row);
+    }
+    asked += batch.length;
+    await sleep(WIKIDATA_PAUSE_MS);
+  }
+  let unfigured = 0;
+  for (const { item, a } of holders) {
+    const best = bestPopulation(byNamed.get(item));
+    if (!best) {
+      unfigured += 1;
+      continue;
+    }
+    logInstead(`${item} for ${a.p.admin}/${a.p.name}`, best);
+    names[a.p.adm1_code] = [best.pop, best.year, item];
+  }
+  console.log(
+    `Wikidata: by name, ${Object.keys(names).length} units figured of ${[...pending.values()].reduce((n, u) => n + u.length, 0)} asked in ${pending.size} countries (${failedCountries} failed); ${shared} shared a namesake; ${unfigured} named an item without a usable figure`,
+  );
+  // A unit of a city kind set aside above that found no city of its name
+  // keeps its key after all; a claim another unit laid on that item goes.
+  for (const [item, kept] of provisional) {
+    if (kept.units.every((p) => names[p.adm1_code])) {
+      setAside += 1;
+      continue;
+    }
+    if (kept.item) items[item] = kept.item;
+    Object.assign(codes, kept.codes);
+    for (const [adm1, row] of Object.entries(names))
+      if (row[2] === item) delete names[adm1];
+    for (const p of kept.units) delete names[p.adm1_code];
+    console.log(
+      `Wikidata: ${item} kept for ${kept.units.map((p) => `${p.admin}/${p.name}`).join(' and ')}: no city of that name`,
+    );
   }
   return {
     meta: {
@@ -828,17 +2052,20 @@ async function buildAdmin1Population() {
       source:
         'Wikidata, population (P1082): the best-ranked statement with the latest point in time (P585), the larger on the same date',
       endpoint: WIKIDATA_SPARQL,
+      api: WIKIDATA_API,
       units: SOURCES.admin1.url,
       unitsSha256: source.digest,
       fetched: new Date().toISOString().slice(0, 10),
       license: 'CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)',
       schema:
-        'items: {Wikidata item: [population, year or null]} for the units whose Natural Earth wikidataid is theirs alone; codes: {ISO 3166-2 code: [population, year or null, Wikidata item]} for the others with a code of their own (P300); a unit sharing both with another has no entry',
+        'items: {Wikidata item: [population, year or null, the one item that replaced it when the figure is that successor’s]} for the units whose Natural Earth wikidataid is theirs alone; codes: {ISO 3166-2 code: [population, year or null, Wikidata item]} for the others with a code of their own (P300); an item whose codes are all another country’s is set aside, as is a region or province keyed to a unit of a city kind when a city of the unit’s name is found instead; names: {Natural Earth adm1_code: [population, year or null, Wikidata item]} for the rest matched by name among their country’s units (located in the country or a step down, with a population, of the unit’s kind, no bare settlement, not inside a unit of the level, and, for an administrative unit, at the level of the country’s keyed units, else of a class with members enough for the country’s units of that kind and not three times too many; an exact label first, one naming the kind before a bare one, then one with the administrative words folded away, of the unit’s own kind, directly in the country); an item two units name goes to the one whose name GeoNames agrees with, else to neither; a unit whose own item was replaced by several is not asked. Every figure is the best-ranked statement with the latest date, unless that figure is ×jump.factor or more against the median of the item’s dated figures of the jump.memory years before with one within jump.years: then the latest figure before the jump stands (the count is of other bounds or another place)',
+      jump: POPULATION_JUMP,
       setAside,
       script: 'scripts/build-admin-packs.mjs --only population',
     },
     items,
     codes,
+    names,
   };
 }
 
@@ -863,11 +2090,11 @@ async function buildAdmin1() {
   );
   const populationOf = (index) => {
     const { item, code } = populationKeys[index];
-    const row = item
-      ? population?.items?.[item]
-      : code
-        ? population?.codes?.[code]
-        : null;
+    const row =
+      (item && population?.items?.[item]) ||
+      (code && population?.codes?.[code]) ||
+      population?.names?.[collection.features[index].properties.adm1_code] ||
+      null;
     if (!row) return null;
     const [pop, year] = row;
     if (year !== null && year < PARAMS.population.minYear) return null;
@@ -996,7 +2223,7 @@ async function buildAdmin1() {
           }
         : null,
       schema:
-        'features[]: name, nameEn?, alt?[], postal?, type, rank? (min_label: the zoom at which Natural Earth labels the unit; lower is more prominent), group? (the larger region the unit sits in: Natural Earth region, or the UK constituent country and English region), country, iso2, iso (ISO 3166-2), pop? (the unit’s people: Wikidata’s population from meta.population.source, by the unit’s own Wikidata item or ISO 3166-2 code, dated meta.curation.population.minYear or later), amb?[] (normalized names that are also a country or a city — alone or with the country named), ambAbroad?[] (names shared only with a city in another country — ambiguous alone, settled by naming the country), cityState? (the unit is its own city), label? [lon, lat] label point, d? (decimals when not meta.decimals), polygons[][ring] (first ring outer, rest holes; each ring open and encoded as integers in 10^-d degrees, first vertex absolute then [dLon, dLat] deltas)',
+        'features[]: name, nameEn?, alt?[], postal?, type, rank? (min_label: the zoom at which Natural Earth labels the unit; lower is more prominent), group? (the larger region the unit sits in: Natural Earth region, or the UK constituent country and English region), country, iso2, iso (ISO 3166-2), pop? (the unit’s people: Wikidata’s population from meta.population.source, by the unit’s own Wikidata item or ISO 3166-2 code, else by its name among its country’s units, dated meta.curation.population.minYear or later), amb?[] (normalized names that are also a country or a city — alone or with the country named), ambAbroad?[] (names shared only with a city in another country — ambiguous alone, settled by naming the country), cityState? (the unit is its own city), label? [lon, lat] label point, d? (decimals when not meta.decimals), polygons[][ring] (first ring outer, rest holes; each ring open and encoded as integers in 10^-d degrees, first vertex absolute then [dLon, dLat] deltas)',
       decimals: params.decimals,
       curation: { ...params, ambiguity, population: PARAMS.population },
       script: 'scripts/build-admin-packs.mjs',

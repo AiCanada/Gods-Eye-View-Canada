@@ -405,16 +405,35 @@ test('states pack: the people from the Wikidata snapshot, keyed as the build key
     maharashtra.pop > 100_000_000 && maharashtra.pop < 150_000_000,
     `Maharashtra ${maharashtra.pop}`,
   );
-  // Natural Earth gives Lima and Lima Province one Wikidata id and one code: neither carries people.
-  for (const name of ['Lima', 'Lima Province'])
-    assert.equal(
-      admin1.features.find((f) => f.country === 'Peru' && f.name === name).pop,
-      undefined,
-      name,
-    );
+  // Natural Earth gives Lima and Lima Province one Wikidata id and one code: the province takes
+  // its own item's figure by name (its label names the kind), the department, whose item holds
+  // the province drawn beside it, is left to the share-out.
+  const peru = (name) =>
+    admin1.features.find((f) => f.country === 'Peru' && f.name === name).pop;
+  assert.equal(peru('Lima'), undefined, 'Lima department');
+  assert.ok(
+    peru('Lima Province') > 9_000_000 && peru('Lima Province') < 12_000_000,
+    `Lima Province ${peru('Lima Province')}`,
+  );
 
-  const { admin1PopulationKeys, bestPopulation, codesInCountry } =
-    await import('../../scripts/build-admin-packs.mjs');
+  const {
+    POPULATION_JUMP,
+    admin1IsCity,
+    admin1NameVariants,
+    admin1PopulationKeys,
+    admin1SecondaryVariants,
+    admissibleUnit,
+    bestPopulation,
+    cityItemMisplaced,
+    classIsCity,
+    classIsSettlementOnly,
+    codesInCountry,
+    looseAdminName,
+    matchUnitByName,
+    nameAgreesWithGeoNames,
+    populationRows,
+    soleSuccessor,
+  } = await import('../../scripts/build-admin-packs.mjs');
   // A unit is asked by its own Wikidata item, else by its own ISO 3166-2 code, else not at all;
   // an unnamed unit (not in the pack) claims neither.
   assert.deepEqual(
@@ -428,7 +447,7 @@ test('states pack: the people from the Wikidata snapshot, keyed as the build key
       { name: '', wikidataid: 'Q1', iso_3166_2: 'XX-A' },
     ]),
     [
-      { item: 'Q1', code: null },
+      { item: 'Q1', code: 'XX-A' },
       { item: null, code: 'XX-B' },
       { item: null, code: 'XX-B2' },
       { item: null, code: null },
@@ -454,6 +473,166 @@ test('states pack: the people from the Wikidata snapshot, keyed as the build key
   });
   assert.equal(bestPopulation([{ pop: 'x' }, { pop: -1 }]), null);
   assert.equal(bestPopulation(undefined), null);
+  // The preferred statements when there are any (as the query service ranks them, by the API's
+  // word or the service's URI), else the normal ones.
+  assert.deepEqual(
+    bestPopulation([
+      { pop: '100', when: '2011-01-01T00:00:00Z', rank: 'normal' },
+      {
+        pop: '90',
+        when: '2001-01-01T00:00:00Z',
+        rank: 'http://wikiba.se/ontology#PreferredRank',
+      },
+    ]),
+    { pop: 90, year: 2001, item: null },
+  );
+  // A count that jumps by half or more within five years against the item's recent figures is
+  // of other bounds or another place (Cebu's 2024 count is Bohol's on Wikidata; Vietnam's merged
+  // provinces' counts sit on the old items): the latest figure before the jump stands, and the row
+  // says what it stands in for.
+  assert.equal(POPULATION_JUMP.factor, 1.5);
+  const cebu = [
+    { pop: '2619362', when: '2010-05-01T00:00:00Z' },
+    { pop: '2938982', when: '2015-08-01T00:00:00Z' },
+    { pop: '3325385', when: '2020-05-01T00:00:00Z' },
+    { pop: '1412726', when: '2024-07-01T00:00:00Z', rank: 'preferred' },
+  ];
+  assert.deepEqual(bestPopulation(cebu), {
+    pop: 3325385,
+    year: 2020,
+    item: null,
+    instead: { pop: 1412726, year: 2024, ratio: 1412726 / 2938982 },
+  });
+  assert.deepEqual(
+    bestPopulation([
+      { pop: '1010700', when: '2022-01-01T00:00:00Z' },
+      { pop: '3818700', when: '2024-00-00T00:00:00Z' },
+    ]),
+    {
+      pop: 1010700,
+      year: 2022,
+      item: null,
+      instead: { pop: 3818700, year: 2024, ratio: 3818700 / 1010700 },
+    },
+    'two figures, the second the merged province’s',
+  );
+  assert.deepEqual(
+    bestPopulation([
+      { pop: '472629', when: '2014-00-00T00:00:00Z' },
+      { pop: '174039', when: '2024-00-00T00:00:00Z' },
+    ]),
+    { pop: 174039, year: 2024, item: null },
+    'a district that lost its city over a ten-year census gap keeps its count',
+  );
+  assert.deepEqual(
+    bestPopulation([
+      { pop: '466281', when: '2000-00-00T00:00:00Z' },
+      { pop: '887191', when: '2010-00-00T00:00:00Z' },
+      { pop: '531887', when: '2014-00-00T00:00:00Z', rank: 'preferred' },
+    ]),
+    { pop: 531887, year: 2014, item: null },
+    'the odd figure in the middle does not unseat a count in line with the rest',
+  );
+  assert.deepEqual(
+    bestPopulation([
+      { pop: '0', when: '2010-00-00T00:00:00Z' },
+      { pop: '14', when: '2014-00-00T00:00:00Z' },
+    ]),
+    { pop: 14, year: 2014, item: null },
+    'a reference of zero says nothing',
+  );
+  assert.deepEqual(
+    bestPopulation([
+      { pop: '170', when: '2008-00-00T00:00:00Z' },
+      { pop: '82661', when: '2024-00-00T00:00:00Z' },
+    ]),
+    { pop: 82661, year: 2024, item: null },
+    'a figure sixteen years before is no reference',
+  );
+  // The Wikidata API's claims (for the items the query service has no triples for) read as the
+  // service would write them: every statement but the deprecated, with its rank, the point in
+  // time and the item's codes along; bestPopulation ranks them.
+  const claim = (rank, amount, year) => ({
+    rank,
+    mainsnak: { datavalue: { value: { amount } } },
+    ...(year
+      ? {
+          qualifiers: {
+            P585: [
+              { datavalue: { value: { time: `+${year}-00-00T00:00:00Z` } } },
+            ],
+          },
+        }
+      : {}),
+  });
+  const entity = {
+    claims: {
+      P1082: [
+        claim('normal', '+100', 2011),
+        claim('preferred', '+120', 2021),
+        claim('deprecated', '+999'),
+      ],
+      P300: [{ rank: 'normal', mainsnak: { datavalue: { value: 'CA-BC' } } }],
+    },
+  };
+  assert.deepEqual(populationRows(entity, 'Q1974'), [
+    {
+      item: 'Q1974',
+      pop: '100',
+      when: '2011-00-00T00:00:00Z',
+      codes: 'CA-BC',
+      rank: 'normal',
+    },
+    {
+      item: 'Q1974',
+      pop: '120',
+      when: '2021-00-00T00:00:00Z',
+      codes: 'CA-BC',
+      rank: 'preferred',
+    },
+  ]);
+  assert.deepEqual(bestPopulation(populationRows(entity, 'Q1974')), {
+    pop: 120,
+    year: 2021,
+    item: 'Q1974',
+  });
+  assert.deepEqual(
+    populationRows(
+      {
+        claims: {
+          P1082: [claim('normal', '+100', 2011), claim('normal', '+110')],
+        },
+      },
+      'Q1',
+    ).map((r) => r.pop),
+    ['100', '110'],
+    'the normal statements when none is preferred',
+  );
+  assert.deepEqual(populationRows({ missing: '' }, 'Q2'), []);
+  assert.deepEqual(populationRows(undefined, 'Q3'), []);
+  // An item without a population takes its one successor's figure, when that successor replaced
+  // it alone (Turin's province → its metropolitan city); a merger is not followed.
+  const replacedBy = new Map([
+    ['Q2', new Set(['Q1'])],
+    ['Q5', new Set(['Q3', 'Q4'])],
+  ]);
+  assert.equal(soleSuccessor('Q1', new Set(['Q2']), replacedBy), 'Q2');
+  assert.equal(
+    soleSuccessor('Q3', new Set(['Q5']), replacedBy),
+    null,
+    'a merger',
+  );
+  assert.equal(
+    soleSuccessor('Q1', new Set(['Q2', 'Q6']), replacedBy),
+    null,
+    'two successors',
+  );
+  assert.equal(
+    soleSuccessor('Q7', new Set(['Q8']), replacedBy),
+    null,
+    'no "replaces" back',
+  );
+  assert.equal(soleSuccessor('Q1', undefined, replacedBy), null);
   // An item whose own codes are all another country's is a namesake elsewhere; a territory's code
   // under its parent is its own.
   assert.equal(codesInCountry('BE-WLX|BE-WLX', 'BE'), true);
@@ -462,6 +641,568 @@ test('states pack: the people from the Wikidata snapshot, keyed as the build key
   assert.equal(codesInCountry('RS-KM', 'XK'), false);
   assert.equal(codesInCountry('', 'BE'), true);
   assert.equal(codesInCountry('RS-KM', '-99'), true);
+  // The name route for the rest: the administrative words folded away, the unit's spellings with its kind,
+  // an exact label first, a label of the unit's own kind next, a unit directly in the country next; a tie
+  // at the top is no match.
+  assert.equal(looseAdminName('Metropolitan City of Turin'), 'turin');
+  assert.equal(looseAdminName('Provincia di Torino'), 'torino');
+  assert.equal(looseAdminName('Analamanga Region'), 'analamanga');
+  assert.equal(
+    looseAdminName('Auckland Islands'),
+    'auckland islands',
+    'islands are a name, not an administrative word',
+  );
+  // The countries' own words for the kind fold away too (GeoNames' names, Wikidata's local labels).
+  assert.equal(looseAdminName('Rēzeknes novads'), 'rezeknes');
+  assert.equal(looseAdminName('Opština Zvečan'), 'zvecan');
+  // The Arabic article too, as it is transliterated: "Al Marj" is "Marj District".
+  assert.equal(looseAdminName('Sha`biyat al Wahat'), 'wahat');
+  assert.equal(looseAdminName('Al Wahat District'), 'wahat');
+  assert.equal(looseAdminName('Muhafazat Mubarak al Kabir'), 'mubarak kabir');
+  assert.equal(looseAdminName('Provincia de Lima'), 'lima');
+  // Natural Earth's name against GeoNames' name for the polygon.
+  assert.equal(
+    nameAgreesWithGeoNames({ name: 'Parwan', gn_name: 'Panjshir' }),
+    false,
+  );
+  assert.equal(
+    nameAgreesWithGeoNames({
+      name: 'Uruzgan',
+      name_en: 'Urozgan',
+      gn_name: 'Wilayat-e Daykundi',
+    }),
+    false,
+  );
+  assert.equal(
+    nameAgreesWithGeoNames({ name: 'Mbarara', gn_name: 'Mbarara District' }),
+    true,
+  );
+  assert.equal(
+    nameAgreesWithGeoNames({ name: 'Lima', gn_name: 'Region de Lima' }),
+    true,
+  );
+  assert.equal(
+    nameAgreesWithGeoNames({
+      name: 'Mulativ',
+      name_en: 'Mullaitivu',
+      gn_name: 'Mullaittivu District',
+    }),
+    false,
+    'a spelling apart is a disagreement; it only decides between two claimants',
+  );
+  assert.equal(
+    nameAgreesWithGeoNames({ name: 'Anywhere' }),
+    true,
+    'no GeoNames name',
+  );
+  assert.deepEqual(admin1NameVariants({ name: 'Lima', type_en: 'Region' }), [
+    'Lima',
+    'Lima Region',
+    'Region of Lima',
+  ]);
+  // The alternate and Yahoo names are left out: they often name the region above the unit.
+  assert.deepEqual(
+    admin1NameVariants({
+      name: 'Rimini',
+      gn_name: 'Provincia di Rimini',
+      name_alt: 'Emilia Romagna|Emilia',
+      woe_name: 'Emilia-Romagna',
+      type_en: '',
+    }),
+    ['Rimini', 'Provincia di Rimini'],
+  );
+  assert.equal(admin1IsCity('Metropolitan City'), false);
+  assert.equal(admin1IsCity('Highly Urbanized City'), true);
+  assert.equal(admin1IsCity('Republican City'), true);
+  assert.equal(admin1IsCity('Municipality'), false, 'the unit around a town');
+  assert.equal(admin1IsCity('Province'), false);
+  assert.equal(classIsCity(['highly urbanized city']), true);
+  assert.equal(classIsCity(['big city', 'national capital']), true);
+  assert.equal(classIsCity(['metropolitan city of Italy']), false);
+  assert.equal(
+    classIsCity([
+      'municipalities and cities of Serbia',
+      'municipality of Kosovo',
+    ]),
+    false,
+  );
+  assert.equal(classIsCity(['district of Hong Kong']), false);
+  assert.equal(classIsCity([]), false);
+  // A bare settlement: every class a place to live, none a unit.
+  assert.equal(
+    classIsSettlementOnly([
+      'hamlet',
+      'land register village',
+      'village with a church',
+    ]),
+    true,
+  );
+  assert.equal(classIsSettlementOnly(['human settlement']), true);
+  assert.equal(
+    classIsSettlementOnly(['districts of Hong Kong', 'human settlement']),
+    false,
+  );
+  assert.equal(classIsSettlementOnly(['municipality of Finland']), false);
+  assert.equal(classIsSettlementOnly([]), false);
+  assert.equal(admin1IsCity('Urban Prefecture'), false, 'a prefecture');
+  assert.equal(admin1IsCity('Independent Town'), true);
+  // A city-kind unit keyed to a region or province carries another place's id; classes that say
+  // nothing either way leave the key alone.
+  assert.equal(
+    cityItemMisplaced(['region of the Philippines', 'megacity']),
+    true,
+  );
+  assert.equal(cityItemMisplaced(['province of the Philippines']), true);
+  assert.equal(cityItemMisplaced(['state city of Latvia']), false);
+  assert.equal(
+    cityItemMisplaced([
+      'human settlement',
+      'first-level administrative division',
+    ]),
+    false,
+  );
+  assert.equal(cityItemMisplaced(['atoll of the Maldives']), false);
+  assert.equal(cityItemMisplaced([]), false);
+  // What may stand for a unit at all: the unit's kind by the candidate's classes (when Natural Earth
+  // names a kind), and the level of the country's keyed units, else a class with members enough.
+  const province = { type: 'Province', city: false };
+  const cebuCity = {
+    classes: ['Qhuc'],
+    classLabels: ['highly urbanized city'],
+  };
+  const cebuProvince = {
+    classes: ['Qprov'],
+    classLabels: ['province of the Philippines'],
+  };
+  const peers = { peerClasses: new Set(['Qprov']) };
+  assert.equal(
+    admissibleUnit(province, cebuCity, peers),
+    false,
+    'a city for a province',
+  );
+  assert.equal(admissibleUnit(province, cebuProvince, peers), true);
+  assert.equal(
+    admissibleUnit({ type: 'Highly Urbanized City', city: true }, cebuCity, {
+      peerClasses: new Set(['Qhuc']),
+    }),
+    true,
+  );
+  assert.equal(
+    admissibleUnit(
+      province,
+      { classes: ['Qregion'], classLabels: ['region of Italy'] },
+      peers,
+    ),
+    false,
+    'the level of the keyed units',
+  );
+  assert.equal(
+    admissibleUnit({ type: 'Highly Urbanized City', city: true }, cebuCity, {
+      peerClasses: new Set(['Qregion']),
+    }),
+    true,
+    'a city needs no level',
+  );
+  assert.equal(
+    admissibleUnit({ type: 'City', city: true }, cebuProvince, peers),
+    false,
+    'a province for a city',
+  );
+  assert.equal(
+    admissibleUnit(province, { classes: [], classLabels: [] }, peers),
+    false,
+    'no class',
+  );
+  assert.equal(
+    admissibleUnit(
+      { type: '', city: false },
+      {
+        classes: ['Qhuc', 'Qmun'],
+        classLabels: [
+          'highly urbanized city',
+          'municipality of the Philippines',
+        ],
+      },
+      { peerClasses: new Set(['Qhuc']) },
+    ),
+    true,
+    'no kind named: any kind with an administrative class',
+  );
+  assert.equal(
+    admissibleUnit({ type: '', city: false }, cebuCity, {
+      peerClasses: new Set(['Qhuc']),
+    }),
+    false,
+    'no kind named: a bare city is still a settlement',
+  );
+  // A city that is also a unit of the level stands for the unit by its unit class (The Valley,
+  // Anguilla's capital and one of its districts); a bare city does not.
+  const valley = {
+    classes: ['Qaia', 'Qcity'],
+    classLabels: ['administrative territorial entity of Anguilla', 'city'],
+    unitClasses: ['Qaia'],
+  };
+  const anguilla = {
+    peerClasses: null,
+    classCounts: new Map([
+      ['Qaia', 14],
+      ['Qcity', 1],
+    ]),
+    unitsOfKind: 14,
+  };
+  assert.equal(
+    admissibleUnit({ type: 'District', city: false }, valley, anguilla),
+    true,
+  );
+  assert.equal(
+    admissibleUnit(
+      { type: 'District', city: false },
+      { ...valley, unitClasses: [] },
+      anguilla,
+    ),
+    false,
+    'a bare city',
+  );
+  // With keyed units, the city's unit class must be the class of most of them, not of a stray
+  // one: a comune keyed in error does not make Rimini's comune its province.
+  const rimini = {
+    classes: ['Qcomune', 'Qcity'],
+    classLabels: ['comune of Italy', 'city'],
+    unitClasses: ['Qcomune'],
+  };
+  const italy = {
+    peerClasses: new Set(['Qprov', 'Qcomune']),
+    peerClassShares: new Map([
+      ['Qprov', 0.99],
+      ['Qcomune', 0.01],
+    ]),
+  };
+  assert.equal(
+    admissibleUnit({ type: 'Province', city: false }, rimini, italy),
+    false,
+  );
+  assert.equal(
+    admissibleUnit({ type: 'Province', city: false }, rimini, {
+      ...italy,
+      peerClassShares: new Map([['Qcomune', 0.6]]),
+    }),
+    true,
+    'a class most keyed units carry',
+  );
+  // A bare settlement never stands for an administrative unit, kind named or not.
+  const hamlet = {
+    classes: ['Qhamlet', 'Qlrv'],
+    classLabels: ['hamlet', 'land register village'],
+  };
+  assert.equal(
+    admissibleUnit({ type: '', city: false }, hamlet, {
+      peerClasses: null,
+      classCounts: new Map([['Qhamlet', 11]]),
+      unitsOfKind: 11,
+    }),
+    false,
+    'Brändö’s village for Brändö',
+  );
+  assert.equal(
+    admissibleUnit({ type: 'Town', city: true }, hamlet, { peerClasses: null }),
+    false,
+    'a hamlet is no town either',
+  );
+  assert.equal(
+    admissibleUnit(
+      { type: 'Town', city: true },
+      { classes: ['Qtown'], classLabels: ['town'] },
+      { peerClasses: null },
+    ),
+    true,
+    'a town for a town, whatever the level',
+  );
+  // A unit inside a unit of the level is a step below it.
+  const ajdabiya = {
+    classes: ['Qsettlement', 'Qbaladiya'],
+    classLabels: ['human settlement', 'municipality of Libya'],
+    parentUnits: [{ id: 'Qwahat', classes: ['Qshabiya'] }],
+  };
+  const libya = {
+    peerClasses: new Set(['Qshabiya', 'Qbaladiya']),
+    sameKindPeerClasses: new Set(['Qshabiya']),
+  };
+  assert.equal(
+    admissibleUnit(
+      { type: 'Municipality|Governarate', city: false },
+      ajdabiya,
+      libya,
+    ),
+    false,
+    'a municipality in a district, for a district',
+  );
+  assert.equal(
+    admissibleUnit(
+      { type: 'Municipality|Governarate', city: false },
+      { ...ajdabiya, parentUnits: [{ id: 'Qlibya', classes: ['Qcountry'] }] },
+      libya,
+    ),
+    true,
+    'the same item directly in the country',
+  );
+  assert.equal(
+    admissibleUnit(
+      { type: 'Municipality|Governarate', city: false },
+      ajdabiya,
+      { ...libya, sameKindPeerClasses: null },
+    ),
+    true,
+    'no keyed unit of the kind: no level to be below',
+  );
+  assert.equal(
+    admissibleUnit(
+      { type: 'Municipality|Governarate', city: false },
+      ajdabiya,
+      { ...libya, contested: new Set(['Qwahat']) },
+    ),
+    true,
+    'inside an item no unit could take: the unit’s share of it (Tipperary’s ridings)',
+  );
+  const kosovo = {
+    peerClasses: null,
+    classCounts: new Map([
+      ['Qdistrict', 7],
+      ['Qmunicipality', 38],
+      ['Qvillage', 1400],
+    ]),
+    unitsOfKind: 30,
+  };
+  assert.equal(
+    admissibleUnit(
+      { type: 'District', city: false },
+      {
+        classes: ['Qvillage', 'Qcadastral'],
+        classLabels: ['village', 'cadastral municipality of Kosovo'],
+      },
+      kosovo,
+    ),
+    false,
+    'fourteen hundred of a class cannot be thirty units',
+  );
+  // A country with no keyed unit and nothing located in it on Wikidata has no level to hold
+  // a candidate to; a bare settlement is still none.
+  const island = { classes: ['Qisland'], classLabels: ['island'] };
+  assert.equal(
+    admissibleUnit({ type: '', city: false }, island, {
+      peerClasses: null,
+      classCounts: new Map([['Qisland', 6]]),
+      unitsOfKind: 11,
+      levelless: true,
+    }),
+    true,
+    'Rarotonga for Rarotonga',
+  );
+  assert.equal(
+    admissibleUnit({ type: '', city: false }, island, {
+      peerClasses: null,
+      classCounts: new Map([['Qisland', 6]]),
+      unitsOfKind: 11,
+    }),
+    false,
+    'six islands are not eleven units when there is a level to hold to',
+  );
+  assert.equal(
+    admissibleUnit(
+      { type: '', city: false },
+      { classes: ['Qvillage'], classLabels: ['village'] },
+      { peerClasses: null, levelless: true },
+    ),
+    false,
+  );
+  const district = { type: 'District', city: false };
+  assert.equal(
+    admissibleUnit(
+      district,
+      { classes: ['Qdistrict'], classLabels: ['district of Kosovo'] },
+      kosovo,
+    ),
+    false,
+    'seven districts cannot be thirty units',
+  );
+  assert.equal(
+    admissibleUnit(
+      district,
+      { classes: ['Qmunicipality'], classLabels: ['municipality of Kosovo'] },
+      kosovo,
+    ),
+    true,
+  );
+  assert.equal(
+    matchUnitByName(
+      {
+        variants: admin1NameVariants({ name: 'Prizren', type_en: 'District' }),
+        type: 'District',
+        city: false,
+      },
+      [
+        {
+          item: 'Qd',
+          labels: ['Prizren District'],
+          direct: true,
+          classes: ['Qdistrict'],
+          classLabels: ['district of Kosovo'],
+        },
+        {
+          item: 'Qm',
+          labels: ['Prizren', 'Municipality of Prizren'],
+          direct: false,
+          classes: ['Qmunicipality'],
+          classLabels: ['municipality of Kosovo'],
+        },
+      ],
+      kosovo,
+    ).item,
+    'Qm',
+    'the municipality, though the district is named outright',
+  );
+  const turin = [
+    { item: 'Q1', labels: ['Turin', 'Torino'], direct: false },
+    {
+      item: 'Q2',
+      labels: ['Metropolitan City of Turin', 'Città metropolitana di Torino'],
+      direct: false,
+    },
+  ];
+  const unitOf = (p) => ({
+    variants: admin1NameVariants(p),
+    city: admin1IsCity(p.type_en),
+  });
+  assert.equal(
+    matchUnitByName(
+      unitOf({ name: 'Turin', type_en: 'Metropolitan City' }),
+      turin,
+    ).item,
+    'Q2',
+    'the administrative unit, not the city',
+  );
+  assert.equal(
+    matchUnitByName(unitOf({ name: 'Turin', type_en: 'City' }), turin).item,
+    'Q1',
+    'the city for a city',
+  );
+  const lima = [
+    { item: 'Q3', labels: ['Lima Region'], direct: true },
+    { item: 'Q4', labels: ['Lima Province'], direct: true },
+    { item: 'Q5', labels: ['Lima'], direct: false },
+  ];
+  assert.equal(
+    matchUnitByName(unitOf({ name: 'Lima', type_en: 'Region' }), lima).item,
+    'Q3',
+  );
+  assert.equal(
+    matchUnitByName(
+      unitOf({ name: 'Lima Province', type_en: 'Province' }),
+      lima,
+    ).item,
+    'Q4',
+  );
+  // An exact label naming the kind beats a bare exact label directly in the country: Natural
+  // GeoNames' name is a spelling of the unit too, weighing a little less when it alone hits:
+  // Natural Earth's Malabon says "Caloocan City" for GeoNames, and Malabon is Malabon first.
+  const malabon = {
+    name: 'Malabon',
+    name_en: 'Malabon',
+    gn_name: 'Caloocan City',
+    type_en: 'Highly Urbanized City',
+  };
+  assert.deepEqual(admin1SecondaryVariants(malabon), [
+    'caloocan city',
+    'caloocan city highly urbanized city',
+    'highly urbanized city of caloocan city',
+  ]);
+  assert.deepEqual(
+    admin1SecondaryVariants({ name: 'Salima', gn_name: 'Salima District' }),
+    ['salima district'],
+  );
+  assert.equal(
+    matchUnitByName(
+      {
+        variants: admin1NameVariants(malabon),
+        secondary: admin1SecondaryVariants(malabon),
+        city: true,
+      },
+      [
+        { item: 'Qc', labels: ['Caloocan City', 'Caloocan'], direct: false },
+        { item: 'Qm', labels: ['Malabon City', 'Malabon'], direct: false },
+      ],
+    ).item,
+    'Qm',
+  );
+  assert.equal(
+    matchUnitByName(
+      {
+        variants: admin1NameVariants({
+          name: 'Mizdah',
+          gn_name: 'Sha`biyat al Jabal al Gharbi',
+          type_en: 'District',
+        }),
+        secondary: admin1SecondaryVariants({
+          name: 'Mizdah',
+          gn_name: 'Sha`biyat al Jabal al Gharbi',
+          type_en: 'District',
+        }),
+        city: false,
+      },
+      [{ item: 'Qjg', labels: ['Jabal al Gharbi District'], direct: true }],
+    ).item,
+    'Qjg',
+    'GeoNames’ name alone still finds the unit',
+  );
+  // Earth's "Lima Province" is the province, though the department answers to "Lima" too.
+  assert.equal(
+    matchUnitByName(
+      unitOf({
+        name: 'Lima Province',
+        name_en: 'Lima',
+        type_en: 'Capital District',
+      }),
+      [
+        {
+          item: 'Q3',
+          labels: ['Lima', 'Lima Region', 'Departamento de Lima'],
+          direct: true,
+        },
+        { item: 'Q4', labels: ['Lima Province', 'Lima'], direct: false },
+      ],
+    ).item,
+    'Q4',
+  );
+  assert.equal(
+    matchUnitByName(unitOf({ name: 'Central', type_en: 'Region' }), [
+      { item: 'Q6', labels: ['Central Region'], direct: true },
+      { item: 'Q7', labels: ['Central District'], direct: true },
+    ]).item,
+    'Q6',
+    'the unit’s own kind, spelled with it',
+  );
+  assert.equal(
+    matchUnitByName(unitOf({ name: 'Central', type_en: 'Region' }), [
+      { item: 'Q6', labels: ['Central Region'], direct: true },
+      { item: 'Q7', labels: ['Central Region'], direct: true },
+    ]),
+    null,
+    'a tie',
+  );
+  assert.equal(
+    matchUnitByName(unitOf({ name: 'Central', type_en: 'Region' }), [
+      { item: 'Q6', labels: ['Central Region'], direct: false },
+      { item: 'Q7', labels: ['Central Region'], direct: true },
+    ]).item,
+    'Q7',
+    'the one directly in the country',
+  );
+  assert.equal(
+    matchUnitByName(unitOf({ name: 'Nowhere', type_en: 'Region' }), lima),
+    null,
+  );
+  assert.equal(matchUnitByName({ variants: [], city: false }, lima), null);
+  // The snapshot records the jump rule it was built with.
+  assert.deepEqual(snapshot.meta.jump, POPULATION_JUMP);
 });
 
 test('county queries compare US and international names before choosing a geography', async () => {
