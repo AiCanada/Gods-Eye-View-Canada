@@ -2,7 +2,11 @@ import path from 'node:path';
 import { makeRateLimiter, clientKey } from '../common/rate-limit.js';
 import { admitSameSite } from '../common/same-site.js';
 import { defaultSourceRoot } from '../common/source-root.js';
-import { normalizeRegionalPlace } from '../../../src/data/regionalModel.js';
+import { processShared } from '../common/process-shared.js';
+import {
+  createNaturalEarthIndexLoader,
+  createNaturalEarthPlaces,
+} from '../../../src/data/naturalEarthPlace.js';
 import { naturalRegionAtPoint } from '../../../src/data/naturalEarthRegions.js';
 import {
   nominatimToGeocodeResult,
@@ -147,42 +151,19 @@ export function createRegionalPlaceProvider() {
  */
 export const fetchRegionalPlace = createRegionalPlaceProvider();
 
-/** The reverse endpoint beside a configured search endpoint. */
-function reverseEndpoint(searchEndpoint) {
-  return `${String(searchEndpoint).replace(/[/]search$/, '')}/reverse`;
-}
-
 /**
- * Reverse-geocode a point through Nominatim: locality, province/state with its
- * ISO 3166-2 code, and country code. Only the routes that need those fields
- * call it, each on an explicit user action (the location switch's
- * /api/location-region and the bot swarm's nearest city); the regional brief
- * uses the offline Natural Earth provider above instead. Every lookup goes
- * through the shared gate (`nominatimGate.js`): off until NOMINATIM_URL names
- * an endpoint, then paced, counted and paused with search and outlines. A
- * lookup the gate refuses, or whose `signal` aborts first, rejects with the
- * gate's error (NOMINATIM_DISABLED, NOMINATIM_ABANDONED, ...).
- * @param {{latitude: number, longitude: number}} point
- * @param {{signal?: AbortSignal, gate?: object}} [options]
+ * The fork's reverse lookups (the location switch's /api/location-region, the
+ * country COUNTRY GROUND TRUTH reads from it, and the bot swarm's nearest
+ * city): offline, over the bundled Natural Earth borders and cities, so the
+ * point never leaves this machine and no Nominatim endpoint or allowance is
+ * involved. The loaded packs are kept once per process (process-shared.js):
+ * a Vite restart reuses them instead of pinning another copy.
  */
-export async function fetchNominatimPlace(
-  point,
-  { signal, gate = sharedNominatimGate() } = {},
-) {
-  const params = new URLSearchParams({
-    format: 'jsonv2',
-    lat: point.latitude.toFixed(5),
-    lon: point.longitude.toFixed(5),
-    zoom: '10',
-    addressdetails: '1',
-    'accept-language': 'en',
-  });
-  const answer = await gate.requestJson(
-    (endpoint) => `${reverseEndpoint(endpoint)}?${params}`,
-    { signal },
-  );
-  return normalizeRegionalPlace(answer);
-}
+export const naturalEarthPlaces = createNaturalEarthPlaces({
+  loadIndex: processShared('regional:natural-earth-index', () =>
+    createNaturalEarthIndexLoader(),
+  ),
+});
 
 /**
  * Snap a `"swLat,swLng|neLat,neLng"` view to a coarse grid so small camera
@@ -214,8 +195,9 @@ function coarseBounds(bounds) {
  * The policy asks that results be cached, and warns that a client repeating
  * the same query may be treated as faulty, so answers are kept (30 days for a
  * hit, 24 hours for a genuine no-result; a failure is never kept) and
- * identical searches already in flight share one upstream call. Reverse
- * lookups (`fetchNominatimPlace`) share the same gate and budget.
+ * identical searches already in flight share one upstream call. The fork's
+ * reverse lookups (the location switch, the bot swarm's nearest city) are
+ * offline (`src/data/naturalEarthPlace.js`) and never reach the gate.
  */
 export function createNominatimSearchProvider({
   gate = () => sharedNominatimGate(),

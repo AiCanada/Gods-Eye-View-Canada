@@ -45,6 +45,7 @@ import {
   createCountryCodes,
   createUnitMatcher,
   regionEntries,
+  regionOfPlaces,
   regionUnits,
   softAdminName,
 } from '../abundanceUnits.mjs';
@@ -245,6 +246,20 @@ const PLACES = {
       lat: -45,
       pop: 100,
       rank: 9,
+    },
+    // Its point lies in Far East; its Natural Earth state name says West
+    // (as Lima city's says "Lima", the department beside Lima Province).
+    {
+      id: 5,
+      name: 'Far Port',
+      country: 'Farland',
+      iso: 'FAR',
+      iso2: 'FA',
+      adm1: 'Far West',
+      lon: 107,
+      lat: 2,
+      pop: 500000,
+      rank: 5,
     },
   ],
 };
@@ -652,9 +667,52 @@ test('units from the packs: countries by ADM0_A3, states by ISO 3166-2 (shared c
       ['2', 'TS', 'South Testland', 20000],
       ['3', 'FA', 'Far West', 1000000],
       ['4', null, null, 100],
+      ['5', 'FA', 'Far West', 500000],
     ],
   );
   assert.equal(cities[2].capital, true);
+});
+
+test('a populated place lies in the unit whose polygon holds its point, the smallest when nested; the name stands where none does', () => {
+  const pack = {
+    meta: { decimals: 3 },
+    features: [
+      { name: 'Lima', country: 'Peru', iso2: 'PE', iso: 'PE-LIM', type: 'Department', polygons: [[square(0, 0, 10)]] },
+      // Drawn inside the department, as Natural Earth draws Lima Province.
+      { name: 'Lima Province', country: 'Peru', iso2: 'PE', iso: 'PE-LIM', type: 'Captial District', polygons: [[square(4, 4, 2)]] },
+      { name: 'Callao', country: 'Peru', iso2: 'PE', iso: 'PE-CAL', type: 'Department', polygons: [[square(10, 0, 2)]] },
+      { name: 'Puno', country: 'Peru', iso2: 'PE', iso: 'PE-PUN', type: 'Department', polygons: [[square(-10, 0, 5)]] },
+      // Another country's polygon over the same ground is not asked.
+      { name: 'Elsewhere', country: 'Chile', iso2: 'CL', iso: 'CL-X', type: 'Region', polygons: [[square(-20, -20, 40)]] },
+      { name: 'Shapeless', country: 'Peru', iso2: 'PE', iso: 'PE-NIL', type: 'Department' },
+    ],
+  };
+  const entries = regionEntries(pack);
+  const matcher = createUnitMatcher(entries.map((e) => e.unit));
+  const place = (id, name, lon, lat, adm1, iso2 = 'PE') => ({ id, name, iso2, adm1, lon, lat, pop: 1 });
+  const found = regionOfPlaces(
+    entries,
+    [
+      place('lima', 'Lima', 5, 5, 'Lima'),
+      place('chosica', 'Chosica', 4.5, 4.5, 'Lima'),
+      place('huacho', 'Huacho', -1, 5, 'Lima'),
+      place('juliaca', 'Juliaca', -8, 2, 'Callao'),
+      place('callao', 'Callao', 11, 1, 'Lima'),
+      place('offshore', 'Offshore', 30, 30, 'Lima Province'),
+      place('nameless', 'Nameless', 30, 30, null),
+      place('abroad', 'Abroad', 5, 5, 'Lima', 'CL'),
+    ],
+    matcher,
+  );
+  const id = (key) => found.get(key)?.id;
+  assert.equal(id('lima'), 'PE-LIM#2', 'the point lies in the province, though the state name says "Lima"');
+  assert.equal(id('chosica'), 'PE-LIM#2');
+  assert.equal(id('huacho'), 'PE-LIM', 'no polygon holds the point (the coast was simplified): the name stands');
+  assert.equal(id('juliaca'), 'PE-PUN', 'the polygon over the state name');
+  assert.equal(id('callao'), 'PE-CAL');
+  assert.equal(id('offshore'), 'PE-LIM#2', 'the name, exact, where no polygon holds the point');
+  assert.equal(found.has('nameless'), false);
+  assert.equal(id('abroad'), 'CL-X', 'only the place’s own country’s polygons are asked');
 });
 
 test('names match exactly, softly (generic words and directions), by unique prefix, and through the alias table', () => {
@@ -950,16 +1008,18 @@ test('the store fetches, caches, joins countries, hands figures down to states a
   // A state's or province's people: its share of its country's 5,000,000. Isleton has no figure in
   // the pack, so it takes the share-out (no populated place: the equal tenth over three units,
   // 1/30); the North (3,000,000 in the pack) and the South (1,500,000) share the 29/30 left, two
-  // to one. Farland's pack has no figures: its country's shared out, nine tenths by its populated
-  // places' people (Farcity 1,000,000 in the West), one tenth equally.
+  // to one. Farland's pack has no figures: its country's shared out, nine tenths by the people of
+  // the populated places inside each unit's polygon (Farcity 1,000,000 in the West; Far Port
+  // 500,000 in the East by its point, though its Natural Earth state name says West), one tenth
+  // equally: the West 0.9 × 2/3 + 0.05, the East 0.9 × 1/3 + 0.05.
   assert.equal(north.pop, 3000000, 'the pack’s figure travels with the unit');
   assert.equal(north.people, 3222222);
   assert.equal(unit(region, 'TS-S').people, 1611111);
   assert.equal(unit(region, 'TS:isleton').pop, undefined, 'no figure in the pack, none sent');
   assert.equal(unit(region, 'TS:isleton').people, 166667, 'no figure, no populated place: the equal tenth');
   assert.equal(north.people + unit(region, 'TS-S').people + unit(region, 'TS:isleton').people, 5000000, 'the country’s people, whole');
-  assert.equal(unit(region, 'FA-X').people, 19000000);
-  assert.equal(unit(region, 'FA-X#2').people, 1000000);
+  assert.equal(unit(region, 'FA-X').people, 13000000);
+  assert.equal(unit(region, 'FA-X#2').people, 7000000, 'Far Port counts where its point lies');
   assert.equal(unit(region, 'XX:nowhere region').people, undefined);
   assert.equal(north.peopleGrowth, 0.00816, 'a state grows as its country does');
   assert.equal(unit(region, 'FA-X').peopleGrowth, undefined);

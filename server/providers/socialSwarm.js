@@ -4,7 +4,7 @@ import {
 } from './common/allowed-hosts.js';
 import { clientKey, makeRateLimiter } from './common/rate-limit.js';
 import { readRequestBody } from './common/request.js';
-import { fetchNominatimPlace } from './regional/place.js';
+import { naturalEarthPlaces } from './regional/place.js';
 import { admitLlmRequestFrom } from './llm/ask.js';
 import { enforceRateLimit, openAiRateLimiter } from './openai/rate-limit.js';
 import {
@@ -55,7 +55,7 @@ export const GROK_BOT_COMPUTER_PER_MINUTE = 4;
 const CHIEF_OF_STAFF_TIMEOUT_MS = 20_000;
 /** What is read of the webhook's answer, which is never passed on. */
 const CHIEF_OF_STAFF_ANSWER_BYTES = 16 * 1024;
-/** Nearest-city lookups per address a minute; Nominatim itself is one a second for the whole app. */
+/** Nearest-city lookups per address a minute. */
 export const NEAREST_CITY_PER_MINUTE = 20;
 const NEAREST_CITY_TIMEOUT_MS = 8_000;
 const NEAREST_CITY_CACHE_MS = 10 * 60_000;
@@ -375,10 +375,10 @@ function handleSwarmStatus(req, res, allowedHosts) {
 
 /**
  * The nearest city to the map point, for the Chief of Staff's task: a post
- * names a town, not a point. One reverse lookup through the app's shared
- * Nominatim queue, kept ten minutes for its 0.01° cell, and an empty answer
- * when there is none (at sea) or the lookup fails: the task then asks the
- * bot to find it.
+ * names a town, not a point. One offline lookup in the bundled Natural Earth
+ * cities (`naturalEarthPlaces.cityAt`), kept ten minutes for its 0.01° cell, and an
+ * empty answer when no city is in reach or the lookup fails: the task then
+ * asks the bot to find it.
  */
 /** A name fit for the task: one line, at most 60 characters. */
 function placeName(value) {
@@ -390,11 +390,10 @@ function placeName(value) {
 }
 
 /**
- * The town a point is in: the city, town or village from one Nominatim
- * reverse lookup, through the app's shared one-a-second queue, with its
- * province or state. A province alone is not a town. '' when there is
- * none (at sea) or the lookup fails: the page then uses its built-in
- * gazetteer, or the task asks the bot.
+ * The town for a point: the lookup's city with its province or state. A
+ * province alone is not a town. '' when there is none (no city within
+ * 150 km) or the lookup fails: the page then uses its built-in gazetteer,
+ * or the task asks the bot.
  */
 export async function nearestCityFor(point, { lookup }) {
   try {
@@ -510,7 +509,7 @@ const SWEEP_JOB = Object.freeze({
       Math.abs(latitude) <= 90 &&
       Math.abs(longitude) <= 180
     ) {
-      // The nearest-city route's cache and limit: no extra Nominatim calls.
+      // The nearest-city route's cache and limit, shared with this sweep.
       const kept = keptCity(cities, latitude, longitude);
       if (kept != null) nearestCity = kept;
       else if (allowPlace(clientKey(req))) {
@@ -805,7 +804,8 @@ async function handleChiefOfStaff(req, res, allow, allowedHosts, fetchImpl) {
  */
 export function socialSwarmProxy({
   fetchImpl,
-  placeLookup = fetchNominatimPlace,
+  placeLookup = (point) =>
+    naturalEarthPlaces.cityAt(point.latitude, point.longitude),
 } = {}) {
   const allow = makeRateLimiter({
     windowMs: 60_000,

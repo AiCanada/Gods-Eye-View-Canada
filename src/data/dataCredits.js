@@ -296,6 +296,14 @@ export const DATA_CREDITS = [
       '<a href="https://its.txdot.gov/" target="_blank" rel="noopener">Texas Department of Transportation</a> (courtesy)',
   },
   {
+    key: 'houston-cctv',
+    html:
+      'CCTV cameras &amp; frames (Houston): ' +
+      '<a href="https://traffic.houstontranstar.org/cctv/transtar/" target="_blank" rel="noopener">Houston TranStar</a>. ' +
+      "Copying, distributing or framing its images needs TxDOT's written permission under the " +
+      '<a href="https://traffic.houstontranstar.org/disclaimer.aspx" target="_blank" rel="noopener">TranStar Content Usage terms</a>',
+  },
+  {
     key: 'deldot-cctv',
     html: 'CCTV live video (Delaware): <a href="https://deldot.gov/map/" target="_blank" rel="noopener">DelDOT — Delaware Department of Transportation</a>',
   },

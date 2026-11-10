@@ -8,8 +8,9 @@
  * city its state's, else its country's; every figure says where it came
  * from. The owner's own CSV figures (.gev-data/abundance/<level>.csv) go
  * on top. Every unit carries its people for the forecast's weights (the
- * World Bank's population for a country, shared out to its states and
- * provinces by their populated places' people, a city's own), and each
+ * World Bank's population for a country, shared among its states and
+ * provinces by Wikidata's figures and, for those without one, by the
+ * populated places inside their polygons, a city's own), and each
  * level's table also carries the forecast's hindcast: the figures as they
  * stood ten years ago walked forward and held against today's, with the
  * trend shift and swing scale per indicator that follow.
@@ -36,6 +37,8 @@ import {
   createCountryCodes,
   createUnitMatcher,
   ISO3_FIXES,
+  regionEntries,
+  regionOfPlaces,
   regionUnits,
 } from '../../src/abundanceUnits.mjs';
 import {
@@ -441,6 +444,27 @@ export function createAbundanceStore({
       places: read('places.json'),
     };
     return packs;
+  };
+
+  /**
+   * The state or province each populated place lies in (regionOfPlaces:
+   * the unit whose polygon holds the place's point, else the one its
+   * Natural Earth state name finds), place id → unit id, built once.
+   */
+  let placeRegions = null;
+  const placeRegionIds = () => {
+    if (placeRegions) return placeRegions;
+    const { admin1, places } = loadPacks();
+    const entries = regionEntries(admin1);
+    const matcher = createUnitMatcher(entries.map((e) => e.unit));
+    placeRegions = new Map();
+    for (const [id, unit] of regionOfPlaces(
+      entries,
+      cityUnits(places),
+      matcher,
+    ))
+      placeRegions.set(id, unit.id);
+    return placeRegions;
   };
 
   const readCache = (source) => {
@@ -854,13 +878,16 @@ export function createAbundanceStore({
    * states pack gives a population (Wikidata's, `pop`) takes its share of
    * those figures, of what the country's people leave after the units
    * without one; those take the share-out, nine tenths by the people of
-   * their populated places and one tenth equally (so a province with no
-   * populated place still counts), equally when the country has no placed
-   * people. A country with no figure at all is shared out whole. A figure
-   * no smaller than the country's own, in a country of several units, is a
-   * slip (a district given its whole country's people) and is left aside.
+   * the populated places inside them (each place in the unit whose polygon
+   * holds its point, `regionOf`: its Natural Earth state name misleads,
+   * Lima city's "Lima" naming the department beside Lima Province) and one
+   * tenth equally (so a province with no populated place still counts),
+   * equally when the country has no placed people. A country with no
+   * figure at all is shared out whole. A figure no smaller than the
+   * country's own, in a country of several units, is a slip (a district
+   * given its whole country's people) and is left aside.
    */
-  const peopleOfRegions = (regionList, matcher, countryByIso2, placeList) => {
+  const peopleOfRegions = (regionList, regionOf, countryByIso2, placeList) => {
     const byCountry = new Map();
     for (const unit of regionList) {
       if (!unit.iso2) continue;
@@ -869,8 +896,8 @@ export function createAbundanceStore({
     }
     const placed = new Map();
     for (const p of placeList) {
-      if (!p.adm1 || !(p.pop > 0)) continue;
-      const region = matcher.find(p.iso2, p.adm1);
+      if (!(p.pop > 0)) continue;
+      const region = regionOf(p);
       if (region) placed.set(region.id, (placed.get(region.id) || 0) + p.pop);
     }
     for (const [iso2, regions] of byCountry) {
@@ -954,13 +981,17 @@ export function createAbundanceStore({
 
     const regionList = regionUnits(admin1).map((u) => ({ ...u, values: {} }));
     const regionMatcher = createUnitMatcher(regionList);
+    const regionById = new Map(regionList.map((u) => [u.id, u]));
+    /** The state or province a populated place lies in, of this build's units. */
+    const regionOf = (place) =>
+      regionById.get(placeRegionIds().get(place.id)) || null;
     applyOwn('region', regionList, regionMatcher, codes, upTo);
     const regionImport = imports
       ? applyImport('region', regionList, regionMatcher, codes, countryMatcher)
       : null;
     for (const unit of regionList)
       inherit(unit, countryByIso2.get(unit.iso2), 'country');
-    peopleOfRegions(regionList, regionMatcher, countryByIso2, placeList);
+    peopleOfRegions(regionList, regionOf, countryByIso2, placeList);
     if (level === 'region')
       return { units: regionList, imported: regionImport };
 
@@ -971,9 +1002,7 @@ export function createAbundanceStore({
       ? applyImport('city', cityList, cityMatcher, codes, countryMatcher)
       : null;
     for (const unit of cityList) {
-      const region = unit.adm1
-        ? regionMatcher.find(unit.iso2, unit.adm1)
-        : null;
+      const region = regionOf(unit);
       inherit(unit, region, 'region');
       inherit(unit, countryByIso2.get(unit.iso2), 'country');
       if (unit.pop > 0) unit.people = unit.pop;

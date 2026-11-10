@@ -18,12 +18,6 @@ import {
   regionalBriefProxy,
   weatherEffectsProxy,
 } from 'gods-eye-view/server/providers/regional';
-import {
-  createGateStateStore,
-  createNominatimGate,
-  setSharedNominatimGate,
-  PUBLIC_NOMINATIM_SEARCH,
-} from '../../server/providers/regional/nominatimGate.js';
 import { openAiRealtimeProxy } from 'gods-eye-view/server/providers/openai';
 import { keySetupEndpoint } from 'gods-eye-view/server/standalone/key-setup';
 import { realtimeInstructions } from '../../server/providers/openai/instructions.js';
@@ -102,20 +96,6 @@ function request(
     Promise.resolve(handler(req, res)).catch(reject);
   });
 }
-const ONTARIO = {
-  city: 'Toronto',
-  state: 'Ontario',
-  'ISO3166-2-lvl4': 'CA-ON',
-  country: 'Canada',
-  country_code: 'ca',
-};
-const QUEBEC = {
-  city: 'Montreal',
-  state: 'Quebec',
-  'ISO3166-2-lvl4': 'CA-QC',
-  country: 'Canada',
-  country_code: 'ca',
-};
 function env(t, name, value) {
   const old = process.env[name];
   if (value === undefined) delete process.env[name];
@@ -129,31 +109,6 @@ function root(t) {
   const dir = mkdtempSync(path.join(tmpdir(), 'gev-services-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
-}
-
-/**
- * Nominatim switched on for one test, as NOMINATIM_URL does: the public
- * endpoint, counted in memory (never this machine's daily count) and unpaced,
- * on a clock the test moves. The reverse lookups go through upstream's shared
- * gate since the eleventh upstream merge; it is off until NOMINATIM_URL is set.
- */
-function nominatimOn(t) {
-  let clock = Date.now();
-  setSharedNominatimGate(
-    createNominatimGate({
-      settings: {
-        endpoint: PUBLIC_NOMINATIM_SEARCH,
-        isPublic: false,
-        dailyCap: 50,
-      },
-      usage: createGateStateStore(),
-      sleep: async () => {},
-      minSpacingMs: 0,
-      now: () => clock,
-    }),
-  );
-  t.after(() => setSharedNominatimGate(null));
-  return { advance: (ms) => (clock += ms) };
 }
 
 test('standalone service guards run in development and preview without upstream acquisition', async (t) => {
@@ -188,146 +143,84 @@ test('standalone service guards run in development and preview without upstream 
   }
 });
 
-test('location-region answers the province, state or country of a point and remembers it', async (t) => {
-  nominatimOn(t);
-  let calls = 0;
-  t.mock.method(globalThis, 'fetch', async (url) => {
-    calls++;
-    assert.equal(new URL(url).hostname, 'nominatim.openstreetmap.org');
-    return Response.json({
-      address: {
-        city: 'Toronto',
-        state: 'Ontario',
-        'ISO3166-2-lvl4': 'CA-ON',
-        country: 'Canada',
-        country_code: 'ca',
-      },
-    });
+test('location-region answers the province, state or country of a point offline, without NOMINATIM_URL', async (t) => {
+  // A default install: no Nominatim endpoint, and nothing may be fetched.
+  env(t, 'NOMINATIM_URL', undefined);
+  t.mock.method(globalThis, 'fetch', () => {
+    throw Error('a location-region lookup must not fetch');
   });
   const handler = install(regionalBriefProxy()).get('/api/location-region');
-  const first = await request(handler, {
-    url: '/?latitude=43.6511&longitude=-79.3832',
-  });
-  assert.equal(first.status, 200);
-  assert.deepEqual(first.json(), {
+  const ask = async (latitude, longitude) => {
+    const res = await request(handler, {
+      url: `/?latitude=${latitude}&longitude=${longitude}`,
+    });
+    assert.equal(res.status, 200, `${latitude},${longitude}`);
+    return res.json();
+  };
+  assert.deepEqual(await ask(43.6511, -79.3832), {
     key: 'CA-ON',
     regionCode: 'CA-ON',
     region: 'Ontario',
     countryCode: 'CA',
     country: 'Canada',
   });
-  const nearby = await request(handler, {
-    url: '/?latitude=43.6549&longitude=-79.3801',
+  assert.equal((await ask(45.5017, -73.5673)).key, 'CA-QC');
+  assert.equal((await ask(29.7604, -95.3698)).key, 'US-TX');
+  // COUNTRY GROUND TRUTH reads the country outside Canada from this answer.
+  const cairo = await ask(30.0444, 31.2357);
+  assert.deepEqual([cairo.countryCode, cairo.country], ['EG', 'Egypt']);
+  // Two London boroughs are one region, so moving between them never switches.
+  assert.equal((await ask(51.5007, -0.1246)).key, 'GB:London');
+  assert.equal((await ask(51.539, -0.1426)).key, 'GB:London');
+  // Open water past 12 nautical miles: unplaced, so a switch drops nothing.
+  assert.deepEqual(await ask(-60.1234, -30.5678), {
+    key: '',
+    regionCode: null,
+    region: null,
+    countryCode: null,
+    country: null,
   });
-  assert.equal(nearby.headers['x-location-region'], 'HIT');
-  assert.equal(calls, 1, 'a point in the same cell is answered from memory');
 });
 
-test('location-region cache hits and joined lookups never spend the request quota', async (t) => {
-  nominatimOn(t);
-  let calls = 0;
-  t.mock.method(globalThis, 'fetch', async () => {
-    calls++;
-    return Response.json({ address: QUEBEC });
-  });
-  const handler = install(regionalBriefProxy()).get('/api/location-region');
-  const query = { url: '/?latitude=45.5017&longitude=-73.5673' };
-  // More than the 30 a minute one client may start, in one ~1 km cell.
-  const joined = await Promise.all(
-    Array.from({ length: 20 }, () => request(handler, query)),
+test('the offline borders load once per process: a restarted copy of the place provider reuses them', async () => {
+  const first = await import('../../server/providers/regional/place.js');
+  assert.equal(
+    (await first.naturalEarthPlaces.regionAt(43.6511, -79.3832)).key,
+    'CA-ON',
   );
-  const hits = [];
-  for (let i = 0; i < 20; i++) hits.push(await request(handler, query));
-  assert.deepEqual(
-    [...joined, ...hits].map((res) => res.status),
-    Array(40).fill(200),
+  const loader =
+    globalThis.__GEV_PROCESS_SHARED?.['regional:natural-earth-index'];
+  assert.equal(typeof loader, 'function', 'the loaded packs are process-wide');
+  // A Vite restart loads a fresh copy of every server module, as this query does.
+  const copy =
+    await import('../../server/providers/regional/place.js?vite-restart');
+  assert.notEqual(copy.naturalEarthPlaces, first.naturalEarthPlaces);
+  assert.equal(
+    globalThis.__GEV_PROCESS_SHARED['regional:natural-earth-index'],
+    loader,
+    'the copy finds the first copy’s packs instead of loading its own',
   );
-  assert.equal(calls, 1);
-  assert.deepEqual(
-    joined.map((res) => res.headers['x-location-region']).sort(),
-    ['INFLIGHT', ...Array(18).fill('INFLIGHT'), 'MISS'],
+  assert.equal(
+    (await copy.naturalEarthPlaces.regionAt(45.5017, -73.5673)).key,
+    'CA-QC',
   );
-  assert.ok(hits.every((res) => res.headers['x-location-region'] === 'HIT'));
-  assert.equal(hits.at(-1).json().key, 'CA-QC');
 });
 
-test('location-region remembers a point Nominatim cannot place, but not an upstream failure', async (t) => {
-  const nominatim = nominatimOn(t);
-  let calls = 0;
-  let answer = () => Response.json({ error: 'Unable to geocode' });
-  t.mock.method(globalThis, 'fetch', async () => {
-    calls++;
-    return answer();
+test('location-region answers 503, never "unplaced", when the borders cannot be read', async () => {
+  const handler = install(
+    regionalBriefProxy({
+      regionLookup: async () => {
+        throw new Error('pack unreadable');
+      },
+    }),
+  ).get('/api/location-region');
+  const res = await request(handler, {
+    url: '/?latitude=43.6511&longitude=-79.3832',
   });
-  const handler = install(regionalBriefProxy()).get('/api/location-region');
-  const ocean = { url: '/?latitude=-60.1234&longitude=-30.5678' };
-  for (let i = 0; i < 2; i++) {
-    const res = await request(handler, ocean);
-    assert.equal(res.status, 200);
-    assert.deepEqual(res.json(), {
-      key: '',
-      regionCode: null,
-      region: null,
-      countryCode: null,
-      country: null,
-    });
-  }
-  assert.equal(calls, 1, 'open water is answered from memory the second time');
-
-  answer = () => new Response('busy', { status: 503 });
-  const failing = { url: '/?latitude=-61.1234&longitude=-30.5678' };
-  assert.equal((await request(handler, failing)).status, 503);
-  // The gate holds every lookup for a minute after a 503 (without a
-  // Retry-After); then the point is asked again, as nothing was remembered.
-  nominatim.advance(60_000);
-  assert.equal((await request(handler, failing)).status, 503);
-  assert.equal(calls, 3, 'a real upstream error is asked again');
-});
-
-test('location-region lookups every requester abandoned never reach Nominatim, and joined ones still answer', async (t) => {
-  nominatimOn(t);
-  const asked = [];
-  t.mock.method(globalThis, 'fetch', async (url) => {
-    const params = new URL(url).searchParams;
-    const lat = Number(params.get('lat'));
-    const lon = Number(params.get('lon'));
-    asked.push(`${lat.toFixed(2)},${lon.toFixed(2)}`);
-    return Response.json({ address: lon > -75 ? QUEBEC : ONTARIO });
+  assert.equal(res.status, 503);
+  assert.deepEqual(res.json(), {
+    error: 'Location region is temporarily unavailable',
   });
-  const handler = install(regionalBriefProxy()).get('/api/location-region');
-  const lookup = (latitude, longitude, signal) =>
-    request(handler, {
-      url: `/?latitude=${latitude}&longitude=${longitude}`,
-      signal,
-    });
-  const abandoned = [];
-  const abandon = (latitude, longitude) => {
-    const client = new AbortController();
-    abandoned.push(lookup(latitude, longitude, client.signal));
-    return client;
-  };
-
-  // Map clicks the client has since superseded, queued behind one another.
-  const clicks = [44.01, 44.03, 44.05].map((lat) => abandon(lat, -79.4));
-  // Two tabs ask for one cell; one gives up, the other still wants it.
-  const leaving = abandon(44.21, -79.4);
-  const joined = lookup(44.21, -79.4);
-  for (const client of [...clicks, leaving]) client.abort();
-  // The gate queues at most four lookups, and an abandoned one keeps its
-  // place until the queue reaches it and drops it unsent. Asking again for an
-  // abandoned cell, once they have settled, starts a lookup of its own.
-  await Promise.all(abandoned);
-  const again = lookup(44.05, -79.4);
-  const pill = await lookup(46.8139, -71.208);
-
-  const kept = await joined;
-  assert.equal(kept.status, 200);
-  assert.equal(kept.headers['x-location-region'], 'INFLIGHT');
-  assert.equal(kept.json().key, 'CA-ON');
-  assert.equal((await again).json().key, 'CA-ON');
-  assert.equal(pill.status, 200);
-  assert.equal(pill.json().key, 'CA-QC');
-  assert.deepEqual(asked, ['44.21,-79.40', '44.05,-79.40', '46.81,-71.21']);
 });
 
 test('weather-only requests share upstream work and retain fresh and stale responses', async (t) => {

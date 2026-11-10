@@ -395,13 +395,14 @@ test('no special pack defaults, caps or preference switches remain', () => {
     'DEFAULT_AUSTIN_MAX_SOURCES', 'AUSTIN_DOWNTOWN', 'DEFAULT_CALTRANS_DISTRICTS', 'DEFAULT_CALTRANS_MAX_SOURCES', 'CALTRANS_ANCHORS',
     'DEFAULT_TFL_MAX_SOURCES', 'LONDON_CENTER', 'CCTV_MAX_SOURCES_HARD_CAP', 'DEFAULT_CCTV_MAX_SOURCES', 'CCTV_REGION_CAP_HARD_LIMIT',
     'DEFAULT_NYC_MAX_SOURCES', 'NYC_ANCHORS',
+    'DEFAULT_HOUSTON_MAX_SOURCES', 'HOUSTON_ANCHORS', 'HOUSTON_DOWNTOWN',
     'DEFAULT_CCTV_REGION_CAP', 'CCTV_SOURCE_CACHE_MS', 'DEFAULT_CCTV_SOURCE_FILE',
   ]) {
     assert.equal(name in constants, false, name);
   }
   assert.equal(typeof constants.DEFAULT_AUSTIN_ROWS_URL, 'string');
   assert.equal(constants.CALTRANS_CCTV_URL(4), 'https://cwwp2.dot.ca.gov/data/d4/cctv/cctvStatusD04.json');
-  for (const name of ['prioritizeSources', 'isLikelyAustinCoordinate']) assert.equal(name in normalize, false, name);
+  for (const name of ['prioritizeSources', 'isLikelyAustinCoordinate', 'isLikelyHoustonCoordinate']) assert.equal(name in normalize, false, name);
   for (const name of ['capSourcesPerRegion', 'capSourcesPerCountry', 'cctvRegionCapSettings', 'regionLabel']) {
     assert.equal(name in catalogModule, false, name);
   }
@@ -410,7 +411,7 @@ test('no special pack defaults, caps or preference switches remain', () => {
   const serverDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../server/providers');
   for (const file of ['cctv.js', 'cctv/catalog.js', 'cctv/sources.js', 'cctv/live-packs.js', 'cctv/constants.js']) {
     const text = readFileSync(path.join(serverDir, file), 'utf8');
-    for (const retired of ['CCTV_PREFER_AUSTIN', 'CCTV_FORCE_AUSTIN', 'CCTV_AUSTIN_MAX_SOURCES', 'CCTV_CALTRANS_MAX_SOURCES', 'CCTV_TFL_MAX_SOURCES', 'CCTV_MAX_SOURCES', 'CCTV_REGION_CAP']) {
+    for (const retired of ['CCTV_PREFER_AUSTIN', 'CCTV_FORCE_AUSTIN', 'CCTV_AUSTIN_MAX_SOURCES', 'CCTV_CALTRANS_MAX_SOURCES', 'CCTV_TFL_MAX_SOURCES', 'CCTV_HOUSTON_MAX_SOURCES', 'CCTV_MAX_SOURCES', 'CCTV_REGION_CAP']) {
       assert.equal(new RegExp(`\\b${retired}\\b`).test(text), false, `${file} mentions ${retired}`);
     }
   }

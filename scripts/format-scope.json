@@ -1384,5 +1384,8 @@
   "src/layers/wildlifeSightings/render.perf.test.mjs",
   "src/layers/wildlifeSightings/cache.integration.test.mjs",
   "src/layers/wildlifeSightings/density.test.mjs",
-  "src/layers/wildlifeSightings/selection.test.mjs"
+  "src/layers/wildlifeSightings/selection.test.mjs",
+  "src/data/naturalEarthPlace.js",
+  "src/data/naturalEarthPlace.test.mjs",
+  "src/data/cctvHouston.test.mjs"
 ]

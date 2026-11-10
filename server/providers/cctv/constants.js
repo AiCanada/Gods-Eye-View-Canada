@@ -411,6 +411,39 @@ export const NYC_BOX = {
   east: -73.7,
 };
 
+/** Houston TranStar cameras: one keyless JSON list (~1,070 cameras with a
+ * numeric snapshot id, Greater Houston and out along IH-45 and IH-10). Frames
+ * are stills synthesized from that id on the city's snapshot host — never
+ * taken from the payload. The catalog is served as `application/javascript`;
+ * asking for `application/json` gets HTTP 406, so the loader accepts any
+ * media type. */
+export const HOUSTON_CAMERAS_URL =
+  'https://traffic.houstontranstar.org/data/layers/cctvSnapshots_json.js';
+/** The only origin Houston camera frames may come from. The catalog's `url`
+ * is a `showWin(...)` viewer helper and is ignored; the registered path is
+ * always this origin plus `/snapshots/cctv/<id>.jpg`. */
+export const HOUSTON_IMAGE_ORIGIN = 'https://www.houstontranstar.org/';
+export const HOUSTON_IMAGE_URL = (id) =>
+  `${HOUSTON_IMAGE_ORIGIN}snapshots/cctv/${id}.jpg`;
+/** Numeric TranStar snapshot ids: 3–5 digits, no leading zero. Id `0` is a
+ * different (non-snapshot) camera class in the same list. */
+export const HOUSTON_CAMERA_ID_RE = /^[1-9]\d{2,4}$/;
+/** Hard ceiling on the Houston catalog body (the live list is ~1,160 rows,
+ * ~230 KB), so an upstream streaming an unbounded body is never buffered. */
+export const HOUSTON_MAX_CATALOG_BYTES = 4 * 1024 * 1024;
+/** Ground-elevation prior in metres. The TranStar payload carries none, and
+ * Houston sits a few metres above sea level. */
+export const HOUSTON_GROUND_ELEVATION_M = 15;
+/** Where TranStar's snapshot cameras are (Galveston and the Bolivar ferry to
+ * Willis on IH-45, Sealy on IH-10 to Baytown), for the Houston TranStar pack.
+ * Off unless CCTV_HOUSTON_ENABLED=1. */
+export const HOUSTON_BOX = {
+  south: 29.2,
+  north: 30.6,
+  west: -96.4,
+  east: -94.6,
+};
+
 /** The directory the Autostrada del Brennero (A22) webcam stills live in
  * (`km<N>.jpg`). The fork's international pack already holds the motorway's
  * 13 cameras, so upstream's live A22 loader (#956) is left out; the frame

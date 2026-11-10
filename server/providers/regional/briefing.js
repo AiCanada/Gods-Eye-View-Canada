@@ -3,7 +3,7 @@ import {
   resolvedAllowedHosts,
   servedRequestOrigin,
 } from '../common/allowed-hosts.js';
-import { fetchNominatimPlace, fetchRegionalPlace } from './place.js';
+import { fetchRegionalPlace, naturalEarthPlaces } from './place.js';
 import { fetchRegionalWeather } from './weather.js';
 import {
   fetchAlJazeeraCoverage,
@@ -19,7 +19,6 @@ import {
 import { fetchCountryGroundTruth } from './country-ground-truth.js';
 import { validRegionalPoint } from './query.js';
 import { coalesceProxyRequest } from '../common/http.js';
-import { locationRegionKey } from '../../../src/data/regionalModel.js';
 
 /** Every public-news answer, refusals included: JSON, never cached, never sniffed. */
 const SOCIAL_NEWS_HEADERS = Object.freeze({
@@ -39,38 +38,13 @@ const REGIONAL_BRIEF_MAX_CACHE = 120;
 
 const _groundTruthInFlight = new Map();
 
-// Which province, state or country a point is in: the key a location switch
-// compares. The answer for a spot does not change, so it is kept for a day.
-const LOCATION_REGION_CACHE_MS = 24 * 60 * 60_000;
-
-// Open water and other spots Nominatim cannot place ("Unable to geocode").
-// Kept briefly, so repeat clicks there do not call upstream again.
-const LOCATION_REGION_UNPLACED_CACHE_MS = 10 * 60_000;
-
+// Open water past the territorial sea: a point no border holds.
 const LOCATION_REGION_UNPLACED = Object.freeze({
   key: '',
   regionCode: null,
   region: null,
   countryCode: null,
   country: null,
-});
-
-const LOCATION_REGION_MAX_CACHE = 256;
-
-const _locationRegionCache = new Map();
-
-/**
- * One upstream lookup per ~1 km cell, shared by every request waiting on it.
- * When the last waiter disconnects the lookup is aborted, so a superseded
- * click does not keep its place in the Nominatim queue.
- * @type {Map<string, {promise: Promise<object>, controller: AbortController, waiters: number}>}
- */
-const _locationRegionInFlight = new Map();
-
-const _locationRegionRateLimiter = makeRateLimiter({
-  windowMs: 60_000,
-  max: 30,
-  globalMax: 90,
 });
 
 const RISK_NEWS_CACHE_MS = 5 * 60_000;
@@ -114,47 +88,18 @@ function regionalBriefHasAnySource({ place, weather, news } = {}) {
   return Boolean(place || weather || (news && news.status !== 'unavailable'));
 }
 
-function cacheLocationRegion(key, payload, ttlMs) {
-  _locationRegionCache.delete(key);
-  _locationRegionCache.set(key, { payload, cachedAt: Date.now(), ttlMs });
-  while (_locationRegionCache.size > LOCATION_REGION_MAX_CACHE) {
-    _locationRegionCache.delete(_locationRegionCache.keys().next().value);
-  }
-}
-
-/** Start the shared, abortable upstream lookup for one cell. */
-function startLocationRegionLookup(point, key) {
-  const controller = new AbortController();
-  const flight = { promise: null, controller, waiters: 0 };
-  flight.promise = fetchNominatimPlace(point, { signal: controller.signal })
-    .then((place) => {
-      if (!place) {
-        cacheLocationRegion(
-          key,
-          LOCATION_REGION_UNPLACED,
-          LOCATION_REGION_UNPLACED_CACHE_MS,
-        );
-        return LOCATION_REGION_UNPLACED;
-      }
-      const payload = {
-        key: locationRegionKey(place),
-        regionCode: place.regionCode,
-        region: place.region,
-        countryCode: place.countryCode,
-        country: place.country,
-      };
-      cacheLocationRegion(key, payload, LOCATION_REGION_CACHE_MS);
-      return payload;
-    })
-    .finally(() => {
-      if (_locationRegionInFlight.get(key) === flight)
-        _locationRegionInFlight.delete(key);
-    });
-  _locationRegionInFlight.set(key, flight);
-  return flight;
-}
-
-function regionalBriefProxy({ placeProvider = fetchRegionalPlace } = {}) {
+/**
+ * @param {object} [options]
+ * @param {(point: {latitude: number, longitude: number}) => Promise<object|null>} [options.placeProvider]
+ *   The brief's physical-region context.
+ * @param {(latitude: number, longitude: number) => Promise<object|null>} [options.regionLookup]
+ *   `/api/location-region`'s province, state or country of a point.
+ */
+function regionalBriefProxy({
+  placeProvider = fetchRegionalPlace,
+  regionLookup = (latitude, longitude) =>
+    naturalEarthPlaces.regionAt(latitude, longitude),
+} = {}) {
   const _regionalBriefCache = new Map();
 
   const _regionalBriefInFlight = new Map();
@@ -546,73 +491,40 @@ function regionalBriefProxy({ placeProvider = fetchRegionalPlace } = {}) {
         );
         return;
       }
-      // Cells of about 1 km, small enough that a border rarely splits one.
-      const key = `${point.latitude.toFixed(2)},${point.longitude.toFixed(2)}`;
-      const cached = _locationRegionCache.get(key);
-      if (cached && Date.now() - cached.cachedAt <= cached.ttlMs) {
-        res.writeHead(200, {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-store',
-          'X-Location-Region': 'HIT',
-        });
-        res.end(JSON.stringify(cached.payload));
-        return;
-      }
-      // Only a request that starts upstream work is charged: cache hits and
-      // joins of a lookup already running cost nothing, so repeat clicks never
-      // spend the quota a real switch needs.
-      let flight = _locationRegionInFlight.get(key);
-      const shared = Boolean(flight);
-      if (!flight) {
-        if (!_locationRegionRateLimiter(clientKey(req))) {
-          res.writeHead(429, {
-            'Content-Type': 'application/json',
-            'Retry-After': '10',
-          });
-          res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
-          return;
-        }
-        flight = startLocationRegionLookup(point, key);
-      }
-      flight.waiters += 1;
-      let waiting = true;
-      req.on?.('close', () => {
-        if (!waiting || res.writableEnded) return;
-        waiting = false;
-        flight.waiters -= 1;
-        if (flight.waiters > 0) return;
-        // Nobody is waiting any more: a newer request for this cell starts
-        // its own lookup instead of joining the aborted one.
-        if (_locationRegionInFlight.get(key) === flight)
-          _locationRegionInFlight.delete(key);
-        flight.controller.abort();
-      });
+      // Offline, from the bundled Natural Earth borders: the point never
+      // leaves this machine, and no Nominatim endpoint or allowance is spent.
+      let place;
       try {
-        const payload = await flight.promise;
-        waiting = false;
-        res.writeHead(200, {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-store',
-          'X-Location-Region': shared ? 'INFLIGHT' : 'MISS',
-        });
-        res.end(JSON.stringify(payload));
-      } catch (error) {
-        waiting = false;
+        place = await regionLookup(point.latitude, point.longitude);
+      } catch {
         res.writeHead(503, {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-store',
         });
         res.end(
           JSON.stringify({
-            // Upstream's gate keeps Nominatim off until NOMINATIM_URL names
-            // an endpoint; say so rather than "temporarily".
-            error:
-              error?.code === 'NOMINATIM_DISABLED'
-                ? 'Place lookups are off until NOMINATIM_URL is set'
-                : 'Location region is temporarily unavailable',
+            error: 'Location region is temporarily unavailable',
           }),
         );
+        return;
       }
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+      });
+      res.end(
+        JSON.stringify(
+          place
+            ? {
+                key: place.key,
+                regionCode: place.regionCode,
+                region: place.region,
+                countryCode: place.countryCode,
+                country: place.country,
+              }
+            : LOCATION_REGION_UNPLACED,
+        ),
+      );
     });
   }
 

@@ -66,7 +66,16 @@
   figure: Hong Kong's districts, Kosovo's municipalities, the Philippine
   cities (Natural Earth's Manila carried Metro Manila's 14.0 million, now
   its own 1.9), Lima Province, Ireland's cities, Naples's metropolitan
-  city, British Columbia and Prince Edward Island among them. Under the
+  city, British Columbia and Prince Edward Island among them. A populated
+  place counts for the state or province whose polygon holds its point
+  (the smallest where one is drawn inside another, Luxor's in Qina's) and
+  takes that unit's figures as a city; its Natural Earth state name,
+  matched before, misled: Lima city's "Lima" named the department beside
+  Lima Province and handed it 16.7 million people on the share-out, Puno's
+  towns said "Callao", Seattle's "Washington" found the District of
+  Columbia, Hanoi's "Thái Nguyên" its neighbour. Of the 7,342 places 320
+  move and 459 that no name found gain their unit; a port drawn just off a
+  simplified coast (Xiamen, Santos, Genoa) keeps the name. Under the
   world's fan chart a line reads the world by
   scenario (`2051 BY SCENARIO · BASELINE 61 · OPTIMISTIC 62 · PESSIMISTIC
   58 · VOLATILE 60`), the other three scenarios simulated after the run at
@@ -93,6 +102,33 @@
   so a place's detail matches the map, and the strings are in Spanish,
   Quebec French, Inuktitut and Ancient Egyptian (docs/GLOBAL-ABUNDANCE-MAP.md,
   "The forecast"; TESTING.md §10.16–18).
+- The two errors the audit of True up 602 and True up 59 found, fixed (owner
+  request 2026-11-06: "offline fix plus NOMINATIM_URL", and "yes" to holding
+  TxDOT's written permission for Houston TranStar). **The location switch
+  works again.** True up 602 sent the fork's reverse lookups through
+  upstream's Nominatim gate, which is off until `NOMINATIM_URL` is set, so
+  since then a location switch never fired, COUNTRY GROUND TRUTH could not
+  name the country outside Canada and the bot swarm had no nearest city. All
+  three now answer offline from the bundled Natural Earth borders and cities
+  (`src/data/naturalEarthPlace.js`): no endpoint, no daily allowance, and the
+  map point never leaves the machine. A region is the province or state
+  ("CA-ON", "US-TX"), or, where the borders are a level lower (French
+  departments, British boroughs, Irish counties and the like), the region
+  above them ("GB:London", "FR:Île-de-France"), so moving around one city
+  never switches; a point within 12 nautical miles of a coast belongs to that
+  shore. The nearest city is the nearest of 7,342 within 150 km, the page
+  gazetteer's own reach. `NOMINATIM_URL` now only turns on upstream's voice
+  outlines and last-resort place search. **Houston's live TranStar cameras.**
+  True up 602 left upstream's Houston loader out on the belief that the US
+  pack file already held those cameras; it held 513 of TranStar's 1,070
+  snapshot cameras. The loader is in as a live pack, opt-in like NYC DOT
+  (`CCTV_HOUSTON_ENABLED=1`, since TranStar's Content Usage terms need TxDOT's
+  written permission), with no 250-camera cap, anchors or metro box filter: a
+  Houston area downloads the list and adds the 601 cameras the file lacks,
+  the 469 it shares are served once as the file's cameras, and the 44
+  TranStar no longer lists stay. Upstream's TranStar credit, with those
+  terms, is in the Data attribution popover.
+
 - Upstream merge of 179 commits (Wildlife Sightings, off by default in a
   new Wildlife group: keyless iNaturalist observations from the last 48 h
   (whales 7 d) and Acartia's Salish Sea marine mammals, with a density glow,

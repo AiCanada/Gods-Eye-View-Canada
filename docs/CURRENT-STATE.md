@@ -2096,8 +2096,9 @@ remains a manual opener (the shortcut in `OPENAI_DOTS_LINK`, else
 
 The task's Place line names the nearest city (owner, 2026-10-01: "Include
 nearest city"): the town the map point is in, from
-`GET /api/social/swarm/nearest-city` (one Nominatim reverse lookup through the
-app's shared one-a-second queue, kept 10 minutes per 0.01° cell, 20 a minute
+`GET /api/social/swarm/nearest-city` (offline: the nearest of the bundled
+Natural Earth cities within 150 km, with its own province or state, from
+`src/data/naturalEarthPlace.js`; kept 10 minutes per 0.01° cell, 20 a minute
 from one address, this page only; a province alone is not a town), else the
 nearest city in the built-in gazetteer (`closestCityForSearch`: the 21
 presets and 52 Canadian cities, within 150 km) with its distance, as in
@@ -2318,9 +2319,10 @@ tuning; a delayed Enable result cannot reveal or refocus removed controls.
 
 The CCTV catalog can add New York City traffic cameras from the NYC DOT
 Traffic Management Center. NYC DOT requires developers to sign a data-sharing
-agreement for the camera feed, so this is the one opt-in pack: it loads only
-when `CCTV_NYC_ENABLED=1`, and with the flag unset the server makes no NYC
-request. NYC DOT's requested disclaimer is in the Data attribution popover.
+agreement for the camera feed, so this is an opt-in pack (as Houston TranStar
+is, below): it loads only when `CCTV_NYC_ENABLED=1`, and with the flag unset
+the server makes no NYC request. NYC DOT's requested disclaimer is in the Data
+attribution popover.
 When enabled, the server reads the keyless
 camera list at `https://webcams.nyctmc.org/api/cameras` and keeps cameras the
 feed marks online. Frame URLs are built from each camera UUID under
@@ -2331,6 +2333,34 @@ id-hash fallback at low confidence.
 Once enabled, every camera the feed reports online loads: no pack cap and
 no catalogue ceiling (owner ruling 2026-10-11); the area cap of the nearest
 1,000 within 50 km bounds what is served, as for every pack.
+
+## Houston TranStar CCTV source pack
+
+The CCTV catalog can add Houston TranStar's snapshot cameras, a live pack in
+`server/providers/cctv/live-packs.js`. TranStar's Content Usage terms
+(https://traffic.houstontranstar.org/disclaimer.aspx) prohibit copying,
+distributing or framing its images without TxDOT's written permission, so the
+pack is opt-in: it loads only when `CCTV_HOUSTON_ENABLED=1`, set only by an
+operator who holds that permission, and with the flag unset, empty or any other
+value the server makes no request to TranStar's list. The TranStar credit, with
+those terms, is in the Data attribution popover.
+
+When enabled, a selected area that overlaps the pack's box (Galveston to
+Willis, Sealy to Baytown) downloads the keyless list at
+`https://traffic.houstontranstar.org/data/layers/cctvSnapshots_json.js`
+(served as `application/javascript`; asking for JSON gets HTTP 406). Every
+camera with a numeric snapshot id loads, wherever it is (1,070 on 2026-11-04,
+out along IH-45 and IH-10 too): no pack cap, no anchor order and no metro box
+filter, unlike upstream's 250 nearest the metro cores; the area cap bounds what
+is served. Rows with id `0` (other operators' PTZ cameras that TranStar's map
+opens in a different viewer) have no still and are not loaded. Frame URLs are
+built from the id as `https://www.houstontranstar.org/snapshots/cctv/<id>.jpg`;
+they are never taken from the payload. TranStar's `dir` is the side of the
+freeway the camera sits on, so it seeds a low-confidence heading along the
+nearest lanes' travel direction. The US pack file's TranStar cameras (513, from
+the DriveTexas listing) are the same stills: each is served once, as the file's
+camera, so its id and links stay, and the file's cameras TranStar no longer
+lists stay. Gate: `src/data/cctvHouston.test.mjs`.
 
 ## Taiwan CCTV source pack
 
@@ -6616,9 +6646,18 @@ the voice outline client asks `/api/geocode`, so a default install sends no
 lookup it would refuse. A missing or failed probe leaves the capability unknown
 and lookups proceed as before. God's Eye View Canada's reverse lookups (the
 location switch's `/api/location-region`, the bot swarm's nearest city and,
-outside Canada, the country the COUNTRY GROUND TRUTH ASSESSMENT reads) go
-through the same endpoint, spacing and daily allowance, so they are off too
-until `NOMINATIM_URL` is set.
+outside Canada, the country the COUNTRY GROUND TRUTH ASSESSMENT reads) never
+use Nominatim: `src/data/naturalEarthPlace.js` answers them offline from the
+bundled Natural Earth borders (260 countries and map units, 4,587 provinces,
+states and other first-level units) and 7,342 cities, so they work without
+`NOMINATIM_URL`, spend none of its allowance, and the point never leaves the
+machine. A region is the unit's ISO 3166-2 code ("CA-ON", "US-TX"); where the
+pack's units are a level lower (French departments, Italian and Spanish
+provinces, British boroughs, Irish counties, Belgian and Philippine
+provinces) it is the region above them ("GB:London", "FR:Île-de-France"), so
+moving around one city never switches. A point at sea within 12 nautical
+miles of a coast belongs to that shore; farther out it is unplaced. At this
+1:10m scale a border is drawn to about a kilometre.
 Explicit public-service configuration retains an identifying `User-Agent` and `Referer`, at
 least 1.1 seconds between public search and outline starts, a shared durable
 per-install daily allowance and pause state that fail closed when unusable.

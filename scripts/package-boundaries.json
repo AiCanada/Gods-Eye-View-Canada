@@ -638,7 +638,9 @@
       "src/localRequestGate.mjs",
       "src/data/adminBoundaries.js",
       "src/data/placeNames.js",
-      "src/sources/featureGeometry.js"
+      "src/sources/featureGeometry.js",
+      "server/providers/common/process-shared.js",
+      "src/data/naturalEarthPlace.js"
     ],
     "external": []
   },

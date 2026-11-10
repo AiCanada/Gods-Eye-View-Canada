@@ -18,6 +18,7 @@ import {
   ESTONIA_BOX,
   FINLAND_BOX,
   GREATER_LONDON_BOX,
+  HOUSTON_BOX,
   NORWAY_BOX,
   NYC_BOX,
   NSW_BOX,
@@ -45,6 +46,7 @@ import {
   loadDelDOTSourcesFromOpenData,
   loadVegvesenSourcesFromOpenData,
   loadNycSourcesFromOpenData,
+  loadHoustonSourcesFromOpenData,
 } from './sources.js';
 
 /** Env kill switch: unset or anything but "0" means enabled. */
@@ -74,8 +76,9 @@ const LIVE_PACK_FORMAT = 'gev-cctv-live/1';
  * its coverage box, its country is enabled, and (Caltrans, TxDOT) it is
  * configured. CCTV_<PACK>_ENABLED=0 turns a pack off (TfL, Ontario, Fintraffic,
  * DriveBC, TxDOT, Tallinn, Tarktee, Warendorf, NSW, Calgary, DelDOT,
- * Vegvesen). NYC DOT stays off unless CCTV_NYC_ENABLED=1. `key`
- * names what the download depends on, so a changed setting refetches.
+ * Vegvesen). NYC DOT stays off unless CCTV_NYC_ENABLED=1, and Houston
+ * TranStar unless CCTV_HOUSTON_ENABLED=1. `key` names what the download
+ * depends on, so a changed setting refetches.
  */
 export const CCTV_LIVE_PACKS = Object.freeze([
   {
@@ -223,6 +226,19 @@ export const CCTV_LIVE_PACKS = Object.freeze([
     enabled: (env) => envOptIn(env, 'CCTV_NYC_ENABLED'),
     key: (env) => String(env.CCTV_NYC_CAMERAS_URL || 'nyctmc'),
     load: loadNycSourcesFromOpenData,
+  },
+  {
+    // TranStar's Content Usage terms need TxDOT's written permission to copy,
+    // distribute or frame its images, so the pack is off unless the operator
+    // holds that permission and opts in (see DATA_SOURCES.md). A camera the
+    // US pack file already holds is the same still and is served once.
+    name: 'houston',
+    country: 'US',
+    region: 'TX',
+    box: HOUSTON_BOX,
+    enabled: (env) => envOptIn(env, 'CCTV_HOUSTON_ENABLED'),
+    key: (env) => String(env.CCTV_HOUSTON_CAMERAS_URL || 'cctv-snapshots'),
+    load: loadHoustonSourcesFromOpenData,
   },
 ]);
 

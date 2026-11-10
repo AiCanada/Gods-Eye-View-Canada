@@ -207,8 +207,11 @@ snapshot is `src/data/local_data/natural_earth/admin1_population.json`,
 CC0). The units
 with a figure share, in proportion to them, what the country's people leave
 after the units without one, which take the share-out (nine tenths by the
-people of their Natural Earth populated places, one tenth equally, so a
-province with no populated place still counts); so a country's people are
+people of the Natural Earth populated places inside them, each place in the
+unit whose polygon holds its point, the smallest where one is drawn inside
+another, and a place no polygon holds, a port drawn just off a simplified
+coast, in the unit its Natural Earth state name finds; one tenth equally, so
+a province with no populated place still counts); so a country's people are
 whole at every level, and figures from different years only set
 proportions. Without the figures Maharashtra weighed 249 million and Uttar
 Pradesh 137 million; with them 129 and 282 (India's shares are its 2011
@@ -220,7 +223,9 @@ by name, and GeoNames' name for each polygon tells which is which (Natural
 Earth's second "Uruzgan" is Daykundi, its second "Parwan" Panjshir, its
 second "Mbarara" Kiruhura, each now with its own figure; Lima Province takes
 its own 10.1 million while the Lima department, whose item holds the
-province drawn beside it, stays on the share-out); the 13 units whose
+province drawn beside it, stays on the share-out by the towns inside its
+polygon, Huacho and Huaura among them, Lima city's point lying in the
+province though its Natural Earth state name says "Lima"); the 13 units whose
 Natural Earth id names another place (Belgium's Luxembourg as the Grand
 Duchy's canton, set aside by its ISO codes; Manila as Metro Manila, set aside
 by its classes) are asked by code or name, which finds them (Luxembourg's
@@ -443,7 +448,7 @@ be real (no homicide, no infant death in a small region that year) stands.
 | WORK (lower)       | `SL.UEM.TOTL.ZS` unemployment, % of the labour force         | `DF_RATES` unemployment, % of the labour force aged 15–64   | `DF_LABOUR` unemployment in the urban area |
 | AIR (lower)        | `EN.ATM.PM25.MC.M3` fine particles (PM2.5) breathed, µg/m³   | from the country                                            | `DF_POLLUTION` release 1.2: PM2.5 breathed in the urban area, µg/m³ |
 | GREEN SPACE        | `AG.LND.FRST.ZS` forest, % of the land                       | from the country                                            | `DF_GREEN_AREA` green space in the urban centre, m² per person |
-| (the people: the forecast's weights, no indicator) | `SP.POP.TOTL` population, total (else the populated places' people together) | the country's, shared by Wikidata's population of each unit (P1082, in the states pack as `pop`); the units without one by the share-out, nine tenths by the populated places' people, one tenth equally | Natural Earth `pop_max` |
+| (the people: the forecast's weights, no indicator) | `SP.POP.TOTL` population, total (else the populated places' people together) | the country's, shared by Wikidata's population of each unit (P1082, in the states pack as `pop`); the units without one by the share-out, nine tenths by the people of the populated places inside their polygons, one tenth equally | Natural Earth `pop_max` |
 
 The cities' PM2.5 comes from the OECD's release 1.2 of `DF_POLLUTION`
 (2021–2023), not its newest, 1.5 (released 2026-10-09, 2021–2025), which is
@@ -467,8 +472,10 @@ not read, so a change of release takes effect at once.
 
 Every figure is the latest value the source has, with its change over five
 years (see Trends). A state or province without a figure of its own takes its
-country's; a city takes its state's, else its country's; every figure says
-where it came from, and the INDICATORS rows count both. The sources are
+country's; a city takes its state's (the unit whose polygon holds its point,
+`regionOfPlaces`: its Natural Earth state name misleads, Seattle's
+"Washington" finding the District of Columbia), else its country's; every
+figure says where it came from, and the INDICATORS rows count both. The sources are
 listed in [DATA_SOURCES.md](../DATA_SOURCES.md): World Bank WDI (CC BY 4.0),
 Our World in Data (CC BY 4.0), OECD (its terms of use, attribution), Natural
 Earth (public domain).

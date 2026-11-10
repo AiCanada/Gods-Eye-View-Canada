@@ -6,9 +6,16 @@
  * (server/shared/abundanceData.mjs) and the globe that draws its shape
  * (src/abundanceShapes.js): a country's ADM0_A3 code, a state's ISO 3166-2
  * code, a city's Natural Earth id. Pure: packs in, units out, plus the
- * name matching that joins a source's place names to them.
+ * name matching that joins a source's place names to them and the polygon
+ * test that places each populated place in its state or province.
  */
-import { decodeRing, normalizeAdminName } from './data/adminBoundaries.js';
+import {
+  boxDistanceKm,
+  decodeRing,
+  geometryOf,
+  normalizeAdminName,
+  polygonsContain,
+} from './data/adminBoundaries.js';
 
 /** Area-weighted centroid of an open ring (planar; fine at unit scale). */
 function ringCentroid(ring) {
@@ -132,6 +139,49 @@ export function cityUnits(pack) {
       pop: Number.isFinite(f.pop) ? f.pop : 0,
       ...(f.capital ? { capital: true } : {}),
     });
+  }
+  return out;
+}
+
+/**
+ * The state or province each populated place lies in: among its country's
+ * units (the same two-letter code), the one whose polygon holds the place's
+ * point, the smallest where one is drawn inside another (Luxor's in Qina's);
+ * a place no polygon holds (a port drawn just off a simplified coast:
+ * Xiamen, Santos, Genoa) takes the unit its Natural Earth state name finds
+ * through `matcher`. The point is asked before the name because the name
+ * misleads: Lima city's "Lima" names the department beside Lima Province,
+ * Puno's places say "Callao", Seattle's "Washington" finds the District of
+ * Columbia.
+ * @param {Array<{feature: object, decimals: number, unit: object}>} entries from regionEntries
+ * @param {object[]} places from cityUnits
+ * @param {{find: Function}} matcher from createUnitMatcher over the entries' units
+ * @returns {Map<string, object>} place id → the entries' unit
+ */
+export function regionOfPlaces(entries, places, matcher) {
+  const byCountry = new Map();
+  for (const entry of entries) {
+    if (!entry.feature?.polygons?.length) continue;
+    const key = entry.unit.iso2 || 'XX';
+    if (!byCountry.has(key)) byCountry.set(key, []);
+    byCountry.get(key).push(entry);
+  }
+  const out = new Map();
+  for (const place of places) {
+    let held = null;
+    let heldArea = Infinity;
+    for (const entry of byCountry.get(place.iso2 || 'XX') || []) {
+      const geometry = geometryOf(entry);
+      if (boxDistanceKm(geometry.bbox, place.lat, place.lon) !== 0) continue;
+      if (!polygonsContain(geometry.polygons, place.lat, place.lon)) continue;
+      if (geometry.areaKm2 < heldArea) {
+        held = entry.unit;
+        heldArea = geometry.areaKm2;
+      }
+    }
+    const unit =
+      held || (place.adm1 ? matcher.find(place.iso2, place.adm1) : null);
+    if (unit) out.set(place.id, unit);
   }
   return out;
 }
