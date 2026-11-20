@@ -14,6 +14,9 @@
  *     Wikidata's population of each state and province (CC0), the people
  *     the GLOBAL ABUNDANCE MAP weighs a state or province by; carried into
  *     the states pack as `pop`.
+ *   src/data/local_data/natural_earth/populated_places.json
+ *     Natural Earth 10m populated places as points, for the orbital view's
+ *     "near <city>" (`src/data/placeBelow.js`; public domain).
  *
  * Both sources are pinned by URL and SHA-256, so a rerun reproduces the packs
  * byte for byte. Downloads are cached outside the repository (default: the
@@ -110,6 +113,9 @@ export const PARAMS = Object.freeze({
     elsewhereMinPopulation: 50_000,
     cityStateMaxKm2: 1_000,
   },
+  // Every populated place, kept as a point: name, position and the two
+  // prominence ranks the orbital view picks "near <city>" by.
+  places: { decimals: 3 },
   // A unit's population from the Wikidata snapshot is carried into the
   // states pack when its point in time is `minYear` or later (an older
   // census says little about today's share of the country) or has no date.
@@ -2305,6 +2311,52 @@ async function buildPlaces() {
   };
 }
 
+/**
+ * The orbital view's populated places pack (`populated_places.json`): the
+ * same Natural Earth source as `buildPlaces`, kept as compact point tuples
+ * for `src/data/placeBelow.js`.
+ */
+async function buildPopulatedPlaces() {
+  const params = PARAMS.places;
+  const source = await fetchPinned('places');
+  const factor = 10 ** params.decimals;
+  const round = (value) => Math.round(value * factor) / factor;
+  const places = JSON.parse(source.bytes.toString('utf8'))
+    .features.map((f) => f.properties)
+    .filter(
+      (p) =>
+        p.name &&
+        Number.isFinite(p.latitude) &&
+        Number.isFinite(p.longitude) &&
+        Number.isFinite(p.scalerank),
+    )
+    .map((p) => [
+      p.name,
+      round(p.latitude),
+      round(p.longitude),
+      p.scalerank,
+      Number.isFinite(p.rank_max) ? p.rank_max : 0,
+    ])
+    .sort((a, b) => a[3] - b[3] || b[4] - a[4] || a[0].localeCompare(b[0]));
+  return {
+    meta: {
+      title: 'Natural Earth populated places',
+      source: 'ne_10m_populated_places_simple',
+      url: SOURCES.places.url,
+      sha256: source.digest,
+      commit: NE_COMMIT,
+      license:
+        'Public domain (https://www.naturalearthdata.com/about/terms-of-use/)',
+      schema:
+        'places[]: [name, latitude, longitude, scalerank (0 most prominent .. 10), rank_max (population class, 0..14; higher is larger)]',
+      decimals: params.decimals,
+      curation: params,
+      script: 'scripts/build-admin-packs.mjs',
+    },
+    places,
+  };
+}
+
 async function buildCounties() {
   const params = PARAMS.counties;
   const source = await fetchPinned('counties');
@@ -2408,4 +2460,13 @@ if (isMain) {
       'src/data/local_data/natural_earth/places.json',
       await buildPlaces(),
     );
+  if (!only || only === 'places') {
+    const relative = 'src/data/local_data/natural_earth/populated_places.json';
+    const pack = await buildPopulatedPlaces();
+    const text = JSON.stringify(pack) + '\n';
+    await writeFile(path.join(ROOT, relative), text);
+    console.log(
+      `${relative}: ${pack.places.length} places, ${Buffer.byteLength(text)} bytes`,
+    );
+  }
 }

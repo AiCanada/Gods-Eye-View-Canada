@@ -419,6 +419,65 @@ async function readCappedResponseBytes(upstream, maxBytes) {
 const JPEG_START = Buffer.from([0xff, 0xd8, 0xff]);
 const JPEG_END = Buffer.from([0xff, 0xd9]);
 
+/** Whether only a line break or padding (CR, LF, NUL, space, tab) follows. */
+function onlyPaddingFrom(bytes, from) {
+  for (let i = from; i < bytes.length; i++) {
+    const b = bytes[i];
+    if (b !== 0x0d && b !== 0x0a && b !== 0x00 && b !== 0x20 && b !== 0x09)
+      return false;
+  }
+  return true;
+}
+
+/**
+ * Where a JPEG's scan data starts (its first top-level start-of-scan marker),
+ * walking the header segments by their lengths; -1 when the bytes do not
+ * parse that far. An embedded preview sits inside a header segment, so the
+ * walk steps over it.
+ */
+function jpegScanStart(bytes) {
+  let i = 2;
+  while (i + 4 <= bytes.length) {
+    if (bytes[i] !== 0xff) return -1;
+    const marker = bytes[i + 1];
+    if (marker === 0xff) {
+      i += 1; // a fill byte
+      continue;
+    }
+    if (marker === 0xda) return i;
+    if (marker === 0xd9) return -1;
+    if (
+      marker === 0xd8 ||
+      marker === 0x01 ||
+      (marker >= 0xd0 && marker <= 0xd7)
+    ) {
+      i += 2; // markers that stand alone
+      continue;
+    }
+    const size = (bytes[i + 2] << 8) | bytes[i + 3];
+    if (size < 2) return -1;
+    i += 2 + size;
+  }
+  return -1;
+}
+
+/**
+ * Where the picture in a finished part ends (just past its end-of-image
+ * marker), or -1 when the part holds no whole picture. The picture's own
+ * marker is the last thing in its part bar a line break or padding. A marker
+ * with other bytes after it is trusted only when the JPEG's structure shows
+ * it comes after the scan data (a camera that appends a trailer); otherwise
+ * it is an embedded preview's, in a part that was cut short.
+ */
+function wholePictureEnd(part) {
+  const end = part.lastIndexOf(JPEG_END);
+  if (end < 0) return -1;
+  const after = end + JPEG_END.length;
+  if (onlyPaddingFrom(part, after)) return after;
+  const scan = jpegScanStart(part);
+  return scan >= 0 && scan < end ? after : -1;
+}
+
 /**
  * Finds the first whole JPEG in a motion-JPEG stream as its bytes arrive.
  *
@@ -427,6 +486,14 @@ const JPEG_END = Buffer.from([0xff, 0xd9]);
  * marker before the next part delimiter: a JPEG can carry an embedded preview
  * with an end marker of its own, so the first marker is not proof the picture
  * is over.
+ *
+ * A part that reaches its delimiter with no end-of-image marker of its own
+ * (none at all, or only an embedded preview's: see wholePictureEnd) was cut
+ * short (some cameras send a partial first frame), so it is dropped and the
+ * search starts over in the next part. Carrying on to a later delimiter would
+ * end the picture at the next frame's marker: the cut-short frame, the
+ * delimiter, the next part's headers and the next frame, returned as one
+ * corrupt image.
  *
  * Work is linear in the bytes read: they are copied once into a buffer that
  * doubles, and each search resumes where the last one stopped. Joining and
@@ -445,6 +512,8 @@ export function createMotionJpegScanner(boundary = '') {
   );
   let buffer = Buffer.allocUnsafe(64 * 1024);
   let length = 0;
+  // The part being read: where its picture starts (-1 until one is seen),
+  // where the next searches resume, and the length its headers declare.
   let start = -1;
   let startSearchFrom = 0;
   let delimiterSearchFrom = 0;
@@ -465,47 +534,63 @@ export function createMotionJpegScanner(boundary = '') {
       );
       length += chunk.byteLength;
       const seen = buffer.subarray(0, length);
-      if (start < 0) {
-        start = seen.indexOf(JPEG_START, startSearchFrom);
+      // One pass per part: a part dropped below hands over to the next one,
+      // which may already be whole in what has arrived.
+      for (;;) {
         if (start < 0) {
-          startSearchFrom = Math.max(0, length - (JPEG_START.length - 1));
+          start = seen.indexOf(JPEG_START, startSearchFrom);
+          if (start < 0) {
+            startSearchFrom = Math.max(
+              startSearchFrom,
+              length - (JPEG_START.length - 1),
+            );
+            return null;
+          }
+          // This part's own headers: what follows the last delimiter before
+          // its picture, so an earlier part's length is never read as its own.
+          const before = seen.subarray(Math.max(0, start - 512), start);
+          const ownDelimiter = before.lastIndexOf(delimiter);
+          const partHeaders = before
+            .subarray(ownDelimiter < 0 ? 0 : ownDelimiter + delimiter.length)
+            .toString('latin1');
+          declared = Number(
+            /content-length:\s*(\d+)\s*\r?\n/i.exec(partHeaders)?.[1],
+          );
+          declaredChecked = false;
+          delimiterSearchFrom = start;
+        }
+        if (
+          !declaredChecked &&
+          Number.isFinite(declared) &&
+          declared > JPEG_START.length &&
+          length >= start + declared
+        ) {
+          declaredChecked = true;
+          // Some servers count the line break after the picture in that length.
+          // A delimiter inside it proves the length wrong: it runs into the
+          // next part.
+          const cut = seen.subarray(start, start + declared);
+          const end = cut.lastIndexOf(JPEG_END);
+          if (end >= cut.length - 4 && !cut.includes(delimiter))
+            return Buffer.from(cut.subarray(0, end + JPEG_END.length));
+        }
+        // Looked for even while a declared length is still unmet: a delimiter
+        // arriving first proves that length wrong, and waiting on it would run
+        // the stream to the byte cap.
+        const next = seen.indexOf(delimiter, delimiterSearchFrom);
+        if (next < 0) {
+          delimiterSearchFrom = Math.max(
+            start,
+            length - (delimiter.length - 1),
+          );
           return null;
         }
-        const partHeaders = seen
-          .subarray(Math.max(0, start - 512), start)
-          .toString('latin1');
-        declared = Number(
-          /content-length:\s*(\d+)\s*\r?\n/i.exec(partHeaders)?.[1],
-        );
-        delimiterSearchFrom = start;
+        const end = wholePictureEnd(seen.subarray(start, next));
+        if (end >= 0) return Buffer.from(seen.subarray(start, start + end));
+        // Cut short: drop this part and read the next one from its delimiter.
+        start = -1;
+        startSearchFrom = next + delimiter.length;
       }
-      if (
-        !declaredChecked &&
-        Number.isFinite(declared) &&
-        declared > JPEG_START.length &&
-        length >= start + declared
-      ) {
-        declaredChecked = true;
-        // Some servers count the line break after the picture in that length.
-        const cut = seen.subarray(start, start + declared);
-        const end = cut.lastIndexOf(JPEG_END);
-        if (end >= cut.length - 4)
-          return Buffer.from(cut.subarray(0, end + JPEG_END.length));
-      }
-      // Looked for even while a declared length is still unmet: a delimiter
-      // arriving first proves that length wrong, and waiting on it would run
-      // the stream to the byte cap.
-      const next = seen.indexOf(delimiter, delimiterSearchFrom);
-      if (next < 0) {
-        delimiterSearchFrom = Math.max(start, length - (delimiter.length - 1));
-        return null;
-      }
-      const end = seen.subarray(start, next).lastIndexOf(JPEG_END);
-      if (end < 0) {
-        delimiterSearchFrom = next + 1;
-        return null;
-      }
-      return Buffer.from(seen.subarray(start, start + end + JPEG_END.length));
     },
   };
 }

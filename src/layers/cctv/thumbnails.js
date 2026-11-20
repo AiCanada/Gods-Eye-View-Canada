@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { CCTV_OVERLAY_SOURCE_ID } from '../../data/cctvCards.js';
+import { viewerBehind } from '../../render/cesium/viewers.js';
 import { trafficPlaneSpec } from './projection.js';
 import {
   isOwnerRemovalRefusal,
@@ -41,11 +42,13 @@ export function createThumbnails({
   /** Projection frames for thumbnail traffic, rebuilt only when a pose or its ground changes. */
   const thumbnailTrafficFrames = new WeakMap();
   const alignmentSpots = new WeakMap();
+  /** The Cesium viewer behind the layer's scene host (`layerState._viewer`). */
+  const cesiumViewer = () => viewerBehind(layerState._viewer);
 
   /** The record's sight line against the loaded terrain, re-read every few seconds. */
 
   function terrainSightLineHitM(record) {
-    const globe = layerState._viewer?.scene?.globe;
+    const globe = cesiumViewer()?.scene?.globe;
     if (!globe?.show || typeof globe.getHeight !== 'function') return null;
     const now = Date.now();
     const cached = sightLineHits.get(record);
@@ -135,7 +138,7 @@ export function createThumbnails({
           : null;
         // The loaded terrain under that point when there is any, else the
         // mount's ground.
-        const globe = layerState._viewer?.scene?.globe;
+        const globe = cesiumViewer()?.scene?.globe;
         const heightAt = (point) => {
           const terrain =
             globe?.show && typeof globe.getHeight === 'function'
@@ -264,7 +267,7 @@ export function createThumbnails({
         (useRecordGeometry &&
           record.frustumGeometry &&
           record.frustumPositions) ||
-        parts.geometry.frustumCartesians(geometry);
+        parts.rendering.frustumCartesians(geometry);
       frame = monitorPlaneFrame(
         trafficPlaneSpec(
           geometry,
@@ -339,7 +342,7 @@ export function createThumbnails({
     const held = alignmentSpots.get(alignment);
     const nowMs = Date.now();
     if (held && nowMs < held.recheckAt) return held;
-    const globe = layerState._viewer?.scene?.globe;
+    const globe = cesiumViewer()?.scene?.globe;
     const heightAt = (lat, lon) => {
       const terrain =
         globe?.show && typeof globe.getHeight === 'function'
@@ -486,13 +489,14 @@ export function createThumbnails({
 
   function privateGlobePoint(x, y) {
     if (!layerState._viewer || layerState._viewer.isDestroyed()) return null;
+    const viewer = cesiumViewer();
     const windowPosition = new Cesium.Cartesian2(x, y);
-    const scene = layerState._viewer.scene;
+    const scene = viewer.scene;
     let cartesian = scene.pickPositionSupported
       ? scene.pickPosition(windowPosition)
       : undefined;
     if (!Cesium.defined(cartesian))
-      cartesian = layerState._viewer.camera.pickEllipsoid(
+      cartesian = viewer.camera.pickEllipsoid(
         windowPosition,
         scene.globe.ellipsoid,
       );
@@ -513,12 +517,14 @@ export function createThumbnails({
 
   function previewPrivateCameraMove(id, point) {
     const record = layerState._recordById.get(id);
-    if (!record?.billboard || !point) return;
-    record.billboard.position = Cesium.Cartesian3.fromDegrees(
+    const icon = layerState._icons?.item(id);
+    if (!record || !icon || !point) return;
+    const pos = Cesium.Cartesian3.fromDegrees(
       point.lon,
       point.lat,
       record.camera.absoluteHeightM,
     );
+    layerState._icons.put({ ...icon, pos: { x: pos.x, y: pos.y, z: pos.z } });
   }
 
   /** On drop: move the camera in place (icon, cone and ground) and save its new spot. */

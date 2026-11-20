@@ -21,12 +21,9 @@ import {
 import { openAiRealtimeProxy } from 'gods-eye-view/server/providers/openai';
 import { keySetupEndpoint } from 'gods-eye-view/server/standalone/key-setup';
 import { realtimeInstructions } from '../../server/providers/openai/instructions.js';
-import {
-  GEV_REALTIME_TOOLS,
-  offeredTools,
-  realtimeTools,
-} from '../../server/providers/openai/tools.js';
+import { GEV_REALTIME_TOOLS } from '../../server/providers/openai/tools.js';
 import { createDebugLogHandler } from '../../server/providers/openai/debug-log.js';
+import { realtimeSessionTools } from '../../server/providers/openai/realtime.js';
 import { attachVoiceResult } from '../voice/speech.js';
 import { sanitizeDebugValue } from '../voice/realtimeDiagnostics.js';
 import { standaloneVoiceTools } from '../../server/standalone/voiceTools.js';
@@ -297,7 +294,10 @@ test('Realtime handler preserves tools and default instructions, isolates suppli
       sent.at(-1).session.instructions,
       realtimeInstructions(guidance),
     );
-    assert.deepEqual(sent.at(-1).session.tools, realtimeTools());
+    assert.deepEqual(
+      sent.at(-1).session.tools,
+      realtimeSessionTools(GEV_REALTIME_TOOLS),
+    );
   }
   assert.notEqual(sent[0].session.instructions, sent[1].session.instructions);
   assert.equal(sent[0].session.instructions, sent[2].session.instructions);
@@ -855,7 +855,10 @@ test('osm_query is offered only when an operator configured Overpass', async (t)
   assert.doesNotMatch(plain.instructions, /osm_query/);
   assert.ok(names(plain).includes('resolve_area'));
   assert.ok(names(plain).includes('find_imagery'));
-  assert.deepEqual(configured.tools, GEV_REALTIME_TOOLS);
+  assert.deepEqual(
+    configured.tools,
+    realtimeSessionTools(GEV_REALTIME_TOOLS, { overpass: true }),
+  );
   assert.match(configured.instructions, /osm_query/);
   assert.equal(
     configured.instructions,
@@ -904,7 +907,7 @@ test('Realtime sessions carry supplied tools, and the standalone voice adds the 
   );
   assert.equal(response.status, 200);
   // Without an operator Overpass, osm_query is left out of the session.
-  assert.deepEqual(sent.at(-1).session.tools, offeredTools(tools));
+  assert.deepEqual(sent.at(-1).session.tools, realtimeSessionTools(tools));
   assert.ok(
     !sent.at(-1).session.tools.some(({ name }) => name === 'osm_query'),
   );
@@ -1082,6 +1085,26 @@ test('an unrelated POWER UP save writes no outbound check, and a check that thro
   );
 });
 
+test('Realtime sessions leave out the Unicode property patterns OpenAI refuses (#1618)', async (t) => {
+  // OpenAI answers 400 invalid_function_parameters for a whole Realtime session
+  // whose tool schema uses `\p{…}`, as resolve_area's area ids do, so voice
+  // never connects. The session drops only those patterns, as typed chat does.
+  env(t, 'OPENAI_API_KEY', 'fixture-upstream-secret');
+  env(t, 'GEV_RATELIMIT_OPENAI_PER_MIN', undefined);
+  const sent = [];
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    sent.push(JSON.parse(options.body).session);
+    return Response.json({ value: 'fixture-ephemeral' });
+  });
+  const response = await request(
+    install(openAiRealtimeProxy({})).get('/api/realtime/token'),
+  );
+  assert.equal(response.status, 200);
+  const { tools } = sent.at(-1);
+  assert.ok(tools.some(({ name }) => name === 'resolve_area'));
+  assert.doesNotMatch(JSON.stringify(tools), /\\\\[pP]\{/);
+});
+
 test('Realtime service configuration selects compatible endpoint/model without forwarding request model IDs or keys', async () => {
   const handler = install(
     openAiRealtimeProxy({
@@ -1099,7 +1122,7 @@ test('Realtime service configuration selects compatible endpoint/model without f
           assert.equal(payload.session.model, 'configured-model');
           assert.deepEqual(
             payload.session.tools,
-            realtimeTools({ overpass: false }),
+            realtimeSessionTools(GEV_REALTIME_TOOLS),
           );
           return Response.json({ value: 'short-lived-fixture' });
         },

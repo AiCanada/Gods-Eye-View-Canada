@@ -39,7 +39,10 @@ import {
   frameHostAllowed,
   resolveFrameUrl,
 } from './cctv/frame-resolver.js';
-import { googleServerApiKey } from './places/google-key.js';
+import {
+  GOOGLE_DEFAULT_PER_MIN,
+  googleServerApiKey,
+} from './places/google-key.js';
 import {
   CCTV_PROXY_USER_AGENT,
   browserDirectImageUrl,
@@ -81,7 +84,12 @@ import {
   servedRequestOrigin,
 } from './common/allowed-hosts.js';
 import { coalesceProxyRequest, readCappedResponseText } from './common/http.js';
-import { clientKey, makeRateLimiter } from './common/rate-limit.js';
+import {
+  clientKey,
+  clientNetworkKey,
+  makeCostRateLimiter,
+  makeRateLimiter,
+} from './common/rate-limit.js';
 import {
   isOwnerDeviceRequest,
   sendOwnerRemovalRefusal,
@@ -621,6 +629,8 @@ export function cctvProxy({
     });
   };
 
+  let streetViewBudget; // undefined = not built yet; null = the explicit 0 opt-out
+
   /**
    * Fetch a Google Street View static image as a fallback frame. Server-side
    * call, never reaches the browser — prefers GOOGLE_MAPS_SERVER_API_KEY
@@ -628,11 +638,23 @@ export function cctvProxy({
    * rather than HTTP referrer) and falls back to the browser-exposed
    * GOOGLE_MAPS_API_KEY for setups that haven't split the two yet. Only the
    * catalogue's own position and pose are ever sent.
+   * Each IP (or IPv6 /64) has its own GEV_RATELIMIT_GOOGLE_PER_MIN window,
+   * separate from Places. Setting it to 0 disables the limit.
    */
-  const streetViewFallback = async ({ lat, lon, heading, fov, pitch }) => {
+  const streetViewFallback = async (
+    client,
+    { lat, lon, heading, fov, pitch },
+  ) => {
     const streetViewKey = googleServerApiKey();
     if (!streetViewKey || !Number.isFinite(lat) || !Number.isFinite(lon))
       return null;
+    // Built on first use, after the standalone env has loaded.
+    if (streetViewBudget === undefined)
+      streetViewBudget = makeCostRateLimiter(
+        process.env.GEV_RATELIMIT_GOOGLE_PER_MIN,
+        GOOGLE_DEFAULT_PER_MIN,
+      );
+    if (streetViewBudget && !streetViewBudget(client)) return null;
     try {
       const sv = new URL('https://maps.googleapis.com/maps/api/streetview');
       sv.searchParams.set('size', '960x540');
@@ -794,7 +816,8 @@ export function cctvProxy({
     return { ...result, active, budgeted };
   };
 
-  const serveFrame = async (req, res, url, snapshot) => {
+  /** `client` keys the Street View budget (read before the request awaited). */
+  const serveFrame = async (req, res, url, snapshot, client) => {
     const cameraId = cameraIdFrom(url.pathname, '/frame/');
     // Only the active camera's monitor plane and panel preview send active=1.
     const active = url.searchParams.get('active') === '1';
@@ -916,18 +939,32 @@ export function cctvProxy({
      * Street View: opt-in, active camera only, never for a card. It spends the
      * Google key, so a forwarded request (whose client this server cannot
      * see) gets the placeholder, as if no key were configured. Any forwarding
-     * header counts, even an empty one (upstream #1317).
+     * header counts, even an empty one (upstream #1317). Each client spends
+     * its own per-IP Google budget.
+     *
+     * The query sets only the view, the pose the browser draws the monitor
+     * plane with (a camera the catalogue gives no pose, or one re-aimed in
+     * ADJUST), so the stand-in faces the way the plane does; the position is
+     * always the catalogue's.
      */
+    const viewOf = (name, fallback) => {
+      const raw = url.searchParams.get(name);
+      const value = raw === null || raw.trim() === '' ? NaN : Number(raw);
+      return Number.isFinite(value) ? value : fallback;
+    };
     const streetView = async () => {
       if (!active || !streetViewEnabled()) return false;
       if (PROXY_SIGNALS.some((name) => req.headers?.[name] !== undefined))
         return false;
-      const sv = await streetViewFallback({
+      const heading = viewOf('heading', source.headingDeg);
+      const sv = await streetViewFallback(client, {
         lat: source.lat,
         lon: source.lon,
-        heading: source.headingDeg,
-        fov: source.fovDeg,
-        pitch: source.pitchDeg,
+        heading: Number.isFinite(heading)
+          ? ((heading % 360) + 360) % 360
+          : heading,
+        fov: viewOf('fov', source.fovDeg),
+        pitch: viewOf('pitch', source.pitchDeg),
       });
       if (!sv?.ok) return false;
       setHealth(cameraId, {
@@ -1669,6 +1706,8 @@ export function cctvProxy({
         // keyless gate keeps the routes reachable behind a reverse proxy; the
         // key-bearing Street View fallback has its own check.
         if (admitSameSiteKeyless(req, res)) return;
+        // Read before any await: a socket the client has closed has no address.
+        const client = clientNetworkKey(req);
 
         if (url.pathname === '/sources') {
           await serveSources(req, res, url);
@@ -1738,7 +1777,7 @@ export function cctvProxy({
           return;
         }
 
-        await serveFrame(req, res, url, snapshot);
+        await serveFrame(req, res, url, snapshot, client);
       } catch (error) {
         console.error('[CCTV Proxy]', error?.message || String(error));
         if (!res.headersSent) {

@@ -166,7 +166,8 @@ test('the lookup remembers a stream as a stream, and re-asks cameras written off
 test('video plays only when its camera is clicked, and one clip address serves one set of bytes', () => {
   const client = cctvLayerSource();
   // No background video: the thumbnail pacer never loads a stream.
-  assert.ok(client.includes('if (isVideoFeedType(normalizeFeedType(record.camera.feedType))) return;'));
+  // (isVideoFeedCamera covers isVideoFeedType(normalizeFeedType(feedType)).)
+  assert.ok(client.includes('isVideoFeedCamera(record.camera) ||'));
   assert.equal(client.includes('fetchCardFrameFromVideo'), false);
   // Only an explicit activation (a click) may start a video; an automatic one paints a note.
   assert.ok(client.includes("if (mode === 'video' && _videoPlayCameraId !== record.camera.id) {"));

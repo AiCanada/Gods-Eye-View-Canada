@@ -9,6 +9,10 @@ import { createTrafficLayer } from '../layers/traffic/index.js';
 import { createTrafficSource } from '../layers/traffic/source.js';
 import { FETCH_DEBOUNCE } from '../layers/traffic/policy.js';
 import { encodeTransportationTile } from './fixtures/vectorTileEncoder.mjs';
+import { findCamera } from '../render/rendererOf.js';
+import { bindFakeCesiumCamera } from '../testSupport/fakeCameraPort.mjs';
+import { fakeDrawPort } from '../testSupport/fakeDrawPort.mjs';
+import { sceneSurfacePorts } from '../testSupport/fakeSceneSurface.mjs';
 
 export const AUSTIN = { lat: 30.2672, lon: -97.7431 };
 export const TORONTO = { lat: 43.6532, lon: -79.3832 };
@@ -177,6 +181,33 @@ export function createTrafficHarness(t, { height = 3200 } = {}) {
       primitives: { add: (value) => value, remove: () => true },
     },
   };
+  // The layer draws through the renderer's ports and reads the camera
+  // through its port (as src/layers/traffic/navigation.test.mjs binds them).
+  const surfacePorts = sceneSurfacePorts(viewer);
+  bindFakeCesiumCamera(viewer, {
+    ...surfacePorts,
+    // A nadir view: each canvas pixel picks the ground across the camera's
+    // view rectangle, so the reticle footprint is a real square around the
+    // parked camera instead of collapsing to a point.
+    query: {
+      ...surfacePorts.query,
+      pickEllipsoid(x, y) {
+        const rect = camera.computeViewRectangle();
+        const { width, height } = viewer.scene.canvas;
+        const point = Cesium.Cartesian3.fromRadians(
+          rect.west + (rect.east - rect.west) * (x / width),
+          rect.north - (rect.north - rect.south) * (y / height),
+          0,
+        );
+        return { x: point.x, y: point.y, z: point.z };
+      },
+    },
+    draw: fakeDrawPort(),
+  });
+  // The fake camera has view matrices only where a test gives it some.
+  const cameraPort = findCamera(viewer);
+  const matrices = cameraPort.matrices.bind(cameraPort);
+  cameraPort.matrices = () => (camera.viewMatrix ? matrices() : undefined);
   const layer = createTrafficLayer({
     services: {
       credits: {},

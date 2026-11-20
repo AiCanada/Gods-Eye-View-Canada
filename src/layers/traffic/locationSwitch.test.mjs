@@ -7,6 +7,10 @@ import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
 import { createTrafficLayer, tileCacheKeysAwayFrom } from './index.js';
 import { FETCH_PAUSE_MAX_MS } from './locationSwitch.js';
+import { findCamera } from '../../render/rendererOf.js';
+import { bindFakeCesiumCamera } from '../../testSupport/fakeCameraPort.mjs';
+import { fakeDrawPort } from '../../testSupport/fakeDrawPort.mjs';
+import { sceneSurfacePorts } from '../../testSupport/fakeSceneSurface.mjs';
 
 const AUSTIN = { lat: 30.267, lon: -97.744 };
 const NEAR_AUSTIN = { lat: 30.3122, lon: -97.744 };
@@ -79,6 +83,16 @@ function setup(t, requestRoads = async (bounds) => roads(bounds)) {
       primitives: { add: (value) => value, remove: () => true },
     },
   };
+  // The layer draws through the renderer's ports and reads the camera
+  // through its port (as navigation.test.mjs binds them).
+  bindFakeCesiumCamera(viewer, {
+    ...sceneSurfacePorts(viewer),
+    draw: fakeDrawPort(),
+  });
+  // The fake camera has view matrices only where a test gives it some.
+  const cameraPort = findCamera(viewer);
+  const matrices = cameraPort.matrices.bind(cameraPort);
+  cameraPort.matrices = () => (camera.viewMatrix ? matrices() : undefined);
   const layer = createTrafficLayer({
     services: {
       credits: {},
@@ -279,4 +293,25 @@ test('a switch while traffic is off still releases memory and never blocks the n
   h.layer.enable(h.viewer);
   await h.load();
   assert.ok(h.layer.getStats().count > 0, 'enable is never blocked by a switch it missed');
+});
+
+test('an arrival that finds nothing to animate gives the render hold back, and so does switching off', async (t) => {
+  const h = setup(t);
+  h.layer.enable(h.viewer);
+  await h.load();
+  h.layer.onLocationLeave({ from: AUSTIN, to: TORONTO, enabled: true });
+  // Parked far above the destination: traffic loads nothing from up here.
+  h.park(TORONTO, 60_000);
+  h.layer.onLocationArrive({ from: AUSTIN, to: TORONTO, signal: new AbortController().signal });
+  for (let i = 0; i < 12; i++) await h.tick(1500);
+  assert.equal(h.layer.getStats().count, 0);
+  assert.equal(h.holds.has('traffic'), false, 'no dot spawned: frames are on demand again');
+
+  // The hold of an arrival still under way goes with the layer.
+  h.layer.onLocationLeave({ from: TORONTO, to: AUSTIN, enabled: true });
+  h.park(AUSTIN);
+  h.layer.onLocationArrive({ from: TORONTO, to: AUSTIN, signal: new AbortController().signal });
+  assert.equal(h.holds.has('traffic'), true, 'held while the arrival loads roads');
+  h.layer.disable(h.viewer);
+  assert.equal(h.holds.has('traffic'), false);
 });

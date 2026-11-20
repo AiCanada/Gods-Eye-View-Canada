@@ -25,14 +25,21 @@ import {
   deviceHistoryQuery,
 } from '../deviceFeedsCore.mjs';
 import { requestWorldFocus } from '../worldFocus.js';
-import { applyTrackedCameraFrame } from './trackedCamera.js';
+import { FOLLOW_MIN_RANGE_M } from './trackedCamera.js';
 import { refreshTrackedReadout } from './trackedReadout.js';
 import { createDeviceRecorder } from './deviceRecorder.js';
 import { createUltraMediaOverlay, mediaWindow } from './ultraMediaOverlay.js';
+import { isTrackingClickGesture } from './trackingClickGesture.js';
+import { entityRecord, withEntityRecord } from './entityRecords.js';
 import {
-  bindTrackingClickGesture,
-  isTrackingClickGesture,
-} from './trackingClickGesture.js';
+  entityFollowTarget,
+  followedOf,
+  onFollowChanged,
+  stopFollowing,
+} from './followed.js';
+import { findCamera } from '../render/rendererOf.js';
+import { viewerBehind } from '../render/cesium/viewers.js';
+import { inputFor } from '../input/dispatcher.js';
 
 /**
  * YOUR DEVICES: the drones, robots, marine drones and GPS trackers set up under
@@ -296,7 +303,9 @@ export function createDeviceFeedsLayer({
   createImage = () => (typeof Image === 'undefined' ? null : new Image()),
   createMediaOverlay = createUltraMediaOverlay,
   now = () => Date.now(),
-  applyFollowFrame = applyTrackedCameraFrame,
+  // Follows go through the camera port (src/render/contract/camera.d.ts),
+  // which owns the close-range framing that applyTrackedCameraFrame did.
+  followCamera = (viewer, target) => findCamera(viewer)?.follow(target),
   refreshReadout = refreshTrackedReadout,
   recorder = null,
   recordsHere = null,
@@ -347,7 +356,10 @@ export function createDeviceFeedsLayer({
           if (_serverRecorder === null) askRecorder();
           return recordsOnThisMachine(host, { recorder: _serverRecorder });
         };
+  /** The scene host the layer is handed: the camera port and input go through it. */
   let _viewer = null;
+  /** The Cesium viewer behind `_viewer`: data source, entities, scene and camera. */
+  let _cesiumViewer = null;
   let _dataSource = null;
   let _dataManager = null;
   let _enabled = false;
@@ -377,7 +389,7 @@ export function createDeviceFeedsLayer({
   let _historyPeriod = deviceHistoryPeriod(historyPeriod).id;
   /** A device the Ultra box asked to fly to before the poll brought it. */
   let _pendingFocusId = null;
-  /** The follow: {id, entity, from, to, startedAt, stopFrame, removeChanged, removeClick} or null. */
+  /** The follow: {id, entity, target, from, to, startedAt, removeChanged, removeClick} or null. */
   let _follow = null;
   /** A device the owner walked away from this session is not grabbed again. */
   let _followReleasedId = null;
@@ -516,7 +528,7 @@ export function createDeviceFeedsLayer({
 
   /** Each frame: the tiles beside the first Ultra cell, while it is in view. */
   const placeTiles = () => {
-    if (!_mediaTiles || !_viewer) return;
+    if (!_mediaTiles || !_cesiumViewer) return;
     const ultra = _enabled
       ? _latest.find((device) =>
           ULTRA_PICTURE_PATH.test(device.pictureUrl || ''),
@@ -527,7 +539,7 @@ export function createDeviceFeedsLayer({
     let x = 0;
     let y = 0;
     if (position) {
-      const camera = _viewer.camera?.positionWC;
+      const camera = _cesiumViewer.camera?.positionWC;
       const inFront =
         !camera ||
         new Cesium.EllipsoidalOccluder(
@@ -536,7 +548,7 @@ export function createDeviceFeedsLayer({
         ).isPointVisible(position);
       const screen = inFront
         ? Cesium.SceneTransforms.worldToWindowCoordinates(
-            _viewer.scene,
+            _cesiumViewer.scene,
             position,
           )
         : null;
@@ -580,7 +592,7 @@ export function createDeviceFeedsLayer({
   const groundedPosition = (device) => {
     let ground = 0;
     try {
-      const height = _viewer?.scene?.globe?.getHeight?.(
+      const height = _cesiumViewer?.scene?.globe?.getHeight?.(
         Cesium.Cartographic.fromDegrees(device.lon, device.lat),
       );
       if (Number.isFinite(height)) ground = height;
@@ -603,7 +615,7 @@ export function createDeviceFeedsLayer({
 
   /**
    * Let go of the follow. When ANOTHER layer has just taken the follow camera,
-   * viewer.trackedEntity is theirs now and is left alone (mirror of flights).
+   * the camera port follows theirs now and is left alone (mirror of flights).
    */
   const stopFollow = ({ skipViewerUntrack = false, released = false } = {}) => {
     if (!_follow) return false;
@@ -612,16 +624,16 @@ export function createDeviceFeedsLayer({
     if (released) _followReleasedId = follow.id;
     follow.removeChanged?.();
     follow.removeClick?.();
-    follow.stopFrame?.();
     releaseContinuousRender(FOLLOW_RENDER_OWNER);
     if (
       _viewer &&
       !skipViewerUntrack &&
-      _viewer.trackedEntity === follow.entity
+      follow.target &&
+      followedOf(_viewer) === follow.target
     )
-      _viewer.trackedEntity = undefined;
+      stopFollowing(_viewer);
     try {
-      _viewer?.entities?.remove(follow.entity);
+      _cesiumViewer?.entities?.remove(follow.entity);
     } catch {
       /* viewer already gone */
     }
@@ -643,7 +655,7 @@ export function createDeviceFeedsLayer({
   };
 
   const startFollow = (device) => {
-    if (!_viewer?.entities || !_enabled) return false;
+    if (!_cesiumViewer?.entities || !_enabled) return false;
     stopFollow();
     const at = groundedPosition(device);
     const follow = {
@@ -652,60 +664,52 @@ export function createDeviceFeedsLayer({
       to: at,
       startedAt: now(),
       entity: null,
-      stopFrame: null,
+      target: null,
       removeChanged: null,
       removeClick: null,
     };
     const scratch = new Cesium.Cartesian3();
-    follow.entity = _viewer.entities.add({
+    follow.entity = _cesiumViewer.entities.add({
       position: new Cesium.CallbackProperty(
         () => glidePosition(follow, scratch),
         false,
       ),
-      viewFrom: new Cesium.Cartesian3(
-        DEVICE_FEEDS_FOLLOW_VIEW_FROM.x,
-        DEVICE_FEEDS_FOLLOW_VIEW_FROM.y,
-        DEVICE_FEEDS_FOLLOW_VIEW_FROM.z,
-      ),
       point: { pixelSize: 1, color: Cesium.Color.TRANSPARENT },
     });
-    follow.entity.gevSelectionOrigin = 'programmatic';
-    follow.entity.gevTrackedId = `${DEVICE_FEEDS_LAYER_ID}:${device.id}`;
-    follow.entity.gevLabelModel = followLabel(device);
-    follow.entity.gevDisplayPosition = () => glidePosition(follow);
+    // The readout reads these through the shared entity records
+    // (src/data/entityRecords.js), not fields on the entity.
+    withEntityRecord(follow.entity, {
+      selectionOrigin: 'programmatic',
+      trackedId: `${DEVICE_FEEDS_LAYER_ID}:${device.id}`,
+      labelModel: followLabel(device),
+      displayPosition: () => glidePosition(follow),
+    });
+    follow.target = entityFollowTarget(follow.entity, {
+      position: () => glidePosition(follow),
+      frame: 'enu',
+      viewFrom: { ...DEVICE_FEEDS_FOLLOW_VIEW_FROM },
+      minRange: FOLLOW_MIN_RANGE_M,
+    });
     _follow = follow;
     holdContinuousRender(FOLLOW_RENDER_OWNER);
-    _viewer.trackedEntity = follow.entity;
-    follow.stopFrame =
-      applyFollowFrame(
-        _viewer,
-        follow.entity,
-        follow.entity.viewFrom?.getValue?.() ?? follow.entity.viewFrom,
-      ) || null;
+    followCamera(_viewer, follow.target);
     // Someone else taking the follow camera (a flight, a satellite, a search)
     // ends this follow without touching what they just set.
-    const changed = _viewer.trackedEntityChanged;
-    if (changed?.addEventListener) {
-      const onChanged = (next) => {
-        if (_follow === follow && next !== follow.entity)
-          stopFollow({ skipViewerUntrack: true, released: true });
-      };
-      changed.addEventListener(onChanged);
-      follow.removeChanged = () => changed.removeEventListener(onChanged);
-    }
+    follow.removeChanged = onFollowChanged(_viewer, (next) => {
+      if (_follow === follow && next !== follow.target)
+        stopFollow({ skipViewerUntrack: true, released: true });
+    });
     // A clean click on open map (nothing picked, no card under it) lets go.
-    if (_viewer.scene?.canvas) {
-      const handler = new Cesium.ScreenSpaceEventHandler(_viewer.scene.canvas);
-      bindTrackingClickGesture(handler, (click, gesture) => {
-        if (_follow !== follow || !isTrackingClickGesture(gesture)) return;
-        if (
-          hitTestOverlay(click?.position?.x, click?.position?.y) ||
-          _viewer.scene.pick(click.position)
-        )
+    try {
+      follow.removeClick = inputFor(_viewer).onClick((event) => {
+        if (_follow !== follow || !isTrackingClickGesture(event.gesture))
           return;
+        const at = event.screenPosition;
+        if (hitTestOverlay(at?.x, at?.y) || !event.surface) return;
         stopFollow({ released: true });
       });
-      follow.removeClick = () => handler.destroy();
+    } catch {
+      // No renderer bound to take input with (a bare test viewer).
     }
     return true;
   };
@@ -724,7 +728,7 @@ export function createDeviceFeedsLayer({
       _follow.from = glidePosition(_follow);
       _follow.to = groundedPosition(wanted);
       _follow.startedAt = now();
-      _follow.entity.gevLabelModel = followLabel(wanted);
+      entityRecord(_follow.entity).labelModel = followLabel(wanted);
       refreshReadout(_follow.entity);
       return;
     }
@@ -953,16 +957,20 @@ export function createDeviceFeedsLayer({
 
     init(viewer) {
       _viewer = viewer;
+      _cesiumViewer = viewerBehind(viewer);
       _dataSource = new Cesium.CustomDataSource('device-feeds');
       _dataSource.show = false;
-      viewer.dataSources.add(_dataSource);
+      // A scene with no Cesium viewer behind it (another renderer) draws no
+      // paths; the cards and the list still work.
+      _cesiumViewer?.dataSources?.add?.(_dataSource);
       if (viewer?.container) {
         _mediaTiles = createMediaOverlay({
           container: viewer.container,
           windowRef,
         });
         _removePlaceTiles =
-          viewer.scene?.postRender?.addEventListener?.(placeTiles) || null;
+          _cesiumViewer?.scene?.postRender?.addEventListener?.(placeTiles) ||
+          null;
       }
       _count = 0;
       _lastUpdate = null;
@@ -1088,10 +1096,11 @@ export function createDeviceFeedsLayer({
       _devices.clear();
       _latest = [];
       if (_dataSource) {
-        viewer.dataSources.remove(_dataSource, true);
+        viewerBehind(viewer)?.dataSources?.remove?.(_dataSource, true);
         _dataSource = null;
       }
       _viewer = null;
+      _cesiumViewer = null;
       _count = 0;
       _lastUpdate = null;
       _lastError = null;

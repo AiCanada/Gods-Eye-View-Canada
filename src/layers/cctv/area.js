@@ -1,4 +1,4 @@
-import * as Cesium from 'cesium';
+import { fromDegrees } from '../../geo/ellipsoid.js';
 import { viewshedColors, cameraHue } from '../../data/cctvViewshed.js';
 import { cctvHueIndexFromId } from './model.js';
 import {
@@ -6,11 +6,9 @@ import {
   AREA_PENDING_REFETCH_MS,
   AREA_SEED_MAX_ALTITUDE_M,
   CALIBRATION_RANGE_FLOOR_M,
-  CAMERA_ICON,
   CCTV_AREA_LOAD_CAP,
   CCTV_AREA_RADIUS_KM,
   GROUND_PRIOR_INIT_WAIT_MS,
-  IDLE_CAMERA_COLOR,
   LOCATION_KEEP_ACTIVE_RADIUS_KM,
   LOCATION_KEEP_RADIUS_KM,
   LOCATION_SELECT_RADIUS_KM,
@@ -239,7 +237,7 @@ export function createArea({ state: layerState, services, parts, source }) {
   }
 
   /**
-   * Builds one camera's record: its billboard, ground state and viewshed
+   * Builds one camera's record: its icon, ground state and viewshed
    * colours, registered in `_recordById`. The caller places it in `_records`.
    * Coverage entities and the projection runtime stay lazy.
    * @param {Object} camera - Calibrated camera (prepareCameras).
@@ -256,36 +254,15 @@ export function createArea({ state: layerState, services, parts, source }) {
       ? groundPrior.ellipsoid
       : Number(camera.groundElevationM) || 0;
     camera.absoluteHeightM = priorGround + camera.mountHeightM;
-    const position = Cesium.Cartesian3.fromDegrees(
+    const position = fromDegrees(
       camera.lon,
       camera.lat,
       camera.absoluteHeightM,
     );
-    const billboard = layerState._billboards
-      ? layerState._billboards.add({
-          id: camera.id,
-          image: CAMERA_ICON,
-          position,
-          color: IDLE_CAMERA_COLOR,
-          width: 24,
-          height: 24,
-          // Field-test fix (2026-07-06): always-on-top vs the globe mesh. The
-          // old finite value (1800 m) re-engaged the depth test at far zoom,
-          // where the COARSE far-LOD Google-3D mesh sits above the true ground
-          // and swallowed ground-anchored icons ("submerged" pills over SF).
-          // Far-side-of-globe icons are handled by refreshHorizonCulling()
-          // (the flights-layer EllipsoidalOccluder pattern), not by the depth
-          // test. Street traffic still draws above these icons via
-          // SPRITE_LAYER_ORDER.
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          scaleByDistance: new Cesium.NearFarScalar(350, 1.25, 4_000_000, 0.42),
-        })
-      : null;
 
     const record = {
       camera,
       position,
-      billboard,
       coverageEntities: [],
       projection: null,
       // Task 5 (height-datum fix): regime-aware ground resolution state.
@@ -315,16 +292,18 @@ export function createArea({ state: layerState, services, parts, source }) {
       // the range slider (slider overrides the clamp).
       probeClampRangeM: null,
       // Viewshed (design §3a/§3b): per-camera color identity from an id hash,
-      // stable whichever neighbours load with it, plus the volume primitive
-      // handle (exists only in viewshed mode for the visible set).
+      // stable whichever neighbours load with it, plus the volume item id
+      // (exists only in viewshed mode for the visible set).
       viewshedColors: viewshedColors(cameraHue(cctvHueIndexFromId(camera.id))),
-      viewshedPrimitive: null,
+      viewshedVolume: null,
       viewshedActiveTint: false,
       // Private cameras only: what their source said, to tell a changed camera.
       sourceKey:
         camera.sourceKind === 'private' ? privateSourceKey(camera) : '',
     };
     layerState._recordById.set(camera.id, record);
+    // Its camera icon, in the layer's icon set (hidden until enable).
+    parts.rendering.addCameraIcon(record);
     return record;
   }
 
@@ -338,27 +317,19 @@ export function createArea({ state: layerState, services, parts, source }) {
   function releaseCoverageEntities(records) {
     if (!records.length) return;
     const removed = new Set();
-    const entities = layerState._viewer?.entities;
-    entities?.suspendEvents?.();
-    try {
-      for (const record of records) {
-        for (const entity of record.coverageEntities || []) {
-          entities?.remove(entity);
-          removed.add(entity);
-        }
-        record.coverageEntities = [];
-      }
-    } finally {
-      entities?.resumeEvents?.();
+    for (const record of records) {
+      for (const handle of record.coverageEntities || []) removed.add(handle);
+      parts.drawSets.removeLines(record.coverageEntities);
+      record.coverageEntities = [];
     }
     layerState._coverageEntities = layerState._coverageEntities.filter(
-      (entity) => !removed.has(entity),
+      (handle) => !removed.has(handle),
     );
   }
 
   /**
    * Releases cameras for good (an area swap or a removed private camera): the
-   * billboard, wireframes, viewshed volume, monitor-plane runtime, map card
+   * icon, wireframes, viewshed volume, monitor-plane runtime, map card
    * slot and grace state, hover card, health entry, geometry-queue entry and
    * record. An active camera among them leaves no camera active. Saved
    * calibration stays, so the camera keeps it if it loads again.
@@ -380,14 +351,11 @@ export function createArea({ state: layerState, services, parts, source }) {
     let activeLeft = false;
     for (const record of doomed) {
       const id = record.camera.id;
-      parts.geometry.destroyViewshedVolume(record);
+      parts.rendering.destroyViewshedVolume(record);
       // Before the record leaves the map: the release detaches it from its record.
       if (record.projection)
         parts.projection.releaseProjectionRuntime(record.projection);
-      if (record.billboard) {
-        layerState._billboards?.remove(record.billboard);
-        record.billboard = null;
-      }
+      layerState._icons?.remove(id);
       layerState._cardIds.delete(id);
       layerState._cardGraceState.delete(id);
       layerState._cardFrameSlots.delete(id);
@@ -408,6 +376,13 @@ export function createArea({ state: layerState, services, parts, source }) {
       (record) => !doomedSet.has(record),
     );
     layerState._records = layerState._records.filter(
+      (record) => !doomedSet.has(record),
+    );
+    // The next view pass rebuilds these; until then they name no gone camera.
+    layerState._viewRecords = layerState._viewRecords.filter(
+      (record) => !doomedSet.has(record),
+    );
+    layerState._pickerRecords = (layerState._pickerRecords || []).filter(
       (record) => !doomedSet.has(record),
     );
     layerState._count = layerState._records.length;
@@ -953,10 +928,7 @@ export function createArea({ state: layerState, services, parts, source }) {
    */
 
   function viewLowEnoughForArea() {
-    return (
-      layerState._viewer?.camera?.positionCartographic?.height <
-      AREA_SEED_MAX_ALTITUDE_M
-    );
+    return parts.model.eyePose()?.height < AREA_SEED_MAX_ALTITUDE_M;
   }
 
   /**
@@ -1019,12 +991,9 @@ export function createArea({ state: layerState, services, parts, source }) {
    */
 
   function viewerPoint() {
-    const carto = layerState._viewer?.camera?.positionCartographic;
-    if (!carto) return null;
-    return {
-      lat: Cesium.Math.toDegrees(carto.latitude),
-      lon: Cesium.Math.toDegrees(carto.longitude),
-    };
+    const pose = parts.model.eyePose();
+    if (!pose) return null;
+    return { lat: pose.lat, lon: pose.lon };
   }
 
   /**
@@ -1063,7 +1032,7 @@ export function createArea({ state: layerState, services, parts, source }) {
 
   /**
    * Location-switch leave: releases what the layer built for the view being
-   * left. The loaded camera records, their billboards and ground priors stay
+   * left. The loaded camera records, their icons and ground priors stay
    * until the destination's area swap replaces them (onLocationSelect).
    * Synchronous and network-free; a second call finds nothing left to do.
    * @param {Object|null} to - Destination `{ key, region, country, lat, lon }`.
@@ -1147,8 +1116,8 @@ export function createArea({ state: layerState, services, parts, source }) {
     const farWithWireframes = [];
     for (const record of layerState._records) {
       const near = nearIds.has(record.camera.id);
-      if (record.viewshedPrimitive && !(keepActive && near))
-        parts.geometry.destroyViewshedVolume(record);
+      if (record.viewshedVolume && !(keepActive && near))
+        parts.rendering.destroyViewshedVolume(record);
       if (record.coverageEntities?.length && !near)
         farWithWireframes.push(record);
     }

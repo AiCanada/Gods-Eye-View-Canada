@@ -5,6 +5,7 @@ import {
   upsertOverlayEntry,
 } from './overlays/worldOverlay.js';
 import { closestCityForSearch, selectedPlaceLabel } from './locations.js';
+import { viewerBehind } from './render/cesium/viewers.js';
 import { copyText } from './ui/copyText.js';
 import {
   isOwnerRemovalRefusal,
@@ -1178,7 +1179,9 @@ export class SocialMediaPanel {
    * view above the horizon or a scene that is not ready. Null when neither.
    */
   _viewPoint() {
-    const viewer = this.viewer;
+    // The shell hands the panel its scene host: the scene and camera read
+    // here are the Cesium viewer's behind it.
+    const viewer = viewerBehind(this.viewer);
     const usable = (carto) =>
       carto &&
       Number.isFinite(carto.latitude) &&
@@ -1366,7 +1369,12 @@ function labelSocialFix(position, label) {
   }
 }
 
-async function placeSocialFix(viewer, fix, label) {
+/**
+ * The default marker draw and removal are handed the panel's viewer: the
+ * app's scene host, whose entities are the Cesium viewer's behind it.
+ */
+async function placeSocialFix(host, fix, label) {
+  const viewer = viewerBehind(host);
   if (!viewer?.entities?.add || viewer.isDestroyed?.()) return;
   const latitude = Number(fix?.latitude);
   const longitude = Number(fix?.longitude);
@@ -1395,7 +1403,8 @@ async function placeSocialFix(viewer, fix, label) {
   labelSocialFix(position, label);
 }
 
-async function clearSocialFix(viewer) {
+async function clearSocialFix(host) {
+  const viewer = viewerBehind(host);
   if (!viewer?.entities?.remove || viewer.isDestroyed?.()) return;
   const existing = viewer.entities.getById?.(SOCIAL_LOCATION_FIX_ID);
   if (existing) viewer.entities.remove(existing);

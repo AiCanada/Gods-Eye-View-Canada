@@ -13,6 +13,7 @@ import militaryAwarenessLayer from './militaryAwareness.js';
 import flightsLayer from './flights.js';
 import militaryFlightsLayer from './militaryFlights.js';
 import { getContextStore, registerEntityContext, selectEntityContext } from './contextStore.js';
+import { bindFakeDraw } from '../testSupport/fakeDrawPort.mjs';
 
 const FROM = { key: 'CA-ON', region: 'CA-ON', country: 'CA', lat: 43.65, lon: -79.38 };
 const TO = { key: 'CA-QC', region: 'CA-QC', country: 'CA', lat: 45.5, lon: -73.57 };
@@ -90,6 +91,10 @@ function installSwitchHarness(order) {
     entities: { add: (entity) => entity, remove() {} },
     container: new FakeElement(),
   };
+  // The layers draw through the renderer's ports (the Contact visual, the
+  // vessel trail), as the application binds them.
+  const { unbind } = bindFakeDraw(viewer);
+  restores.push(unbind);
 
   // No aircraft owns the camera, and the proximity cohorts stay empty: this
   // test is about the subject, not the scan.
@@ -159,7 +164,7 @@ function selectVesselSubject() {
     records: [record],
     selectedRecord: record,
     trail: { clear() {}, setPositions() {}, destroy() {} },
-    trailMmsi: record.mmsi,
+    trailId: record.mmsi,
     trailPositions: [position],
   });
   registerEntityContext(record, {
@@ -170,7 +175,9 @@ function selectVesselSubject() {
     label: record.name,
     latitude: record.lat,
     longitude: record.lon,
-    properties: { mmsi: record.mmsi, type: record.type, speedKt: record.speed },
+    // As selectVessel() publishes it: the subject is keyed by the vessel id
+    // (an AIS row's id is its MMSI).
+    properties: { vesselId: record.mmsi, mmsi: record.mmsi, type: record.type, speedKt: record.speed },
   });
   selectEntityContext(record);
   return record.mmsi;

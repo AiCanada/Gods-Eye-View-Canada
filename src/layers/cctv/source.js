@@ -15,8 +15,10 @@ function safeNumber(value, fallback = NaN) {
 }
 /**
  * Builds the URL for fetching a camera frame image from the backend
- * (contract 4: `/api/cctv/frame/:id?ts=<tick>[&active=1]`). The server reads
- * the camera's label and position from its own catalogue, so none ride along.
+ * (contract 4: `/api/cctv/frame/:id?...&ts=<tick>[&active=1]`). The position
+ * never rides along: the server reads it from its own catalogue. The pose the
+ * browser draws (heading, field of view, pitch) does, for the Street View
+ * fallback.
  * A home or business camera loads from its own loopback-only frame route.
  * @param {Object} camera - Camera object.
  * @param {number} [refreshMs=ACTIVE_FRAME_REFRESH_MS] - Refresh interval used for tick bucketing.
@@ -36,7 +38,14 @@ function frameUrlFor(
   );
   const tick = Math.floor(Date.now() / cadenceMs);
   if (camera.privateFrameUrl) return `${camera.privateFrameUrl}?ts=${tick}`;
-  const params = new URLSearchParams({ ts: String(tick) });
+  const params = new URLSearchParams({
+    label: camera.name,
+    city: camera.city,
+    heading: String(Math.round(camera.headingDeg)),
+    fov: String(Math.round(camera.fovDeg)),
+    pitch: String(Math.round(camera.pitchDeg || -10)),
+    ts: String(tick),
+  });
   if (active) params.set('active', '1');
   return `${FRAME_ENDPOINT}/${encodeURIComponent(camera.id)}?${params.toString()}`;
 }

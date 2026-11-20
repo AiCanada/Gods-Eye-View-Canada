@@ -19,6 +19,7 @@ import {
   setOverlayEntries,
   setOverlaySourceVisible,
 } from './overlays/worldOverlay.js';
+import { viewerBehind } from './render/cesium/viewers.js';
 
 /** The world-overlay source the price cards are published under. */
 export const AI_WORLD_MARKETS_SOURCE_ID = 'ai-world-markets';
@@ -205,7 +206,9 @@ export function initAiWorldOverlay({
   debounceMs = 300,
   overlayHost = OVERLAY_HOST,
 } = {}) {
-  const viewer = dataManager?.viewer;
+  // The data manager holds the app's scene host, not a Cesium viewer: the
+  // overlay draws on the viewer behind it (a viewer given directly, as is).
+  const viewer = viewerBehind(dataManager?.viewer);
   if (!viewer?.scene?.primitives || !documentRef) return null;
   const points = viewer.scene.primitives.add(
     new cesium.PointPrimitiveCollection(),

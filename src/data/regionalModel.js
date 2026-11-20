@@ -82,6 +82,13 @@ export function locationRegionKey(place) {
   return /^[A-Z]{2}$/.test(country) ? country : '';
 }
 
+export {
+  REGIONAL_NEWS_WINDOW_HOURS,
+  googleNewsWindowOperator,
+  recentRegionalArticles,
+  regionalNewsWindowHours,
+} from './regionalNewsWindow.js';
+
 /** Normalize and deduplicate GDELT ArticleList output without trusting article HTML. */
 export function normalizeRegionalArticles(payload, limit = MAX_ARTICLES) {
   const rows = Array.isArray(payload?.articles) ? payload.articles : [];

@@ -47,14 +47,20 @@ export const CCTV_VIEW_MAX_TAGS = 1000;
 const _pictures = [];
 const _cssByColor = new WeakMap();
 const _diag = { cards: 0, drawn: 0, tags: 0 };
+/** A 0..1 colour channel as a CSS byte. */
+const channel = (value) =>
+  Math.round(Math.min(1, Math.max(0, Number(value) || 0)) * 255);
 function cssFor(color) {
   if (!color || typeof color !== 'object') return '#ffffff';
   let css = _cssByColor.get(color);
   if (!css) {
-    css =
-      typeof color.toCssColorString === 'function'
-        ? color.toCssColorString()
-        : '#ffffff';
+    if (typeof color.toCssColorString === 'function')
+      css = color.toCssColorString();
+    // The traffic layer hands out a plain { red, green, blue, alpha } view of
+    // each dot's colour (src/layers/traffic/queries.js), not a Cesium.Color.
+    else if (Number.isFinite(color.red) && Number.isFinite(color.green))
+      css = `rgba(${channel(color.red)},${channel(color.green)},${channel(color.blue)},${Math.min(1, Math.max(0, Number(color.alpha ?? 1)))})`;
+    else css = '#ffffff';
     _cssByColor.set(color, css);
   }
   return css;

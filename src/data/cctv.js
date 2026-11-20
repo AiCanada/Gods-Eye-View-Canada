@@ -33,6 +33,7 @@ export const expectedMonitorRangeM = layer.expectedMonitorRangeM;
 export const sightLineGroundHitM = layer.sightLineGroundHitM;
 export const nearFieldRoadSpot = layer.nearFieldRoadSpot;
 export const roadMatchDirection = layer.roadMatchDirection;
+export const flatGroundAxisDistance = layer.flatGroundAxisDistance;
 export const frameSignatureFromPixels = layer.frameSignatureFromPixels;
 export const _createCctvProjectionPlaneForTest =
   layer._createCctvProjectionPlaneForTest;
@@ -40,8 +41,6 @@ export const _updateCctvProjectionPlaneForTest =
   layer._updateCctvProjectionPlaneForTest;
 export const _projectionImageSourceForTest =
   layer._projectionImageSourceForTest;
-export const _createCctvProjectionAppearanceForTest =
-  layer._createCctvProjectionAppearanceForTest;
 export const _cctvRecordForTest = layer._cctvRecordForTest;
 export const _reloadCctvPrivateCamerasForTest =
   layer._reloadCctvPrivateCamerasForTest;
@@ -78,8 +77,11 @@ export const materializeCctvVisibleCoverageEntities =
 export const _extractPickedCameraIdForTest =
   layer._extractPickedCameraIdForTest;
 export const _setCctvCoverageStateForTest = layer._setCctvCoverageStateForTest;
+export const _cctvIconsForTest = layer._cctvIconsForTest;
 export const focusCctvRecord = layer.focusCctvRecord;
 export const maybeAutoHop = layer.maybeAutoHop;
+export const openingCameraId = layer.openingCameraId;
+export const reopenNearestCamera = layer.reopenNearestCamera;
 export const cctvCycleIndex = layer.cctvCycleIndex;
 export {
   CCTV_CALIBRATION_STORAGE_KEY_V1,

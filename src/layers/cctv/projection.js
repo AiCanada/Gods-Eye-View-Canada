@@ -1,12 +1,11 @@
 import { attachCctvVideo } from './videoPlayback.js';
-import * as Cesium from 'cesium';
 import {
   CCTV_PROJECTION_OVERLAY_SOURCE_ID,
   CCTV_PROJECTION_OVERLAY_SOURCE_OPTIONS,
   PLANE_OUTLINE_COLOR,
   PROJECTION_CANVAS_WIDTH,
   PROJECTION_CANVAS_HEIGHT,
-  PROJECTION_PLANE_COLOR,
+  PROJECTION_PLANE_ALPHA,
 } from './policy.js';
 
 /**
@@ -17,48 +16,16 @@ import {
 export function projectionImageSource(runtime) {
   // A video drawn through the canvas buffers (`viaCanvas`) is textured like a still.
   if (runtime?.video && !runtime.viaCanvas) return runtime.video;
-  // The buffer last swapped in, NOT the working canvas. Cesium re-uploads a
-  // canvas texture only when the uniform receives a new object (see
-  // paintNextProjectionBuffer). The primitive plane was always handed the one
-  // working canvas, so its texture was uploaded once, usually while that canvas
-  // still held the placeholder, and never again: the panel showed the camera's
-  // picture and the map showed a dark plane, for every still camera.
+  // The buffer last swapped in, NOT the working canvas. The renderer reads a
+  // canvas when a plane first names it, so only a newly named buffer shows new
+  // pixels (see paintNextProjectionBuffer). A plane handed the one working
+  // canvas uploaded it once, usually while it still held the placeholder: the
+  // panel showed the camera's picture and the map showed a dark plane.
   const buffer = runtime?.buffers?.[runtime.bufferIndex];
   if (buffer) return buffer;
   if (runtime?.canvas) return runtime.canvas;
-  const image = runtime?.planeMaterial?.image;
-  if (!image) return null;
-  return typeof image.getValue === 'function' ? image.getValue() : image;
-}
-
-/**
- * Entity plane pictures join Cesium's translucent sort and paint over street
- * traffic. This appearance stays classified opaque (so it is not distance-
- * sorted against the dots), blends a slight see-through fill, and does not
- * write depth, so vehicles draw on top of the feed.
- * @param {Cesium.Material} material
- * @returns {Cesium.MaterialAppearance}
- */
-export function createProjectionPrimitiveAppearance(material) {
-  if (material) material.translucent = false;
-  const appearance = new Cesium.MaterialAppearance({
-    material,
-    translucent: false,
-    closed: false,
-    faceForward: true,
-    renderState: {
-      cull: { enabled: false },
-      depthTest: { enabled: true },
-    },
-  });
-  const getRenderState = appearance.getRenderState.bind(appearance);
-  appearance.getRenderState = function projectionPlaneRenderState() {
-    const rs = getRenderState();
-    rs.depthMask = false;
-    rs.blending = Cesium.BlendingState.ALPHA_BLEND;
-    return rs;
-  };
-  return appearance;
+  const source = runtime?.planeSource;
+  return source?.video || source?.canvas || source?.image || null;
 }
 
 /**
@@ -75,6 +42,22 @@ export function trafficPlaneSpec(geometry, positions, orientation) {
   };
 }
 
+/** A plain white image, for a plane with no media (tests). */
+const WHITE_IMAGE =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1">' +
+      '<rect width="1" height="1" fill="#fff"/></svg>',
+  );
+
+/** Copy a position's coordinates into `out`. */
+function copyPosition(from, out) {
+  out.x = from.x;
+  out.y = from.y;
+  out.z = from.z;
+  return out;
+}
+
 export function createProjection({
   state: layerState,
   services,
@@ -82,16 +65,13 @@ export function createProjection({
   source,
 }) {
   const { holdContinuousRender, releaseContinuousRender } = services.render;
-  const { registerSpriteCollection, restoreSpriteOrder } = services.sprites;
-  const unregisterSpriteCollection =
-    services.sprites.unregisterSpriteCollection || (() => {});
   /** Street traffic the active camera can see is drawn onto its open picture. */
   const setCctvTrafficPlane = (viewer, cameraId, spec) =>
     services.pictureTraffic?.setCctvTrafficPlane?.(viewer, cameraId, spec);
 
   /**
    * Build the protected label associated with one active monitor plane.
-   * @param {{cameraId: string, name: string, position: Cesium.Cartesian3|Function}} input
+   * @param {{cameraId: string, name: string, position: object|Function}} input
    * @returns {Object} Shared-host presentation entry.
    */
 
@@ -118,80 +98,6 @@ export function createProjection({
     };
   }
 
-  /** Points the primitive plane's picture at the runtime's current image. */
-
-  function syncProjectionPrimitiveImage(runtime) {
-    const material = runtime?.planePrimitiveMaterial;
-    const image = projectionImageSource(runtime);
-    if (!material?.uniforms || !image) return;
-    material.uniforms.image = image;
-  }
-
-  function projectionPlaneModelMatrix(
-    position,
-    orientation,
-    dimensions,
-    result,
-  ) {
-    const rotation = Cesium.Matrix3.fromQuaternion(
-      orientation,
-      layerState._scratchPlaneRotation,
-    );
-    const scale = Cesium.Cartesian3.fromElements(
-      dimensions.x,
-      dimensions.y,
-      1,
-      layerState._scratchPlaneScale,
-    );
-    Cesium.Matrix3.multiplyByScale(rotation, scale, rotation);
-    return Cesium.Matrix4.fromRotationTranslation(rotation, position, result);
-  }
-
-  function ensureProjectionPrimitiveCollection() {
-    if (
-      layerState._projectionPrimitiveCollection &&
-      !layerState._projectionPrimitiveCollection.isDestroyed?.()
-    ) {
-      return layerState._projectionPrimitiveCollection;
-    }
-    const primitives = layerState._viewer?.scene?.primitives;
-    if (!primitives?.add) return null;
-    layerState._projectionPrimitiveCollection = new Cesium.PrimitiveCollection({
-      destroyPrimitives: true,
-    });
-    primitives.add(layerState._projectionPrimitiveCollection);
-    registerSpriteCollection(
-      'cctv-projection',
-      layerState._projectionPrimitiveCollection,
-    );
-    restoreSpriteOrder(layerState._viewer);
-    return layerState._projectionPrimitiveCollection;
-  }
-
-  function destroyProjectionPrimitive(runtime) {
-    if (!runtime) return;
-    const primitive = runtime.planePrimitive;
-    runtime.planePrimitive = null;
-    runtime.planePrimitiveMaterial = null;
-    if (!primitive) return;
-    const collection = layerState._projectionPrimitiveCollection;
-    if (
-      collection &&
-      !collection.isDestroyed?.() &&
-      collection.contains?.(primitive)
-    ) {
-      collection.remove(primitive);
-    }
-  }
-
-  function destroyProjectionPrimitiveCollection(viewer) {
-    const collection = layerState._projectionPrimitiveCollection;
-    layerState._projectionPrimitiveCollection = null;
-    if (!collection) return;
-    unregisterSpriteCollection('cctv-projection', collection);
-    viewer?.scene?.primitives?.remove?.(collection);
-  }
-
   /**
    * Re-derives the monitor plane's placement (position, orientation,
    * dimensions) + label from the record's current frustum geometry, so the plane
@@ -202,7 +108,8 @@ export function createProjection({
 
   function updatePlanePlacement(record) {
     const runtime = record?.projection;
-    if (!runtime?.planeEntity && !runtime?.planePrimitive) return;
+    const plane = runtime?.plane;
+    if (!plane) return;
     const geometry =
       record.frustumGeometry ||
       parts.geometry.computeFrustumGeometry(
@@ -211,41 +118,46 @@ export function createProjection({
         record.probeClampRangeM,
       );
     const positions =
-      record.frustumPositions || parts.geometry.frustumCartesians(geometry);
-    const orientation = parts.model.planeOrientationFor(
-      record.camera,
-      positions.capCenter,
+      record.frustumPositions || parts.rendering.frustumCartesians(geometry);
+    placePlane(plane, record.camera, geometry, positions);
+    runtime.trafficPlane = trafficPlaneSpec(
+      geometry,
+      positions,
+      plane.orientation,
     );
-    const dimensions = new Cesium.Cartesian2(
-      geometry.halfW * 2,
-      geometry.halfH * 2,
-    );
-    runtime.trafficPlane = trafficPlaneSpec(geometry, positions, orientation);
     // A calibration edit moves the picture; keep the projected traffic on it.
-    if (runtime.planeEntity?.show || runtime.planePrimitive?.show) {
+    if (plane.show) {
       setCctvTrafficPlane(
         layerState._viewer,
         runtime.cameraId,
         runtime.trafficPlane,
       );
     }
-    if (runtime.planeEntity) {
-      runtime.planeEntity.position = positions.capCenter;
-      runtime.planeEntity.orientation = orientation;
-      if (runtime.planeEntity.plane)
-        runtime.planeEntity.plane.dimensions = dimensions;
-    }
-    if (runtime.planePrimitive?.modelMatrix) {
-      projectionPlaneModelMatrix(
-        positions.capCenter,
-        orientation,
-        dimensions,
-        runtime.planePrimitive.modelMatrix,
-      );
-    }
-    if (runtime.labelPosition) {
-      Cesium.Cartesian3.clone(positions.label, runtime.labelPosition);
-    }
+    if (runtime.labelPosition)
+      copyPosition(positions.label, runtime.labelPosition);
+    parts.drawSets.writePlane(plane);
+  }
+
+  /** Pose a plane handle on the frustum's far cap. */
+  function placePlane(plane, camera, geometry, positions) {
+    plane.center = positions.capCenter;
+    plane.orientation = parts.model.planeOrientationFor(
+      camera,
+      positions.capCenter,
+    );
+    plane.size = [geometry.halfW * 2, geometry.halfH * 2];
+  }
+
+  /**
+   * Give the monitor plane another image: a canvas, or the video element.
+   * @param {Object} runtime - Projection runtime.
+   * @param {{canvas: HTMLCanvasElement}|{video: HTMLVideoElement}} source
+   */
+  function setPlaneSource(runtime, source) {
+    runtime.planeSource = source;
+    if (!runtime.plane) return;
+    runtime.plane.source = source;
+    parts.drawSets.writePlane(runtime.plane);
   }
 
   /**
@@ -270,15 +182,16 @@ export function createProjection({
   function setPlaneVisible(runtime, visible) {
     if (!runtime) return;
     const show = !!visible;
-    if (runtime.planeEntity) runtime.planeEntity.show = show;
-    if (runtime.planePrimitive) runtime.planePrimitive.show = show;
+    if (runtime.plane && runtime.plane.show !== show) {
+      runtime.plane.show = show;
+      parts.drawSets.writePlane(runtime.plane);
+    }
     // Street traffic the camera can see is drawn onto its open picture.
     setCctvTrafficPlane(
       layerState._viewer,
       runtime.cameraId,
       show ? runtime.trafficPlane : null,
     );
-    if (show) restoreSpriteOrder(layerState._viewer);
     if (visible && runtime.overlayEntry && runtime.cameraId) {
       if (layerState._projectionOverlayOwnerId !== runtime.cameraId) {
         layerState._cctvOverlayHost.setEntries(
@@ -297,94 +210,39 @@ export function createProjection({
     }
   }
 
-  /**
-   * Create the native monitor plane plus its cached host-label presentation.
-   * The live picture is a dedicated primitive (slightly see-through, no depth
-   * write, so street traffic draws on top); the entity keeps the pick identity
-   * and falls back to its own fill when the primitive cannot be built.
-   */
+  /** A plain white plane image, for a plane with no media (tests). */
+  function plainPlaneSource() {
+    return { image: WHITE_IMAGE };
+  }
+
+  /** Create the monitor plane plus its cached host-label presentation. */
 
   function createProjectionPlane(record, runtime, geometry, positions) {
-    runtime.labelPosition ||= new Cesium.Cartesian3();
-    Cesium.Cartesian3.clone(positions.label, runtime.labelPosition);
+    runtime.labelPosition ||= { x: 0, y: 0, z: 0 };
+    copyPosition(positions.label, runtime.labelPosition);
     runtime.cameraId = String(record.camera.id);
     runtime.overlayEntry = createCctvProjectionOverlayEntry({
       cameraId: runtime.cameraId,
       name: record.camera.name,
       position: () => runtime.labelPosition,
     });
-    const orientation = parts.model.planeOrientationFor(
-      record.camera,
-      positions.capCenter,
-    );
-    const dimensions = new Cesium.Cartesian2(
-      geometry.halfW * 2,
-      geometry.halfH * 2,
-    );
-    runtime.trafficPlane = trafficPlaneSpec(geometry, positions, orientation);
-    runtime.planeEntity = layerState._viewer.entities.add({
+    const plane = {
       id: `cctv-${record.camera.id}-plane`,
-      properties: { cctvCameraId: record.camera.id },
+      cameraId: record.camera.id,
+      source: runtime.planeSource || plainPlaneSource(),
+      alpha: PROJECTION_PLANE_ALPHA,
+      outline: { color: PLANE_OUTLINE_COLOR, widthPx: 1 },
       show: false,
-      position: positions.capCenter,
-      orientation,
-      plane: {
-        plane: new Cesium.Plane(Cesium.Cartesian3.UNIT_Z, 0.0),
-        dimensions,
-        material: runtime.planeMaterial,
-        outline: true,
-        outlineColor: PLANE_OUTLINE_COLOR,
-      },
-    });
-    const image = projectionImageSource(runtime);
-    const collection =
-      image && typeof HTMLCanvasElement !== 'undefined'
-        ? ensureProjectionPrimitiveCollection()
-        : null;
-    if (collection && Cesium.PlaneGeometry && Cesium.MaterialAppearance) {
-      try {
-        const material = Cesium.Material.fromType('Image', {
-          image,
-          color: PROJECTION_PLANE_COLOR,
-        });
-        const primitive = collection.add(
-          new Cesium.Primitive({
-            geometryInstances: new Cesium.GeometryInstance({
-              geometry: new Cesium.PlaneGeometry({
-                vertexFormat:
-                  Cesium.MaterialAppearance.MaterialSupport.TEXTURED
-                    .vertexFormat,
-              }),
-              id: runtime.planeEntity,
-            }),
-            appearance: createProjectionPrimitiveAppearance(material),
-            asynchronous: false,
-            allowPicking: true,
-            modelMatrix: projectionPlaneModelMatrix(
-              positions.capCenter,
-              orientation,
-              dimensions,
-              new Cesium.Matrix4(),
-            ),
-            show: false,
-          }),
-        );
-        runtime.planePrimitive = primitive;
-        runtime.planePrimitiveMaterial = material;
-        if (runtime.planeEntity.plane) {
-          runtime.planeEntity.plane.fill = false;
-          runtime.planeEntity.plane.outline = false;
-        }
-      } catch (error) {
-        console.warn(
-          '[Data:CCTV] monitor plane primitive failed; using entity fill',
-          error?.message || error,
-        );
-        destroyProjectionPrimitive(runtime);
-      }
-    }
-    restoreSpriteOrder(layerState._viewer);
-    return runtime.planeEntity;
+    };
+    placePlane(plane, record.camera, geometry, positions);
+    runtime.trafficPlane = trafficPlaneSpec(
+      geometry,
+      positions,
+      plane.orientation,
+    );
+    runtime.plane = plane;
+    parts.drawSets.writePlane(plane);
+    return plane;
   }
 
   /**
@@ -428,13 +286,12 @@ export function createProjection({
             )
               return;
             // A cross-origin stream draws to a canvas but does not survive
-            // Cesium's direct video-texture path (the plane stayed dark):
-            // texture the plane from the canvas buffers instead, which this
-            // video is drawn into anyway.
+            // the renderer's direct video-texture path (the plane stayed
+            // dark): texture the plane from the canvas buffers instead, which
+            // this video is drawn into anyway.
             runtime.viaCanvas = true;
             runtime.lastSwappedCanvasStamp = -1;
-            if (runtime.planeMaterial)
-              runtime.planeMaterial.image = runtime.canvas;
+            setPlaneSource(runtime, { canvas: runtime.canvas });
             video.src = direct;
             video.play().catch(() => {});
           } catch {
@@ -473,9 +330,8 @@ export function createProjection({
                   return;
                 }
                 runtime.video = next;
-                if (runtime.planeMaterial && !runtime.viaCanvas)
-                  runtime.planeMaterial.image = next;
-                syncProjectionPrimitiveImage(runtime);
+                if (!runtime.viaCanvas)
+                  setPlaneSource(runtime, { video: next });
                 next.play().catch(() => {});
                 discard(current);
                 queueNext(next);
@@ -527,6 +383,9 @@ export function createProjection({
 
   function createProjectionRuntime(record) {
     if (!layerState._viewer) return null;
+    // Québec 511 denies CORS pixel access; Québec map previews are native DOM
+    // videos positioned over the globe, never Cesium video textures.
+    if (parts.model.isBrowserOverlayCamera(record.camera)) return null;
     const canvas = document.createElement('canvas');
     canvas.width = PROJECTION_CANVAS_WIDTH;
     canvas.height = PROJECTION_CANVAS_HEIGHT;
@@ -548,13 +407,11 @@ export function createProjection({
       ctx,
       image: null,
       video: null,
-      planeEntity: null,
-      planePrimitive: null,
-      planePrimitiveMaterial: null,
+      plane: null,
       cameraId: String(record.camera.id),
-      labelPosition: new Cesium.Cartesian3(),
+      labelPosition: { x: 0, y: 0, z: 0 },
       overlayEntry: null,
-      planeMaterial: null,
+      planeSource: { canvas },
       buffers: null,
       bufferIndex: 0,
       lastTextureSwapAt: 0,
@@ -591,18 +448,18 @@ export function createProjection({
       video.playsInline = true;
       video.crossOrigin = 'anonymous';
       video.preload = 'auto';
-      // Cesium sizes the video texture from the element's width/height
-      // attributes at first upload. Set them from the real stream dimensions
-      // and rebind on any resolution change (camera switch, adaptive source).
+      // The plane shows the video once it knows its size (the element's
+      // width/height follow the real stream dimensions); the renderer reads
+      // it at a new size on any later resolution change (camera switch,
+      // adaptive source).
       const bindVideoTexture = () => {
-        if (runtime.video !== video || !runtime.planeMaterial) return;
+        if (runtime.video !== video || runtime.disposed) return;
         if (!(video.videoWidth > 0 && video.videoHeight > 0)) return;
         if (runtime.viaCanvas) return;
         video.width = video.videoWidth;
         video.height = video.videoHeight;
-        runtime.planeMaterial.image = runtime.canvas;
-        runtime.planeMaterial.image = video;
-        syncProjectionPrimitiveImage(runtime);
+        if (runtime.planeSource?.video !== video)
+          setPlaneSource(runtime, { video });
       };
       video.addEventListener('loadedmetadata', bindVideoTexture);
       video.addEventListener('resize', bindVideoTexture);
@@ -630,8 +487,7 @@ export function createProjection({
                 runtime.imageLoading = false;
                 runtime.imageReady = false;
               };
-              runtime.planeMaterial.image = runtime.canvas;
-              syncProjectionPrimitiveImage(runtime);
+              setPlaneSource(runtime, { canvas: runtime.canvas });
               parts.frames.refreshProjectionImage(record, true);
               parts.presentation.notifyListeners();
             },
@@ -655,9 +511,9 @@ export function createProjection({
     }
 
     // Monitor plane = the frustum's far cap: video feeds bind the video element
-    // directly once its dimensions are known (Cesium updates video-backed
-    // materials per frame); image feeds start on the placeholder canvas and
-    // switch to double-buffer swaps at <=1Hz.
+    // directly once its dimensions are known (the renderer reads it every
+    // frame); image feeds start on the placeholder canvas and switch to
+    // double-buffer swaps at <=1Hz.
     const geometry =
       record.frustumGeometry ||
       parts.geometry.computeFrustumGeometry(
@@ -666,16 +522,7 @@ export function createProjection({
         record.probeClampRangeM,
       );
     const positions =
-      record.frustumPositions || parts.geometry.frustumCartesians(geometry);
-    // Keep `transparent: false` so Cesium does not force the entity fill into
-    // the distance-sorted translucent pass. The live picture is the primitive
-    // (createProjectionPlane): slightly see-through, no depth write, traffic
-    // draws on top.
-    runtime.planeMaterial = new Cesium.ImageMaterialProperty({
-      image: canvas,
-      transparent: false,
-      color: PROJECTION_PLANE_COLOR,
-    });
+      record.frustumPositions || parts.rendering.frustumCartesians(geometry);
     createProjectionPlane(record, runtime, geometry, positions);
 
     return runtime;
@@ -721,16 +568,15 @@ export function createProjection({
       runtime.video.removeAttribute('src');
       runtime.video.load();
     }
-    destroyProjectionPrimitive(runtime);
-    if (runtime.planeEntity && layerState._viewer) {
-      layerState._viewer.entities.remove(runtime.planeEntity);
-      runtime.planeEntity = null;
+    if (runtime.plane) {
+      parts.drawSets.removePlane(runtime.plane);
+      runtime.plane = null;
     }
     if (layerState._projectionOverlayOwnerId === runtime.cameraId)
       clearProjectionOverlay();
     runtime.overlayEntry = null;
     runtime.labelPosition = null;
-    runtime.planeMaterial = null;
+    runtime.planeSource = null;
   }
 
   /**
@@ -857,13 +703,13 @@ export function createProjection({
     updatePlanePlacement,
     clearProjectionOverlay,
     setPlaneVisible,
+    setPlaneSource,
+    plainPlaneSource,
     createProjectionPlane,
     createProjectionRuntime,
     ensureProjectionRuntime,
     destroyProjectionRuntime,
     releaseProjectionRuntime,
-    syncProjectionPrimitiveImage,
-    destroyProjectionPrimitiveCollection,
     startProjectionLoop,
     stopProjectionLoop,
     pauseInactiveProjectionFeeds,

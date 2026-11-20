@@ -15,7 +15,15 @@ const tests = (file) =>
   file.endsWith('.test.mjs') ||
   file.startsWith('src/testSupport/') ||
   file.startsWith('src/tooling/') ||
-  file === 'src/overlays/worldOverlayAllocation.worker.mjs';
+  // Test doubles outside src/testSupport, imported by tests only.
+  file === 'src/input/testDoubles.mjs' ||
+  file === 'src/layers/recentImagery/testDoubles.mjs' ||
+  file === 'src/voice/voiceWorkflowHarness.mjs' ||
+  file === 'src/layers/wildlifeSightings/renderPerformanceFixtures.mjs' ||
+  file === 'src/overlays/worldOverlayAllocation.worker.mjs' ||
+  // Fork (Canada edition) test harnesses, imported by tests only.
+  file === 'src/data/cctvTestHarness.mjs' ||
+  file === 'src/data/trafficTestHarness.mjs';
 const source = (file) =>
   file.startsWith('src/sources/') ||
   /^src\/layers\/[^/]+\/(?:source|bundledSource|flowSource)\.js$/.test(file);

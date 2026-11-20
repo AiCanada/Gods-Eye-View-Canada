@@ -311,7 +311,7 @@ test('a box that joins a rail later gets its grip, on that rail’s side', () =>
   assert.equal(gripOf(late).classes.has('panel-corner-resize-left'), false);
 });
 
-test('the rules apply a set size on desktop widths only, keep floating windows out, and Cyber stays last', () => {
+test('the rules apply a set size on desktop widths only, keep floating windows out, and Sonar stays last', () => {
   const css = readFileSync(
     new URL('./styles/panel-resize.css', import.meta.url),
     'utf8',
@@ -321,11 +321,12 @@ test('the rules apply a set size on desktop widths only, keep floating windows o
     'utf8',
   );
   const imports = [...style.matchAll(/@import '([^']+)'/g)].map((m) => m[1]);
+  // Upstream replaced the Cyber skin with sonar.css as the last import.
   assert.ok(
     imports.indexOf('./src/ui/styles/panel-resize.css') <
-      imports.indexOf('./src/ui/styles/cyber.css'),
+      imports.indexOf('./src/ui/styles/sonar.css'),
   );
-  assert.equal(imports.at(-1), './src/ui/styles/cyber.css');
+  assert.equal(imports.at(-1), './src/ui/styles/sonar.css');
   assert.match(css, /^\.panel-corner-resize \{\s*display: none;/m);
   const wide = css.slice(css.indexOf('@media (min-width: 721px)'));
   for (const rule of [

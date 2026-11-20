@@ -25,16 +25,19 @@ const css = readStylesheet(new URL('../style.css', import.meta.url));
 
 function realtimeTools() { return GEV_REALTIME_TOOLS; }
 
-test('Realtime schema exposes the authoritative 36-tool inventory', () => {
+test('Realtime schema exposes the authoritative 38-tool inventory', () => {
   const tools = realtimeTools();
-  assert.equal(tools.length, 36);
+  assert.equal(tools.length, 38);
   const names = tools.map((tool) => tool.name);
-  assert.equal(new Set(names).size, 36, 'tool names are unique');
+  assert.equal(new Set(names).size, 38, 'tool names are unique');
+  // The fork's whole-app voice control adds two tools to upstream's 36.
   assert.ok(names.includes('list_ui_controls'));
   assert.ok(names.includes('use_ui_control'));
   assert.ok(names.includes('resolve_area'));
   assert.ok(names.includes('find_imagery'));
   assert.ok(names.includes('osm_query'));
+  assert.ok(names.includes('show_street_level'));
+  assert.ok(names.includes('open_stories'));
   assert.ok(names.includes('set_context_mode'));
   assert.ok(names.includes('control_cockpit'));
   assert.ok(names.includes('set_voice_inactivity_timeout'));
@@ -157,7 +160,7 @@ test('the edited existing tools changed exactly as intended', () => {
   const panel = byName.get('set_panel_open');
   assert.deepEqual(
     panel.parameters.properties.panelId.enum,
-    ['data-panel', 'location-bar', 'control-panel', 'cctv-panel', 'radio-panel', 'scene-panel', 'utilities-panel', 'pp-toggles', 'global-context-panel', 'weather-panel', 'recent-imagery-panel', 'ask-panel', 'street-level-panel', 'ultra-panel', 'social-panel', 'outbreak-panel', 'sst-panel', 'voice-settings', 'voice-preview', 'provider-settings'],
+    ['data-panel', 'location-bar', 'control-panel', 'cctv-panel', 'radio-panel', 'scene-panel', 'utilities-panel', 'pp-toggles', 'global-context-panel', 'space-missions-panel', 'weather-panel', 'recent-imagery-panel', 'ask-panel', 'street-level-panel', 'ultra-panel', 'social-panel', 'outbreak-panel', 'sst-panel', 'voice-settings', 'voice-preview', 'provider-settings'],
   );
   assert.deepEqual(panel.parameters.required, ['panelId', 'open']);
 
@@ -216,16 +219,20 @@ test('no unchanged Realtime tool definition drifts silently', () => {
     'resolve_area',
     'find_imagery',
     'osm_query',
+    // Street-level photos: a new composite tool, not an edit to a shipped one.
+    'show_street_level',
+    // Stories Explore: a new entry action.
+    'open_stories',
   ]);
   const unchanged = realtimeTools()
     .filter((tool) => !TOUCHED.has(tool.name))
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((tool) => structuredClone(tool))
     .filter((tool) => tool.name !== 'set_cyber_sonar');
-  // Cyber adds one HUD choice and the sonar tool, and Operator was retired;
-  // retain the existing pin for every legacy field.
+  // Operator and then Cyber were retired (Cyber's sonar became a visual
+  // style with its own tool); retain the existing pin for every legacy field.
   const hudLayout = unchanged.find((tool) => tool.name === 'set_hud').parameters.properties.layout;
-  assert.deepEqual(hudLayout.enum, ['tactical', 'minimal', 'cyber']);
+  assert.deepEqual(hudLayout.enum, ['tactical', 'minimal']);
   hudLayout.enum = ['tactical', 'operator', 'minimal'];
   // Globe rotation adds one motion and clarifies the two affected descriptions.
   // Check those edits explicitly, then keep the legacy pin for every other field.
@@ -371,14 +378,11 @@ test('Radio is the right rail\'s last member, opened from Context, with separate
   assert.match(radioBindings, /this\.radio\.getTunerStations\(750\)/);
   assert.match(radioBindings, /radioTunerPointerPosition\(/);
   // Radio is not a box of the dashboard: the rail's last member, shown below
-  // the Scenes tab only when selected (owner ruling, 2026-09-27). This holds
-  // in every theme, so the base stylesheet (without the Cyber skin) carries it.
-  const baseCss = css.replace(readFileSync(new URL('./ui/styles/cyber.css', import.meta.url), 'utf8'), '');
-  assert.match(baseCss, /#right-context-rail\s*>\s*#radio-panel/);
-  // The Cyber skin (upstream) still carries a sizing rule for a Radio nested
-  // in Context; Radio stays on the rail here (data-radio-placement="rail"), so
-  // that rule never matches. The base stylesheet must not nest it.
-  assert.doesNotMatch(baseCss, /#global-context-panel #radio-panel\.collapsed/);
+  // the Scenes tab only when selected (owner ruling, 2026-09-27). Upstream
+  // embeds it in Context; the fork's rail placement stands, so no stylesheet
+  // nests it there.
+  assert.match(css, /#right-context-rail\s*>\s*#radio-panel/);
+  assert.doesNotMatch(css, /#global-context-panel #radio-panel\.collapsed/);
   // The Context header keeps only its radio icon: upstream's compact player
   // under it is gone (#1471).
   assert.match(css, /\.context-radio-toggle\s*\{/);

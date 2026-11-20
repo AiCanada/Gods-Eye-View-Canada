@@ -1,6 +1,6 @@
 # Translating God's Eye View
 
-Shipped languages: **English** (source and fallback), **Arabic** (`ar`), **German** (`de`), **Spanish** (`es`), **French** (`fr`), **Quebec French** (`fr-CA`, shown as Français Québécois), **Italian** (`it`), **Inuktitut** (`iu`, written in syllabics), **Japanese** (`ja`), **Brazilian Portuguese** (`pt`), **Russian** (`ru`), **Ukrainian** (`uk`), **Simplified Chinese** (`zh-CN`), **Traditional Chinese** (`zh-Hant`) and **Ancient Egyptian** (`egy`, written in hieroglyphs).
+Shipped languages: **English** (source and fallback), **Arabic** (`ar`), **German** (`de`), **Spanish** (`es`), **French** (`fr`), **Quebec French** (`fr-CA`, shown as Français Québécois), **Hebrew** (`he`), **Italian** (`it`), **Inuktitut** (`iu`, written in syllabics), **Japanese** (`ja`), **Brazilian Portuguese** (`pt`), **Russian** (`ru`), **Swedish** (`sv`), **Ukrainian** (`uk`), **Simplified Chinese** (`zh-CN`), **Traditional Chinese** (`zh-Hant`) and **Ancient Egyptian** (`egy`, written in hieroglyphs).
 
 ## How it works
 
@@ -36,6 +36,8 @@ npm run i18n -- --prune           # drop entries the code no longer uses
 
 Changing English text changes its key: the old translation becomes unused and the new text shows as missing. Translate it and prune.
 
+Do not translate `zh-Hant`: it is generated. Translate `zh-CN`, then run `npm run i18n -- --zh-hant` (see [zh-Hant.md](./translations/zh-Hant.md)).
+
 ## The fork's own tabs
 
 The six tabs on the left that God's Eye View Canada adds, and the POWER UP chip's count, are translated only into the languages listed in `src/i18n/fork-locales.json` (now `es`, `fr-CA`, `iu` and `egy`); every other language shows them in English. Their entries live in the same catalog file, and `--missing` lists them with the rest. To translate them into another language, add its code to `src/i18n/fork-locales.json` once its catalog holds them: from then on the check requires them.
@@ -47,11 +49,12 @@ Edit `src/i18n/locales/<code>.json` and run `npm run i18n`. To see your change, 
 ## Adding a language
 
 1. Create `src/i18n/locales/<code>.json`, fill it from `npm run i18n -- --missing <code>` (start from `{}`), and translate every entry.
-2. Import it in `src/i18n/index.js` and add it to `CATALOGS`.
+2. Add its URL to `CATALOG_URLS` in `src/i18n/index.js` (catalogs load on demand).
 3. Add the code to `LOCALES` and its own-language name to `LOCALE_NAMES` in `src/i18n/locale.js`. Right-to-left languages also go in `RTL_LOCALES`; the chrome mirrors through logical CSS properties (`inset-inline-*`, `margin-inline-*`), and `src/ui/styles/rtl.css` holds what those cannot express (see the Arabic notes). If the language should keep Western digits, or Intl has no data for it, map it in `INTL_TAGS` in `locale.js`. A code with a region, such as `fr-CA`, is matched by its exact tag first, and its language alone (`fr`, `fr-FR`) selects it too.
-4. Add `src/i18n/locales/<code>.json` next to `ru.json` in `scripts/package-boundaries.json`.
+4. Add `src/i18n/locales/<code>.json` next to `ru.json` in `scripts/package-boundaries.json` and in `scripts/format-scope.json`.
 5. Write `docs/translations/<code>.md`: glossary, plural forms, units and style (copy the structure of `ru.md`).
-6. Run `npm run i18n` and `npm test`, then check the panels in the app at narrow widths.
+6. If the language is not written in Latin letters, also add it to `NON_LATIN_LOCALES` in `src/hudSummaryResponse.js` — that guard falls back to the translated text when a summary provider answers in English.
+7. Run `npm run i18n` and `npm test`, then check the panels in the app at narrow widths.
 
 ## Rules
 
@@ -67,4 +70,4 @@ These are contracts, not copy: layer ids and registry keys, status enums and oth
 
 ## Language notes
 
-Each language keeps its glossary, plural forms, units and style in its own file, `docs/translations/<code>.md`: [Arabic](./translations/ar.md), [German](./translations/de.md), [Spanish](./translations/es.md), [French](./translations/fr.md), [Quebec French](./translations/fr-CA.md), [Italian](./translations/it.md), [Inuktitut](./translations/iu.md), [Japanese](./translations/ja.md), [Brazilian Portuguese](./translations/pt.md), [Russian](./translations/ru.md), [Ukrainian](./translations/uk.md), [Simplified Chinese](./translations/zh-CN.md), [Traditional Chinese](./translations/zh-Hant.md), [Ancient Egyptian](./translations/egy.md). Read it before translating, and add a term there when you settle on one.
+Each language keeps its glossary, plural forms, units and style in its own file, `docs/translations/<code>.md`: [Arabic](./translations/ar.md), [German](./translations/de.md), [Spanish](./translations/es.md), [French](./translations/fr.md), [Quebec French](./translations/fr-CA.md), [Hebrew](./translations/he.md), [Italian](./translations/it.md), [Inuktitut](./translations/iu.md), [Japanese](./translations/ja.md), [Brazilian Portuguese](./translations/pt.md), [Russian](./translations/ru.md), [Swedish](./translations/sv.md), [Ukrainian](./translations/uk.md), [Simplified Chinese](./translations/zh-CN.md), [Traditional Chinese](./translations/zh-Hant.md), [Ancient Egyptian](./translations/egy.md). Read it before translating, and add a term there when you settle on one.

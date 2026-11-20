@@ -1,4 +1,3 @@
-import * as Cesium from 'cesium';
 import { ACTIVATION_EXIT_ALTITUDE_M } from './policy.js';
 
 /**
@@ -135,10 +134,12 @@ export function createLocation({ state: layerState, parts }) {
     clearTimeout(layerState._cameraDebounceTimer);
     parts.ingestion.abortAllInFlight();
     layerState._viewer = viewer;
-    layerState._pointCollection = viewer
-      ? new Cesium.PointPrimitiveCollection()
-      : null;
+    // The station dots go to the viewer's draw sets, as enable() makes them.
+    if (viewer) parts.rendering.attachSets(viewer);
+    else parts.rendering.detachSets();
     layerState._enabled = Boolean(viewer) && enabled;
+    if (layerState._stationSet)
+      layerState._stationSet.show = layerState._enabled;
     layerState._cameraDebounceTimer = null;
     layerState._altitudeGateEnabled = altitudeGateEnabled;
     layerState._proximityGeneration = 0;
@@ -196,9 +197,7 @@ export function createLocation({ state: layerState, parts }) {
         ...layerState._inFlightInfo.keys(),
         ...layerState._inFlightStatus.keys(),
       ]),
-      pointCount: layerState._pointCollection
-        ? layerState._pointCollection.length
-        : 0,
+      pointCount: layerState._stationSet?.size?.() ?? 0,
       count: layerState._count,
       selectedKey: layerState._selectedKey,
     };

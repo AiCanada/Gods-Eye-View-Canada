@@ -1,38 +1,31 @@
-import * as Cesium from 'cesium';
+import { toRadians } from './geo/index.js';
+import { cameraOf } from './render/rendererOf.js';
 
 /**
- * Set camera to Austin on load with a cinematic fly-in.
- * @returns {Function} Cancels the pending or active startup flight.
+ * The view the renderer starts from: the whole planet, looking straight
+ * down, centred where Cesium's default view rectangle is.
  */
-export function flyToAustin(viewer) {
-  // Start from a high altitude, then fly down
-  viewer.camera.setView({
-    destination: Cesium.Cartesian3.fromDegrees(-97.7431, 30.2672, 25000),
+export const START_VIEW = Object.freeze({
+  lon: -82.5,
+  lat: 35,
+  height: 23000000,
+});
+
+/**
+ * Put the camera at a start view without a flight. A host may pass a city
+ * (`{ lon, lat, height, heading?, pitch? }`, angles in degrees) instead of
+ * the planet.
+ */
+export function applyStartView(viewer, view = START_VIEW) {
+  const { lon, lat, height, heading = 0, pitch = -90 } = view;
+  cameraOf(viewer).setView({
+    destination: { lon, lat, height },
     orientation: {
-      heading: Cesium.Math.toRadians(0),
-      pitch: Cesium.Math.toRadians(-90),
-      roll: 0.0,
+      heading: toRadians(heading),
+      pitch: toRadians(pitch),
+      roll: 0,
     },
   });
-
-  // Cinematic fly-in after a brief pause
-  const timer = setTimeout(() => {
-    if (viewer.isDestroyed()) return;
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(-97.7431, 30.2672, 600),
-      orientation: {
-        heading: Cesium.Math.toRadians(15),
-        pitch: Cesium.Math.toRadians(-30),
-        roll: 0.0,
-      },
-      duration: 4.0,
-      easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
-    });
-  }, 500);
-  return () => {
-    clearTimeout(timer);
-    if (!viewer.isDestroyed()) viewer.camera.cancelFlight();
-  };
 }
 
 /**
@@ -44,17 +37,14 @@ export function flyToAustin(viewer) {
  * @returns {Function} Cancels the pending or active startup flight.
  */
 export function flyToStartupLocation(viewer, poi) {
-  viewer.camera.setView({
-    destination: Cesium.Cartesian3.fromDegrees(poi.lon, poi.lat, 25000),
-    orientation: {
-      heading: Cesium.Math.toRadians(0),
-      pitch: Cesium.Math.toRadians(-90),
-      roll: 0.0,
-    },
+  const camera = cameraOf(viewer);
+  camera.setView({
+    destination: { lon: poi.lon, lat: poi.lat, height: 25000 },
+    orientation: { heading: 0, pitch: toRadians(-90), roll: 0 },
   });
 
-  const pitchRad = Cesium.Math.toRadians(poi.pitch);
-  const headingRad = Cesium.Math.toRadians(poi.heading);
+  const pitchRad = toRadians(poi.pitch);
+  const headingRad = toRadians(poi.heading);
   const standBackM = poi.alt / Math.tan(Math.abs(pitchRad));
   const metresPerDegLat = 111320;
   const cameraLat =
@@ -62,19 +52,23 @@ export function flyToStartupLocation(viewer, poi) {
   const cameraLon =
     poi.lon -
     (standBackM * Math.sin(headingRad)) /
-      (metresPerDegLat * Math.cos(Cesium.Math.toRadians(poi.lat)));
+      (metresPerDegLat * Math.cos(toRadians(poi.lat)));
 
+  let flight = null;
   const timer = setTimeout(() => {
     if (viewer.isDestroyed()) return;
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(cameraLon, cameraLat, poi.alt),
-      orientation: { heading: headingRad, pitch: pitchRad, roll: 0.0 },
-      duration: 4.0,
-      easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
-    });
+    flight = camera.flyTo(
+      { lon: cameraLon, lat: cameraLat, height: poi.alt },
+      {
+        orientation: { heading: headingRad, pitch: pitchRad, roll: 0 },
+        durationS: 4.0,
+        easing: 'cubicInOut',
+      },
+    );
   }, 500);
   return () => {
     clearTimeout(timer);
-    if (!viewer.isDestroyed()) viewer.camera.cancelFlight();
+    // Only the fly-in: a flight the user started since is theirs.
+    if (!viewer.isDestroyed()) flight?.cancel();
   };
 }

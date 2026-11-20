@@ -4,9 +4,11 @@ import * as Cesium from 'cesium';
 import {
   bindMapLocationClicks,
   groundPointAt,
+  isUnpickableDrawItem,
   pickedLayerObject,
   viewCenterPoint,
 } from './locationClick.js';
+import { bindRenderer } from './render/rendererOf.js';
 
 const TORONTO = Cesium.Cartesian3.fromDegrees(-79.38, 43.65, 80);
 
@@ -99,4 +101,49 @@ test('a clean click on the map selects that place; drags, layer objects and disa
 
   unbind();
   assert.equal(handler.destroyed, true);
+});
+
+// The renderer's draw port gives unpickable items (a density glow, a route's
+// stop dots) a pick id too, so Cesium's own pick reports them; the query port
+// looks under such an item.
+test('a click on an unpickable draw-set item over the map still selects the place', () => {
+  const handler = fakeHandler();
+  const viewer = fakeViewer();
+  let answer = { set: '', id: '', surface: true };
+  const picks = [];
+  const unbindRenderer = bindRenderer(viewer, {
+    query: { pick: (x, y) => { picks.push([x, y]); return answer; } },
+  });
+  const selected = [];
+  const unbind = bindMapLocationClicks(viewer, (point) => selected.push(point), {
+    createHandler: () => handler,
+  });
+  const T = Cesium.ScreenSpaceEventType;
+  const click = (at) => {
+    handler.actions.get(T.LEFT_DOWN)({ position: at });
+    handler.actions.get(T.LEFT_UP)({ position: at });
+    handler.actions.get(T.LEFT_CLICK)({ position: at });
+  };
+  const glow = { id: { set: 'wildlife-sightings:density', id: 'cell-1' }, primitive: {} };
+
+  assert.equal(isUnpickableDrawItem(viewer, glow, { x: 4, y: 5 }), true);
+  assert.equal(isUnpickableDrawItem(viewer, { id: 'vessel-1' }, { x: 4, y: 5 }), false, 'not a draw-set item');
+  assert.equal(isUnpickableDrawItem(viewer, undefined, { x: 4, y: 5 }), false);
+
+  viewer.scene.pick = () => glow;
+  click({ x: 10, y: 12 });
+  assert.equal(selected.length, 1, 'the glow takes no picks: the map under it is selected');
+  assert.deepEqual(picks.at(-1), [10, 12]);
+
+  // A pickable item under the unpickable one is that layer's.
+  answer = { set: 'rail:stops', id: 'stop-9', surface: false };
+  click({ x: 10, y: 12 });
+  assert.equal(selected.length, 1);
+  // Nothing at all there (the sky): left to the layer, as before.
+  answer = null;
+  click({ x: 10, y: 12 });
+  assert.equal(selected.length, 1);
+
+  unbind();
+  unbindRenderer();
 });

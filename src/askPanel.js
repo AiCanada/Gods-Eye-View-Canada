@@ -4,6 +4,7 @@ import { getBasemapLabelContext } from './voice/gevActions.js';
 import { fetchLocationRegion } from './data/regionalBrief.js';
 import { createOutputFind } from './askOutputFind.js';
 import { localSay, msgl, tl, tln } from './i18n/index.js';
+import { viewerBehind } from './render/cesium/viewers.js';
 import {
   GROUND_TRUTH_BASELINE_CODE,
   GROUND_TRUTH_BASELINE_NAME,
@@ -66,7 +67,9 @@ const DEFAULT_ASK_TIMEOUT_MS = 240000;
 
 export class AskPanel {
   /**
-   * @param {Cesium.Viewer} viewer - The live scene, read for camera context.
+   * @param {object} viewer - The live scene, read for camera context: the
+   *   app's scene host (the camera is the Cesium viewer's behind it), or a
+   *   Cesium viewer.
    */
   constructor(viewer) {
     this.viewer = viewer;
@@ -682,7 +685,9 @@ export class AskPanel {
    * @returns {Promise<object>}
    */
   async sceneContext() {
-    const camera = this.viewer?.camera;
+    // The camera is the Cesium viewer's behind the scene host; the label
+    // lookup below takes the host itself (it reaches the renderer's ports).
+    const camera = viewerBehind(this.viewer)?.camera;
     const carto = camera?.positionCartographic;
     const view = carto
       ? {

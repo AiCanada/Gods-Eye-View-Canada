@@ -61,7 +61,12 @@ test('the complete Realtime tool payload pins the manifest-generated layer relea
     // move_camera's optional absolute pitchDeg tilt (-45 default, steps sent
     // as a direction), beside the fork's panels and tools; Snow and Operator
     // stay out of the enums.
-    '17617cba756acc55b83518065a5609a8a52521011177c16e24c78638077a781e',
+    // Re-derived 2026-11-20 for the fifteenth upstream merge: upstream's
+    // natural-region candidates and tightened area tool wording,
+    // show_street_level (map, source, photo), open_stories, the Cyber HUD
+    // layout leaving set_hud's layout enum (set_cyber_sonar is excluded above)
+    // and the Space Missions panel target, beside the fork's panels and tools.
+    '0850606662868751f0bddd6a4c0d978b4822ec6bdc8964866902a710cbdbc493',
   );
 });
 
@@ -160,6 +165,8 @@ test('all legacy action arguments are byte-identical after removing the delibera
         'resolve_area',
         'find_imagery',
         'osm_query',
+        'show_street_level',
+        'open_stories',
       ].includes(tool.name),
   );
   // Layer enums are generated from the voice layer manifest and pinned by
@@ -201,6 +208,7 @@ test('all legacy action arguments are byte-identical after removing the delibera
         'voice-preview',
         'provider-settings',
         'utilities-panel',
+        'space-missions-panel',
       ].includes(id),
   );
   // The fork's additive values: the Canadian city presets and the weather
@@ -260,9 +268,9 @@ test('all legacy action arguments are byte-identical after removing the delibera
     delete center.properties[axis].minimum;
     delete center.properties[axis].maximum;
   }
-  // Cyber adds one HUD layout and Operator was retired.
+  // Operator and then Cyber were retired.
   const hud = property('set_hud').layout;
-  assert.deepEqual(hud.enum, ['tactical', 'minimal', 'cyber']);
+  assert.deepEqual(hud.enum, ['tactical', 'minimal']);
   hud.enum = ['tactical', 'operator', 'minimal'];
   // Snow is retired from set_visual_style; restore it to keep the legacy pin.
   const visualStyle = legacy.find((tool) => tool.name === 'set_visual_style')
@@ -371,5 +379,19 @@ test('tilt accepts an angle with no direction', () => {
   // No range in the schema (prompt budget): the runner clamps to -89..-5.
   assert.ok(
     validateArgs(schema, { motion: 'tilt', pitchDeg: 'steep' }).length > 0,
+  );
+});
+
+test('set_panel_open accepts the Space Missions panel', () => {
+  const schema = GEV_ACTION_SCHEMAS.find(
+    (tool) => tool.name === 'set_panel_open',
+  ).parameters;
+  assert.deepEqual(
+    validateArgs(schema, { panelId: 'space-missions-panel', open: true }),
+    [],
+  );
+  assert.ok(
+    validateArgs(schema, { panelId: 'space-missions', open: true }).length > 0,
+    'the Context mode name is not a panel id',
   );
 });

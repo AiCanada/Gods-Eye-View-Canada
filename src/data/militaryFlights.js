@@ -9,7 +9,6 @@ const militaryFlightsLayer = createApplicationMilitary({
   source: createMilitarySource(),
   militaryRegistry,
 });
-export { TRACKED_MODEL_MAX_PX } from '../layers/military/policy.js';
 export const _setTrackedMilitaryRefreshStateForTest =
   militaryFlightsLayer.testing._setTrackedMilitaryRefreshStateForTest;
 export const _setMilitaryTrackingRefreshOutcomeForTest =
@@ -32,6 +31,14 @@ export const _driveFleetModelHandoffForTest =
   militaryFlightsLayer.testing._driveFleetModelHandoffForTest;
 export const _ensureFleetModelForTest =
   militaryFlightsLayer.testing._ensureFleetModelForTest;
+export const _trackedModelForTest =
+  militaryFlightsLayer.testing._trackedModelForTest;
+export const _trackedIconLookForTest =
+  militaryFlightsLayer.testing._trackedIconLookForTest;
+export const _modelSetIdsForTest =
+  militaryFlightsLayer.testing._modelSetIdsForTest;
+export const _iconForTest = militaryFlightsLayer.testing._iconForTest;
+export const _setIconForTest = militaryFlightsLayer.testing._setIconForTest;
 export const _militaryLocationSwitchStateForTest =
   militaryFlightsLayer.testing._militaryLocationSwitchStateForTest;
 export const _drainMilitaryLocationReleaseForTest =

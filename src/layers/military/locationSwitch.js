@@ -45,10 +45,7 @@ export function createLocationSwitch({ flightState, parts }) {
     if (!flightState._cockpitNearContacts.size) return;
     const previous = flightState._cockpitNearContacts;
     flightState._cockpitNearContacts = new Set();
-    for (const icao24 of previous) {
-      const bb = flightState._billboards.get(icao24);
-      if (bb) parts.rendering._applyFleetBillboardPresentation(icao24, bb);
-    }
+    for (const icao24 of previous) parts.icons._applyIconPresentation(icao24);
     flightState._lastCamPoseSig = '';
   }
 
@@ -56,14 +53,16 @@ export function createLocationSwitch({ flightState, parts }) {
    * Hide every fleet model built for the view being left and queue it for the
    * batched release. Models whose contact already sits within the keep radius of
    * the destination stay; the tick keeps or drops them on arrival as usual.
-   * In-flight loads are invalidated now (cheap generation bumps).
+   * A model still loading is an admitted record like any other, so it is
+   * queued with the rest and never shown.
    * @param {{lat?: number, lon?: number}|null} to - Destination of the switch.
    */
   function _queueLocationModelRelease(to) {
     const hasPoint = Number.isFinite(to?.lat) && Number.isFinite(to?.lon);
     const keepKm = parts.rendering._modelKeepDistM() / 1000;
     const queue = flightState._locationReleaseQueue || new Set();
-    for (const [icao24, model] of flightState._models) {
+    const hide = [];
+    for (const icao24 of flightState._models.keys()) {
       const info = hasPoint ? flightState.records.data.get(icao24) : null;
       if (
         info &&
@@ -73,17 +72,10 @@ export function createLocationSwitch({ flightState, parts }) {
       )
         continue;
       queue.add(icao24);
-      if (model) model.show = false;
-      const bb = flightState._billboards.get(icao24);
-      if (bb && icao24 !== flightState._trackedIcao) bb.show = true; // gap-proof: the icon is back before the model goes
+      hide.push(icao24);
     }
-    for (const icao24 of flightState._modelPending) {
-      if (!flightState._models.has(icao24))
-        flightState._modelGen.set(
-          icao24,
-          (flightState._modelGen.get(icao24) || 0) + 1,
-        );
-    }
+    // Gap-proof: each icon is back before its model goes.
+    parts.rendering._hideFleetModels(hide);
     flightState._locationReleaseQueue = queue.size ? queue : null;
   }
 
@@ -91,14 +83,14 @@ export function createLocationSwitch({ flightState, parts }) {
   function _drainLocationReleaseQueue() {
     const queue = flightState._locationReleaseQueue;
     if (!queue) return;
-    let released = 0;
+    const slice = [];
     for (const icao24 of queue) {
-      if (released >= LOCATION_MODEL_RELEASE_BATCH) break;
+      if (slice.length >= LOCATION_MODEL_RELEASE_BATCH) break;
       queue.delete(icao24);
       if (!flightState._models.has(icao24)) continue; // already gone (aged out, regime exit)
-      parts.rendering._releaseModel(icao24);
-      released += 1;
+      slice.push(icao24);
     }
+    parts.rendering._releaseModelsOf(slice); // one set write for the slice
     if (queue.size === 0) flightState._locationReleaseQueue = null;
   }
 

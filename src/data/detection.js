@@ -1,5 +1,4 @@
 import { paintTransitBracket } from './detectionDraw.js';
-import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
 import {
   DETECTION_ENABLE_FADE_MS,
@@ -21,7 +20,10 @@ import {
   getKeyholeFadeTuning,
   keyholeLabelAlphaFromGeometry,
 } from '../celestialRing.js';
-import { registerWorldOverlayPaintLane } from '../overlays/worldOverlay.js';
+import {
+  getQueuedOverlayEntryAlpha,
+  registerWorldOverlayPaintLane,
+} from '../overlays/worldOverlay.js';
 import { setTrafficTagFilter } from './traffic.js';
 import {
   DETECTION_STYLE,
@@ -48,6 +50,8 @@ import {
   viewScaleForAltitude,
 } from './detectionPolicy.js';
 import { detectionBracketOpacity } from './detectionPresentation.js';
+import { SurfaceOcclusion } from './detectionOcclusion.js';
+import { rendererOf } from '../render/rendererOf.js';
 import {
   createCyberSonarSampler,
   cyberSonarFrameDelay,
@@ -108,6 +112,8 @@ const THEME_MAP = DETECTION_THEME_MAP;
 const SPARSE_ZONE_FRACTION = 0.5;
 /** Solve cadence for membership/collision; accepted identities still reproject every frame. */
 const LABEL_SOLVE_INTERVAL_MS = 125;
+/** Own-card opacity that fully hides a callout; below it the callout fades in. */
+const CARD_ALPHA_HIDING_CALLOUT = 0.5;
 /** Alpha bands retain bracket batching while approximating a continuous radial fade. */
 const BRACKET_ALPHA_STEPS = 4;
 /** Finer bands for Global Context echo brackets, whose fade is animated. */
@@ -198,11 +204,9 @@ export function countFadingRenderEntries(renderEntries) {
   return count;
 }
 // ---------------------------------------------------------------------------
-// Module-level state — singleton lifecycle tied to the Cesium viewer
+// Module-level state — singleton lifecycle tied to the shared overlay host
 // ---------------------------------------------------------------------------
 
-/** @type {Cesium.Viewer|null} */
-let _viewer = null;
 /** @type {number} Current mode index into MODE_LABELS */
 let _mode = MODE_OFF;
 /** @type {HTMLCanvasElement|null} Shared host canvas used for QA diagnostics. */
@@ -264,6 +268,51 @@ let _allocationStrategy = ALLOCATION_ELASTIC;
 let _lastNonOffMode = MODE_BALANCED;
 /** @type {LabelArbiter} Shared stable callout selector. */
 const _labelArbiter = new LabelArbiter();
+/**
+ * A probe that tests nothing: a renderer without an occlusion probe of its
+ * own draws every depth-tested contact's bracket and callout.
+ */
+const NO_OCCLUSION_PROBE = Object.freeze({
+  mode: 'off',
+  maxPerFrame: 0,
+  lastFrameMs: 0,
+  lastFrameTests: 0,
+  beginFrame() {},
+  add: () => false,
+  endFrame() {},
+  reset() {},
+  destroy() {},
+});
+/**
+ * Hides the bracket and callout of a depth-tested contact (a street vehicle)
+ * that the scene drew something in front of. `_occlusionProbe` asks the GPU
+ * about each such contact without waiting for the answer (the renderer's
+ * `query.occlusionTest()`, where it has the `occlusionTest` capability);
+ * `_surfaceOcclusion` remembers the answers and decides, every frame, who is
+ * drawn.
+ */
+let _occlusionProbe = NO_OCCLUSION_PROBE;
+const _surfaceOcclusion = new SurfaceOcclusion(_occlusionProbe);
+
+/** Use the occlusion probe of `viewer`'s renderer, or none. */
+function _useOcclusionProbe(viewer) {
+  _occlusionProbe.destroy();
+  const renderer = rendererOf(viewer);
+  _occlusionProbe =
+    (renderer?.capabilities?.has('occlusionTest') &&
+      renderer.query.occlusionTest?.()) ||
+    NO_OCCLUSION_PROBE;
+  _surfaceOcclusion.clear();
+  _surfaceOcclusion.probe = _occlusionProbe;
+}
+/**
+ * Keys of callouts the label arbiter still holds for contacts last seen
+ * hidden. A key stays here until its contact is seen drawn again or the
+ * arbiter lets the callout go, so the callout cannot come back at its old
+ * place just because its contact has since left the view.
+ */
+const _surfaceSuppressedKeys = new Set();
+let _surfaceDepthFallbackReported = false;
 let _lastLabelSolveAt = 0;
 let _labelSolveDirty = true;
 let _lastDiagnostics = null;
@@ -289,7 +338,9 @@ let _cockpitModeListener = null;
 /**
  * Initializes detection inside the shared world-overlay host and stores
  * references to data layers. The host owns the canvas and render listener.
- * @param {Cesium.Viewer} viewer - The active Cesium viewer instance.
+ * @param {object} viewer - The host the renderer is bound to. The
+ *   world-overlay host hands each paint its camera; the renderer's occlusion
+ *   probe, where it has one, tests depth-tested contacts.
  * @param {Array} layers - Data layer modules that may implement getDetectableObjects().
  * @param {Function} onModeChange - Callback invoked with the new mode label string on mode changes.
  */
@@ -302,9 +353,9 @@ export function initDetection(viewer, layers, onModeChange) {
   }
   _hostLane?.unregister?.();
   _calloutLane?.unregister?.();
-  _viewer = viewer;
   _layers = layers;
   _onModeChange = onModeChange;
+  _useOcclusionProbe(viewer);
   _debugBanner = detectionDebugRequested(
     typeof window !== 'undefined' ? window.location?.search : '',
   );
@@ -358,7 +409,6 @@ export function destroyDetection() {
   _calloutLane = null;
   _transitBracketPaths.clear();
   _calloutCount = 0;
-  _viewer = null;
   _layers = [];
   _onModeChange = null;
   _hostCanvas = null;
@@ -369,6 +419,9 @@ export function destroyDetection() {
   _suspendReason = '';
   _labelArbiter.clear();
   _releaseTaggedTraffic();
+  _surfaceOcclusion.clear();
+  _surfaceSuppressedKeys.clear();
+  _useOcclusionProbe(null);
   _lastLabelSolveAt = 0;
   _labelSolveDirty = true;
   _lastDiagnostics = null;
@@ -584,6 +637,11 @@ export function markDetectionSourcesChanged(reason = 'sources-changed') {
 export function resetDetectionSolveState() {
   _labelArbiter.clear();
   _releaseTaggedTraffic();
+  // The occlusion answers describe the place being left too (as when the
+  // overlay turns off).
+  _surfaceOcclusion.clear();
+  _surfaceSuppressedKeys.clear();
+  _occlusionProbe.reset();
   _lastLabelSolveAt = 0;
   _labelSolveDirty = true;
   _lastSolveSnapshot = { demandByLayer: {}, cohortByLayer: {}, cohortCount: 0 };
@@ -598,7 +656,8 @@ export function getDetectionDiagnostics() {
   // sprites/strokes. Nothing is copied on the production paint path.
   result.calloutRects = _calloutPool
     .slice(0, _calloutCount)
-    .map(({ x, y, w, h, alpha }) => ({ x, y, w, h, alpha }));
+    .filter((row) => row.paintAlpha > 0.001)
+    .map(({ x, y, w, h, paintAlpha }) => ({ x, y, w, h, alpha: paintAlpha }));
   return result;
 }
 
@@ -714,6 +773,9 @@ function _applyModeState() {
     _setLanesActive(false);
     _labelArbiter.clear();
     _releaseTaggedTraffic();
+    _surfaceOcclusion.clear();
+    _surfaceSuppressedKeys.clear();
+    _occlusionProbe.reset();
     _lastLabelSolveAt = 0;
     _labelSolveDirty = true;
     _lastSolveSnapshot = {
@@ -1134,6 +1196,9 @@ function _stashCallout(entry, acquireFade, keyhole) {
       font: FONT,
       microFont: MICRO_FONT,
       alpha: 1,
+      cardSourceId: '',
+      cardEntryId: '',
+      paintAlpha: 1,
     };
     _calloutPool[_calloutCount] = row;
   }
@@ -1160,6 +1225,8 @@ function _stashCallout(entry, acquireFade, keyhole) {
   row.font = FONT;
   row.microFont = MICRO_FONT;
   row.alpha = alpha;
+  row.cardSourceId = candidate.cardSourceId;
+  row.cardEntryId = candidate.cardEntryId;
   _calloutCount++;
 }
 
@@ -1191,7 +1258,15 @@ function _paintCalloutLane(frame) {
   ctx.textBaseline = 'alphabetic';
   for (let i = 0; i < _calloutCount; i++) {
     const row = _calloutPool[i];
-    paintDetectionCallout(ctx, row, row.alpha);
+    // The callout would show through its contact's own card: fade it by the
+    // opacity that card paints with this frame.
+    const cardAlpha =
+      row.cardEntryId === ''
+        ? 0
+        : getQueuedOverlayEntryAlpha(row.cardSourceId, row.cardEntryId);
+    row.paintAlpha =
+      row.alpha * Math.max(0, 1 - cardAlpha / CARD_ALPHA_HIDING_CALLOUT);
+    if (row.paintAlpha > 0.001) paintDetectionCallout(ctx, row, row.paintAlpha);
   }
   ctx.globalAlpha = 1;
 }
@@ -1206,6 +1281,15 @@ function _paintCalloutLane(frame) {
  */
 function _plateScaleForBackdrop(skyFactor) {
   return 1 + (SKY_PLATE_SCALE - 1) * skyFactor;
+}
+
+/**
+ * The eye's height above the ellipsoid (m) for this paint, from the host
+ * frame (the camera port's pose); undefined when the pose has none.
+ */
+function _eyeHeight(frame) {
+  const height = frame.cameraHeight;
+  return Number.isFinite(height) ? height : undefined;
 }
 
 /** Materialize one bounded rich-callout candidate for the existing arbiter. */
@@ -1268,6 +1352,8 @@ function _materializeCandidate(
     primary,
     micro,
     hasMicro: card.hasMicro,
+    cardSourceId: obj.cardSourceId ? String(obj.cardSourceId) : '',
+    cardEntryId: obj.cardEntryId ? String(obj.cardEntryId) : '',
   };
 }
 
@@ -1330,9 +1416,7 @@ function _drawOverlay(frame) {
       profile: MODE_LABELS[_mode],
       densityPct: _densityPct,
       allocationStrategy: _allocationStrategy,
-      viewScale: viewScaleForAltitude(
-        _viewer?.camera?.positionCartographic?.height,
-      ),
+      viewScale: viewScaleForAltitude(_eyeHeight(frame)),
       candidateCount: 0,
       observationCount: 0,
       visibleCount: 0,
@@ -1373,6 +1457,9 @@ function _drawOverlay(frame) {
   // every host lane. Detection retains the manual scalar projection below.
   const occluder = frame.occluder;
   const camPos = frame.cameraPosition;
+  // Answers to the occlusion tests started on earlier frames land here.
+  _surfaceOcclusion.beginFrame(now);
+  _occlusionProbe.beginFrame(_surfaceOcclusion.now);
   const keyhole = frame.keyhole;
   // Read the OUTSIDE setting ONCE per paint, from the same module state the
   // host's own keyhole alpha comes from, so a bracket and its callout can never
@@ -1459,8 +1546,11 @@ function _drawOverlay(frame) {
     let halfW;
     let halfH;
     if (obj.type === 'AIR') {
+      const dx = camPos.x - obj.position.x;
+      const dy = camPos.y - obj.position.y;
+      const dz = camPos.z - obj.position.z;
       const bscale = nearFarScale(
-        Cesium.Cartesian3.distance(camPos, obj.position),
+        Math.sqrt(dx * dx + dy * dy + dz * dz),
         BILL_NEAR,
         BILL_NEAR_SCALE,
         BILL_FAR,
@@ -1483,6 +1573,29 @@ function _drawOverlay(frame) {
     // The bracket follows the same linear radial keyhole fade as its callout.
     const color = colorFor(resolveTier(obj));
     const keyholeAlpha = keyholeLabelAlphaFromGeometry(sx, sy, keyhole);
+    // Something the scene drew in front of a depth-tested contact hides its
+    // bracket and callout too, on every frame, not only on solves.
+    if (obj.depthTested === true) {
+      const testedLayerId = obj._layerId || 'unknown';
+      const testedSourceId = obj.sourceId ?? obj.id ?? i;
+      const hidden = _surfaceOcclusion.isHidden(
+        testedLayerId,
+        testedSourceId,
+        obj.position,
+      );
+      // If the arbiter holds a callout for this contact it would keep painting
+      // it until the next solve, and then fade it out where it last stood;
+      // see `_surfaceSuppressedKeys`. Only held contacts cost a key.
+      if (
+        (hidden || _surfaceSuppressedKeys.size > 0) &&
+        renderIdentities.get(testedLayerId)?.has(testedSourceId)
+      ) {
+        const key = _detectionKey(testedLayerId, testedSourceId);
+        if (hidden) _surfaceSuppressedKeys.add(key);
+        else _surfaceSuppressedKeys.delete(key);
+      }
+      if (hidden) continue;
+    }
     const sonarFactor =
       sonarActive && !obj.skipLabel ? sonarSampler.at(sx, sy) : 1;
     const sonarLabelFactor = sonarSampler.label(sonarFactor);
@@ -1592,8 +1705,10 @@ function _drawOverlay(frame) {
         candidateMap.set(candidate.key, candidate);
     }
   }
+  // Start this frame's occlusion tests; nothing here waits for them.
+  _occlusionProbe.endFrame();
 
-  const altitude = _viewer?.camera?.positionCartographic?.height ?? 1e9;
+  const altitude = _eyeHeight(frame) ?? 1e9;
   const collectiveBudget = labelBudgetFor(altitude, _densityPct);
   const ambientBudget = Math.max(
     0,
@@ -1602,6 +1717,13 @@ function _drawOverlay(frame) {
   let didSolve = false;
   let solveMs = 0;
   if (shouldSolve) {
+    _surfaceOcclusion.prune();
+    if (_occlusionProbe.mode === 'sync' && !_surfaceDepthFallbackReported) {
+      _surfaceDepthFallbackReported = true;
+      console.info(
+        '[detection] No occlusion queries here (WebGL 1); street-vehicle label occlusion reads the frame depth back synchronously, about 8 times a second.',
+      );
+    }
     const quotas = allocateLayerQuotas(
       demandByLayer,
       ambientBudget,
@@ -1688,7 +1810,25 @@ function _drawOverlay(frame) {
     _ctx.lineWidth = bracketWidth;
   }
 
-  const renderEntries = _labelArbiter.renderEntries(candidateMap, now);
+  let renderEntries = _labelArbiter.renderEntries(candidateMap, now);
+  // A callout whose contact has gone behind something goes with it at once:
+  // no carry-over to the next solve and no fade painted on the facade.
+  if (_surfaceSuppressedKeys.size > 0) {
+    const allEntries = renderEntries;
+    renderEntries = allEntries.filter(
+      (entry) => !_surfaceSuppressedKeys.has(entry.candidate.key),
+    );
+    // The arbiter has let some of them go: forget those.
+    if (
+      allEntries.length - renderEntries.length !==
+      _surfaceSuppressedKeys.size
+    ) {
+      const held = new Set();
+      for (const entry of allEntries) held.add(entry.candidate.key);
+      for (const key of _surfaceSuppressedKeys)
+        if (!held.has(key)) _surfaceSuppressedKeys.delete(key);
+    }
+  }
   _syncTaggedTraffic();
   const fadingCount = countFadingRenderEntries(renderEntries);
   // Demand counts fades in BOTH directions; `fadingCount` above stays the
@@ -1744,6 +1884,13 @@ function _drawOverlay(frame) {
       keyholeRadius: keyhole.radius,
       keyholeFeatherPx: keyhole.featherPx,
       calloutOcclusionCount: calloutOcclusionRects.length,
+      surfaceTestedCount: _surfaceOcclusion.testedCount,
+      surfaceHiddenCount: _surfaceOcclusion.hiddenCount,
+      surfaceDepthMode: _occlusionProbe.mode,
+      // Tests started on the last frame, and what collecting answers and
+      // drawing them cost it.
+      surfaceProbeTests: _occlusionProbe.lastFrameTests,
+      surfaceProbeMs: _occlusionProbe.lastFrameMs,
     };
   } else {
     const selectedCount = _labelArbiter.selectedKeys.size;

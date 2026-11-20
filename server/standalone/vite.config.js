@@ -9,6 +9,7 @@ import {
 import { localProviderPlugins } from '../providers/local.js';
 import { localMcpPlugin } from '../mcp/plugin.js';
 import { apiNotFoundPlugin } from './api-not-found.js';
+import { conformanceReferencesPlugin } from './conformance-references.js';
 import { googleTokenUnavailablePlugin } from './google-token-unavailable.js';
 import { healthPlugin } from './health.js';
 import { routeGuardPlugin } from './route-guard.js';
@@ -55,6 +56,7 @@ export function standaloneConfig(
       }),
       localMcpPlugin(),
       googleTokenUnavailablePlugin(),
+      conformanceReferencesPlugin(),
       apiNotFoundPlugin(),
       // The same dashboard on this machine's Tailscale address (off unless set).
       tailnetDashboardPlugin(),

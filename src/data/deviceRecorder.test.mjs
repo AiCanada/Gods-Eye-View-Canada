@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { changedRecordsOnly, collectNearbyRecords, createDeviceRecorder } from './deviceRecorder.js';
 import { DEVICE_FEEDS_LAYER_ID, createDeviceFeedsLayer } from './deviceFeeds.js';
+import { readEntityRecord } from './entityRecords.js';
+import { bindRenderer } from '../render/rendererOf.js';
 
 const TARGET = { id: 'device-security-van', lat: 45.2733, lon: -66.0633, record: true };
 
@@ -77,24 +79,41 @@ test('the recorder: recording devices only, paced, and a failed save is tried ag
 
 // ---- follow ---------------------------------------------------------------
 
+/** A camera port that only follows: `followed`, `follow()` and `followChanged`. */
+function followCameraPort() {
+  const listeners = new Set();
+  const port = {
+    followed: null,
+    follows: [],
+    follow(target) {
+      if (target === port.followed) return;
+      port.followed = target;
+      port.follows.push(target);
+      for (const fn of [...listeners]) fn();
+    },
+    on(event, cb) {
+      if (event !== 'followChanged') return () => {};
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+  };
+  return port;
+}
+
 function followFixture(answers) {
-  const tracked = { listeners: [], addEventListener(fn) { this.listeners.push(fn); }, removeEventListener(fn) { this.listeners = this.listeners.filter((item) => item !== fn); } };
   const entities = [];
   const viewer = {
     dataSources: { add: (source) => source, remove: () => true },
     entities: { add: (options) => { const entity = { ...options }; entities.push(entity); return entity; }, remove: (entity) => entities.splice(entities.indexOf(entity), 1) },
-    trackedEntityChanged: tracked,
-    _tracked: undefined,
-    get trackedEntity() { return this._tracked; },
-    set trackedEntity(value) { this._tracked = value; for (const fn of [...tracked.listeners]) fn(value); },
   };
-  const frames = [];
+  const camera = followCameraPort();
+  bindRenderer(viewer, { camera });
+  const frames = camera.follows;
   const ticks = [];
   const layer = createDeviceFeedsLayer({
     overlayHost: { setEntries: (...args) => ticks.push(args), setVisible() {}, clearSource() {} },
     windowRef: null,
     createImage: () => null,
-    applyFollowFrame: (...args) => { frames.push(args); return () => frames.push('stopped'); },
     refreshReadout: () => {},
     recordsHere: () => true,
     recorder: { tick: async (rows) => { ticks.push(['record', rows.filter((row) => row.record).map((row) => row.id)]); return []; }, forget() {}, stats: () => ({}) },
@@ -102,19 +121,25 @@ function followFixture(answers) {
   });
   layer.init(viewer);
   layer.enable(viewer);
-  return { layer, viewer, entities, frames, ticks };
+  return { layer, viewer, camera, entities, frames, ticks };
 }
+
+/** The entity the camera port follows, if any. */
+const followedEntity = (camera) => camera.followed?.entity;
 
 const van = (extra = {}) => ({ id: 'device-security-van', kind: 'security', kindLabel: 'PACKAGE', color: '#ff4d4d', name: 'Van', lat: 45.27, lon: -66.06, altM: null, headingDeg: null, speedMps: 5, live: true, follow: true, record: true, ...extra });
 
 test('the map follows the marked device, moves with it, and lets go when its owner goes elsewhere', async () => {
-  const { layer, viewer, entities, frames, ticks } = followFixture([[van()], [van({ lat: 45.28 })], [van({ lat: 45.29 })], [van({ lat: 45.3, follow: false })]]);
+  const { layer, viewer, camera, entities, frames, ticks } = followFixture([[van()], [van({ lat: 45.28 })], [van({ lat: 45.29 })], [van({ lat: 45.3, follow: false })]]);
   await layer.update(viewer);
   assert.equal(entities.length, 1);
-  assert.equal(viewer.trackedEntity, entities[0]);
-  assert.equal(entities[0].gevTrackedId, `${DEVICE_FEEDS_LAYER_ID}:device-security-van`);
-  assert.deepEqual([entities[0].gevLabelModel.title, entities[0].gevLabelModel.details[0]], ['VAN', 'PACKAGE · REC']);
-  assert.equal(typeof entities[0].gevDisplayPosition, 'function');
+  assert.equal(followedEntity(camera), entities[0]);
+  const record = readEntityRecord(entities[0]);
+  assert.equal(record.trackedId, `${DEVICE_FEEDS_LAYER_ID}:device-security-van`);
+  assert.equal(camera.followed.key, `${DEVICE_FEEDS_LAYER_ID}:device-security-van`);
+  assert.deepEqual([record.labelModel.title, record.labelModel.details[0]], ['VAN', 'PACKAGE · REC']);
+  assert.equal(typeof record.displayPosition, 'function');
+  assert.equal(camera.followed.frame, 'enu');
   assert.equal(frames.length, 1, 'the shared follow camera frames it once');
   assert.equal(layer.getTrackedInfo().id, 'device-security-van');
   assert.equal(layer.getStats().following, 'device-security-van');
@@ -127,38 +152,38 @@ test('the map follows the marked device, moves with it, and lets go when its own
   assert.equal(frames.length, 1);
 
   // A flight is selected: the camera is theirs now and is left alone.
-  const flight = { id: 'flight' };
-  viewer.trackedEntity = flight;
-  assert.equal(viewer.trackedEntity, flight);
+  const flight = { key: 'flights:abc123' };
+  camera.follow(flight);
+  assert.equal(camera.followed, flight);
   assert.equal(entities.length, 0);
-  assert.equal(frames.at(-1), 'stopped');
   assert.equal(layer.getTrackedInfo(), null);
 
   await layer.update(viewer);
-  assert.equal(viewer.trackedEntity, flight, 'walked away from: not grabbed back');
+  assert.equal(camera.followed, flight, 'walked away from: not grabbed back');
 
   // Asked for again by hand, then unticked on the card.
   assert.equal(layer.trackById('device-security-van'), true);
-  assert.equal(viewer.trackedEntity, entities[0]);
+  assert.equal(followedEntity(camera), entities[0]);
   await layer.update(viewer);
-  assert.equal(viewer.trackedEntity, undefined, 'FOLLOW unticked: let go');
+  assert.equal(camera.followed, null, 'FOLLOW unticked: let go');
   assert.equal(layer.trackById('device-nope'), false);
   layer.destroy(viewer);
 });
 
 test('turning the layer off lets go of the camera', async () => {
-  const { layer, viewer, entities } = followFixture([[van()]]);
+  const { layer, viewer, camera, entities } = followFixture([[van()]]);
   await layer.update(viewer);
-  assert.equal(viewer.trackedEntity, entities[0]);
+  assert.equal(followedEntity(camera), entities[0]);
   layer.disable(viewer);
-  assert.equal(viewer.trackedEntity, undefined);
+  assert.equal(camera.followed, null);
   assert.equal(entities.length, 0);
 });
 
 test('the layer never flies the camera itself', () => {
   const source = readFileSync(new URL('./deviceFeeds.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /camera\.(flyTo|setView|lookAt)\b/);
-  assert.match(source, /applyTrackedCameraFrame/);
+  // It follows through the camera port, which owns the close-range framing.
+  assert.match(source, /entityFollowTarget/);
 });
 
 // ---- shown by itself -------------------------------------------------------

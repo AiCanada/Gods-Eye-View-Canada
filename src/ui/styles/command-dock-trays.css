@@ -448,49 +448,153 @@
   letter-spacing: 0.035rem;
 }
 
-/* The complete inline attribution row sits at the very bottom of the screen
-   (owner ruling, 2026-10-06), under the command dock, which rises just
-   enough to keep it uncovered (command-dock.css). */
+/* From 1200px the attribution row sits on the bottom edge, on the Power Up
+   baseline, below the raised command dock (command-dock.css). It stops 26rem
+   short of the right edge, clear of the corner row (Power Up and the language
+   picker), and wraps rather than running under it. Below 1200px it runs along
+   the very bottom of the screen (owner ruling, 2026-10-06), under the dock,
+   which rises just enough to keep it uncovered. */
 body:not(.ui-clean-view):not(.recording-mode) #cesium-credits,
 body:not(.ui-clean-view):not(.recording-mode):has(
     #intel-hud[data-variant='minimal'].active
   )
   #cesium-credits {
   right: auto;
-  bottom: 2px;
-  left: 0.75rem;
+  bottom: 1rem;
+  left: 1.5rem;
   width: auto !important;
-  max-width: calc(100vw - 1.5rem);
+  max-width: calc(100vw - 3rem);
   text-align: left;
 }
 
-/* The left readout lifts clear of the LLM panel that occupies the bottom-left
-   corner (the minimal variant does the same; cockpit mode hides the panel
-   instead). The right one keeps its original offset: nothing sits under it. */
-#intel-hud[data-variant='tactical'] .hud-bottom-left {
-  bottom: calc(2vh + 6.5rem + var(--llm-panel-reserve));
+body:not(.ui-clean-view):not(.recording-mode) #gev-credits,
+body:not(.ui-clean-view):not(.recording-mode):has(
+    #intel-hud[data-variant='minimal'].active
+  )
+  #gev-credits {
+  right: auto;
+  bottom: 1rem;
+  left: 1.5rem;
+  width: max-content !important;
+  max-width: calc(100vw - 1.5rem - 26rem);
+  white-space: normal;
+  text-align: left;
 }
 
-/* The right one sits at the very bottom, just above the POWER UP chip
-   (0.9rem up, about 2rem tall), so the right rail's corridor above it is as
-   tall as it can be: the radio controls under the Scenes tab expand into it
-   (owner ruling, 2026-09-27). */
+/* Above the dock below 1200px; from 1200px rail-split.css puts the right
+   readout 8px above Power Up, at the very bottom, so the right rail's
+   corridor above it is as tall as it can be (owner ruling, 2026-09-27). */
+#intel-hud[data-variant='tactical'] .hud-bottom-left,
 #intel-hud[data-variant='tactical'] .hud-bottom-right {
-  bottom: calc(0.9rem + 2.6rem);
+  bottom: calc(2vh + 6.5rem + var(--world-timeline-lift, 0px));
 }
 
 #intel-hud[data-variant='minimal'] .hud-bottom-left {
-  bottom: calc(2vh + 5.4rem);
+  bottom: calc(2vh + 5.4rem + var(--world-timeline-lift, 0px));
 }
 
 :root[data-scope-mask='off']
   #intel-hud[data-variant='minimal']
   .hud-bottom-left {
-  bottom: calc(2vh + 6.5rem);
+  bottom: calc(2vh + 6.5rem + var(--world-timeline-lift, 0px));
 }
 
 #intel-hud[data-variant='minimal'] .hud-bottom-bar {
-  bottom: calc(2vh + 9rem);
+  bottom: calc(2vh + 9rem + var(--world-timeline-lift, 0px));
+}
+
+/* The coordinate readout shares the bottom-left corner with the attribution
+   row below 1200px: it sits clear of the dock that rises over the row's 28px
+   logo line (from 1200px, rail-split.css). */
+#intel-hud:is([data-variant='tactical'], [data-variant='minimal'])
+  .hud-bottom-left,
+:root[data-scope-mask='off']
+  #intel-hud[data-variant='minimal']
+  .hud-bottom-left {
+  bottom: calc(2vh + 7.125rem + var(--world-timeline-lift, 0px));
+}
+
+@media (max-width: 1199px) {
+  body:not(.ui-clean-view):not(.recording-mode) #cesium-credits,
+  body:not(.ui-clean-view):not(.recording-mode):has(
+      #intel-hud[data-variant='minimal'].active
+    )
+    #cesium-credits,
+  body:not(.ui-clean-view):not(.recording-mode) #gev-credits,
+  body:not(.ui-clean-view):not(.recording-mode):has(
+      #intel-hud[data-variant='minimal'].active
+    )
+    #gev-credits {
+    bottom: 2px;
+    left: 0.75rem;
+    width: auto !important;
+    max-width: calc(100vw - 1.5rem);
+    white-space: nowrap;
+  }
+}
+
+/* Cesium draws the line in an absolutely placed box inside the empty
+   #cesium-credits anchor, so the cap and the wrapping go on that box: from
+   1200px, and in the Omnibar layout at every width, whose attribution row
+   shares the bottom edge with the corner row (omnibar-dock.css). */
+body:not(.mobile-shell):not(.cockpit-mode):not(.scene-playback-mode):not(
+    .ui-clean-view
+  ):not(.recording-mode):where(
+    :has(#gev-omnibar):has(#command-dock > #gev-voice-control)
+  )
+  #cesium-credits
+  .cesium-widget-credits {
+  width: max-content;
+  max-width: calc(100vw - 1.5rem - 26rem);
+  white-space: normal;
+}
+
+/* Right to left that layout puts the row at the bottom right at every
+   width, so the box hangs from the anchor's right edge. */
+html[dir='rtl']
+  body:not(.mobile-shell):not(.cockpit-mode):not(.scene-playback-mode):not(
+    .ui-clean-view
+  ):not(.recording-mode):not(.context-docked):where(
+    :has(#gev-omnibar):has(#command-dock > #gev-voice-control)
+  )
+  #cesium-credits
+  .cesium-widget-credits {
+  right: 0;
+  left: auto;
+}
+
+@media (min-width: 1200px) {
+  #cesium-credits .cesium-widget-credits {
+    width: max-content;
+    max-width: calc(100vw - 1.5rem - 26rem);
+    white-space: normal;
+  }
+
+  /* Right to left, the corner row sits at the bottom left
+     (locale-picker.css), so the attribution row takes the bottom right.
+     Expanded Context places it itself (context-dock.css). */
+  /* The Minimal HUD's placement above names #intel-hud too: matched here,
+     so right to left wins over it. */
+  html[dir='rtl']
+    body:not(.context-docked):not(.ui-clean-view):not(.recording-mode)
+    :is(#cesium-credits, #gev-credits),
+  html[dir='rtl']
+    body:not(.context-docked):not(.ui-clean-view):not(.recording-mode):has(
+      #intel-hud[data-variant='minimal'].active
+    )
+    :is(#cesium-credits, #gev-credits) {
+    right: 1.5rem;
+    left: auto;
+    text-align: right;
+  }
+
+  html[dir='rtl']
+    body:not(.context-docked):not(.ui-clean-view):not(.recording-mode)
+    #cesium-credits
+    .cesium-widget-credits {
+    right: 0;
+    left: auto;
+  }
 }
 
 @media (max-width: 900px) {
@@ -504,6 +608,16 @@ body:not(.ui-clean-view):not(.recording-mode):has(
     max-width: calc(100vw - 1.5rem);
   }
 
+  body:not(.ui-clean-view):not(.recording-mode) #gev-credits,
+  body:not(.ui-clean-view):not(.recording-mode):has(
+      #intel-hud[data-variant='minimal'].active
+    )
+    #gev-credits {
+    bottom: 2px;
+    left: 0.75rem;
+    max-width: calc(100vw - 1.5rem);
+  }
+
   #command-dock .gev-voice-error-tray {
     width: min(24rem, calc(100vw - 1.5rem));
   }
@@ -511,13 +625,9 @@ body:not(.ui-clean-view):not(.recording-mode):has(
   /* The wings shrink to --dock-side-compact at this width, open or closed (an
      open tray pops out above the dock), which is too narrow for the text
      labels; they would spill over the voice control and take its taps. The
-     wings show only their icon; the toggles keep their aria-label. Cyber sets
-     a wider --dock-side-compact that fits its labels, so it keeps them. */
-  :root:not([data-ui-theme='cyber'])
-    #command-dock
-    :is(#location-bar, #control-panel)
-    .panel-title,
-  :root:not([data-ui-theme='cyber'])
+     wings show only their icon; the toggles keep their aria-label. */
+  :root #command-dock :is(#location-bar, #control-panel) .panel-title,
+  :root
     #command-dock
     :is(#location-bar, #control-panel)
     .location-toolbar-label {
@@ -527,11 +637,8 @@ body:not(.ui-clean-view):not(.recording-mode):has(
     gap: 0;
   }
 
-  :root:not([data-ui-theme='cyber'])
-    #command-dock
-    :is(#location-bar, #control-panel)
-    .panel-title::after,
-  :root:not([data-ui-theme='cyber'])
+  :root #command-dock :is(#location-bar, #control-panel) .panel-title::after,
+  :root
     #command-dock
     :is(#location-bar, #control-panel)
     .location-toolbar-label::after {

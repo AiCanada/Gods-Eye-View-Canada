@@ -1,16 +1,20 @@
 // src/data/cctvTestHarness.mjs — shared fakes for the CCTV layer suites.
 //
-// Runs the real layer paths under plain node:test: a fake viewer that maps
-// longitude to screen x, a recording overlay host, canvas/Image/document
-// seams, a billboard-collection seam, a stubbed ground-prior resolver, and a
-// camera-server fetch that answers /api/cctv/sources and /api/cctv/lookup and
-// refuses everything else ("this test has no network").
+// Runs the real layer paths under plain node:test: a fake viewer bound to the
+// renderer ports (a camera looking straight down, a query port that maps
+// longitude to screen x for the map cards, a fake draw port), a recording
+// overlay host, canvas/Image/document seams, a view of the layer's camera
+// icons, a stubbed ground-prior resolver, and a camera-server fetch that
+// answers /api/cctv/sources and /api/cctv/lookup and refuses everything else
+// ("this test has no network").
 import * as Cesium from 'cesium';
 import cctvLayer, {
+  _cctvIconsForTest,
   _setCctvCoverageStateForTest,
   _setCctvGroundPriorResolverForTest,
   _setCctvOverlayHostForTest,
 } from './cctv.js';
+import { bindFakeDraw } from '../testSupport/fakeDrawPort.mjs';
 
 export const AUSTIN = { lat: 30.2672, lon: -97.7431 };
 /** Same state as Austin, ~47 km away: outside a 50 km area's 40 km cover. */
@@ -215,19 +219,11 @@ export function installPriorResolver(t, { ellipsoid = 120 } = {}) {
   return batches;
 }
 
-/** Billboard-collection seam that tracks the billboards alive in it. */
+/** The camera icons the layer draws now, as a set of camera ids. */
 export function makeBillboards() {
-  const live = new Set();
   return {
-    live,
-    show: true,
-    add(options) {
-      const billboard = { ...options, show: true };
-      live.add(billboard);
-      return billboard;
-    },
-    remove(billboard) {
-      return live.delete(billboard);
+    get live() {
+      return new Set(_cctvIconsForTest()?.ids() ?? []);
     },
   };
 }
@@ -266,48 +262,78 @@ export const cardIds = (host) =>
 
 /** Viewer `heightM` above `at`; cameras spread across the screen by longitude. */
 export function makeViewer(at, heightM = 4_000) {
-  const removedPrimitives = [];
+  const canvas = { clientWidth: 1200, clientHeight: 800 };
   const viewer = {
-    entities: new Cesium.EntityCollection(),
     isDestroyed: () => false,
-    trackedEntity: null,
-    camera: {
-      flyCalls: 0,
-      flyToBoundingSphere() {
-        this.flyCalls += 1;
-      },
-    },
-    scene: {
-      canvas: { clientWidth: 1200, clientHeight: 800 },
-      globe: { show: true },
-      cartesianToCanvasCoordinates(position) {
-        const carto = Cesium.Cartographic.fromCartesian(position);
-        const dLon = Cesium.Math.toDegrees(carto.longitude) - viewer.lookAt.lon;
-        return new Cesium.Cartesian2(600 + dLon * 10_000, 400);
-      },
-      primitives: {
-        add: (primitive) => primitive,
-        remove: (primitive) => {
-          removedPrimitives.push(primitive);
-          return true;
-        },
-      },
-      requestRender() {},
-    },
-    removedPrimitives,
+    camera: { flyCalls: 0 },
+    scene: { canvas, requestRender() {} },
   };
   moveViewer(viewer, at, heightM);
+  viewer.draw = bindFakeDraw(viewer, {
+    canvas,
+    // The layer reads the eye and flies through the renderer's camera port.
+    camera: {
+      pose: () => ({ ...viewer.pose }),
+      on: () => () => {},
+      followed: null,
+      flyToBounds() {
+        viewer.camera.flyCalls += 1;
+      },
+    },
+    // Map cards go where the query port projects them: by longitude.
+    query: {
+      project(position) {
+        const carto = Cesium.Cartographic.fromCartesian(position);
+        const dLon = Cesium.Math.toDegrees(carto.longitude) - viewer.lookAt.lon;
+        return { x: 600 + dLon * 10_000, y: 400 };
+      },
+      pick: () => null,
+      drillPick: () => [],
+    },
+  }).draw;
+  // What the layer draws, by item id: wireframes, the monitor plane, volumes.
+  viewer.entities = {
+    getById(id) {
+      for (const set of viewer.draw.sets.values())
+        if (!set.disposed && set.items.has(id)) return set.items.get(id);
+      return undefined;
+    },
+  };
   return viewer;
 }
 
+/**
+ * Looks straight down from `heightM` over `{lat, lon}`, north up. The wide
+ * field of view keeps the test cameras (up to some 4 km east or west) on
+ * screen for the view pass, which projects them from this pose.
+ */
 export function moveViewer(viewer, { lat, lon }, heightM = 4_000) {
   viewer.lookAt = { lat, lon };
-  viewer.camera.positionWC = Cesium.Cartesian3.fromDegrees(lon, lat, heightM);
-  viewer.camera.positionCartographic = Cesium.Cartographic.fromDegrees(
+  const eye = Cesium.Cartesian3.fromDegrees(lon, lat, heightM);
+  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(eye);
+  const column = (i) => {
+    const c = Cesium.Matrix4.getColumn(enu, i, new Cesium.Cartesian4());
+    return { x: c.x, y: c.y, z: c.z };
+  };
+  const east = column(0);
+  const north = column(1);
+  const up = column(2);
+  viewer.pose = {
     lon,
     lat,
-    heightM,
-  );
+    height: heightM,
+    heading: 0,
+    pitch: -Math.PI / 2,
+    roll: 0,
+    position: { x: eye.x, y: eye.y, z: eye.z },
+    direction: { x: -up.x, y: -up.y, z: -up.z },
+    up: north,
+    right: east,
+    fovy: Math.PI / 2,
+    aspectRatio: 1200 / 800,
+    near: 0.1,
+    far: 5e8,
+  };
 }
 
 export function makeRecord(id, base, dLon = 0, extra = {}) {
@@ -331,12 +357,10 @@ export function makeRecord(id, base, dLon = 0, extra = {}) {
       ...extra,
     },
     position,
-    // The map icon. Upstream's view pass (#1485, merged 2026-11-04) shows
-    // the icons on screen, one per ground cell zoomed out, and only those
-    // cameras get geometry and cards (src/layers/cctv/rendering.js
-    // refreshHorizonCulling), so a record needs an icon to take part, as in
-    // upstream's src/data/cctvViewThinning.test.mjs.
-    billboard: { position, show: true },
+    // Upstream's view pass (#1485) shows the icons on screen, one per ground
+    // cell zoomed out, and only those cameras get geometry and cards
+    // (src/layers/cctv/rendering.js refreshHorizonCulling); the coverage
+    // seam gives every record its icon, as init does.
     coverageEntities: [],
     projection: null,
     groundResolved: {},
@@ -344,21 +368,14 @@ export function makeRecord(id, base, dLon = 0, extra = {}) {
     frustumGeometry: null,
     frustumPositions: null,
     probeClampRangeM: null,
-    viewshedPrimitive: null,
+    viewshedVolume: null,
   };
 }
 
 /** Seeds the layer with a fake viewer and host; torn down after the test. */
 export function primeLayer(
   t,
-  {
-    viewer,
-    records = [],
-    coverageMode = 'off',
-    enabled = true,
-    billboards = null,
-    area = null,
-  },
+  { viewer, records = [], coverageMode = 'off', enabled = true, area = null },
 ) {
   const host = makeOverlayHost();
   _setCctvOverlayHostForTest(host);
@@ -368,7 +385,6 @@ export function primeLayer(
     activeCameraId: null,
     enabled,
     coverageMode,
-    billboards,
     area,
   });
   t.after(() => {

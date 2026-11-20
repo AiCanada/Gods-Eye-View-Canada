@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { forEachTrafficDot } from './traffic.js';
+import { viewerBehind } from '../render/cesium/viewers.js';
 
 /**
  * Street traffic drawn ON the open CCTV picture.
@@ -143,6 +144,7 @@ export function projectOntoMonitorPlane(frame, point, result) {
 
 /** @type {Map<string, object>} Open pictures by camera id. */
 const _frames = new Map();
+/** The Cesium viewer the markers draw in: the one behind the layer's scene host. */
 let _viewer = null;
 let _collection = null;
 /** @type {Array<object>} */
@@ -225,7 +227,8 @@ export function updateProjectedTraffic(forEachDot = forEachTrafficDot) {
 
 /**
  * Tell the projector that a camera's picture opened, moved, or closed.
- * @param {object} viewer Cesium viewer.
+ * @param {object} viewer The CCTV layer's viewer: its scene host, or a Cesium
+ *   viewer. The markers draw in the Cesium viewer behind it.
  * @param {string} cameraId
  * @param {object|null} spec Plane spec (see monitorPlaneFrame), or null to close.
  * @returns {void}
@@ -245,12 +248,13 @@ export function setCctvTrafficPlane(viewer, cameraId, spec) {
     }
     return;
   }
-  if (!sceneUsable(viewer)) return;
-  if (_viewer !== viewer) {
+  const cesiumViewer = viewerBehind(viewer);
+  if (!sceneUsable(cesiumViewer)) return;
+  if (_viewer !== cesiumViewer) {
     _removeListener?.();
     _removeListener = null;
     _collection = null;
-    _viewer = viewer;
+    _viewer = cesiumViewer;
   }
   ensureCollection();
   if (!_removeListener) {
@@ -284,7 +288,8 @@ export function getCctvTrafficProjectionDiagnostics() {
 
 /** Drop every open picture (layer teardown). */
 export function clearCctvTrafficPlanes() {
-  for (const id of [..._frames.keys()]) setCctvTrafficPlane(_viewer, id, null);
+  for (const id of Array.from(_frames.keys()))
+    setCctvTrafficPlane(_viewer, id, null);
 }
 
 /** Test seam: install a stub collection without a WebGL scene. */

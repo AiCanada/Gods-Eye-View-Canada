@@ -25,6 +25,8 @@ import {
   setOverlayEntries,
   setOverlaySourceVisible,
 } from './overlays/worldOverlay.js';
+import { viewerBehind } from './render/cesium/viewers.js';
+import { isUnpickableDrawItem } from './locationClick.js';
 
 export { ABUNDANCE_CARD_EVENT, ABUNDANCE_PICK_EVENT, ABUNDANCE_VIEW_EVENT };
 /** The world-overlay source the selected unit's card is published under. */
@@ -285,7 +287,9 @@ export function initAbundanceOverlay({
   now = () => Date.now(),
   hoverThrottleMs = HOVER_THROTTLE_MS,
 } = {}) {
-  const viewer = dataManager?.viewer;
+  // The data manager holds the app's scene host, not a Cesium viewer: the
+  // overlay draws on the viewer behind it (a viewer given directly, as is).
+  const viewer = viewerBehind(dataManager?.viewer);
   const scene = viewer?.scene;
   if (!scene?.primitives || !documentRef) return null;
   const lines = scene.primitives.add(new cesium.PolylineCollection());
@@ -645,7 +649,14 @@ export function initAbundanceOverlay({
     const id = pickedUnitId(picked);
     if (id && built.byId.has(id)) return id;
     if (built.kind !== 'polygons') return null;
-    if (picked && !isGround(picked)) return null;
+    // Another layer's object comes first; a draw-set item that takes no
+    // picks (a density glow, a route's dots) is not one.
+    if (
+      picked &&
+      !isGround(picked) &&
+      !isUnpickableDrawItem(dataManager?.viewer, picked, position)
+    )
+      return null;
     const at = lonLatAt(position);
     return at ? shapeAt(built.index, at.lon, at.lat) : null;
   };

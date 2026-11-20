@@ -2,7 +2,8 @@
 // the old VIEW (never the worldwide fire dataset) and holds every rebuild
 // through the flight; arrival draws the destination once from the kept data.
 // Boots the REAL layer against the same headless viewer stub the horizon-cull
-// suite uses, with a real Cesium.BillboardCollection and CustomDataSource.
+// suite uses: the glows are a real GPU icon set on the Cesium draw port, and
+// the heatmap drapes through a fake globe port.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
@@ -10,7 +11,11 @@ import { createFirmsHeatmapLayer } from './firmsHeatmap.js';
 import { FIRMS_OVERLAY_SOURCE_ID } from './firmsLabels.js';
 import { getContextStore } from './contextStore.js';
 import { isOwnedByOtherLayer } from './pickRegistry.js';
-import { unregisterSpriteCollection } from './spriteOrder.js';
+import { fakeInput } from '../input/testDoubles.mjs';
+import { bindRenderer } from '../render/rendererOf.js';
+import { createCesiumDraw } from '../render/cesium/draw.js';
+import { bindFakeCesiumScene } from '../testSupport/fakeCesiumScene.mjs';
+import { fakeGlobePort } from '../testSupport/fakeGlobePort.mjs';
 
 const AUSTIN = { lon: -97.7, lat: 30.2 };
 const TOKYO = { lon: 139.7, lat: 35.7 };
@@ -65,7 +70,17 @@ function rawFire(lat, lon, frp) {
   };
 }
 
-function createHarness(rawFires, { height = DETECTIONS_HEIGHT_M, overlayHost = {}, imagery = false } = {}) {
+/**
+ * Whether the icon set's GPU pass draws `row` from `occluder`'s camera: the
+ * shader's horizon test on the row's cull point (its CPU twin, as in the
+ * horizon-cull suite).
+ */
+function gpuShows(set, row, occluder) {
+  const position = set.position(row, 0, new Cesium.Cartesian3());
+  return set.shown(row) && occluder.isPointVisible(set.cullPoint(row, position));
+}
+
+function createHarness(rawFires, { height = DETECTIONS_HEIGHT_M, overlayHost = {} } = {}) {
   const originalFetch = globalThis.fetch;
   const hadWindow = Object.hasOwn(globalThis, 'window');
   const originalWindow = globalThis.window;
@@ -99,28 +114,10 @@ function createHarness(rawFires, { height = DETECTIONS_HEIGHT_M, overlayHost = {
   const preRender = new MockEvent();
   const moveEnd = new MockEvent();
   const primitives = [];
-  const dataSources = [];
   const published = [];
   const cleared = [];
-  // The globe's imagery stack, where the heatmap drapes (only when asked for:
-  // without one the heatmap has no host and draws nothing).
-  const heatLayers = [];
-  const imageryLayers = {
-    addImageryProvider: (provider) => {
-      const layer = { provider, show: true, alpha: 1 };
-      heatLayers.push(layer);
-      return layer;
-    },
-    remove: (layer) => {
-      const at = heatLayers.indexOf(layer);
-      if (at >= 0) heatLayers.splice(at, 1);
-      return at >= 0;
-    },
-    raiseToTop: () => {},
-  };
   const viewer = {
-    ...(imagery ? { imageryLayers } : {}),
-    dataSources: { add: (value) => { dataSources.push(value); return value; }, remove: () => {} },
+    dataSources: { add: (value) => value, remove: () => {} },
     camera: {
       moveEnd,
       positionWC: Cesium.Cartesian3.fromDegrees(AUSTIN.lon, AUSTIN.lat, height),
@@ -132,13 +129,30 @@ function createHarness(rawFires, { height = DETECTIONS_HEIGHT_M, overlayHost = {
       preRender,
       primitives: {
         add: (value) => { primitives.push(value); return value; },
-        remove: () => {},
+        remove: (value) => {
+          const at = primitives.indexOf(value);
+          if (at < 0) return false;
+          primitives.splice(at, 1);
+          value.destroy();
+          return true;
+        },
         contains: () => false,
       },
       frameState: { mode: Cesium.SceneMode.SCENE3D, mapProjection: new Cesium.GeographicProjection() },
       mapProjection: new Cesium.GeographicProjection(),
+      requestRender: () => {},
+      isDestroyed: () => false,
     },
   };
+  // The Cesium draw port over the stub scene (the glows are a real GPU icon
+  // set, whose rows say what the GPU would draw), and the globe port the
+  // heatmap drapes through.
+  const draw = createCesiumDraw({ scene: viewer.scene, report: () => {} });
+  const globe = fakeGlobePort();
+  const { unbind, ...ports } = bindFakeCesiumScene(viewer, { draw: draw.port });
+  unbind();
+  const unbindPorts = bindRenderer(viewer, { ...ports, globe });
+  const input = fakeInput(viewer);
 
   const layer = createFirmsHeatmapLayer({
     id: 'firms',
@@ -149,8 +163,10 @@ function createHarness(rawFires, { height = DETECTIONS_HEIGHT_M, overlayHost = {
       clearSource: (sourceId) => cleared.push(sourceId),
       ...overlayHost,
     },
-    screenSpaceEventHandlerFactory: () => ({ setInputAction() {}, destroy() {} }),
   });
+
+  /** The icon set the layer draws its detections from, once it exists. */
+  const iconSet = () => primitives[0]?.set ?? null;
 
   return {
     layer,
@@ -165,17 +181,20 @@ function createHarness(rawFires, { height = DETECTIONS_HEIGHT_M, overlayHost = {
       layer.init(viewer);
       await layer.enable(viewer);
     },
-    /** Sprites currently in the real BillboardCollection. */
-    sprites: () => primitives[0]?.length ?? 0,
+    /** Glow sprites currently in the layer's icon set. */
+    sprites: () => iconSet()?.count ?? 0,
     /** Heatmap imagery layers draped on the globe right now. */
-    heatLayers: () => [...heatLayers],
+    heatLayers: () => [...globe.imagery.list()],
     publishCount: () => published.length,
     latestEntries: () => published[published.length - 1] || [],
-    /** `show` flags keyed by billboard pick id. */
+    /** Whether the GPU draws each row from the current camera, by pick id. */
     showById() {
-      const bb = primitives[0];
+      const set = iconSet();
       const out = new Map();
-      for (let i = 0; i < bb.length; i += 1) out.set(bb.get(i).id, bb.get(i).show);
+      if (!set) return out;
+      const occluder = new Cesium.EllipsoidalOccluder(Cesium.Ellipsoid.WGS84, viewer.camera.positionWC);
+      for (let row = 0; row < set.count; row += 1)
+        out.set(set.idAt(row), primitives[0].show !== false && set.show && gpuShows(set, row, occluder));
       return out;
     },
     moveCameraTo(lon, lat) {
@@ -183,7 +202,8 @@ function createHarness(rawFires, { height = DETECTIONS_HEIGHT_M, overlayHost = {
     },
     cleanup() {
       layer.destroy(viewer);
-      unregisterSpriteCollection('firms');
+      input.destroy();
+      unbindPorts();
       Cesium.SceneTransforms.worldToWindowCoordinates = originalProject;
       globalThis.fetch = originalFetch;
       if (hadWindow) globalThis.window = originalWindow; else delete globalThis.window;
@@ -340,7 +360,7 @@ test('in the far heat bands leave releases the old view\'s markers and cards but
   const h = createHarness([
     rawFire(AUSTIN.lat, AUSTIN.lon, 120),
     rawFire(TOKYO.lat, TOKYO.lon, 800),
-  ], { height: HEAT_HEIGHT_M, imagery: true });
+  ], { height: HEAT_HEIGHT_M });
   try {
     await h.boot();
     assert.ok(h.sprites() > 0, 'precondition: the hand-off markers are built under the heatmap');

@@ -27,6 +27,7 @@ import { msgl, tl, tln } from './i18n/index.js';
 import { initLlmTrainingSetup } from './llmTrainingSetup.js';
 import { initTensorflowSetup } from './tensorflowSetup.js';
 import { initMlflowSetup } from './mlflowSetup.js';
+import { viewerBehind } from './render/cesium/viewers.js';
 import {
   isOwnerRemovalRefusal,
   noteOwnerRemovalRefusal,
@@ -94,7 +95,10 @@ const PENDING = Object.freeze({
  * shell passes the middle of the view).
  */
 function cameraPoint(dataManager) {
-  const carto = dataManager?.viewer?.camera?.positionCartographic;
+  // The data manager holds the app's scene host: the camera is the Cesium
+  // viewer's behind it.
+  const viewer = viewerBehind(dataManager?.viewer);
+  const carto = viewer?.camera?.positionCartographic;
   const lat = (Number(carto?.latitude) * 180) / Math.PI;
   const lon = (Number(carto?.longitude) * 180) / Math.PI;
   return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;

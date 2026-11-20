@@ -4,7 +4,7 @@ import { PanelChrome } from './panelChrome.js';
 import { presentPanelLocally } from '../testSupport/panelState.mjs';
 import { readPanelState } from './rail/panelState.js';
 
-function fixture(theme = 'cyber') {
+function fixture(theme = 'tactical') {
   const nodes = new Map();
   const node = (id, collapsed = true) => {
     const classes = new Set(collapsed ? ['collapsed'] : []);
@@ -27,9 +27,10 @@ function fixture(theme = 'cyber') {
   for (const panel of left.children) panel.parentElement = left;
   const rail = node('rail');
   const display = node('pp-toggles'), context = node('global-context-panel'), cctv = node('cctv-panel'), radio = node('radio-panel');
+  const missions = node('space-missions-panel');
   // God's Eye View Canada: Radio is the rail's last member, not a section of
   // Context (owner ruling).
-  rail.children = [display, context, cctv, radio];
+  rail.children = [display, context, missions, cctv, radio];
   for (const panel of rail.children) panel.parentElement = rail;
   const saved = [], claimed = [];
   const owner = {
@@ -43,7 +44,7 @@ function fixture(theme = 'cyber') {
     shareLinkManager: { claimRestoreLane: (...args) => claimed.push(args), onPanelStateChange() {} },
   };
   owner.setPanelCollapsed = PanelChrome.prototype.setPanelCollapsed.bind(owner);
-  return { layers, scenes, display, context, cctv, radio, owner, saved, claimed,
+  return { layers, scenes, display, context, missions, cctv, radio, owner, saved, claimed,
     doc: { documentElement: { dataset: { uiTheme: theme } }, getElementById: (id) => nodes.get(id) },
   };
 }
@@ -52,7 +53,7 @@ function fixture(theme = 'cyber') {
 // every theme (owner rulings 2026-09-27 and 2026-10-06); upstream's one panel
 // per side is not applied, so opening a panel never closes a peer.
 test('explicit opening leaves side peers open and claims only its own restoration lane in every theme (fork)', () => {
-  for (const theme of ['tactical', 'minimal', 'cyber']) {
+  for (const theme of ['tactical', 'minimal']) {
     const f = fixture(theme), prior = globalThis.document;
     globalThis.document = f.doc;
     try {
@@ -81,6 +82,23 @@ test('explicit opening leaves side peers open and claims only its own restoratio
   }
 });
 
+// Upstream's one-panel side accordion closes Context and Space Missions for
+// each other; the fork leaves every box open (owner rulings 2026-09-27 and
+// 2026-10-06), so the two open side by side, and Radio beside them.
+test('the Context and Space Missions panels open side by side on desktop (fork)', () => {
+  const f = fixture('tactical'), prior = globalThis.document;
+  globalThis.document = f.doc;
+  try {
+    f.owner.setPanelCollapsed('global-context-panel', false, { explicit: true });
+    f.owner.setPanelCollapsed('space-missions-panel', false, { explicit: true });
+    assert.equal(f.missions.classList.contains('collapsed'), false);
+    assert.equal(f.context.classList.contains('collapsed'), false, 'opening Space Missions leaves Context open');
+    f.owner.setPanelCollapsed('radio-panel', false, { explicit: true });
+    assert.equal(f.context.classList.contains('collapsed'), false);
+    assert.equal(f.missions.classList.contains('collapsed'), false);
+  } finally { globalThis.document = prior; }
+});
+
 test('opening Radio, again or not, leaves Context and Display as they are (fork)', () => {
   const f = fixture('tactical'), prior = globalThis.document;
   globalThis.document = f.doc;
@@ -98,7 +116,7 @@ test('opening Radio, again or not, leaves Context and Display as they are (fork)
 });
 
 test('restored preferences keep every saved panel open for the layout to normalize', () => {
-  for (const theme of ['tactical', 'minimal', 'cyber']) {
+  for (const theme of ['tactical', 'minimal']) {
     const f = fixture(theme), prior = globalThis.document;
     globalThis.document = f.doc;
     try {

@@ -275,7 +275,7 @@ export function keySetupPlaceholder(key, envVar) {
     : t('{envVar} saved — paste to replace', { envVar });
 }
 
-// Where the chip sits (Cyber, the owner's phone): ProviderSettingsView reads it.
+// Where the chip sits (the owner's phone): ProviderSettingsView reads it.
 export {
   KEY_SETUP_PLACEMENT_ATTRIBUTES,
   keySetupChipInToolbar,

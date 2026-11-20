@@ -11,6 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
 import { prepareRoadSurfaces } from '../layers/traffic/surface.js';
+import { surfaceViewer } from '../testSupport/fakeSceneSurface.mjs';
 
 /** The fork's ROAD_PARSE_SLICE_MS, used as the slice budget here. */
 const SLICE_MS = 100;
@@ -62,12 +63,13 @@ function installSlowScene(t) {
       return 120;
     },
   };
-  return { scene, state };
+  // The layer asks for heights through the renderer's query port.
+  return { scene: surfaceViewer(scene), state };
 }
 
 test('road heights are probed in slices, the thread handed back between each, with the same probes as one pass', async (t) => {
   const once = installSlowScene(t);
-  await prepareRoadSurfaces(makeRoads(0), once.scene, null, [], null, {
+  await prepareRoadSurfaces(makeRoads(0), once.scene, null, null, {
     frameBudgetMs: Infinity,
   });
   const unslicedProbes = once.state.probes;
@@ -80,7 +82,6 @@ test('road heights are probed in slices, the thread handed back between each, wi
     makeRoads(0),
     sliced.scene,
     null,
-    [],
     null,
     { frameBudgetMs: SLICE_MS },
   );
@@ -104,7 +105,7 @@ test('work overtaken while the thread is handed back stops probing', async (t) =
     abort.abort();
   };
   await assert.rejects(
-    prepareRoadSurfaces(makeRoads(1), scene, null, [], abort.signal, {
+    prepareRoadSurfaces(makeRoads(1), scene, null, abort.signal, {
       frameBudgetMs: SLICE_MS,
     }),
     { name: 'AbortError' },

@@ -343,11 +343,12 @@ test('deixis prompt lint: one short rule, and every sentinel it names exists in 
     tool('annotate_map').annotations.items.properties.target.description,
     /"pointer"/,
   );
-  // Budget: the whole Realtime prompt (instructions + tools), measured in
-  // characters. It was 56,308 after the area/imagery/OSM merge; stating each
-  // policy once (WHERE precedence, AREAS routing, AFTER TOOLS speech) brought
-  // it to 51,646. A new tool or rule has to fit under this ceiling. The
-  // 2026-10-17 upstream merge (GNSS, air quality and emergency broadcasts on
+  // Budget: the whole Realtime prompt (instructions + every tool, osm_query
+  // included), in characters. Every session pays for it in latency and cost,
+  // so a new tool or rule has to fit under this ceiling or earn a raise. It
+  // was 56,308 after the area/imagery/OSM merge; stating each policy once
+  // (WHERE precedence, AREAS routing, AFTER TOOLS speech) brought it to
+  // 51,646. The 2026-10-17 upstream merge (GNSS, air quality and emergency broadcasts on
   // top of the fork's whole-app voice control and Canadian presets) measured
   // 52,848, so the fork's ceiling was 53,000. The 2026-10-23 upstream merge
   // (globe rotation on move_camera, with its Globe View guidance; upstream's
@@ -357,10 +358,13 @@ test('deixis prompt lint: one short rule, and every sentinel it names exists in 
   // its own prompt to 55,210 under a 55,500 ceiling; the 2026-11-04 merge
   // of those onto the fork measured 56,956, so it was 57,000. Upstream's
   // tilt pitchDeg argument (with its -45 default) and cockpit entry rule
-  // took its own to 55,339; the 2026-11-07 merge measured 57,085, so the
-  // ceiling is 57,500.
+  // took its own to 55,339; the 2026-11-07 merge measured 57,085, so it
+  // was 57,500. Upstream's show_street_level tool and routing rule, the
+  // Stories entry action and the Space Missions panel kept its own under a
+  // 56,500 ceiling; the 2026-11-20 merge measured 57,982, so the ceiling is
+  // 58,500.
   const size = instructions.length + JSON.stringify(GEV_REALTIME_TOOLS).length;
-  assert.ok(size <= 57_500, `prompt size ${size}`);
+  assert.ok(size <= 58_500, `prompt size ${size}`);
 });
 
 test('after-tool speech allows returned items to answer requested lists and rankings', () => {

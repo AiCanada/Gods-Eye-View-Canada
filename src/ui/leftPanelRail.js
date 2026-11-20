@@ -9,12 +9,34 @@ import {
 } from '../panelStackLayout.js';
 import { measurePanelNaturalHeight } from './panelMeasurement.js';
 import {
+  bandBesideMidpointObstacles,
   capturePanelScroll,
   isAttributionObstacle,
   readPanelStackingRank,
   restorePanelScroll,
 } from './panelRailGeometry.js';
 import { settleSideAccordion } from './panelAccordion.js';
+
+/**
+ * Whether the desktop Omnibar dock is laid out, by the condition
+ * omnibar-dock.css lays it out by: the bar and the voice control in the
+ * dock, outside the phone layout, the cockpit, playback, clean view and
+ * recording.
+ */
+const DOCK_OFF = [
+  'mobile-shell',
+  'cockpit-mode',
+  'scene-playback-mode',
+  'ui-clean-view',
+  'recording-mode',
+];
+function desktopOmnibarDock(documentRef) {
+  if (!documentRef?.getElementById?.('gev-omnibar')) return false;
+  const body = documentRef.body;
+  if (DOCK_OFF.some((name) => body?.classList?.contains?.(name))) return false;
+  const voice = documentRef.getElementById('gev-voice-control');
+  return Boolean(voice) && voice.parentElement?.id === 'command-dock';
+}
 
 /**
  * Measure and place the left panel rail for one synchronous layout pass.
@@ -70,6 +92,7 @@ export function layoutLeftPanelRail({
     stack.style.removeProperty('--left-stack-safe-bottom');
     stack.style.removeProperty('--left-stack-centered-height');
     stack.style.removeProperty('--panel-rail-offset');
+    stack.style.removeProperty('--panel-rail-lift');
     stack.classList.remove('layout-exclusive');
     stack.dataset.layoutMode = 'mobile';
     settleSideAccordion({ panels, enabled: false, onCollapse });
@@ -103,11 +126,13 @@ export function layoutLeftPanelRail({
   const baseTop = viewportHeight * 0.26;
   const baseBottomInset = viewportHeight * 0.04;
   const safeGap = viewportHeight * 0.012;
-  let obstacleSafeTop = viewportHeight * 0.04;
+  const topInset = viewportHeight * 0.04;
+  let obstacleSafeTop = topInset;
   let safeTop = baseTop;
   let safeBottom = viewportHeight - baseBottomInset;
   const bottomObstacles = [];
   const attributionObstacles = [];
+  const inLane = [];
 
   for (const obstacle of obstacles) {
     if (stack.contains(obstacle)) continue;
@@ -126,12 +151,20 @@ export function layoutLeftPanelRail({
     if (hiddenByAncestor) continue;
     const rect = obstacle.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) continue;
-    const overlapsHorizontally =
-      rect.right > stackRect.left && rect.left < stackRect.right;
+    // The centered controls can enter the stack's transparent outer gutter.
+    // Only constrain the lane if they reach an expanded panel itself, whose
+    // actual bounds also include the edge-rail offset.
+    const lanes = ['world-timeline', 'gev-voice-control'].includes(obstacle.id)
+      ? laidOutPanels.map((panel) => panel.getBoundingClientRect())
+      : [stackRect];
+    const overlapsHorizontally = lanes.some(
+      (lane) => rect.right > lane.left && rect.left < lane.right,
+    );
     if (!overlapsHorizontally) continue;
 
     if (isAttributionObstacle(obstacle))
       attributionObstacles.push({ top: rect.top });
+    inLane.push(rect);
     if (rect.top < baseTop && rect.bottom <= viewportHeight * 0.5) {
       const obstacleBottom = rect.bottom + safeGap;
       obstacleSafeTop = Math.max(obstacleSafeTop, obstacleBottom);
@@ -139,6 +172,25 @@ export function layoutLeftPanelRail({
     } else if (rect.top >= baseTop) {
       bottomObstacles.push({ top: rect.top });
     }
+  }
+  // Obstacles across the midpoint (common in short windows) put the panels
+  // on whichever side of them has more room, and the panels may use all of
+  // it, above the corridor's usual top too; with no room on either side the
+  // obstacles are read as before.
+  const beside = bandBesideMidpointObstacles({
+    midpoint: viewportHeight * 0.5,
+    top: topInset,
+    bottom: safeBottom,
+    obstacles: inLane,
+    gap: safeGap,
+    // A side thinner than this holds no usable panel.
+    minimum: viewportHeight * 0.08,
+  });
+  if (beside) {
+    obstacleSafeTop = beside.top;
+    safeTop = beside.top;
+    bottomObstacles.length = 0;
+    bottomObstacles.push({ top: beside.bottom + safeGap });
   }
   safeBottom = resolveLeftStackBottomBoundary({
     baseBottom: safeBottom,
@@ -237,11 +289,20 @@ export function layoutLeftPanelRail({
   const tailLayoutBottom = tailLayoutTop + tailRequiredHeight;
   const tailAvailableHeight = Math.max(0, obstacleSafeBottom - obstacleSafeTop);
   const tailTolerance = wasTail ? stabilityBand : -stabilityBand;
+  // Data Layers has a scrollable list and a fixed footer. Give it the full
+  // desktop lane while short control panels keep their natural height.
+  const fillDataLayers =
+    exclusive &&
+    expandedPanels.length === 1 &&
+    expandedPanels[0].id === 'data-panel' &&
+    desktopOmnibarDock(documentRef);
   const shouldTail =
+    !fillDataLayers &&
     expandedPanels.length > 0 &&
     tailLayoutTop >= obstacleSafeTop - tailTolerance &&
     tailLayoutBottom <= obstacleSafeBottom + tailTolerance;
-  const shouldFocus = exceedsCenteredCorridor && !shouldTail;
+  const shouldFocus =
+    fillDataLayers || (exceedsCenteredCorridor && !shouldTail);
 
   // Owner ruling, 2026-09-28: an open box is free to use the whole screen.
   // Open boxes leave the rail's flow and float over the tactical HUD at the
@@ -320,10 +381,12 @@ export function layoutLeftPanelRail({
           rowGap * Math.max(0, expandedPanels.length - 1),
       )
     : naturalExpandedHeight;
-  const allocatedExpandedHeights = allocatePanelStackHeights({
-    naturalHeights: naturalExpandedHeights,
-    availableHeight: expandedAvailableHeight,
-  });
+  const allocatedExpandedHeights = fillDataLayers
+    ? [expandedAvailableHeight]
+    : allocatePanelStackHeights({
+        naturalHeights: naturalExpandedHeights,
+        availableHeight: expandedAvailableHeight,
+      });
   // Every open box stays open (owner ruling, 2026-09-27): boxes opened
   // together share the corridor, the newest first, and each scrolls inside
   // its share. Nothing is collapsed to make room for a sibling, on either
@@ -338,14 +401,18 @@ export function layoutLeftPanelRail({
     stack.style.setProperty('--left-stack-safe-bottom', bottomValue);
   }
   // The rail stays where the resting stack puts it; only the panels move.
-  // A theme that pins the stack's top (Cyber) leaves nothing to offset.
-  const topPinned =
-    getComputedStyle(stack)
-      .getPropertyValue?.('--panel-stack-top-pinned')
-      ?.trim() === '1';
-  const railOffset = `${(topPinned ? 0 : safeTop - layoutTop).toFixed(1)}px`;
+  // The stack itself rises by the lift below, by a different amount for a
+  // tall panel than at rest; the rail takes up the difference.
+  const lift = (top) => Math.min(0, obstacleSafeTop - top);
+  const railOffset = `${(safeTop + lift(safeTop) - layoutTop - lift(layoutTop)).toFixed(1)}px`;
   if (stack.style.getPropertyValue('--panel-rail-offset') !== railOffset) {
     stack.style.setProperty('--panel-rail-offset', railOffset);
+  }
+  // How far the column can rise before it meets the HUD readout, so the rail
+  // and any open panel sit just under it, whether or not a panel is open.
+  const railLift = `${lift(layoutTop).toFixed(1)}px`;
+  if (stack.style.getPropertyValue('--panel-rail-lift') !== railLift) {
+    stack.style.setProperty('--panel-rail-lift', railLift);
   }
   stack.style.removeProperty('--left-stack-centered-height');
   for (const panel of panels) {

@@ -48,7 +48,7 @@ function catalogArrived(locale) {
 /**
  * The catalogs, one file per locale, loaded on demand: the page fetches the
  * active locale's alone (loadCatalog(), awaited at boot), where it used to
- * carry all fourteen in its main script, two megabytes of JSON that a page
+ * carry all sixteen in its main script, two megabytes of JSON that a page
  * read in English never opened. Each is addressed by a URL built from this
  * module's, so the build emits the files as assets and the dev server serves
  * them as they are. Under Node (node:test, the scripts) a catalog is read
@@ -61,11 +61,13 @@ const CATALOG_URLS = Object.freeze({
   es: new URL('./locales/es.json', import.meta.url),
   fr: new URL('./locales/fr.json', import.meta.url),
   'fr-CA': new URL('./locales/fr-CA.json', import.meta.url),
+  he: new URL('./locales/he.json', import.meta.url),
   it: new URL('./locales/it.json', import.meta.url),
   iu: new URL('./locales/iu.json', import.meta.url),
   ja: new URL('./locales/ja.json', import.meta.url),
   pt: new URL('./locales/pt.json', import.meta.url),
   ru: new URL('./locales/ru.json', import.meta.url),
+  sv: new URL('./locales/sv.json', import.meta.url),
   uk: new URL('./locales/uk.json', import.meta.url),
   'zh-CN': new URL('./locales/zh-CN.json', import.meta.url),
   'zh-Hant': new URL('./locales/zh-Hant.json', import.meta.url),
@@ -350,6 +352,62 @@ function interpolate(pattern, values) {
 /** A catalog string with something to show; an empty one counts as missing. */
 const filled = (value) => typeof value === 'string' && value.trim() !== '';
 
+// A host application's own text for messages Core shows (setMessageOverrides),
+// by locale: { en: { 'English key': 'Its text' }, de: { … } }.
+let overrides = Object.freeze({});
+
+/**
+ * Show a host application's own text for Core's messages. `messages` maps a
+ * locale (`en` included) to entries keyed as the catalogs are: the English
+ * text, `context|text` for a t() context, the English plural for tn() (whose
+ * entry is a `{one, other, …}` object). An overridden message shows the host's
+ * text in the active locale, else the host's English, else Core's. Each call
+ * replaces the previous overrides; `{}` removes them. Call it before views
+ * render: onLocaleChange listeners word their text again at once, but a view
+ * already drawn keeps its text until it next renders. A t() entry is text, a
+ * tn() entry `{one, other, …}` forms worded in its locale; any other entry is
+ * ignored.
+ * @param {Record<string, Record<string, string|Record<string, string>>>} messages
+ */
+export function setMessageOverrides(messages) {
+  const next = {};
+  for (const [locale, entries] of Object.entries(messages ?? {})) {
+    const code = normalizeLocale(locale);
+    if (!code || !entries || typeof entries !== 'object') continue;
+    const own = Object.fromEntries(
+      Object.entries(entries).map(([key, entry]) => [
+        key,
+        entry && typeof entry === 'object'
+          ? Object.freeze({ ...entry })
+          : entry,
+      ]),
+    );
+    next[code] = Object.freeze({ ...next[code], ...own });
+  }
+  overrides = Object.freeze(next);
+  notifyLocaleChange();
+}
+
+/** A host's entry for t() is text; for tn() plural forms with an `other`. */
+const usable = (entry, plural) =>
+  plural
+    ? Boolean(entry) && typeof entry === 'object' && filled(entry.other)
+    : filled(entry);
+
+/**
+ * The host's entry for a message, in the active locale or else in English,
+ * with the locale it is worded in (whose plural rules pick its form).
+ */
+function overridden(text, plural = false) {
+  for (const locale of new Set([getLocale(), DEFAULT_LOCALE])) {
+    const entries = overrides[locale];
+    const entry =
+      entries && Object.hasOwn(entries, text) ? entries[text] : undefined;
+    if (usable(entry, plural)) return { entry, locale };
+  }
+  return null;
+}
+
 /** The active catalog's entry for `text`, or undefined; never warns. */
 function lookupQuiet(text) {
   const catalog = catalogOf(getLocale());
@@ -359,11 +417,21 @@ function lookupQuiet(text) {
   return undefined;
 }
 
-function lookup(text) {
+/**
+ * Core's own catalog entry for a message in the active locale; warns in
+ * development when the loaded catalog lacks it.
+ */
+function catalogEntry(text) {
   if (!catalogOf(getLocale())) return undefined;
   const entry = lookupQuiet(text);
   if (entry === undefined) warnMissing(text);
   return entry;
+}
+
+/** A host's own text for a message (setMessageOverrides), else Core's. */
+function lookup(text) {
+  const host = overridden(text);
+  return host ? host.entry : catalogEntry(text);
 }
 
 /**
@@ -394,7 +462,14 @@ export function t(text, values) {
  * @returns {string}
  */
 export function tn(count, one, other, values) {
-  return pluralFrom(lookup(other), count, one, other, values);
+  const host = overridden(other, true);
+  if (host) {
+    const forms = host.entry;
+    const category = pluralRules(host.locale).select(count);
+    const pattern = filled(forms[category]) ? forms[category] : forms.other;
+    return interpolate(pattern, { count, ...values });
+  }
+  return pluralFrom(catalogEntry(other), count, one, other, values);
 }
 
 /** tn() with the lookup it is given: one form per plural category. */
@@ -488,8 +563,11 @@ useLocalText(localSay);
  * missing-translation warning.
  */
 export function translateKnown(text) {
+  if (typeof text !== 'string') return text;
+  const host = overridden(text);
+  if (host) return shownLine(host.entry, text);
   const catalog = catalogOf(getLocale());
-  if (!catalog || typeof text !== 'string') return text;
+  if (!catalog) return text;
   const entry = Object.hasOwn(catalog, text) ? catalog[text] : undefined;
   return filled(entry) ? shownLine(entry, text) : text;
 }

@@ -63,6 +63,8 @@ import {
   isScopeMaskEnabled,
   setScopeMaskFeather,
   getScopeMaskFeather,
+  setScopeMaskOpacity,
+  getScopeMaskOpacity,
   setScopeTerminusOverride,
   getScopeTerminusOverride,
   clampScopeTerminusPct,
@@ -85,6 +87,7 @@ export class StyleManager extends ApplicationShell {
     super(viewer, {
       ...options,
       services: {
+        hitTestWorldOverlay,
         CITY_POIS,
         GLOBE_VIEW,
         flyToGlobeView,
@@ -131,6 +134,8 @@ export class StyleManager extends ApplicationShell {
         isScopeMaskEnabled,
         setScopeMaskFeather,
         getScopeMaskFeather,
+        setScopeMaskOpacity,
+        getScopeMaskOpacity,
         setScopeTerminusOverride,
         getScopeTerminusOverride,
         clampScopeTerminusPct,

@@ -1,0 +1,14 @@
+[
+  "src/abundanceOverlay.js",
+  "src/aiWorldOverlay.js",
+  "src/aiWorldPanel.js",
+  "src/askPanel.js",
+  "src/data/cctvTrafficProjection.js",
+  "src/data/deviceFeeds.js",
+  "src/data/outbreak.js",
+  "src/data/seaSurfaceTemperature.js",
+  "src/layers/cctv/thumbnails.js",
+  "src/locationClick.js",
+  "src/outbreakPanel.js",
+  "src/socialMediaPanel.js"
+]

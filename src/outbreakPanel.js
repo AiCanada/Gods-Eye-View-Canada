@@ -97,6 +97,7 @@ import {
   epidemicPlacesCsv,
   epidemicTotalsCsv,
 } from './outbreakEpiExport.mjs';
+import { viewerBehind } from './render/cesium/viewers.js';
 
 const PROVIDERS_URL = '/api/llm/providers';
 const ASK_URL = '/api/llm/ask';
@@ -417,7 +418,8 @@ function timeLabel(ms) {
 
 export class OutbreakPanel {
   /**
-   * @param {object} viewer The Cesium viewer (unused today; kept like the other boxes).
+   * @param {object} viewer The scene host (or a Cesium viewer); SCAN TRAVEL
+   *   flies the camera of the Cesium viewer behind it.
    * @param {{document?: Document, fetch?: Function, storage?: Storage|null, resultStore?: object|null, windowRef?: Window|null, geocode?: Function, now?: Function}} [options]
    */
   constructor(viewer, options = {}) {
@@ -2310,13 +2312,14 @@ export class OutbreakPanel {
   /** SCAN TRAVEL ends over the outbreak, with the region round it in view. */
   async _flyToOutbreak() {
     const target = outbreakViewTarget(this._state.locations);
-    const camera = this.viewer?.camera;
+    const viewer = viewerBehind(this.viewer);
+    const camera = viewer?.camera;
     if (!target || typeof camera?.flyTo !== 'function') return;
-    if (this.viewer.isDestroyed?.()) return;
+    if (viewer.isDestroyed?.()) return;
     try {
       const Cesium = await import('cesium');
       // A camera following something would pull the view straight back.
-      if (this.viewer.trackedEntity) this.viewer.trackedEntity = undefined;
+      if (viewer.trackedEntity) viewer.trackedEntity = undefined;
       camera.flyTo({
         destination: Cesium.Cartesian3.fromDegrees(
           target.lon,

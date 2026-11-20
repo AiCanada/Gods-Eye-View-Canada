@@ -1,5 +1,12 @@
-import * as Cesium from 'cesium';
+import { drawOf } from '../../render/rendererOf.js';
 import { FIRMS_OVERLAY_SOURCE_ID } from '../../data/firmsLabels.js';
+
+/**
+ * The layer's shape sets start with this; each layer has its own
+ * (`firms:1:cells`, …), so several can share a renderer.
+ */
+export const FIRMS_CELL_SET_PREFIX = 'firms';
+let instances = 0;
 
 export function createLifecycle({
   layerState,
@@ -9,7 +16,6 @@ export function createLifecycle({
   feed,
 }) {
   const { registerPickOwner, unregisterPickOwner } = services.picking;
-  const { restoreSpriteOrderOnEnable } = services.sprites;
   const { clearSelectedEntityContextForLayer } = services.context;
   const { id, overlayHost } = config;
 
@@ -31,9 +37,11 @@ export function createLifecycle({
     init(viewer) {
       if (layerState._destroyed) return;
       layerState._viewer = viewer;
-      layerState._dataSource = new Cesium.CustomDataSource(id);
-      layerState._dataSource.show = false;
-      viewer.dataSources.add(layerState._dataSource);
+      layerState._cells = drawOf(viewer).shapes({
+        id: `${FIRMS_CELL_SET_PREFIX}:${++instances}:cells`,
+        clampTo: 'both',
+        show: false,
+      });
     },
 
     async enable(viewer) {
@@ -43,22 +51,16 @@ export function createLifecycle({
       // this layer was off never lifted its rebuild hold.
       layerState._locationSwitching = false;
       layerState._viewer = viewer;
-      if (!layerState._dataSource) this.init(viewer);
-      if (layerState._dataSource) layerState._dataSource.show = true;
-      if (layerState._billboards) {
-        // The camera can have moved anywhere while the layer was off: moveEnd
-        // was not being listened to, and the preRender watcher is inert while
-        // disabled AND while the (untimed) refetch below is in flight. So the
-        // retained per-sprite show flags describe the OLD viewpoint. Re-cull
-        // BEFORE the collection becomes visible — otherwise re-enabling at a
-        // new location flashes far-side fires through the planet (and keeps
-        // near-side ones hidden) until the fetch resolves.
-        components.rendering.refreshHorizonCulling();
-        layerState._billboards.show = true;
-      }
+      if (!layerState._cells) this.init(viewer);
+      if (layerState._cells) layerState._cells.show = true;
+      // The GPU culls the far side each frame, so retained rows are right
+      // for wherever the camera went while the layer was off.
+      if (layerState._icons) layerState._icons.show = !layerState._standIn;
       overlayHost.setVisible(FIRMS_OVERLAY_SOURCE_ID, true);
       // A filter can leave an old raster cached while the current set is empty.
-      layerState._heatImagery?.setShow(layerState._fires.length > 0);
+      layerState._heatImagery?.setShow(
+        layerState._fires.length > 0 && !layerState._standIn,
+      );
       // The camera can have crossed the hand-off while the layer was off.
       components.rendering.applyHandoffFade(true);
       components.viewport.installLodWatcher();
@@ -78,12 +80,32 @@ export function createLifecycle({
         components.rendering.renderCurrentLod(true);
       if (!layerState._fires.length && !layerState._loading)
         await components.ingestion.loadHeatmap();
-      if (
+    },
+
+    /**
+     * Let an application draw the detections in place of the layer's
+     * markers. While a stand-in is set, the glows, the heatmap and the
+     * ambient cards are hidden and everything else works as before: a click
+     * on a fire the stand-in draws (`standIn.hitTest(screenPosition)`, which
+     * answers a detection record from the same source, or null) selects it
+     * and moves the camera to it as a click on its marker does, the selected
+     * fire's card shows, and a click on empty space clears the selection.
+     * Its optional `focusRangeM(record)` gives how far, in metres, the camera
+     * stands from a fire it draws when moving to it, for fires drawn larger
+     * than a marker; without one, or for null, the usual fire framing holds.
+     * `null` brings the markers back. The selection is kept either way.
+     * @param {?{hitTest: (screenPosition: {x: number, y: number}) => ?Object, focusRangeM?: (record: Object) => ?number}} standIn
+     */
+    setMarkerStandIn(standIn) {
+      layerState._standIn =
+        typeof standIn?.hitTest === 'function' ? standIn : null;
+      layerState._heatImagery?.setShow(
         layerState._enabled &&
-        !layerState._destroyed &&
-        layerState._viewer === viewer
-      )
-        restoreSpriteOrderOnEnable('firms', viewer);
+          layerState._fires.length > 0 &&
+          !layerState._standIn,
+      );
+      components.rendering.applyHandoffFade(true);
+      components.cards.rebuildAmbientLabels();
     },
 
     disable() {
@@ -92,8 +114,8 @@ export function createLifecycle({
       layerState._loading = false;
       layerState._enabled = false;
       components.selection.clearFireSelection();
-      if (layerState._dataSource) layerState._dataSource.show = false;
-      if (layerState._billboards) layerState._billboards.show = false;
+      if (layerState._cells) layerState._cells.show = false;
+      if (layerState._icons) layerState._icons.show = false;
       layerState._heatImagery?.setShow(false);
       overlayHost.clearSource(FIRMS_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(FIRMS_OVERLAY_SOURCE_ID, false);
@@ -137,8 +159,8 @@ export function createLifecycle({
       layerState._locationSwitching = false;
       if (!layerState._enabled) return;
       try {
+        // The GPU culls the far side from the arrival camera on its own.
         components.rendering.renderCurrentLod(true);
-        components.rendering.refreshHorizonCulling();
       } catch (error) {
         console.warn(
           `[Data:${id}] FIRMS location arrival render failed:`,
@@ -159,10 +181,8 @@ export function createLifecycle({
       components.viewport.removeMoveEndWatcher();
       components.selection.removeClickHandler();
       unregisterPickOwner(id);
-      if (layerState._dataSource && viewer) {
-        viewer.dataSources.remove(layerState._dataSource, true);
-      }
-      layerState._dataSource = null;
+      layerState._cells?.dispose();
+      layerState._cells = null;
       components.rendering.removeDetectionCollections(viewer);
       components.selection.clearContextRegistrations();
       clearSelectedEntityContextForLayer(id);
@@ -183,6 +203,7 @@ export function createLifecycle({
       layerState._rowControlsListener = null;
       layerState._cellCount = 0;
       layerState._lastUpdate = null;
+      layerState._at = null;
       layerState._keyRequired = false;
       layerState._stale = false;
       layerState._error = null;
@@ -192,18 +213,19 @@ export function createLifecycle({
       layerState._currentLodIndex = -1;
       layerState._lastViewRect = null;
       layerState._selectedFire = null;
+      layerState._standIn = null;
       layerState._labelCandidates = [];
       layerState._labelLodDistance = 0;
       layerState._pickIndexById.clear();
       layerState._fireByCardId.clear();
-      layerState._cullPositions.length = 0;
       layerState._camSnapValid = false;
     },
   };
 
   /**
-   * Drop everything built for the rendered view, keeping the global dataset
-   * and its per-grid cell cache. The selection is cleared as a deliberate
+   * Drop everything built for the rendered view (the glow sprites, the pick and
+   * card indexes, the cards), keeping the global dataset, its per-grid cell
+   * cache and the worldwide heatmap. The selection is cleared as a deliberate
    * deselect (no eviction tag: the detection is still in the feed) and BEFORE
    * the context sweep, for the ownership-guard reason documented in
    * loadHeatmap. No cards are republished. The LOD/view memo and the idle
@@ -212,11 +234,9 @@ export function createLifecycle({
   function releaseRenderedView() {
     components.selection.clearFireSelection({ republish: false });
     components.selection.clearContextRegistrations();
-    if (layerState._dataSource) layerState._dataSource.entities.removeAll();
-    if (layerState._billboards) layerState._billboards.removeAll();
+    components.rendering.clearIcons();
     layerState._pickIndexById.clear();
     layerState._fireByCardId.clear();
-    layerState._cullPositions.length = 0;
     layerState._labelCandidates = [];
     layerState._cellCount = 0;
     overlayHost.clearSource(FIRMS_OVERLAY_SOURCE_ID);

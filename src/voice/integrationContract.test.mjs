@@ -716,14 +716,16 @@ test('without an operator Overpass the prompt never offers place search', () => 
 test('the Realtime prompt stays within its size budget', () => {
   // Instructions plus tool schemas, in characters. Voice geometry adds
   // resolve_area, find_imagery and the analyst area scopes (osm_query only
-  // with an operator Overpass). Upstream keeps its own under the 55,500
-  // ceiling of its deixis prompt lint; God's Eye View Canada's whole-app
-  // voice control adds its tools on top (src/voice/pointAndAsk.test.mjs keeps
-  // the fork's ceiling), and the 2026-11-04 merge measured 56,361 (57,116
-  // with an operator Overpass): the ceiling is 57,500.
+  // with an operator Overpass); show_street_level adds its tool and routing
+  // rule. Upstream keeps its own under the 56,500 ceiling of its deixis
+  // prompt lint; God's Eye View Canada's whole-app voice control adds its
+  // tools on top (src/voice/pointAndAsk.test.mjs keeps the fork's ceiling).
+  // The 2026-11-04 merge measured 56,361 (57,116 with an operator Overpass);
+  // the 2026-11-20 merge measured 57,387 (58,142 with an operator
+  // Overpass), so the ceiling is 58,500.
   const size = (overpass) =>
     realtimeInstructions(undefined, { overpass }).length +
     JSON.stringify(realtimeTools({ overpass })).length;
-  assert.ok(size(false) <= 57_500, `default prompt ${size(false)} chars`);
-  assert.ok(size(true) <= 57_500, `with Overpass ${size(true)} chars`);
+  assert.ok(size(false) <= 58_500, `default prompt ${size(false)} chars`);
+  assert.ok(size(true) <= 58_500, `with Overpass ${size(true)} chars`);
 });

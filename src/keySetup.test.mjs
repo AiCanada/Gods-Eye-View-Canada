@@ -15,10 +15,11 @@ import { createPinia } from 'pinia';
 import { useProviderSettingsStore } from './ui/stores/providerSettings.js';
 
 // The chip's placement is ProviderSettingsView's (upstream #1499); the rule
-// it follows is the fork's: Cyber, and the owner's phone in either layout.
-test('the POWER UP chip moves to the toolbar in Cyber and on the owner phone only', () => {
+// it follows is the fork's: the owner's phone in either layout. Upstream
+// removed the Cyber layout, so no HUD layout moves it any more.
+test('the POWER UP chip moves to the toolbar on the owner phone only', () => {
   for (const variant of ['tactical', 'minimal', 'cyber'])
-    assert.equal(keySetupChipInToolbar({ uiTheme: variant }), variant === 'cyber');
+    assert.equal(keySetupChipInToolbar({ uiTheme: variant }), false);
   // The PC layout on a phone puts it in the toolbar whatever the theme.
   assert.equal(
     keySetupChipInToolbar({ uiTheme: 'tactical', pcMirror: 'true' }),
@@ -36,7 +37,7 @@ test('the POWER UP chip moves to the toolbar in Cyber and on the owner phone onl
   assert.equal(keySetupChipInToolbar(), false);
   assert.deepEqual(
     [...KEY_SETUP_PLACEMENT_ATTRIBUTES],
-    ['data-ui-theme', 'data-pc-mirror', 'data-touch-device', 'data-layout-mode'],
+    ['data-pc-mirror', 'data-touch-device', 'data-layout-mode'],
   );
 });
 

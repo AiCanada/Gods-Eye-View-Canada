@@ -7,6 +7,7 @@ import { ShareLinkManager } from './sharelink.js';
 import { parseSharePath } from './share/shareLinkPath.js';
 import { decodeShareView } from './share/viewCodec.js';
 import { toLegacyShareState } from './share/legacyShareState.js';
+import { bindFakeCesiumCamera } from './testSupport/fakeCameraPort.mjs';
 
 function makeManager(hash = '', options = {}) {
   globalThis.window = { location: { hash, href: `http://localhost/${hash}` } };
@@ -15,15 +16,16 @@ function makeManager(hash = '', options = {}) {
       window.location.hash = new URL(next, window.location.href).hash;
     },
   };
-  const viewer = {
+  // The manager reads and flies the camera through the renderer's port.
+  const viewer = bindFakeCesiumCamera({
     camera: {
-      changed: { addEventListener() {} },
+      changed: { addEventListener: () => () => {} },
       positionCartographic: { latitude: 0, longitude: 0, height: 1000 },
       heading: 0,
       pitch: -Math.PI / 2,
       roll: 0,
     },
-  };
+  });
   return new ShareLinkManager(viewer, options);
 }
 

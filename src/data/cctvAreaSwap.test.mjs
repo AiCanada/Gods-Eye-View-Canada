@@ -80,7 +80,8 @@ test('an area swap keeps shared cameras as the same records, releases the rest, 
 
   assert.equal(await cctvLayer.onLocationSelect({ point: AUSTIN, enabled: true }), true);
   assert.deepEqual(cameraIds(), ['a0', 'a1', 'shared', 'home-front'], 'the area nearest first, then private cameras');
-  assert.equal(billboards.live.size, 3);
+  // The three area cameras and the private camera each draw an icon.
+  assert.equal(billboards.live.size, 4);
   assert.deepEqual(priors.map((batch) => batch.length), [3]);
   assert.equal(cctvLayer.getUIState().area.ready, true);
   assert.equal(cctvLayer.getUIState().area.loaded, 3);
@@ -90,8 +91,8 @@ test('an area swap keeps shared cameras as the same records, releases the rest, 
   const a1 = _cctvRecordForTest('a1');
   const shared = _cctvRecordForTest('shared');
   const a1Runtime = a1.projection;
-  const a1Billboard = a1.billboard;
-  assert.ok(a1Runtime.planeEntity, 'activation built a monitor plane');
+  const a1Billboard = a1.camera.id;
+  assert.ok(a1Runtime.plane, 'activation built a monitor plane');
   assert.equal(a0.coverageEntities.length, 5);
   assert.ok(cardIds(host).includes('a0'));
 
@@ -109,12 +110,13 @@ test('an area swap keeps shared cameras as the same records, releases the rest, 
   assert.equal(a1.destroyed, true);
   assert.equal(cctvLayer.getUIState().activeCameraId, null, 'the active camera left with its area');
   assert.equal(a1.projection, null);
-  assert.equal(a1Runtime.planeEntity, null);
+  assert.equal(a1Runtime.plane, null);
   assert.equal(viewer.entities.getById('cctv-a1-plane'), undefined);
   assert.equal(viewer.entities.getById('cctv-a0-cap'), undefined);
   assert.equal(a0.coverageEntities.length, 0);
   assert.equal(billboards.live.has(a1Billboard), false);
-  assert.equal(billboards.live.size, 3);
+  // shared, s0, s1 and the private camera.
+  assert.equal(billboards.live.size, 4);
   assert.ok(cardIds(host).every((id) => id !== 'a0' && id !== 'a1'), 'their map cards are gone');
 });
 
@@ -139,6 +141,28 @@ test('a capped area holds at most 1,000 cameras and the loading total stays with
   // The cap cut the area at 44 km, so it covers max(22, 34) = 34 km: 20 km away loads nothing.
   assert.equal(await cctvLayer.onLocationSelect({ point: { lat: ATLANTA.lat + 0.18, lon: ATLANTA.lon } }), false);
   assert.equal(server.calls.sources.length, 1);
+});
+
+test('count markers do not outlive their cameras when a swap lands on an area with none', async (t) => {
+  // Twelve cameras about 200 m apart; the place swapped to has none.
+  const server = makeCameraServer({
+    areas: ({ lat }) =>
+      Math.abs(lat - AUSTIN.lat) < 1
+        ? areaAnswer(AUSTIN, Array.from({ length: 12 }, (_, index) => makeSource(`a${index}`, AUSTIN, 0.002 * index)))
+        : areaAnswer(OFFSHORE, []),
+  });
+  installDomFakes(t, { fetch: server.handler });
+  installPriorResolver(t);
+  // High enough that the twelve cameras group into counts.
+  primeLayer(t, { viewer: makeViewer(AUSTIN, 300_000), records: [], coverageMode: 'off' });
+
+  assert.equal(await cctvLayer.onLocationSelect({ point: AUSTIN, enabled: true }), true);
+  const counts = () => cctvLayer._cctvDrawnForTest().counts.markers.length;
+  assert.ok(counts() > 0, 'the cameras group into at least one count');
+
+  assert.equal(await cctvLayer.onLocationSelect({ point: OFFSHORE, enabled: true }), true);
+  assert.equal(cctvLayer.getUIState().cameras.length, 0);
+  assert.equal(counts(), 0, 'no camera is loaded, so no count marker remains');
 });
 
 test('re-enabling queues only cameras still unresolved and never refetches a loaded area', async (t) => {

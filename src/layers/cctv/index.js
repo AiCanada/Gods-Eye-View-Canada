@@ -21,6 +21,7 @@ import { createState } from './state.js';
 import { createLookup } from './lookup.js';
 import { createArea } from './area.js';
 import { createThumbnails } from './thumbnails.js';
+import { createDrawSets } from './drawSets.js';
 
 /** Construct one layer with its own scene state and supplied application services. */
 export function createCctvLayer({ services, source }) {
@@ -33,6 +34,7 @@ export function createCctvLayer({ services, source }) {
   const state = createState({ services });
   const parts = {};
   const context = { state, services, parts, source };
+  parts.drawSets = createDrawSets(context);
   parts.calibration = createCalibration(context);
   parts.testing = createTesting(context);
   parts.projection = createProjection(context);
@@ -74,8 +76,6 @@ export function createCctvLayer({ services, source }) {
         parts.testing._setCctvGroundPriorResolverForTest,
       _projectionImageSourceForTest:
         parts.testing._projectionImageSourceForTest,
-      _createCctvProjectionAppearanceForTest:
-        parts.testing._createCctvProjectionAppearanceForTest,
       createCctvProjectionOverlayEntry:
         parts.projection.createCctvProjectionOverlayEntry,
       getActiveVideoElement: parts.projection.getActiveVideoElement,
@@ -92,6 +92,7 @@ export function createCctvLayer({ services, source }) {
       sightLineGroundHitM: parts.geometry.sightLineGroundHitM,
       nearFieldRoadSpot: parts.geometry.nearFieldRoadSpot,
       roadMatchDirection: parts.geometry.roadMatchDirection,
+      flatGroundAxisDistance: parts.geometry.flatGroundAxisDistance,
       frameSignatureFromPixels: parts.frames.frameSignatureFromPixels,
       _createCctvProjectionPlaneForTest:
         parts.testing._createCctvProjectionPlaneForTest,
@@ -129,8 +130,12 @@ export function createCctvLayer({ services, source }) {
       _extractPickedCameraIdForTest:
         parts.testing._extractPickedCameraIdForTest,
       _setCctvCoverageStateForTest: parts.testing._setCctvCoverageStateForTest,
+      _cctvIconsForTest: parts.testing._cctvIconsForTest,
+      _cctvDrawnForTest: parts.testing._cctvDrawnForTest,
       focusCctvRecord: parts.navigation.focusCctvRecord,
       maybeAutoHop: parts.navigation.maybeAutoHop,
+      openingCameraId: parts.navigation.openingCameraId,
+      reopenNearestCamera: parts.navigation.reopenNearestCamera,
       cctvCycleIndex: parts.navigation.cctvCycleIndex,
     },
   );

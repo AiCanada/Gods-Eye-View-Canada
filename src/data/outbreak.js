@@ -47,6 +47,7 @@ import {
 import { arrivedBy } from '../outbreakEpi.mjs';
 // The map's words are the Outbreak tab's: Quebec French in the fork locales.
 import { localDigits, msgl, tl, tln } from '../i18n/index.js';
+import { viewerBehind } from '../render/cesium/viewers.js';
 import {
   NETWORK_WAITING_KM,
   bandEndKm,
@@ -1045,7 +1046,9 @@ export function createOutbreakLayer({
       }
     },
 
-    init(viewer) {
+    init(host) {
+      // The layer draws with the Cesium viewer behind the scene host.
+      const viewer = viewerBehind(host);
       _viewer = viewer;
       _enabled = false;
       drawn.clear();
@@ -1085,7 +1088,8 @@ export function createOutbreakLayer({
       return true;
     },
 
-    destroy(viewer) {
+    destroy(host) {
+      const viewer = viewerBehind(host);
       for (const timer of _settleTimers) clearTimeout(timer);
       if (lingerTimer !== null) clearTimeout(lingerTimer);
       lingerTimer = null;

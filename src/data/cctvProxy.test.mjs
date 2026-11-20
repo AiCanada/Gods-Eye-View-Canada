@@ -684,6 +684,90 @@ test('the motion-JPEG scanner works chunk by chunk, and a wrong declared length 
   assert.deepEqual(firstJpegInMotionStream(tricky, 'cam'), body);
 });
 
+test('a cut-short first frame is dropped, never joined onto the next one', () => {
+  const CRLF = String.fromCharCode(13, 10);
+  const part = (headers) => Buffer.from(`--cam${CRLF}${headers}${CRLF}`);
+  // A partial first frame: its start marker, no end-of-image marker.
+  const cutShort = Buffer.from([...SOI, ...Array(300).fill(3)]);
+  const picture = fakeJpeg(4, 300);
+  const stream = Buffer.concat([
+    part(`Content-Type: image/jpeg${CRLF}`),
+    cutShort,
+    Buffer.from(CRLF),
+    part(`Content-Type: image/jpeg${CRLF}`),
+    picture,
+    Buffer.from(`${CRLF}--cam${CRLF}`),
+  ]);
+  // A few bytes at a time, as a slow camera sends it: the second frame alone.
+  const scanner = createMotionJpegScanner('cam');
+  let found = null;
+  for (let at = 0; at < stream.length && !found; at += 7)
+    found = scanner.push(stream.subarray(at, at + 7));
+  assert.deepEqual(found, picture);
+  // All at once: the second frame is already whole in the first push.
+  assert.deepEqual(firstJpegInMotionStream(stream, 'cam'), picture);
+
+  // A declared length that runs through the next part's delimiter is wrong,
+  // even when it happens to end at that part's end-of-image marker.
+  const rest = Buffer.concat([Buffer.from(CRLF), part(`Content-Type: image/jpeg${CRLF}`), picture]);
+  const overlong = Buffer.concat([
+    part(`Content-Length: ${cutShort.length + rest.length}${CRLF}`),
+    cutShort,
+    rest,
+    Buffer.from(`${CRLF}--cam${CRLF}`),
+  ]);
+  assert.deepEqual(firstJpegInMotionStream(overlong, 'cam'), picture);
+
+  // The next part is cut by its own declared length, not the dropped part's,
+  // so it is found before any later delimiter arrives.
+  const ownLength = Buffer.concat([
+    part(`Content-Length: 99999${CRLF}`),
+    cutShort,
+    Buffer.from(CRLF),
+    part(`Content-Length: ${picture.length}${CRLF}`),
+    picture,
+  ]);
+  assert.deepEqual(firstJpegInMotionStream(ownLength, 'cam'), picture);
+});
+
+test('a cut-short frame is not returned up to its embedded preview; a trailer after a whole picture is fine', () => {
+  const CRLF = String.fromCharCode(13, 10);
+  const part = (headers = '') => Buffer.from(`--cam${CRLF}${headers}${CRLF}`);
+  // A structurally real JPEG: SOI, an APP1 segment holding a small preview
+  // (with its own start and end markers), a quantisation table, the scan, EOI.
+  const preview = [0xff, 0xd8, 0xff, 0xdb, 0x00, 0x04, 9, 9, 0xff, 0xd9];
+  const app1 = [0xff, 0xe1, 0x00, 2 + preview.length, ...preview];
+  const dqt = [0xff, 0xdb, 0x00, 0x05, 1, 2, 3];
+  const scan = [0xff, 0xda, 0x00, 0x04, 1, 0, ...Array(200).fill(0x55)];
+  const whole = Buffer.from([0xff, 0xd8, ...app1, ...dqt, ...scan, 0xff, 0xd9]);
+  const tail = Buffer.from(`${CRLF}--cam${CRLF}`);
+
+  // Cut after the preview, before the scan: the only end marker is the preview's.
+  const cutInHeaders = whole.subarray(0, 2 + app1.length + 3);
+  // Cut inside the scan data: still no end marker of the picture's own.
+  const cutInScan = whole.subarray(0, whole.length - 60);
+  for (const [name, cut] of [['in the headers', cutInHeaders], ['in the scan', cutInScan]]) {
+    assert.ok(cut.includes(Buffer.from([0xff, 0xd9])), `${name}: the cut part carries the preview's end marker`);
+    const stream = Buffer.concat([part(), cut, Buffer.from(CRLF), part(), whole, tail]);
+    assert.deepEqual(firstJpegInMotionStream(stream, 'cam'), whole, `${name}: one push`);
+    const scanner = createMotionJpegScanner('cam');
+    let found = null;
+    for (let at = 0; at < stream.length && !found; at += 5) found = scanner.push(stream.subarray(at, at + 5));
+    assert.deepEqual(found, whole, `${name}: in small pieces`);
+    // A length the delimiter arrives ahead of proves the part was cut, too.
+    const declared = Buffer.concat([part(`Content-Length: ${whole.length}${CRLF}`), cut, Buffer.from(CRLF), part(), whole, tail]);
+    assert.deepEqual(firstJpegInMotionStream(declared, 'cam'), whole, `${name}: declared length`);
+  }
+
+  // A camera that appends a trailer after a whole picture still yields it.
+  const trailer = Buffer.from('TRAILER-0001');
+  const withTrailer = Buffer.concat([part(), whole, trailer, tail]);
+  assert.deepEqual(firstJpegInMotionStream(withTrailer, 'cam'), whole);
+  // Padding after the picture (NUL bytes, a blank line) is not a trailer.
+  const padded = Buffer.concat([part(), whole, Buffer.from([0, 0, 13, 10]), tail]);
+  assert.deepEqual(firstJpegInMotionStream(padded, 'cam'), whole);
+});
+
 test('CCTV upstream frame fetch accepts only raster image types and sends their canonical type', async () => {
   const frame = (contentType, body = 'frame') => {
     const state = { cancelled: false };
@@ -739,4 +823,236 @@ test('CCTV upstream frame fetch accepts only raster image types and sends their 
     assert.equal(result, null, String(contentType));
     assert.equal(state.cancelled, true, `${contentType}: body cancelled`);
   }
+});
+
+function multipartResponse(contentType, chunks, { onCancel = () => {} } = {}) {
+  let nextChunk = 0;
+  const body = new ReadableStream(
+    {
+      pull(controller) {
+        if (nextChunk >= chunks.length) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(chunks[nextChunk++]);
+      },
+      cancel() {
+        onCancel();
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  return new Response(body, {
+    status: 200,
+    headers: { 'Content-Type': contentType },
+  });
+}
+
+function jpegPart(boundary, body, contentType = 'image/jpeg', length = body.length) {
+  return Buffer.concat([
+    Buffer.from(
+      '--' +
+        boundary +
+        '\r\nContent-Type: ' +
+        contentType +
+        '\r\nContent-Length: ' +
+        length +
+        '\r\n\r\n',
+    ),
+    body,
+    Buffer.from('\r\n'),
+  ]);
+}
+
+// Fork: media.js keeps the fork's motion-JPEG reader, which takes the first
+// picture of any registered still that answers multipart (the Taiwan freeway
+// and highway bureau cameras in the international pack). Upstream's
+// per-source `allowMjpeg` flag is not carried, so these upstream cases pass
+// no flag, their fixtures open with a real JPEG marker (FF D8 FF), and a short
+// stream the reader consumes to its end has nothing left to cancel.
+test('CCTV upstream frame fetch extracts only the first JPEG from MJPEG', async () => {
+  const boundary = 'DIGIEVER';
+  const first = Buffer.from([0xff, 0xd8, 0xff, 0x11, 0x22, 0xff, 0xd9]);
+  const second = Buffer.from([0xff, 0xd8, 0xff, 0x33, 0x44, 0xff, 0xd9]);
+  for (const type of [
+    'multipart/x-mixed-replace; boundary=DIGIEVER',
+    'multipart/x-mixed-replace; boundary="DIGIEVER"',
+  ]) {
+    let cancelled = false;
+    const result = await fetchCctvImageFromUpstream(
+      'https://cctv-ss02.thb.gov.tw/T62-9K+020',
+      {
+        maxBytes: 1024,
+        fetchImpl: async () =>
+          multipartResponse(
+            type,
+            [
+              jpegPart(boundary, first),
+              jpegPart(boundary, second),
+              Buffer.from('--' + boundary + '--\r\n'),
+            ],
+            { onCancel: () => { cancelled = true; } },
+          ),
+      },
+    );
+    assert.equal(result?.contentType, 'image/jpeg', type);
+    assert.deepEqual(result?.body, first, type);
+    assert.equal(cancelled, true, type);
+  }
+});
+
+test('CCTV upstream frame fetch rejects malformed and non-JPEG MJPEG parts', async () => {
+  // The fork reads by the JPEG markers, not the part header: a part with no
+  // JPEG in it (here a PNG signature) is what gets rejected.
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  for (const [type, chunks] of [
+    ['multipart/x-mixed-replace', []],
+    [
+      'multipart/x-mixed-replace; boundary=DIGIEVER',
+      [jpegPart('DIGIEVER', png, 'image/png')],
+    ],
+  ]) {
+    const result = await fetchCctvImageFromUpstream(
+      'https://cctv-ss02.thb.gov.tw/T62-9K+020',
+      {
+        fetchImpl: async () => multipartResponse(type, chunks),
+      },
+    );
+    assert.equal(result, null, type);
+  }
+});
+
+test('CCTV upstream frame fetch rejects truncated or oversized MJPEG parts', async () => {
+  const boundary = 'DIGIEVER';
+  const full = Buffer.from([0xff, 0xd8, 0xff, 0x01, 0x02, 0xff, 0xd9]);
+  const truncated = Buffer.from([0xff, 0xd8, 0xff, 0x01, 0x02]);
+  for (const [chunks, maxBytes, hungUp] of [
+    [jpegPart(boundary, truncated, 'image/jpeg', full.length), 1024, false],
+    [jpegPart(boundary, full), 5, true],
+  ]) {
+    let cancelled = false;
+    const result = await fetchCctvImageFromUpstream(
+      'https://cctv-ss02.thb.gov.tw/T62-9K+020',
+      {
+        maxBytes,
+        fetchImpl: async () =>
+          multipartResponse(
+            'multipart/x-mixed-replace; boundary=' + boundary,
+            [chunks],
+            { onCancel: () => { cancelled = true; } },
+          ),
+      },
+    );
+    assert.equal(result, null);
+    if (hungUp) assert.equal(cancelled, true);
+  }
+});
+
+// Fork: the cut-short first part is dropped and the next whole part is the
+// picture (upstream gives up instead). Either way nothing is stitched across
+// the part delimiter.
+test('CCTV upstream frame fetch does not cross into a later part when the first JPEG is truncated', async () => {
+  const boundary = 'DIGIEVER';
+  const truncated = Buffer.from([0xff, 0xd8, 0xff, 0x01, 0x02]);
+  const valid = Buffer.from([0xff, 0xd8, 0xff, 0x03, 0x04, 0xff, 0xd9]);
+  const wire = Buffer.concat([
+    Buffer.from(
+      '--' + boundary + '\r\nContent-Type: image/jpeg\r\n\r\n',
+    ),
+    truncated,
+    Buffer.from(
+      '\r\n--' +
+        boundary +
+        '\r\nContent-Type: image/jpeg\r\nContent-Length: ' +
+        valid.length +
+        '\r\n\r\n',
+    ),
+    valid,
+    Buffer.from('\r\n--' + boundary + '--\r\n'),
+  ]);
+  const result = await fetchCctvImageFromUpstream(
+    'https://cctv-ss02.thb.gov.tw/T62-9K+020',
+    {
+      maxBytes: 1024,
+      fetchImpl: async () =>
+        multipartResponse('multipart/x-mixed-replace; boundary=' + boundary, [
+          wire,
+        ]),
+    },
+  );
+
+  assert.equal(result?.contentType, 'image/jpeg');
+  assert.deepEqual(result?.body, valid);
+});
+test('CCTV upstream frame fetch reads MJPEG from any registered still, with no per-source flag', async () => {
+  const boundary = 'DIGIEVER';
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x11, 0x22, 0xff, 0xd9]);
+  let cancelled = false;
+  const result = await fetchCctvImageFromUpstream(
+    'https://cctv-ss02.thb.gov.tw/T62-9K+020',
+    {
+      fetchImpl: async () =>
+        multipartResponse(
+          'multipart/x-mixed-replace; boundary=' + boundary,
+          [jpegPart(boundary, jpeg), jpegPart(boundary, jpeg)],
+          { onCancel: () => { cancelled = true; } },
+        ),
+    },
+  );
+  assert.deepEqual(result?.body, jpeg);
+  assert.equal(result?.contentType, 'image/jpeg');
+  assert.equal(cancelled, true);
+});
+
+test('CCTV upstream frame fetch accepts a CRLF preamble and a boundary that already starts with --', async () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x11, 0x22, 0xff, 0xd9]);
+  for (const [type, wire] of [
+    [
+      'multipart/x-mixed-replace; boundary=DIGIEVER',
+      Buffer.concat([Buffer.from('\r\n'), jpegPart('DIGIEVER', jpeg)]),
+    ],
+    [
+      'multipart/x-mixed-replace; boundary=--myboundary',
+      Buffer.concat([
+        Buffer.from(
+          '--myboundary\r\nContent-Type: image/jpeg\r\nContent-Length: ' +
+            jpeg.length +
+            '\r\n\r\n',
+        ),
+        jpeg,
+        Buffer.from('\r\n--myboundary\r\n'),
+      ]),
+    ],
+  ]) {
+    const result = await fetchCctvImageFromUpstream(
+      'https://cctv-ss02.thb.gov.tw/T62-9K+020',
+      {
+        fetchImpl: async () => multipartResponse(type, [wire]),
+      },
+    );
+    assert.deepEqual(result?.body, jpeg, type);
+  }
+});
+
+test('CCTV MJPEG part without Content-Length ends at the next delimiter, not at an inner JPEG end marker', async () => {
+  const boundary = 'DIGIEVER';
+  // An EXIF thumbnail's own FF D9 sits inside the image.
+  const jpeg = Buffer.from([
+    0xff, 0xd8, 0xff, 0x01, 0xff, 0xd9, 0x02, 0x03, 0xff, 0xd9,
+  ]);
+  const wire = Buffer.concat([
+    Buffer.from('--' + boundary + '\r\nContent-Type: image/jpeg\r\n\r\n'),
+    jpeg,
+    Buffer.from('\r\n--' + boundary + '\r\nContent-Type: image/jpeg\r\n\r\n'),
+  ]);
+  // Delivered one byte at a time, as a trickling upstream would.
+  const chunks = [...wire].map((byte) => Buffer.from([byte]));
+  const result = await fetchCctvImageFromUpstream(
+    'https://cctv-ss02.thb.gov.tw/T62-9K+020',
+    {
+      fetchImpl: async () =>
+        multipartResponse('multipart/x-mixed-replace; boundary=' + boundary, chunks),
+    },
+  );
+  assert.deepEqual(result?.body, jpeg);
 });

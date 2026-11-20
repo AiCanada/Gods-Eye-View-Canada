@@ -1,149 +1,142 @@
-import { createRendering as createFirmsRendering } from '../layers/firms/rendering.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import {
-  SPRITE_LAYER_ORDER,
-  registerSpriteCollection,
-  restoreSpriteOrder,
-  restoreSpriteOrderOnEnable,
-  unregisterSpriteCollection,
-} from './spriteOrder.js';
-import flightsLayer from './flights.js';
-import aisLiveVesselsLayer from './aisLiveVessels.js';
-import { createFirmsHeatmapLayer } from './firmsHeatmap.js';
-import trafficLayer from './traffic.js';
+import * as sprites from './spriteOrder.js';
+import { SPRITE_LAYER_ORDER, spriteDrawOrder } from './spriteOrder.js';
+import { createAircraftIcons } from './aircraftIconLayer.js';
+import { createRendering as createBikeshareRendering } from '../layers/bikeshare/rendering.js';
+import { createRendering as createCctvRendering } from '../layers/cctv/rendering.js';
+import { createRendering as createFirmsRendering } from '../layers/firms/rendering.js';
+import { bindFakeDraw } from '../testSupport/fakeDrawPort.mjs';
 
-// Upstream's order (transit between bike share and directions; Wildlife
-// Sightings badges, #1591, just above FIRMS) with the fork's CCTV monitor
-// plane and traffic above CCTV.
-const ORDER = ['cctv', 'cctv-projection', 'traffic', 'firms', 'wildlife-sightings', 'bikeshare', 'transit', 'transit-motion', 'directions', 'ais', 'military', 'flights'];
-
-function makePrimitives(initial = []) {
-  return {
-    items: [...initial],
-    calls: [],
-    contains(collection) { return this.items.includes(collection); },
-    raiseToTop(collection) {
-      this.calls.push(collection.id);
-      const index = this.items.indexOf(collection);
-      if (index >= 0) this.items.splice(index, 1);
-      this.items.push(collection);
-    },
-  };
-}
-
-function makeCollection(id, destroyed = false) {
-  return { id, isDestroyed: () => destroyed };
-}
-
-test('restoreSpriteOrder raises live collections bottom-to-top and skips destroyed entries', () => {
-  const collections = Object.fromEntries(ORDER.map((id) => [id, makeCollection(id)]));
-  const destroyedFirms = makeCollection('firms', true);
-  for (const id of ORDER) {
-    registerSpriteCollection(id, id === 'firms' ? destroyedFirms : collections[id]);
-  }
-  const primitives = makePrimitives([
-    collections.flights,
-    collections.ais,
-    collections.cctv,
-    collections.traffic,
-    collections.bikeshare,
-    collections.military,
-  ]);
-
-  restoreSpriteOrder({ scene: { primitives } });
-
-  assert.deepEqual(primitives.calls, ['cctv', 'traffic', 'bikeshare', 'ais', 'military', 'flights']);
-  assert.deepEqual(primitives.items.map((item) => item.id), [
-    'cctv', 'traffic', 'bikeshare', 'ais', 'military', 'flights',
-  ]);
-
-  for (const id of ORDER) unregisterSpriteCollection(id);
-});
-
-test('late CCTV registration still restores flights above the ambient collection', () => {
-  const flights = makeCollection('flights');
-  const cctv = makeCollection('cctv');
-  const primitives = makePrimitives([flights]);
-  const viewer = { scene: { primitives } };
-
-  registerSpriteCollection('flights', flights);
-  restoreSpriteOrder(viewer);
-  primitives.items.push(cctv); // CCTV enabled after flights: it starts on top.
-  registerSpriteCollection('cctv', cctv);
-  primitives.calls.length = 0;
-
-  restoreSpriteOrder(viewer);
-
-  assert.deepEqual(primitives.calls, ['cctv', 'flights']);
-  assert.deepEqual(primitives.items.map((item) => item.id), ['cctv', 'flights']);
-
-  unregisterSpriteCollection('cctv', cctv);
-  unregisterSpriteCollection('flights', flights);
-});
-
-test('restoreSpriteOrder is inert for destroyed viewers and primitive collections', () => {
-  const flights = makeCollection('flights');
-  const primitives = makePrimitives([flights]);
-  registerSpriteCollection('flights', flights);
-
-  restoreSpriteOrder({ isDestroyed: () => true, scene: { primitives } });
-  restoreSpriteOrder({ scene: { primitives: { ...primitives, isDestroyed: () => true } } });
-
-  assert.deepEqual(primitives.calls, []);
-  unregisterSpriteCollection('flights', flights);
-});
-
-test('restoreSpriteOrder never raises a registered collection absent from scene primitives', () => {
-  const flights = makeCollection('flights');
-  const primitives = makePrimitives([]);
-  registerSpriteCollection('flights', flights);
-
-  restoreSpriteOrder({ scene: { primitives } });
-
-  assert.deepEqual(primitives.calls, []);
-  assert.deepEqual(primitives.items, []);
-  unregisterSpriteCollection('flights', flights);
-});
+// Upstream's order (shipwrecks at the bottom, transit between bike share and
+// directions, rail after transit, Wildlife Sightings badges just above FIRMS)
+// with the fork's traffic above CCTV.
+const ORDER = [
+  'shipwrecks',
+  'cctv',
+  'traffic',
+  'firms',
+  'wildlife-sightings',
+  'bikeshare',
+  'transit',
+  'transit-motion',
+  'rail',
+  'directions',
+  'ais',
+  'military',
+  'flights',
+];
 
 test('traffic sits above CCTV so vehicles draw through camera sprites', () => {
   assert.deepEqual([...SPRITE_LAYER_ORDER], ORDER);
-  assert.ok(SPRITE_LAYER_ORDER.indexOf('cctv-projection') > SPRITE_LAYER_ORDER.indexOf('cctv'));
-  assert.ok(SPRITE_LAYER_ORDER.indexOf('traffic') > SPRITE_LAYER_ORDER.indexOf('cctv-projection'));
+  assert.ok(spriteDrawOrder('traffic') > spriteDrawOrder('cctv'));
   assert.equal(SPRITE_LAYER_ORDER[SPRITE_LAYER_ORDER.length - 1], 'flights');
-  // Traffic's frame loop lives in its animation module since upstream's layer split.
-  const trafficSrc = readFileSync(fileURLToPath(new URL('../layers/traffic/animation.js', import.meta.url)), 'utf8');
-  assert.match(trafficSrc, /function animate\(\) \{[\s\S]*?restoreSpriteOrder\?\.\(layerState\._viewer\)/);
-  // The monitor plane is built by the CCTV layer's projection component.
-  const cctvSrc = readFileSync(fileURLToPath(new URL('../layers/cctv/projection.js', import.meta.url)), 'utf8');
-  assert.match(cctvSrc, /transparent:\s*false/);
-  assert.match(cctvSrc, /registerSpriteCollection\(\s*'cctv-projection'/);
-  assert.match(cctvSrc, /rs\.depthMask = false/);
+  // The placement is only real if the layers make their sets with it: the
+  // traffic dots and the camera icons each ask for their own key.
+  const read = (file) => readFileSync(new URL(file, import.meta.url), 'utf8');
+  assert.ok(
+    read('../layers/traffic/lifecycle.js').includes(
+      "drawOrder: sprites?.spriteDrawOrder?.('traffic')",
+    ),
+    'the traffic dots ask for their place',
+  );
+  assert.ok(
+    read('../layers/cctv/rendering.js').includes(
+      "drawOrder: services.sprites?.spriteDrawOrder?.('cctv')",
+    ),
+    'the camera icons ask for theirs',
+  );
+  // The monitor plane takes no key: a draw order does not rank a
+  // depth-tested quad (src/render/contract/draw.d.ts).
+  assert.equal(SPRITE_LAYER_ORDER.includes('cctv-projection'), false);
 });
 
-test('flights, AIS, FIRMS, and traffic enable paths are wired through the shared sprite restorer', () => {
-  const viewer = { id: 'viewer' };
-  const calls = [];
-  const restoreSpy = (value) => calls.push(value);
-  for (const layerId of ['flights', 'ais', 'firms', 'traffic']) {
-    restoreSpriteOrderOnEnable(layerId, viewer, restoreSpy);
-  }
-  assert.deepEqual(calls, [viewer, viewer, viewer, viewer]);
+test('each sprite layer draws at its place in the order, flights on top', () => {
+  assert.deepEqual(
+    SPRITE_LAYER_ORDER.map(spriteDrawOrder),
+    SPRITE_LAYER_ORDER.map((_, i) => i - SPRITE_LAYER_ORDER.length),
+  );
+  assert.equal(
+    Math.max(...SPRITE_LAYER_ORDER.map(spriteDrawOrder)),
+    spriteDrawOrder('flights'),
+  );
+  assert.ok(spriteDrawOrder('military') > spriteDrawOrder('ais'));
+  assert.ok(spriteDrawOrder('ais') > spriteDrawOrder('transit'));
+  assert.ok(spriteDrawOrder('transit') > spriteDrawOrder('cctv'));
+  // Any other layer stays at the default, over every sprite layer.
+  assert.equal(spriteDrawOrder('flights'), -1);
+  assert.equal(spriteDrawOrder('street-level:marker'), 0);
+  assert.equal(spriteDrawOrder(undefined), 0);
+});
 
-  const firmsLayer = createFirmsHeatmapLayer({ id: 'firms', name: 'FIRMS' });
-  assert.match(flightsLayer.enable.toString(), /restoreSpriteOrderOnEnable\('flights', viewer\)/);
-  assert.match(aisLiveVesselsLayer.enable.toString(), /restoreSpriteOrderOnEnable\('ais', activeViewer\)/);
-  assert.match(firmsLayer.enable.toString(), /restoreSpriteOrderOnEnable\('firms', viewer\)/);
-  // Traffic's enable lives in its lifecycle module since upstream's layer split.
-  assert.match(
-    readFileSync(new URL('../layers/traffic/lifecycle.js', import.meta.url), 'utf8'),
-    /restoreSpriteOrderOnEnable\?\.\('traffic', viewer\)/,
+/** A viewer double with a fake draw port, unbound after the test. */
+function drawnViewer(t) {
+  const viewer = {};
+  const { draw, unbind } = bindFakeDraw(viewer);
+  t.after(unbind);
+  return { viewer, draw };
+}
+
+test('flights and military make their icon sets at their draw orders', (t) => {
+  const { viewer, draw } = drawnViewer(t);
+  for (const layerId of ['flights', 'military']) {
+    const icons = createAircraftIcons({
+      state: {},
+      services: { focus: { focusPassIsNeeded: () => false }, sprites },
+      parts: {},
+      layerId,
+      renderDelaySec: 0,
+      courseMaxDps: 1,
+      cockpitContactSizePx: 4,
+    });
+    const id = icons._createIcons(viewer);
+    assert.equal(draw.set(id).spec.drawOrder, spriteDrawOrder(layerId));
+    icons._disposeIcons();
+  }
+});
+
+test('CCTV, FIRMS and bikeshare make their sprite sets at their draw orders', (t) => {
+  const { viewer, draw } = drawnViewer(t);
+  const cctv = createCctvRendering({
+    state: {},
+    services: { focus: {}, sprites },
+    parts: {},
+    source: {},
+  });
+  const cctvId = cctv.createCameraIcons(viewer);
+  assert.equal(draw.set(cctvId).spec.drawOrder, spriteDrawOrder('cctv'));
+  cctv.destroyCameraIcons();
+
+  const layerState = { _viewer: viewer, _enabled: true };
+  const firms = createFirmsRendering({
+    layerState,
+    services: { anchors: {}, sprites },
+    components: {},
+    config: {
+      overlayHost: { setVisible() {}, clearSource() {} },
+    },
+  });
+  firms.ensureDetectionCollections();
+  assert.equal(
+    draw.set(layerState._icons.id).spec.drawOrder,
+    spriteDrawOrder('firms'),
   );
-  assert.match(
-    createFirmsRendering.toString(),
-    /registerSpriteCollection\('firms', layerState\._billboards\);\s*restoreSpriteOrder\(layerState\._viewer\);/,
-    'lazy FIRMS registration must restore order immediately',
+  firms.removeDetectionCollections();
+
+  const bikeState = {};
+  const bikeshare = createBikeshareRendering({
+    state: bikeState,
+    services: { render: {}, sprites },
+    parts: {},
+    source: {},
+  });
+  bikeshare.attachSets(viewer);
+  assert.equal(
+    draw.set(bikeState._stationSet.id).spec.drawOrder,
+    spriteDrawOrder('bikeshare'),
   );
+  // The selected station's highlight is not a sprite layer.
+  assert.equal(draw.set(bikeState._selectedSet.id).spec.drawOrder, undefined);
+  bikeshare.detachSets();
 });

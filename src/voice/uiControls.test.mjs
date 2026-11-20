@@ -1124,10 +1124,13 @@ test('every keyboard shortcut has a spoken way in, so a phone without keys loses
   const markup = await renderApplicationHtml(
     '<div class="gev-view" data-gev-view="display-controls"></div>',
   );
+  // Kit buttons (UiButton) render their attributes in any order.
   const toggle = markup.match(
-    /<button[^>]*id="clean-view-toggle"[^>]*title="([^"]+)"[^>]*>[\s\S]*?<span class="pp-label"[^>]*>([^<]+)<\/span>/,
+    /<button(?=[^>]*\bid="clean-view-toggle")(?=[^>]*\btitle="([^"]+)")[^>]*>[\s\S]*?<span class="pp-label"[^>]*>([^<]+)<\/span>/,
   );
-  const exit = markup.match(/<button id="clean-view-exit"[^>]*>([^<]+)</);
+  const exit = markup.match(
+    /<button(?=[^>]*\bid="clean-view-exit")[^>]*>([^<]+)</,
+  );
   assert.ok(toggle && exit, 'both clean-view buttons are in the markup');
   const doc = { defaultView: { Event: FakeEvent, KeyboardEvent: FakeEvent } };
   const make = (tag, attrs, text) => new FakeElement(doc, tag, attrs, text);

@@ -14,6 +14,7 @@ import {
 } from './constants.js';
 import { realtimeInstructions } from './instructions.js';
 import { GEV_REALTIME_TOOLS, offeredTools } from './tools.js';
+import { chatSchema } from './chat.js';
 import { resolveOverpassUpstreams } from '../overpass/constants.js';
 import {
   LOCAL_PROVIDER_CHANGED_MESSAGE,
@@ -150,6 +151,19 @@ function createRealtimeOAuthLoginHandler({
   };
 }
 
+/**
+ * The tools one Realtime session is offered, as OpenAI accepts them: it now
+ * refuses a whole session whose tool schema uses `\p{…}` patterns (#1618), as
+ * Chat Completions did (#1616), so voice drops the same pattern hints chat does.
+ */
+function realtimeSessionTools(tools, { overpass = false } = {}) {
+  return offeredTools(tools, { overpass }).map((tool) =>
+    tool.parameters
+      ? { ...tool, parameters: chatSchema(tool.parameters) }
+      : tool,
+  );
+}
+
 function createRealtimeTokenHandler({
   annotationGuidance,
   endpoint = 'https://api.openai.com/v1/realtime/client_secrets',
@@ -252,7 +266,12 @@ function createRealtimeTokenHandler({
       if (!bearer) {
         res.statusCode = 503;
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'OPENAI_API_KEY is not set' }));
+        res.end(
+          JSON.stringify({
+            error: 'OPENAI_API_KEY is not set',
+            code: 'API_KEY_MISSING',
+          }),
+        );
         return;
       }
     }
@@ -331,7 +350,7 @@ function createRealtimeTokenHandler({
           output: { voice },
         },
         instructions: realtimeInstructions(annotationGuidance, { overpass }),
-        tools: offeredTools(tools, { overpass }),
+        tools: realtimeSessionTools(tools, { overpass }),
         tool_choice: 'auto',
       },
     };
@@ -398,4 +417,5 @@ export {
   createRealtimeOAuthLoginHandler,
   createRealtimeOAuthStatusHandler,
   createRealtimeTokenHandler,
+  realtimeSessionTools,
 };

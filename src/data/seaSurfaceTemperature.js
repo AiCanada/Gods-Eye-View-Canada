@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { viewerBehind } from '../render/cesium/viewers.js';
 import {
   DEFAULT_SST_FRONT_SENSITIVITY,
   DEFAULT_SST_PRODUCT_ID,
@@ -91,16 +92,20 @@ export function sstFrontsLabel(meta, frontsEnabled) {
  * its on/off state is never saved. Nothing is requested until the box is
  * opened or the layer is turned on.
  *
+ * `viewer` is the scene host the app hands its tools (or a Cesium viewer);
+ * the imagery, camera and scene events below are the Cesium viewer's behind it.
+ *
  * @returns {Function} Removes the layers and every listener.
  */
 export function initSeaSurfaceTemperaturePanel({
-  viewer,
+  viewer: host,
   documentRef = globalThis.document,
   windowRef = globalThis.window,
   fetchImpl = (...args) => globalThis.fetch(...args),
   now = Date.now,
   apiBase = '',
 } = {}) {
+  const viewer = viewerBehind(host);
   const byId = (id) => documentRef?.getElementById?.(id) || null;
   const panel = byId('sst-panel');
   const button = byId('sst-enable-btn');

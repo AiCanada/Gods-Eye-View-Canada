@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as Cesium from 'cesium';
+import { fromDegrees } from '../geo/ellipsoid.js';
+import { bindFakeDraw } from '../testSupport/fakeDrawPort.mjs';
 import bikeshareLayer, {
   BIKESHARE_SELECTED_OVERLAY_SOURCE_OPTIONS,
   _clearBikeshareSelectionForTest,
@@ -23,17 +24,17 @@ function makeRecord() {
     isInstalled: true,
     isRenting: false,
     isReturning: true,
-    point: {
-      position: Cesium.Cartesian3.fromDegrees(-97.7431, 30.2672, 2),
-      show: true,
-    },
+    key: 'austin-capmetro:3790',
+    position: fromDegrees(-97.7431, 30.2672, 2),
+    pixelSize: 8,
+    color: [0, 1, 0, 1],
   };
 }
 
 test('selected bikeshare entry preserves source copy and protected-lane policy', () => {
   const record = makeRecord();
   const entry = createBikeshareSelectedOverlayEntry('austin-capmetro:3790', record);
-  assert.equal(entry.position, record.point.position);
+  assert.equal(entry.position, record.position);
   assert.equal(entry.title, 'Congress & 6th');
   assert.deepEqual(entry.details, [
     '🚲 7 avail · 4 docks · 11 cap',
@@ -48,7 +49,7 @@ test('selected bikeshare entry preserves source copy and protected-lane policy',
   assert.equal(entry.horizonCull, true);
 });
 
-test('real station select/clear path publishes one card and creates no native label graphic', () => {
+test('real station select/clear path publishes one card and draws no native label', () => {
   const calls = [];
   const overlayHost = {
     setEntries: (...args) => calls.push(['entries', ...args]),
@@ -57,28 +58,37 @@ test('real station select/clear path publishes one card and creates no native la
   };
   const key = 'austin-capmetro:3790';
   const record = makeRecord();
-  const viewer = { entities: new Cesium.EntityCollection() };
+  const viewer = {};
+  const { draw, unbind } = bindFakeDraw(viewer);
   _setBikeshareSelectionStateForTest({ viewer, key, record, overlayHost });
+  const live = (suffix) =>
+    [...draw.sets.values()].find((set) => !set.disposed && set.spec.id.endsWith(suffix));
+  const stations = live(':stations');
+  const selected = live(':selected');
   try {
     _selectBikeshareStationForTest(key);
-    assert.equal(record.point.show, false);
-    assert.equal(viewer.entities.values.length, 1, 'runtime guard requires a real selected entity');
-    assert.equal(viewer.entities.values[0].label, undefined);
-    assert.ok(viewer.entities.values[0].point, 'selected point highlight remains native');
+    assert.equal(stations.items.get(key).show, false, 'the station’s own dot is hidden');
+    assert.equal(selected.items.size, 1, 'one highlight dot replaces it');
+    const [highlight] = selected.items.values();
+    assert.equal(highlight.pos, record.position);
+    assert.deepEqual(highlight.color, [0, 1, 1, 1], 'cyan');
+    assert.equal(highlight.pixelSize, 14);
+    assert.equal(highlight.disableDepthTest, Infinity);
 
     const publication = calls.find(([type]) => type === 'entries');
     assert.ok(publication);
     assert.equal(publication[1], 'bikeshare-selected');
     assert.equal(publication[2].length, 1);
-    assert.equal(publication[2][0].position, record.point.position);
+    assert.equal(publication[2][0].position, record.position);
     assert.deepEqual(publication[3], BIKESHARE_SELECTED_OVERLAY_SOURCE_OPTIONS);
 
     _clearBikeshareSelectionForTest();
-    assert.equal(record.point.show, true);
-    assert.equal(viewer.entities.values.length, 0);
+    assert.equal(stations.items.get(key).show, true);
+    assert.equal(selected.items.size, 0);
     assert.deepEqual(calls.at(-1), ['clear', 'bikeshare-selected']);
   } finally {
     _clearBikeshareSelectionForTest();
+    unbind();
   }
 });
 
@@ -154,26 +164,40 @@ function gbfsStatusPayload(stations, bikes) {
   };
 }
 
-/** Camera looking straight down at a place from the given height. */
+/**
+ * A viewer looking straight down at a place from the given height, on the
+ * renderer's draw and camera ports.
+ */
 function makeViewer(place, heightM) {
-  const viewer = {
-    entities: new Cesium.EntityCollection(),
-    scene: { globe: { ellipsoid: Cesium.Ellipsoid.WGS84 } },
+  const viewer = {};
+  const pose = { lat: 0, lon: 0, height: Infinity };
+  let rect = null;
+  const { draw } = bindFakeDraw(viewer, {
     camera: {
-      positionCartographic: null,
-      computeViewRectangle: () => {
-        const { lat, lon } = viewer.camera.lookAt;
-        return Cesium.Rectangle.fromDegrees(lon - 0.2, lat - 0.2, lon + 0.2, lat + 0.2);
-      },
+      pose: () => ({ ...pose }),
+      viewRectangle: () => (rect ? { ...rect } : null),
+      on: () => () => {},
     },
+  });
+  viewer.draw = draw;
+  viewer.moveTo = (next, height) => {
+    Object.assign(pose, { lat: next.lat, lon: next.lon, height });
+    rect = { west: next.lon - 0.2, south: next.lat - 0.2, east: next.lon + 0.2, north: next.lat + 0.2 };
   };
   moveCamera(viewer, place, heightM);
   return viewer;
 }
 
 function moveCamera(viewer, place, heightM) {
-  viewer.camera.lookAt = place;
-  viewer.camera.positionCartographic = Cesium.Cartographic.fromDegrees(place.lon, place.lat, heightM);
+  viewer.moveTo(place, heightM);
+}
+
+/** The items in the viewer's live bikeshare draw set ending in `suffix`. */
+function liveSetItems(viewer, suffix) {
+  const set = [...viewer.draw.sets.values()].find(
+    (record) => !record.disposed && record.spec.id.endsWith(suffix),
+  );
+  return set ? [...set.items.values()] : [];
 }
 
 function makeOverlayHost() {
@@ -255,7 +279,7 @@ test('location leave cancels old feeds, releases far cities and their caches, an
     assert.equal(after.pointCount, 3);
     assert.equal(after.count, 3);
     assert.equal(after.selectedKey, null, 'a selection in a released city is cleared');
-    assert.equal(viewer.entities.values.length, 0);
+    assert.equal(liveSetItems(viewer, ':selected').length, 0, 'no selection highlight is left');
     assert.deepEqual(overlayHost.calls.at(-1), ['clear', 'bikeshare-selected']);
     await poll;
 

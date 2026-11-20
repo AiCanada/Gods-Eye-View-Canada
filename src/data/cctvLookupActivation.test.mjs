@@ -144,9 +144,11 @@ test('selectCamera sends exactly one lookup POST per camera, and a resolved stil
   await waitFor(() => cctvLayer.getCameraState('lookup-0').lookupState === 'resolved');
   active = cctvLayer.getUIState().activeCamera;
   assert.equal(active.feedType, 'image');
-  assert.match(active.frameUrl, /^\/api\/cctv\/frame\/lookup-0\?ts=\d+&active=1$/);
+  // The pose the browser draws rides along for the Street View fallback; the
+  // position never does (source.js).
+  assert.match(active.frameUrl, /^\/api\/cctv\/frame\/lookup-0\?(?:[^&]+&)*ts=\d+&active=1$/);
   const planeImage = _cctvRecordForTest('lookup-0').projection.image;
-  assert.match(planeImage.src, /^\/api\/cctv\/frame\/lookup-0\?ts=\d+&active=1&projTs=\d+$/);
+  assert.match(planeImage.src, /^\/api\/cctv\/frame\/lookup-0\?(?:[^&]+&)*ts=\d+&active=1&projTs=\d+$/);
 
   assert.equal(cctvLayer.selectCamera('lookup-0'), true);
   assert.equal(server.calls.lookups.length, 1, 'a resolved camera is never looked up again');
@@ -190,7 +192,7 @@ test('a camera with no public still never creates an Image or requests a frame f
   await sleep(700);
   const requested = images.map((image) => image.src).filter(Boolean);
   assert.ok(
-    requested.some((src) => /^\/api\/cctv\/frame\/still-1\?ts=\d+$/.test(src)),
+    requested.some((src) => /^\/api\/cctv\/frame\/still-1\?(?:[^&]+&)*ts=\d+$/.test(src)),
     `the card pacer fetched still-1 without active=1 (${requested.join(', ')})`,
   );
   assert.ok(requested.every((src) => !src.includes('lookup-')), 'nothing is requested for a camera with no still');

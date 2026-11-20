@@ -6,7 +6,7 @@ import { greatCircleKm } from '../../geoDistance.js';
 // would blank the destination's sky for a poll plus RENDER_DELAY_SEC. What goes
 // is what was built for the view being left. Fleet models are hidden at once
 // and freed through the fleet tick in bounded slices (a synchronous sweep of
-// 350 GPU-backed models stalls the render thread, see the IR reload queue).
+// 350 GPU-backed models stalls the render thread).
 // While the camera flies, the tick admits no new models and update() skips its
 // view-anchored work (ambient enrichment, floor warm, mesh sampling, and the
 // fetch itself on the camera-anchored fallback). Arrival resumes all of it at
@@ -76,10 +76,7 @@ export function createLocationSwitch({ flightState, parts }) {
     if (!flightState._cockpitNearContacts.size) return;
     const previous = flightState._cockpitNearContacts;
     flightState._cockpitNearContacts = new Set();
-    for (const icao24 of previous) {
-      const bb = flightState._billboards.get(icao24);
-      if (bb) parts.rendering._applyFleetBillboardPresentation(icao24, bb);
-    }
+    for (const icao24 of previous) parts.icons._applyIconPresentation(icao24);
     flightState._lastCamPoseSig = '';
   }
 
@@ -87,14 +84,16 @@ export function createLocationSwitch({ flightState, parts }) {
    * Hide every fleet model built for the view being left and queue it for the
    * batched release. Models whose contact already sits within the keep radius of
    * the destination stay; the tick keeps or drops them on arrival as usual.
-   * In-flight loads are invalidated now (cheap generation bumps).
+   * A model still loading is an admitted record like any other, so it is
+   * queued with the rest and never shown.
    * @param {{lat?: number, lon?: number}|null} to - Destination of the switch.
    */
   function _queueLocationModelRelease(to) {
     const point = _locationPoint(to);
     const keepKm = parts.rendering._modelKeepDistM() / 1000;
     const queue = flightState._locationReleaseQueue || new Set();
-    for (const [icao24, model] of flightState._models) {
+    const hide = [];
+    for (const icao24 of flightState._models.keys()) {
       const info = point ? flightState.records.data.get(icao24) : null;
       if (
         info &&
@@ -104,17 +103,10 @@ export function createLocationSwitch({ flightState, parts }) {
       )
         continue;
       queue.add(icao24);
-      if (model) model.show = false;
-      const bb = flightState._billboards.get(icao24);
-      if (bb && icao24 !== flightState._trackedIcao) bb.show = true; // gap-proof: the icon is back before the model goes
+      hide.push(icao24);
     }
-    for (const icao24 of flightState._modelPending) {
-      if (!flightState._models.has(icao24))
-        flightState._modelGen.set(
-          icao24,
-          (flightState._modelGen.get(icao24) || 0) + 1,
-        );
-    }
+    // Gap-proof: each icon is back before its model goes.
+    parts.rendering._hideFleetModels(hide);
     flightState._locationReleaseQueue = queue.size ? queue : null;
   }
 
@@ -122,34 +114,15 @@ export function createLocationSwitch({ flightState, parts }) {
   function _drainLocationReleaseQueue() {
     const queue = flightState._locationReleaseQueue;
     if (!queue) return;
-    let released = 0;
+    const slice = [];
     for (const icao24 of queue) {
-      if (released >= LOCATION_MODEL_RELEASE_BATCH) break;
+      if (slice.length >= LOCATION_MODEL_RELEASE_BATCH) break;
       queue.delete(icao24);
       if (!flightState._models.has(icao24)) continue; // already gone (aged out, suppressed, regime exit)
-      parts.rendering._releaseModel(icao24);
-      released += 1;
+      slice.push(icao24);
     }
+    parts.rendering._releaseModelsOf(slice); // one set write for the slice
     if (queue.size === 0) flightState._locationReleaseQueue = null;
-  }
-
-  /**
-   * Remove one contact and everything this layer holds for it (billboard, model,
-   * metadata, history, display caches). Mirrors the snapshot renderer's aged-out
-   * removal. Callers clear tracking first when the contact is the tracked one.
-   * @param {string} icao24 - ICAO 24-bit transponder address.
-   * @param {object} bb - The contact's fleet billboard.
-   */
-  function _forgetContact(icao24, bb) {
-    flightState._billboardCollection?.remove(bb);
-    flightState._billboards.delete(icao24);
-    parts.rendering._releaseModel(icao24); // no orphaned model, no cap leak
-    flightState.records.forget(icao24);
-    flightState._cullPositions.delete(icao24);
-    flightState._positionHistory.delete(icao24);
-    flightState._displayCourse.delete(icao24);
-    flightState._groundSnap.forget(icao24);
-    flightState._displayFloorState.delete(icao24);
   }
 
   /**
@@ -166,7 +139,7 @@ export function createLocationSwitch({ flightState, parts }) {
     const radiusKm =
       REGIONAL_FALLBACK_RADIUS_NM * 1.852 + REGIONAL_FALLBACK_ANCHOR_SLACK_KM;
     const evict = [];
-    for (const [icao24, bb] of flightState._billboards) {
+    for (const icao24 of flightState._icons?.ids() ?? []) {
       if (icao24 === flightState._trackedIcao) continue; // a follow that survived navigation is not ours to drop
       const info = flightState.records.data.get(icao24);
       if (!Number.isFinite(info?.rawLat) || !Number.isFinite(info?.rawLon))
@@ -174,10 +147,12 @@ export function createLocationSwitch({ flightState, parts }) {
       if (
         greatCircleKm(point, { lat: info.rawLat, lon: info.rawLon }) > radiusKm
       )
-        evict.push([icao24, bb]);
+        evict.push(icao24);
     }
-    for (const [icao24, bb] of evict) _forgetContact(icao24, bb);
-    flightState.feed._count = flightState._billboards.size;
+    // Each goes as an aged-out contact does: its icon row, 3D model,
+    // record, history and display caches (the icons part owns that).
+    for (const icao24 of evict) parts.icons._forgetContact(icao24);
+    flightState.feed._count = flightState._icons?.count ?? 0;
     return evict.length;
   }
 
@@ -279,7 +254,6 @@ export function createLocationSwitch({ flightState, parts }) {
     _resetCockpitNearContacts,
     _queueLocationModelRelease,
     _drainLocationReleaseQueue,
-    _forgetContact,
     _evictOutsideRegionalFallback,
   };
 }

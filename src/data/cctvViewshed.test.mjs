@@ -62,14 +62,26 @@ test('cameraHue: consecutive indices separated by >= 80 degrees', () => {
 test('viewshedColors: fill/line pairs with the designed alphas', () => {
   const colors = viewshedColors(210);
   for (const key of ['fill', 'fillActive', 'line', 'lineActive']) {
-    assert.ok(colors[key] instanceof Cesium.Color, `${key} must be a Cesium.Color`);
+    assert.ok(Array.isArray(colors[key]) && colors[key].length === 4, `${key} must be a renderer colour`);
   }
-  assert.ok(Math.abs(colors.fill.alpha - 0.12) < 1e-6);
-  assert.ok(Math.abs(colors.fillActive.alpha - 0.22) < 1e-6);
-  assert.ok(Math.abs(colors.line.alpha - 0.85) < 1e-6);
-  assert.ok(Math.abs(colors.lineActive.alpha - 1.0) < 1e-6);
+  assert.ok(Math.abs(colors.fill[3] - 0.12) < 1e-6);
+  assert.ok(Math.abs(colors.fillActive[3] - 0.22) < 1e-6);
+  assert.ok(Math.abs(colors.line[3] - 0.85) < 1e-6);
+  assert.ok(Math.abs(colors.lineActive[3] - 1.0) < 1e-6);
   // Same hue family: fill and line of the same hue must not be gray.
-  assert.ok(colors.line.red !== colors.line.green || colors.line.green !== colors.line.blue);
+  assert.ok(colors.line[0] !== colors.line[1] || colors.line[1] !== colors.line[2]);
+});
+
+test('viewshedColors: the same colours the renderer derived from the hue', () => {
+  const asArray = (c) => [c.red, c.green, c.blue, c.alpha];
+  for (const hueDeg of [0, 137.5, 210, 359.9, -30]) {
+    const hue = (((hueDeg % 360) + 360) % 360) / 360;
+    const colors = viewshedColors(hueDeg);
+    assert.deepEqual(colors.fill, asArray(Cesium.Color.fromHsl(hue, 0.85, 0.6, 0.12)));
+    assert.deepEqual(colors.fillActive, asArray(Cesium.Color.fromHsl(hue, 0.85, 0.6, 0.22)));
+    assert.deepEqual(colors.line, asArray(Cesium.Color.fromHsl(hue, 0.9, 0.65, 0.85)));
+    assert.deepEqual(colors.lineActive, asArray(Cesium.Color.fromHsl(hue, 0.9, 0.7, 1.0)));
+  }
 });
 
 /** Minimal frustumCartesians-shaped fixture. */
@@ -125,14 +137,4 @@ test('frustumVolumeGeometryData: no NaN for a tight (probe-clamped) pyramid', ()
   };
   const { positions: flat } = frustumVolumeGeometryData(near);
   for (const v of flat) assert.ok(Number.isFinite(v));
-});
-
-test('viewshed volume draws in the opaque pass without depth writes so traffic reads on top', async () => {
-  const { createFrustumVolumeAppearance } = await import('./cctvViewshed.js');
-  const appearance = createFrustumVolumeAppearance();
-  assert.equal(appearance.translucent, false, 'a translucent-pass volume blends over the dots inside it');
-  const rs = appearance.getRenderState();
-  assert.equal(rs.depthMask, false, 'must not occlude sprites behind its faces');
-  assert.ok(rs.blending?.enabled, 'still see-through: it blends its own alpha');
-  assert.equal(rs.cull.enabled, false);
 });

@@ -119,6 +119,7 @@ test('the tray presents its cities, empty status and no landmarks at first', () 
     searchError: null,
     searchExpanded: false,
     searching: false,
+    searchOrigin: 'dock',
     orbit: null,
   });
   f.controls.highlightCity('b');
@@ -257,6 +258,16 @@ test('the dock draws the shortcut pills, then the saved sites, then the cities',
   assert.match(dock, /:data-site-kind="pill\.kind \|\| undefined"/);
 });
 
+test('POI keys held with Cmd, Ctrl or Alt run no POI; Shift still does', () => {
+  const f = fixture();
+  const target = { matches: () => false };
+  for (const modifier of ['metaKey', 'ctrlKey', 'altKey'])
+    for (const key of ['q', 'w', 'r', 'R'])
+      f.doc.fire('keydown', { key, target, [modifier]: true });
+  assert.deepEqual(f.calls, []);
+  f.doc.fire('keydown', { key: 'W', target, shiftKey: true });
+  assert.deepEqual(f.calls, [['poi', 'a', 1]]);
+});
 test('typing clears a failed search error and closing the emptied field drops it too', () => {
   const f = fixture();
   f.elements.search.value = 'Pariss';

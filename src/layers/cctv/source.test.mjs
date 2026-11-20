@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCctvSource, createCctvLayer } from './index.js';
+import { bindFakeDraw } from '../../testSupport/fakeDrawPort.mjs';
 
 const camera = {
   id: 'pack/camera ?x',
@@ -67,7 +68,7 @@ test('cancellation while reading a camera response body prevents publication', a
   });
 });
 
-test('frame and media URLs preserve registered camera identity (contract 4: id and tick only)', () => {
+test('frame and media URLs preserve registered camera identity and encoded metadata', () => {
   const source = createCctvSource();
   const frame = new URL(source.getFrameUrl(camera), 'https://example.test');
   const media = new URL(source.getMediaUrl(camera), 'https://example.test');
@@ -79,14 +80,19 @@ test('frame and media URLs preserve registered camera identity (contract 4: id a
     media.pathname,
     '/api/cctv/media/' + encodeURIComponent(camera.id),
   );
-  // The server reads the camera's label and position from its own catalogue,
-  // so none ride along; only the active plane and panel preview ask as active.
-  assert.deepEqual([...frame.searchParams.keys()], ['ts']);
+  assert.equal(frame.searchParams.get('label'), camera.name);
+  assert.equal(frame.searchParams.get('city'), camera.city);
+  // The server reads the camera's position from its own catalogue, so it
+  // never rides along; only the active plane and panel preview ask as active.
+  assert.equal(frame.searchParams.has('lat'), false);
+  assert.equal(frame.searchParams.has('lon'), false);
+  assert.equal(frame.searchParams.get('heading'), '45');
+  assert.equal(frame.searchParams.get('pitch'), '-12');
+  assert.equal(frame.searchParams.has('active'), false);
   const active = new URL(
     source.getFrameUrl(camera, 10_000, { active: true }),
     'https://example.test',
   );
-  assert.deepEqual([...active.searchParams.keys()], ['ts', 'active']);
   assert.equal(active.searchParams.get('active'), '1');
   assert.deepEqual([...media.searchParams.keys()], ['ts']);
   // A home or business camera loads from its own loopback-only frame route.
@@ -139,7 +145,7 @@ test('camera construction is inert and destruction cancels pending private-camer
       setOverlayEntries: noop,
       setOverlaySourceVisible: noop,
     },
-    sprites: { registerSpriteCollection: noop },
+    sprites: {},
     activation: {},
     locations: {},
     picking: { unregisterPickOwner: noop },
@@ -171,9 +177,9 @@ test('camera construction is inert and destruction cancels pending private-camer
   const a = createCctvLayer({ services, source });
   const b = createCctvLayer({ services, source });
   assert.equal(listeners.size, 0);
-  const viewer = {
-    scene: { primitives: { add: (value) => value, remove: () => true } },
-  };
+  const viewer = {};
+  const { unbind } = bindFakeDraw(viewer);
+  t.after(unbind);
   const initializing = a.init(viewer);
   assert.equal(listeners.size, 1);
   assert.equal(signal.aborted, false);

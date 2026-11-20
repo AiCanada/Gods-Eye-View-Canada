@@ -1,5 +1,4 @@
 import { readStylesheet } from '../testSupport/readStylesheet.mjs';
-import { displayPanelScroller } from './displayPanelScroll.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -11,65 +10,14 @@ import {
 } from './panelRails.js';
 import { applyPanelState, readPanelState } from './rail/panelState.js';
 
-test('Display uses an inner scroll body only in Cyber', () => {
-  const body = { scrollTop: 95 };
-  const panel = {
-    ownerDocument: { documentElement: { dataset: { uiTheme: 'cyber' } } },
-    querySelector: () => body,
-  };
-  assert.equal(displayPanelScroller(panel), body);
-  panel.ownerDocument.documentElement.dataset.uiTheme = 'tactical';
-  assert.equal(displayPanelScroller(panel), panel);
-  assert.equal(displayPanelScroller(null), null);
-});
-
-// Owner ruling, 2026-10-06: Cyber's side tabs behave as Tactical's, with no
-// one-box accordion; a box an older version collapsed for it opens again.
-test('Cyber keeps every open box open and reopens boxes the old accordion collapsed', () => {
-  for (const mobile of [false, true]) {
-    const f = fixture('right', {
-      mobile,
-      hud: { visible: true, variant: 'cyber' },
-    });
-    f.expand(f.first, 250);
-    f.expand(f.second, 250);
-    f.options.preferredPanelId = f.second.id;
-    f.run();
-    assert.equal(f.first.classList.contains('collapsed'), false);
-    assert.equal(f.second.classList.contains('collapsed'), false);
-    f.first.classList.add('collapsed', 'cyber-accordion-collapsed');
-    f.run();
-    assert.equal(f.first.classList.contains('collapsed'), false);
-    assert.equal(
-      f.first.classList.contains('cyber-accordion-collapsed'),
-      false,
-    );
-  }
-});
-
-test('Cyber keeps no accordion on phones, where the rail is presented as tab sheets', () => {
-  // A sheet (for example Cameras: CCTV with Street Level) shows several of the
-  // rail's panels at once; the accordion would collapse all but one.
-  const f = fixture('right', {
-    mobile: true,
-    hud: { visible: true, variant: 'cyber' },
-  });
-  f.expand(f.first, 250);
-  f.expand(f.second, 250);
-  f.options.preferredPanelId = f.second.id;
-  f.run();
-  assert.equal(f.first.classList.contains('collapsed'), false);
-  assert.equal(f.first.classList.contains('cyber-accordion-collapsed'), false);
-  assert.equal(f.first.classList.contains('accordion-collapsed'), false);
-  assert.equal(f.second.classList.contains('collapsed'), false);
-});
-
 // Owner rulings, 2026-09-27 and 2026-10-06: every box opens on its own on
 // both rails and in every HUD layout. Upstream's one-panel accordion (#1499)
 // runs disabled here: it only gives back a box an earlier version folded.
+// (Upstream removed the Cyber layout, and with it the fork's Cyber-only
+// cases.)
 for (const side of ['left', 'right']) {
   test(`${side} desktop rail keeps every open box open in every HUD layout`, () => {
-    for (const variant of ['tactical', 'minimal', 'cyber']) {
+    for (const variant of ['tactical', 'minimal']) {
       const f = fixture(side, { hud: { visible: true, variant } });
       f.expand(f.first, 250);
       f.expand(f.second, 250);
@@ -273,6 +221,126 @@ test('left corridor respects a lower obstacle but ignores an obstacle hidden by 
   f.options.obstacles = [blocker, hidden];
   f.run();
   assert.equal(Number(f.stack.dataset.safeBottomPct), 65.47);
+});
+
+test('in a short window the left corridor stays clear of an obstacle across the midpoint', () => {
+  // 480px window, midpoint 240.
+  const f = fixture('left');
+  f.options.windowRef.innerHeight = 480;
+  f.options.obstacles = [element('card', { top: 100, height: 200 })];
+  f.run();
+  // More room below the card than above it: the corridor starts under it.
+  assert(Number(f.stack.dataset.safeTopPct) * 4.8 >= 300);
+
+  // A card starting below the corridor's usual top (26%, 124.8px) that
+  // crosses the midpoint counts the same way: more room below it.
+  f.options.obstacles = [element('card', { top: 130, height: 120 })];
+  f.run();
+  assert(Number(f.stack.dataset.safeTopPct) * 4.8 >= 250);
+
+  // More room above it: the corridor ends over it.
+  f.options.obstacles = [element('card', { top: 200, height: 250 })];
+  f.run();
+  assert(Number(f.stack.dataset.safeBottomPct) * 4.8 <= 200);
+});
+
+test('several cards across the midpoint give the left corridor the same room in any order', () => {
+  const f = fixture('left');
+  f.options.windowRef.innerHeight = 480;
+  const a = element('card', { top: 100, height: 160 });
+  const b = element('card', { top: 110, height: 360 });
+  f.options.obstacles = [a, b];
+  f.run();
+  const first = [f.stack.dataset.safeTopPct, f.stack.dataset.safeBottomPct];
+  f.options.obstacles = [b, a];
+  f.run();
+  assert.deepEqual(
+    [f.stack.dataset.safeTopPct, f.stack.dataset.safeBottomPct],
+    first,
+  );
+  // Together they cover 100 to 470: the corridor ends above them.
+  assert(Number(first[1]) * 4.8 <= 100);
+});
+
+test('the left corridor counts cards beside those across the midpoint', () => {
+  const f = fixture('left');
+  f.options.windowRef.innerHeight = 480;
+  // A card inside the span below the midpoint: more room below both.
+  f.options.obstacles = [
+    element('card', { top: 100, height: 200 }),
+    element('card', { top: 250, height: 30 }),
+  ];
+  f.run();
+  assert(Number(f.stack.dataset.safeTopPct) * 4.8 >= 300);
+  // About 25px above the cards is under the least usable room (8% of the
+  // window): they are read as before, the upper card pushing the corridor
+  // down past it rather than into a sliver at the top.
+  f.options.obstacles = [
+    element('card', { top: 50, height: 150 }),
+    element('card', { top: 150, height: 320 }),
+  ];
+  f.run();
+  assert(Number(f.stack.dataset.safeTopPct) * 4.8 >= 200);
+  // The room above a card is all the panels' to use, above the corridor's
+  // usual top (26%) too: 700px window, card 300 to 420, about 263px above
+  // against 244 below.
+  f.options.windowRef.innerHeight = 700;
+  f.options.obstacles = [element('card', { top: 300, height: 120 })];
+  f.run();
+  assert(Number(f.stack.dataset.safeBottomPct) * 7 <= 300);
+  assert(Number(f.stack.dataset.safeTopPct) * 7 <= 30);
+  // No room on either side: the card is read as before.
+  f.options.windowRef.innerHeight = 480;
+  f.options.obstacles = [element('card', { top: 0, height: 480 })];
+  f.run();
+  assert.equal(Number(f.stack.dataset.safeTopPct), 26);
+});
+
+test('a centered timeline only shortens the corridor when it reaches a laid-out panel', () => {
+  const f = fixture('left');
+  f.stack.rect.width = 360;
+  f.stack.rect.right = f.stack.rect.left + 360;
+  f.expand(f.first, 850);
+  // Unpainted (as in Cockpit), so the box does not float over the HUD
+  // (overlap, owner ruling 2026-09-28) and the corridor is what places it.
+  f.first.rect.height = 0;
+  const timeline = element('world-timeline', { top: 650, left: 320 });
+  f.options.obstacles = [timeline];
+  f.run();
+  const clear = Number(f.stack.dataset.safeBottomPct);
+  timeline.rect.left = 280;
+  f.run();
+  assert(clear > 85);
+  assert(Number(f.stack.dataset.safeBottomPct) < 73);
+  // Any other obstacle in the same gutter still bounds the corridor.
+  const blocker = element('blocker', { top: 650, left: 320 });
+  f.options.obstacles = [blocker];
+  f.run();
+  assert(Number(f.stack.dataset.safeBottomPct) < 73);
+});
+
+// Upstream fills the lane with a lone Data Layers panel in its one-panel
+// (exclusive) left rail. The fork has no exclusive lane (owner rulings
+// 2026-09-27 and 2026-10-06) and keeps Data Layers on the right rail, so a
+// lone open box floats over the HUD at its natural height like any other.
+test('Data Layers floats at its natural height on the fork left rail', () => {
+  const f = fixture('left');
+  f.first.id = 'data-panel';
+  const dock = { id: 'command-dock' };
+  f.options.documentRef.getElementById = (id) =>
+    id === 'gev-omnibar'
+      ? {}
+      : id === 'gev-voice-control'
+        ? { parentElement: dock }
+        : null;
+  f.expand(f.first, 250);
+  f.options.obstacles = [element('hud', { top: 760, height: 45 })];
+  f.run();
+  assert.equal(f.stack.dataset.layoutMode, 'overlap');
+  assert.equal(
+    parseFloat(f.first.style.getPropertyValue('--left-panel-allocated-height')),
+    250,
+  );
 });
 
 for (const side of ['left', 'right']) {
@@ -580,22 +648,28 @@ test('right rail aligns to the left rail buttons while the left stack is offset'
   assert.equal(f.stack.dataset.safeTop, '286.7');
 });
 
-test('left rail buttons hold still while a tall panel moves the stack', () => {
+test('left rail buttons hold still whether the open panel is short or tall', () => {
+  // Where the rail sits: the stack's top, the stack's rise, and the rail's
+  // own offset inside the stack.
+  const railTop = (stack) =>
+    (parseFloat(stack.style.getPropertyValue('--left-stack-safe-top')) * 900) /
+      100 +
+    parseFloat(stack.style.getPropertyValue('--panel-rail-lift')) +
+    parseFloat(stack.style.getPropertyValue('--panel-rail-offset'));
+  const short = fixture('left');
+  short.expand(short.first, 250);
+  short.run();
   const f = fixture('left');
   f.expand(f.first, 900);
   f.run();
   // The fork floats a tall open box over the HUD (overlap, owner ruling
-  // 2026-09-28) where upstream focuses it.
+  // 2026-09-28) where upstream focuses it; a short open box floats too.
   assert.equal(f.stack.dataset.layoutMode, 'overlap');
+  assert.notEqual(short.stack.dataset.layoutMode, 'focus');
   assert.ok(
     parseFloat(f.stack.style.getPropertyValue('--panel-rail-offset')) > 0,
   );
-
-  // A theme that pins the stack's top (Cyber) leaves nothing to offset.
-  f.stack.computed.getPropertyValue = (name) =>
-    name === '--panel-stack-top-pinned' ? ' 1' : '';
-  f.run();
-  assert.equal(f.stack.style.getPropertyValue('--panel-rail-offset'), '0.0px');
+  assert.ok(Math.abs(railTop(f.stack) - railTop(short.stack)) < 0.2);
 });
 
 // The left rail's `top` animates after the right pass runs, and nothing
@@ -636,9 +710,9 @@ test('right rail falls back to the committed left target when the transition end
 });
 
 test('right rail follows a settled left rail whose CSS overrides the committed target', () => {
-  // Cyber pins the left rail with `top: ... !important`, so the committed
+  // A stylesheet that pins the left rail's `top` means the committed
   // percentage is not where it renders and no `top` transition runs.
-  const f = fixture('right', { hud: { visible: true, variant: 'cyber' } });
+  const f = fixture('right', { hud: { visible: true, variant: 'minimal' } });
   f.options.leftStack.rect.top = 220;
   f.options.leftStack.dataset.safeTopPct = '26.00';
   f.options.leftStack.getAnimations = () => [];
@@ -708,18 +782,20 @@ test('a layout pass puts every scroller back where the operator left it', () => 
 // 422 px, so the old decision exits focus and then re-enters on the 629 px read.
 // `painted: false` models an open box with no painted rectangle (Cockpit's
 // hidden rail): it never floats in the overlap mode, so the focus decision
-// is what places the rail.
+// is what places the rail. `tallId` names the open box; CCTV and Context
+// always take the full column, so the hysteresis cases use another panel.
 function thrashingRightRail({
   focused = false,
   weatherOpen = false,
   painted = true,
+  tallId = 'cctv-panel',
 } = {}) {
   const f = fixture('right');
   f.options.windowRef.innerHeight = 920;
   f.options.leftStack.rect.top = 439.6;
   f.stack.computed.rowGap = '8px';
   const display = element('pp-toggles', { collapsed: true });
-  const cctv = element('cctv-panel', { height: 629 });
+  const cctv = element(tallId, { height: 629 });
   const weather = element('weather-panel', {
     height: 444,
     collapsed: !weatherOpen,
@@ -796,8 +872,10 @@ for (const focused of [false, true]) {
   });
 }
 
+// The hysteresis applies to panels that size to their content; CCTV and
+// Context take the column's full height whenever they are open.
 test('right rail keeps focus through 30 px content growth inside the hysteresis band', () => {
-  const f = thrashingRightRail({ painted: false });
+  const f = thrashingRightRail({ painted: false, tallId: 'news-panel' });
   f.run();
   // The three tabs that stay on the rail (owner ruling, 2026-09-27) and their
   // gaps contribute 156 px: need moves 420 -> 450 -> 420.
@@ -815,7 +893,7 @@ test('right rail keeps focus through 30 px content growth inside the hysteresis 
 });
 
 test('right rail enters focus only above available height and leaves below the full deadband', () => {
-  const f = thrashingRightRail({ painted: false });
+  const f = thrashingRightRail({ painted: false, tallId: 'news-panel' });
   f.options.windowRef.innerHeight = 1000;
   f.options.leftStack.rect.top = 500;
   // Tabs and gaps add 156 px to the open box.
@@ -829,6 +907,17 @@ test('right rail enters focus only above available height and leaves below the f
   f.run();
   assert.equal(f.stack.classList.contains('layout-focus'), true);
   f.cctv.intrinsicHeight = 243;
+  f.run();
+  assert.equal(f.stack.classList.contains('layout-focus'), false);
+});
+
+// Unpainted, so the box does not float and the focus decision shows.
+test('an open CCTV panel takes the full column however short its content', () => {
+  const f = thrashingRightRail({ painted: false });
+  f.cctv.intrinsicHeight = 200;
+  f.run();
+  assert.equal(f.stack.classList.contains('layout-focus'), true);
+  f.cctv.classList.add('collapsed');
   f.run();
   assert.equal(f.stack.classList.contains('layout-focus'), false);
 });
@@ -1117,4 +1206,43 @@ test('left rail keeps collapsed panels shown beside Cockpit, both boxes open', (
   assert.equal(f.second.classList.contains('collapsed'), false);
   assert.equal(f.stack.classList.contains('layout-exclusive'), false);
   assert.equal(f.first.getAttribute('aria-hidden'), undefined);
+});
+
+test('the right rail is laid out again when the Stories card can appear or go', async () => {
+  const { movesStoriesCard } = await import('./panelLayoutController.js');
+  const node = (id, inner = null) => ({
+    id,
+    querySelector: (selector) =>
+      inner && selector.split(', ').includes(`#${inner}`) ? {} : null,
+  });
+  const childList = (added = [], removed = []) => ({
+    type: 'childList',
+    addedNodes: added,
+    removedNodes: removed,
+  });
+  const bodyClass = (oldValue, now) => ({
+    type: 'attributes',
+    oldValue,
+    target: { classList: { contains: (name) => now.includes(name) } },
+  });
+  // The card itself, or a wrapper holding it, comes or goes.
+  assert.equal(movesStoriesCard(childList([node('hPop')])), true);
+  assert.equal(movesStoriesCard(childList([], [node('', 'hPop')])), true);
+  // The welcome, which hides the card, is removed.
+  assert.equal(
+    movesStoriesCard(childList([], [node('first-run-launcher')])),
+    true,
+  );
+  // Story playback's own changes do not lay the rail out.
+  assert.equal(movesStoriesCard(childList([node('story-frame')])), false);
+  // Only the welcome's loading class coming or going counts.
+  assert.equal(
+    movesStoriesCard(bodyClass('first-run-opening-stories', ['stories-mode'])),
+    true,
+  );
+  assert.equal(
+    movesStoriesCard(bodyClass('', ['first-run-opening-stories'])),
+    true,
+  );
+  assert.equal(movesStoriesCard(bodyClass('a', ['b'])), false);
 });

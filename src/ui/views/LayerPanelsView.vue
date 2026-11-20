@@ -1,6 +1,7 @@
 <script setup>
 import CctvPanel from './panels/CctvPanel.vue';
 import StreetLevelPanel from './panels/StreetLevelPanel.vue';
+import StreetLevelPhotoViewer from './panels/StreetLevelPhotoViewer.vue';
 import AskPanel from './fork/AskPanel.vue';
 import UltraPanel from './fork/UltraPanel.vue';
 import SocialPanel from './fork/SocialPanel.vue';
@@ -23,6 +24,7 @@ import AbundancePanel from './fork/AbundancePanel.vue';
 
   <!-- Street Level Panel (moved into #right-context-rail at runtime) -->
   <StreetLevelPanel />
+  <StreetLevelPhotoViewer />
 
   <UltraPanel />
   <SocialPanel />

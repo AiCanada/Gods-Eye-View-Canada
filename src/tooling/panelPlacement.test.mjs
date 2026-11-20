@@ -25,10 +25,11 @@ test('left stack: AI Risk & Truth Assessment, CCTV, Ultra, Social Media Analysis
   // The scene runtime chip follows the rail's own closing tag; the Contacts
   // aside inside Context closes before it.
   const right = between('<aside id="right-context-rail"', '<div id="scene-runtime"');
-  // Radio is the rail's last member, below Scenes, but never a tab. Weather and
-  // Recent Imagery are hidden until a product or imagery day is chosen.
-  // Utilities (upstream #1469) sits under Data Layers.
-  assert.deepEqual(panelOrder(right), ['data-panel', 'utilities-panel', 'weather-panel', 'recent-imagery-panel', 'global-context-panel', 'sst-panel', 'scene-panel', 'radio-panel']);
+  // Radio is the rail's last member, below Scenes, but never a tab. Weather,
+  // News and Recent Imagery are hidden until a product, feed or imagery day is
+  // chosen. Utilities (upstream #1469) sits under Data Layers; upstream's
+  // Space Missions panel follows Context.
+  assert.deepEqual(panelOrder(right), ['data-panel', 'utilities-panel', 'weather-panel', 'news-panel', 'recent-imagery-panel', 'global-context-panel', 'space-missions-panel', 'sst-panel', 'scene-panel', 'radio-panel']);
 });
 
 test('the LLM box collapses like the others and is titled AI Risk & Truth Assessment', () => {

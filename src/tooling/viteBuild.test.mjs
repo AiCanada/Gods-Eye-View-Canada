@@ -211,7 +211,7 @@ test('root config retains existing named exports and standalone provider order',
     { nominatimStorageDir },
   );
   const standaloneProviders = config.plugins
-    .slice(7, -7)
+    .slice(7, -8)
     .map((plugin) => plugin.name);
   assert.equal(
     standaloneProviders.filter((name) => name === 'gemini-live-proxy').length,
@@ -238,10 +238,12 @@ test('root config retains existing named exports and standalone provider order',
   assert.equal(config.plugins[5].name, 'route-guard');
   assert.equal(config.plugins[6].name, 'gev-health');
   assert.equal(config.plugins[6].apply, 'serve');
-  assert.equal(config.plugins.at(-8).name, 'gev-key-setup');
+  assert.equal(config.plugins.at(-9).name, 'gev-key-setup');
   // Token fallback follows real providers and local MCP before the API 404.
-  assert.equal(config.plugins.at(-7).name, 'local-mcp');
-  assert.equal(config.plugins.at(-6).name, 'google-token-unavailable');
+  assert.equal(config.plugins.at(-8).name, 'local-mcp');
+  assert.equal(config.plugins.at(-7).name, 'google-token-unavailable');
+  // Dev-only, under its own path.
+  assert.equal(config.plugins.at(-6).name, 'conformance-references');
   assert.equal(config.plugins.at(-5).name, 'api-not-found');
   // The tailnet copy of the dashboard serves the same middleware (off unless set).
   assert.equal(config.plugins.at(-4).name, 'gev-tailnet-dashboard');

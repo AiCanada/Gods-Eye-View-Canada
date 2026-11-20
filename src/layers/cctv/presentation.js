@@ -234,8 +234,17 @@ export function createPresentation({
     const camera = record.camera;
     const health = layerState._healthById.get(camera.id) || null;
     const isActive = camera.id === resolvedActiveId;
+    // A budgeted host's active cadence (contract 5: `activeFrameRefreshMs`)
+    // replaces its card cadence for the active camera; any other source's
+    // `frameRefreshMs` is a minimum between frames, active or not.
+    const sourceRefreshMs = parts.model.safeNumber(camera.frameRefreshMs, 0);
     const refreshMs = isActive
-      ? parts.frames.activeFrameRefreshMsFor(camera)
+      ? parts.model.safeNumber(camera.activeFrameRefreshMs, 0) > 0
+        ? parts.frames.activeFrameRefreshMsFor(camera)
+        : Math.max(
+            parts.frames.activeFrameRefreshMsFor(camera),
+            sourceRefreshMs,
+          )
       : parts.frames.idleFrameRefreshMsFor(camera);
     const hasStill = parts.model.cameraHasStill(camera);
     // A video whose playback failed falls back to stills (projection.js).
@@ -272,13 +281,18 @@ export function createPresentation({
       mountHeightM: camera.mountHeightM,
       active: isActive,
       feedType: camera.feedType,
+      sourceUrl: camera.sourceUrl || '',
+      browserMediaUrl: camera.browserMediaUrl || '',
+      accuracyM: Number.isFinite(camera.accuracyM) ? camera.accuracyM : null,
+      positionSource: camera.positionSource || '',
       isVideo:
-        parts.model.isVideoFeedType(camera.feedType) &&
+        parts.model.isVideoFeedCamera(camera) &&
         record.projection?.mode !== 'image',
-      sourceKind:
-        health?.sourceKind ||
-        camera.sourceKind ||
-        (camera.feedConfigured ? 'configured' : 'seed'),
+      sourceKind: camera.sourceKind?.startsWith('quebec-')
+        ? camera.sourceKind
+        : health?.sourceKind ||
+          camera.sourceKind ||
+          (camera.feedConfigured ? 'configured' : 'seed'),
       sourceStatus: health?.status || 'unknown',
       sourceMessage: health?.message || '',
       sourceLabel: health?.label || camera.provider || '',
@@ -299,9 +313,12 @@ export function createPresentation({
       // separately from the currently applied frustum ground. Google-3D may
       // legitimately refine the latter to the rendered mesh, so callers must
       // not infer the prior by subtracting mount height from live geometry.
-      groundPriorM: Number.isFinite(record.groundPrior?.ellipsoid)
-        ? record.groundPrior.ellipsoid
-        : null,
+      // A height read from drawn terrain is unavailable as a Re:Earth prior.
+      groundPriorM:
+        Number.isFinite(record.groundPrior?.ellipsoid) &&
+        record.groundPrior.source !== 'drawn-terrain'
+          ? record.groundPrior.ellipsoid
+          : null,
       intrinsics: camera.intrinsics ? { ...camera.intrinsics } : null,
       extrinsics: camera.extrinsics ? { ...camera.extrinsics } : null,
       anchor: camera.anchor ? { ...camera.anchor } : null,
@@ -434,6 +451,7 @@ export function createPresentation({
         hoverId: layerState._hoverCardId,
       },
       activeCameraId: activeId,
+      activeCameraReselection: layerState._activeCameraReselection,
       activeCamera: active ? getPublicCameraState(active, activeId) : null,
       cameras: lightCameraEntries(),
       cameraIndex: cameraIndex(),
@@ -448,16 +466,16 @@ export function createPresentation({
   }
 
   /**
-   * `{ id, city, name }` for the active camera, then every camera the view
-   * pass shows: what the camera picker lists. A whole catalog would put tens
-   * of thousands of options in the DOM and slow every layout. The same array
-   * is returned until the view or the active camera changes, so a consumer
-   * can compare it by identity.
+   * `{ id, city, name }` for the active camera, then each camera shown as an
+   * icon and the best-ranked camera of each visible group. A whole catalog
+   * would put tens of thousands of options in the DOM and slow every layout.
+   * Consumers can compare the array by identity until the picker records or
+   * active camera change.
    * @returns {{id: string, city: string, name: string}[]}
    */
 
   function cameraIndex() {
-    const view = layerState._viewRecords;
+    const view = layerState._pickerRecords;
     const active = parts.selection.getActiveRecord();
     const cached = layerState._cameraIndexCache;
     if (cached?.view === view && cached.active === active) return cached.list;

@@ -63,6 +63,17 @@ test('a thumbnail shows the vehicles passing behind it on the map, tagged', () =
   assert.equal(vehicleTag(7), 'VEH-0007');
 });
 
+test('a vehicle keeps its congestion colour from the traffic layer\'s plain colour view', () => {
+  // What forEachTrafficDot hands out (src/layers/traffic/queries.js): a
+  // frozen { red, green, blue, alpha }, not a Cesium.Color.
+  const ctx = recordingContext();
+  const amber = Object.freeze({ red: 1, green: 0.5, blue: 0, alpha: 0.85 });
+  const dots = [{ position: at(150, 130), color: amber, pixelSize: 6, show: true }];
+  paintTrafficOverThumbnails(frameWith([card(100, 100)], ctx), (visit) => dots.forEach((d, i) => visit(d, i)), noMarkers);
+  assert.equal(ctx.arcs.length, 1);
+  assert.equal(ctx.arcs[0].fill, 'rgba(255,128,0,0.85)');
+});
+
 test('every dot on a camera view carries its ID tag; a vehicle with no room for one is left off', () => {
   const ctx = recordingContext();
   // Three vehicles stacked on one spot: only the first tag fits, so only one dot.

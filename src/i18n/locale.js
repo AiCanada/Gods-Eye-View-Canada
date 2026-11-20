@@ -15,11 +15,13 @@ export const LOCALES = Object.freeze([
   'es',
   'fr',
   'fr-CA',
+  'he',
   'it',
   'iu',
   'ja',
   'pt',
   'ru',
+  'sv',
   'uk',
   'zh-CN',
   'zh-Hant',
@@ -39,11 +41,13 @@ export const LOCALE_NAMES = Object.freeze({
   es: 'Español',
   fr: 'Français',
   'fr-CA': 'Français Québécois',
+  he: 'עברית',
   it: 'Italiano',
   iu: 'Inuktitut',
   ja: '日本語',
   pt: 'Português (Brasil)',
   ru: 'Русский',
+  sv: 'Svenska',
   uk: 'Українська',
   'zh-CN': '中文（简体）',
   'zh-Hant': '中文（繁體）',
@@ -62,7 +66,7 @@ export function pluralRulesLocale(locale) {
 }
 
 /** Right-to-left locales. */
-const RTL_LOCALES = Object.freeze(['ar']);
+const RTL_LOCALES = Object.freeze(['ar', 'he']);
 
 /** Whether a shipped locale reads right to left. */
 export function isRtlLocale(locale) {
@@ -92,7 +96,8 @@ export function intlLocale(locale) {
 
 /**
  * Map any language tag to a shipped locale: 'ru-RU' and 'RU' → 'ru',
- * 'ar-EG' and 'ar-SA' → 'ar',
+ * 'ar-EG' and 'ar-SA' → 'ar', 'he-IL' and 'he' → 'he', and the
+ * legacy tag 'iw'/'iw-IL' → 'he',
  * 'de-AT' and 'de_CH' → 'de', 'ja-JP' → 'ja',
  * 'pt-BR' and 'pt-PT' → 'pt' (Brazilian Portuguese),
  * 'zh', 'zh-CN' and 'zh-Hans-SG' → 'zh-CN';
@@ -112,6 +117,7 @@ export function normalizeLocale(candidate) {
       ? 'zh-Hant'
       : 'zh-CN';
   }
+  if (primary === 'iw') return 'he';
   const exact = LOCALES.find((code) => code.toLowerCase() === tag);
   if (exact) return exact;
   if (LOCALES.includes(primary)) return primary;

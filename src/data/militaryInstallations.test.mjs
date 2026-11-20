@@ -1,3 +1,5 @@
+import { bindFakeCesiumCamera } from '../testSupport/fakeCameraPort.mjs';
+import { fakeScenePorts } from '../testSupport/fakeCesiumScene.mjs';
 import { readLayerSource } from '../testSupport/readLayerSource.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,6 +28,27 @@ import {
 } from '../renderGovernor.js';
 import * as Cesium from 'cesium';
 import { registerEntityContext, selectEntityContext, getSelectedEntityContext, clearSelectedEntityContextForLayer } from './contextStore.js';
+import { readEntityRecord } from './entityRecords.js';
+import { drawOf } from '../render/rendererOf.js';
+
+/** The installations layer's live site-dot set on `viewer`'s draw port. */
+function dotSetOf(viewer) {
+  return [...drawOf(viewer).sets.values()].find(
+    (set) => !set.disposed && /^military-installations:\d+:dots$/.test(set.spec.id),
+  );
+}
+
+/** The installations layer's live selected-dot set on `viewer`'s draw port. */
+function selectedSetOf(viewer) {
+  return [...drawOf(viewer).sets.values()].find(
+    (set) => !set.disposed && /^military-installations:\d+:selected$/.test(set.spec.id),
+  );
+}
+
+/** The drawn site dots on `viewer`, in drawing order. */
+function dotsOf(viewer) {
+  return [...(dotSetOf(viewer)?.items.values() ?? [])];
+}
 
 test('clicking a selected installation again or empty map clears it through refresh', async () => {
   const run = await runInstallationLoad({ elements: [{ type: 'node', id: 42,
@@ -38,7 +61,7 @@ test('clicking a selected installation again or empty map clears it through refr
       assert.equal(getSelectedEntityContext(), null);
       await militaryInstallationsLayer.update();
       assert.equal(getSelectedEntityContext(), null, 'refresh must not resurrect selection');
-      assert.equal(run.entities()[0].point.pixelSize.getValue(), 9);
+      assert.equal(run.dots()[0].pixelSize, 9);
     }
   } finally { run.restore(); }
 });
@@ -56,7 +79,7 @@ test('background installation paints neither reopen Contacts nor resurrect a cle
     await militaryInstallationsLayer.update();
     assert.equal(getSelectedEntityContext(),null);
     assert.equal(selected(),1,'an external clear must survive the next paint');
-    assert.equal(run.entities()[0].point.pixelSize.getValue(),9);
+    assert.equal(run.dots()[0].pixelSize,9);
   } finally { run.restore(); }
 });
 
@@ -88,8 +111,9 @@ test('switching sites keeps the new selection through refresh and disable clears
     assert.equal(getSelectedEntityContext()?.id, 'osm:node:43');
     await militaryInstallationsLayer.update();
     assert.equal(getSelectedEntityContext()?.id, 'osm:node:43');
-    assert.equal(run.entities().find(e => e.id === 'osm:node:42').point.pixelSize.getValue(), 9);
-    assert.equal(run.entities().find(e => e.id === 'osm:node:43').point.pixelSize.getValue(), 13);
+    assert.equal(run.dots().find(e => e.id === 'osm:node:42').show, true);
+    assert.equal(run.dots().find(e => e.id === 'osm:node:43').show, false);
+    assert.deepEqual(run.selectedDots().map(e => [e.id, e.pixelSize]), [['osm:node:43', 13]]);
     militaryInstallationsLayer.disable();
     run.click('osm:node:42');
     assert.equal(getSelectedEntityContext(), null, 'disabled layer ignores clicks');
@@ -131,7 +155,7 @@ test('places installation anchors on the shared cached rendered floor', () => {
   _clearMeshFloorCellsForTest();
 });
 
-test('real enabled installation entities carry no native label graphics', async () => {
+test('real enabled installation markers carry no native label graphics', async () => {
   const originalDocument = globalThis.document;
   const originalWindow = globalThis.window;
   const originalFetch = globalThis.fetch;
@@ -197,14 +221,17 @@ test('real enabled installation entities carry no native label graphics', async 
       },
     },
   };
+  bindFakeCesiumCamera(viewer, fakeScenePorts(viewer));
 
   try {
     militaryInstallationsLayer.init(viewer);
     militaryInstallationsLayer.enable();
     await militaryInstallationsLayer.update();
-    const entities = dataSources[0].entities.values;
-    assert.ok(entities.length > 0, 'runtime guard requires rendered installation records');
-    assert.ok(entities.every((entity) => entity.label === undefined));
+    // The dots are a draw-port point set, which draws no text of its own.
+    const dots = dotsOf(viewer);
+    assert.ok(dots.length > 0, 'runtime guard requires rendered installation records');
+    assert.equal(dotSetOf(viewer).kind, 'points');
+    assert.ok(dots.every((dot) => dot.text === undefined && dot.label === undefined));
   } finally {
     militaryInstallationsLayer.destroy(viewer);
     globalThis.fetch = originalFetch;
@@ -363,33 +390,44 @@ async function runInstallationLoad({
       },
     },
   };
+  bindFakeCesiumCamera(viewer, fakeScenePorts(viewer));
 
   const originalSetInputAction = Cesium.ScreenSpaceEventHandler.prototype.setInputAction;
   Cesium.ScreenSpaceEventHandler.prototype.setInputAction = function (action, type, modifier) {
-    if (type === Cesium.ScreenSpaceEventType.LEFT_CLICK) clickAction = action;
+    // The unmodified click: the input port binds one per modifier.
+    if (type === Cesium.ScreenSpaceEventType.LEFT_CLICK && modifier === undefined) clickAction = action;
     return originalSetInputAction.call(this, action, type, modifier);
   };
   try { militaryInstallationsLayer.init(viewer); }
   finally { Cesium.ScreenSpaceEventHandler.prototype.setInputAction = originalSetInputAction; }
-  installRenderGovernor(viewer);
+  installRenderGovernor(framePortFor(viewer.scene));
   militaryInstallationsLayer.enable();
   await militaryInstallationsLayer.update();
 
   return {
     requests,
     cameraFlights,
-    entities: () => dataSources[0]?.entities?.values || [],
+    // Each drawn site's carrier: its id, and its record of what the tracked
+    // card and the shared selection read.
+    entities: () => dotsOf(viewer).map((dot) => dot.meta),
+    dots: () => dotsOf(viewer),
+    dotWrites: () => dotSetOf(viewer)?.writes ?? 0,
+    selectedDots: () => [...(selectedSetOf(viewer)?.items.values() ?? [])],
     contextLabels: () => contextEvents,
     /** Details of every gev:entity-selection-cleared dispatched so far. */
     clearedEvents: () => clearedEvents,
     stats: () => militaryInstallationsLayer.getStats(),
     click(target) {
-      const entity = typeof target === 'string' ? dataSources[0].entities.getById(target) : target;
-      picked = entity ? { id: entity } : undefined;
+      // A site's dot, picked as the draw port's pick id names it.
+      const dot = typeof target === 'string' ? dotSetOf(viewer)?.items.get(target) : null;
+      picked = dot
+        ? { id: { set: dotSetOf(viewer).spec.id, id: dot.id, meta: dot.meta } }
+        : target ? { id: target } : undefined;
       clickAction({ position: { x: 0, y: 0 } });
     },
     renderRequests: () => getRenderGovernorDiagnostics().recentRequests.map((item) => item.reason),
-    dataSource: () => dataSources[0],
+    /** The live site-dot set on the layer's draw port. */
+    dotSet: () => dotSetOf(viewer),
     /** @param {?function(string, object): Promise<object>} next Installations answer; null restores the default. */
     setInstallationsFetch(next) { installationsFetch = next; },
     /** @param {?{south:number, west:number, north:number, east:number}} next Viewport; null is unbounded. */
@@ -467,7 +505,7 @@ test('a footprint-less relation just outside the viewport still renders', async 
   });
   try {
     assert.deepEqual(
-      harness.entities().map((entity) => entity.gevLabelModel?.title),
+      harness.entities().map((entity) => readEntityRecord(entity)?.labelModel?.title),
       ['Straddling Range'],
     );
   } finally {
@@ -507,7 +545,7 @@ test('a legacy-shaped payload at the cap fires the exact-viewport retry end to e
     assert.equal(harness.requests.length, 2, 'a legacy entry must not skip the retry');
     assert.equal(harness.requests[1].includes('exact=1'), true);
     assert.deepEqual(
-      harness.entities().map((entity) => entity.gevLabelModel?.title),
+      harness.entities().map((entity) => readEntityRecord(entity)?.labelModel?.title),
       ['Rescued From Legacy'],
     );
   } finally {
@@ -538,7 +576,7 @@ test('off-viewport records from the snapped superset never render or enter conte
     ],
   });
   try {
-    const titles = harness.entities().map((entity) => entity.gevLabelModel?.title);
+    const titles = harness.entities().map((entity) => readEntityRecord(entity)?.labelModel?.title);
     assert.deepEqual(titles, ['In View'], 'only the in-viewport site renders');
     assert.equal(harness.contextLabels().includes('Off View'), false, 'and none enters context');
     assert.equal(harness.stats().count, 1);
@@ -566,7 +604,7 @@ test('a saturated snapped tile refetches the exact viewport before rendering', a
     assert.equal(harness.requests[0].includes('exact=1'), false, 'first ask uses the shared snapped tile');
     assert.equal(harness.requests[1].includes('exact=1'), true, 'retry opts out of the snap');
     assert.deepEqual(
-      harness.entities().map((entity) => entity.gevLabelModel?.title),
+      harness.entities().map((entity) => readEntityRecord(entity)?.labelModel?.title),
       ['Rescued'],
       'the in-viewport site is no longer starved by off-view ones',
     );
@@ -662,17 +700,25 @@ test('a floor that lands after the render deadline lifts the dots off the ellips
       },
     },
   };
+  bindFakeCesiumCamera(viewer, fakeScenePorts(viewer));
 
-  const heightOf = (entity) => Cesium.Cartographic.fromCartesian(
-    entity.position.getValue(Cesium.JulianDate.now()),
-  ).height;
+  // Where the dot stands (its display position, which the follow and the
+  // tracked card read), and the height it is drawn at before clamping.
+  const heightOf = (dot) => {
+    const at = readEntityRecord(dot.meta).displayPosition();
+    const height = Cesium.Cartographic.fromCartesian(
+      new Cesium.Cartesian3(at.x, at.y, at.z),
+    ).height;
+    assert.ok(Math.abs(dot.pos.height - height) < 1e-6);
+    return height;
+  };
 
   try {
     militaryInstallationsLayer.init(viewer);
     militaryInstallationsLayer.enable();
     await militaryInstallationsLayer.update();
 
-    const buried = dataSources[0].entities.values[0];
+    const buried = dotsOf(viewer)[0];
     assert.ok(buried, 'the cold-floor pass still renders the record');
     assert.ok(Math.abs(heightOf(buried)) < 1, 'a cold floor anchors at the ellipsoid, as before');
 
@@ -682,7 +728,7 @@ test('a floor that lands after the render deadline lifts the dots off the ellips
     }
     assert.equal(cachedGroundFloor(lat, lon), 2400, 'the late floor landed in the shared cache');
 
-    const lifted = dataSources[0].entities.values[0];
+    const lifted = dotsOf(viewer)[0];
     assert.ok(
       Math.abs(heightOf(lifted) - 2401.5) < 0.5,
       `re-render must lift the dot onto the resolved floor, got ${heightOf(lifted)}`,
@@ -732,6 +778,7 @@ test('reports bounded installation requests as loading and clears on settlement'
     },
     dataSources: { add(value) { return value; }, remove() { return true; } },
   };
+  bindFakeCesiumCamera(viewer, fakeScenePorts(viewer));
 
   try {
     militaryInstallationsLayer.init(viewer);
@@ -796,6 +843,7 @@ test('zoom-out aborts an active installation request and returns non-loading gui
     },
     dataSources: { add(value) { return value; }, remove() { return true; } },
   };
+  bindFakeCesiumCamera(viewer, fakeScenePorts(viewer));
 
   try {
     militaryInstallationsLayer.init(viewer);
@@ -830,6 +878,7 @@ test('zoom-out aborts an active installation request and returns non-loading gui
 // by source probes against the shipped file, the same technique the HUD datum
 // tests use where a full boot is impractical.
 import { installationRetryDelayMs } from './militaryInstallations.js';
+import { framePortFor } from '../testSupport/fakeFramePort.mjs';
 
 const installationsSource = readLayerSource(
   new URL('./militaryInstallations.js', import.meta.url), 'utf8');
@@ -969,7 +1018,7 @@ test('a location switch releases the old viewport and mutes camera loads until a
     await militaryInstallationsLayer.onLocationArrive(switchContext());
     assert.equal(run.requests.length, beforeFlight + 1, 'arrival queries at once, without the debounce');
     assert.match(run.requests.at(-1), /south=43\.00000/);
-    assert.deepEqual(run.entities().map((entity) => entity.gevLabelModel?.title), ['New Site']);
+    assert.deepEqual(run.entities().map((entity) => readEntityRecord(entity)?.labelModel?.title), ['New Site']);
     assert.equal(run.stats().status, 'ready');
 
     settleCamera(t, run);
@@ -1065,17 +1114,18 @@ test('the settle after arrival does not restart the arrival query for the same v
 
 test('a location leave swallows a cleanup fault and still mutes camera loads', async (t) => {
   const run = await runInstallationLoad({ elements: [OLD_SITE] });
-  const entities = run.dataSource().entities;
+  // The site dots' records: the layer's dot set clears through them.
+  const items = run.dotSet().items;
   const warn = t.mock.method(console, 'warn', () => {});
   try {
-    entities.removeAll = () => { throw new Error('render teardown failed'); };
+    items.clear = () => { throw new Error('render teardown failed'); };
     assert.doesNotThrow(() => militaryInstallationsLayer.onLocationLeave(switchContext()));
     assert.equal(warn.mock.callCount(), 1, 'the fault is reported, not thrown');
     const before = run.requests.length;
     settleCamera(t, run);
     assert.equal(run.requests.length, before);
   } finally {
-    delete entities.removeAll;
+    delete items.clear;
     run.restore();
   }
 });
@@ -1160,16 +1210,18 @@ test('a Contacts anchor replaces the viewport and ignores small subject moves', 
   } finally { run.restore(); }
 });
 
-test('unchanged installations keep their entities across reloads', async () => {
+test('unchanged installations keep their markers across reloads', async () => {
   const run = await runInstallationLoad({ elements: [{ type: 'node', id: 42,
     lat: 30.2, lon: -97.7, tags: { military: 'base', name: 'Site' } }] });
   try {
     const before = run.entities().slice();
     assert.ok(before.length > 0);
+    const writes = run.dotWrites();
     await militaryInstallationsLayer.update();
     const after = run.entities();
     assert.equal(after.length, before.length);
-    assert.ok(after.every((entity, index) => entity === before[index]),
-      'a reload with the same geometry must not recreate entities');
+    assert.ok(after.every((carrier, index) => carrier === before[index]),
+      'a reload with the same geometry must not recreate markers');
+    assert.equal(run.dotWrites(), writes, 'nor write them again');
   } finally { run.restore(); }
 });

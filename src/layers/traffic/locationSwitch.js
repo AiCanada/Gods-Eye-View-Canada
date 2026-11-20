@@ -113,6 +113,11 @@ export function createLocationSwitch({
         tries >= ARRIVAL_KICK_MAX_TRIES
       ) {
         stopArrivalKick();
+        // The arrival's hold stands only while something animates: a
+        // destination that spawned no dot (a view parked above the
+        // activation height, lines only, open water) gives it back.
+        if (layerState._fetchPauses.size === 0)
+          parts.animation.syncRenderDemand();
         return;
       }
       tries += 1;
@@ -179,6 +184,9 @@ export function createLocationSwitch({
     layerState._fetchPauseWatchdog = null;
     if (!layerState._enabled) return;
     holdContinuousRender('traffic');
+    // Recorded with the demand tracking (animation.syncRenderDemand), so the
+    // hold is released when nothing needs frames and when the layer goes off.
+    layerState._renderHeld = true;
     layerState._lastAnimTime = 0;
     armArrivalKick();
     parts.viewport.onCameraChanged({ immediate: true });

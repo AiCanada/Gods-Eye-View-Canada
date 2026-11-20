@@ -141,6 +141,10 @@ const filesOf = (result) => result?.files ?? [];
 
 test('every adapter: a licence class, a known layer, and no faster than its layer', () => {
   const known = new Set([...REGISTERED_LAYER_IDS, 'local-adsb']);
+  // Feeds that only share a name with a layer: the regional-headline tape
+  // ('news', layers: []) predates upstream's News layer and keeps its id so
+  // recorded tapes still bin (src/worldTapeBin.mjs).
+  const nameOnly = new Set(['news']);
   const ids = WORLD_TAPE_FEEDS.map((adapter) => adapter.id);
   assert.equal(new Set(ids).size, ids.length, 'ids are unique');
   for (const adapter of WORLD_TAPE_FEEDS) {
@@ -158,7 +162,8 @@ test('every adapter: a licence class, a known layer, and no faster than its laye
     assert.ok(Array.isArray(adapter.layers), id);
     for (const layer of adapter.layers)
       assert.ok(known.has(layer), `${id} names layer ${layer}`);
-    if (known.has(id)) assert.ok(adapter.layers.includes(id), id);
+    if (known.has(id) && !nameOnly.has(id))
+      assert.ok(adapter.layers.includes(id), id);
     const floor = adapter.kind === 'static' ? DAY : LAYER_REFRESH_MS[id];
     assert.ok(Number.isFinite(floor), `${id}: its layer's refresh is known`);
     assert.ok(adapter.cadenceMs >= floor, `${id} polls no faster than that`);
@@ -169,7 +174,9 @@ test('every adapter: a licence class, a known layer, and no faster than its laye
   // (upstream, merged 2026-11-04) and wildlife-sightings (upstream #1591,
   // merged 2026-11-07) have no feed yet: the tab lists them as STATIC until
   // one records them. Wildlife Sightings stays unrecorded: DATA_SOURCES.md
-  // rules out AI training on its iNaturalist content.
+  // rules out AI training on its iNaturalist content. rail and shipwrecks
+  // (upstream, merged 2026-11-20) have no feed yet either; upstream's News
+  // layer shares only its id with the regional-headline 'news' tape.
   const skipped = [
     'directions',
     'military-awareness',
@@ -180,6 +187,8 @@ test('every adapter: a licence class, a known layer, and no faster than its laye
     'sea-marks',
     'ski-pistes',
     'wildlife-sightings',
+    'rail',
+    'shipwrecks',
   ];
   for (const layer of REGISTERED_LAYER_IDS)
     if (!skipped.includes(layer)) assert.ok(ids.includes(layer), layer);

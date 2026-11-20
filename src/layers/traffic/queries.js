@@ -77,19 +77,55 @@ export function nearestRoadBearing(roads, lat, lon, maxM = 80) {
   return best;
 }
 
+/** `{red, green, blue, alpha}` views of the dots' `[r, g, b, a]` colours,
+ *  one per colour array (the bucket colours are shared, frozen arrays). */
+const _colorViews = new WeakMap();
+
+/**
+ * A dot colour as `{red, green, blue, alpha}` (what a Cesium point's `color`
+ * takes), from the draw item's `[r, g, b, a]`; other shapes pass through.
+ * @param {number[]|object|null|undefined} color
+ * @returns {object|null}
+ */
+function colorView(color) {
+  if (!Array.isArray(color)) return color ?? null;
+  let view = _colorViews.get(color);
+  if (!view) {
+    view = Object.freeze({
+      red: color[0],
+      green: color[1],
+      blue: color[2],
+      alpha: color[3] ?? 1,
+    });
+    _colorViews.set(color, view);
+  }
+  return view;
+}
+
 export function createQueries({ state: layerState }) {
+  /** The one view `forEachTrafficDot` hands out, refilled for each dot. */
+  const dotView = { position: null, color: null, pixelSize: 0, show: true };
   const methods = {
     /**
-     * Visit every live traffic dot's point primitive (position, color,
-     * pixelSize, show) without allocating. Read-only. The index is the dot's
-     * slot this frame, the same one detection uses for its `VEH-0000` tag.
+     * Visit every live traffic dot as a point (position, color, pixelSize,
+     * show) without allocating. The dots are draw items (`pos` in ECEF,
+     * `[r, g, b, a]` colours), so each is handed out through one reused view:
+     * `position` is the item's own `pos`, `color` is `{red, green, blue,
+     * alpha}`. Read-only, and only valid during the callback. The index is
+     * the dot's slot this frame, the same one detection uses for its
+     * `VEH-0000` tag.
      * @param {(point: object, index: number) => void} visit
      */
     forEachTrafficDot(visit) {
       if (!layerState._enabled || typeof visit !== 'function') return;
       for (let i = 0; i < layerState._dots.length; i += 1) {
         const point = layerState._dots[i]?.point;
-        if (point?.position) visit(point, i);
+        if (!point?.pos) continue;
+        dotView.position = point.pos;
+        dotView.color = colorView(point.color);
+        dotView.pixelSize = point.pixelSize;
+        dotView.show = point.show !== false;
+        visit(dotView, i);
       }
     },
 

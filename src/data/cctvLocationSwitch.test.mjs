@@ -108,12 +108,20 @@ test('leaving a region releases the old view but keeps the layer on and the cata
   const runtime = records[0].projection;
   const planeCanvas = runtime.canvas;
   const frameImage = runtime.image;
-  assert.ok(runtime.planeEntity, 'activation built a monitor plane');
+  assert.ok(runtime.plane, 'activation built a monitor plane');
   assert.match(frameImage.src, /\/api\/cctv\/frame\/austin-0/);
   assert.deepEqual(cardIds(host), ['austin-1', 'austin-2']);
   assert.ok(records.every((record) => record.coverageEntities.length === 5));
-  records[1].viewshedPrimitive = { id: 'austin-1-volume' };
-  const volume = records[1].viewshedPrimitive;
+  // A far camera's viewshed volume, drawn in the layer's own mesh set, so the
+  // leave has a real mesh to take out (not just an id on the record).
+  const viewshedSet = [...viewer.draw.sets.values()].find(
+    (set) => !set.disposed && /^cctv:\d+:viewshed$/.test(set.spec.id),
+  );
+  assert.ok(viewshedSet, 'the layer made its viewshed mesh set');
+  viewshedSet.items.set('austin-1-volume', { id: 'austin-1-volume' });
+  records[1].viewshedVolume = 'austin-1-volume';
+  const volume = records[1].viewshedVolume;
+  assert.ok(viewer.entities.getById(volume), 'the volume is drawn before the leave');
   const states = [];
   const unsubscribe = cctvLayer.subscribe((state) => states.push(state));
   t.after(unsubscribe);
@@ -150,7 +158,7 @@ test('leaving a region releases the old view but keeps the layer on and the cata
 
   // Monitor plane: entity gone, frame request cancelled, canvas pixels freed.
   assert.equal(records[0].projection, null);
-  assert.equal(runtime.planeEntity, null);
+  assert.equal(runtime.plane, null);
   assert.equal(viewer.entities.getById('cctv-austin-0-plane'), undefined);
   assert.equal(frameImage.src, '', 'the in-flight frame request is detached');
   assert.equal(planeCanvas.width, 0);
@@ -161,8 +169,8 @@ test('leaving a region releases the old view but keeps the layer on and the cata
   assert.equal(viewer.entities.getById('cctv-austin-1-cap'), undefined);
   assert.equal(records[3].coverageEntities.length, 5);
   assert.ok(viewer.entities.getById('cctv-toronto-0-cap'));
-  assert.equal(records[1].viewshedPrimitive, null);
-  assert.ok(viewer.removedPrimitives.includes(volume));
+  assert.equal(records[1].viewshedVolume, null);
+  assert.equal(viewer.entities.getById(volume), undefined);
 
   // Idempotent and throw-free, whatever the manager passes.
   assert.doesNotThrow(() => cctvLayer.onLocationLeave({ from: TEXAS, to: ONTARIO }));
@@ -222,7 +230,7 @@ test('arrival selects the destination camera without flying and reloads its card
   assert.equal(cctvLayer.getUIState().activeCameraId, 'toronto-0');
   assert.equal(viewer.camera.flyCalls, 0, 'arrival selects without flying');
   assert.equal(states.length, statesBeforeArrival + 1, 'the panel hears the arrival once');
-  assert.ok(records[2].projection?.planeEntity, 'the destination camera gets its monitor plane');
+  assert.ok(records[2].projection?.plane, 'the destination camera gets its monitor plane');
   assert.deepEqual(cardIds(host), ['toronto-1', 'toronto-2']);
 
   // Let the card pacer tick and the geometry queue drain.
@@ -257,7 +265,7 @@ test('a camera at the destination survives the switch; none is picked far from e
   cctvLayer.onLocationLeave({ from: TEXAS, to: ONTARIO, enabled: true });
   assert.equal(cctvLayer.getUIState().activeCameraId, 'toronto-0');
   assert.equal(records[1].projection, runtime);
-  assert.ok(runtime.planeEntity);
+  assert.ok(runtime.plane);
   cctvLayer.onLocationArrive({ from: TEXAS, to: ONTARIO });
   assert.equal(cctvLayer.getUIState().activeCameraId, 'toronto-0');
   assert.equal(
@@ -268,7 +276,7 @@ test('a camera at the destination survives the switch; none is picked far from e
 
   cctvLayer.onLocationLeave({ from: ONTARIO, to: place('BM', OFFSHORE), enabled: true });
   assert.equal(cctvLayer.getUIState().activeCameraId, null);
-  assert.equal(runtime.planeEntity, null);
+  assert.equal(runtime.plane, null);
   moveViewer(viewer, OFFSHORE);
   cctvLayer.onLocationArrive({ from: ONTARIO, to: place('BM', OFFSHORE) });
   assert.equal(cctvLayer.getUIState().activeCameraId, null, 'no camera within 50 km, so none is active');
@@ -345,7 +353,7 @@ test('arrival replaces the camera the switch released, even after a newer leave 
   const state = cctvLayer.getUIState();
   assert.equal(state.activeCameraId, 'toronto-0', 'the nearest destination camera takes over');
   assert.equal(state.autoHopSuspended, false);
-  assert.ok(records[1].projection?.planeEntity, 'the destination camera gets its monitor plane');
+  assert.ok(records[1].projection?.plane, 'the destination camera gets its monitor plane');
   assert.equal(viewer.camera.flyCalls, 0, 'arrival selects without flying');
 });
 
@@ -372,7 +380,7 @@ test('a destination that asks for a camera gets its nearest one, even after a de
   const state = cctvLayer.getUIState();
   assert.equal(state.activeCameraId, 'austin-site');
   assert.equal(state.autoHopSuspended, false, 'selecting the site camera re-arms AUTO HOP');
-  assert.ok(records[2].projection?.planeEntity, 'the site camera gets its monitor plane');
+  assert.ok(records[2].projection?.plane, 'the site camera gets its monitor plane');
   assert.equal(viewer.camera.flyCalls, 0);
 });
 
@@ -388,10 +396,10 @@ test('a switch while the layer is off frees its monitor plane and enable picks a
   setActiveCamera('austin-0');
   const runtime = records[0].projection;
   cctvLayer.disable();
-  assert.ok(runtime.planeEntity, 'disable only hides the plane');
+  assert.ok(runtime.plane, 'disable only hides the plane');
 
   cctvLayer.onLocationLeave({ from: TEXAS, to: ONTARIO, enabled: false });
-  assert.equal(runtime.planeEntity, null);
+  assert.equal(runtime.plane, null);
   assert.equal(records[0].projection, null);
   assert.equal(cctvLayer.getUIState().activeCameraId, null);
   assert.equal(cctvLayer.getUIState().enabled, false, 'the hook never enables the layer');

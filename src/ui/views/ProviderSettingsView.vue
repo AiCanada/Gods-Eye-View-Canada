@@ -12,6 +12,9 @@ import { vStatusText } from '../rail/statusText.js';
 import { useLocaleStore } from '../stores/locale.js';
 import { useProviderSettingsStore } from '../stores/providerSettings.js';
 import LocalePicker from './panels/LocalePicker.vue';
+import UiButton from '../kit/UiButton.vue';
+import UiCloseButton from '../kit/UiCloseButton.vue';
+import UiIcon from '../kit/UiIcon.vue';
 
 const { picker } = storeToRefs(useLocaleStore());
 // The key setup owner (src/keySetup.js) presents the chip, the dialog and its
@@ -22,15 +25,15 @@ const available = computed(() => view.value?.available !== false);
 const chip = computed(() => view.value?.chip ?? null);
 const dialog = computed(() => view.value?.dialog ?? { hidden: true, visible: false });
 
-// Cyber and the owner's phone put the chip in the top toolbar
-// (keySetupChipInToolbar); every other theme keeps it first in the corner
-// row, beside the language picker.
-const cyber = shallowRef(false);
+// The owner's phone puts the chip in the top toolbar (keySetupChipInToolbar);
+// everywhere else it stays first in the corner row, beside the language
+// picker.
+const inToolbar = shallowRef(false);
 let themeObserver = null;
 onMounted(() => {
   const theme = document.documentElement;
   const sync = () => {
-    cyber.value =
+    inToolbar.value =
       keySetupChipInToolbar(theme.dataset) &&
       Boolean(document.getElementById('top-center-actions'));
   };
@@ -77,11 +80,11 @@ const removeTitle = (title) =>
   <!-- Bottom-right HUD row: the POWER UP chip (while keys are missing) and
        the language picker, once the shell publishes it. -->
   <div id="corner-actions">
-    <Teleport v-if="available" :to="cyber ? '#top-center-actions' : 'body'" :disabled="!cyber">
-      <button id="key-setup-chip" type="button" :hidden="!chip || chip.hidden" aria-haspopup="dialog" aria-controls="key-setup" :title="chip?.title" :aria-label="chip?.title" @click="controls?.open()">
-        <span class="material-symbols-outlined" aria-hidden="true">bolt</span>
+    <Teleport v-if="available" :to="inToolbar ? '#top-center-actions' : 'body'" :disabled="!inToolbar">
+      <UiButton id="key-setup-chip" :hidden="!chip || chip.hidden" aria-haspopup="dialog" aria-controls="key-setup" :title="chip?.title" :aria-label="chip?.title" @click="controls?.open()">
+        <UiIcon name="bolt" :size="null" />
         <span data-key-setup-chip-label>{{ chip ? chip.label : t('POWER UP') }}</span>
-      </button>
+      </UiButton>
     </Teleport>
     <LocalePicker v-if="picker" :key="picker.current" :current="picker.current" :on-select="picker.onSelect" :focus="picker.focus" />
   </div>
@@ -89,9 +92,7 @@ const removeTitle = (title) =>
     <div class="key-setup-scanline" aria-hidden="true"></div>
     <header class="key-setup-header">
       <span class="key-setup-kicker">{{ t('GROUND STATION · PROVIDER SETTINGS') }}</span>
-      <button type="button" class="key-setup-close" data-key-setup-close :aria-label="t('Close key setup')" @click="controls?.close()">
-        <span class="material-symbols-outlined" aria-hidden="true">close</span>
-      </button>
+      <UiCloseButton class="key-setup-close" glyph="icon" data-key-setup-close :label="t('Close key setup')" @click="controls?.close()" />
     </header>
     <h2 id="key-setup-title">{{ t('Power up the globe') }}</h2>
     <p id="key-setup-description">{{ t('The globe already flies keyless. Every key below switches on another real feed — paste one and it\'s saved into this app\'s local configuration, then the server restarts itself. Server-side keys stay on this machine; Google Maps and Cesium ion run in the browser and must be provider-restricted. Keys you configured elsewhere are shown but never touched.') }}</p>
@@ -114,11 +115,11 @@ const removeTitle = (title) =>
             <datalist v-if="optional.options.length" :id="optional.listId"><option v-for="option in optional.options" :key="option" :value="option"></option></datalist>
             <input type="text" autocomplete="off" spellcheck="false" :data-env-var="optional.name" :aria-label="optional.ariaLabel" :placeholder="optional.placeholder" :list="optional.options.length ? optional.listId : undefined" v-field-value="view.fields[optional.name] ?? ''" @input="controls?.setField(optional.name, $event.target.value)" />
           </template>
-          <button v-if="key.managed === 'file'" type="button" class="key-setup-remove" :data-key-setup-remove="JSON.stringify(key.envVars)" :title="removeTitle(key.title)" @click="controls?.remove(key.envVars)">{{ t('REMOVE') }}</button>
+          <UiButton v-if="key.managed === 'file'" class="key-setup-remove" :data-key-setup-remove="JSON.stringify(key.envVars)" :title="removeTitle(key.title)" @click="controls?.remove(key.envVars)">{{ t('REMOVE') }}</UiButton>
         </div>
         <div v-if="key.id === 'openai'" class="key-setup-cloud-auth">
           <span class="key-setup-cloud-auth-state">{{ view.auth.mode === 'oauth' ? t('VOICE AUTH · CHATGPT OAUTH') : t('VOICE AUTH · API KEY') }}</span>
-          <button type="button" class="key-setup-cloud-auth-toggle" data-cloud-voice-auth-toggle="true" :title="view.auth.mode === 'oauth' ? t('Use OPENAI_API_KEY for the next cloud voice session') : t('Use the signed-in local ChatGPT/Codex OAuth session for the next cloud voice session')" :aria-disabled="String(view.auth.busy)" @click="controls?.toggleAuth()">{{ view.auth.mode === 'oauth' ? t('USE API KEY') : t('USE CHATGPT OAUTH') }}</button>
+          <UiButton class="key-setup-cloud-auth-toggle" data-cloud-voice-auth-toggle="true" :title="view.auth.mode === 'oauth' ? t('Use OPENAI_API_KEY for the next cloud voice session') : t('Use the signed-in local ChatGPT/Codex OAuth session for the next cloud voice session')" :aria-disabled="String(view.auth.busy)" @click="controls?.toggleAuth()">{{ view.auth.mode === 'oauth' ? t('USE API KEY') : t('USE CHATGPT OAUTH') }}</UiButton>
         </div>
       </section></template>
       </template>
@@ -128,7 +129,7 @@ const removeTitle = (title) =>
       <div class="private-cams device-feeds" data-key-setup-host="devices"></div>
     </div>
     <div class="key-setup-footer">
-      <button type="button" class="key-setup-apply" data-key-setup-apply :aria-disabled="view?.saving == null ? undefined : String(view.saving)" @click="controls?.apply()">{{ t('SAVE KEYS') }}</button>
+      <UiButton class="key-setup-apply" data-key-setup-apply :aria-disabled="view?.saving == null ? undefined : String(view.saving)" @click="controls?.apply()">{{ t('SAVE KEYS') }}</UiButton>
       <span class="key-setup-hint">{{ t('ESC to close') }}</span>
     </div>
     <p class="key-setup-note" data-key-setup-status role="status" aria-live="polite" v-status-text="statusText"></p>
