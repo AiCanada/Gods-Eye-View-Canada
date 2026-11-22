@@ -29,10 +29,12 @@ export class MapillarySourceError extends Error {
 
 async function readJsonOrThrow(response, label) {
   let payload = null;
+  let unreadable = null;
   try {
     payload = await response.json();
-  } catch {
-    /* status is authoritative */
+  } catch (error) {
+    // An error status is authoritative without a body.
+    unreadable = error;
   }
   if (!response.ok)
     throw new MapillarySourceError(
@@ -41,6 +43,17 @@ async function readJsonOrThrow(response, label) {
         `${label} HTTP ${response.status}`,
       { status: response.status, payload },
     );
+  // A success whose body never arrived (cut off, or its signal aborted while
+  // it was read) answered nothing: it must not read as an empty answer. Read
+  // as null, a status check aborted mid-body said "no key" although the page
+  // had one, and Street Level stayed at KEY REQUIRED.
+  if (unreadable) {
+    if (unreadable.name === 'AbortError' || unreadable.name === 'TimeoutError')
+      throw unreadable;
+    throw new MapillarySourceError(`${label}: unreadable response`, {
+      status: response.status,
+    });
+  }
   return payload;
 }
 

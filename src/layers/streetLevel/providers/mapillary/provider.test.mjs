@@ -159,6 +159,30 @@ test('a status the server never answers falls back to the bundled token once the
   assert.equal(instance.coverageStats().keyRequired, true);
 });
 
+test('a status check that times out mid-answer keeps the bundled token instead of reading "no key"', async () => {
+  // The real source, its status body aborted while it is read: the provider
+  // falls back to the token the page was built with, as for a server that
+  // never answered, and does not read the cut-off answer as "not configured".
+  const { createMapillarySource } = await import('./source.js');
+  const source = createMapillarySource({
+    token: 'MLY|1|abc',
+    fetchImpl: async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(
+              new DOMException('The operation was aborted.', 'AbortError'),
+            );
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+  });
+  const instance = createMapillaryProvider({ source }).create(fakeContext());
+  assert.deepEqual(await instance.status(), { configured: true });
+  assert.equal(instance.coverageStats().keyRequired, false);
+});
+
 /** A graph image record at a point. */
 const imageAt = (id, lon, lat, extra = {}) => ({
   id,

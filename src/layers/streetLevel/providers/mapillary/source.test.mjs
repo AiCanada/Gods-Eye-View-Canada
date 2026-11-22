@@ -236,3 +236,45 @@ test('the caller’s abort still ends a nearest-image search before its deadline
   controller.abort(reason);
   await assert.rejects(pending, (error) => error === reason);
 });
+
+test('a status whose body is cut off or aborted mid-read throws instead of answering null', async () => {
+  // Headers said 200, then the body read failed: aborted (the caller's
+  // timeout fired while it was read) or not JSON at all.
+  const aborted = new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.error(
+          new DOMException('The operation was aborted.', 'AbortError'),
+        );
+      },
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  );
+  const { fetchImpl: abortedFetch } = fakeFetch(() => aborted);
+  await assert.rejects(
+    createMapillarySource({
+      token: 'MLY|1|abc',
+      fetchImpl: abortedFetch,
+    }).getStatus(),
+    (error) => error.name === 'AbortError',
+  );
+  const { fetchImpl: htmlFetch } = fakeFetch(
+    () => new Response('<!doctype html>', { status: 200 }),
+  );
+  await assert.rejects(
+    createMapillarySource({
+      token: 'MLY|1|abc',
+      fetchImpl: htmlFetch,
+    }).getStatus(),
+    (error) =>
+      error instanceof MapillarySourceError && /unreadable/.test(error.message),
+  );
+  // A readable answer is still the answer.
+  const { fetchImpl: okFetch } = fakeFetch(() =>
+    jsonResponse({ configured: true }),
+  );
+  assert.deepEqual(
+    await createMapillarySource({ fetchImpl: okFetch }).getStatus(),
+    { configured: true },
+  );
+});
