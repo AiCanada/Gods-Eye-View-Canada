@@ -295,7 +295,11 @@
     "{n} mm",
     "Route",
     "3D",
-    "KT"
+    "KT",
+    "ON AIR",
+    "Stream",
+    "{seconds} s",
+    "Mode"
   ],
   "egy": [
     "1 d/s",
@@ -364,6 +368,7 @@
     "Electronic",
     "Ether",
     "EUR / USD",
+    "European Space Agency (ESA)",
     "Facebook",
     "FLIR",
     "FM MHZ",
@@ -415,6 +420,7 @@
     "Ironbow",
     "Israel–Gaza–Lebanon",
     "Japan",
+    "Japan Aerospace Exploration Agency (JAXA)",
     "Jazz",
     "Just Eat Takeaway",
     "KB",
@@ -575,6 +581,7 @@
     "{range} NM",
     "{rate} msg/s",
     "{region}, {country}",
+    "{seconds} s",
     "{size} KB",
     "{size} MB",
     "{source} HTTP {status}",
@@ -942,7 +949,9 @@
     "{n} min",
     "{n} mm",
     "3D",
-    "KT"
+    "KT",
+    "Manual",
+    "{seconds} s"
   ],
   "fr": [
     "1 min/s",
@@ -988,7 +997,7 @@
     "Conversation",
     "Country",
     "Cyan",
-    "Cyclones · NHC / CPHC",
+    "Cyclones · NHC / CPHC · JTWC",
     "DENSE",
     "DEST ---°",
     "DEST {bearing}",
@@ -1199,7 +1208,8 @@
     "{n} min",
     "{n} mm",
     "3D",
-    "KT"
+    "KT",
+    "{seconds} s"
   ],
   "fr-CA": [
     "1 h/s",
@@ -1261,6 +1271,7 @@
     "Cyan",
     "Cyber",
     "Cyclones · NHC / CPHC",
+    "Cyclones · NHC / CPHC · JTWC",
     "Dance",
     "DAX",
     "dB",
@@ -1549,6 +1560,7 @@
     "{range} NM",
     "{rate} msg/s",
     "{region}, {country}",
+    "{seconds} s",
     "{speed} {direction}",
     "{value} KM",
     "{value} KM/H",
@@ -1801,7 +1813,8 @@
     "{n} min",
     "{n} mm",
     "3D",
-    "KT"
+    "KT",
+    "{seconds} s"
   ],
   "iu": [
     "1090 MHz",
@@ -2075,6 +2088,7 @@
     "{n}°",
     "{range} NM",
     "{region}, {country}",
+    "{seconds} s",
     "{size} KB",
     "{size} MB",
     "{source} HTTP {status}",
@@ -2370,7 +2384,9 @@
     "{n} min",
     "{n} mm",
     "3D",
-    "KT"
+    "KT",
+    "Manual",
+    "{seconds} s"
   ],
   "ru": [
     "1900–1945",
@@ -2607,7 +2623,8 @@
     "{n} min",
     "{n} mm",
     "3D",
-    "KT"
+    "KT",
+    "{seconds} s"
   ],
   "uk": [
     "1900–1945",

@@ -327,7 +327,13 @@
       "src/search/gridReference.js",
       "src/search/coordinateParser.js",
       "src/search/placeSuggestions.js",
-      "src/search/bip39Words.js"
+      "src/search/bip39Words.js",
+      "src/ui/stores/station.js",
+      "src/ui/views/panels/StationPanel.vue",
+      "src/ui/stores/live.js",
+      "src/ui/views/panels/LivePanel.vue",
+      "src/ui/views/panels/CockpitLivePage.vue",
+      "src/ui/liveScreen.js"
     ],
     "external": ["vue", "pinia", "vue-i18n"]
   },
@@ -610,7 +616,8 @@
       "server/providers/common/http.js",
       "src/sources/windBody.js",
       "src/sources/httpBody.js",
-      "src/i18n/marker.js"
+      "src/i18n/marker.js",
+      "server/providers/jtwc.js"
     ],
     "external": ["@meri-imperiumi/eccodes-wasm"]
   },
@@ -1313,6 +1320,7 @@
       "src/ui/cctv.js",
       "src/ui/cctvBindings.js",
       "src/ui/cctvCalibration.js",
+      "src/ui/mobileSheets.js",
       "src/ui/cctvControls.js",
       "src/ui/cctvFrames.js",
       "src/ui/cctvVideo.js",
@@ -1524,7 +1532,9 @@
       "src/render/cesium/zoomOutGuard.js",
       "src/render/cesium/sceneOcclusionProbe.js",
       "src/render/occlusion/depthProbe.js",
-      "src/data/detectionOcclusion.js"
+      "src/data/detectionOcclusion.js",
+      "src/layers/satellites/issMounts.js",
+      "src/layers/satellites/tiangongMounts.js"
     ],
     "external": ["cesium", "kdbush"]
   },
@@ -1570,6 +1580,7 @@
       "src/data/distanceFormat.js",
       "src/i18n/marker.js",
       "src/ui/mobileShell.js",
+      "src/ui/mobileSheets.js",
       "src/exclusiveSurfaces.js",
       "src/ui/placeNames.js",
       "src/hudLayouts.js",
@@ -1941,7 +1952,15 @@
       "src/data/trackingClickGesture.js",
       "src/ui/stores/sceneSharing.js",
       "src/maps/attribution.js",
-      "src/data/dataCredits.js"
+      "src/data/dataCredits.js",
+      "src/layers/satellites/issMounts.js",
+      "src/layers/satellites/tiangongMounts.js",
+      "src/ui/stores/station.js",
+      "src/ui/stores/live.js",
+      "src/data/liveStreams.js",
+      "src/data/youtubeApi.js",
+      "src/data/youtubeLivePlayer.js",
+      "src/ui/liveControls.js"
     ],
     "external": [
       "cesium",
@@ -3143,7 +3162,21 @@
       "src/render/cesium/zoomOutGuard.js",
       "src/render/cesium/sceneOcclusionProbe.js",
       "src/render/occlusion/depthProbe.js",
-      "src/data/detectionOcclusion.js"
+      "src/data/detectionOcclusion.js",
+      "src/layers/satellites/issModel.js",
+      "src/layers/satellites/issTelemetry.js",
+      "src/layers/satellites/issMounts.js",
+      "src/layers/satellites/tiangongMounts.js",
+      "src/layers/satellites/issArticulation.js",
+      "src/layers/satellites/issCommand.js",
+      "src/layers/satellites/stationPanel.js",
+      "src/layers/satellites/issStation.js",
+      "src/layers/satellites/stationModels.js",
+      "src/layers/satellites/stationModel.js",
+      "src/layers/satellites/tiangongModel.js",
+      "src/layers/satellites/tiangongStation.js",
+      "src/layers/satellites/tiangongJoints.js",
+      "src/layers/satellites/tiangongArticulation.js"
     ],
     "external": ["cesium", "satellite.js", "kdbush"]
   },
@@ -5117,6 +5150,7 @@
       "src/ui/applicationShell.js",
       "src/ui/railEdgeScroll.js",
       "src/ui/mobileShell.js",
+      "src/ui/mobileSheets.js",
       "src/ui/localePicker.js",
       "src/ui/cyberSonarControls.js",
       "src/ui/locationNavigation.js",
@@ -5985,7 +6019,27 @@
       "src/ui/stores/entityCard.js",
       "src/ui/entityContextBridge.js",
       "src/data/locate.js",
-      "src/render/cesium/cardPreviews.js"
+      "src/render/cesium/cardPreviews.js",
+      "src/layers/satellites/issModel.js",
+      "src/layers/satellites/issTelemetry.js",
+      "src/layers/satellites/issMounts.js",
+      "src/layers/satellites/tiangongMounts.js",
+      "src/layers/satellites/issArticulation.js",
+      "src/layers/satellites/issCommand.js",
+      "src/ui/stores/live.js",
+      "src/ui/stores/station.js",
+      "src/data/liveStreams.js",
+      "src/layers/satellites/stationPanel.js",
+      "src/layers/satellites/issStation.js",
+      "src/data/youtubeApi.js",
+      "src/data/youtubeLivePlayer.js",
+      "src/ui/liveControls.js",
+      "src/layers/satellites/stationModels.js",
+      "src/layers/satellites/stationModel.js",
+      "src/layers/satellites/tiangongStation.js",
+      "src/layers/satellites/tiangongModel.js",
+      "src/layers/satellites/tiangongJoints.js",
+      "src/layers/satellites/tiangongArticulation.js"
     ],
     "external": [
       "hls.js",
@@ -6863,7 +6917,22 @@
       "src/data/placementProvider.js",
       "src/data/courseFromFixes.js",
       "src/time/frameWait.js",
-      "src/maps/attribution.js"
+      "src/maps/attribution.js",
+      "src/layers/satellites/issModel.js",
+      "src/layers/satellites/issTelemetry.js",
+      "src/layers/satellites/issMounts.js",
+      "src/layers/satellites/tiangongMounts.js",
+      "src/layers/satellites/issArticulation.js",
+      "src/layers/satellites/issCommand.js",
+      "src/data/youtubeApi.js",
+      "src/layers/satellites/stationPanel.js",
+      "src/layers/satellites/issStation.js",
+      "src/layers/satellites/stationModels.js",
+      "src/layers/satellites/stationModel.js",
+      "src/layers/satellites/tiangongStation.js",
+      "src/layers/satellites/tiangongJoints.js",
+      "src/layers/satellites/tiangongArticulation.js",
+      "src/layers/satellites/tiangongModel.js"
     ],
     "external": [
       "hls.js",

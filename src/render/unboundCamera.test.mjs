@@ -191,6 +191,10 @@ const CAMERA_FROM_CALLER = new Set([
   './ui/visual-settings',
   './application/controls',
   './application/data',
+  // Fork: the startup chrome mounts the fork's location click and AI World
+  // overlay, which read the camera, query, frame and input ports of the
+  // application's viewer the same way.
+  './application/chrome',
   // The scene binds the renderer it creates (the default one loaded only
   // when it is given none), so its own viewer needs no factory.
   './application/scene',

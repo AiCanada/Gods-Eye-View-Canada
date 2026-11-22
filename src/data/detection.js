@@ -24,7 +24,10 @@ import {
   getQueuedOverlayEntryAlpha,
   registerWorldOverlayPaintLane,
 } from '../overlays/worldOverlay.js';
-import { setTrafficTagFilter } from './traffic.js';
+// From the registry itself, not ./traffic.js: that module loads the traffic
+// layer's drawing code, which the application entries that reach detection
+// must not load without the draw factory (render/unboundCamera.test).
+import { setTrafficTagFilter } from '../layers/traffic/instances.js';
 import {
   DETECTION_STYLE,
   DETECTION_THEME_MAP,

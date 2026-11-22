@@ -19,7 +19,7 @@ import {
 import { sanitizeCctvRangeHeader } from './cctv/range.js';
 import { admitSameSiteKeyless } from './common/same-site.js';
 import { PROXY_SIGNALS } from '../../src/localRequestGate.mjs';
-import { createHlsPuller } from './cctv/stream.js';
+import { createHlsPuller, HlsCapacityError } from './cctv/stream.js';
 import {
   CCTV_AREA_RADIUS_KM,
   CCTV_FRAME_CACHE_TTL_MS,
@@ -123,6 +123,10 @@ function cameraIdFrom(pathname, prefix) {
     return '';
   }
 }
+
+/** An http(s) .m3u8 URL: what the HLS puller behind /media can play. */
+const isPullableHlsUrl = (url) =>
+  /^https?:\/\//i.test(url) && /\.m3u8(?:\?|$)/i.test(url);
 
 /** Street View runs only when CCTV_STREETVIEW_FALLBACK=1 (off by default). */
 function streetViewEnabled() {
@@ -837,13 +841,21 @@ export function cctvProxy({
     const city = source.city || '';
     const provider = source.provider || 'Configured source';
     const feedType = normalizeFeedType(source.feedType);
+    // /media reports a pullable HLS camera's health. Without a snapshot of
+    // its own, the placeholder or Street View frame here says nothing about
+    // its stream, so it leaves that health as it is.
+    const keepHealth =
+      feedType === 'hls' &&
+      !source.snapshotUrl &&
+      isPullableHlsUrl(source.url || '');
     const placeholder = (status, message, extra = {}) => {
-      setHealth(cameraId, {
-        status: 'degraded',
-        sourceKind: 'synthetic',
-        label: provider,
-        message,
-      });
+      if (!keepHealth)
+        setHealth(cameraId, {
+          status: 'degraded',
+          sourceKind: 'synthetic',
+          label: provider,
+          message,
+        });
       sendSynthetic(res, { cameraId, label, city, status }, extra);
     };
 
@@ -967,12 +979,13 @@ export function cctvProxy({
         pitch: viewOf('pitch', source.pitchDeg),
       });
       if (!sv?.ok) return false;
-      setHealth(cameraId, {
-        status: 'degraded',
-        sourceKind: 'streetview',
-        label: 'Google Street View',
-        message: 'Fallback Street View frame',
-      });
+      if (!keepHealth)
+        setHealth(cameraId, {
+          status: 'degraded',
+          sourceKind: 'streetview',
+          label: 'Google Street View',
+          message: 'Fallback Street View frame',
+        });
       res.writeHead(200, {
         'Content-Type': sv.contentType,
         'Cache-Control': 'no-store',
@@ -1370,7 +1383,7 @@ export function cctvProxy({
       res.end();
       return;
     }
-    if (!/^https?:\/\//i.test(mediaUrl) || !/\.m3u8(?:\?|$)/i.test(mediaUrl)) {
+    if (!isPullableHlsUrl(mediaUrl)) {
       res.writeHead(503, { 'Content-Type': 'application/json' });
       res.end(
         JSON.stringify({
@@ -1426,13 +1439,15 @@ export function cctvProxy({
         'X-CCTV-Session': entry.token,
       });
       res.end(playlist);
-    } catch {
-      setHealth(cameraId, {
-        status: 'degraded',
-        sourceKind: 'fallback',
-        label: source?.provider || 'Configured source',
-        message: 'Live HLS unavailable',
-      });
+    } catch (error) {
+      // A capacity refusal says nothing about the source: keep its health.
+      if (!(error instanceof HlsCapacityError))
+        setHealth(cameraId, {
+          status: 'degraded',
+          sourceKind: 'fallback',
+          label: source?.provider || 'Configured source',
+          message: 'Live HLS unavailable',
+        });
       if (!downstream.closed) {
         res.writeHead(503, {
           'Content-Type': 'application/json',

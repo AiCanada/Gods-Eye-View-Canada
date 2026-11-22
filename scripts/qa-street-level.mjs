@@ -484,6 +484,17 @@ async function main() {
       }),
     );
     await hookRenderErrors(page);
+    // Fork: the Street Level panel sits in the right rail, under the first
+    // visit's GEV Stories popup, which would take the clicks meant for the
+    // photo viewer's buttons. This gate is about Street Level: start with
+    // the popup already dismissed.
+    await page.evaluateOnNewDocument(() => {
+      try {
+        localStorage.setItem('gevStoriesPopSeen', '1');
+      } catch {
+        // No storage: the popup shows, as on a first visit.
+      }
+    });
     if (fixture) await serveFixtures(page, fixture);
     await boot(page, url);
     return page;

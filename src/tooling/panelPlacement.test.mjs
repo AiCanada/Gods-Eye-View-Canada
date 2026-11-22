@@ -28,8 +28,12 @@ test('left stack: AI Risk & Truth Assessment, CCTV, Ultra, Social Media Analysis
   // Radio is the rail's last member, below Scenes, but never a tab. Weather,
   // News and Recent Imagery are hidden until a product, feed or imagery day is
   // chosen. Utilities (upstream #1469) sits under Data Layers; upstream's
-  // Space Missions panel follows Context.
-  assert.deepEqual(panelOrder(right), ['data-panel', 'utilities-panel', 'weather-panel', 'news-panel', 'recent-imagery-panel', 'global-context-panel', 'space-missions-panel', 'sst-panel', 'scene-panel', 'radio-panel']);
+  // Space Missions panel follows Context. Upstream's Station and Live are
+  // sections inside Context (not rail members: the rail takes its direct
+  // children only).
+  assert.deepEqual(panelOrder(right), ['data-panel', 'utilities-panel', 'weather-panel', 'news-panel', 'recent-imagery-panel', 'global-context-panel', 'station-panel', 'live-panel', 'space-missions-panel', 'sst-panel', 'scene-panel', 'radio-panel']);
+  const context = between('id="global-context-panel"', 'id="space-missions-panel"');
+  assert.ok(context.includes('id="station-panel"') && context.includes('id="live-panel"'), 'Station and Live sit inside Context');
 });
 
 test('the LLM box collapses like the others and is titled AI Risk & Truth Assessment', () => {
