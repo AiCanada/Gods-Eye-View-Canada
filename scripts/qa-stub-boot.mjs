@@ -58,6 +58,22 @@ export const STUB_BOOT_LAYERS = Object.freeze([
 export const isCesiumRequest = (url) =>
   /(?:^|[/._-])cesium(?:[/._-]|$)/i.test(new URL(url).pathname);
 
+/**
+ * Fork: the Canada edition's own features (Global Abundance, AI World,
+ * Outbreak, Ask, Social, sea temperature, device feeds, CCTV pictures, the
+ * map's location click) are written against Cesium: they are on
+ * `src/render/cesiumAllowList.json` and import the package and the viewer
+ * bridge as they load. The application therefore cannot start without these
+ * two modules being requested; on the stub those features find no viewer
+ * behind the host and do nothing. They are reported, not failed. Anything
+ * else that is Cesium (the adapter, a worker, an asset) still fails the run.
+ */
+export const isForkCesiumBridge = (url) =>
+  [
+    '/src/render/cesium/viewers.js',
+    '/node_modules/.vite/deps/cesium.js',
+  ].includes(new URL(url).pathname);
+
 /** The stylesheet `vite-plugin-cesium` links into every page it serves. */
 const isPluginStylesheet = (url, type) =>
   type === 'stylesheet' &&
@@ -168,6 +184,7 @@ async function run(args) {
   const errors = [];
   const cesiumRequests = [];
   const cesiumStylesheets = [];
+  const forkBridgeRequests = [];
   const report = { url: base, layers: {}, ok: false };
   try {
     const page = await browser.newPage();
@@ -194,7 +211,9 @@ async function run(args) {
       if (url.startsWith(base) && isCesiumRequest(url))
         (isPluginStylesheet(url, request.resourceType())
           ? cesiumStylesheets
-          : cesiumRequests
+          : isForkCesiumBridge(url)
+            ? forkBridgeRequests
+            : cesiumRequests
         ).push(url);
       // The application's page, with the stub entry in place of its own.
       if (request.isNavigationRequest() && url.startsWith(base)) {
@@ -361,6 +380,7 @@ async function run(args) {
   } finally {
     report.cesiumRequests = cesiumRequests;
     report.cesiumStylesheets = cesiumStylesheets;
+    report.forkBridgeRequests = forkBridgeRequests;
     report.errors = errors;
     await browser.close();
   }
@@ -403,6 +423,12 @@ async function run(args) {
   if (cesiumStylesheets.length)
     console.log(
       `note: the build's Cesium plugin linked ${cesiumStylesheets.join(', ')}`,
+    );
+  if (forkBridgeRequests.length)
+    console.log(
+      `note: the fork's Cesium-written features loaded ${forkBridgeRequests
+        .map((url) => new URL(url).pathname)
+        .join(', ')}`,
     );
   if (toolingErrors.length)
     console.log(
