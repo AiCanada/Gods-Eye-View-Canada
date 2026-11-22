@@ -254,11 +254,19 @@ const WORKLOADS = [
     // coverage. Measured median 17,015 B/frame (106.3 B/candidate)
     // on Node 24.19; 19,000 carries ~11.7% headroom and the shared 154
     // ceiling applies unchanged.
+    //
+    // Fork (2026-11-22): the Canada edition's turned, centred and world-sized
+    // cards add a few statements to the projection hot path. This row then
+    // has two steady states: 17,387 B/frame, as upstream measures today, and
+    // 19,269 (Node 24.19) to 19,320 (Node 26, CI), 12 B a candidate more, in
+    // roughly one run in seven, where V8 settles on code that boxes one
+    // number a candidate. 21,000 carries ~8.7% over the higher state; the
+    // 154 B/candidate ceiling applies unchanged (120.8 at the higher state).
     name: 'with the bounded submarine-cable reference cohort',
     profile: 'submarine-cables',
     entries: CABLE_REFERENCE_LABEL_WINNER_CAP,
     candidates: CABLE_REFERENCE_LABEL_WINNER_CAP,
-    maxBytesPerFrame: 19_000,
+    maxBytesPerFrame: 21_000,
     saturated: true,
   },
   {

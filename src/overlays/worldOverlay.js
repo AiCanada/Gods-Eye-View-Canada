@@ -604,6 +604,11 @@ export function normalizeOverlayEntry(sourceId, entry) {
     // is known but not its direction, so the upright-most end is taken.
     orientTo: typeof entry.orientTo === 'function' ? entry.orientTo : null,
     orientAmbiguous: entry.orientAmbiguous === true,
+    // A turned or centred card. The projection does their extra work
+    // (rotation, centre offsets) out of line, behind this one flag.
+    cardExtras:
+      typeof entry.orientTo === 'function' ||
+      String(entry.placement || 'auto') === 'center',
     // Which point of a centred thumbnail's PICTURE lands on the anchor.
     pictureAnchor: entry.pictureAnchor === 'bottom' ? 'bottom' : 'center',
     // World-matched size: the picture is drawn this many metres wide at the
@@ -1832,6 +1837,9 @@ function getProjectionRecord(entry) {
       altitudeOptions: {},
       // Centre offsets start as doubles; NaN means "use the card middle".
       placementInput: { centerOffsetX: Number.NaN, centerOffsetY: Number.NaN },
+      // True while the rotation or the offsets above hold a turned or centred
+      // card's values, so a card that stops being one is reset once.
+      cardExtrasSet: false,
       scaledPaintPlacement: { rect: {} },
     };
     record.candidate = {
@@ -1986,9 +1994,6 @@ function snapshotAndProject(entry, source, viewProjection, keyhole) {
     );
     if (record.screen.y < safeTop) return null;
   }
-  record.rotation = entry.orientTo
-    ? overlayRotationToward(entry, record.screen, viewProjection)
-    : 0;
   if (
     !isOverlayPointVisible(
       entry,
@@ -2117,13 +2122,13 @@ function snapshotAndProject(entry, source, viewProjection, keyhole) {
     record.placementInput.leaderOffset = entry.leaderOffsetPx;
   }
   record.placementInput.preferred = entry.placement;
-  // Only centred cards (or one that was centred last frame and still holds its
-  // offsets — NaN never equals itself) pay for the call.
-  if (
-    entry.placement === 'center' ||
-    record.placementInput.centerOffsetX === record.placementInput.centerOffsetX
-  )
-    writeCenterOffsets(record, entry);
+  // Only turned or centred cards (or one that was last frame and still holds
+  // its rotation and offsets) pay for the call. One check, out of line: each
+  // statement added here moved this function toward the size at which V8
+  // sometimes stops keeping its doubles unboxed (12 bytes a candidate a frame,
+  // which broke the submarine-cable allocation budget in about one run in four).
+  if (entry.cardExtras || record.cardExtrasSet)
+    applyCardExtras(record, entry, viewProjection);
   record.placementInput.verticalOnly = entry.verticalOnly;
   record.placementInput.viewportMargin = entry.viewportMargin;
   placementVariants(record.placementInput, record.placements);
@@ -2632,6 +2637,18 @@ function applyWorldWidthScale(record, entry, distance) {
       (entry.worldWidthM * pixelsPerMetre) / entry.worldWidthBasePx,
     ),
   );
+}
+
+/**
+ * A turned or centred card's rotation and centre offsets; for a card that was
+ * one last frame and no longer is, their reset (rotation 0, offsets NaN).
+ */
+function applyCardExtras(record, entry, viewProjection) {
+  record.rotation = entry.orientTo
+    ? overlayRotationToward(entry, record.screen, viewProjection)
+    : 0;
+  writeCenterOffsets(record, entry);
+  record.cardExtrasSet = entry.cardExtras;
 }
 
 /**
