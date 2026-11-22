@@ -3456,19 +3456,15 @@ test('S2-8 cost pin: an unseeded second strain costs nothing; seeded at day 0 at
   const fastest = (xs) => Math.min(...xs);
   const unseededLine = `unseeded ${fastest(never).toFixed(1)} ms vs drift ${fastest(off).toFixed(1)} ms of CPU`;
   const seededLine = `seeded ${fastest(on).toFixed(1)} ms vs unseeded ${fastest(never).toFixed(1)} ms of CPU`;
-  // The two ratios are pinned on Node 24, where they were measured. They
-  // compare code paths, and another engine compiles those paths differently:
-  // CI's Node 26.x read the unseeded run at 1.22× and 1.36× the drift run
-  // (2026-11-21 and 22) with nothing changed here, and passed between. There
-  // the numbers are reported, not asserted.
-  if (!process.versions.node.startsWith('24.')) {
-    t.diagnostic(
-      `not asserted on Node ${process.versions.node}: ${unseededLine}; ${seededLine}`,
-    );
-    return;
-  }
-  assert.ok(fastest(never) <= 1.15 * fastest(off), unseededLine);
-  assert.ok(fastest(on) <= 2.2 * fastest(never), seededLine);
+  // Bounds that hold on a shared CI runner yet still catch a real cost. An
+  // unseeded second strain was pinned at 1.15× the drift run, but with
+  // nothing changed CI read it at 1.16× (Node 24) and 1.22× and 1.36×
+  // (Node 26) in 2026-11; what the pin guards against (the second strain
+  // simulated before it is seeded) roughly doubles the run. Hence 1.6× and,
+  // for the seeded run, 2.6×; the measured ratios go to the test's output.
+  t.diagnostic(`${unseededLine}; ${seededLine}`);
+  assert.ok(fastest(never) <= 1.6 * fastest(off), unseededLine);
+  assert.ok(fastest(on) <= 2.6 * fastest(never), seededLine);
 });
 
 test('S2-9 the lines: where and when the second strain started, its R and its share', () => {
