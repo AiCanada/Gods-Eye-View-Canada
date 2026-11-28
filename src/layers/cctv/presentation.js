@@ -252,6 +252,9 @@ export function createPresentation({
       parts.model.isVideoFeedType(
         parts.model.normalizeFeedType(camera.feedType),
       ) && record.projection?.mode !== 'image';
+    const isVideo =
+      parts.model.isVideoFeedCamera(camera) &&
+      record.projection?.mode !== 'image';
     return {
       id: camera.id,
       name: camera.name,
@@ -285,9 +288,11 @@ export function createPresentation({
       browserMediaUrl: camera.browserMediaUrl || '',
       accuracyM: Number.isFinite(camera.accuracyM) ? camera.accuracyM : null,
       positionSource: camera.positionSource || '',
-      isVideo:
-        parts.model.isVideoFeedCamera(camera) &&
-        record.projection?.mode !== 'image',
+      isVideo,
+      liveSnapshotUrl:
+        isVideo && camera.hasSnapshot
+          ? parts.frames.frameUrlFor(camera, refreshMs, { snapshotOnly: true })
+          : '',
       sourceKind: camera.sourceKind?.startsWith('quebec-')
         ? camera.sourceKind
         : health?.sourceKind ||
@@ -341,6 +346,8 @@ export function createPresentation({
           : isBrowserDirect(camera)
             ? browserDirectFrameUrl(camera, refreshMs)
             : parts.frames.frameUrlFor(camera, refreshMs, { active: isActive }),
+      // The source gives each frame's time in its response (`framesCarryTime`).
+      framesCarryTime: source?.framesCarryTime === true,
       mediaUrl: hasStill ? parts.frames.mediaUrlFor(camera) : null,
       lookup: camera.lookup || '',
       lookupState: camera.lookupState || '',
@@ -494,6 +501,8 @@ export function createPresentation({
   /** Dispatches the current UI state to all registered subscriber callbacks. */
 
   function notifyListeners() {
+    // Loading progress and its end show in the layer row too.
+    layerState._panel?.invalidate();
     const payload = uiState();
     for (const callback of layerState._listeners) {
       try {

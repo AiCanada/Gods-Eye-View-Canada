@@ -345,7 +345,7 @@ test('an overlay with NO class to watch still disarms the launcher', () => {
   const overlay = css.slice(css.indexOf('.cesium-credit-lightbox-overlay {'));
   assert.match(
     overlay.slice(0, overlay.indexOf('}')),
-    /z-index: 200 !important/,
+    /z-index: 9000 !important/,
   );
   const launcher = css.slice(css.indexOf('#first-run-launcher {'));
   assert.match(launcher.slice(0, launcher.indexOf('}')), /z-index: 175/);
@@ -774,11 +774,9 @@ test('markup, startup ordering and accessibility remain pinned', async () => {
   );
 
   assert.match(startup, /styleManager\.initialRestorePromise/);
-  assert.ok(
-    startup.indexOf("loadingScreen.classList.add('hidden')") <
-      startup.indexOf(
-        "loadingScreen.addEventListener('transitionend', revealFirstRun",
-      ),
+  assert.match(
+    startup,
+    /loadingScreen\.classList\.add\('hidden'\);\s*revealAfterCover\(\);/,
   );
   assert.match(
     startup,
@@ -920,7 +918,7 @@ test('the Stories announcement waits behind the welcome card', () => {
   // the card is dismissed.
   assert.match(
     css,
-    /body:has\(#first-run-launcher\) #gev-stories #hPop,\s*body\.first-run-opening-stories #gev-stories #hPop \{\s*visibility: hidden;\s*pointer-events: none;\s*\}/,
+    /body:is\(\.launcher-shown \*, #first-run-launcher\) #gev-stories #hPop,\s*body\.first-run-opening-stories #gev-stories #hPop \{\s*visibility: hidden;\s*pointer-events: none;\s*\}/,
   );
   // The selector only works while Stories still renders the popup as #hPop
   // inside #gev-stories.
@@ -1122,7 +1120,7 @@ test('the voice TOOL SCHEMA matches the pinned contract — the mission mapping 
   // Street Level adds toggle enum values and the generated alias hint.
   // Re-derived 2026-10-07 for the upstream merge: the fork's Canadian city
   // presets, its Cell, Private CCTV and Outbreak layers and their spoken names.
-  // Air quality (ECCC AQHI) extends the manifest.
+  // Air quality includes station fields. First-run missions add no tools.
   // Globe rotation adds one camera motion and its descriptions; Globe View
   // framing/default guidance updates only move_camera and mode descriptions.
   // Radio markup and the complete production-request comparison pin locality.
@@ -1136,10 +1134,14 @@ test('the voice TOOL SCHEMA matches the pinned contract — the mission mapping 
   // states the own-layer entry rule (Contacts not required) (upstream
   // 31,372). Re-derived 2026-11-07 for the fourteenth upstream merge: with
   // the fork's spoken layer names and panels, 31,939.
-  assert.equal(block.length, 31939, 'serialized tool schema length drifted');
+  // Re-derived 2026-11-28 for the seventeenth upstream merge: upstream's
+  // Fire Perimeters lastGrowthTime and the retired dock trays (Visual takes
+  // the presets' names in set_panel_open), +103 as upstream's own pin moved
+  // (31,372 to 31,475), with the fork's names and panels unchanged: 32,042.
+  assert.equal(block.length, 32042, 'serialized tool schema length drifted');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    'c951f0ae124fa970cfe2a13daea5cc9882ed1f79df5496773c886572ed970fa5',
+    'c14a92627c6745ff9d43dfc025622b3c25ae88ddb312bf3e8bb82b4773fb87f3',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
   const instructions = fs.readFileSync(

@@ -2547,7 +2547,8 @@ test('periodic refresh publishes work, failure, and later manager-owned recovery
 
   let explicitRefreshCalls = 0;
   entry.module.update = async (_viewer, { signal } = {}) => {
-    assert.equal(signal, null);
+    assert.ok(signal instanceof AbortSignal, 'every update can be cancelled');
+    assert.equal(signal.aborted, false);
     explicitRefreshCalls += 1;
     return true;
   };
@@ -2694,6 +2695,91 @@ test('destroy settles an explicit refresh waiting behind invalidated periodic wo
   assert.equal(await destroy, true);
 });
 
+/** An enabled layer whose updates wait to be released, each one logged. */
+function heldLayer(mgr, id = 'flights') {
+  const updates = [];
+  mgr.register({
+    id,
+    name: id,
+    icon: '',
+    source: 'test',
+    updateInterval: 30000,
+    init() {},
+    enable() {},
+    disable() {},
+    update(_viewer, { signal } = {}) {
+      return new Promise((resolve) => {
+        updates.push({ signal, release: resolve });
+      });
+    },
+    getStats() {
+      return { count: 1, lastUpdate: 1, error: null, available: true };
+    },
+  });
+  const entry = mgr.layers.get(id);
+  entry.initialized = true;
+  entry.enabled = true;
+  entry.lifecycleState = 'enabled';
+  return { entry, updates };
+}
+
+test('a superseding refresh cancels the one in flight and starts at once', async () => {
+  const mgr = new DataLayerManager({});
+  const { entry, updates } = heldLayer(mgr);
+  const events = [];
+  mgr.subscribe((event) => events.push(event));
+
+  const periodic = mgr._runPeriodicUpdate('flights', entry);
+  assert.equal(updates.length, 1);
+  const fresh = mgr.refreshLayer('flights', { supersede: true });
+  assert.equal(updates.length, 2, 'the new update starts without waiting');
+  assert.equal(updates[0].signal.aborted, true);
+  assert.equal(updates[0].signal.reason.name, 'AbortError');
+  assert.equal(updates[1].signal.aborted, false);
+
+  // The cancelled update settling late changes nothing.
+  updates[0].release(true);
+  assert.equal(await periodic, false);
+  assert.equal(entry.refreshing, true, 'the new refresh still owns the layer');
+  updates[1].release(true);
+  assert.equal(await fresh, true);
+  assert.equal(entry.refreshing, false);
+  assert.deepEqual(
+    events.map(({ type, reason }) => (reason ? `${type}:${reason}` : type)),
+    ['refresh-transition', 'refresh-cancelled:superseded', 'refresh-transition', 'refresh'],
+  );
+});
+
+test('without supersede a refresh still waits for the one in flight', async () => {
+  const mgr = new DataLayerManager({});
+  const { entry, updates } = heldLayer(mgr);
+  const periodic = mgr._runPeriodicUpdate('flights', entry);
+  const requested = mgr.refreshLayer('flights');
+  await Promise.resolve();
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].signal.aborted, false);
+  updates[0].release(true);
+  assert.equal(await periodic, true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(updates.length, 2, 'then runs its own');
+  updates[1].release(true);
+  assert.equal(await requested, true);
+});
+
+test("a caller's cancellation reaches its update's signal", async () => {
+  const mgr = new DataLayerManager({});
+  const { updates } = heldLayer(mgr);
+  const controller = new AbortController();
+  const requested = mgr.refreshLayer('flights', { signal: controller.signal });
+  await Promise.resolve();
+  assert.equal(updates.length, 1);
+  controller.abort('camera moved');
+  assert.equal(updates[0].signal.aborted, true);
+  assert.equal(updates[0].signal.reason, 'camera moved');
+  updates[0].release(true);
+  assert.equal(await requested, false);
+});
+
 test('layer metadata shows a guidance prompt without reporting it as a fault', () => {
   const mgr = new DataLayerManager({});
   const text = mgr._buildMetaText({
@@ -2705,37 +2791,69 @@ test('layer metadata shows a guidance prompt without reporting it as a fault', (
   assert.doesNotMatch(text, /UNAVAILABLE|DEGRADED/);
 });
 
-test('refreshLayerStats reaches presentation through the bare lifecycle', async () => {
+test("a layer's panel.invalidate() reaches presentation through the bare lifecycle", async () => {
   const { LayerLifecycle } = await import('./lifecycle.js');
   const lifecycle = new LayerLifecycle({});
+  let handle;
+  lifecycle.register({
+    id: 'feed',
+    name: 'Feed',
+    getStats: () => ({ count: 0 }),
+    async init(_viewer, { panel }) {
+      handle = panel;
+    },
+    enable() {},
+    disable() {},
+    async update() {},
+  });
+  await lifecycle.setEnabled('feed', true);
   const changes = [];
-  lifecycle.subscribeActivity((change) => changes.push(change.type));
-  lifecycle.refreshLayerStats();
-  assert.deepEqual(changes, ['status']);
+  lifecycle.subscribeActivity((change) => changes.push(change));
+  assert.equal(handle.invalidate(), undefined, 'invalidate returns nothing');
+  assert.deepEqual(changes, [{ type: 'panel', layerId: 'feed' }]);
+  assert.ok(Object.isFrozen(handle));
 });
 
-test('refreshLayerStats(layerId) drops a tick failure the layer no longer reports', async () => {
+test('a layer that still defines setRowControlsListener is refused at registration', async () => {
+  const { LayerLifecycle } = await import('./lifecycle.js');
+  const lifecycle = new LayerLifecycle({});
+  assert.throws(
+    () =>
+      lifecycle.register({
+        id: 'old',
+        name: 'Old',
+        getStats: () => ({}),
+        setRowControlsListener() {},
+      }),
+    /old defines setRowControlsListener; call panel\.invalidate\(\)/,
+  );
+});
+
+test('panel.invalidate() drops a tick failure the layer no longer reports', async () => {
   const { LayerLifecycle } = await import('./lifecycle.js');
   const lifecycle = new LayerLifecycle({});
   let stats = { count: 0, error: 'Feed unavailable' };
+  let handle;
   lifecycle.register({
     id: 'feed',
     name: 'Feed',
     getStats: () => stats,
+    async init(_viewer, { panel }) {
+      handle = panel;
+    },
     async update() {},
   });
   const entry = lifecycle.layers.get('feed');
+  await entry.module.init(null, { panel: entry.panel });
   entry.enabled = true;
   entry.initialized = true;
   entry.managerRefreshError = 'Feed unavailable';
 
-  lifecycle.refreshLayerStats('feed');
+  handle.invalidate();
   assert.equal(entry.managerRefreshError, 'Feed unavailable');
 
   stats = { count: 0 };
-  lifecycle.refreshLayerStats();
-  assert.equal(entry.managerRefreshError, 'Feed unavailable');
-  lifecycle.refreshLayerStats('feed');
+  handle.invalidate();
   assert.equal(entry.managerRefreshError, null);
 });
 

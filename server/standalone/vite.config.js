@@ -20,6 +20,26 @@ import { unwatchedRuntimeDirsPlugin } from './unwatched-cache.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
+/** Env-file values this process applied, kept across Vite restarts (the config module is re-bundled each time). */
+const ENV_FILE_VALUES = Symbol.for('gev.standalone.envFileValues');
+
+/**
+ * Apply the env files' values without overriding the shell. A key applied from
+ * a file earlier that no file sets any more is removed again, and a changed
+ * value replaces the old one.
+ * @param {() => Record<string, string>} read loadEnv's answer
+ */
+export function applyEnvFiles(read, env = process.env) {
+  const previous = globalThis[ENV_FILE_VALUES] ?? new Map();
+  for (const [key, value] of previous) if (env[key] === value) delete env[key];
+  const applied = new Map();
+  for (const [key, value] of Object.entries(read())) {
+    if (env[key] !== undefined) continue;
+    env[key] = value;
+    applied.set(key, value);
+  }
+  globalThis[ENV_FILE_VALUES] = applied;
+}
 /**
  * Load this checkout's configuration and attach its local provider middleware.
  * Vite passes no `sourceRoot`; a test passes an empty temp folder, so it loads
@@ -33,10 +53,7 @@ export function standaloneConfig(
 ) {
   // Without one, everything below is exactly as it was: this checkout.
   const checkout = sourceRoot || root;
-  const loaded = loadEnv(mode, checkout, '');
-  for (const [key, value] of Object.entries(loaded)) {
-    if (process.env[key] === undefined) process.env[key] = value;
-  }
+  applyEnvFiles(() => loadEnv(mode, checkout, ''));
   bindLocalIntegrityRoot(checkout);
   const tools = standaloneVoiceTools();
   return createBrowserViteConfig({

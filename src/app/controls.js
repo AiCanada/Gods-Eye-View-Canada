@@ -7,6 +7,7 @@ import { initCockpitCloudEffects } from '../cockpitCloudEffects.js';
 import { initSeaSurfaceTemperaturePanel } from '../data/seaSurfaceTemperature.js';
 import { initPrivateSiteLocations } from '../privateSiteLocations.js';
 import { createViewSky } from '../viewSky.js';
+import { createViewFrameRate } from '../viewFrameRate.js';
 import { findGlobe } from '../render/rendererOf.js';
 import { useDisplayStore } from '../ui/stores/display.js';
 import { applicationPinia } from '../ui/vueRuntime.js';
@@ -29,14 +30,27 @@ export { START_VIEW };
  * starts with: none by default; a host may pass `['flights', 'satellites']`.
  * `services.cockpitSubjects` adds the application's own first-person subjects
  * to the Cockpit (src/cockpitSubjectProviders.js).
+ * `entityLookup`, optional, finds aircraft, ships, cameras and satellites
+ * anywhere for the search box, beside those already loaded:
+ * `entityLookup({text, at, signal})` resolves with `[{kind: 'aircraft' |
+ * 'vessel' | 'camera' | 'satellite', id, name, detail?, lat, lon, layerId?,
+ * mmsi?, placed?}]`, `id` being the id the item's layer holds it under (see
+ * docs/CODE-BOUNDARIES.md, "Entity lookup provider"). `at` is the world
+ * time in epoch ms while the timeline is held away from live (absent while
+ * live): positions are then wanted as of that time. `placed: false` marks
+ * one its layer will not draw at that time (no position then), its `lat`
+ * and `lon` where it was last seen, if known, and its `detail` saying so.
+ * Without it the search box finds only what is already loaded.
  */
 export function createApplicationControls({
   scene: { viewer, mapStackController, operations, viewerDrawsEntity },
   loaderStatus,
   Controls = StyleManager,
   services,
+  spotWeatherService = operations.requests.weather,
   catalog,
   placeSearch,
+  entityLookup = null,
   defer,
   initialShareCode = null,
   localePicker = true,
@@ -49,6 +63,7 @@ export function createApplicationControls({
   // Initialize the style manager (post-processing, HUD, locations, share links)
   const styleManager = new Controls(viewer, {
     services: {
+      fetchSpotWeather: (...args) => spotWeatherService.getConditions(...args),
       ...services,
       ...operations.surface.controlServices,
       searchAndFlyTo: operations.searchAndFlyTo,
@@ -62,6 +77,7 @@ export function createApplicationControls({
     requestServices: operations.requests,
     mapStackController,
     placeSearch,
+    entityLookup,
     // A share code to open at start-up instead of the page's address.
     initialShareCode,
     localePicker,
@@ -90,12 +106,18 @@ export function createApplicationControls({
   defer(() => viewSky.destroy());
   // Sea Surface Temperature box: always off at launch, never persisted.
   defer(initSeaSurfaceTemperaturePanel({ viewer }));
-  // Saved home and business security sites join the LOCATION pills.
+  // Saved home and business security sites, kept by the location navigation
+  // (src/ui/locationNavigation.js).
   defer(
     initPrivateSiteLocations({
       onChange: (entries) => styleManager.setPrivateSiteLocations(entries),
     }),
   );
+  // The most frames a second the globe draws, as the user sets it.
+  const viewFrameRate = createViewFrameRate({
+    store: useDisplayStore(applicationPinia()),
+  });
+  defer(() => viewFrameRate.destroy());
 
   if (styleManager.hasShareState) {
     loaderStatus.textContent = t('Restoring shared view...');
@@ -105,6 +127,12 @@ export function createApplicationControls({
     const city = CITY_POIS[STARTUP_LOCATION_ID];
     loaderStatus.textContent = t('Flying to {city}...', { city: city.name });
     defer(flyToStartupLocation(viewer, city.pois[0]));
+    styleManager.markActiveLocation(STARTUP_LOCATION_ID);
+  } else if (startView?.cityId === STARTUP_LOCATION_ID) {
+    // The standalone page starts at the launch city itself
+    // (startupLocationView), where the opening closes in from the planet.
+    const city = CITY_POIS[STARTUP_LOCATION_ID];
+    loaderStatus.textContent = t('Flying to {city}...', { city: city.name });
     styleManager.markActiveLocation(STARTUP_LOCATION_ID);
   } else {
     loaderStatus.textContent = t('Loading');

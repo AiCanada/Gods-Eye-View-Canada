@@ -110,6 +110,10 @@ export function presentCctvPanel(state, enabled) {
   const dirty = !!activeCamera?.calDirty;
   return {
     enabled,
+    activeCameraId: activeId,
+    hasLiveSnapshot: Boolean(activeCamera?.liveSnapshotUrl),
+    stillSuppressed:
+      enabled && Boolean(activeCamera?.sourceKind?.startsWith('quebec-')),
     navDisabled: !enabled || catalogCount === 0,
     // NEAREST re-centres an empty area on the view, so it needs only the
     // layer on; PREV and NEXT step through cameras that are loaded.
@@ -224,8 +228,8 @@ export function _renderCctvState(state) {
   this._lastQuebecSelectionRevision = Number.isFinite(selectionRevision)
     ? selectionRevision
     : null;
-  const isQuebecCamera =
-    enabled && activeCamera?.sourceKind?.startsWith('quebec-');
+  const view = presentCctvPanel(state, enabled);
+  const isQuebecCamera = view.stillSuppressed;
   this._quebecCctvOverlay?.setCamera(isQuebecCamera ? activeCamera : null, {
     reselected,
   });
@@ -329,7 +333,7 @@ export function _renderCctvState(state) {
     });
   }
 
-  this.store.publish(presentCctvPanel(state, enabled));
+  this.store.publish(view);
 
   if (this._cctvRegionCapChip) {
     // The camera area: a hard server cap with no off switch, shown so the
@@ -344,6 +348,7 @@ export function _renderCctvState(state) {
 
   const liveIntent =
     enabled && !!activeCamera?.isVideo && !activeCamera?.browserMediaUrl;
+  if (this.store.live !== liveIntent) this._clearCctvFrame();
   this.store.setLive(liveIntent);
   // A background tab, a collapsed panel or a closed phone sheet shows no
   // picture; the observers and visibilitychange render again on showing.
@@ -355,13 +360,13 @@ export function _renderCctvState(state) {
     tabShown &&
     !this._cctvPanel?.classList.contains('collapsed') &&
     (!phone || sheet === CAMERAS_SHEET);
-  // Context's camera card shows the same still.
+  // A Context preview can outlive CCTV's selection when the feed changes.
   const cardShown =
     tabShown &&
-    this.store.previewCards > 0 &&
+    this.store.previewCards.includes(activeId) &&
     (!phone || sheet === CONTEXT_SHEET);
   // Its bigger view is a popup over the map, shown on any phone sheet.
-  const popupShown = tabShown && this.store.previewPopups > 0;
+  const popupShown = tabShown && this.store.previewPopups.includes(activeId);
   if (this._cctvVideo) {
     const visible = liveIntent && panelShown;
     if (!visible || this._cctvVideoCameraId !== activeId) {
@@ -376,8 +381,10 @@ export function _renderCctvState(state) {
     }
   }
 
-  if (this._cctvFrame && !liveIntent) {
-    const nextSrc = enabled && !isQuebecCamera ? activeCamera?.frameUrl : null;
+  if (this._cctvFrame) {
+    const nextSrc = liveIntent
+      ? (cardShown || popupShown) && activeCamera.liveSnapshotUrl
+      : enabled && !isQuebecCamera && activeCamera?.frameUrl;
     const nextCameraId =
       enabled && !isQuebecCamera ? activeCamera?.id || '' : '';
     const cameraChanged = this._frame.cameraId !== nextCameraId;
@@ -391,13 +398,12 @@ export function _renderCctvState(state) {
       (panelShown || cardShown || popupShown) &&
       (cameraChanged || (!frameLoading && this._frame.currentSrc !== nextSrc))
     ) {
-      this._queueCctvFrame(nextSrc, nextCameraId, cameraChanged);
-    }
-    if (!nextSrc) {
+      this._queueCctvFrame(nextSrc, nextCameraId, cameraChanged, {
+        readTime: activeCamera?.framesCarryTime === true,
+      });
+    } else if (!nextSrc || (cameraChanged && this._frame.cameraId)) {
       this._clearCctvFrame();
     }
-  } else if (liveIntent) {
-    this._clearCctvFrame();
   }
 
   this._syncCctvSourceBadge(activeCamera, enabled);

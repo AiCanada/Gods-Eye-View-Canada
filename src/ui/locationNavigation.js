@@ -9,7 +9,6 @@ import {
   recordLocationSelection,
   saveLocationHistory,
 } from './locationShortcuts.js';
-import { bindLocationPanelResize } from './locationPanelResize.js';
 import { worldClock } from '../time/worldClock.js';
 
 /** Own destination selection, lookup, orbit and world-jump lifetime. */
@@ -18,7 +17,6 @@ export class LocationNavigation {
     viewer,
     placeSearch,
     services,
-    elements,
     navigation,
     readCockpit,
     operations,
@@ -27,7 +25,6 @@ export class LocationNavigation {
     Object.assign(
       this,
       { viewer, placeSearch, services, navigation, readCockpit, homeView },
-      elements,
       operations,
     );
     this._disposed = false;
@@ -36,7 +33,6 @@ export class LocationNavigation {
     this._activePoiIndex = null;
     this._currentTarget = null;
     this._currentPoi = null;
-    this._searchedLocationLabel = null;
     this._trafficTransitionTimer = null;
     this._globeResetPromise = null;
     this._cancelGlobeReset = null;
@@ -93,11 +89,9 @@ export class LocationNavigation {
       this._activeLocationSearchGeneration = change.generation;
       this._setLocationSearchError(null);
     } else if (change.type === 'found') {
-      this._searchedLocationLabel = state.destination.label || state.query;
       this._setActiveLocation(null);
       this._currentPoi = null;
       this._collapsePOIRow();
-      this._updateLocationMiniStatus();
       this._selectLocation(state.destination, { flying: true });
     } else if (change.type === 'missing')
       this._setLocationSearchError(
@@ -108,9 +102,7 @@ export class LocationNavigation {
         `${t('Search failed')}. ${t('Press Enter to try again.')}`,
       );
     else if (change.type === 'settled')
-      this._settleLocationSearchUi(change.generation, {
-        keepQuery: state.status === 'missing' || state.status === 'failed',
-      });
+      this._settleLocationSearchUi(change.generation);
     else if (
       change.type === 'reset' &&
       this._activeLocationSearchGeneration !== null
@@ -119,22 +111,17 @@ export class LocationNavigation {
     }
   }
 
-  /** Show, or with null clear, the announced error under the search field. */
+  /** Show, or with null clear, the lookup's announced error. */
   _setLocationSearchError(message) {
     this._locationControls?.setSearchError(message);
   }
 
-  _initLocationBar() {
+  _initLocationControls() {
     const { CITY_POIS, searchAndFlyTo, LocationSearch } = this.services;
-    // An open field stays open in the new controls.
-    const searchExpanded = Boolean(this._locationControls?.searchExpanded);
     this._locationControls?.destroy();
-    this._removeLocationPanelResize?.();
-    this._removeLocationPanelResize = null;
     this._locationLookupUnsubscribe?.();
     this._locationLookup?.destroy();
     this._locationLookup = new LocationSearch({
-      input: this._locationSearch,
       setSearching: (active) => this._locationControls?.setSearching(active),
       begin: () => this._beginDeferredNavigation('location'),
       isCurrent: (generation) =>
@@ -152,9 +139,6 @@ export class LocationNavigation {
       onError: (error) => console.error('[Search] Geocoding failed:', error),
     });
     this._locationControls = new LocationControls({
-      elements: {
-        search: this._locationSearch,
-      },
       publish: (view) => this._publishLocation?.(view),
       cities: CITY_POIS,
       getExpandedCity: () => this._expandedCityId,
@@ -163,26 +147,27 @@ export class LocationNavigation {
       onSearch: (query) => this._locationLookup.run(query),
       onSearchEdit: () => this._setLocationSearchError(null),
       onReset: () => this.resetToGlobeView(),
-      searchExpanded,
-      onExtra: (id) => this._onPrivateSitePillClick(id),
-      onShortcut: (entry) => this._onLocationShortcut(entry),
     });
-    this._locationControls.setExtraLocations([
-      ...(this._privateSiteLocations?.values() || []),
-    ]);
+    // The new lookup's reset settles a replaced lookup's search through the
+    // new controls, so it subscribes once they are in place.
+    this._locationLookupUnsubscribe = this._locationLookup.subscribe(
+      ({ initial, change }) => {
+        this._locationState.publish(initial ? { type: 'reset' } : change);
+      },
+    );
+    this._connectLocation?.(this._locationControls);
+    this._connectGlobeReset?.(this._locationControls);
+    // God's Eye View Canada: the selections behind the pinned / LAST /
+    // 2ND LAST shortcuts.
     this._locationHistory = loadLocationHistory();
-    // Corner grips on the tray; a taller tray shows more rows of pills.
-    this._removeLocationPanelResize?.();
-    this._removeLocationPanelResize = bindLocationPanelResize({
-      popover: this._locationPills?.closest?.('#location-bar-popover') || null,
-      pills: this._locationPills,
-    });
     this._refreshLocationShortcuts();
   }
 
   /**
-   * Show saved home and business security sites as LOCATION pills ahead of
-   * the preset cities. Each entry is `{id, name, title, kind, label, lat, lon}`.
+   * God's Eye View Canada: the saved home and business security sites, each
+   * `{id, name, title, kind, label, lat, lon}`. They were LOCATION pills in
+   * the dock's tray, which upstream retired (the Omnibar searches); the list,
+   * flyToPrivateSite() and the shortcuts stay here for a surface to offer.
    * @param {Array<object>} entries
    * @returns {void}
    */
@@ -190,33 +175,27 @@ export class LocationNavigation {
     this._privateSiteLocations = new Map(
       entries.map((entry) => [entry.id, entry]),
     );
-    this._locationControls?.setExtraLocations(entries);
     this._refreshLocationShortcuts();
     if (
       this._activePrivateSiteId &&
       !this._privateSiteLocations.has(this._activePrivateSiteId)
     )
       this._activePrivateSiteId = null;
-    else if (this._activePrivateSiteId)
-      this._locationControls?.highlightCity(this._activePrivateSiteId);
   }
 
-  /**
-   * Fly to a saved security site: a close oblique view of the site so its
-   * camera icons are in frame. The readout reports it like a searched place.
-   * @param {string} id - Private site pill id.
-   * @returns {void}
-   */
-  /** Rebuild the pinned / LAST / 2ND LAST pills at the front of the row. */
+  /** The pinned landmark and LAST / 2ND LAST shortcuts as they stand. */
+  locationShortcuts() {
+    return this._locationShortcuts || [];
+  }
+
+  /** Rebuild the pinned / LAST / 2ND LAST shortcuts. */
   _refreshLocationShortcuts() {
     const { CITY_POIS } = this.services;
-    this._locationControls?.setShortcutLocations(
-      buildLocationShortcuts({
-        cities: CITY_POIS,
-        history: this._locationHistory || [],
-        siteIds: new Set(this._privateSiteLocations?.keys() || []),
-      }),
-    );
+    this._locationShortcuts = buildLocationShortcuts({
+      cities: CITY_POIS,
+      history: this._locationHistory || [],
+      siteIds: new Set(this._privateSiteLocations?.keys() || []),
+    });
   }
 
   /** Remember a selection so it can come back as LAST / 2ND LAST. */
@@ -229,11 +208,11 @@ export class LocationNavigation {
     this._refreshLocationShortcuts();
   }
 
-  /** A shortcut pill flies straight to its landmark or saved site. */
-  _onLocationShortcut(entry) {
+  /** A shortcut flies straight to its landmark or saved site. */
+  chooseLocationShortcut(entry) {
     const target = entry?.target;
     if (target?.type === 'site') {
-      this._onPrivateSitePillClick(target.siteId);
+      this.flyToPrivateSite(target.siteId);
       return;
     }
     if (target?.type !== 'poi') return;
@@ -242,7 +221,13 @@ export class LocationNavigation {
     this._onPoiClick(target.cityId, target.poiIndex);
   }
 
-  _onPrivateSitePillClick(id) {
+  /**
+   * Fly to a saved security site: a close oblique view of the site so its
+   * camera icons are in frame, selected as a place is.
+   * @param {string} id - Private site id.
+   * @returns {void}
+   */
+  flyToPrivateSite(id) {
     const site = this._privateSiteLocations?.get(id);
     const { flyToLandmark } = this.services;
     if (!site || typeof flyToLandmark !== 'function') return;
@@ -259,7 +244,6 @@ export class LocationNavigation {
     );
     if (result === false) return;
     this._collapsePOIRow();
-    this._searchedLocationLabel = site.label || site.title || site.name;
     this._setActiveLocation(null);
     this._activePrivateSiteId = id;
     this._currentPoi = null;
@@ -268,21 +252,11 @@ export class LocationNavigation {
       siteId: id,
       name: site.name,
     });
-    this._locationControls.highlightCity(id);
     if (result) this._currentTarget = result.targetPosition;
     this._selectLocation(site, {
       flying: true,
       details: { selectCamera: true },
     });
-    // The new lookup's reset settles a replaced lookup's search through the
-    // new controls, so it subscribes once they are in place.
-    this._locationLookupUnsubscribe = this._locationLookup.subscribe(
-      ({ initial, change }) => {
-        this._locationState.publish(initial ? { type: 'reset' } : change);
-      },
-    );
-    this._connectLocation?.(this._locationControls);
-    this._connectGlobeReset?.(this._locationControls);
   }
 
   _beginWorldJumpTransition() {
@@ -338,14 +312,12 @@ export class LocationNavigation {
     this._expandPOIRow(cityId);
     this._setActiveLocation(cityId);
     this._activePoiIndex = 0;
-    this._updatePoiHighlight();
 
     // Track current target + POI for orbit
     if (result) {
       this._currentTarget = result.targetPosition;
       this._currentPoi = CITY_POIS[cityId].pois[0];
     }
-    this._updateLocationMiniStatus();
     this._rememberLocationSelection({
       type: 'poi',
       cityId,
@@ -365,14 +337,12 @@ export class LocationNavigation {
     if (result === false) return;
     this._setActiveLocation(cityId);
     this._activePoiIndex = poiIndex;
-    this._updatePoiHighlight();
 
     // Track current target + POI for orbit
     if (result) {
       this._currentTarget = result.targetPosition;
       this._currentPoi = CITY_POIS[cityId].pois[poiIndex];
     }
-    this._updateLocationMiniStatus();
     this._rememberLocationSelection({
       type: 'poi',
       cityId,
@@ -392,28 +362,17 @@ export class LocationNavigation {
   _collapsePOIRow() {
     this._expandedCityId = null;
     this._activePoiIndex = null;
-    this._locationControls.hidePois();
-  }
-
-  _updatePoiHighlight() {
-    this._locationControls.highlightPoi(this._activePoiIndex);
-  }
-
-  clearSearchedLocation() {
-    if (this._searchedLocationLabel === null) return;
-    this._searchedLocationLabel = null;
-    this._updateLocationMiniStatus();
   }
 
   /**
    * Mark a preset city as the current location without flying; the launch
-   * fly-in owns the camera. Unknown ids and a missing locations bar are ignored.
+   * fly-in owns the camera. Unknown ids are ignored.
    * @param {string} locationId - CITY_POIS id.
    * @returns {void}
    */
   markActiveLocation(locationId) {
     const { CITY_POIS } = this.services;
-    if (!CITY_POIS?.[locationId] || !this._locationPills) return;
+    if (!CITY_POIS?.[locationId]) return;
     this._setActiveLocation(locationId);
     this._activePoiIndex = 0;
     this._currentPoi = CITY_POIS[locationId].pois[0];
@@ -422,21 +381,6 @@ export class LocationNavigation {
   _setActiveLocation(locationId) {
     this._activeLocationId = locationId;
     this._activePrivateSiteId = null;
-    // A preset city is now what the camera is framed on, so any earlier
-    // free-text destination has been superseded. Clearing only on a real id
-    // leaves the search path's own _setActiveLocation(null) untouched.
-    if (locationId) this._searchedLocationLabel = null;
-    this._locationControls?.highlightCity(locationId);
-    this._updateLocationMiniStatus();
-  }
-
-  _updateLocationMiniStatus() {
-    const { CITY_POIS } = this.services;
-    this._locationControls?.renderStatus({
-      city: this._activeLocationId ? CITY_POIS[this._activeLocationId] : null,
-      currentPoi: this._currentPoi,
-      searchedLabel: this._searchedLocationLabel,
-    });
   }
 
   _initOrbit() {
@@ -589,16 +533,9 @@ export class LocationNavigation {
     return resetPromise;
   }
 
-  /** Settle the search field once its lookup has (LocationControls.settleSearch). */
-  settleSearch(options) {
-    this._locationControls?.settleSearch(options);
-  }
-
-  /** Close the search field; with `ifOpen`, only when it is open. */
-  closeSearch({ ifOpen = false } = {}) {
-    const controls = this._locationControls;
-    if (ifOpen && !controls?.searchExpanded) return;
-    controls?.closeSearch();
+  /** Settle the lookup's presentation once it has (LocationControls.settleSearch). */
+  settleSearch() {
+    this._locationControls?.settleSearch();
   }
 
   /** Revoke callbacks and settle owned camera work before the viewer is released. */
@@ -610,8 +547,6 @@ export class LocationNavigation {
     this._locationLookupUnsubscribe = null;
     this._locationLookup?.destroy();
     this._locationControls?.destroy();
-    this._removeLocationPanelResize?.();
-    this._removeLocationPanelResize = null;
     this._connectLocation?.(null);
     this._connectGlobeReset?.(null);
     this._publishLocation?.(null);

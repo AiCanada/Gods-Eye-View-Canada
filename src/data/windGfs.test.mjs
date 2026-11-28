@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import assert from 'node:assert/strict';
 import {
   gfsObjectKey,
@@ -428,4 +429,32 @@ test('a step without a time-mean rate (the analysis has none) borrows the cycle 
   });
   assert.equal(own.scalarError, 'Precipitation rate field unavailable');
   assert.ok(urls.every((url) => url.includes('.f007')));
+});
+
+test('the optional scalar deadline bounds its download, not a decode still running', async () => {
+  const value = await loadOptionalScalar({
+    range: { start: 0, end: 1 },
+    url: 'https://fixed.test/field',
+    timeoutMs: 300,
+    targetDx: 90,
+    fetchImpl: async () => {
+      await delay(20);
+      return new Response(Uint8Array.of(7, 0), { status: 206 });
+    },
+    // Waiting in the worker queue or for a cold start, past the deadline.
+    decodeImpl: async () => {
+      await delay(600);
+      return {
+        ni: 4,
+        nj: 3,
+        lo1: 0,
+        la1: 90,
+        di: 90,
+        dj: 90,
+        values: new Float64Array(12).fill(1),
+        units: 'K',
+      };
+    },
+  });
+  assert.notEqual(value, undefined);
 });

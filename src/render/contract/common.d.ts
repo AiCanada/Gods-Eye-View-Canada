@@ -207,6 +207,8 @@ export type Capability =
   | 'fields'
   /** Rate-limited course easing (`IconItem.courseGlide`). */
   | 'courseGlide'
+  /** Icons drawn from a sheet of views, by where the eye is (`ViewSheet`). */
+  | 'viewSheets'
   /** Lines that fade with the age of their points (`LineItem.ageFade`). */
   | 'lineAgeFade'
   /** Lines drawn only within a span of the scene clock (`LineAgeFade.showMs`). */
@@ -228,4 +230,6 @@ export type Capability =
   /** Reading the frame the eye is placed in (`camera.followFrame`). */
   | 'followFrame'
   /** A `threshold` per `changed` listener (`camera.on`). */
-  | 'cameraChangeThreshold';
+  | 'cameraChangeThreshold'
+  /** Hearing every hold taken or released (`frame.onHoldsChange`). */
+  | 'holdChanges';

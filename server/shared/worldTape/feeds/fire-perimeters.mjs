@@ -46,13 +46,23 @@ export default {
   phase: 1,
   bytesPerDay: 0.2e6,
   async poll({ services, state, now, signal }) {
-    const rows = await services.perimeters.getSnapshot({ signal });
+    // The layer's snapshot (firePerimeterSnapshot,
+    // src/layers/perimeters/records.js): each fire's facts under its stable
+    // id, and its burned area as pieces of one polygon each, in order.
+    const snapshot = await services.perimeters.getSnapshot({ signal });
+    const polygonsOf = new Map();
+    for (const piece of snapshot?.pieces || []) {
+      if (!piece?.fireId) continue;
+      const polygons = polygonsOf.get(piece.fireId) ?? [];
+      polygons.push(...(piece.polygons || []));
+      polygonsOf.set(piece.fireId, polygons);
+    }
     state.seen ??= new Map();
     const t = now();
     const records = [];
-    for (const row of rows || []) {
-      if (!row?.stableId) continue;
-      const shape = outline(row.polygons);
+    for (const row of snapshot?.fires || []) {
+      if (!row?.id) continue;
+      const shape = outline(polygonsOf.get(row.id));
       if (!shape) continue;
       const sig = [
         row.updatedTime,
@@ -61,9 +71,9 @@ export default {
         row.personnel,
         shape.vertices,
       ].join('|');
-      if (!noteChange(state.seen, row.stableId, sig, t)) continue;
+      if (!noteChange(state.seen, row.id, sig, t)) continue;
       records.push({
-        id: row.stableId,
+        id: row.id,
         name: row.name ?? null,
         acres: round(row.acres, 1),
         contained: row.containedPct ?? null,

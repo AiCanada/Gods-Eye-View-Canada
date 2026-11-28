@@ -77,7 +77,7 @@ export function createIngestion({
       if (!layerState._locationSwitching)
         components.rendering.renderCurrentLod(true);
       if (reselected) components.selection.selectFire(reselected, false);
-      layerState._rowControlsListener?.();
+      layerState._panel?.invalidate();
     } catch (error) {
       if (
         request.signal.aborted ||

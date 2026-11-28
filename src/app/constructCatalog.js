@@ -70,6 +70,8 @@ export const APPLICATION_LAYER_METADATA = Object.freeze([
  * `placement`, a host-supplied placement provider (../data/placementProvider.js),
  * places live aircraft, vessels, transit and trains; without one each layer
  * uses its own motion.
+ * `perimeterOptions: { inciweb: false }` leaves the Fire Perimeters cards
+ * without InciWeb links, and the layer never asks InciWeb.
  */
 export function createApplicationCatalog({
   surface,
@@ -78,6 +80,7 @@ export function createApplicationCatalog({
   metadata = APPLICATION_LAYER_METADATA,
   vesselOptions,
   newsOptions,
+  perimeterOptions,
   resolveAsset,
   nepalBoundaryResolver,
   streetLevelProviders,
@@ -146,8 +149,13 @@ export function createApplicationCatalog({
           ...(resolveAsset ? { resolveAsset } : {}),
         }),
         createApplicationEarthquakes({ source: sources.earthquakes }),
-        createApplicationAirQuality({ source: sources['air-quality'] }),
+        createApplicationAirQuality({
+          source: sources['air-quality'],
+          // Optional: a host's model field (src/layers/airQuality/field.js).
+          fieldSource: sources['air-quality-field'] ?? null,
+        }),
         createApplicationFirePerimeters({
+          ...perimeterOptions,
           source: sources['fire-perimeters'],
         }),
         createApplicationGnssIntegrity({

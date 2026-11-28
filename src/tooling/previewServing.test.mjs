@@ -55,6 +55,7 @@ test('real dev and built-preview servers serve provider JSON and terminate unkno
   for (const [name, value] of Object.entries({
     AISSTREAM_API_KEY: '',
     FIRMS_MAP_KEY: '',
+    OPENAQ_API_KEY: '',
     FIRMS_API_KEY: '',
     TOMTOM_API_KEY: '',
     GOOGLE_MAPS_API_KEY: '',
@@ -130,6 +131,7 @@ test('real dev and built-preview servers serve provider JSON and terminate unkno
         ['/api/military', 200],
         ['/api/adsbdb/type/invalid', 400],
         ['/api/firms/status', 200],
+        ['/api/air-quality/openaq', 428],
         ['/api/fire-perimeters/inciweb/publication/invalid', 400],
         ['/api/gnss-integrity?lat=invalid', 400],
         ['/api/ghostmaps/unknown', 404],
@@ -139,6 +141,7 @@ test('real dev and built-preview servers serve provider JSON and terminate unkno
         ['/api/overpass', 405],
         ['/api/overpass/status', 200],
         ['/api/cctv/sources?lat=30.27&lon=-97.74', 200],
+        ['/api/layer-counts', 200],
         ['/api/gbfs/', 400],
         ['/api/tomtom/status', 200],
         // The Street Level QA gate intercepts these in the browser; this is
@@ -169,6 +172,10 @@ test('real dev and built-preview servers serve provider JSON and terminate unkno
         const body = await response.json();
         if (route.startsWith('/api/cctv/sources'))
           assert.equal(body.sources[0].id, 'fixture');
+        if (route === '/api/layer-counts') {
+          assert.ok(Array.isArray(body.counts), route);
+          assert.equal(response.headers.get('cache-control'), 'no-store');
+        }
         if (route === '/api/mapillary/status')
           assert.deepEqual(body, { configured: false }, route);
         if (/^\/api\/mapillary\/(tiles|images)/.test(route))

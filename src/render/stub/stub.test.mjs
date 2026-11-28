@@ -9,6 +9,30 @@ import {
 } from '../conformance/index.js';
 import { toEcef } from './math.js';
 
+test('only a single-image layer without a URL accepts a canvas', () => {
+  const { imagery } = createStubRenderer().globe;
+  const image = { width: 4, height: 2 };
+  assert.throws(() => imagery.add({ kind: 'xyz', image }), /single-image/);
+  assert.throws(
+    () => imagery.add({ kind: 'single-image', url: 'tile.png', image }),
+    /not both/,
+  );
+});
+
+test("an imagery layer's credit is owed while the layer is on", () => {
+  const renderer = createStubRenderer();
+  const credit = { text: 'Example imagery', href: 'https://example.com' };
+  const layer = renderer.globe.imagery.add({
+    kind: 'xyz',
+    url: 'https://example.com/{z}/{x}/{y}.png',
+    credit,
+  });
+  assert.deepEqual(renderer.credits.list(), [credit]);
+  layer.remove();
+  layer.remove();
+  assert.deepEqual(renderer.credits.list(), []);
+});
+
 test('the stub passes the conformance suite', async () => {
   const report = await runConformance(createStubHarness());
   const failed = report.results.filter((r) => r.status === 'fail');

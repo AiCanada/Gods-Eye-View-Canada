@@ -121,6 +121,9 @@ phone page is unchanged.
 | reptiles / amphibians / fungi (loans)    | ᕆᑉᑕᐃᓪ / ᐊᒻᐱᐱᐊᓐ / ᒪᔅᕈᒻ                       |
 | colour: cyan, yellow, orange, red, green | ᐊᒥᐊᖓ: ᑐᖑᔪᖅ, ᖁᖅᓱᖅᑐᖅ, ᐊᐅᐸᔮᖅᑐᖅ, ᐊᐅᐸᖅᑐᖅ, ᐱᕈᖅᑐᑐᑦ |
 | dev server                               | dev ᖃᕋᓴᐅᔭᕐᔪᐊᖅ                               |
+| air quality station / sensor / pollutant | ᓈᓴᐃᕕᒃ / ᖃᐅᔨᔾᔪᑎ / ᐃᖅᑭᓕᐅᑎ                     |
+| low-cost sensor / reference monitor      | ᐊᑭᑭᑦᑐᖅ ᖃᐅᔨᔾᔪᑎ / ᑐᙵᕕᒋᔭᐅᔪᖅ ᓈᓴᐅᑎ               |
+| cable landing point / road segment       | ᓄᓇᒧᑦ ᑎᑭᕝᕕᒃ / ᐊᖅᑯᑎᐅᑉ ᐃᓚᖓ                     |
 
 ## The fork's own tabs
 
@@ -188,8 +191,7 @@ licence notes that are only names ("Open-Meteo (CC BY 4.0)").
 
 These stay English in every language for now (`data-i18n-skip`,
 `src/i18n/fork-english-only.json`): SEA SURFACE TEMPERATURE (SST); POWER UP's
-device, home and business camera and road CCTV key sections; the home and
-business sites and shortcut pills in the LOCATION row; the CCTV panel's
-picture and the LOCATION tray resize handles; the CCTV area messages. Text the
+device, home and business camera and road CCTV key sections; the CCTV panel's
+picture resize handles; the CCTV area messages. Text the
 server writes is shown as it comes: model answers, a forecast's reasons and
 server error details.

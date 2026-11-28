@@ -831,6 +831,8 @@ export function createCctvCatalog({
       grid,
       countries,
       total: sources.length,
+      // When this snapshot was built: the layer count's age (cachedCount).
+      builtAt: now(),
       stats: {
         packFiles,
         packFilesRead,
@@ -917,5 +919,14 @@ export function createCctvCatalog({
      * @returns {Array<{pack: string, available: number, served: number}>}
      */
     trimmedPacks: () => [],
+    /**
+     * The catalogue's size and when it was last built, or null before the
+     * first build; never builds it (upstream's cached layer counts,
+     * server/providers/common/layerCounts.js).
+     *
+     * @returns {?{count: number, at: number}}
+     */
+    cachedCount: () =>
+      current ? { count: current.total, at: current.builtAt } : null,
   };
 }

@@ -23,10 +23,10 @@ import {
 } from '../recession.js';
 import { CLEAR_WEATHER, mergeWeather } from '../weather.js';
 import { CAPABILITIES, CONTRACT_VERSION } from '../contract/index.js';
+import { isViewRef, viewLayout } from '../../data/viewSheet.js';
 import { createStubCamera } from './camera.js';
 import { motionPosition } from '../motion/iconMotion.js';
 import { computeViewRectangle } from './viewRectangle.js';
-import { loadVectorStyle } from '../vectorBase/index.js';
 import {
   add,
   dot,
@@ -190,6 +190,16 @@ export function createStubRenderer(options = {}) {
   let holdSeq = 0;
   // Told when the first hold is taken and the last released.
   const heldListeners = new Set();
+  const holdsListeners = new Set();
+  function tellHolds() {
+    for (const entry of [...holdsListeners])
+      if (holdsListeners.has(entry))
+        try {
+          entry.cb();
+        } catch (error) {
+          report(error);
+        }
+  }
   function tellHeld(held) {
     for (const entry of [...heldListeners])
       try {
@@ -359,9 +369,11 @@ export function createStubRenderer(options = {}) {
       const key = ++holdSeq;
       continuous.set(key, String(reason));
       if (continuous.size === 1) tellHeld(true);
+      tellHolds();
       return () => {
         if (!continuous.delete(key)) return;
         if (continuous.size === 0) tellHeld(false);
+        tellHolds();
       };
     },
     onHeldChange(cb) {
@@ -369,6 +381,15 @@ export function createStubRenderer(options = {}) {
       heldListeners.add(entry);
       return () => heldListeners.delete(entry);
     },
+    ...(capabilities.has('holdChanges')
+      ? {
+          onHoldsChange(cb) {
+            const entry = { cb };
+            holdsListeners.add(entry);
+            return () => holdsListeners.delete(entry);
+          },
+        }
+      : {}),
     mode: () => 'demand',
     diagnostics: () => ({
       mode: 'demand',
@@ -704,6 +725,26 @@ export function createStubRenderer(options = {}) {
       };
     },
   };
+  const viewSheets = new Set();
+  if (capabilities.has('viewSheets'))
+    draw.views = (id, sheet) => {
+      const layout = viewLayout(sheet); // refused as a renderer refuses it
+      if (viewSheets.has(id))
+        for (const record of sets.values())
+          for (const item of record.kind === 'icons'
+            ? record.items.values()
+            : [])
+            if (
+              isViewRef(item.image) &&
+              item.image.views === id &&
+              item.image.first + layout.frames > layout.columns * layout.rows
+            )
+              throw new RangeError(
+                `a live view's frames run past the new layout of sheet '${id}'`,
+              );
+      viewSheets.add(id);
+      log('draw', 'views', [id]);
+    };
   if (capabilities.has('models'))
     draw.models = (spec) => makeSet('models', spec);
   if (capabilities.has('quads')) draw.quads = (spec) => makeSet('quads', spec);
@@ -1607,6 +1648,10 @@ export function createStubRenderer(options = {}) {
   let globeVisible = true;
 
   function addImagery(spec, index) {
+    if (spec.image !== undefined && spec.kind !== 'single-image')
+      throw new TypeError('image is supported for single-image imagery only');
+    if (spec.image !== undefined && spec.url)
+      throw new TypeError('single-image takes url or image, not both');
     if (
       !capabilities.has('imageHooks') &&
       (spec.tileTransform || spec.admit || spec.kind === 'canvas')
@@ -1649,6 +1694,8 @@ export function createStubRenderer(options = {}) {
       remove() {
         const i = imageryLayers.indexOf(layer);
         if (i >= 0) imageryLayers.splice(i, 1);
+        creditOff?.();
+        creditOff = null;
         sceneFrameLayers.delete(layer);
         frameFlushes.delete(layer);
         requestRender('imagery');
@@ -1728,6 +1775,8 @@ export function createStubRenderer(options = {}) {
         requestRender('imagery');
       };
     }
+    // The layer's credit is owed while the layer is on (the credits port).
+    let creditOff = spec.credit ? credits.addStatic(spec.credit) : null;
     if (index === undefined) imageryLayers.push(layer);
     else imageryLayers.splice(index, 0, layer);
     log('globe', 'imagery.add', [spec, index]);
@@ -1761,15 +1810,24 @@ export function createStubRenderer(options = {}) {
         settled: false,
       });
       if (destroyed) return superseded();
-      // The style is loaded, as a renderer drawing it loads it, so one that
-      // fails changes nothing; the stub paints none of it.
+      // The style document is fetched, as a renderer drawing it would, so
+      // one that fails changes nothing; the stub paints none of it.
       if (base.vector) {
         const load = new AbortController();
         baseLoad = load;
         try {
-          await loadVectorStyle(base.vector.styleUrl, undefined, {
+          const response = await fetch(base.vector.styleUrl, {
             signal: load.signal,
           });
+          if (!response.ok)
+            throw new Error(`The style answered ${response.status}`);
+          const style = await response.json();
+          if (
+            style?.version !== 8 ||
+            !Array.isArray(style.layers) ||
+            typeof style.sources !== 'object'
+          )
+            throw new TypeError('The document is not a MapLibre style');
         } catch (error) {
           if (!current()) return superseded();
           throw error;

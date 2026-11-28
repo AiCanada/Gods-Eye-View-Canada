@@ -95,7 +95,11 @@ chargées », « {count} d'aéronefs captés ».
 | card (UI)                                   | fiche (never « carte », which is the map)                |
 | upload / download                           | téléverser / télécharger                                 |
 | cloud (voice)                               | infonuagique                                             |
-| air quality / AQHI                          | qualité de l'air / CAS (cote air santé)                  |
+| air quality / US AQI (computed)             | qualité de l'air / US AQI (calculé)                      |
+| air quality station / sensor / pollutant    | station / capteur / polluant                             |
+| low-cost sensor / reference monitor         | capteur à faible coût / appareil de référence            |
+| cable landing point / road segment          | point d'atterrissement de câble / tronçon de route       |
+| frame rate / Unlimited                      | fréquence d'images / Illimité                            |
 | advisory (NHC/CPHC cyclone)                 | avis                                                     |
 | Street Level (layer)                        | Niveau de la rue                                         |
 | Street View (Google)                        | Street View                                              |
@@ -172,8 +176,7 @@ SMS RELAY.
 
 These stay English in every language for now (`data-i18n-skip`,
 `src/i18n/fork-english-only.json`): SEA SURFACE TEMPERATURE (SST); POWER
-UP's device, home and business camera and road CCTV key sections; the home
-and business sites and shortcut pills in the LOCATION row; the CCTV panel's
-picture and the LOCATION tray resize handles; the CCTV area messages. Text
+UP's device, home and business camera and road CCTV key sections; the CCTV
+panel's picture resize handles; the CCTV area messages. Text
 the server writes is shown as it comes: model answers, a forecast's reasons
 and server error details.

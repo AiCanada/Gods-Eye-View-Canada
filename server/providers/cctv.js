@@ -384,6 +384,9 @@ export function cctvProxy({
       mountHeightM: source.mountHeightM,
       groundElevationM: source.groundElevationM,
       feedType,
+      // A live camera with a registered photo: its card shows that photo
+      // (/frame/<id>?snapshotOnly=1, upstream's live-card snapshot).
+      hasSnapshot: Boolean(source.snapshotUrl),
       // How an HLS camera plays: 'proxy' (?hls=1) or 'pull' (?lease=<uuid>).
       hlsVia: stream ? 'proxy' : feedType === 'hls' ? 'pull' : undefined,
       sourceKind: source.sourceKind || (source.url ? 'configured' : 'fallback'),
@@ -734,7 +737,13 @@ export function cctvProxy({
    * hosts) the request budget. Runs once per camera at a time; whoever starts
    * it records the outcome (cache, failure backoff, counters, health).
    */
-  const fetchFrame = async (source, lookupStill, active) => {
+  const fetchFrame = async (
+    source,
+    lookupStill,
+    active,
+    // A photo-only request (a live camera's card) records no health.
+    { quiet = false } = {},
+  ) => {
     const cameraId = source.id;
     const provider = source.provider || 'Configured source';
     const resolvedUrl =
@@ -804,12 +813,13 @@ export function cctvProxy({
         contentType: result.image.contentType,
       });
       frameFailures.delete(cameraId);
-      setHealth(cameraId, {
-        status: 'ok',
-        sourceKind: 'snapshot',
-        label: provider,
-        message: 'Upstream snapshot active',
-      });
+      if (!quiet)
+        setHealth(cameraId, {
+          status: 'ok',
+          sourceKind: 'snapshot',
+          label: provider,
+          message: 'Upstream snapshot active',
+        });
     } else if (result.kind === 'failed') {
       noteFrameFailure(cameraId);
     } else if (result.kind === 'budget') {
@@ -826,6 +836,23 @@ export function cctvProxy({
     // Only the active camera's monitor plane and panel preview send active=1.
     const active = url.searchParams.get('active') === '1';
     const source = await findSource(snapshot, cameraId);
+    // A live camera card asks only for its registered photo. Its request
+    // neither changes the camera's video health nor gets a stand-in frame
+    // (Street View, a placeholder or a last good still): no photo is 404, a
+    // photo that cannot be fetched is 503.
+    const snapshotOnly = url.searchParams.get('snapshotOnly') === '1';
+    const refuseSnapshot = (status) => {
+      res.writeHead(status, { 'Cache-Control': 'no-store' });
+      res.end();
+    };
+    if (
+      snapshotOnly &&
+      (!source?.snapshotUrl ||
+        !isVideoFeedType(normalizeFeedType(source.feedType)))
+    ) {
+      refuseSnapshot(404);
+      return;
+    }
     if (!source) {
       // Unknown id: the query's label, place and pose are never trusted, and
       // nothing upstream (Street View included) is contacted for it.
@@ -849,6 +876,10 @@ export function cctvProxy({
       !source.snapshotUrl &&
       isPullableHlsUrl(source.url || '');
     const placeholder = (status, message, extra = {}) => {
+      if (snapshotOnly) {
+        refuseSnapshot(503);
+        return;
+      }
       if (!keepHealth)
         setHealth(cameraId, {
           status: 'degraded',
@@ -917,9 +948,10 @@ export function cctvProxy({
     }
     /** A spent 511 budget or a blocked 511 host serves the last good still. */
     const held = (status, message, retryAfterMs = 0) => {
-      const lastGood = budgeted
-        ? frames.get(cameraId, CCTV_IBI_LAST_GOOD_MAX_MS)
-        : null;
+      const lastGood =
+        budgeted && !snapshotOnly
+          ? frames.get(cameraId, CCTV_IBI_LAST_GOOD_MAX_MS)
+          : null;
       const retry =
         retryAfterMs > 0
           ? { 'Retry-After': String(Math.ceil(retryAfterMs / 1000)) }
@@ -965,7 +997,7 @@ export function cctvProxy({
       return Number.isFinite(value) ? value : fallback;
     };
     const streetView = async () => {
-      if (!active || !streetViewEnabled()) return false;
+      if (snapshotOnly || !active || !streetViewEnabled()) return false;
       if (PROXY_SIGNALS.some((name) => req.headers?.[name] !== undefined))
         return false;
       const heading = viewOf('heading', source.headingDeg);
@@ -1004,14 +1036,17 @@ export function cctvProxy({
       return;
     }
 
-    let { promise } = coalesceProxyRequest(inflightFrames, cameraId, () =>
-      fetchFrame(source, lookupStill, active),
+    // A photo-only request fetches on its own, so it never takes over (or
+    // records) the health of the camera's ordinary frame request.
+    const inflightKey = snapshotOnly ? `${cameraId}#snapshot` : cameraId;
+    let { promise } = coalesceProxyRequest(inflightFrames, inflightKey, () =>
+      fetchFrame(source, lookupStill, active, { quiet: snapshotOnly }),
     );
     let result = await promise;
     if (result.kind === 'budget' && active && !result.active) {
       // A card's request was refused; the active camera may still have room.
-      ({ promise } = coalesceProxyRequest(inflightFrames, cameraId, () =>
-        fetchFrame(source, lookupStill, true),
+      ({ promise } = coalesceProxyRequest(inflightFrames, inflightKey, () =>
+        fetchFrame(source, lookupStill, true, { quiet: snapshotOnly }),
       ));
       result = await promise;
     }
@@ -1804,6 +1839,8 @@ export function cctvProxy({
   };
   return {
     name: 'cctv-proxy',
+    // The catalogue's size once it has been built (open data, no key).
+    api: { readLayerCount: () => cameras.cachedCount?.() ?? null },
     configureServer: (server) => installMiddleware(server, 'server'),
     configurePreviewServer: (server) => installMiddleware(server, 'preview'),
   };

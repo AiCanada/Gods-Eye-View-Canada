@@ -195,6 +195,11 @@ const CAMERA_FROM_CALLER = new Set([
   // overlay, which read the camera, query, frame and input ports of the
   // application's viewer the same way.
   './application/chrome',
+  // The opening flies the camera of the viewer it is given (`findCamera`),
+  // and plays nothing without one; the view over the visitor's country only
+  // reads `START_VIEW` from the camera module.
+  './application/opening',
+  './application/home-country',
   // The scene binds the renderer it creates (the default one loaded only
   // when it is given none), so its own viewer needs no factory.
   './application/scene',

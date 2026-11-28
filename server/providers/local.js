@@ -1,4 +1,7 @@
 import path from 'node:path';
+
+import { openAqProxy } from './openAq.js';
+import { airQualityFieldProxy } from './airQualityField.js';
 import { openSkyProxy } from './aircraft/opensky.js';
 import { celestrakProxy, rocketLaunchesProxy } from './space.js';
 import { issTelemetryProxy } from './space/issTelemetry.js';
@@ -59,6 +62,7 @@ import { newsProxy } from './news.js';
 import { inaturalistProxy } from './inaturalist/observations.js';
 import { acartiaProxy } from './acartia.js';
 import { libraryProxy } from './library.js';
+import { layerCountsEndpoint } from './common/layerCounts.js';
 
 /**
  * Construct the local provider plugins in their established order.
@@ -96,12 +100,17 @@ function localProviderPlugins({
     root: sourceRoot,
     log: (line) => console.log(`[abundance] ${line}`),
   });
+  const countReaders = {};
+  function withCount(layerId, provider) {
+    countReaders[layerId] = provider.api.readLayerCount;
+    return provider;
+  }
   return [
-    openSkyProxy(),
-    celestrakProxy(),
+    withCount('flights', openSkyProxy()),
+    withCount('satellites', celestrakProxy()),
     issTelemetryProxy(),
     tomtomProxy(),
-    firmsProxy(),
+    withCount('local-firms', firmsProxy()),
     firePerimetersProxy(),
     rocketLaunchesProxy(),
     terrainHeightsProxy(),
@@ -116,7 +125,9 @@ function localProviderPlugins({
     weatherProxy(),
     windProxy(),
     cycloneProxy(),
-    cctvProxy({ sourceRoot }),
+    openAqProxy(),
+    airQualityFieldProxy(),
+    withCount('cctv', cctvProxy({ sourceRoot })),
     // Home and business security cameras: separate from the public CCTV proxy.
     privateCamerasProxy({ sourceRoot }),
     // The owner's own drones, robots, marine drones and GPS trackers.
@@ -128,7 +139,7 @@ function localProviderPlugins({
     transitProxy(),
     railProxy(),
     adsbLolProxy(),
-    aisLiveProxy(),
+    withCount('ais-live-vessels', aisLiveProxy()),
     trackBackfillProxies(),
     openAiRealtimeProxy({ realtime }),
     ...(gemini ? [geminiLiveProxy({ realtime: gemini })] : []),
@@ -188,6 +199,7 @@ function localProviderPlugins({
     // GLOBAL ABUNDANCE MAP (owner request 2026-10-22): the World Bank, Our
     // World in Data and OECD figures behind the abundance score, cached.
     abundanceProvider({ root: sourceRoot, store: abundance }),
+    layerCountsEndpoint(countReaders),
     keySetupEndpoint({ sourceRoot, onEnvSaved: noteOutboundEnvSaved }),
   ];
 }

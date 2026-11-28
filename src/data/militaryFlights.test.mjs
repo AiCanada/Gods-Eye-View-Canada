@@ -24,6 +24,7 @@ import {
 } from './trackedReadout.js';
 import { readEntityRecord, withEntityRecord } from './entityRecords.js';
 import { fakeDrawPort } from '../testSupport/fakeDrawPort.mjs';
+import { bindRenderer } from '../render/rendererOf.js';
 
 test('share-Follow absence requires an accepted adsb.lol snapshot', async () => {
   _setMilitaryTrackingRefreshOutcomeForTest({ status: 'source-unavailable' });
@@ -896,6 +897,15 @@ test('military location leave frees old-view models in bounded slices and keeps 
   const destinationModel = fleetModel();
   const oldIds = Array.from({ length: 30 }, (_, i) => `ae1${String(i).padStart(3, '0')}`);
   const oldModels = oldIds.map(() => fleetModel());
+  const viewer = {
+    camera: { positionCartographic: null },
+    scene: {},
+    entities: { remove() {} },
+    isDestroyed: () => false,
+  };
+  // The icon sets draw through the viewer's own renderer (upstream
+  // b1074c054), so the fake draw port is bound to the viewer as well.
+  const unbindDraw = bindRenderer(viewer, { draw });
   _setTrackedMilitaryRefreshStateForTest({
     icao24: 'ae0001',
     tracked: false,
@@ -903,12 +913,7 @@ test('military location leave frees old-view models in bounded slices and keeps 
     meta: destination.meta,
     icon: destination.icon,
     iconLayer: { show: true },
-    viewer: {
-      camera: { positionCartographic: null },
-      scene: {},
-      entities: { remove() {} },
-      isDestroyed: () => false,
-    },
+    viewer,
     models: [['ae0001', destinationModel], ...oldIds.map((id, i) => [id, oldModels[i]])],
     draw,
   });
@@ -954,6 +959,7 @@ test('military location leave frees old-view models in bounded slices and keeps 
     );
   } finally {
     militaryFlightsLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO });
+    unbindDraw();
   }
   assert.equal(_militaryLocationSwitchStateForTest().active, false);
 });

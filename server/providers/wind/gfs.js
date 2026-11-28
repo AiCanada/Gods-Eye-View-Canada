@@ -151,17 +151,43 @@ export async function fetchRange({
 }
 
 /**
- * Optional work under its own bound: it resolves undefined on failure or
- * timeout without cancelling valid wind siblings; a parent abort still stops it.
+ * A bounded optional request may fail without cancelling valid wind siblings.
+ * `scalarSignal` gives up on this field alone (returning undefined), while
+ * `signal` cancels the whole refresh.
  */
-async function optional(task, { signal, timeoutMs }) {
+export async function loadOptionalScalar({
+  range,
+  url,
+  fetchImpl,
+  decodeImpl,
+  signal,
+  scalarSignal,
+  targetDx = 1,
+  timeoutMs = 12_000,
+}) {
+  if (!range) return undefined;
   const controller = new AbortController();
   const abort = () => controller.abort(signal.reason);
+  const giveUp = () => controller.abort();
   signal?.addEventListener('abort', abort, { once: true });
+  scalarSignal?.addEventListener('abort', giveUp, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     signal?.throwIfAborted();
-    const value = await task(controller.signal);
+    scalarSignal?.throwIfAborted();
+    const bytes = await fetchRange({
+      url,
+      ...range,
+      fetchImpl,
+      signal: controller.signal,
+    });
+    // The 12 s deadline bounds the download only. The worker bounds the decode,
+    // and scalarSignal ends the wait in time to serve ready wind.
+    clearTimeout(timer);
+    const value = await decodeImpl(bytes, {
+      targetDx,
+      signal: controller.signal,
+    });
     controller.signal.throwIfAborted();
     return value;
   } catch {
@@ -170,61 +196,62 @@ async function optional(task, { signal, timeoutMs }) {
     clearTimeout(timer);
     controller.abort();
     signal?.removeEventListener('abort', abort);
+    scalarSignal?.removeEventListener('abort', giveUp);
   }
-}
-
-/** A bounded optional request may fail without cancelling valid wind siblings. */
-export async function loadOptionalScalar({
-  range,
-  url,
-  fetchImpl,
-  decodeImpl,
-  signal,
-  timeoutMs = 12_000,
-}) {
-  if (!range) return undefined;
-  return optional(
-    async (bounded) =>
-      decodeImpl(
-        await fetchRange({ url, ...range, fetchImpl, signal: bounded }),
-      ),
-    { signal, timeoutMs },
-  );
 }
 
 /**
  * The analysis (f000) has no time-mean PRATE; the cycle's f006 object holds
- * its first six-hour mean. Its own inventory, byte range and decode share one
- * optional bound, so a failure leaves the served step's wind alone.
+ * its first six-hour mean. Its inventory is read under the same bounds as the
+ * field (loadOptionalScalar), so a failure leaves the served step's wind alone.
+ * @returns {Promise<{scalar: object, window: {fromHour: number, toHour: number}}|undefined>}
  */
 async function loadCycleMeanRate({
   url,
   fetchImpl,
   decodeImpl,
   signal,
+  scalarSignal,
+  targetDx = 1,
   timeoutMs = 12_000,
 }) {
-  return optional(
-    async (bounded) => {
-      const index = await fetchText({
-        url: `${url}.idx`,
-        fetchImpl,
-        signal: bounded,
-      });
-      const { scalar: range, window } = windMessageRanges(
-        parseGfsIdx(index.toString()),
-        { overlay: 'precipitation' },
-      );
-      const bytes = await fetchRange({
-        url,
-        ...range,
-        fetchImpl,
-        signal: bounded,
-      });
-      return { scalar: await decodeImpl(bytes), window };
-    },
-    { signal, timeoutMs },
-  );
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal.reason);
+  const giveUp = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  scalarSignal?.addEventListener('abort', giveUp, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let found;
+  try {
+    signal?.throwIfAborted();
+    scalarSignal?.throwIfAborted();
+    const index = await fetchText({
+      url: `${url}.idx`,
+      fetchImpl,
+      signal: controller.signal,
+    });
+    found = windMessageRanges(parseGfsIdx(index.toString()), {
+      overlay: 'precipitation',
+    });
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+    signal?.removeEventListener('abort', abort);
+    scalarSignal?.removeEventListener('abort', giveUp);
+  }
+  const scalar = await loadOptionalScalar({
+    range: found.scalar,
+    url,
+    fetchImpl,
+    decodeImpl,
+    signal,
+    scalarSignal,
+    targetDx,
+    timeoutMs,
+  });
+  return scalar ? { scalar, window: found.window } : undefined;
 }
 
 import {
@@ -236,7 +263,75 @@ import {
 import { decodeWindGribMessage } from './decode.js';
 import { resampleWeatherSnapshot, weatherScalarMetadata } from './grid.js';
 
-/** Fetch and decode the GFS 10 m wind field valid closest to now. */
+/**
+ * Load U, V and the optional companion from one forecast object and resample
+ * them to the display grid.
+ *
+ * `windCache` (one per windProxy) keeps the U/V of the last forecast file per
+ * model as the decoder returned them (display-grid samples from the worker,
+ * ~1 MB at 1°). The same URL and U/V ranges reuse them without fetching U/V
+ * again, even if upstream would now fail. Written only after the wind passes
+ * every check.
+ *
+ * `loadScalar` (God's Eye View Canada), when given, loads the companion
+ * instead of `scalarRange`: a precipitation rate from another object.
+ */
+export async function loadWeatherSnapshot({
+  model,
+  url,
+  ranges,
+  scalarRange,
+  loadScalar,
+  overlay,
+  targetDx,
+  fetchImpl,
+  decodeImpl,
+  signal,
+  scalarSignal,
+  windCache,
+}) {
+  const key = [
+    url,
+    `${ranges.u.start}-${ranges.u.end}`,
+    `${ranges.v.start}-${ranges.v.end}`,
+  ].join('|');
+  const kept = windCache?.get(model);
+  const wind = kept?.key === key ? kept : null;
+  // All selected messages come from this one issue/valid-time object.
+  const load = async (range) =>
+    decodeImpl(await fetchRange({ url, ...range, fetchImpl, signal }), {
+      targetDx,
+      signal,
+    });
+  const [u, v, scalar] = await Promise.all([
+    wind ? wind.u : load(ranges.u),
+    wind ? wind.v : load(ranges.v),
+    loadScalar
+      ? loadScalar()
+      : loadOptionalScalar({
+          range: scalarRange,
+          url,
+          fetchImpl,
+          decodeImpl,
+          signal,
+          scalarSignal,
+          targetDx,
+        }),
+  ]);
+  signal?.throwIfAborted();
+  const fields = resampleWeatherSnapshot({ u, v, scalar, overlay, targetDx });
+  if (!wind) windCache?.set(model, { key, u, v });
+  return fields;
+}
+
+/**
+ * Fetch and decode the GFS 10 m wind field valid closest to now.
+ * @param {{fetchImpl?: Function, now?: Function, targetDx?: number,
+ *   decodeImpl?: Function, signal?: AbortSignal, overlay?: string,
+ *   scalarSignal?: AbortSignal, windCache?: Map}} [options] - `decodeImpl(bytes, {targetDx, signal})`
+ *   returns a decoded field or a `sampleWindField` result; for `windCache` see
+ *   loadWeatherSnapshot. For `scalarSignal` see loadOptionalScalar.
+ */
 export async function fetchGfsWind({
   fetchImpl = fetch,
   now = () => Date.now(),
@@ -244,6 +339,8 @@ export async function fetchGfsWind({
   decodeImpl = decodeWindGribMessage,
   signal,
   overlay = 'none',
+  scalarSignal,
+  windCache,
 } = {}) {
   weatherScalarMetadata(overlay);
   const nowMs = now();
@@ -271,31 +368,38 @@ export async function fetchGfsWind({
       /* A missing optional field does not discard valid wind. */
     }
   }
-  // All selected messages come from this one issue/valid-time object, except
-  // a precipitation rate the step lacks: the cycle's f006 mean stands in, and
+  // A precipitation rate the step lacks: the cycle's f006 mean stands in, and
   // its window says so.
-  const load = async (range) =>
-    decodeImpl(await fetchRange({ url: base, ...range, fetchImpl, signal }));
-  const loadCompanion = async () =>
+  let window = companion?.window;
+  const loadScalar =
     overlay === 'precipitation' && !companion && forecastHour !== 6
-      ? loadCycleMeanRate({ url: objectUrl(6), fetchImpl, decodeImpl, signal })
-      : {
-          scalar: await loadOptionalScalar({
-            range: companion?.scalar,
-            url: base,
+      ? async () => {
+          const mean = await loadCycleMeanRate({
+            url: objectUrl(6),
             fetchImpl,
             decodeImpl,
             signal,
-          }),
-          window: companion?.window,
-        };
-  const [u, v, { scalar, window } = {}] = await Promise.all([
-    load(ranges.u),
-    load(ranges.v),
-    loadCompanion(),
-  ]);
-  signal?.throwIfAborted();
-  const fields = resampleWeatherSnapshot({ u, v, scalar, overlay, targetDx });
+            scalarSignal,
+            targetDx,
+          });
+          window = mean?.window;
+          return mean?.scalar;
+        }
+      : undefined;
+  const fields = await loadWeatherSnapshot({
+    model: 'gfs',
+    url: base,
+    ranges,
+    scalarRange: companion?.scalar,
+    loadScalar,
+    overlay,
+    targetDx,
+    fetchImpl,
+    decodeImpl,
+    signal,
+    scalarSignal,
+    windCache,
+  });
   const runIso = new Date(runMs).toISOString();
   const validIso = new Date(runMs + forecastHour * 3600_000).toISOString();
   return {

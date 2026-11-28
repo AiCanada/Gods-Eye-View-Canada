@@ -113,6 +113,9 @@ export function roadRequestError(status, cause) {
  * draws one outside it. Without `osm` nothing is simulated: keyless, or with
  * the traffic service unreachable, requests fail with the reason instead of
  * drawing white OpenStreetMap dots.
+ *
+ * `label` is the data source the layer's row names; without it the row names
+ * the sources the offered road modes draw (`trafficSourceLabel`).
  */
 export function createTrafficSource({
   fetchImpl = (...args) => globalThis.fetch(...args),
@@ -123,8 +126,11 @@ export function createTrafficSource({
     selectDecoded: ({ roads }) => ({ roads }),
   }),
   roadModes,
+  label,
 } = {}) {
   const modes = normalizeRoadModes(roadModes);
+  if (label !== undefined && (typeof label !== 'string' || !label.trim()))
+    throw new TypeError('A traffic source label must be a non-empty string');
   const flow = createFlowTileSource({ fetchImpl });
   let overpassUnconfigured = false;
   /** Ask the Overpass proxy for the box; null when no upstream is configured. */
@@ -156,6 +162,7 @@ export function createTrafficSource({
   const api = {
     ...flow,
     roadModes: modes,
+    ...(label === undefined ? {} : { label }),
     prefetch: () => mapTiles.getMetadata().catch(() => {}),
     resetFlowTileCache() {
       flow.resetFlowTileCache();

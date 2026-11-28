@@ -1,5 +1,53 @@
 # Changelog
 
+- Upstream merge of 467 commits (air quality worldwide from OpenAQ rated on a
+  computed US AQI with EEA pollutant bands, a tile card and a timeline
+  #1921 #1954; nearby items and suggested layers in Context #1908; a click on
+  a cable or landing point names it in a card #1959 #1972 #1977; a Frame rate
+  setting in the Display panel #1939; translation catalogs loaded only for
+  the language in use #1966; the logo opening that turns into the globe
+  #1909 #1941; far aircraft drawn as shaded sprites from the camera's angle
+  #1903; every vessel bracketed #1943 and a click that selects and centres a
+  moving thing once #1938; a camera's frame time #1956 and its registered
+  photo on live camera cards; Cmd/Ctrl+K search #1937 and an optional entity
+  lookup #1944; Fire Perimeters by age and redrawn only where they changed
+  #1922; the wind decoded in a worker #1717, the AIS store pruned on a timer
+  #1712 and other speed-ups; one layer panel interface #1964; only Google's
+  attribution on the map, every other credit in Data attribution #1970; and
+  the dock's Location and Visual Presets trays retired #1934). Fork fits:
+  the Omnibar's city and landmark chips, Q-W-E-R-T, the location switch
+  after a place lookup and the globe reset work again (True up 602 had left
+  the location lookup's subscription and the controls' hookup inside the
+  saved-site pill's click handler, so none of them was connected). The
+  standalone page now starts at the launch city, Saint John, and upstream's
+  opening closes in on it from the planet; the title's logo goes back to the
+  planet over the visitor's country. The retired tray took the pinned Rapid
+  Falls pill, LAST / 2ND LAST and the saved home and business site pills
+  with it (all hidden since the last merge); their records stay in the
+  location navigation (`setPrivateSiteLocations`, `flyToPrivateSite`,
+  `locationShortcuts`) and the tray's corner grips are gone. Upstream's
+  chunked catalogs replace the fork's own on-demand loading: Quebec French,
+  Inuktitut and Ancient Egyptian load the same way, with the two-second
+  English hover help kept, and the 176 new strings are in all three (Spanish
+  keeps the four strings fork code still shows). The humidity and
+  precipitation overlays run on upstream's decode worker and per-cycle wind
+  cache, the analysis still borrowing the cycle's f006 mean rate. The AIS
+  store takes upstream's timed prune and eviction (a ship silent for 30
+  minutes comes back without its old name until its next static report) and
+  keeps one copy per process and the health endpoint's sizes. The registered
+  photo on live camera cards is served by the fork's own frame route (404
+  without a photo, 503 when it cannot be fetched, no stand-in and no change
+  to the camera's health), `/sources` stays area-only, and the camera
+  catalogue reports its size to upstream's layer counts. The layer Finder
+  binds to Data Layers on the right rail, the Cockpit's pitch ladder follows
+  the fork's left stack, and `.env` edits now apply on the dev server's
+  in-process restart. The AI World tape reads Fire Perimeters' new snapshot
+  (fires and their pieces), YOUR DEVICES keeps upstream's layer panel
+  interface, and the Sea Surface Temperature box and the Saint John fly-in
+  no longer assume a Cesium viewer behind every scene. Air quality: upstream
+  retired ECCC's AQHI, so the layer now needs a free OpenAQ key (Provider
+  Settings).
+
 - Global Abundance Map: a Monte Carlo forecast of every place's abundance 0
   to 100 years ahead (owner request 2026-11-07, "create monte Carlo
   simulator for future abundance (0-100 years), use fine grain detail and

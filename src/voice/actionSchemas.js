@@ -229,8 +229,6 @@ const schemas = [
           type: 'string',
           enum: [
             'data-panel',
-            'location-bar',
-            'control-panel',
             'cctv-panel',
             'radio-panel',
             'scene-panel',

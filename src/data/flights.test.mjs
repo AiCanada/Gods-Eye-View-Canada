@@ -45,6 +45,7 @@ import {
 } from './trackedReadout.js';
 import { readEntityRecord, withEntityRecord } from './entityRecords.js';
 import { fakeDrawPort } from '../testSupport/fakeDrawPort.mjs';
+import { bindRenderer } from '../render/rendererOf.js';
 
 // Unit tests never reach the network. A test that tracks a plane queues its
 // enrichment (type, route, photo), so every test ends on an empty queue, and a
@@ -2829,6 +2830,10 @@ test('location leave frees old-view fleet models in bounded slices and keeps des
   const destinationModel = fleetModel();
   const oldIds = Array.from({ length: 30 }, (_, i) => `b01${String(i).padStart(3, '0')}`);
   const oldModels = oldIds.map(() => fleetModel());
+  // The icon sets draw through the viewer's own renderer now (upstream
+  // b1074c054), so the fake draw port is bound to the viewer as well.
+  const viewer = switchViewer();
+  const unbindDraw = bindRenderer(viewer, { draw });
   _setTrackedFlightRefreshStateForTest({
     icao24: 'd00001',
     tracked: false,
@@ -2836,7 +2841,7 @@ test('location leave frees old-view fleet models in bounded slices and keeps des
     meta: destination.meta,
     icon: destination.icon,
     iconLayer: { show: true },
-    viewer: switchViewer(),
+    viewer,
     models: [['d00001', destinationModel], ...oldIds.map((id, i) => [id, oldModels[i]])],
     draw,
   });
@@ -2878,6 +2883,7 @@ test('location leave frees old-view fleet models in bounded slices and keeps des
     assert.equal(state.liveModels, 1);
   } finally {
     flightsLayer.onLocationArrive({ from: SWITCH_FROM, to: SWITCH_TO });
+    unbindDraw();
   }
   assert.equal(_flightLocationSwitchStateForTest().active, false);
 });
@@ -3039,4 +3045,21 @@ test('a leave without its arrival pauses at most the hold window; a disabled lay
     Date.now = realNow;
     flightsLayer.onLocationArrive({ to: SWITCH_TO });
   }
+});
+
+test('destroying the layer empties the result array detection last read', () => {
+  seedLabelContact({ callsign: 'KEEP1', registration: 'N1KP' });
+  const list = flightsLayer.getDetectableObjects({ maxCount: 50 });
+  assert.ok(list.length > 0, 'the contact was collected');
+  const previousDocument = globalThis.document;
+  globalThis.document ??= new EventTarget();
+  const { log } = console;
+  console.log = () => {};
+  try {
+    flightsLayer.destroy({ camera: { positionCartographic: null }, scene: {} });
+  } finally {
+    console.log = log;
+    if (previousDocument === undefined) delete globalThis.document;
+  }
+  assert.equal(list.length, 0, 'no contact stays reachable through it');
 });

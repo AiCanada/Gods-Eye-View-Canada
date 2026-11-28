@@ -246,6 +246,7 @@ export function createCatalog({ state: layerState, services, parts, source }) {
         // ?hls=1 playlist / MP4 clips); absent for pack HLS feeds, which use
         // the leased segment puller (videoPlayback.js).
         hlsVia: source.hlsVia === 'proxy' ? 'proxy' : '',
+        hasSnapshot: source.hasSnapshot === true,
         feedConfigured: typeof source.url === 'string' && !!source.url.trim(),
         ...(frameRefreshMs > 0 ? { frameRefreshMs } : {}),
         ...(activeFrameRefreshMs > 0 ? { activeFrameRefreshMs } : {}),

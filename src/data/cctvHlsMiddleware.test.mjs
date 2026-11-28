@@ -141,6 +141,57 @@ test('ninth viewer frame fallback preserves active camera health', async (t) => 
   assert.deepEqual(await health('cam-a'), before);
 });
 
+test('a registered HLS snapshot can be viewed without changing live stream health', async (t) => {
+  const cam = camera('cam-a');
+  const snapshotUrl = 'https://cams.upstream.invalid/cam-a/photo.jpg';
+  // The fork keeps a fetched still for 8 s (its frame cache), so the photo
+  // that cannot be fetched is another camera's, never fetched before.
+  const brokenSnapshotUrl = 'https://cams.upstream.invalid/cam-c/photo.jpg';
+  const { call, health } = mountCctvProvider(t, {
+    cameras: [
+      { ...cam, snapshotUrl },
+      camera('cam-b'),
+      { ...camera('cam-c'), snapshotUrl: brokenSnapshotUrl },
+    ],
+    fetch: async (url) => {
+      if (String(url) === snapshotUrl)
+        return new Response('camera photo', {
+          status: 200,
+          headers: { 'Content-Type': 'image/jpeg' },
+        });
+      if (String(url) === brokenSnapshotUrl)
+        return new Response(null, { status: 503 });
+      return new Response(String(url).endsWith('.m3u8') ? PLAYLIST : 'abc');
+    },
+  });
+  // The fork's /sources answers an area around a point, never the whole
+  // catalogue: ask for the one the test cameras stand in.
+  const { sources } = JSON.parse(
+    (await call(`/sources?lat=${cam.lat}&lon=${cam.lon}`, SAME_ORIGIN)).body,
+  );
+  assert.equal(sources.find((row) => row.id === cam.id).hasSnapshot, true);
+  assert.equal(sources.find((row) => row.id === 'cam-b').hasSnapshot, false);
+  const segment = await openPlaylist(call, cam.id, lease(0));
+  const before = await health(cam.id);
+  const path = '/frame/cam-a?snapshotOnly=1';
+  const frame = await call(path, SAME_ORIGIN);
+  assert.equal(frame.headers['X-CCTV-Source'], 'upstream-image');
+  assert.equal(frame.body, 'camera photo');
+  assert.deepEqual(await health(cam.id), before);
+  const brokenBefore = await health('cam-c');
+  assert.equal(
+    (await call('/frame/cam-c?snapshotOnly=1', SAME_ORIGIN)).statusCode,
+    503,
+  );
+  assert.deepEqual(await health('cam-c'), brokenBefore);
+  assert.equal(
+    (await call('/frame/cam-b?snapshotOnly=1', SAME_ORIGIN)).statusCode,
+    404,
+  );
+  assert.deepEqual(await health(cam.id), before);
+  assert.equal((await call(segment, SAME_ORIGIN)).statusCode, 200);
+});
+
 test('third camera frame fallback keeps absent health', async (t) => {
   const { call, health, upstream } = mount(t);
   await openPlaylist(call, 'cam-a', lease(0));

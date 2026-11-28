@@ -7,6 +7,7 @@ import {
 } from '../../render/rendererOf.js';
 import { CCTV_OVERLAY_SOURCE_ID } from '../../data/cctvCards.js';
 import { GIZMO_ID_PREFIX } from '../../data/cctvGizmo.js';
+import { ownsCctvPick } from './pickIds.js';
 import { inputFor } from '../../input/dispatcher.js';
 import { bindCctvCardResize } from '../../data/cctvCardResize.js';
 import { bearingBetween, bindCctvCardAlign } from '../../data/cctvCardAlign.js';
@@ -260,7 +261,8 @@ export function createLifecycle({
      * stay lazy.
      * @param {object} viewer - The viewer.
      */
-    async init(viewer) {
+    async init(viewer, { panel = null } = {}) {
+      layerState._panel = panel;
       layerState._sourceAbort?.abort();
       const sourceAbort = new AbortController();
       layerState._sourceAbort = sourceAbort;
@@ -475,9 +477,7 @@ export function createLifecycle({
               );
             return;
           }
-          const cameraId = parts.selection.extractPickedCameraId(
-            event.drawHit ?? null,
-          );
+          const cameraId = parts.selection.extractPickedCameraId(event.hit);
           // World and card clicks are explicit activations (they may send a
           // Road511 lookup or start a video).
           if (cameraId) {
@@ -550,30 +550,12 @@ export function createLifecycle({
      */
     enable() {
       layerState._enabled = true;
-      // OpenStreetMap-derived packs (Warendorf) carry the OSM credit; an area
-      // swap re-checks it as cameras arrive and leave (area.js).
-      if (
-        layerState._records.some(
-          (record) => record.camera.cityId === 'warendorf',
-        )
-      )
-        services.credits?.showOsmCredit?.(layerState._viewer, 'cctv');
       layerState._lastUpdate = Date.now();
       // Pick-ownership (H2): camera icons use the camera id directly;
       // coverage polyline entities use `cctv-<cameraId>-<role>` entity ids.
-      registerPickOwner('cctv', (pickedId) => {
-        if (layerState._recordById.has(pickedId)) return true;
-        if (
-          typeof pickedId === 'string' &&
-          pickedId.startsWith(GIZMO_ID_PREFIX)
-        )
-          return true;
-        const coverage =
-          /^cctv-(.+)-(?:ray-tl|ray-tr|ray-br|ray-bl|cap|plane|plane-label)$/.exec(
-            pickedId,
-          );
-        return Boolean(coverage && layerState._recordById.has(coverage[1]));
-      });
+      registerPickOwner('cctv', (pickedId) =>
+        ownsCctvPick(pickedId, layerState._recordById, GIZMO_ID_PREFIX),
+      );
       registerClickClaim?.('cctv', parts.selection.countClickCard);
       // enable() rebuilds for the view it finds, so no location switch holds
       // past this point (one the layer saw while off gets no arrival).
@@ -637,7 +619,6 @@ export function createLifecycle({
      * next enable; a seeded load re-seeds from the view then).
      */
     disable() {
-      services.credits?.hideOsmCredit?.(layerState._viewer, 'cctv');
       layerState._enabled = false;
       if (layerState._areaRequest) {
         if (!layerState._areaRequest.seeded)
@@ -787,7 +768,7 @@ export function createLifecycle({
      * releases what init attached, whichever viewer it is handed.
      */
     destroy() {
-      services.credits?.hideOsmCredit?.(layerState._viewer, 'cctv');
+      layerState._panel = null;
       layerState._sourceAbort?.abort();
       if (typeof document !== 'undefined')
         document.removeEventListener(

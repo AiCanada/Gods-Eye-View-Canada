@@ -1,7 +1,6 @@
-import { ref, watch } from 'vue';
+import { watch } from 'vue';
 import { createI18n } from 'vue-i18n';
 import {
-  bindCatalogRevision,
   bindLocale,
   getCatalog,
   getLocale,
@@ -26,11 +25,13 @@ const resolveFlat = (messages, key) =>
  */
 export function applicationI18n() {
   if (pageI18n) return pageI18n;
+  // The catalogs loaded so far; each other one joins when its locale is
+  // chosen, as setLocale applies it only once it is loaded.
   const messages = {};
-  for (const locale of LOCALES)
-    // Only the catalogs already loaded: the page fetches the active one
-    // (loadCatalog); views translate through Core's t(), not these.
-    if (locale !== DEFAULT_LOCALE) messages[locale] = getCatalog(locale) ?? {};
+  for (const locale of LOCALES) {
+    const catalog = locale === DEFAULT_LOCALE ? null : getCatalog(locale);
+    if (catalog) messages[locale] = catalog;
+  }
   pageI18n = createI18n({
     legacy: false,
     globalInjection: false,
@@ -51,14 +52,16 @@ export function applicationI18n() {
     return installed;
   };
   bindLocale(pageI18n.global.locale);
-  // A view that translated before its catalog landed renders again when it
-  // does (the catalogs load on demand: src/i18n/index.js).
-  bindCatalogRevision(ref(0));
   // Code that translated text itself shows it again, whichever way the
   // locale changed (setLocale or the ref).
   watch(
     () => getLocale(),
-    () => notifyLocaleChange(),
+    (locale) => {
+      const catalog = getCatalog(locale);
+      if (catalog && !pageI18n.global.availableLocales.includes(locale))
+        pageI18n.global.setLocaleMessage(locale, catalog);
+      notifyLocaleChange();
+    },
     { flush: 'sync' },
   );
   return pageI18n;

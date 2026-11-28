@@ -63,6 +63,11 @@ export class CctvControls {
     this._cctvChip = null;
     this._cctvFrameRequestToken = 0;
     this._cctvFramePreloader = null;
+    // A frame being fetched for its time, and the object URLs of the frame
+    // read for that request and of the frame on screen.
+    this._cctvFrameFetch = null;
+    this._cctvFramePendingUrl = null;
+    this._cctvFrameShownUrl = null;
     this._frame = EMPTY_CCTV_FRAME;
     this._calibrationEdit = null;
     this._actionGeneration = 0;
@@ -92,8 +97,8 @@ export class CctvControls {
         attributes: true,
         attributeFilter: ['class', MOBILE_SHEET_ATTR],
       });
-      this._offPreviewCards = watch(
-        () => this.store.previewCards,
+      this._offPreviews = watch(
+        [() => this.store.previewCards, () => this.store.previewPopups],
         () => this._renderCctvState(this._cctvState),
       );
       this.listen(document, 'visibilitychange', () =>
@@ -168,7 +173,7 @@ export class CctvControls {
     this._quebecCctvOverlay?.dispose();
     this._cctvVideoSurface?.stop();
     this._videoVisibilityObserver?.disconnect();
-    this._offPreviewCards?.();
+    this._offPreviews?.();
     this._actionGeneration++;
     this.listeners.abort();
     this._cctvUnsubscribe?.();

@@ -245,7 +245,9 @@ export function initSeaSurfaceTemperaturePanel({
   };
 
   const removeLayers = (list = layers) => {
-    if (!viewer.isDestroyed()) {
+    // Nothing drawn, nothing to take off: a scene host with no Cesium viewer
+    // behind it never draws any, and need not say whether it is gone.
+    if (list.length && !viewer.isDestroyed?.()) {
       for (const layer of list) viewer.imageryLayers.remove(layer, true);
     }
     if (list === layers) layers = [];

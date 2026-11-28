@@ -150,6 +150,9 @@ only: touch has no hover, so the phone page is unchanged.
 | open / close / search                | 𓃹𓈖 / 𓐍𓏏𓋩 / 𓎛𓎛𓏭𓂻                | _wn / ḫtm / ḥꞽḥꞽ_                       |                                        |
 | clear                                | 𓅱𓂝𓃂                            | _wꜥb_                                   | to purify                              |
 | click, press                         | 𓂧𓏇                             | _dmꞽ_                                   | to touch                               |
+| air quality station / sensor         | 𓊨𓏏 / 𓋷𓄿𓏲𓀁                      | _s.t / sꞽꜣ.w_                          | place / perceiver                      |
+| pollutant                            | 𓃀𓅱𓏏 𓈖 𓊡                      | _bw.t n ṯꜣw_                            | abomination of the air                 |
+| cable landing point                  | 𓌻𓂋𓇋𓇋𓏏𓈇 𓈖 𓍇𓏌                  | _mr.yt n nwḥ_                           | quay of the rope                       |
 | red, dark red, orange, yellow, green | 𓅟, 𓅟 𓋴𓈖𓎡𓅱, 𓅟 𓈎𓈖𓇋𓏏𓈓, 𓈎𓈖𓇋𓏏𓈓, 𓍯𓆓𓇅 | _dšr, dšr snk.w, dšr qnꞽ.t, qnꞽ.t, wꜣḏ_ |                                        |
 
 ## The fork's own tabs
@@ -216,8 +219,7 @@ only names ("Open-Meteo (CC BY 4.0)").
 
 These stay English in every language for now (`data-i18n-skip`,
 `src/i18n/fork-english-only.json`): SEA SURFACE TEMPERATURE (SST); POWER UP's
-device, home and business camera and road CCTV key sections; the home and
-business sites and shortcut pills in the LOCATION row; the CCTV panel's
-picture and the LOCATION tray resize handles; the CCTV area messages. Text the
+device, home and business camera and road CCTV key sections; the CCTV panel's
+picture resize handles; the CCTV area messages. Text the
 server writes is shown as it comes: model answers, a forecast's reasons and
 server error details.

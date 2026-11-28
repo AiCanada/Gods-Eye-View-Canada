@@ -25,12 +25,14 @@ function safeNumber(value, fallback = NaN) {
  * @param {Object} [options]
  * @param {boolean} [options.active=false] - Only the active camera's monitor
  *   plane and panel preview set this; map cards never do.
+ * @param {boolean} [options.snapshotOnly=false] - A live camera's card asks
+ *   for its registered photo alone (no stand-in frame, no health change).
  * @returns {string} Frame URL.
  */
 function frameUrlFor(
   camera,
   refreshMs = ACTIVE_FRAME_REFRESH_MS,
-  { active = false } = {},
+  { active = false, snapshotOnly = false } = {},
 ) {
   const cadenceMs = Math.max(
     1000,
@@ -47,6 +49,7 @@ function frameUrlFor(
     ts: String(tick),
   });
   if (active) params.set('active', '1');
+  if (snapshotOnly) params.set('snapshotOnly', '1');
   return `${FRAME_ENDPOINT}/${encodeURIComponent(camera.id)}?${params.toString()}`;
 }
 function mediaUrlFor(camera) {

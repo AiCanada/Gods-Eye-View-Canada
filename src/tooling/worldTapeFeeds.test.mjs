@@ -7,6 +7,7 @@ import { gunzipSync } from 'node:zlib';
 import { REGISTERED_LAYER_IDS } from '../data/layerState.js';
 import { encodeCoverageTile } from '../layers/streetLevel/providers/mapillary/coverageFixture.mjs';
 import { latToTileY, lonToTileX } from '../layers/streetLevel/tileMath.js';
+import { firePerimeterSnapshot } from '../layers/perimeters/records.js';
 import { createToolServices } from '../tools/services.js';
 import { createTapeStore } from '../../server/shared/worldTapeStore.mjs';
 import { createRecorder } from '../../server/shared/worldTapeRecorder.mjs';
@@ -750,7 +751,10 @@ test('fire perimeters: each incident once per revision, with centroid and box', 
     ],
   };
   let rows = [row];
-  const services = { perimeters: { getSnapshot: async () => rows } };
+  // The layer's source answers with fires and their pieces.
+  const services = {
+    perimeters: { getSnapshot: async () => firePerimeterSnapshot(rows) },
+  };
   const state = {};
   const first = await feed('fire-perimeters').poll(
     context({ services, state }),

@@ -9,6 +9,5 @@
   "src/privateSiteLocations.js",
   "src/roadCctvKeysSetup.js",
   "src/ui/cctvPanelResize.js",
-  "src/ui/locationPanelResize.js",
   "src/ui/locationShortcuts.js"
 ]

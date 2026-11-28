@@ -10,13 +10,15 @@ import { straightSegment } from './fixCurve.js';
 import {
   norm180,
   distance,
+  distanceSquared,
   clone,
   copyInto,
   toDegrees,
   vec,
+  Vec3,
 } from '../geo/vector.js';
 import { fromRadians, toCartographicRadians } from '../geo/ellipsoid.js';
-import { horizonFrom, liftedForHorizon } from '../geo/horizon.js';
+import { horizonFrom, liftedForHorizonInto } from '../geo/horizon.js';
 import { createIconBook } from '../render/motion/iconBook.js';
 import { motionCourse, motionPosition } from '../render/motion/iconMotion.js';
 import {
@@ -33,11 +35,14 @@ import {
 } from './aircraftIcons.js';
 import { cockpitContactDotImage } from './cockpitContactDot.js';
 import { rotorFrame, rotorTurns } from './rotorFrames.js';
+import { aircraftViewRef, registerAircraftViews } from './aircraftViews.js';
 import { aircraftRecedeSpec } from './aircraftRecession.js';
 import { TIMELINE_UNSEEN_MS } from '../time/timelineFixes.js';
 
 /** Raster size of the cockpit contact pip (cockpitContactDot.js draws 16 px). */
 const COCKPIT_DOT_PX = 16;
+/** The lifted point a horizon test judges, rewritten per contact per frame. */
+const _horizonScratch = new Vec3();
 /** Fleet glyphs keep the established close-range 3× scale. */
 /** A contact icon's size before its scale, CSS px. */
 const FLEET_ICON_SIZE_PX = 20;
@@ -154,6 +159,8 @@ export function createContactIcons(drawSet = null, { capabilities } = {}) {
     has: (id) => book.has(id),
     /** The drawn ids, in the order first drawn. */
     ids: () => book.ids(),
+    /** The drawn ids as one kept array, for per-frame readers (`iconBook.idList`). */
+    idList: () => book.idList(),
     item: (id) => book.item(id),
     /**
      * Until when (epoch ms on the display clock) an id's motion holds:
@@ -163,10 +170,7 @@ export function createContactIcons(drawSet = null, { capabilities } = {}) {
     /** The ids whose motion ran out by `t`, to plan afresh. */
     due: (t) => book.due(t),
     /** Where an id is drawn at `t` (into `result` when given), or null. */
-    position(id, t, result) {
-      const p = book.position(id, t);
-      return p && result ? copyInto(p, result) : p;
-    },
+    position: (id, t, result) => book.position(id, t, result),
     course: (id, t) => book.course(id, t),
     shown: (id) => book.item(id)?.show !== false && !unseen.has(id),
     focus: (id) => book.focus(id),
@@ -385,8 +389,32 @@ let instances = 0;
 /** A plan that ran out longer ago than this (ms) is not eased away from. */
 const RECOVER_STALE_PLAN_MS = 1_000;
 
-/** How far ahead (ms) a placed contact's segment runs before it is asked again. */
+/** How far ahead (ms) a placed contact's segment runs before it is asked
+ *  again, in view and near the eye. */
 const PLACED_PLAN_MS = 1000;
+/** The same out of view, or farther than PLACED_NEAR_M from the eye: off
+ *  screen a contact's path is not seen, and that far a straight segment
+ *  over this long (half as long again at most, as spread) is well under a
+ *  pixel off it. Asking for each contact every second would rewrite the
+ *  whole fleet every second. */
+const PLACED_FAR_PLAN_MS = 4000;
+/** Nearer the eye than this (m), a placed contact in view is planned every
+ *  PLACED_PLAN_MS. */
+const PLACED_NEAR_M = 300_000;
+
+/**
+ * Each contact's plans run between 1/2 and 3/2 of their length, by its id,
+ * so the fleet's plans run out spread over the passes, not together in one
+ * (contacts first planned in the same pass would otherwise stay in step).
+ */
+export function placedPlanSpread(id) {
+  let hash = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    hash ^= id.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return 0.5 + ((hash >>> 0) % 1024) / 1024;
+}
 
 /** A display delay that never changes (ms). */
 function fixedDelay(ms) {
@@ -436,6 +464,8 @@ function fixedDelay(ms) {
  *   Where a host-supplied placement draws a live contact at a wall time,
  *   written into `out` (`placeAircraftAt`), or null when it does not place
  *   it; none without a placement.
+ * @param {(url: string) => string} [options.resolveAsset] The layer's asset
+ *   URL resolver, for the aircraft view sheet's image.
  */
 export function createAircraftIcons({
   state,
@@ -453,10 +483,14 @@ export function createAircraftIcons({
   afterSettle = () => {},
   onForget = () => {},
   placeAt = null,
+  resolveAsset = (url) => url,
 }) {
   const { focusPassIsNeeded } = services.focus;
   // The near-image switch the rows were last written with (CSS px).
   let switchPx = nearImageSwitchPx(1);
+  /** Whether the renderer draws icons along their course from the aircraft
+   *  view sheet (`aircraftViews.js`), set when the draw set is made. */
+  let views = false;
   /**
    * Airborne helicopters drawn as their glyph, whose rotor turns: the rotor
    * frame each was last drawn at, and the frame it was last judged at
@@ -465,6 +499,8 @@ export function createAircraftIcons({
    * @type {Map<string, {drawn: number, checked: number}>}
    */
   const rotors = new Map();
+  /** When a rotor in view was last given a new frame (wall ms). */
+  let rotorDrawnAtMs = -Infinity;
 
   /** The delayed instant (epoch ms) every untracked contact is drawn at. */
   const _displayMs = () =>
@@ -492,7 +528,8 @@ export function createAircraftIcons({
   const motionClock = (scene) =>
     scene
       ? { kind: 'scene' }
-      : { kind: 'live', delayMs: displayDelay.currentMs };
+      : // The layer's pace asks for the frames its moving rows need.
+        { kind: 'live', delayMs: displayDelay.currentMs, frames: 'owner' };
 
   /**
    * Once a frame: move the display delay on, and put the set's motion on
@@ -544,9 +581,9 @@ export function createAircraftIcons({
     sceneClock = followsClock();
     sentDelayMs = sceneClock ? NaN : displayDelay.currentMs;
     switchPx = _imageSwitchPx(viewer);
-    state._icons = createContactIcons(set, {
-      capabilities: rendererOf(viewer)?.capabilities ?? null,
-    });
+    const capabilities = rendererOf(viewer)?.capabilities ?? null;
+    views = registerAircraftViews(drawOf(viewer), capabilities, resolveAsset);
+    state._icons = createContactIcons(set, { capabilities });
     return set.id;
   }
 
@@ -555,9 +592,11 @@ export function createAircraftIcons({
     state._icons?.dispose();
     state._icons = null;
     liveSet = null;
+    views = false;
     rotors.clear();
     planFrom.clear();
     easeEnds.clear();
+    placedPlans.clear();
     replannedAt = -Infinity;
   }
 
@@ -609,7 +648,10 @@ export function createAircraftIcons({
    * when drawn below it). No camera, no horizon.
    */
   function _aboveHorizon(position, occluder) {
-    return !occluder || occluder.isPointVisible(liftedForHorizon(position));
+    return (
+      !occluder ||
+      occluder.isPointVisible(liftedForHorizonInto(position, _horizonScratch))
+    );
   }
 
   /**
@@ -815,12 +857,46 @@ export function createAircraftIcons({
     planFrom.set(icao24, validFrom);
   }
 
+  /** Each placed contact's last placed plan or ease: when it ends (display
+   *  ms), the wall time that stands for, and where it ends. */
+  const placedPlans = new Map();
+
+  /** The camera, while the fleet pass re-plans the rows that ran out:
+   *  `{eye, inView(position)}` (null: every plan is a near one). */
+  let planView = null;
+
+  /** How long a placed contact at `position` is planned for (ms). */
+  function _placedPlanMs(icao24, position) {
+    const near =
+      !planView ||
+      (distanceSquared(planView.eye, position) <
+        PLACED_NEAR_M * PLACED_NEAR_M &&
+        planView.inView(position));
+    return (
+      (near ? PLACED_PLAN_MS : PLACED_FAR_PLAN_MS) * placedPlanSpread(icao24)
+    );
+  }
+
+  /**
+   * Whether a new report moved where a placed contact's last placed plan
+   * ends: the placement asked again for that plan's end (the same wall time)
+   * puts it more than a recovery's least from where the plan ends. Only
+   * while that plan is still the row's (its end unchanged).
+   */
+  function _placementMoved(icao24, info, history) {
+    const plan = placedPlans.get(icao24);
+    if (!plan || state._icons.expires(icao24) !== plan.expiresAt) return false;
+    const now = vec();
+    if (!placeAt(icao24, plan.wallMs, info, history, now)) return false;
+    return distance(now, plan.at) > RECOVER_MIN_M;
+  }
+
   /**
    * Plan a live contact a host-supplied placement places: from where it
    * places it at `t` (display ms, the live clock's delayed time) to where it
-   * places it PLACED_PLAN_MS on, asked again when that runs out. Display
-   * time is wall time less the display delay, so the placement is asked at
-   * the wall times the segment's ends stand for.
+   * places it a plan's length on (`_placedPlanMs`), asked again when that
+   * runs out. Display time is wall time less the display delay, so the
+   * placement is asked at the wall times the segment's ends stand for.
    * @returns {boolean} False when there is no placement, the layer follows
    *   the world clock, or it has no answer for this contact.
    */
@@ -831,17 +907,40 @@ export function createAircraftIcons({
     const start = placeAt(icao24, t + leadMs, info, history, from);
     if (!start) return false;
     const { courseDeg: course } = start;
-    // Back at live, or while an ease runs, it eases on from where it is drawn.
+    // Back at live, while an ease runs, or when a new report moved where its
+    // last placed plan has it, it eases on from where it is drawn: a
+    // correction is never drawn as a jump. Its first placed plan draws it
+    // where it is placed.
     const easing = easeEnds.get(icao24) > t;
+    const moved =
+      !handover && !easing && _placementMoved(icao24, info, history);
     if (
-      (handover || easing) &&
+      (handover || easing || moved) &&
       _easePlaced(icao24, info, history, t, from, start)
     )
       return true;
     easeEnds.delete(icao24);
-    const t1 = t + PLACED_PLAN_MS;
+    const t1 = t + _placedPlanMs(icao24, from);
     const to = vec();
     const end = placeAt(icao24, t1 + leadMs, info, history, to);
+    // Shown and going on from its last placed plan, nothing moved, it starts
+    // where that is drawn: the pass came a little after it ended, or the
+    // display delay moved since it was asked, and either is taken up over
+    // this plan, never drawn as a step. It still ends where it is placed. (A
+    // hidden row, or one with no end to go to, is drawn where it is placed.)
+    const last = placedPlans.get(icao24);
+    if (
+      end &&
+      !moved &&
+      last &&
+      state._icons.expires(icao24) === last.expiresAt &&
+      state._icons.shown(icao24)
+    ) {
+      const prev = state._icons.item(icao24);
+      const drawn = prev && motionPosition(prev.motion, prev.pos, t);
+      if (drawn && distance(drawn, from) < RECOVER_SNAP_M)
+        copyInto(drawn, from);
+    }
     const motion = end
       ? {
           kind: 'lerp',
@@ -860,6 +959,13 @@ export function createAircraftIcons({
       { expiresAt: t1 },
     );
     planFrom.set(icao24, t);
+    if (end)
+      placedPlans.set(icao24, {
+        expiresAt: t1,
+        wallMs: t1 + leadMs,
+        at: clone(to),
+      });
+    else placedPlans.delete(icao24);
     return true;
   }
 
@@ -894,6 +1000,11 @@ export function createAircraftIcons({
     );
     planFrom.set(icao24, t);
     easeEnds.set(icao24, end);
+    placedPlans.set(icao24, {
+      expiresAt: end,
+      wallMs: end + displayDelay.currentMs,
+      at: clone(target),
+    });
     return true;
   }
 
@@ -903,12 +1014,17 @@ export function createAircraftIcons({
    * moved back (a seek, or the clock run backward): it is drawn where it was
    * then, as it is when the time moves on.
    */
-  function _replanExpired(t) {
-    if (followsClock() && t < replannedAt)
-      for (const [icao24, from] of planFrom)
-        if (from > t) _planIcon(icao24, { rewound: true });
-    replannedAt = t;
-    for (const icao24 of state._icons.due(t)) _planIcon(icao24);
+  function _replanExpired(t, view = null) {
+    planView = view;
+    try {
+      if (followsClock() && t < replannedAt)
+        for (const [icao24, from] of planFrom)
+          if (from > t) _planIcon(icao24, { rewound: true });
+      replannedAt = t;
+      for (const icao24 of state._icons.due(t)) _planIcon(icao24);
+    } finally {
+      planView = null;
+    }
   }
 
   /**
@@ -930,6 +1046,7 @@ export function createAircraftIcons({
     const query = viewer ? findQuery(viewer) : null;
     const eye = viewer ? findCamera(viewer)?.pose()?.position : null;
     let active = 0;
+    let fading = 0;
     for (const id of icons.ids()) {
       if (!icons.shown(id) && !state._models.has(id)) continue;
       const item = icons.item(id);
@@ -952,20 +1069,27 @@ export function createAircraftIcons({
         spriteHalfHeightPx: item.size[1] * half,
       });
       if (focus.active || focus.transitioning) active++;
+      if (focus.transitioning) fading++;
       if (focusAlphaNeedsWrite(current, focus.factor))
         icons.setFocus(id, focus.factor);
     }
     state._iconFocusActive = active;
+    // Rows still fading in or out, for the layer's pace.
+    state._iconFocusFading = fading;
   }
 
   /**
    * How a contact's icon is drawn outside Cockpit: its image (and the sharper
    * one it switches to up close), size, scale and scale by distance. The
    * tracked contact's own icon is drawn with this too, so selecting a contact
-   * changes its colour and nothing else.
+   * changes only its alpha. On a renderer with view sheets, a kind with
+   * rendered views draws from the aircraft sheet with no near image.
+   * Otherwise it draws the flat glyph.
    * @param {string} icao24
    * @param {object} [info] Its record.
-   * @returns {{image: string, imageLod: {near: string, switchPx: number},
+   * @param {number} [frame] A helicopter's rotor frame.
+   * @returns {{image: string|{views: string, first: number, fallback: string},
+   *   imageLod: {near: string, switchPx: number}|undefined,
    *   size: [number, number], scale: number, scaleByDistance: object}}
    */
   function _fleetLook(
@@ -974,21 +1098,16 @@ export function createAircraftIcons({
     frame = _rotorFrameOf(icao24, info, Date.now()),
   ) {
     const rendering = parts.rendering;
+    const kind = rendering._iconKind(icao24, info?.klass);
+    const size = [FLEET_ICON_SIZE_PX, FLEET_ICON_SIZE_PX];
+    const view = views ? aircraftViewRef(kind, frame) : null;
     return {
-      image: aircraftIcon(
-        rendering._iconKind(icao24, info?.klass),
-        FLEET_ICON_PX,
-        frame,
-      ),
-      imageLod: {
-        near: aircraftIcon(
-          rendering._iconKind(icao24, info?.klass),
-          TRACKED_ICON_PX,
-          frame,
-        ),
-        switchPx,
-      },
-      size: [FLEET_ICON_SIZE_PX, FLEET_ICON_SIZE_PX],
+      image: view ?? aircraftIcon(kind, FLEET_ICON_PX, frame),
+      imageLod: view
+        ? undefined
+        : { near: aircraftIcon(kind, TRACKED_ICON_PX, frame), switchPx },
+      pickProxy: view ? { size } : undefined,
+      size,
       scale: rendering._fleetBillboardScale(icao24),
       scaleByDistance: NORMAL_SCALE_BY_DISTANCE,
     };
@@ -1043,6 +1162,7 @@ export function createAircraftIcons({
       if (!_aboveHorizon(position, occluder)) continue;
       if (inView && !inView(position)) continue;
       rotor.drawn = frame;
+      rotorDrawnAtMs = nowMs;
       if (tracked) {
         parts.tracking?._syncTrackedBillboardImage?.();
         continue;
@@ -1064,6 +1184,11 @@ export function createAircraftIcons({
     const rendering = parts.rendering;
     const info = state.records.data.get(icao24);
     const tracked = icao24 === state._trackedIcao;
+    // A helicopter's rotor frame, chosen once for its look and its rotor.
+    const heliFrame = _rotorFrameOf(icao24, info, Date.now());
+    // A ground station's mast stands upright; every other glyph turns
+    // along its course.
+    const station = info?.klass === 'station';
     const cockpitDot =
       state._cockpitContactMode &&
       !tracked &&
@@ -1071,6 +1196,7 @@ export function createAircraftIcons({
     const look = cockpitDot
       ? {
           image: cockpitDotImage(),
+          pickProxy: undefined,
           imageLod: undefined,
           size: [cockpitContactSizePx, cockpitContactSizePx],
           scale: 1,
@@ -1079,21 +1205,18 @@ export function createAircraftIcons({
           rotationMode: 'screen',
         }
       : {
-          ..._fleetLook(icao24, info),
+          ..._fleetLook(icao24, info, heliFrame),
           color: rgba(rendering._fleetBillboardColor(icao24, info)),
           rotationMode: 'course',
         };
-    // A ground station's mast stands upright.
-    if (!cockpitDot && info?.klass === 'station') {
+    if (!cockpitDot && station) {
       look.rotationMode = 'screen';
       look.rotation = 0;
     }
     look.alpha = state.records.missingPolls.get(icao24) ? staleAlpha : 1;
     icons.update(icao24, look);
     // An airborne helicopter drawn as its glyph turns its rotor.
-    const frame = cockpitDot
-      ? undefined
-      : _rotorFrameOf(icao24, info, Date.now());
+    const frame = cockpitDot ? undefined : heliFrame;
     if (frame === undefined || !rotorTurns(_rotorState(info))) {
       // A tracked helicopter that lands shows the still frame at once.
       if (rotors.delete(icao24) && tracked)
@@ -1104,6 +1227,11 @@ export function createAircraftIcons({
   /** Whether any airborne helicopter's rotor turns (`_turnRotors` has work). */
   function _rotorsTurning() {
     return rotors.size > 0;
+  }
+
+  /** When a rotor in view was last given a new frame (wall ms), for the pace. */
+  function _rotorDrawnAtMs() {
+    return rotorDrawnAtMs;
   }
 
   /** Add a row for a new contact, hidden while it is the tracked one. */
@@ -1142,6 +1270,7 @@ export function createAircraftIcons({
     rotors.delete(icao24);
     planFrom.delete(icao24);
     easeEnds.delete(icao24);
+    placedPlans.delete(icao24);
     parts.rendering._releaseModel(icao24);
     state.records.forget(icao24);
     // The host-supplied placement, if any, forgets it as well.
@@ -1178,6 +1307,7 @@ export function createAircraftIcons({
     _fleetLook,
     _turnRotors,
     _rotorsTurning,
+    _rotorDrawnAtMs,
     _addIcon,
     _forgetContact,
     _iconIds,

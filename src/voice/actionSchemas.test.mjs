@@ -47,7 +47,7 @@ test('the complete Realtime tool payload pins the manifest-generated layer relea
     // Re-derived 2026-10-10 for whole-app voice control: list_ui_controls,
     // use_ui_control and six more set_panel_open boxes.
     // Street Level and GNSS extend the manifest; tracked and analyst aircraft describe broadcasts.
-    // Air quality (ECCC AQHI) extends the manifest.
+    // Air quality includes each station's value, pollutant, averaging period, kind and method note.
     // Globe rotation adds one motion; visual keyhole fit and explicit
     // reset guidance/defaults update only move_camera and mode descriptions.
     // S2 GhostMaps extends the generated layer enums.
@@ -66,7 +66,13 @@ test('the complete Realtime tool payload pins the manifest-generated layer relea
     // show_street_level (map, source, photo), open_stories, the Cyber HUD
     // layout leaving set_hud's layout enum (set_cyber_sonar is excluded above)
     // and the Space Missions panel target, beside the fork's panels and tools.
-    '0850606662868751f0bddd6a4c0d978b4822ec6bdc8964866902a710cbdbc493',
+    // Re-derived 2026-11-28 for the seventeenth upstream merge: upstream's
+    // Fire Perimeters lastGrowthTime, the worldwide air-quality fields in
+    // analyst_query (AQHI retired) and the retired Location and Visual
+    // Presets trays (Visual takes their names in set_panel_open), beside the
+    // fork's panels and tools (checked as the fork's old payload plus exactly
+    // upstream's change).
+    '5c6e3534a16db520f6b528309f2adb24d360f5c1eba82961cd67523b90df077b',
   );
 });
 
@@ -177,6 +183,14 @@ test('all legacy action arguments are byte-identical after removing the delibera
   delete property('set_layer_visibility').layerId.enum;
   delete property('show_data_layers_menu').layerId.enum;
   delete property('get_entity_context').layerId.enum;
+  // The dock's Location and Visual Presets trays are gone, and their panel
+  // ids with them.
+  property('set_panel_open').panelId.enum.splice(
+    1,
+    0,
+    'location-bar',
+    'control-panel',
+  );
   delete property('analyst_query').layers.items.enum;
   // Earth-centered rotation is additive; local camera yaw keeps its contract.
   const motion = property('move_camera').motion;

@@ -128,21 +128,9 @@ export function waitBounded(promise, ms, signal = null) {
 export function createArea({ state: layerState, services, parts, source }) {
   const { CCTV_ACTIVATION_RESULT } = services.activation;
   const { releaseContinuousRender } = services.render;
-
-  /**
-   * OpenStreetMap-derived camera packs (Warendorf) carry the OSM credit while
-   * any of their cameras is loaded with the layer on.
-   */
-
-  function refreshOsmCredit() {
-    if (!layerState._viewer) return;
-    if (
-      layerState._enabled &&
-      layerState._records.some((record) => record.camera.cityId === 'warendorf')
-    )
-      services.credits?.showOsmCredit?.(layerState._viewer, 'cctv');
-    else services.credits?.hideOsmCredit?.(layerState._viewer, 'cctv');
-  }
+  // The OpenStreetMap credit of the OSM-derived packs (Warendorf) is listed in
+  // Data attribution with every other credit; the map carries only Google's
+  // (upstream 166a27ebd).
 
   // -------------------------------------------------------------------------
   // Camera records
@@ -704,7 +692,6 @@ export function createArea({ state: layerState, services, parts, source }) {
       parts.geometryQueue.queueUnresolvedGeometry(added, center, {
         restartProgress: true,
       });
-    refreshOsmCredit();
     parts.rendering.refreshHorizonCulling();
     parts.rendering.refreshCoverageStyles();
     parts.cards.refreshAmbientCards();
@@ -1205,7 +1192,6 @@ export function createArea({ state: layerState, services, parts, source }) {
   }
 
   return {
-    refreshOsmCredit,
     isPrivateRecord,
     prepareCameras,
     boundedGroundPriors,

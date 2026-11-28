@@ -5,8 +5,8 @@ import { CITY_POIS } from '../cityPois.js';
 import {
   GLOBE_VIEW,
   flyToGlobeView,
-  flyToLandmark,
   flyToPresetLocation,
+  flyToLandmark,
   flyToPOI,
   searchAndFlyTo,
 } from '../locations.js';
@@ -71,6 +71,7 @@ import {
 } from '../scopeMask.js';
 import {
   fetchRegionalBrief,
+  fetchSpotWeather,
   regionalDistanceM,
   weatherCodeLabel,
 } from '../data/regionalBrief.js';
@@ -84,6 +85,11 @@ import { releaseSharedLocationCaches } from '../locationCacheRelease.js';
 
 export class StyleManager extends ApplicationShell {
   constructor(viewer, options = {}) {
+    const weather = options.requestServices?.weather;
+    // When a host replaces the brief, its view centre should only reach a
+    // weather service that the host explicitly supplied.
+    const hasRegionalOverride =
+      typeof options.services?.fetchRegionalBrief === 'function';
     super(viewer, {
       ...options,
       services: {
@@ -91,9 +97,9 @@ export class StyleManager extends ApplicationShell {
         CITY_POIS,
         GLOBE_VIEW,
         flyToGlobeView,
-        flyToLandmark,
         flyToPresetLocation,
         flyToPOI,
+        flyToLandmark,
         searchAndFlyTo,
         interruptCameraMotion,
         interruptGlobeRotation,
@@ -150,7 +156,9 @@ export class StyleManager extends ApplicationShell {
         releaseTilesAfterLoad,
         releaseSharedLocationCaches,
         resetDetectionSolveState,
-        hitTestWorldOverlay,
+        fetchSpotWeather:
+          weather?.getConditions?.bind(weather) ??
+          (hasRegionalOverride ? undefined : fetchSpotWeather),
         ...options.services,
       },
     });

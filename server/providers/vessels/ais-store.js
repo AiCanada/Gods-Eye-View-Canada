@@ -6,21 +6,6 @@ import {
 } from '../../../src/data/vesselTypes.js';
 export const AISSTREAM_CACHE_MAX = 50000;
 export const AISSTREAM_STALE_MS = 30 * 60 * 1000;
-// Static data (name, type, destination, IMO) is kept far longer than a
-// position: a vessel that leaves coverage and reports again hours later gets
-// its name back at once instead of waiting up to six minutes for its next
-// static report. Memory stays bounded: four short strings and a stamp per
-// MMSI.
-export const AISSTREAM_STATIC_RETENTION_MS = 24 * 60 * 60 * 1000;
-// Prune cadence. A full-map sweep on every message (hundreds per second
-// worldwide) kept the idle server busy for nothing: aisStreamRows() already
-// filters by the staleness cutoff at read time, so a sweep delayed by a few
-// seconds changes nothing a client sees. The size trigger keeps the hard cap
-// prompt during a burst — the map may overshoot the cap by at most 5 % between
-// two sweeps, and the next sweep trims it back to AISSTREAM_CACHE_MAX.
-export const AISSTREAM_PRUNE_INTERVAL_MS = 5000;
-export const AISSTREAM_PRUNE_SIZE_TRIGGER =
-  AISSTREAM_CACHE_MAX + Math.floor(AISSTREAM_CACHE_MAX / 20);
 // Per-MMSI recent-path ring buffers (PRD WS-F F3). Float32 lat/lon (~1m
 // precision, fine for 25m thinning) + Uint32 epoch seconds ≈ 12B/sample;
 // 64 samples × 50k MMSIs worst case ≈ 38MB. Tracks exist only while the dev
@@ -28,50 +13,24 @@ export const AISSTREAM_PRUNE_SIZE_TRIGGER =
 const AIS_TRACK_SAMPLES = 64;
 const AIS_TRACK_MIN_GAP_SEC = 30;
 const AIS_TRACK_MIN_MOVE_M = 25;
-// One store per process (common/process-shared.js): a dev-server restart
-// goes on with the vessels it had instead of pinning a full copy of them.
+// God's Eye View Canada: one store per process (common/process-shared.js), so
+// a dev-server restart goes on with the vessels it had instead of pinning a
+// full copy of them. A copy imported under a query of its own (a test's
+// separate store) keeps maps of its own.
+const STORE = `ais-stream${new URL(import.meta.url).search}`;
 /** @type {Map<string,object>} */
-const _aisStreamVessels = processShared('ais-stream:vessels', () => new Map());
+const _aisStreamVessels = processShared(`${STORE}:vessels`, () => new Map());
 /** @type {Map<string,object>} */
-const _aisStreamStatic = processShared('ais-stream:static', () => new Map());
+const _aisStreamStatic = processShared(`${STORE}:static`, () => new Map());
 /** @type {Map<string,{lats:Float32Array,lons:Float32Array,times:Uint32Array,head:number,len:number}>} mmsi -> track ring buffer */
-const _aisStreamTracks = processShared('ais-stream:tracks', () => new Map());
+const _aisStreamTracks = processShared(`${STORE}:tracks`, () => new Map());
 /** @type {Map<string,{lat:number,lon:number,epochSec:number}>} mmsi -> first fix awaiting second (lazy buffer allocation) */
 const _aisStreamTrackPending = processShared(
-  'ais-stream:track-pending',
+  `${STORE}:track-pending`,
   () => new Map(),
 );
-/** Wall-clock ms of the last cache sweep; 0 until the first one runs. */
+/** Wall-clock ms of the last timed prune; 0 until the first one runs. */
 let _lastPruneAt = 0;
-
-/**
- * Decides whether the ingest path should sweep the cache now.
- *
- * Pure so the throttle is testable without the store: a sweep is due once
- * the interval has elapsed since the last one, immediately when the vessel
- * map has grown to the size trigger (a burst must never run away from the
- * cap), and whenever the clock went backwards (an NTP step must not park the
- * sweep until the wall clock catches up with the stale stamp).
- *
- * @param {Object} options
- * @param {number} options.now Current wall-clock ms.
- * @param {number} options.lastPruneAt Wall-clock ms of the previous sweep.
- * @param {number} options.size Current vessel map size.
- * @param {number} [options.intervalMs] Minimum gap between sweeps.
- * @param {number} [options.sizeTrigger] Map size that forces a sweep.
- * @returns {boolean}
- */
-export function shouldPruneAisStreamCache({
-  now,
-  lastPruneAt,
-  size,
-  intervalMs = AISSTREAM_PRUNE_INTERVAL_MS,
-  sizeTrigger = AISSTREAM_PRUNE_SIZE_TRIGGER,
-}) {
-  if (size >= sizeTrigger) return true;
-  const elapsed = now - lastPruneAt;
-  return elapsed < 0 || elapsed >= intervalMs;
-}
 
 /**
  * Store one parsed AIS envelope.
@@ -82,9 +41,10 @@ export function shouldPruneAisStreamCache({
  * object without an MMSI proves nothing about the feed.
  *
  * @param {Object} envelope Parsed, non-error AIS envelope.
+ * @param {boolean} worldwide Whether the active socket subscribed to the worldwide box.
  * @returns {boolean} True when an AIS record was recognised.
  */
-export function ingestAisStreamEnvelope(envelope) {
+export function ingestAisStreamEnvelope(envelope, worldwide = false) {
   // Single shared recognition rule (also used by the adapter's tests), so the
   // liveness predicate that ships is the one under test. An envelope carrying
   // only an MMSI is not proof the feed works.
@@ -97,7 +57,9 @@ export function ingestAisStreamEnvelope(envelope) {
     metadata.MMSI ?? message.UserID ?? message.UserId ?? message.Mmsi,
   );
   if (!mmsi) return false;
-  const now = Date.now();
+  // Heard again after the retention window: start afresh, as after a prune.
+  const known = _aisStreamVessels.get(mmsi);
+  if (known && known._updatedAt < aisExpiryCutoffMs()) dropAisVessel(mmsi);
 
   if (messageType === 'ShipStaticData' || messageType === 'StaticDataReport') {
     const previous = _aisStreamStatic.get(mmsi) || {};
@@ -123,10 +85,6 @@ export function ingestAisStreamEnvelope(envelope) {
     const dimensions = aisDimensions(fields.Dimension);
     // Static reports may be partial (including Class B's separate A/B parts).
     // Keep known values in the cache as well as in the current live row.
-    // `_at` is the ingest stamp the sweep evicts by. It is store-private:
-    // static data reaches vessel rows field by field (below and in
-    // mergeAisStaticIntoLiveVessel), never by spreading this object, so the
-    // stamp cannot leak into what clients receive.
     const staticData = {
       // The envelope repeats a cached name even on Class B's type-only part.
       // Only an actual static name report replaces a known live name.
@@ -152,7 +110,6 @@ export function ingestAisStreamEnvelope(envelope) {
         '',
       length: dimensions.length ?? live?.length ?? previous.length ?? null,
       beam: dimensions.beam ?? live?.beam ?? previous.beam ?? null,
-      _at: now,
     };
     _aisStreamStatic.set(mmsi, staticData);
     mergeAisStaticIntoLiveVessel(mmsi, staticData);
@@ -175,6 +132,9 @@ export function ingestAisStreamEnvelope(envelope) {
 
   const staticData = _aisStreamStatic.get(mmsi) || {};
   const aidReport = messageType === 'AidsToNavigationReport';
+  // Delete then set: a Map keeps insertion order, so the cap evicts the least
+  // recently updated vessel first.
+  _aisStreamVessels.delete(mmsi);
   _aisStreamVessels.set(mmsi, {
     lat,
     lon,
@@ -204,7 +164,8 @@ export function ingestAisStreamEnvelope(envelope) {
     // A virtual aid is broadcast where nothing physical stands. Only such a
     // row carries the field, so ship rows stay their size.
     ...(aidReport && message.VirtualAtoN === true && { virtual: true }),
-    _updatedAt: now,
+    _updatedAt: Date.now(),
+    _worldwide: worldwide,
   });
 
   appendAisTrackSample(
@@ -214,8 +175,27 @@ export function ingestAisStreamEnvelope(envelope) {
     aisEpochSeconds(metadata.time_utc ?? metadata.TimeUtc),
   );
 
-  maybePruneAisStreamCache(now);
+  while (_aisStreamVessels.size > AISSTREAM_CACHE_MAX)
+    evictAisVessel(_aisStreamVessels.keys().next().value);
   return true;
+}
+
+/** Drop a vessel and everything kept for it. */
+function dropAisVessel(mmsi) {
+  evictAisVessel(mmsi);
+  _aisStreamStatic.delete(mmsi);
+}
+
+/** Drop a vessel's row and track, keeping its static entry for its return. */
+function evictAisVessel(mmsi) {
+  _aisStreamVessels.delete(mmsi);
+  _aisStreamTracks.delete(mmsi);
+  _aisStreamTrackPending.delete(mmsi);
+}
+
+/** Rows last updated before this moment have expired. */
+function aisExpiryCutoffMs() {
+  return Date.now() - AISSTREAM_STALE_MS;
 }
 
 /**
@@ -239,7 +219,9 @@ function appendAisTrackSample(mmsi, lat, lon, epochSec) {
   let track = _aisStreamTracks.get(mmsi);
   if (!track) {
     const pending = _aisStreamTrackPending.get(mmsi);
-    if (!pending) {
+    // A first fix older than the retention window must not seed a track.
+    const pendingCutoffSec = Math.floor(aisExpiryCutoffMs() / 1000);
+    if (!pending || pending.epochSec < pendingCutoffSec) {
       _aisStreamTrackPending.set(mmsi, { lat, lon, epochSec });
       return;
     }
@@ -289,6 +271,9 @@ function writeAisTrackSample(track, lat, lon, epochSec) {
 export function readAisTrack(mmsi) {
   const track = _aisStreamTracks.get(mmsi);
   if (!track || !track.len) return [];
+  // Hide an expired vessel's track, as aisStreamRows hides its row.
+  const row = _aisStreamVessels.get(mmsi);
+  if (!row || row._updatedAt < aisExpiryCutoffMs()) return [];
   const samples = [];
   const start =
     (track.head - track.len + AIS_TRACK_SAMPLES) % AIS_TRACK_SAMPLES;
@@ -368,11 +353,29 @@ function vesselTypeFromAis(message, staticData = {}) {
 }
 
 /**
+ * Fresh vessels received under the worldwide subscription and the latest
+ * receive time. Excludes aids to navigation. Null when there are none.
+ * @returns {?{count: number, at: number}}
+ */
+export function aisStreamVesselCount() {
+  const cutoff = Date.now() - AISSTREAM_STALE_MS;
+  let count = 0;
+  let at = 0;
+  for (const row of _aisStreamVessels.values()) {
+    if (!row._worldwide || row._updatedAt < cutoff || isAidToNavigation(row))
+      continue;
+    count++;
+    if (row._updatedAt > at) at = row._updatedAt;
+  }
+  return count ? { count, at } : null;
+}
+
+/**
  * The current rows, newest first, with every vessel ahead of every aid to
  * navigation: a capped request never gives up a ship for a buoy.
  */
 export function aisStreamRows(maxRows) {
-  const cutoff = Date.now() - AISSTREAM_STALE_MS;
+  const cutoff = aisExpiryCutoffMs();
   const vessels = [];
   const aids = [];
   for (const row of _aisStreamVessels.values()) {
@@ -385,39 +388,41 @@ export function aisStreamRows(maxRows) {
   return vessels
     .concat(aids)
     .slice(0, maxRows)
-    .map(({ _updatedAt, ...row }) => row);
+    .map(({ _updatedAt, _worldwide, ...row }) => row);
 }
 
 /**
- * Sweeps the cache when shouldPruneAisStreamCache() says it is due and
- * records the sweep time, so the next call can throttle against it.
+ * Drop expired vessels, then trim static entries without a vessel row to the
+ * cap. This walks every row, so it runs on the AIS watchdog tick (ais-live.js)
+ * rather than per message, and it is the only bound on those static entries.
  */
-function maybePruneAisStreamCache(now) {
-  if (
-    !shouldPruneAisStreamCache({
-      now,
-      lastPruneAt: _lastPruneAt,
-      size: _aisStreamVessels.size,
-    })
-  )
-    return;
-  pruneAisStreamCache(now);
+export function pruneAisStreamCache() {
+  _lastPruneAt = Date.now();
+  const cutoff = aisExpiryCutoffMs();
+  for (const [mmsi, row] of _aisStreamVessels) {
+    if (row._updatedAt < cutoff) dropAisVessel(mmsi);
+  }
+  // Static data ahead of a first position, or kept for a vessel the cap
+  // evicted, waits for a position, up to the cap, in order of first arrival.
+  for (const mmsi of _aisStreamStatic.keys()) {
+    if (_aisStreamStatic.size <= AISSTREAM_CACHE_MAX) break;
+    if (!_aisStreamVessels.has(mmsi)) _aisStreamStatic.delete(mmsi);
+  }
+}
+
+/** Map sizes, for tests. */
+export function aisStreamCacheStats() {
+  return {
+    vessels: _aisStreamVessels.size,
+    statics: _aisStreamStatic.size,
+    tracks: _aisStreamTracks.size,
+    pendingTracks: _aisStreamTrackPending.size,
+  };
 }
 
 /**
- * Sweeps the cache unconditionally at the given wall-clock time. Exported so
- * tests can drive retention through the clock instead of waiting it out; the
- * ingest path goes through the throttle instead.
- *
- * @param {number} [now] Wall-clock ms the sweep measures staleness from.
- */
-export function pruneAisStreamCacheNow(now = Date.now()) {
-  pruneAisStreamCache(now);
-}
-
-/**
- * Sizes of every store map plus the last sweep time, for the health endpoint.
- *
+ * God's Eye View Canada: every map size plus the last timed prune, for the
+ * dev server's /__gev/health answer (server/standalone/health.js).
  * @returns {{vessels:number,tracks:number,pending:number,static:number,lastPruneAt:number}}
  */
 export function aisStreamStoreStats() {
@@ -428,55 +433,6 @@ export function aisStreamStoreStats() {
     static: _aisStreamStatic.size,
     lastPruneAt: _lastPruneAt,
   };
-}
-
-function pruneAisStreamCache(now) {
-  _lastPruneAt = now;
-  const cutoff = now - AISSTREAM_STALE_MS;
-  for (const [mmsi, row] of _aisStreamVessels) {
-    if (row._updatedAt < cutoff) {
-      _aisStreamVessels.delete(mmsi);
-      _aisStreamTracks.delete(mmsi);
-      _aisStreamTrackPending.delete(mmsi);
-    }
-  }
-  // Pending single-fix entries for vessels never seen again must not leak
-  const pendingCutoffSec = Math.floor(cutoff / 1000);
-  for (const [mmsi, pending] of _aisStreamTrackPending) {
-    if (pending.epochSec < pendingCutoffSec)
-      _aisStreamTrackPending.delete(mmsi);
-  }
-  pruneAisStreamVesselsToCap();
-  // Static data (names, types, destinations) can arrive minutes before a
-  // vessel's first position and is read whenever a position lands, so an
-  // entry goes only once it is both older than its own, much longer,
-  // retention window AND no live position still uses it. The window is
-  // deliberately longer than the vessel window: a vessel the stale sweep or
-  // the cap evicted gets its name, type, destination and IMO back the moment
-  // it reports again.
-  pruneAisStreamStatic(now - AISSTREAM_STATIC_RETENTION_MS);
-}
-
-function pruneAisStreamStatic(cutoff) {
-  for (const [mmsi, staticData] of _aisStreamStatic) {
-    if (staticData._at < cutoff && !_aisStreamVessels.has(mmsi))
-      _aisStreamStatic.delete(mmsi);
-  }
-}
-
-function pruneAisStreamVesselsToCap() {
-  if (_aisStreamVessels.size <= AISSTREAM_CACHE_MAX) return;
-  const ordered = [..._aisStreamVessels.entries()].sort(
-    (a, b) => a[1]._updatedAt - b[1]._updatedAt,
-  );
-  for (const [mmsi] of ordered.slice(
-    0,
-    _aisStreamVessels.size - AISSTREAM_CACHE_MAX,
-  )) {
-    _aisStreamVessels.delete(mmsi);
-    _aisStreamTracks.delete(mmsi);
-    _aisStreamTrackPending.delete(mmsi);
-  }
 }
 
 export function newestAisPositionAt(rows) {
